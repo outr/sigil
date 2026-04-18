@@ -1,21 +1,29 @@
 package sigil
 
+import fabric.rw.RW
 import profig.Profig
 import rapid.{Task, logger}
 import sigil.db.{Model, SigilDB}
+import sigil.event.Event
+import sigil.participant.ParticipantId
+import sigil.tool.ToolInput
 
-private case class Sigil(config: Config,
-                         db: SigilDB)
+trait Sigil {
+  protected def events: List[RW[? <: Event]]
+  protected def toolInputs: List[RW[? <: ToolInput]]
+  protected def participantIds: List[RW[? <: ParticipantId]]
 
-object Sigil {
-  val instance: Task[Sigil] = Task.defer {
+  val instance: Task[SigilInstance] = Task.defer {
     for {
       _ <- logger.info("Sigil initializing...")
       _ <- Task(Profig.initConfiguration())
+      _ = Event.register(events*)
+      _ = ToolInput.register(toolInputs*)
+      _ = ParticipantId.register(participantIds*)
       config = Profig("sigil").as[Config]
       db = SigilDB(Some(config.dbPath))
       _ <- db.init
-    } yield Sigil(
+    } yield SigilInstance(
       config = config,
       db = db
     )
@@ -41,4 +49,6 @@ object Sigil {
       }
     }
   }
+
+  case class SigilInstance(config: Config, db: SigilDB)
 }

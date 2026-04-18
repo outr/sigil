@@ -24,8 +24,8 @@ object OpenRouter {
       }.toList
     }
 
-  def refreshModels: Task[Unit] = for {
-    instance <- Sigil.instance
+  def refreshModels(sigil: Sigil): Task[Unit] = for {
+    instance <- sigil.instance
     models <- loadModels
     _ <- instance.db.model.transaction { modelCache =>
       for {
