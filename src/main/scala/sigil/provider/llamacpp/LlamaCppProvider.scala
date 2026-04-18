@@ -43,19 +43,19 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
   }
 
   private def buildBody(modelName: String, request: ProviderRequest): Json = {
-    val systemMsg = obj("role" -> str("system"), "content" -> str(request.instructions.system))
-    val devMsg = request.instructions.developer.toVector.map(d =>
-      obj("role" -> str("developer"), "content" -> str(d))
-    )
-    val messages = request.events.collect {
-      case m: Message =>
-        val text = m.content.map {
-          case ResponseContent.Text(t)       => t
-          case ResponseContent.Markdown(t)   => t
+    val modePreamble = s"Current mode: ${request.currentMode} — ${request.currentMode.description}\n\n"
+    val systemMsg = obj("role" -> str("system"), "content" -> str(modePreamble + request.instructions.system))
+    val devMsg = request.instructions.developer.toVector.map(d => obj("role" -> str("developer"), "content" -> str(d)))
+    val messages = request.events.collect { case m: Message =>
+      val text = m.content
+        .map {
+          case ResponseContent.Text(t) => t
+          case ResponseContent.Markdown(t) => t
           case ResponseContent.Code(c, lang) => s"```${lang.getOrElse("")}\n$c\n```"
-          case other                          => other.toString
-        }.mkString("\n")
-        obj("role" -> str("user"), "content" -> str(text))
+          case other => other.toString
+        }
+        .mkString("\n")
+      obj("role" -> str("user"), "content" -> str(text))
     }
 
     val toolsArr = request.tools.map { t =>
@@ -79,10 +79,11 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
     )
     val toolFields: Vector[(String, Json)] =
       if (toolsArr.isEmpty) Vector.empty
-      else Vector(
-        "tools" -> arr(toolsArr*),
-        "tool_choice" -> str("required")
-      )
+      else
+        Vector(
+          "tools" -> arr(toolsArr*),
+          "tool_choice" -> str("required")
+        )
     val generationFields: Vector[(String, Json)] =
       request.generationSettings.temperature.toVector.map("temperature" -> num(_)) ++
         request.generationSettings.maxOutputTokens.toVector.map("max_tokens" -> num(_))
@@ -128,9 +129,11 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
           val name = tc.get("function").flatMap(_.get("name")).flatMap(optString)
           (callId, name) match {
             case (Some(id), Some(nm)) => events ++= acc.start(index, CallId(id), nm)
-            case _                    =>
+            case _ =>
           }
-          tc.get("function").flatMap(_.get("arguments")).flatMap(optString)
+          tc.get("function")
+            .flatMap(_.get("arguments"))
+            .flatMap(optString)
             .foreach(acc.appendArgs(index, _))
         }
       }
@@ -151,22 +154,23 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
     events.result()
   }
 
-  private def optString(j: Json): Option[String] =
-    if (j.isNull) None else Some(j.asString)
+  private def optString(j: Json): Option[String] = if (j.isNull) None else Some(j.asString)
 
-  private def parseUsage(json: Json): TokenUsage = TokenUsage(
-    promptTokens = json.get("prompt_tokens").map(_.asInt).getOrElse(0),
-    completionTokens = json.get("completion_tokens").map(_.asInt).getOrElse(0),
-    totalTokens = json.get("total_tokens").map(_.asInt).getOrElse(0)
-  )
+  private def parseUsage(json: Json): TokenUsage =
+    TokenUsage(
+      promptTokens = json.get("prompt_tokens").map(_.asInt).getOrElse(0),
+      completionTokens = json.get("completion_tokens").map(_.asInt).getOrElse(0),
+      totalTokens = json.get("total_tokens").map(_.asInt).getOrElse(0)
+    )
 
-  private def mapFinishReason(reason: String): StopReason = reason match {
-    case "stop"           => StopReason.Complete
-    case "length"         => StopReason.MaxTokens
-    case "tool_calls"     => StopReason.ToolCall
-    case "content_filter" => StopReason.ContentFiltered
-    case other            => StopReason.Unknown(other)
-  }
+  private def mapFinishReason(reason: String): StopReason =
+    reason match {
+      case "stop" => StopReason.Complete
+      case "length" => StopReason.MaxTokens
+      case "tool_calls" => StopReason.ToolCall
+      case "content_filter" => StopReason.ContentFiltered
+      case other => StopReason.Unknown(other)
+    }
 
   private def renderDescription[I <: ToolInput](schema: ToolSchema[I]): String =
     if (schema.examples.isEmpty) schema.description
@@ -182,8 +186,10 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
 }
 
 object LlamaCppProvider {
-  def apply(url: URL = url"http://localhost:8081"): Task[LlamaCppProvider] = LlamaCpp.loadModels(url)
-    .map { models =>
-      LlamaCppProvider(url, models)
-    }
+  def apply(url: URL = url"http://localhost:8081"): Task[LlamaCppProvider] =
+    LlamaCpp
+      .loadModels(url)
+      .map { models =>
+        LlamaCppProvider(url, models)
+      }
 }

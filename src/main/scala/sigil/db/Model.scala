@@ -43,7 +43,8 @@ case class Model(canonicalSlug: String,
                  links: ModelLinks,
                  created: Timestamp,
                  modified: Timestamp = Timestamp(),
-                 _id: Id[Model]) extends RecordDocument[Model] {
+                 _id: Id[Model])
+  extends RecordDocument[Model] {
   lazy val (provider: String, model: String) = {
     val array = _id.value.split("/", 2)
     (array.head, array.last)
@@ -51,10 +52,10 @@ case class Model(canonicalSlug: String,
 }
 
 object Model extends RecordDocumentModel[Model] with JsonConversion[Model] {
-  override implicit def rw: RW[Model] = RW.gen
+  implicit override def rw: RW[Model] = RW.gen
 
   val provider: I[String] = field.index(_.provider)
   val model: I[String] = field.index(_.model)
-  
+
   def id(provider: String, model: String): Id[Model] = Id(s"${provider.toLowerCase}/${model.toLowerCase}")
 }

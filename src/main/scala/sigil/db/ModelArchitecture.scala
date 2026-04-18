@@ -17,4 +17,5 @@ case class ModelArchitecture(modality: String,
                              inputModalities: List[String],
                              outputModalities: List[String],
                              tokenizer: String,
-                             instructType: Option[String]) derives RW
+                             instructType: Option[String])
+  derives RW

@@ -13,10 +13,9 @@ import sigil.tool.model.ResponseContent
  * Default visibility is both UI (rendered to users) and Model (included in
  * subsequent turns' context).
  */
-case class Message(
-  participantId: ParticipantId,
-  content: Vector[ResponseContent],
-  visibility: Set[EventVisibility] = Set(EventVisibility.UI, EventVisibility.Model),
-  timestamp: Timestamp = Timestamp(),
-  id: Id[Event] = Event.id()
-) extends Event derives RW
+case class Message(participantId: ParticipantId,
+                   content: Vector[ResponseContent],
+                   visibility: Set[EventVisibility] = Set(EventVisibility.UI, EventVisibility.Model),
+                   timestamp: Timestamp = Timestamp(),
+                   id: Id[Event] = Event.id())
+  extends Event derives RW

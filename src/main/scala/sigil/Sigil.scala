@@ -33,21 +33,22 @@ trait Sigil {
 
   object cache {
 
-    def findModel(provider: Option[String] = None,
-                  model: Option[String] = None): rapid.Stream[Model] = rapid.Stream.force(withDB { db =>
-      db.model.transaction { modelCache =>
-        modelCache.query
-          .filterOption(mc => provider.map(p => mc.provider === p.toLowerCase))
-          .filterOption(mc => model.map(m => mc.model === m.toLowerCase))
-          .toList
-      }
-    }.map(rapid.Stream.emits))
+    def findModel(provider: Option[String] = None, model: Option[String] = None): rapid.Stream[Model] =
+      rapid.Stream.force(withDB { db =>
+        db.model.transaction { modelCache =>
+          modelCache.query
+            .filterOption(mc => provider.map(p => mc.provider === p.toLowerCase))
+            .filterOption(mc => model.map(m => mc.model === m.toLowerCase))
+            .toList
+        }
+      }.map(rapid.Stream.emits))
 
-    def apply(provider: String, model: String): Task[Option[Model]] = withDB { db =>
-      db.model.transaction { modelCache =>
-        modelCache.get(Model.id(provider, model))
+    def apply(provider: String, model: String): Task[Option[Model]] =
+      withDB { db =>
+        db.model.transaction { modelCache =>
+          modelCache.get(Model.id(provider, model))
+        }
       }
-    }
   }
 
   case class SigilInstance(config: Config, db: SigilDB)

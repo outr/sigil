@@ -69,7 +69,7 @@ class RespondToolSchemaSpec extends AnyWordSpec with Matchers {
       val required = citationBranch("required").asVector.map(_.asString).toSet
       required shouldBe Set("type", "source")
       val props = citationBranch("properties").asObj.value.keySet
-      props should contain allOf("source", "excerpt", "url", "type")
+      props should contain allOf ("source", "excerpt", "url", "type")
     }
   }
 

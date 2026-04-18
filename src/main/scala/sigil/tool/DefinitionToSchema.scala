@@ -25,30 +25,29 @@ object DefinitionToSchema {
 
   private def convert(definition: Definition): Json = {
     val base = convertDefType(definition.defType)
-    val withDesc = definition.description.fold(base)(d =>
-      base.merge(obj("description" -> str(d)))
-    )
+    val withDesc = definition.description.fold(base)(d => base.merge(obj("description" -> str(d))))
     val withFormat =
       if (definition.format == Format.Raw) withDesc
       else withDesc.merge(obj("format" -> str(definition.format.name)))
     withFormat
   }
 
-  private def convertDefType(defType: DefType): Json = defType match {
-    case DefType.Str  => obj("type" -> str("string"))
-    case DefType.Int  => obj("type" -> str("integer"))
-    case DefType.Dec  => obj("type" -> str("number"))
-    case DefType.Bool => obj("type" -> str("boolean"))
-    case DefType.Null => obj("type" -> str("null"))
-    case DefType.Json => obj()
-    case DefType.Arr(t) =>
-      obj("type" -> str("array"), "items" -> convert(t))
-    case DefType.Opt(t) => convert(t)
-    case DefType.Obj(map) =>
-      objectSchema(map)
-    case DefType.Poly(values) =>
-      polySchema(values)
-  }
+  private def convertDefType(defType: DefType): Json =
+    defType match {
+      case DefType.Str => obj("type" -> str("string"))
+      case DefType.Int => obj("type" -> str("integer"))
+      case DefType.Dec => obj("type" -> str("number"))
+      case DefType.Bool => obj("type" -> str("boolean"))
+      case DefType.Null => obj("type" -> str("null"))
+      case DefType.Json => obj()
+      case DefType.Arr(t) =>
+        obj("type" -> str("array"), "items" -> convert(t))
+      case DefType.Opt(t) => convert(t)
+      case DefType.Obj(map) =>
+        objectSchema(map)
+      case DefType.Poly(values) =>
+        polySchema(values)
+    }
 
   private def objectSchema(map: Map[String, Definition]): Json = {
     val required = map.collect { case (key, d) if !d.isOpt => str(key) }.toList

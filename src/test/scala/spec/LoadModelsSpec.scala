@@ -37,7 +37,7 @@ class LoadModelsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       }
     }
   }
-  
+
   object Test extends Sigil {
     override protected def events: List[RW[? <: Event]] = Nil
     override protected def toolInputs: List[RW[? <: ToolInput]] = Nil

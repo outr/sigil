@@ -23,13 +23,14 @@ enum ProviderEvent derives RW {
   case Done(stopReason: StopReason)
   case Error(message: String)
 
-  def asString: String = this match {
-    case TextDelta(text) => s"TextDelta($text)"
-    case ToolCallStart(callId, toolName) => s"ToolCallStart($toolName)"
-    case ToolCallComplete(_, inputs) => s"ToolCallComplete(${JsonFormatter.Compact(inputs)})"
-    case ThinkingDelta(text) => s"ThinkingDelta($text)"
-    case Usage(_) => "Usage"
-    case Done(stopReason) => s"Done(${stopReason.toString})"
-    case Error(message) => s"Error($message)"
-  }
+  def asString: String =
+    this match {
+      case TextDelta(text) => s"TextDelta($text)"
+      case ToolCallStart(callId, toolName) => s"ToolCallStart($toolName)"
+      case ToolCallComplete(_, inputs) => s"ToolCallComplete(${JsonFormatter.Compact(inputs)})"
+      case ThinkingDelta(text) => s"ThinkingDelta($text)"
+      case Usage(_) => "Usage"
+      case Done(stopReason) => s"Done(${stopReason.toString})"
+      case Error(message) => s"Error($message)"
+    }
 }

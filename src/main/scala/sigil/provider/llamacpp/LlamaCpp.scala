@@ -28,10 +28,7 @@ object LlamaCpp {
   /**
    * Parsed entry from the `/v1/models` response (camelCased).
    */
-  case class Entry(id: String,
-                   created: Option[Long] = None,
-                   ownedBy: Option[String] = None,
-                   meta: Option[Meta] = None) derives RW
+  case class Entry(id: String, created: Option[Long] = None, ownedBy: Option[String] = None, meta: Option[Meta] = None) derives RW
 
   /**
    * Model metadata reported by llama.cpp under `meta`.
@@ -40,7 +37,8 @@ object LlamaCpp {
                   nCtxTrain: Option[Long] = None,
                   nEmbd: Option[Int] = None,
                   nVocab: Option[Int] = None,
-                  size: Option[Long] = None) derives RW
+                  size: Option[Long] = None)
+    derives RW
 
   /**
    * Convert a llama.cpp entry into a sigil [[Model]].
@@ -79,8 +77,13 @@ object LlamaCpp {
       ),
       perRequestLimits = None,
       supportedParameters = Set(
-        "temperature", "max_tokens", "top_p", "top_k",
-        "stop", "tools", "tool_choice"
+        "temperature",
+        "max_tokens",
+        "top_p",
+        "top_k",
+        "stop",
+        "tools",
+        "tool_choice"
       ),
       defaultParameters = ModelDefaultParameters(),
       knowledgeCutoff = None,

@@ -19,4 +19,5 @@ case class ModelDefaultParameters(temperature: Option[Double] = None,
                                   topK: Option[Int] = None,
                                   frequencyPenalty: Option[Double] = None,
                                   presencePenalty: Option[Double] = None,
-                                  repetitionPenalty: Option[Double] = None) derives RW
+                                  repetitionPenalty: Option[Double] = None)
+  derives RW

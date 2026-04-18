@@ -43,10 +43,11 @@ final class ToolCallAccumulator {
    * call completed). Emits a `ToolCallComplete` for each accumulated call
    * with fully-parsed arguments.
    */
-  def complete(): Vector[ProviderEvent] = calls.values.toVector.map { case (cid, _, buf) =>
-    val parsed =
-      try JsonParser(buf.toString).asObj
-      catch { case _: Throwable => Obj.empty }
-    ProviderEvent.ToolCallComplete(cid, parsed)
-  }
+  def complete(): Vector[ProviderEvent] =
+    calls.values.toVector.map { case (cid, _, buf) =>
+      val parsed =
+        try JsonParser(buf.toString).asObj
+        catch { case _: Throwable => Obj.empty }
+      ProviderEvent.ToolCallComplete(cid, parsed)
+    }
 }

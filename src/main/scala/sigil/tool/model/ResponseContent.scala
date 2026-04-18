@@ -11,6 +11,7 @@ import spice.net.URL
  * strict `oneOf` via DefinitionToSchema.
  */
 enum ResponseContent derives RW {
+
   /**
    * Plain text.
    */

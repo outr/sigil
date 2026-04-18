@@ -16,29 +16,28 @@ object RespondTool extends Tool[RespondInput] {
   override protected def uniqueName: String = "respond"
   override protected def description: String =
     "Send your response to the user. Use the most specific content type for each part of your response. " +
-    "Use 'markdown' only as a last resort when no other type fits."
-  override protected def examples: List[ToolExample[RespondInput]] = List(
+      "Use 'markdown' only as a last resort when no other type fits."
+  override protected def examples: List[ToolExample[RespondInput]] =
+    List(
       ToolExample(
         "Mixed prose and code",
-        RespondInput(Vector(
-          ResponseContent.Text("Here's how to parse JSON in Scala:"),
-          ResponseContent.Code("JsonParser(str)", Some("scala"))
-        ))
+        RespondInput(
+          Vector(
+            ResponseContent.Text("Here's how to parse JSON in Scala:"),
+            ResponseContent.Code("JsonParser(str)", Some("scala"))
+          ))
       ),
       ToolExample(
         "Response with source citation",
-        RespondInput(Vector(
-          ResponseContent.Text("The tolerance for Part 42 is ±0.05mm."),
-          ResponseContent.Citation("manual.pdf", Some("Section 3.2, page 17"), None)
-        ))
+        RespondInput(
+          Vector(
+            ResponseContent.Text("The tolerance for Part 42 is ±0.05mm."),
+            ResponseContent.Citation("manual.pdf", Some("Section 3.2, page 17"), None)
+          ))
       )
     )
 
-  override def execute(
-    input: RespondInput,
-    caller: ParticipantId,
-    conversation: Conversation
-  ): rapid.Stream[Event] = {
+  override def execute(input: RespondInput, caller: ParticipantId, conversation: Conversation): rapid.Stream[Event] = {
     val message = Message(
       participantId = caller,
       content = input.content

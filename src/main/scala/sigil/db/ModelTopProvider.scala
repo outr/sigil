@@ -10,6 +10,4 @@ import fabric.rw.*
  * @param maxCompletionTokens Maximum output tokens produced in a single call.
  * @param isModerated         Whether the top provider applies content moderation to requests.
  */
-case class ModelTopProvider(contextLength: Option[Long],
-                            maxCompletionTokens: Option[Long],
-                            isModerated: Boolean) derives RW
+case class ModelTopProvider(contextLength: Option[Long], maxCompletionTokens: Option[Long], isModerated: Boolean) derives RW

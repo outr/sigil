@@ -45,11 +45,12 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
           tools = Vector(RespondTool)
         )
         p(request).toList.map { events =>
-          events.map(_.asString) should be(List(
-            "ToolCallStart(respond)",
-            """ToolCallComplete({"content":[{"type":"Text","text":"4"}]})""",
-            "Done(ToolCall)"
-          ))
+          events.map(_.asString) should be(
+            List(
+              "ToolCallStart(respond)",
+              """ToolCallComplete({"content":[{"type":"Text","text":"4"}]})""",
+              "Done(ToolCall)"
+            ))
         }
       }
     }

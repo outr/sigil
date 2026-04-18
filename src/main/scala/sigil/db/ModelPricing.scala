@@ -10,7 +10,5 @@ import fabric.rw.*
  * @param webSearch      Cost per web-search tool invocation, when the model supports it.
  * @param inputCacheRead Cost per prompt-cache read token (discounted reuse of cached prompt prefix).
  */
-case class ModelPricing(prompt: BigDecimal,
-                        completion: BigDecimal,
-                        webSearch: Option[BigDecimal],
-                        inputCacheRead: Option[BigDecimal]) derives RW
+case class ModelPricing(prompt: BigDecimal, completion: BigDecimal, webSearch: Option[BigDecimal], inputCacheRead: Option[BigDecimal])
+  derives RW

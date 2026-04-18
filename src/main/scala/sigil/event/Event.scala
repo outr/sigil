@@ -16,6 +16,9 @@ trait Event {
 }
 
 object Event extends PolyType[Event] {
-  /** Generate a new event ID. */
+
+  /**
+   * Generate a new event ID.
+   */
   def id(): Id[Event] = Id[Event]()
 }

@@ -6,4 +6,5 @@ final case class GenerationSettings(temperature: Option[Double] = None,
                                     maxOutputTokens: Option[Int] = None,
                                     effort: Option[Effort] = None,
                                     topP: Option[Double] = None,
-                                    stopSequences: Vector[String] = Vector.empty) derives RW
+                                    stopSequences: Vector[String] = Vector.empty)
+  derives RW

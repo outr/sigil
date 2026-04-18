@@ -9,9 +9,8 @@ import lightdb.time.Timestamp
  *
  * UI-only — the model doesn't need to see prior title changes in its context.
  */
-case class TitleChangedEvent(
-  title: String,
-  visibility: Set[EventVisibility] = Set(EventVisibility.UI),
-  timestamp: Timestamp = Timestamp(),
-  id: Id[Event] = Event.id()
-) extends Event derives RW
+case class TitleChangedEvent(title: String,
+                             visibility: Set[EventVisibility] = Set(EventVisibility.UI),
+                             timestamp: Timestamp = Timestamp(),
+                             id: Id[Event] = Event.id())
+  extends Event derives RW
