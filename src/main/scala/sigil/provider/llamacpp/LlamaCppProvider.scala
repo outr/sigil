@@ -14,16 +14,8 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
 }
 
 object LlamaCppProvider {
-  def apply(url: URL = url"http://localhost:8081"): Task[LlamaCppProvider] = listModels(url)
+  def apply(url: URL = url"http://localhost:8081"): Task[LlamaCppProvider] = LlamaCpp.loadModels(url)
     .map { models =>
       LlamaCppProvider(url, models)
-    }
-
-  def listModels(url: URL): Task[List[Model]] = HttpClient
-    .url(url.withPath("/v1/models"))
-    .call[Json]
-    .map { json =>
-      scribe.info(s"JSON: ${JsonFormatter.Default(json)}")
-      ???
     }
 }
