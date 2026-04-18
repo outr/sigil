@@ -25,23 +25,29 @@ import spice.net.*
 object LlamaCpp {
   val Provider: String = "llamacpp"
 
-  /** Parsed entry from the `/v1/models` response (camelCased). */
+  /**
+   * Parsed entry from the `/v1/models` response (camelCased).
+   */
   case class Entry(id: String,
                    created: Option[Long] = None,
                    ownedBy: Option[String] = None,
                    meta: Option[Meta] = None) derives RW
 
-  /** Model metadata reported by llama.cpp under `meta`. */
+  /**
+   * Model metadata reported by llama.cpp under `meta`.
+   */
   case class Meta(nParams: Option[Long] = None,
                   nCtxTrain: Option[Long] = None,
                   nEmbd: Option[Int] = None,
                   nVocab: Option[Int] = None,
                   size: Option[Long] = None) derives RW
 
-  /** Convert a llama.cpp entry into a sigil [[Model]].
+  /**
+   * Convert a llama.cpp entry into a sigil [[Model]].
    *
    * The sigil id is `llamacpp/<model-name>` where model-name is derived from
-   * the llama.cpp id (basename, `.gguf` extension stripped, lowercased). */
+   * the llama.cpp id (basename, `.gguf` extension stripped, lowercased).
+   */
   def toModel(entry: Entry): Model = {
     val name = modelNameFromId(entry.id)
     val id = Id[Model](s"$Provider/${name.toLowerCase}")
@@ -86,7 +92,9 @@ object LlamaCpp {
     )
   }
 
-  /** Fetch and map currently-loaded models from a llama.cpp server. */
+  /**
+   * Fetch and map currently-loaded models from a llama.cpp server.
+   */
   def loadModels(baseUrl: URL = url"http://localhost:8081"): Task[List[Model]] =
     HttpClient.url(baseUrl.withPath("/v1/models")).call[Json].map { json =>
       val normalized = json.filterOne(SnakeToCamelFilter)

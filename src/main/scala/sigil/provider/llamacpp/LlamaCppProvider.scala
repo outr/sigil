@@ -7,6 +7,7 @@ import rapid.{Stream, Task}
 import sigil.db.Model
 import sigil.event.Message
 import sigil.provider.*
+import sigil.tool.{DefinitionToSchema, ToolInput, ToolSchema}
 import sigil.tool.model.ResponseContent
 import spice.http.client.HttpClient
 import spice.http.content.StringContent
@@ -15,17 +16,20 @@ import spice.net.*
 case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
   override def `type`: ProviderType = ProviderType.LlamaCpp
 
-  /** Streaming implementation: POST to `/v1/chat/completions` with `stream: true`,
-    * parse the SSE line stream into [[ProviderEvent]]s.
-    *
-    * Each `data: {chunk}` line produces 0+ events — a `TextDelta` for non-empty
-    * delta content, a `Usage` when usage is reported (typically the last chunk),
-    * and a `Done` when `finish_reason` arrives. The sentinel `data: [DONE]` line
-    * is a no-op terminator; `Done` is driven by `finish_reason`. */
+  /**
+   * Streaming implementation: POST to `/v1/chat/completions` with `stream: true`,
+   * parse the SSE line stream into [[ProviderEvent]]s.
+   *
+   * When `request.tools` is non-empty, `tool_choice: "required"` is sent so the
+   * model is forced to emit a tool call. Tool-call argument streaming is
+   * accumulated into a final `ToolCallComplete` event when `finish_reason`
+   * arrives.
+   */
   override def apply(request: ProviderRequest): Stream[ProviderEvent] = {
     val modelName = stripProviderPrefix(request.modelId.value)
     val body = buildBody(modelName, request)
     val bodyStr = JsonFormatter.Compact(body)
+    val accumulator = new ToolCallAccumulator
 
     Stream.force(
       HttpClient
@@ -34,7 +38,7 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
         .content(StringContent(bodyStr, ContentType.`application/json`))
         .noFailOnHttpStatus
         .streamLines()
-        .map(lines => lines.flatMap(line => Stream.emits(parseLine(line))))
+        .map(lines => lines.flatMap(line => Stream.emits(parseLine(line, accumulator))))
     )
   }
 
@@ -54,34 +58,53 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
         obj("role" -> str("user"), "content" -> str(text))
     }
 
-    val fields = Vector[(String, Json)](
+    val toolsArr = request.tools.map { t =>
+      val s = t.schema
+      obj(
+        "type" -> str("function"),
+        "function" -> obj(
+          "name" -> str(s.name),
+          "description" -> str(renderDescription(s)),
+          "parameters" -> DefinitionToSchema(s.input)
+        )
+      )
+    }
+
+    val baseFields = Vector[(String, Json)](
       "model" -> str(modelName),
       "messages" -> arr((Vector(systemMsg) ++ devMsg ++ messages)*),
       "stream" -> bool(true),
       // Qwen 3.x: suppress <think> blocks so the content field is non-empty
       "chat_template_kwargs" -> obj("enable_thinking" -> bool(false))
-    ) ++ request.generationSettings.temperature.toVector.map("temperature" -> num(_)) ++
-      request.generationSettings.maxOutputTokens.toVector.map("max_tokens" -> num(_))
+    )
+    val toolFields: Vector[(String, Json)] =
+      if (toolsArr.isEmpty) Vector.empty
+      else Vector(
+        "tools" -> arr(toolsArr*),
+        "tool_choice" -> str("required")
+      )
+    val generationFields: Vector[(String, Json)] =
+      request.generationSettings.temperature.toVector.map("temperature" -> num(_)) ++
+        request.generationSettings.maxOutputTokens.toVector.map("max_tokens" -> num(_))
 
-    obj(fields*)
+    obj((baseFields ++ toolFields ++ generationFields)*)
   }
 
-  private def parseLine(line: String): Vector[ProviderEvent] = {
+  private def parseLine(line: String, acc: ToolCallAccumulator): Vector[ProviderEvent] = {
     val trimmed = line.trim
     if (trimmed.isEmpty || trimmed.startsWith(":")) Vector.empty
     else if (trimmed == "data: [DONE]") Vector.empty
     else if (trimmed.startsWith("data: ")) {
       val payload = trimmed.drop(6)
-      try {
-        parseChunk(JsonParser(payload))
-      } catch {
+      try parseChunk(JsonParser(payload), acc)
+      catch {
         case t: Throwable =>
           Vector(ProviderEvent.Error(s"Failed to parse chunk: ${t.getMessage}"))
       }
     } else Vector.empty
   }
 
-  private def parseChunk(json: Json): Vector[ProviderEvent] = {
+  private def parseChunk(json: Json, acc: ToolCallAccumulator): Vector[ProviderEvent] = {
     val events = Vector.newBuilder[ProviderEvent]
     val choice = json.get("choices").flatMap(_.asVector.headOption)
 
@@ -98,6 +121,19 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
           if (text.nonEmpty) events += ProviderEvent.ThinkingDelta(text)
         }
       }
+      delta.get("tool_calls").foreach { toolCallsJson =>
+        toolCallsJson.asVector.foreach { tc =>
+          val index = tc.get("index").map(_.asInt).getOrElse(0)
+          val callId = tc.get("id").flatMap(optString)
+          val name = tc.get("function").flatMap(_.get("name")).flatMap(optString)
+          (callId, name) match {
+            case (Some(id), Some(nm)) => events ++= acc.start(index, CallId(id), nm)
+            case _                    =>
+          }
+          tc.get("function").flatMap(_.get("arguments")).flatMap(optString)
+            .foreach(acc.appendArgs(index, _))
+        }
+      }
     }
 
     json.get("usage").foreach { usage =>
@@ -105,11 +141,18 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
     }
 
     choice.flatMap(_.get("finish_reason")).foreach { reason =>
-      if (!reason.isNull) events += ProviderEvent.Done(mapFinishReason(reason.asString))
+      if (!reason.isNull) {
+        val stopReason = mapFinishReason(reason.asString)
+        if (stopReason == StopReason.ToolCall) events ++= acc.complete()
+        events += ProviderEvent.Done(stopReason)
+      }
     }
 
     events.result()
   }
+
+  private def optString(j: Json): Option[String] =
+    if (j.isNull) None else Some(j.asString)
 
   private def parseUsage(json: Json): TokenUsage = TokenUsage(
     promptTokens = json.get("prompt_tokens").map(_.asInt).getOrElse(0),
@@ -124,6 +167,13 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
     case "content_filter" => StopReason.ContentFiltered
     case other            => StopReason.Unknown(other)
   }
+
+  private def renderDescription[I <: ToolInput](schema: ToolSchema[I]): String =
+    if (schema.examples.isEmpty) schema.description
+    else {
+      val rendered = schema.examples.map(e => s"- ${e.description}: ${e.input}").mkString("\n")
+      s"${schema.description}\n\nExamples:\n$rendered"
+    }
 
   private def stripProviderPrefix(id: String): String = {
     val prefix = s"${LlamaCpp.Provider}/"

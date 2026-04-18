@@ -9,6 +9,7 @@ import sigil.db.Model
 import sigil.event.Message
 import sigil.participant.ParticipantId
 import sigil.provider.{GenerationSettings, Instructions, Mode, Provider, ProviderEvent, ProviderRequest, StopReason}
+import sigil.tool.RespondTool
 import sigil.tool.model.ResponseContent
 
 trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
@@ -24,7 +25,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       }
     }
 
-    "perform a round-trip request" in {
+    "perform a round-trip request via the respond tool" in {
       provider.flatMap { p =>
         val request = ProviderRequest(
           conversationId = Conversation.id("test-conversation"),
@@ -40,12 +41,14 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
             )
           ),
           currentMode = Mode.Conversation,
-          generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
+          generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0)),
+          tools = Vector(RespondTool)
         )
         p(request).toList.map { events =>
-          events should be(List(
-            ProviderEvent.TextDelta("4"),
-            ProviderEvent.Done(StopReason.Complete)
+          events.map(_.asString) should be(List(
+            "ToolCallStart(respond)",
+            """ToolCallComplete({"content":[{"type":"Text","text":"4"}]})""",
+            "Done(ToolCall)"
           ))
         }
       }

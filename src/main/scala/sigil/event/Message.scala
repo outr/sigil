@@ -6,11 +6,13 @@ import lightdb.time.Timestamp
 import sigil.participant.ParticipantId
 import sigil.tool.model.ResponseContent
 
-/** A message from a participant — user input, agent output, or system message.
-  * The participantId identifies who sent it; the content carries structured blocks.
-  *
-  * Default visibility is both UI (rendered to users) and Model (included in
-  * subsequent turns' context). */
+/**
+ * A message from a participant — user input, agent output, or system message.
+ * The participantId identifies who sent it; the content carries structured blocks.
+ *
+ * Default visibility is both UI (rendered to users) and Model (included in
+ * subsequent turns' context).
+ */
 case class Message(
   participantId: ParticipantId,
   content: Vector[ResponseContent],
