@@ -44,8 +44,7 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
 
   private def buildBody(modelName: String, request: ProviderRequest): Json = {
     val modePreamble = s"Current mode: ${request.currentMode} — ${request.currentMode.description}\n\n"
-    val systemMsg = obj("role" -> str("system"), "content" -> str(modePreamble + request.instructions.system))
-    val devMsg = request.instructions.developer.toVector.map(d => obj("role" -> str("developer"), "content" -> str(d)))
+    val systemMsg = obj("role" -> str("system"), "content" -> str(modePreamble + request.instructions.render))
     val messages = request.events.collect { case m: Message =>
       val text = m.content
         .map {
@@ -72,7 +71,7 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
 
     val baseFields = Vector[(String, Json)](
       "model" -> str(modelName),
-      "messages" -> arr((Vector(systemMsg) ++ devMsg ++ messages)*),
+      "messages" -> arr((Vector(systemMsg) ++ messages)*),
       "stream" -> bool(true),
       // Qwen 3.x: suppress <think> blocks so the content field is non-empty
       "chat_template_kwargs" -> obj("enable_thinking" -> bool(false))

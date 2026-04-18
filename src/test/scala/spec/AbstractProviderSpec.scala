@@ -9,13 +9,15 @@ import sigil.db.Model
 import sigil.event.Message
 import sigil.participant.ParticipantId
 import sigil.provider.{GenerationSettings, Instructions, Mode, Provider, ProviderEvent, ProviderRequest, StopReason}
-import sigil.tool.RespondTool
+import sigil.tool.{ChangeModeTool, RespondTool, Tool, ToolInput}
 import sigil.tool.model.ResponseContent
 
 trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   protected def provider: Task[Provider]
 
   protected def modelId: Id[Model]
+
+  protected def coreTools: Vector[Tool[? <: ToolInput]] = Vector(RespondTool, ChangeModeTool)
 
   getClass.getSimpleName should {
     "properly list models" in {
@@ -24,16 +26,12 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         p.models should not be empty
       }
     }
-
     "perform a round-trip request via the respond tool" in {
       provider.flatMap { p =>
         val request = ProviderRequest(
           conversationId = Conversation.id("test-conversation"),
           modelId = modelId,
-          instructions = Instructions(
-            system = "You are a helpful assistant. Answer very briefly.",
-            developer = None
-          ),
+          instructions = Instructions(),
           events = Vector(
             Message(
               participantId = TestUser,
@@ -42,7 +40,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
           ),
           currentMode = Mode.Conversation,
           generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0)),
-          tools = Vector(RespondTool)
+          tools = coreTools
         )
         p(request).toList.map { events =>
           events.map(_.asString) should be(
@@ -51,6 +49,38 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
               """ToolCallComplete({"content":[{"type":"Text","text":"4"}]})""",
               "Done(ToolCall)"
             ))
+        }
+      }
+    }
+    "switch modes when the user's task belongs to a different mode" in {
+      provider.flatMap { p =>
+        val request = ProviderRequest(
+          conversationId = Conversation.id("mode-switch-test"),
+          modelId = modelId,
+          instructions = Instructions(),
+          events = Vector(
+            Message(
+              participantId = TestUser,
+              content = Vector(ResponseContent.Text(
+                "I need to write a Scala function."))
+            )
+          ),
+          currentMode = Mode.Conversation,
+          generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0)),
+          tools = coreTools
+        )
+        p(request).toList.map { events =>
+          scribe.info(s"Mode switch events:\n${events.map(_.asString).mkString("\n")}")
+
+          val start = events.collectFirst { case s: ProviderEvent.ToolCallStart => s }
+          start.map(_.toolName) shouldBe Some(ChangeModeTool.schema.name)
+
+          val complete = events.collectFirst { case c: ProviderEvent.ToolCallComplete => c }
+          complete should not be empty
+          complete.get.inputs("mode").asString shouldBe Mode.Coding.toString
+
+          events.last shouldBe a[ProviderEvent.Done]
+          events.last.asInstanceOf[ProviderEvent.Done].stopReason shouldBe StopReason.ToolCall
         }
       }
     }
