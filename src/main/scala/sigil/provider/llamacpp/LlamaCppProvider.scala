@@ -29,7 +29,7 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
     val modelName = stripProviderPrefix(request.modelId.value)
     val body = buildBody(modelName, request)
     val bodyStr = JsonFormatter.Compact(body)
-    val accumulator = new ToolCallAccumulator
+    val accumulator = new ToolCallAccumulator(request.tools)
 
     Stream.force(
       HttpClient
