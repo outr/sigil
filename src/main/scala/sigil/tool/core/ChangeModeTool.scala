@@ -1,10 +1,8 @@
 package sigil.tool.core
 
-import sigil.conversation.Conversation
 import sigil.event.{Event, ModeChangedEvent}
-import sigil.participant.ParticipantId
 import sigil.provider.Mode
-import sigil.tool.Tool
+import sigil.tool.{Tool, ToolContext}
 import sigil.tool.model.ChangeModeInput
 
 /**
@@ -26,10 +24,15 @@ object ChangeModeTool extends Tool[ChangeModeInput] {
        |$modeList""".stripMargin
   }
 
-  override def execute(
-    input: ChangeModeInput,
-    caller: ParticipantId,
-    conversation: Conversation
-  ): rapid.Stream[Event] =
-    rapid.Stream.emits(List(ModeChangedEvent(mode = input.mode, reason = input.reason)))
+  override def execute(input: ChangeModeInput, context: ToolContext): rapid.Stream[Event] =
+    rapid.Stream.emits(
+      List(
+        ModeChangedEvent(
+          mode = input.mode,
+          reason = input.reason,
+          participantId = context.caller,
+          conversationId = context.conversation.id
+        )
+      )
+    )
 }

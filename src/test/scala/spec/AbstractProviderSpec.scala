@@ -1,45 +1,47 @@
 package spec
 
 import lightdb.id.Id
-import org.scalatest.Assertion
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.Conversation
 import sigil.db.Model
 import sigil.event.Message
-import sigil.participant.ParticipantId
 import sigil.provider.{GenerationSettings, Instructions, Mode, Provider, ProviderEvent, ProviderRequest, StopReason}
-import sigil.tool.core.{ChangeModeTool, CoreTools, RespondTool}
+import sigil.tool.core.{ChangeModeTool, CoreTools, FindCapabilityInput, RespondTool}
 import sigil.tool.{Tool, ToolInput}
 import sigil.tool.model.{ChangeModeInput, RespondInput, ResponseContent}
 
 trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
-  // Register core ToolInput subtypes so polymorphic serialization
-  // (e.g., ProviderEvent.asString → input.json) works in tests.
-  ToolInput.register(CoreTools.inputRWs*)
+  // Initialize TestSigil with a DB path scoped to this concrete spec class.
+  // With per-suite JVM forking (testGrouping in build.sbt), this gives each
+  // suite its own RocksDB instance.
+  TestSigil.initFor(getClass.getSimpleName)
 
   protected def provider: Task[Provider]
 
   protected def modelId: Id[Model]
 
-  protected def coreTools: Vector[Tool[? <: ToolInput]] = CoreTools.all
+  protected def coreTools: Vector[Tool[? <: ToolInput]] = CoreTools(TestSigil.toolManager).all
 
   protected def request(message: String,
                         currentMode: Mode = Mode.Conversation): Task[List[ProviderEvent]] = provider.flatMap { p =>
+    val conversationId = Conversation.id("test-conversation")
     val request = ProviderRequest(
-      conversationId = Conversation.id("test-conversation"),
+      conversationId = conversationId,
       modelId = modelId,
       instructions = Instructions(),
       events = Vector(
         Message(
           participantId = TestUser,
+          conversationId = conversationId,
           content = Vector(ResponseContent.Text(message))
         )
       ),
       currentMode = currentMode,
       generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0)),
-      tools = coreTools
+      tools = coreTools,
+      chain = List(TestUser)
     )
     p(request).toList
   }
@@ -100,6 +102,18 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         options.get.options.count(_.exclusive) should be(1)
       }
     }
+    "call find_capability when the user requests an action no core tool can perform" in {
+      request(
+        "Post a quick update to my team's #engineering Slack channel: \"deploy finished successfully.\""
+      ).map { events =>
+        val start = events.collectFirst { case s: ProviderEvent.ToolCallStart => s }
+        start.map(_.toolName) shouldBe Some("find_capability")
+
+        val input = events.collectFirst { case ProviderEvent.ToolCallComplete(_, i: FindCapabilityInput) => i }
+        input should not be empty
+        input.get.query.toLowerCase should (include("slack") or include("post") or include("message"))
+      }
+    }
     "switch modes when the user's task belongs to a different mode" in {
       request("I need to write a Scala function.").map { events =>
         val start = events.collectFirst { case s: ProviderEvent.ToolCallStart => s }
@@ -118,9 +132,5 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
   implicit class EventsListExtras(events: List[ProviderEvent]) {
     def log(): Unit = scribe.info(s"Events: \n\t${events.map(_.asString).mkString("\n\t")}")
-  }
-
-  case object TestUser extends ParticipantId {
-    override val value: String = "test-user"
   }
 }

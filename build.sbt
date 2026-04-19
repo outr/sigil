@@ -44,3 +44,15 @@ libraryDependencies ++= Seq(
 
 fork := true
 Test / parallelExecution := false
+
+// One forked JVM per test suite — gives each spec a clean process so init-once
+// state (singletons, PolyType registrations, RocksDB locks) is exercised
+// fresh on every run. Combined with parallelExecution := false above, suites
+// run serially so they take turns acquiring the RocksDB lock.
+Test / testGrouping := (Test / definedTests).value.map { test =>
+  Tests.Group(
+    name = test.name,
+    tests = Seq(test),
+    runPolicy = Tests.SubProcess(ForkOptions())
+  )
+}

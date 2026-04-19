@@ -1,9 +1,7 @@
 package sigil.tool.core
 
-import sigil.conversation.Conversation
 import sigil.event.{Event, Message}
-import sigil.participant.ParticipantId
-import sigil.tool.{Tool, ToolExample}
+import sigil.tool.{Tool, ToolContext, ToolExample}
 import sigil.tool.model.{MultipartParser, RespondInput}
 
 /**
@@ -90,9 +88,13 @@ object RespondTool extends Tool[RespondInput] {
     )
   )
 
-  override def execute(input: RespondInput, caller: ParticipantId, conversation: Conversation): rapid.Stream[Event] = {
+  override def execute(input: RespondInput, context: ToolContext): rapid.Stream[Event] = {
     val blocks = MultipartParser.parse(input.content)
-    val message = Message(participantId = caller, content = blocks)
+    val message = Message(
+      participantId = context.caller,
+      conversationId = context.conversation.id,
+      content = blocks
+    )
     rapid.Stream.emits(List(message))
   }
 }

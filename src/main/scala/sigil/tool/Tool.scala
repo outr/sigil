@@ -3,9 +3,7 @@ package sigil.tool
 import fabric.define.Definition
 import fabric.rw.*
 import lightdb.id.Id
-import sigil.conversation.Conversation
 import sigil.event.Event
-import sigil.participant.ParticipantId
 
 trait Tool[Input <: ToolInput: RW] {
   protected def uniqueName: String
@@ -26,5 +24,5 @@ trait Tool[Input <: ToolInput: RW] {
     examples = examples
   )
 
-  def execute(input: Input, caller: ParticipantId, conversation: Conversation): rapid.Stream[Event]
+  def execute(input: Input, context: ToolContext): rapid.Stream[Event]
 }
