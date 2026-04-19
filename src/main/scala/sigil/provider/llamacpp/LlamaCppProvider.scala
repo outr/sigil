@@ -168,7 +168,9 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
       case "length" => StopReason.MaxTokens
       case "tool_calls" => StopReason.ToolCall
       case "content_filter" => StopReason.ContentFiltered
-      case other => StopReason.Unknown(other)
+      case other =>
+        scribe.warn(s"Unmapped finish_reason from llama.cpp: '$other' — treating as Complete")
+        StopReason.Complete
     }
 
   private def renderDescription[I <: ToolInput](schema: ToolSchema[I]): String =

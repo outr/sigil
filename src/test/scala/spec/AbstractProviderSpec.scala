@@ -1,6 +1,5 @@
 package spec
 
-import fabric.rw.*
 import lightdb.id.Id
 import org.scalatest.Assertion
 import org.scalatest.matchers.should.Matchers
@@ -11,19 +10,19 @@ import sigil.db.Model
 import sigil.event.Message
 import sigil.participant.ParticipantId
 import sigil.provider.{GenerationSettings, Instructions, Mode, Provider, ProviderEvent, ProviderRequest, StopReason}
-import sigil.tool.{ChangeModeTool, RespondTool, Tool, ToolInput}
-import sigil.tool.model.{ChangeModeInput, RespondInput, ResponseContent}
+import sigil.tool.{ChangeModeTool, CoreTools, Tool, ToolInput}
+import sigil.tool.model.{ChangeModeInput, ResponseContent}
 
 trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   // Register core ToolInput subtypes so polymorphic serialization
   // (e.g., ProviderEvent.asString → input.json) works in tests.
-  ToolInput.register(summon[RW[RespondInput]], summon[RW[ChangeModeInput]])
+  ToolInput.register(CoreTools.inputRWs*)
 
   protected def provider: Task[Provider]
 
   protected def modelId: Id[Model]
 
-  protected def coreTools: Vector[Tool[? <: ToolInput]] = Vector(RespondTool, ChangeModeTool)
+  protected def coreTools: Vector[Tool[? <: ToolInput]] = CoreTools.all
 
   protected def request(message: String,
                         currentMode: Mode = Mode.Conversation): Task[List[ProviderEvent]] = provider.flatMap { p =>
