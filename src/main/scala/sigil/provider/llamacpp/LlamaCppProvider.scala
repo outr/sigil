@@ -29,7 +29,7 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
     val modelName = stripProviderPrefix(request.modelId.value)
     val body = buildBody(modelName, request)
     val bodyStr = JsonFormatter.Compact(body)
-    val accumulator = new ToolCallAccumulator(request.tools)
+    val state = new StreamState(new ToolCallAccumulator(request.tools))
 
     Stream.force(
       HttpClient
@@ -38,7 +38,7 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
         .content(StringContent(bodyStr, ContentType.`application/json`))
         .noFailOnHttpStatus
         .streamLines()
-        .map(lines => lines.flatMap(line => Stream.emits(parseLine(line, accumulator))))
+        .map(lines => lines.flatMap(line => Stream.emits(parseLine(line, state))))
     )
   }
 
@@ -73,6 +73,8 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
       "model" -> str(modelName),
       "messages" -> arr((Vector(systemMsg) ++ messages)*),
       "stream" -> bool(true),
+      // Emit a final chunk with token usage before [DONE]
+      "stream_options" -> obj("include_usage" -> bool(true)),
       // Qwen 3.x: suppress <think> blocks so the content field is non-empty
       "chat_template_kwargs" -> obj("enable_thinking" -> bool(false))
     )
@@ -90,13 +92,13 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
     obj((baseFields ++ toolFields ++ generationFields)*)
   }
 
-  private def parseLine(line: String, acc: ToolCallAccumulator): Vector[ProviderEvent] = {
+  private def parseLine(line: String, state: StreamState): Vector[ProviderEvent] = {
     val trimmed = line.trim
     if (trimmed.isEmpty || trimmed.startsWith(":")) Vector.empty
-    else if (trimmed == "data: [DONE]") Vector.empty
+    else if (trimmed == "data: [DONE]") state.flushDone()
     else if (trimmed.startsWith("data: ")) {
       val payload = trimmed.drop(6)
-      try parseChunk(JsonParser(payload), acc)
+      try parseChunk(JsonParser(payload), state)
       catch {
         case t: Throwable =>
           Vector(ProviderEvent.Error(s"Failed to parse chunk: ${t.getMessage}"))
@@ -104,7 +106,7 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
     } else Vector.empty
   }
 
-  private def parseChunk(json: Json, acc: ToolCallAccumulator): Vector[ProviderEvent] = {
+  private def parseChunk(json: Json, state: StreamState): Vector[ProviderEvent] = {
     val events = Vector.newBuilder[ProviderEvent]
     val choice = json.get("choices").flatMap(_.asVector.headOption)
 
@@ -127,27 +129,30 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
           val callId = tc.get("id").flatMap(optString)
           val name = tc.get("function").flatMap(_.get("name")).flatMap(optString)
           (callId, name) match {
-            case (Some(id), Some(nm)) => events ++= acc.start(index, CallId(id), nm)
+            case (Some(id), Some(nm)) => events ++= state.acc.start(index, CallId(id), nm)
             case _ =>
           }
           tc.get("function")
             .flatMap(_.get("arguments"))
             .flatMap(optString)
-            .foreach(args => events ++= acc.appendArgs(index, args))
+            .foreach(args => events ++= state.acc.appendArgs(index, args))
         }
+      }
+    }
+
+    // finish_reason precedes usage in the emitted order. Flush any tool-call
+    // completes now, but hold `Done` back until usage arrives (or [DONE]) so
+    // `Done` remains terminal.
+    choice.flatMap(_.get("finish_reason")).foreach { reason =>
+      if (!reason.isNull) {
+        val stopReason = mapFinishReason(reason.asString)
+        if (stopReason == StopReason.ToolCall) events ++= state.acc.complete()
+        state.pendingDone = Some(stopReason)
       }
     }
 
     json.get("usage").foreach { usage =>
       if (!usage.isNull) events += ProviderEvent.Usage(parseUsage(usage))
-    }
-
-    choice.flatMap(_.get("finish_reason")).foreach { reason =>
-      if (!reason.isNull) {
-        val stopReason = mapFinishReason(reason.asString)
-        if (stopReason == StopReason.ToolCall) events ++= acc.complete()
-        events += ProviderEvent.Done(stopReason)
-      }
     }
 
     events.result()
@@ -183,6 +188,17 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
   private def stripProviderPrefix(id: String): String = {
     val prefix = s"${LlamaCpp.Provider}/"
     if (id.startsWith(prefix)) id.drop(prefix.length) else id
+  }
+
+  private final class StreamState(val acc: ToolCallAccumulator) {
+    var pendingDone: Option[StopReason] = None
+
+    def flushDone(): Vector[ProviderEvent] = pendingDone match {
+      case Some(sr) =>
+        pendingDone = None
+        Vector(ProviderEvent.Done(sr))
+      case None => Vector.empty
+    }
   }
 }
 

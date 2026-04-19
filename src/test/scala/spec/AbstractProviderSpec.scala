@@ -64,6 +64,10 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         val complete = events.collectFirst { case ProviderEvent.ToolCallComplete(_, i: RespondInput) => i }
         complete.map(_.content) shouldBe Some("▶Text\n4")
 
+        val usage = events.collectFirst { case u: ProviderEvent.Usage => u }
+        usage should not be empty
+        usage.get.usage.totalTokens should be > 0
+
         events.last shouldBe a[ProviderEvent.Done]
         events.last.asInstanceOf[ProviderEvent.Done].stopReason shouldBe StopReason.ToolCall
       }

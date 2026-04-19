@@ -94,27 +94,22 @@ final class ToolCallAccumulator(tools: Vector[Tool[? <: ToolInput]] = Vector.emp
                                toolName: String,
                                buf: StringBuilder,
                                processor: Option[RespondStreamProcessor])
-}
 
-/**
- * Translates streaming JSON args of the `respond` tool into `ContentBlock*`
- * events. Wraps a [[JsonStringFieldExtractor]] for the `content` field
- * feeding a [[MultipartStreamParser]].
- */
-private final class RespondStreamProcessor(callId: CallId) {
-  private val extractor = new JsonStringFieldExtractor("content")
-  private val parser = new MultipartStreamParser
+  private final class RespondStreamProcessor(callId: CallId) {
+    private val extractor = new JsonStringFieldExtractor("content")
+    private val parser = new MultipartStreamParser
 
-  def feed(fragment: String): Vector[ProviderEvent] = {
-    val text = extractor.append(fragment)
-    if (text.isEmpty) Vector.empty else translate(parser.append(text))
-  }
-
-  def finish(): Vector[ProviderEvent] = translate(parser.finish())
-
-  private def translate(events: Vector[ToolStreamEvent]): Vector[ProviderEvent] =
-    events.map {
-      case ToolStreamEvent.BlockStart(t, a) => ProviderEvent.ContentBlockStart(callId, t, a)
-      case ToolStreamEvent.BlockDelta(t) => ProviderEvent.ContentBlockDelta(callId, t)
+    def feed(fragment: String): Vector[ProviderEvent] = {
+      val text = extractor.append(fragment)
+      if (text.isEmpty) Vector.empty else translate(parser.append(text))
     }
+
+    def finish(): Vector[ProviderEvent] = translate(parser.finish())
+
+    private def translate(events: Vector[ToolStreamEvent]): Vector[ProviderEvent] =
+      events.map {
+        case ToolStreamEvent.BlockStart(t, a) => ProviderEvent.ContentBlockStart(callId, t, a)
+        case ToolStreamEvent.BlockDelta(t) => ProviderEvent.ContentBlockDelta(callId, t)
+      }
+  }
 }
