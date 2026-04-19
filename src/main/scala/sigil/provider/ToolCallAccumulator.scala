@@ -2,8 +2,9 @@ package sigil.provider
 
 import fabric.rw.*
 import fabric.io.JsonParser
+import sigil.tool.core.RespondTool
 import sigil.tool.model.{JsonStringFieldExtractor, MultipartStreamParser, ToolStreamEvent}
-import sigil.tool.{RespondTool, Tool, ToolInput}
+import sigil.tool.{Tool, ToolInput}
 
 import scala.collection.mutable
 

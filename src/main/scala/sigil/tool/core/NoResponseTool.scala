@@ -1,8 +1,9 @@
-package sigil.tool
+package sigil.tool.core
 
 import sigil.conversation.Conversation
 import sigil.event.Event
 import sigil.participant.ParticipantId
+import sigil.tool.Tool
 import sigil.tool.model.NoResponseInput
 
 /**

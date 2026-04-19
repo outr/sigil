@@ -1,9 +1,10 @@
-package sigil.tool
+package sigil.tool.core
 
 import sigil.conversation.Conversation
 import sigil.event.{Event, ModeChangedEvent}
 import sigil.participant.ParticipantId
 import sigil.provider.Mode
+import sigil.tool.Tool
 import sigil.tool.model.ChangeModeInput
 
 /**

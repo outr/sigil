@@ -1,6 +1,7 @@
-package sigil.tool
+package sigil.tool.core
 
 import fabric.rw.*
+import sigil.tool.{Tool, ToolInput}
 import sigil.tool.model.{ChangeModeInput, NoResponseInput, RespondInput}
 
 /**

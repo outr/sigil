@@ -1,5 +1,9 @@
 package sigil.tool.model
 
+import fabric.io.JsonParser
+import fabric.rw.*
+
+import scala.util.Try
 import scala.util.matching.Regex
 
 /**
@@ -14,10 +18,15 @@ import scala.util.matching.Regex
  *   - `▶Text`        → [[ResponseContent.Text]]
  *   - `▶Markdown`    → [[ResponseContent.Markdown]]
  *   - `▶Code <lang>` → [[ResponseContent.Code]] with language
+ *   - `▶Heading`     → [[ResponseContent.Heading]]
+ *   - `▶Field`       → [[ResponseContent.Field]] (body is a JSON payload)
+ *   - `▶Divider`     → [[ResponseContent.Divider]] (no body)
+ *   - `▶Options`     → [[ResponseContent.Options]] (body is a JSON payload)
  *
- * Unknown block types fall back to `Text`. Content before the first header is
- * silently dropped (the model is instructed to start with a header). Empty
- * blocks are skipped.
+ * Unknown block types, and JSON-bodied blocks whose body fails to parse,
+ * fall back to `Text` carrying the raw body. Content before the first header
+ * is silently dropped (the model is instructed to start with a header).
+ * Empty blocks are skipped, except `▶Divider`, which emits even without body.
  */
 object MultipartParser {
   private val Header: Regex = """^▶([A-Za-z][A-Za-z0-9]*)(?:\s+(\S+))?$""".r
@@ -29,7 +38,7 @@ object MultipartParser {
 
     def flush(): Unit = current.foreach { case (typeName, arg) =>
       val body = buf.toString.stripPrefix("\n").stripSuffix("\n")
-      if (body.nonEmpty) blocks += materialize(typeName, arg, body)
+      if (body.nonEmpty || typeName == "Divider") blocks += materialize(typeName, arg, body)
       buf.clear()
     }
 
@@ -52,6 +61,31 @@ object MultipartParser {
       case "Text"     => ResponseContent.Text(body)
       case "Markdown" => ResponseContent.Markdown(body)
       case "Code"     => ResponseContent.Code(body, arg)
+      case "Heading"  => ResponseContent.Heading(body)
+      case "Field"    => parseField(body).getOrElse(ResponseContent.Text(body))
+      case "Divider"  => ResponseContent.Divider
+      case "Options"  => parseOptions(body).getOrElse(ResponseContent.Text(body))
       case _          => ResponseContent.Text(body)
     }
+
+  private def parseOptions(body: String): Option[ResponseContent.Options] =
+    Try(JsonParser(body).as[OptionsPayload]).toOption.map { p =>
+      ResponseContent.Options(prompt = p.prompt, options = p.options, allowMultiple = p.allowMultiple)
+    }
+
+  private def parseField(body: String): Option[ResponseContent.Field] =
+    Try(JsonParser(body).as[FieldPayload]).toOption.map { p =>
+      ResponseContent.Field(label = p.label, value = p.value, icon = p.icon)
+    }
+
+  /** Wire representation of an `▶Options` block body — kept separate from
+    * [[ResponseContent.Options]] so the enum's RW (a polymorphic `oneOf`) isn't
+    * re-entered when decoding the raw JSON payload. */
+  private case class OptionsPayload(prompt: String,
+                                    options: List[SelectOption],
+                                    allowMultiple: Boolean = false) derives RW
+
+  /** Wire representation of a `▶Field` block body — same rationale as
+    * [[OptionsPayload]]. */
+  private case class FieldPayload(label: String, value: String, icon: Option[String] = None) derives RW
 }

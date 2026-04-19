@@ -10,7 +10,8 @@ import sigil.db.Model
 import sigil.event.Message
 import sigil.participant.ParticipantId
 import sigil.provider.{GenerationSettings, Instructions, Mode, Provider, ProviderEvent, ProviderRequest, StopReason}
-import sigil.tool.{ChangeModeTool, CoreTools, RespondTool, Tool, ToolInput}
+import sigil.tool.core.{ChangeModeTool, CoreTools, RespondTool}
+import sigil.tool.{Tool, ToolInput}
 import sigil.tool.model.{ChangeModeInput, RespondInput, ResponseContent}
 
 trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
@@ -70,6 +71,33 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
         events.last shouldBe a[ProviderEvent.Done]
         events.last.asInstanceOf[ProviderEvent.Done].stopReason shouldBe StopReason.ToolCall
+      }
+    }
+    "emit a single-select ▶Options block when the user asks to be presented choices" in {
+      request(
+        "I need to pick a backend language for a new web service. Ask me which of Python, Node.js, or Go I want."
+      ).map { events =>
+        val complete = events.collectFirst { case ProviderEvent.ToolCallComplete(_, i: RespondInput) => i }
+        complete should not be empty
+        val blocks = sigil.tool.model.MultipartParser.parse(complete.get.content)
+        val options = blocks.collectFirst { case o: ResponseContent.Options => o }
+        options should not be empty
+        options.get.allowMultiple should be(false)
+        options.get.options.size should be(3)
+      }
+    }
+    "emit a multi-select ▶Options block with an exclusive escape-hatch option" in {
+      request(
+        "I want to enable notifications. Ask me which of email, SMS, or push I want — multiple selections are allowed. Also include a None option that cannot be combined with the others."
+      ).map { events =>
+        val complete = events.collectFirst { case ProviderEvent.ToolCallComplete(_, i: RespondInput) => i }
+        complete should not be empty
+        val blocks = sigil.tool.model.MultipartParser.parse(complete.get.content)
+        val options = blocks.collectFirst { case o: ResponseContent.Options => o }
+        options should not be empty
+        options.get.allowMultiple should be(true)
+        options.get.options.exists(_.exclusive) should be(true)
+        options.get.options.count(_.exclusive) should be(1)
       }
     }
     "switch modes when the user's task belongs to a different mode" in {
