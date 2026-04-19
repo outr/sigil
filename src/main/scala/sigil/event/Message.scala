@@ -17,5 +17,4 @@ case class Message(participantId: ParticipantId,
                    content: Vector[ResponseContent],
                    visibility: Set[EventVisibility] = Set(EventVisibility.UI, EventVisibility.Model),
                    timestamp: Timestamp = Timestamp(),
-                   id: Id[Event] = Event.id())
-  extends Event derives RW
+                   id: Id[Event] = Event.id()) extends Event derives RW
