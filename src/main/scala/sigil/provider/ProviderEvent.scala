@@ -19,6 +19,8 @@ enum ProviderEvent derives RW {
   case TextDelta(text: String)
   case ToolCallStart(callId: CallId, toolName: String)
   case ToolCallComplete(callId: CallId, input: ToolInput)
+  case ContentBlockStart(callId: CallId, blockType: String, arg: Option[String])
+  case ContentBlockDelta(callId: CallId, text: String)
   case ThinkingDelta(text: String)
   case Usage(usage: TokenUsage)
   case Done(stopReason: StopReason)
@@ -27,8 +29,10 @@ enum ProviderEvent derives RW {
   def asString: String =
     this match {
       case TextDelta(text) => s"TextDelta($text)"
-      case ToolCallStart(callId, toolName) => s"ToolCallStart($toolName)"
+      case ToolCallStart(_, toolName) => s"ToolCallStart($toolName)"
       case ToolCallComplete(_, input) => s"ToolCallComplete($input)"
+      case ContentBlockStart(_, t, a) => s"ContentBlockStart($t${a.fold("")(v => s" $v")})"
+      case ContentBlockDelta(_, t) => s"ContentBlockDelta($t)"
       case ThinkingDelta(text) => s"ThinkingDelta($text)"
       case Usage(_) => "Usage"
       case Done(stopReason) => s"Done(${stopReason.toString})"

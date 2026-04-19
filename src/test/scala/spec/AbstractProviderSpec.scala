@@ -10,8 +10,8 @@ import sigil.db.Model
 import sigil.event.Message
 import sigil.participant.ParticipantId
 import sigil.provider.{GenerationSettings, Instructions, Mode, Provider, ProviderEvent, ProviderRequest, StopReason}
-import sigil.tool.{ChangeModeTool, CoreTools, Tool, ToolInput}
-import sigil.tool.model.{ChangeModeInput, ResponseContent}
+import sigil.tool.{ChangeModeTool, CoreTools, RespondTool, Tool, ToolInput}
+import sigil.tool.model.{ChangeModeInput, RespondInput, ResponseContent}
 
 trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   // Register core ToolInput subtypes so polymorphic serialization
@@ -52,12 +52,20 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     }
     "perform a round-trip request via the respond tool" in {
       request("What is 2+2? Respond with just the number.").map { events =>
-        events.map(_.asString) should be(
-          List(
-            "ToolCallStart(respond)",
-            """ToolCallComplete(RespondInput(Vector(Text(4)),None))""",
-            "Done(ToolCall)"
-          ))
+        val start = events.collectFirst { case s: ProviderEvent.ToolCallStart => s }
+        start.map(_.toolName) shouldBe Some(RespondTool.schema.name)
+
+        val blockStart = events.collectFirst { case s: ProviderEvent.ContentBlockStart => s }
+        blockStart.map(_.blockType) shouldBe Some("Text")
+
+        val streamedText = events.collect { case ProviderEvent.ContentBlockDelta(_, t) => t }.mkString
+        streamedText.trim should be("4")
+
+        val complete = events.collectFirst { case ProviderEvent.ToolCallComplete(_, i: RespondInput) => i }
+        complete.map(_.content) shouldBe Some("▶Text\n4")
+
+        events.last shouldBe a[ProviderEvent.Done]
+        events.last.asInstanceOf[ProviderEvent.Done].stopReason shouldBe StopReason.ToolCall
       }
     }
     "switch modes when the user's task belongs to a different mode" in {

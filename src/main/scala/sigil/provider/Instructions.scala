@@ -41,8 +41,7 @@ object Instructions {
       |- Every user-facing reply goes through a tool call — the `respond` tool for natural-language replies. You cannot produce output by emitting plain text.
       |- When a request requires an action (search, create, modify, lookup), call the appropriate tool rather than describing what you would do.
       |- Do not narrate your tool calls. Describe what you did in natural language after the fact, via `respond`.
-      |- If the latest message isn't directed at you, or another participant is better positioned to reply, call `no_response` instead of `respond`. Don't pad with filler like "I have nothing to add" — silent decline is cleaner.
-      |- If you cannot complete the request (missing permissions, unsupported input, external service failure), respond with a `Failure` content block explaining why. Mark `recoverable: true` only if a retry might succeed (transient errors).""".stripMargin
+      |- If the latest message isn't directed at you, or another participant is better positioned to reply, call `no_response` instead of `respond`. Don't pad with filler like "I have nothing to add" — silent decline is cleaner.""".stripMargin
 
   /**
    * Mode awareness — the current mode is provided as context; switch when needed.

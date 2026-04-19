@@ -133,7 +133,7 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
           tc.get("function")
             .flatMap(_.get("arguments"))
             .flatMap(optString)
-            .foreach(acc.appendArgs(index, _))
+            .foreach(args => events ++= acc.appendArgs(index, args))
         }
       }
     }

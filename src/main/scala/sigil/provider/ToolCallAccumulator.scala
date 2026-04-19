@@ -2,7 +2,8 @@ package sigil.provider
 
 import fabric.rw.*
 import fabric.io.JsonParser
-import sigil.tool.{Tool, ToolInput}
+import sigil.tool.model.{JsonStringFieldExtractor, MultipartStreamParser, ToolStreamEvent}
+import sigil.tool.{RespondTool, Tool, ToolInput}
 
 import scala.collection.mutable
 
@@ -12,6 +13,9 @@ import scala.collection.mutable
  * Buffers incoming JSON argument fragments per tool call (indexed as they
  * arrive from the upstream stream) and emits:
  *   - [[ProviderEvent.ToolCallStart]] when [[start]] is called for a new index
+ *   - [[ProviderEvent.ContentBlockStart]] / [[ProviderEvent.ContentBlockDelta]]
+ *     for the respond tool, while its `content` string decodes incrementally
+ *     through the multipart format
  *   - [[ProviderEvent.ToolCallComplete]] for each accumulated call when
  *     [[complete]] is invoked, with fully-parsed, typed inputs
  *
@@ -25,7 +29,7 @@ import scala.collection.mutable
  * into calls to [[start]], [[appendArgs]], and at stream end [[complete]].
  */
 final class ToolCallAccumulator(tools: Vector[Tool[? <: ToolInput]] = Vector.empty) {
-  private val calls = mutable.LinkedHashMap.empty[Int, (CallId, String, StringBuilder)]
+  private val calls = mutable.LinkedHashMap.empty[Int, CallState]
   private val toolsByName: Map[String, Tool[? <: ToolInput]] = tools.map(t => t.schema.name -> t).toMap
 
   /**
@@ -35,37 +39,82 @@ final class ToolCallAccumulator(tools: Vector[Tool[? <: ToolInput]] = Vector.emp
   def start(index: Int, callId: CallId, toolName: String): Vector[ProviderEvent] =
     if (calls.contains(index)) Vector.empty
     else {
-      calls(index) = (callId, toolName, new StringBuilder)
+      val processor =
+        if (toolName == RespondTool.schema.name)
+          Some(new RespondStreamProcessor(callId))
+        else None
+      calls(index) = CallState(callId, toolName, new StringBuilder, processor)
       Vector(ProviderEvent.ToolCallStart(callId, toolName))
     }
 
   /**
-   * Append a JSON argument fragment to the tool call at the given index.
-   * No events are produced — fragments accumulate silently until `complete`.
+   * Append a JSON argument fragment to the tool call at the given index. For
+   * calls wired with a streaming processor (currently: `respond`), returns any
+   * `ContentBlock*` events produced by the incremental parse. Otherwise
+   * returns empty — fragments accumulate silently until [[complete]].
    */
-  def appendArgs(index: Int, fragment: String): Unit =
-    if (fragment.nonEmpty) calls.get(index).foreach { case (_, _, buf) => buf.append(fragment) }
+  def appendArgs(index: Int, fragment: String): Vector[ProviderEvent] =
+    if (fragment.isEmpty) Vector.empty
+    else
+      calls.get(index) match {
+        case Some(s) =>
+          s.buf.append(fragment)
+          s.processor.fold(Vector.empty[ProviderEvent])(_.feed(fragment))
+        case None => Vector.empty
+      }
 
   /**
    * Called at stream termination (e.g., when `finish_reason` indicates a tool
-   * call completed). Emits a `ToolCallComplete` for each accumulated call with
+   * call completed). Emits a trailing flush of streamed content for any
+   * processors, then a `ToolCallComplete` for each accumulated call with
    * fully-parsed, typed arguments. If the tool is unknown or args fail to
    * parse, an `Error` event is emitted instead.
    */
-  def complete(): Vector[ProviderEvent] =
-    calls.values.toVector.flatMap { case (cid, name, buf) =>
-      toolsByName.get(name) match {
+  def complete(): Vector[ProviderEvent] = {
+    val streamFlush = calls.values.toVector.flatMap(_.processor.fold(Vector.empty[ProviderEvent])(_.finish()))
+    val completes = calls.values.toVector.flatMap { s =>
+      toolsByName.get(s.toolName) match {
         case Some(tool) =>
           try {
-            val json = JsonParser(buf.toString)
+            val json = JsonParser(s.buf.toString)
             val input: ToolInput = tool.inputRW.write(json)
-            Vector(ProviderEvent.ToolCallComplete(cid, input))
+            Vector(ProviderEvent.ToolCallComplete(s.callId, input))
           } catch {
             case t: Throwable =>
-              Vector(ProviderEvent.Error(s"Failed to parse args for tool $name: ${t.getMessage}"))
+              Vector(ProviderEvent.Error(s"Failed to parse args for tool ${s.toolName}: ${t.getMessage}"))
           }
         case None =>
-          Vector(ProviderEvent.Error(s"Unknown tool: $name"))
+          Vector(ProviderEvent.Error(s"Unknown tool: ${s.toolName}"))
       }
+    }
+    streamFlush ++ completes
+  }
+
+  private case class CallState(callId: CallId,
+                               toolName: String,
+                               buf: StringBuilder,
+                               processor: Option[RespondStreamProcessor])
+}
+
+/**
+ * Translates streaming JSON args of the `respond` tool into `ContentBlock*`
+ * events. Wraps a [[JsonStringFieldExtractor]] for the `content` field
+ * feeding a [[MultipartStreamParser]].
+ */
+private final class RespondStreamProcessor(callId: CallId) {
+  private val extractor = new JsonStringFieldExtractor("content")
+  private val parser = new MultipartStreamParser
+
+  def feed(fragment: String): Vector[ProviderEvent] = {
+    val text = extractor.append(fragment)
+    if (text.isEmpty) Vector.empty else translate(parser.append(text))
+  }
+
+  def finish(): Vector[ProviderEvent] = translate(parser.finish())
+
+  private def translate(events: Vector[ToolStreamEvent]): Vector[ProviderEvent] =
+    events.map {
+      case ToolStreamEvent.BlockStart(t, a) => ProviderEvent.ContentBlockStart(callId, t, a)
+      case ToolStreamEvent.BlockDelta(t) => ProviderEvent.ContentBlockDelta(callId, t)
     }
 }

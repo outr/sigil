@@ -12,5 +12,4 @@ import lightdb.time.Timestamp
 case class TitleChangedEvent(title: String,
                              visibility: Set[EventVisibility] = Set(EventVisibility.UI),
                              timestamp: Timestamp = Timestamp(),
-                             id: Id[Event] = Event.id())
-  extends Event derives RW
+                             id: Id[Event] = Event.id()) extends Event derives RW
