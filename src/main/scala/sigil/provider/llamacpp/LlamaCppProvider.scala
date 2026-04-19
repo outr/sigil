@@ -75,7 +75,10 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
       "stream" -> bool(true),
       // Emit a final chunk with token usage before [DONE]
       "stream_options" -> obj("include_usage" -> bool(true)),
-      // Qwen 3.x: suppress <think> blocks so the content field is non-empty
+      // Qwen 3.x: suppress <think> blocks. The content-pattern enforces the
+      // multipart header, but thinking still shifts tool selection (e.g.
+      // clarifying `respond` instead of `change_mode`). Revisit once thinking
+      // is driven per-Mode.
       "chat_template_kwargs" -> obj("enable_thinking" -> bool(false))
     )
     val toolFields: Vector[(String, Json)] =

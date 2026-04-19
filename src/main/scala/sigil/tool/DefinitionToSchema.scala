@@ -29,7 +29,27 @@ object DefinitionToSchema {
     val withFormat =
       if (definition.format == Format.Raw) withDesc
       else withDesc.merge(obj("format" -> str(definition.format.name)))
-    withFormat
+    withConstraints(withFormat, definition.constraints)
+  }
+
+  private def withConstraints(schema: Json, c: fabric.define.Constraints): Json = {
+    if (c.isEmpty) schema
+    else {
+      val pairs: List[(String, Json)] = List(
+        c.pattern.map("pattern" -> str(_)),
+        c.minLength.map("minLength" -> num(_)),
+        c.maxLength.map("maxLength" -> num(_)),
+        c.minimum.map("minimum" -> num(_)),
+        c.maximum.map("maximum" -> num(_)),
+        c.exclusiveMinimum.map("exclusiveMinimum" -> num(_)),
+        c.exclusiveMaximum.map("exclusiveMaximum" -> num(_)),
+        c.multipleOf.map("multipleOf" -> num(_)),
+        c.minItems.map("minItems" -> num(_)),
+        c.maxItems.map("maxItems" -> num(_)),
+        c.uniqueItems.map("uniqueItems" -> bool(_))
+      ).flatten
+      if (pairs.isEmpty) schema else schema.merge(obj(pairs*))
+    }
   }
 
   private def convertDefType(defType: DefType): Json =
