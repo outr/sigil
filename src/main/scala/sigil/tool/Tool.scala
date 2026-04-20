@@ -3,6 +3,7 @@ package sigil.tool
 import fabric.define.Definition
 import fabric.rw.*
 import lightdb.id.Id
+import sigil.TurnContext
 import sigil.event.Event
 
 trait Tool[Input <: ToolInput: RW] {
@@ -24,5 +25,5 @@ trait Tool[Input <: ToolInput: RW] {
     examples = examples
   )
 
-  def execute(input: Input, context: ToolContext): rapid.Stream[Event]
+  def execute(input: Input, context: TurnContext): rapid.Stream[Event]
 }

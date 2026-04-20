@@ -1,8 +1,8 @@
 package sigil.tool.core
 
-import sigil.Sigil
+import sigil.{Sigil, TurnContext}
 import sigil.event.{Event, ToolResults}
-import sigil.tool.{Tool, ToolContext, ToolExample, ToolInput}
+import sigil.tool.{Tool, ToolExample, ToolInput}
 
 /**
  * Discovery tool. The agent calls `find_capability` when it needs to check
@@ -38,7 +38,7 @@ case class FindCapabilityTool(sigil: Sigil) extends Tool[FindCapabilityInput] {
     ToolExample("Concept search", FindCapabilityInput("billing invoice payment charge"))
   )
 
-  override def execute(input: FindCapabilityInput, context: ToolContext): rapid.Stream[Event] =
+  override def execute(input: FindCapabilityInput, context: TurnContext): rapid.Stream[Event] =
     rapid.Stream.force(
       sigil
         .findTools(input.keywords, context.chain)

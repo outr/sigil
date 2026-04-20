@@ -1,7 +1,8 @@
 package sigil.tool.core
 
+import sigil.TurnContext
 import sigil.event.Event
-import sigil.tool.{Tool, ToolContext}
+import sigil.tool.Tool
 import sigil.tool.model.NoResponseInput
 
 /**
@@ -25,5 +26,5 @@ object NoResponseTool extends Tool[NoResponseInput] {
       |Prefer `no_response` over calling `respond` with filler like "I don't have anything to add" — silent
       |decline is cleaner for the user.""".stripMargin
 
-  override def execute(input: NoResponseInput, context: ToolContext): rapid.Stream[Event] = rapid.Stream.empty
+  override def execute(input: NoResponseInput, context: TurnContext): rapid.Stream[Event] = rapid.Stream.empty
 }

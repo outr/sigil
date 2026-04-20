@@ -9,8 +9,9 @@ import sigil.Sigil
 import sigil.conversation.{Conversation, ConversationContext}
 import sigil.event.Event
 import sigil.information.{FullInformation, Information}
-import sigil.participant.ParticipantId
-import sigil.tool.{InMemoryToolFinder, Tool, ToolContext, ToolFinder, ToolInput}
+import sigil.participant.{AgentParticipantId, ParticipantId}
+import sigil.TurnContext
+import sigil.tool.{InMemoryToolFinder, Tool, ToolFinder, ToolInput}
 
 /**
  * Shared test Sigil — single instance reused across all specs to avoid
@@ -37,7 +38,8 @@ object TestSigil extends Sigil {
    * of Messages / ToolInvokes / ModeChanges (which carry
    * `participantId: ParticipantId`) succeeds in tests.
    */
-  override protected def participantIds: List[RW[? <: ParticipantId]] = List(RW.static(TestUser))
+  override protected def participantIds: List[RW[? <: ParticipantId]] =
+    List(RW.static(TestUser), RW.static(TestAgent))
 
   /**
    * Initialize the test Sigil with a DB path scoped to the calling test
@@ -88,7 +90,7 @@ object SendSlackMessageTool extends Tool[SendSlackMessageInput] {
   override protected def uniqueName: String = "send_slack_message"
   override protected def description: String =
     "Send a message to a Slack channel on behalf of the user. Takes a channel name and the message text."
-  override def execute(input: SendSlackMessageInput, context: ToolContext): rapid.Stream[Event] = rapid.Stream.empty
+  override def execute(input: SendSlackMessageInput, context: TurnContext): rapid.Stream[Event] = rapid.Stream.empty
 }
 
 /**
@@ -96,4 +98,12 @@ object SendSlackMessageTool extends Tool[SendSlackMessageInput] {
  */
 case object TestUser extends ParticipantId {
   override val value: String = "test-user"
+}
+
+/**
+ * Stand-in agent participant id for tests. Specs construct a concrete
+ * [[sigil.participant.AgentParticipant]] carrying this id.
+ */
+case object TestAgent extends AgentParticipantId {
+  override val value: String = "test-agent"
 }

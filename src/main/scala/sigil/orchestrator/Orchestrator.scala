@@ -6,7 +6,8 @@ import sigil.conversation.Conversation
 import sigil.event.{Event, Message, ToolInvoke}
 import sigil.provider.{Provider, ProviderEvent, ProviderRequest}
 import sigil.signal.{ContentDelta, ContentKind, EventState, MessageDelta, Signal, ToolDelta}
-import sigil.tool.{Tool, ToolContext, ToolInput}
+import sigil.TurnContext
+import sigil.tool.{Tool, ToolInput}
 
 /**
  * Stateless, per-invocation bridge between the provider wire stream and the
@@ -16,7 +17,7 @@ import sigil.tool.{Tool, ToolContext, ToolInput}
  *   - Emits `Stream[Signal]` — `Event`s (ToolInvoke, Message, …) and `Delta`s
  *     (ToolDelta, MessageDelta) in the order a subscriber can apply to
  *     reconstruct the durable state
- *   - Runs `tool.execute(input, ToolContext)` for atomic tools (those for
+ *   - Runs `tool.execute(input, TurnContext)` for atomic tools (those for
  *     which no `ContentBlockDelta`s arrived during the call) and forwards the
  *     resulting Events as Signals
  *
@@ -138,7 +139,7 @@ object Orchestrator {
             // Atomic path — run execute and forward resulting Events.
             val tool = toolsByName.get(state.activeToolName.getOrElse(""))
             val executed: Stream[Signal] = tool match {
-              case Some(t) => executeAtomic(t, input, ToolContext(sigil, request.chain, conversation))
+              case Some(t) => executeAtomic(t, input, TurnContext(sigil, request.chain, conversation))
               case None => Stream.empty
             }
             Stream.emits(List[Signal](toolDelta)) ++ executed
@@ -159,7 +160,7 @@ object Orchestrator {
   }
 
   /** Dispatches an atomic tool's `execute` and forwards its events as signals. */
-  private def executeAtomic[I <: ToolInput](tool: Tool[I], input: ToolInput, context: ToolContext): Stream[Signal] = {
+  private def executeAtomic[I <: ToolInput](tool: Tool[I], input: ToolInput, context: TurnContext): Stream[Signal] = {
     val typedInput = input.asInstanceOf[I]
     tool.execute(typedInput, context).map(ev => ev: Signal)
   }

@@ -31,7 +31,7 @@ trait Sigil {
   /**
    * When `true`, tools that would normally cause external side effects (send
    * a message, write to a shared resource, charge a card) should return a
-   * representative test response instead. The `ToolContext` passed to
+   * representative test response instead. The `TurnContext` passed to
    * `Tool.execute` forwards this flag through `context.sigil.testMode` so
    * tools can check it directly.
    *

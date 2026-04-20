@@ -18,7 +18,7 @@ import sigil.tool.{Tool, ToolInput}
  *                their wire payload.
  * @param chain   authority lineage for this invocation — the originating
  *                participant followed by each propagator. Forwarded to
- *                `ToolContext.chain` when a tool executes. Supplied fresh per
+ *                `TurnContext.chain` when a tool executes. Supplied fresh per
  *                invocation; never persisted.
  */
 case class ProviderRequest(conversationId: Id[Conversation],

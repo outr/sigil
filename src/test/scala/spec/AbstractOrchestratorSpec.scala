@@ -4,27 +4,25 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
-import sigil.conversation.Conversation
+import sigil.TurnContext
+import sigil.conversation.{Conversation, ConversationContext}
 import sigil.db.Model
-import sigil.event.{Event, Message, ModeChange, ToolInvoke}
-import sigil.orchestrator.Orchestrator
-import sigil.provider.{GenerationSettings, Instructions, Mode, Provider, ProviderRequest}
-import sigil.signal.{EventState, MessageDelta, Signal, ToolDelta}
+import sigil.event.{AgentState, Event, Message, ModeChange, ToolInvoke}
+import sigil.participant.{AgentParticipant, AgentParticipantId}
+import sigil.provider.{GenerationSettings, Instructions, Mode, Provider}
+import sigil.signal.{AgentActivity, AgentStateDelta, EventState, MessageDelta, Signal, ToolDelta}
 import sigil.tool.{Tool, ToolInput}
 import sigil.tool.core.CoreTools
 import sigil.tool.model.ResponseContent
 
 /**
- * Drives the orchestrator through a live LLM provider and asserts on the
- * resulting `Signal` stream — the external vocabulary sigil consumers see.
- * Extend by providing `provider` and `modelId`.
+ * Drives an [[AgentParticipant]] through a live LLM provider and asserts on
+ * the resulting `Signal` stream — the external vocabulary sigil consumers
+ * see, including the agent's own AgentState lifecycle.
  *
- * Intentionally independent of [[AbstractProviderSpec]] — the provider-level
- * and orchestrator-level tests assert at different layers (ProviderEvent vs
- * Signal) and shouldn't be run as one combined suite.
+ * Extend by providing `provider` and `modelId`.
  */
 trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
-  // Per-suite DB path so each forked JVM gets its own RocksDB instance.
   TestSigil.initFor(getClass.getSimpleName)
 
   protected def provider: Task[Provider]
@@ -33,33 +31,53 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   protected def tools: Vector[Tool[? <: ToolInput]] = CoreTools(TestSigil).all
 
-  private def orchestrate(message: String, currentMode: Mode = Mode.Conversation): Task[List[Signal]] =
-    provider.flatMap { p =>
-      val conversationId = Conversation.id("test-orchestrator-conversation")
-      val request = ProviderRequest(
-        conversationId = conversationId,
-        modelId = modelId,
-        instructions = Instructions(),
-        context = sigil.conversation.ConversationContext(
-          events = Vector(
-            Message(
-              participantId = TestUser,
-              conversationId = conversationId,
-              content = Vector(ResponseContent.Text(message))
-            )
-          )
-        ),
-        currentMode = currentMode,
-        generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0)),
-        tools = tools,
-        chain = List(TestUser)
-      )
-      Orchestrator.process(TestSigil, p, request).toList
+  protected def makeAgent(mode: Mode = Mode.Conversation): AgentParticipant = {
+    val spec = this
+    new AgentParticipant {
+      override val id: AgentParticipantId = TestAgent
+      override val modelId: Id[Model] = spec.modelId
+      override def provider: Task[Provider] = spec.provider
+      override def tools: Vector[Tool[? <: ToolInput]] = spec.tools
+      override def instructions: Instructions = Instructions()
+      override def generationSettings: GenerationSettings =
+        GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0))
+      override def currentMode: Mode = mode
     }
+  }
+
+  private def orchestrate(message: String, currentMode: Mode = Mode.Conversation): Task[List[Signal]] = {
+    val conversationId = Conversation.id("test-orchestrator-conversation")
+    val userMessage = Message(
+      participantId = TestUser,
+      conversationId = conversationId,
+      content = Vector(ResponseContent.Text(message))
+    )
+    val conversation: Conversation = new Conversation {
+      override val id = conversationId
+    }
+    val conversationContext = ConversationContext(events = Vector(userMessage))
+    val turnContext = TurnContext(TestSigil, List(TestUser), conversation, conversationContext)
+    makeAgent(currentMode).process(turnContext, List(userMessage)).toList
+  }
 
   getClass.getSimpleName should {
-    "emit ToolInvoke + Message + Deltas for a streaming respond call" in {
+    "emit AgentState lifecycle around a streaming respond call" in {
       orchestrate("What is 2+2? Respond with just the number.").map { signals =>
+        val agentStates = signals.collect { case a: AgentState => a }
+        agentStates should have size 1
+        agentStates.head.activity shouldBe AgentActivity.Thinking
+        agentStates.head.state shouldBe EventState.Active
+
+        val agentStateDeltas = signals.collect { case d: AgentStateDelta => d }
+        agentStateDeltas should not be empty
+
+        val typing = agentStateDeltas.find(_.activity.contains(AgentActivity.Typing))
+        typing should not be empty
+
+        val terminal = agentStateDeltas.last
+        terminal.activity shouldBe Some(AgentActivity.Idle)
+        terminal.state shouldBe Some(EventState.Complete)
+
         val toolInvokes = signals.collect { case t: ToolInvoke => t }
         toolInvokes should not be empty
         toolInvokes.head.toolName shouldBe "respond"
@@ -69,14 +87,27 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         messages should not be empty
         messages.head.state shouldBe EventState.Active
 
-        // Streaming partial deltas (complete=false) carry the chunked text for UX.
+        // Typing transition is emitted immediately before the first Message
+        // — it's the signal to subscribers that the agent has moved from
+        // reasoning to producing content, and it precedes the content so
+        // UIs can switch indicators before any streamed text appears.
+        val typingIdx = signals.indexWhere {
+          case d: AgentStateDelta => d.activity.contains(AgentActivity.Typing)
+          case _ => false
+        }
+        val messageIdx = signals.indexWhere {
+          case _: Message => true
+          case _ => false
+        }
+        typingIdx should be >= 0
+        messageIdx should be >= 0
+        typingIdx should be < messageIdx
+
         val streamingDeltas = signals.collect {
           case d: MessageDelta if d.content.exists(!_.complete) => d.content.get
         }
         streamingDeltas.map(_.delta).mkString.trim shouldBe "4"
 
-        // A final ContentDelta with complete=true closes the block; carries the full block text
-        // so a DB applier can append a complete ResponseContent.
         val finalContentDelta = signals.collectFirst {
           case d: MessageDelta if d.content.exists(_.complete) => d.content.get
         }
@@ -98,42 +129,28 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       }
     }
 
-    "persist Events and apply Deltas to the events store via SigilDB.applySignal" in {
+    "persist Events and apply Deltas to the events store via SigilDB.apply" in {
       val conversationId = Conversation.id("test-persistence-conversation")
+      val userMessage = Message(
+        participantId = TestUser,
+        conversationId = conversationId,
+        content = Vector(ResponseContent.Text("What is 2+2? Respond with just the number."))
+      )
+      val conversation: Conversation = new Conversation {
+        override val id = conversationId
+      }
+      val conversationContext = ConversationContext(events = Vector(userMessage))
+      val turnContext = TurnContext(TestSigil, List(TestUser), conversation, conversationContext)
+
       val task = for {
-        provider <- provider
-        request = ProviderRequest(
-          conversationId = conversationId,
-          modelId = modelId,
-          instructions = sigil.provider.Instructions(),
-          context = sigil.conversation.ConversationContext(
-            events = Vector(
-              Message(
-                participantId = TestUser,
-                conversationId = conversationId,
-                content = Vector(ResponseContent.Text("What is 2+2? Respond with just the number."))
-              )
-            )
-          ),
-          currentMode = Mode.Conversation,
-          generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0)),
-          tools = tools,
-          chain = List(TestUser)
-        )
-        signals <- Orchestrator
-          .process(TestSigil, provider, request)
-          .flatMap { signal =>
-            Stream.force(TestSigil.withDB(_.apply(signal)).map(_ => Stream.emits(List(signal))))
-          }
+        signals <- makeAgent()
+          .process(turnContext, List(userMessage))
+          .flatMap(signal => Stream.force(TestSigil.withDB(_.apply(signal)).map(_ => Stream.emits(List(signal)))))
           .toList
-        // Query everything in the events store; filter to this conversation in memory.
-        // (A model-level conversationId field for indexed queries would let us filter at the store.)
         all <- TestSigil.withDB(_.events.transaction(_.list))
       } yield (signals, all.filter(_.conversationId == conversationId))
 
       task.map { case (_, stored) =>
-        // The user's input Message went into the request but isn't persisted by the orchestrator —
-        // only Events the orchestrator emits show up. Expect ToolInvoke + Message (the agent's response).
         val toolInvokes = stored.collect { case t: ToolInvoke => t }
         toolInvokes should have size 1
         toolInvokes.head.toolName shouldBe "respond"
@@ -146,6 +163,11 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         messages.head.content should not be empty
         messages.head.content.head shouldBe a[ResponseContent.Text]
         messages.head.content.head.asInstanceOf[ResponseContent.Text].text.trim shouldBe "4"
+
+        val agentStates = stored.collect { case a: AgentState => a }
+        agentStates should have size 1
+        agentStates.head.activity shouldBe AgentActivity.Idle
+        agentStates.head.state shouldBe EventState.Complete
       }
     }
 
@@ -164,6 +186,16 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         modeChanges should not be empty
         modeChanges.head.mode shouldBe Mode.Coding
         modeChanges.head.state shouldBe EventState.Active
+
+        val agentStates = signals.collect { case a: AgentState => a }
+        agentStates should have size 1
+        agentStates.head.activity shouldBe AgentActivity.Thinking
+
+        val agentStateDeltas = signals.collect { case d: AgentStateDelta => d }
+        // Atomic tool path — no Message emitted, so no Typing transition.
+        agentStateDeltas.exists(_.activity.contains(AgentActivity.Typing)) shouldBe false
+        agentStateDeltas.last.activity shouldBe Some(AgentActivity.Idle)
+        agentStateDeltas.last.state shouldBe Some(EventState.Complete)
       }
     }
   }

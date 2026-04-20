@@ -1,8 +1,9 @@
 package sigil.tool.core
 
+import sigil.TurnContext
 import sigil.event.{Event, ModeChange}
 import sigil.provider.Mode
-import sigil.tool.{Tool, ToolContext}
+import sigil.tool.Tool
 import sigil.tool.model.ChangeModeInput
 
 /**
@@ -24,7 +25,7 @@ object ChangeModeTool extends Tool[ChangeModeInput] {
        |$modeList""".stripMargin
   }
 
-  override def execute(input: ChangeModeInput, context: ToolContext): rapid.Stream[Event] =
+  override def execute(input: ChangeModeInput, context: TurnContext): rapid.Stream[Event] =
     rapid.Stream.emits(
       List(
         ModeChange(
