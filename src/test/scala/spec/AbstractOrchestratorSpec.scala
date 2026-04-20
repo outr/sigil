@@ -6,7 +6,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.conversation.Conversation
 import sigil.db.Model
-import sigil.event.{Event, Message, ModeChangedEvent, ToolInvoke}
+import sigil.event.{Event, Message, ModeChange, ToolInvoke}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{GenerationSettings, Instructions, Mode, Provider, ProviderRequest}
 import sigil.signal.{EventState, MessageDelta, Signal, ToolDelta}
@@ -149,7 +149,7 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       }
     }
 
-    "emit ToolInvoke + ModeChangedEvent for an atomic change_mode call" in {
+    "emit ToolInvoke + ModeChange for an atomic change_mode call" in {
       orchestrate("I need to write a Scala function.").map { signals =>
         val toolInvokes = signals.collect { case t: ToolInvoke => t }
         toolInvokes should not be empty
@@ -160,10 +160,10 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         val toolDelta = signals.collectFirst { case d: ToolDelta => d }
         toolDelta.map(_.state) shouldBe Some(Some(EventState.Complete))
 
-        val modeChanges = signals.collect { case m: ModeChangedEvent => m }
+        val modeChanges = signals.collect { case m: ModeChange => m }
         modeChanges should not be empty
         modeChanges.head.mode shouldBe Mode.Coding
-        modeChanges.head.state shouldBe EventState.Complete
+        modeChanges.head.state shouldBe EventState.Active
       }
     }
   }

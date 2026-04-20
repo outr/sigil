@@ -26,6 +26,14 @@ trait Event extends Signal with Document[Event] {
   def timestamp: Timestamp
   def state: EventState
   def visibility: Set[EventVisibility]
+
+  /**
+   * Returns a copy of this event with its `state` replaced. Used by
+   * [[sigil.signal.StateDelta]] to drive the universal Active → Complete
+   * transition. Each concrete Event implements this by delegating to its
+   * own `copy(state = state)`.
+   */
+  def withState(state: EventState): Event
 }
 
 object Event extends JsonConversion[Event] {

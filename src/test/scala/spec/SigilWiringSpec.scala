@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.conversation.Conversation
-import sigil.event.{Message, ModeChangedEvent, ToolInvoke}
+import sigil.event.{Message, ModeChange, ToolInvoke}
 import sigil.provider.{Mode, TokenUsage}
 import sigil.signal.{ContentDelta, ContentKind, EventState, MessageDelta, Signal, ToolDelta}
 import sigil.tool.ToolInput
@@ -56,15 +56,15 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
       restored.asInstanceOf[ToolInvoke].toolName shouldBe "respond"
     }
 
-    "round-trip a ModeChangedEvent" in {
-      val original = ModeChangedEvent(
+    "round-trip a ModeChange" in {
+      val original = ModeChange(
         mode = Mode.Coding,
         participantId = TestUser,
         conversationId = Conversation.id("c1")
       )
       val restored = roundTripSignal(original)
-      restored shouldBe a[ModeChangedEvent]
-      restored.asInstanceOf[ModeChangedEvent].mode shouldBe Mode.Coding
+      restored shouldBe a[ModeChange]
+      restored.asInstanceOf[ModeChange].mode shouldBe Mode.Coding
     }
 
     "round-trip a MessageDelta" in {

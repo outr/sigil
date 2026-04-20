@@ -34,7 +34,7 @@ object TestSigil extends Sigil {
 
   /**
    * Register the test ParticipantId singletons so polymorphic serialization
-   * of Messages / ToolInvokes / ModeChangedEvents (which carry
+   * of Messages / ToolInvokes / ModeChanges (which carry
    * `participantId: ParticipantId`) succeeds in tests.
    */
   override protected def participantIds: List[RW[? <: ParticipantId]] = List(RW.static(TestUser))

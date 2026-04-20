@@ -1,6 +1,6 @@
 package sigil.tool.core
 
-import sigil.event.{Event, ModeChangedEvent}
+import sigil.event.{Event, ModeChange}
 import sigil.provider.Mode
 import sigil.tool.{Tool, ToolContext}
 import sigil.tool.model.ChangeModeInput
@@ -8,7 +8,7 @@ import sigil.tool.model.ChangeModeInput
 /**
  * Allows the model to transition between operating modes mid-conversation.
  *
- * Emits a `ModeChangedEvent` that orchestrators use to update the
+ * Emits a `ModeChange` that orchestrators use to update the
  * `currentMode` on the next `ProviderRequest`. The tool itself does not mutate
  * any state — the conversation's event log is the source of truth.
  */
@@ -27,7 +27,7 @@ object ChangeModeTool extends Tool[ChangeModeInput] {
   override def execute(input: ChangeModeInput, context: ToolContext): rapid.Stream[Event] =
     rapid.Stream.emits(
       List(
-        ModeChangedEvent(
+        ModeChange(
           mode = input.mode,
           reason = input.reason,
           participantId = context.caller,
