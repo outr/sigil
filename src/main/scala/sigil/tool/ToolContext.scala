@@ -16,7 +16,7 @@ import sigil.participant.ParticipantId
  *                     participant that propagated it. `chain.last` is the
  *                     immediate caller (the one actually invoking the tool);
  *                     earlier entries are the authority lineage. A
- *                     `ToolManager` consulted by `find_capability` uses the
+ *                     `Sigil.findTools` consulted by `find_capability` uses the
  *                     whole chain to scope tool access.
  * @param conversation the conversation state at invocation time.
  *

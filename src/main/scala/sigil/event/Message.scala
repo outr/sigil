@@ -3,6 +3,7 @@ package sigil.event
 import fabric.rw.*
 import lightdb.id.Id
 import lightdb.time.Timestamp
+import lightdb.util.Nowish
 import sigil.conversation.Conversation
 import sigil.participant.ParticipantId
 import sigil.provider.TokenUsage
@@ -27,5 +28,5 @@ case class Message(participantId: ParticipantId,
                    usage: TokenUsage = TokenUsage(0, 0, 0),
                    state: EventState = EventState.Complete,
                    visibility: Set[EventVisibility] = Set(EventVisibility.UI, EventVisibility.Model),
-                   timestamp: Timestamp = Timestamp(),
-                   id: Id[Event] = Event.id()) extends Event derives RW
+                   timestamp: Timestamp = Timestamp(Nowish()),
+                   _id: Id[Event] = Event.id()) extends Event derives RW

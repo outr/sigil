@@ -20,4 +20,16 @@ import sigil.event.Event
 trait Delta extends Signal {
   def target: Id[? <: Event]
   def conversationId: Id[Conversation]
+
+  /**
+   * Apply this delta's mutation semantics to the given target Event,
+   * returning the updated Event. The function is pure — it does not perform
+   * the persistence write itself; the caller (typically a per-app
+   * subscriber) is responsible for loading the target from the DB, calling
+   * `apply`, and saving the result.
+   *
+   * If the delta doesn't match the target type (e.g. a `MessageDelta` aimed
+   * at a `ToolInvoke`), implementations return `target` unchanged.
+   */
+  def apply(target: Event): Event
 }

@@ -45,7 +45,7 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
   private def buildBody(modelName: String, request: ProviderRequest): Json = {
     val modePreamble = s"Current mode: ${request.currentMode} — ${request.currentMode.description}\n\n"
     val systemMsg = obj("role" -> str("system"), "content" -> str(modePreamble + request.instructions.render))
-    val messages = request.events.collect { case m: Message =>
+    val messages = request.context.events.collect { case m: Message =>
       val text = m.content
         .map {
           case ResponseContent.Text(t) => t

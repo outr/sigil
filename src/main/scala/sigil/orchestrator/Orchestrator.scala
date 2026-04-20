@@ -53,6 +53,10 @@ object Orchestrator {
     var activeMessageId: Option[lightdb.id.Id[Event]] = None
     var currentKind: Option[ContentKind] = None
     var currentArg: Option[String] = None
+    /** Accumulated text for the current open content block. Flushed as a
+      * `ContentDelta(complete = true, delta = full text)` when the block
+      * closes (next ContentBlockStart or ToolCallComplete). */
+    val currentBuffer: StringBuilder = new StringBuilder
   }
 
   private def translate(event: ProviderEvent,
@@ -78,18 +82,21 @@ object Orchestrator {
           toolName = toolName,
           participantId = caller,
           conversationId = convId,
-          id = invokeId,
+          _id = invokeId,
           state = EventState.Active
         )
         Stream.emits(List(invoke))
 
       case ProviderEvent.ContentBlockStart(_, blockType, arg) =>
+        // Close the previous block if one was open, then start tracking the new kind.
+        val closeSignals = closeCurrentBlock(state, convId)
         state.currentKind = Some(kindOf(blockType))
         state.currentArg = arg
-        Stream.empty
+        Stream.emits(closeSignals)
 
       case ProviderEvent.ContentBlockDelta(_, text) =>
         val kind = state.currentKind.getOrElse(ContentKind.Text)
+        state.currentBuffer.append(text)
         val (createMessageSignal, msgId) = state.activeMessageId match {
           case Some(id) => (None, id)
           case None =>
@@ -99,7 +106,7 @@ object Orchestrator {
               participantId = caller,
               conversationId = convId,
               content = Vector.empty,
-              id = id,
+              _id = id,
               state = EventState.Active
             )
             (Some(msg), id)
@@ -123,9 +130,10 @@ object Orchestrator {
         )
         state.activeMessageId match {
           case Some(msgId) =>
-            // Streaming path — close the Message alongside the ToolInvoke.
+            // Streaming path — close the open content block (if any), close the Message, close the ToolInvoke.
+            val closeBlock = closeCurrentBlock(state, convId)
             val messageDelta = MessageDelta(target = msgId, conversationId = convId, state = Some(EventState.Complete))
-            Stream.emits(List[Signal](toolDelta, messageDelta))
+            Stream.emits(closeBlock ::: List[Signal](toolDelta, messageDelta))
           case None =>
             // Atomic path — run execute and forward resulting Events.
             val tool = toolsByName.get(state.activeToolName.getOrElse(""))
@@ -158,4 +166,31 @@ object Orchestrator {
 
   private def kindOf(name: String): ContentKind =
     scala.util.Try(ContentKind.valueOf(name)).getOrElse(ContentKind.Text)
+
+  /**
+   * Emit a `MessageDelta` with `ContentDelta(complete = true, delta = full
+   * block text)` if a content block is currently open and the buffer has
+   * content. Resets the block buffer + kind. The full text closes the block
+   * for the DB applier (which appends a fully-formed `ResponseContent`);
+   * subscribers that already saw the streaming chunks can treat this as the
+   * canonical final form.
+   */
+  private def closeCurrentBlock(state: State, convId: lightdb.id.Id[Conversation]): List[Signal] = {
+    val emit = for {
+      msgId <- state.activeMessageId
+      kind  <- state.currentKind
+      if state.currentBuffer.nonEmpty
+    } yield {
+      val text = state.currentBuffer.toString
+      MessageDelta(
+        target = msgId,
+        conversationId = convId,
+        content = Some(ContentDelta(kind = kind, arg = state.currentArg, complete = true, delta = text))
+      )
+    }
+    state.currentBuffer.clear()
+    state.currentKind = None
+    state.currentArg = None
+    emit.toList
+  }
 }

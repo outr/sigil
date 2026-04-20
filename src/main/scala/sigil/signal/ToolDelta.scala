@@ -14,4 +14,18 @@ import sigil.event.Event
 case class ToolDelta(target: Id[Event],
                      conversationId: Id[Conversation],
                      input: Option[sigil.tool.ToolInput] = None,
-                     state: Option[EventState] = None) extends Delta derives RW
+                     state: Option[EventState] = None) extends Delta derives RW {
+
+  /**
+   * Apply this delta to a [[ToolInvoke]]. Sets `input` (the parsed args) and
+   * `state` from any present fields. Returns `target` unchanged if it isn't a
+   * `ToolInvoke`.
+   */
+  override def apply(target: Event): Event = target match {
+    case t: sigil.event.ToolInvoke =>
+      val nextInput = input.orElse(t.input)
+      val nextState = state.getOrElse(t.state)
+      t.copy(input = nextInput, state = nextState)
+    case other => other
+  }
+}

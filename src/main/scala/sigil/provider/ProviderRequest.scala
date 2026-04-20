@@ -1,9 +1,8 @@
 package sigil.provider
 
 import lightdb.id.Id
-import sigil.conversation.Conversation
+import sigil.conversation.{Conversation, ConversationContext}
 import sigil.db.Model
-import sigil.event.Event
 import sigil.participant.ParticipantId
 import sigil.tool.{Tool, ToolInput}
 
@@ -12,15 +11,20 @@ import sigil.tool.{Tool, ToolInput}
  * behavior. If/when replay or caching is needed, extract a snapshot with just
  * the serializable fields.
  *
- * @param chain  authority lineage for this invocation — the originating
- *               participant followed by each propagator. Forwarded to
- *               `ToolContext.chain` when a tool executes. Supplied fresh per
- *               invocation; never persisted.
+ * @param context the structured conversation context the orchestrator builds
+ *                this turn's prompt from. Replaces a flat `Vector[Event]` —
+ *                providers read `context.events` (and may consult memories,
+ *                summaries, information catalog, extra context) to compose
+ *                their wire payload.
+ * @param chain   authority lineage for this invocation — the originating
+ *                participant followed by each propagator. Forwarded to
+ *                `ToolContext.chain` when a tool executes. Supplied fresh per
+ *                invocation; never persisted.
  */
 case class ProviderRequest(conversationId: Id[Conversation],
                            modelId: Id[Model],
                            instructions: Instructions,
-                           events: Vector[Event],
+                           context: ConversationContext,
                            currentMode: Mode,
                            generationSettings: GenerationSettings,
                            tools: Vector[Tool[? <: ToolInput]] = Vector.empty,

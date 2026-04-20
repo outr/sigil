@@ -22,7 +22,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
   protected def modelId: Id[Model]
 
-  protected def coreTools: Vector[Tool[? <: ToolInput]] = CoreTools(TestSigil.toolManager).all
+  protected def coreTools: Vector[Tool[? <: ToolInput]] = CoreTools(TestSigil).all
 
   protected def request(message: String,
                         currentMode: Mode = Mode.Conversation): Task[List[ProviderEvent]] = provider.flatMap { p =>
@@ -31,11 +31,13 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       conversationId = conversationId,
       modelId = modelId,
       instructions = Instructions(),
-      events = Vector(
-        Message(
-          participantId = TestUser,
-          conversationId = conversationId,
-          content = Vector(ResponseContent.Text(message))
+      context = sigil.conversation.ConversationContext(
+        events = Vector(
+          Message(
+            participantId = TestUser,
+            conversationId = conversationId,
+            content = Vector(ResponseContent.Text(message))
+          )
         )
       ),
       currentMode = currentMode,
@@ -111,7 +113,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
         val input = events.collectFirst { case ProviderEvent.ToolCallComplete(_, i: FindCapabilityInput) => i }
         input should not be empty
-        input.get.query.toLowerCase should (include("slack") or include("post") or include("message"))
+        input.get.keywords should (include("slack") or include("post") or include("message"))
       }
     }
     "switch modes when the user's task belongs to a different mode" in {

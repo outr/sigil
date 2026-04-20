@@ -1,5 +1,7 @@
 package sigil.event
 
+import fabric.rw.RW
+import lightdb.doc.{Document, JsonConversion}
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import sigil.conversation.Conversation
@@ -18,19 +20,16 @@ import sigil.signal.{EventState, Signal}
  * Registration for wire polymorphism happens via [[sigil.signal.Signal]], not
  * here — Event is a category marker within the broader Signal discriminator.
  */
-trait Event extends Signal {
-  def id: Id[Event]
+trait Event extends Signal with Document[Event] {
   def participantId: ParticipantId
   def conversationId: Id[Conversation]
+  def timestamp: Timestamp
   def state: EventState
   def visibility: Set[EventVisibility]
-  def timestamp: Timestamp
 }
 
-object Event {
+object Event extends JsonConversion[Event] {
+  import Signal.given
 
-  /**
-   * Generate a new event ID.
-   */
-  def id(): Id[Event] = Id[Event]()
+  override implicit def rw: RW[Event] = summon[RW[Signal]].asInstanceOf[RW[Event]]
 }

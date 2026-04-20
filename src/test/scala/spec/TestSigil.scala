@@ -2,27 +2,42 @@ package spec
 
 import fabric.*
 import fabric.rw.*
+import lightdb.id.Id
 import profig.Profig
 import rapid.Task
 import sigil.Sigil
-import sigil.conversation.Conversation
+import sigil.conversation.{Conversation, ConversationContext}
 import sigil.event.Event
+import sigil.information.{FullInformation, Information}
 import sigil.participant.ParticipantId
 import sigil.tool.{Tool, ToolContext, ToolInput}
-import sigil.tool.core.ToolManager
 
 /**
  * Shared test Sigil — single instance reused across all specs to avoid
  * RocksDB lock contention (multiple Sigils opening the same DB path can't
  * hold the lock simultaneously) and to centralize the test fixtures
- * (ToolManager catalog, synthetic tools, well-known participants).
+ * (tool catalog, synthetic tools, well-known participants).
  *
- * `testMode = true` so any side-effectful tools the tests reach can opt for
- * stub responses via `context.sigil.testMode`.
+ * `testMode = true` so any side-effectful tools the tests reach can opt
+ * for stub responses via `context.sigil.testMode`.
  */
 object TestSigil extends Sigil {
-  override val toolManager: ToolManager = TestToolManager
   override def testMode: Boolean = true
+
+  private val catalog: List[(Set[String], Tool[? <: ToolInput])] = List(
+    Set("slack", "message", "chat", "post") -> SendSlackMessageTool
+  )
+
+  override def allTools: List[Tool[? <: ToolInput]] = catalog.map(_._2)
+
+  override def findTools(query: String, participants: List[ParticipantId]): Task[List[Tool[? <: ToolInput]]] = Task {
+    val q = query.toLowerCase
+    catalog.collect { case (keywords, tool) if keywords.exists(q.contains) => tool }
+  }
+
+  override def curate(ctx: ConversationContext): Task[ConversationContext] = Task.pure(ctx)
+
+  // getInformation uses Sigil's default (Task.pure(None)).
 
   /**
    * Register the test ParticipantId singletons so polymorphic serialization
@@ -70,27 +85,9 @@ object TestSigil extends Sigil {
 }
 
 /**
- * In-memory tool catalog backing [[TestSigil]]. Keyword-matches incoming
- * `find_capability` queries against a small synthetic set so live-model
- * tests have something to discover.
- */
-object TestToolManager extends ToolManager {
-  private val catalog: List[(Set[String], Tool[? <: ToolInput])] = List(
-    Set("slack", "message", "chat", "post") -> SendSlackMessageTool
-  )
-
-  override def find(query: String, participants: List[ParticipantId]): Task[List[Tool[? <: ToolInput]]] = Task {
-    val q = query.toLowerCase
-    catalog.collect { case (keywords, tool) if keywords.exists(q.contains) => tool }
-  }
-
-  override def all: List[Tool[? <: ToolInput]] = catalog.map(_._2)
-}
-
-/**
- * Synthetic tool registered with [[TestToolManager]]. Exists so the
- * `find_capability` flow has a real catalog entry to surface; its `execute`
- * returns no events because the tests never actually invoke it.
+ * Synthetic tool exposed through [[TestSigil.findTools]]. Exists so the
+ * `find_capability` flow has a real catalog entry to surface; its
+ * `execute` returns no events because tests never actually invoke it.
  */
 case class SendSlackMessageInput(channel: String, text: String) extends ToolInput derives RW
 

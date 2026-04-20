@@ -1,12 +1,16 @@
 package sigil
 
 import fabric.rw.RW
+import lightdb.id.Id
 import profig.Profig
 import rapid.{Task, logger}
+import sigil.conversation.ConversationContext
 import sigil.db.{Model, SigilDB}
+import sigil.information.{FullInformation, Information}
 import sigil.participant.ParticipantId
 import sigil.signal.{CoreSignals, Signal}
-import sigil.tool.core.{CoreTools, ToolManager}
+import sigil.tool.core.CoreTools
+import sigil.tool.{Tool, ToolInput}
 
 trait Sigil {
 
@@ -25,18 +29,6 @@ trait Sigil {
   protected def participantIds: List[RW[? <: ParticipantId]] = Nil
 
   /**
-   * App-provided tool discovery. Consulted by `find_capability` and any
-   * application-level `/find_capability` slash command. The implementation
-   * decides how to interpret the participant chain (auth, roles, scoping)
-   * and which tools to return.
-   *
-   * Declared as a `val` so implementations supply a single, stable instance —
-   * constructing a fresh `ToolManager` on every access would break any
-   * internal caching the implementation relies on.
-   */
-  val toolManager: ToolManager
-
-  /**
    * When `true`, tools that would normally cause external side effects (send
    * a message, write to a shared resource, charge a card) should return a
    * representative test response instead. The `ToolContext` passed to
@@ -47,12 +39,52 @@ trait Sigil {
    */
   def testMode: Boolean = false
 
+  // -- tool discovery --
+
+  /**
+   * Full app-specific tool catalog. Used at init to register each tool's
+   * `ToolInput` RW into the polymorphic discriminator. Framework core tools
+   * are registered by sigil automatically — this list is app-specific only.
+   */
+  def allTools: List[Tool[? <: ToolInput]]
+
+  /**
+   * Search the app's tool catalog for matches to `query`, scoped by the
+   * combined access of `participants` (the chain-of-responsibility for the
+   * current invocation). Consumed by `find_capability` and slash-command
+   * dispatch. Ordering is implementation-defined (typically by match score).
+   */
+  def findTools(query: String, participants: List[ParticipantId]): Task[List[Tool[? <: ToolInput]]]
+
+  // -- context curation --
+
+  /**
+   * Transform the conversation context between turns — prune, summarize,
+   * extract memories, collapse stale tool pairs, whatever policy this app
+   * enforces. Apps that don't curate return `Task.pure(ctx)`. The
+   * orchestrator invokes this between turns (the cost of a no-op is
+   * negligible, so no `shouldCurate` gate).
+   */
+  def curate(ctx: ConversationContext): Task[ConversationContext]
+
+  // -- information lookup --
+
+  /**
+   * Resolve the full content of an [[Information]] catalog entry. Default
+   * returns `None` — apps that use the Information catalog override to
+   * dispatch on their own subtype registry and fetch the real content from wherever
+   * it lives (DB, filesystem, web, memory store).
+   */
+  def getInformation(id: Id[Information]): Task[Option[FullInformation]] = Task.pure(None)
+
+  // -- lifecycle --
+
   val instance: Task[SigilInstance] = Task.defer {
     for {
       _ <- logger.info("Sigil initializing...")
       _ <- Task(Profig.initConfiguration())
       _ = Signal.register((CoreSignals.all ++ signals)*)
-      _ = sigil.tool.ToolInput.register((CoreTools.inputRWs ++ toolManager.all.map(_.inputRW))*)
+      _ = ToolInput.register((CoreTools.inputRWs ++ allTools.map(_.inputRW))*)
       _ = ParticipantId.register(participantIds*)
       config = Profig("sigil").as[Config]
       db = SigilDB(Some(config.dbPath))
