@@ -10,7 +10,7 @@ import sigil.conversation.{Conversation, ConversationContext}
 import sigil.event.Event
 import sigil.information.{FullInformation, Information}
 import sigil.participant.ParticipantId
-import sigil.tool.{Tool, ToolContext, ToolInput}
+import sigil.tool.{InMemoryToolFinder, Tool, ToolContext, ToolFinder, ToolInput}
 
 /**
  * Shared test Sigil — single instance reused across all specs to avoid
@@ -24,16 +24,9 @@ import sigil.tool.{Tool, ToolContext, ToolInput}
 object TestSigil extends Sigil {
   override def testMode: Boolean = true
 
-  private val catalog: List[(Set[String], Tool[? <: ToolInput])] = List(
-    Set("slack", "message", "chat", "post") -> SendSlackMessageTool
-  )
+  private val tools: List[Tool[? <: ToolInput]] = List(SendSlackMessageTool)
 
-  override def allTools: List[Tool[? <: ToolInput]] = catalog.map(_._2)
-
-  override def findTools(query: String, participants: List[ParticipantId]): Task[List[Tool[? <: ToolInput]]] = Task {
-    val q = query.toLowerCase
-    catalog.collect { case (keywords, tool) if keywords.exists(q.contains) => tool }
-  }
+  override val findTools: ToolFinder = InMemoryToolFinder(tools)
 
   override def curate(ctx: ConversationContext): Task[ConversationContext] = Task.pure(ctx)
 

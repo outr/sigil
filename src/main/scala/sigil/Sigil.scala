@@ -10,7 +10,7 @@ import sigil.information.{FullInformation, Information}
 import sigil.participant.ParticipantId
 import sigil.signal.{CoreSignals, Signal}
 import sigil.tool.core.CoreTools
-import sigil.tool.{Tool, ToolInput}
+import sigil.tool.{ToolFinder, ToolInput}
 
 trait Sigil {
 
@@ -42,19 +42,14 @@ trait Sigil {
   // -- tool discovery --
 
   /**
-   * Full app-specific tool catalog. Used at init to register each tool's
-   * `ToolInput` RW into the polymorphic discriminator. Framework core tools
-   * are registered by sigil automatically — this list is app-specific only.
+   * Resolves tools matching capability-discovery queries. Called by
+   * `find_capability` and slash-command dispatch. Implementations back onto
+   * whatever catalog the app maintains (in-memory, DB, remote registry).
+   *
+   * The finder also supplies the `ToolInput` RWs for its tools; Sigil
+   * registers them into the polymorphic discriminator at init.
    */
-  def allTools: List[Tool[? <: ToolInput]]
-
-  /**
-   * Search the app's tool catalog for matches to `query`, scoped by the
-   * combined access of `participants` (the chain-of-responsibility for the
-   * current invocation). Consumed by `find_capability` and slash-command
-   * dispatch. Ordering is implementation-defined (typically by match score).
-   */
-  def findTools(query: String, participants: List[ParticipantId]): Task[List[Tool[? <: ToolInput]]]
+  def findTools: ToolFinder
 
   // -- context curation --
 
@@ -84,7 +79,7 @@ trait Sigil {
       _ <- logger.info("Sigil initializing...")
       _ <- Task(Profig.initConfiguration())
       _ = Signal.register((CoreSignals.all ++ signals)*)
-      _ = ToolInput.register((CoreTools.inputRWs ++ allTools.map(_.inputRW))*)
+      _ = ToolInput.register((CoreTools.inputRWs ++ findTools.toolInputRWs)*)
       _ = ParticipantId.register(participantIds*)
       config = Profig("sigil").as[Config]
       db = SigilDB(Some(config.dbPath))
