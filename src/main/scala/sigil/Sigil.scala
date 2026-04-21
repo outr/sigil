@@ -88,8 +88,8 @@ trait Sigil {
   /**
    * App-specific [[MemorySpaceId]] subtypes registered into the polymorphic
    * discriminator so [[ContextMemory.spaceId]] values round-trip through
-   * fabric RW. Apps define concrete spaces (GlobalSpace, PersonaSpace,
-   * ProjectSpace, UserSpace, etc.) and list their RWs here.
+   * fabric RW. Apps define concrete spaces (GlobalSpace, ProjectSpace,
+   * UserSpace, etc.) and list their RWs here.
    */
   protected def memorySpaceIds: List[RW[? <: MemorySpaceId]] = Nil
 

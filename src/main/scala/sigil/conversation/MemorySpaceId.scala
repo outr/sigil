@@ -5,7 +5,7 @@ import sigil.PolyType
 /**
  * Identifies the scope a [[ContextMemory]] belongs to. Sigil core makes no
  * assumption about what spaces exist — apps define their own concrete
- * subtypes (GlobalSpace, PersonaSpace, ProjectSpace, UserSpace, whatever)
+ * subtypes (GlobalSpace, ProjectSpace, UserSpace, whatever)
  * and register them via `Sigil.memorySpaceIds` so the polymorphic RW can
  * round-trip them.
  *
