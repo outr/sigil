@@ -1,11 +1,10 @@
-name := "sigil"
-organization := "com.outr"
-version := "1.0.0-SNAPSHOT"
+ThisBuild / organization := "com.outr"
+ThisBuild / version := "1.0.0-SNAPSHOT"
 
-scalaVersion := "3.8.3"
+ThisBuild / scalaVersion := "3.8.3"
 
-githubOwner := "outr"
-githubRepository := "sigil"
+ThisBuild / githubOwner := "outr"
+ThisBuild / githubRepository := "sigil"
 
 val rapidVersion: String = "2.9.2"
 
@@ -29,30 +28,43 @@ ThisBuild / scalacOptions ++= Seq(
 
 ThisBuild / evictionErrorLevel := Level.Info
 
-Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF")
-
-libraryDependencies ++= Seq(
-  "com.outr" %% "profig" % profigVersion,
-  "com.outr" %% "scribe" % scribeVersion,
-  "com.outr" %% "scribe-file" % scribeVersion,
-  "com.outr" %% "spice-api" % spiceVersion,
-  "com.outr" %% "spice-client-netty" % spiceVersion,
-  "com.outr" %% "lightdb-all" % lightdbVersion,
-  "org.scalatest" %% "scalatest" % scalatestVersion % Test,
-  "com.outr" %% "rapid-test" % rapidVersion % Test
-)
-
-fork := true
-Test / parallelExecution := false
-
-// One forked JVM per test suite — gives each spec a clean process so init-once
-// state (singletons, PolyType registrations, RocksDB locks) is exercised
-// fresh on every run. Combined with parallelExecution := false above, suites
-// run serially so they take turns acquiring the RocksDB lock.
-Test / testGrouping := (Test / definedTests).value.map { test =>
-  Tests.Group(
-    name = test.name,
-    tests = Seq(test),
-    runPolicy = Tests.SubProcess(ForkOptions())
+lazy val root = (project in file("."))
+  .settings(
+    name := "sigil",
+    libraryDependencies ++= Seq(
+      "com.outr" %% "profig" % profigVersion,
+      "com.outr" %% "scribe" % scribeVersion,
+      "com.outr" %% "scribe-file" % scribeVersion,
+      "com.outr" %% "spice-api" % spiceVersion,
+      "com.outr" %% "spice-client-netty" % spiceVersion,
+      "com.outr" %% "lightdb-all" % lightdbVersion,
+      "org.scalatest" %% "scalatest" % scalatestVersion % Test,
+      "com.outr" %% "rapid-test" % rapidVersion % Test
+    ),
+    fork := true,
+    Test / parallelExecution := false,
+    Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
+    // One forked JVM per test suite — gives each spec a clean process so init-once
+    // state (singletons, PolyType registrations, RocksDB locks) is exercised
+    // fresh on every run. Combined with parallelExecution := false above, suites
+    // run serially so they take turns acquiring the RocksDB lock.
+    Test / testGrouping := (Test / definedTests).value.map { test =>
+      Tests.Group(
+        name = test.name,
+        tests = Seq(test),
+        runPolicy = Tests.SubProcess(ForkOptions())
+      )
+    }
   )
-}
+
+lazy val docs = project
+  .in(file("documentation"))
+  .dependsOn(root)
+  .enablePlugins(MdocPlugin)
+  .settings(
+    publish / skip := true,
+    mdocVariables := Map(
+      "VERSION" -> version.value
+    ),
+    mdocOut := file(".")
+  )

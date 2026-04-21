@@ -14,10 +14,8 @@ import sigil.signal.{Delta, Signal}
 
 import java.nio.file.Path
 
-case class SigilDB(directory: Option[Path]) extends LightDB {
+case class SigilDB(directory: Option[Path], storeManager: CollectionManager) extends LightDB {
   override type SM = CollectionManager
-
-  override val storeManager: SM = SplitStoreManager(RocksDBSharedStore(directory.get), LuceneStore)
 
   val model: S[Model, Model.type] = store(Model)()
   val events: S[Event, Event.type] = store(Event)()

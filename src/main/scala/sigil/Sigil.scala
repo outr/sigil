@@ -2,11 +2,14 @@ package sigil
 
 import fabric.rw.RW
 import lightdb.id.Id
+import lightdb.lucene.LuceneStore
+import lightdb.rocksdb.RocksDBSharedStore
+import lightdb.store.split.SplitStoreManager
 import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
-import sigil.conversation.{Conversation, ConversationContext, ContextMemory, MemorySpaceId}
+import sigil.conversation.{ContextMemory, Conversation, ConversationContext, MemorySpaceId}
 import sigil.db.{Model, SigilDB}
 import sigil.dispatcher.TriggerFilter
 import sigil.event.{AgentState, Event, ModeChange}
@@ -372,7 +375,9 @@ trait Sigil {
       _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
       _ = MemorySpaceId.register(memorySpaceIds*)
       config = Profig("sigil").as[Config]
-      db = SigilDB(Some(config.dbPath))
+      directory = config.dbPath
+      collectionStore = SplitStoreManager(RocksDBSharedStore(directory), LuceneStore)
+      db = SigilDB(Some(directory), collectionStore)
       _ <- db.init
     } yield SigilInstance(
       config = config,
