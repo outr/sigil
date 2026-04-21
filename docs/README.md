@@ -1,6 +1,6 @@
 # sigil
 [![CI](https://github.com/outr/sigil/actions/workflows/ci.yml/badge.svg)](https://github.com/outr/sigil/actions/workflows/ci.yml)
-[![Lines of code](https://img.shields.io/tokei/lines/github/outr/sigil)](https://github.com/outr/sigil)
+[![Lines of code](https://aschey.tech/tokei/github/outr/sigil)](https://github.com/outr/sigil)
 
 A Scala 3 framework for building multi-agent LLM conversations with tool use, capability discovery, and persistent context.
 
