@@ -52,7 +52,7 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
         toolName = "respond",
         participantId = TestUser,
         conversationId = Conversation.id("c1"),
-        input = Some(RespondInput("▶Text\nhi"))
+        input = Some(RespondInput(title = "Chat", content = "▶Text\nhi"))
       )
       val restored = roundTripSignal(original)
       restored shouldBe a[ToolInvoke]
@@ -107,10 +107,12 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
 
   "ToolInput poly registration" should {
     "round-trip a RespondInput (core tool)" in {
-      val original: ToolInput = RespondInput("▶Text\nhello")
+      val original: ToolInput = RespondInput(title = "Greetings", content = "▶Text\nhello")
       val restored = roundTripToolInput(original)
       restored shouldBe a[RespondInput]
-      restored.asInstanceOf[RespondInput].content shouldBe "▶Text\nhello"
+      val r = restored.asInstanceOf[RespondInput]
+      r.title shouldBe "Greetings"
+      r.content shouldBe "▶Text\nhello"
     }
 
     "round-trip a ChangeModeInput (core tool)" in {
@@ -158,13 +160,13 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
       )
       val original = Conversation(
         participants = List(agent),
-        title = Some("Test conversation"),
+        title = "Test conversation",
         currentMode = Mode.Coding,
         _id = Conversation.id("wire-test")
       )
       val restored = rw.write(rw.read(original))
       restored._id shouldBe original._id
-      restored.title shouldBe Some("Test conversation")
+      restored.title shouldBe "Test conversation"
       restored.currentMode shouldBe Mode.Coding
       restored.participants should have size 1
       restored.participants.head shouldBe a[DefaultAgentParticipant]

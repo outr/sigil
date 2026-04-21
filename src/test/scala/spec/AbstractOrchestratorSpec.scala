@@ -200,7 +200,7 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         val modeChanges = signals.collect { case m: ModeChange => m }
         modeChanges should not be empty
         modeChanges.head.mode shouldBe Mode.Coding
-        modeChanges.head.state shouldBe EventState.Active
+        modeChanges.head.state shouldBe EventState.Complete
 
         // Atomic tool path — no Message emitted, so no Typing transition.
         val agentStateDeltas = signals.collect { case d: AgentStateDelta => d }

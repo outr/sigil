@@ -4,7 +4,6 @@ import fabric.rw.*
 import lightdb.doc.{JsonConversion, RecordDocument, RecordDocumentModel}
 import lightdb.id.Id
 import lightdb.time.Timestamp
-import sigil.event.Event
 import sigil.participant.ParticipantId
 
 /**
@@ -19,13 +18,10 @@ import sigil.participant.ParticipantId
  * The view's id is derived from the conversation's id so the lookup is a
  * trivial O(1) fetch.
  *
- * `lastEventId` is a checkpoint used by `Sigil.rebuildView` to resume
- * replay from a known-good boundary.
  */
 case class ConversationView(conversationId: Id[Conversation],
                             frames: Vector[ContextFrame] = Vector.empty,
                             participantProjections: Map[ParticipantId, ParticipantProjection] = Map.empty,
-                            lastEventId: Option[Id[Event]] = None,
                             created: Timestamp = Timestamp(),
                             modified: Timestamp = Timestamp(),
                             _id: Id[ConversationView] = ConversationView.id())

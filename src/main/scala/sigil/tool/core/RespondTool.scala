@@ -1,7 +1,8 @@
 package sigil.tool.core
 
 import sigil.TurnContext
-import sigil.event.{Event, Message}
+import sigil.event.{Event, Message, TitleChange}
+import sigil.signal.EventState
 import sigil.tool.{Tool, ToolExample}
 import sigil.tool.model.{MultipartParser, RespondInput}
 
@@ -19,6 +20,11 @@ object RespondTool extends Tool[RespondInput] {
 
   override protected def description: String =
     """Send your response to the user.
+      |
+      |The `title` field is REQUIRED. Pass the current conversation title unchanged if it still fits the
+      |conversation; propose a new concise 3-6 word title only when the current title is "New Conversation"
+      |(a freshly-created conversation) or the topic has meaningfully shifted and the existing title no
+      |longer fits. No quotes, no punctuation, short.
       |
       |The `content` field is a multipart string. Each block begins with a header line and continues until the
       |next header or end of input — there are no close markers.
@@ -81,11 +87,11 @@ object RespondTool extends Tool[RespondInput] {
   override protected def examples: List[ToolExample[RespondInput]] = List(
     ToolExample(
       "Mixed prose and code",
-      RespondInput("▶Text\nHere's how to parse JSON in Scala:\n▶Code scala\nJsonParser(str)\n")
+      RespondInput(title = "JSON Parsing in Scala", content = "▶Text\nHere's how to parse JSON in Scala:\n▶Code scala\nJsonParser(str)\n")
     ),
     ToolExample(
       "Single text reply",
-      RespondInput("▶Text\nThe answer is 4.\n")
+      RespondInput(title = "Simple Arithmetic", content = "▶Text\nThe answer is 4.\n")
     )
   )
 
@@ -96,6 +102,17 @@ object RespondTool extends Tool[RespondInput] {
       conversationId = context.conversation.id,
       content = blocks
     )
-    rapid.Stream.emits(List(message))
+    val titleChange =
+      if (input.title.nonEmpty && input.title != context.conversation.title)
+        Some(TitleChange(
+          title = input.title,
+          participantId = context.caller,
+          conversationId = context.conversation.id,
+          state = EventState.Complete
+        ))
+      else None
+
+    val events: List[Event] = titleChange.toList ::: List(message)
+    rapid.Stream.emits(events)
   }
 }

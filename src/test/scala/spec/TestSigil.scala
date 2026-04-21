@@ -38,7 +38,7 @@ object TestSigil extends Sigil {
   private val appTools: List[Tool[? <: ToolInput]] = List(SendSlackMessageTool)
 
   override val findTools: ToolFinder =
-    InMemoryToolFinder(CoreTools(this).all.toList ++ appTools)
+    InMemoryToolFinder(CoreTools.all.toList ++ appTools)
 
   // TestSigil uses Sigil's default curator (identity — no memory/summary/info selection).
 
@@ -47,6 +47,10 @@ object TestSigil extends Sigil {
   private val broadcasterRef = new AtomicReference[SignalBroadcaster](SignalBroadcaster.NoOp)
   private val providerRef = new AtomicReference[() => Task[Provider]](
     () => Task.error(new RuntimeException("TestSigil.setProvider was not called — no provider configured"))
+  )
+  private val informationRef = new AtomicReference[sigil.information.InMemoryInformation](new sigil.information.InMemoryInformation)
+  private val modeSkillRef = new AtomicReference[sigil.provider.Mode => Task[Option[sigil.conversation.ActiveSkillSlot]]](
+    _ => Task.pure(None)
   )
 
   /** Replace the broadcaster for the current test (typically with a
@@ -66,7 +70,22 @@ object TestSigil extends Sigil {
   override def providerFor(modelId: Id[Model], chain: List[ParticipantId]): Task[Provider] =
     providerRef.get().apply()
 
-  // getInformation uses Sigil's default (Task.pure(None)).
+  /** Expose an in-memory information store specs can populate before
+    * exercising [[sigil.tool.core.LookupInformationTool]]. */
+  def information: sigil.information.InMemoryInformation = informationRef.get()
+
+  override def getInformation(id: lightdb.id.Id[sigil.information.Information]): Task[Option[sigil.information.FullInformation]] =
+    informationRef.get().get(id)
+
+  /** Override the `modeSkill` hook for a test — returns the resolved slot
+    * (or None) for the given mode. Default is always None. */
+  def setModeSkill(f: sigil.provider.Mode => Task[Option[sigil.conversation.ActiveSkillSlot]]): Unit =
+    modeSkillRef.set(f)
+
+  def resetModeSkill(): Unit = modeSkillRef.set(_ => Task.pure(None))
+
+  override def modeSkill(mode: sigil.provider.Mode): Task[Option[sigil.conversation.ActiveSkillSlot]] =
+    modeSkillRef.get()(mode)
 
   /**
    * Register the test ParticipantId singletons so polymorphic serialization

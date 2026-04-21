@@ -70,11 +70,25 @@ object Instructions {
       |- Ask for clarification only when a request is genuinely ambiguous, not to confirm obvious intent.""".stripMargin
 
   /**
+   * Conversation-title policy. The `respond` tool's `title` field is
+   * required on every call; this guidance governs when to keep the
+   * current title versus when to propose a new one.
+   */
+  val TitleGuidance: String =
+    """TITLE
+      |- The `title` field on `respond` is REQUIRED on every call.
+      |- If the current title (shown at the top of this prompt) still fits the conversation, pass it UNCHANGED.
+      |- Propose a new concise 3-6 word title ONLY when:
+      |    a) the current title is "New Conversation" (a freshly-created conversation), or
+      |    b) the topic has meaningfully shifted and the current title no longer fits.
+      |- No quotes, no punctuation in titles.""".stripMargin
+
+  /**
    * The sigil-default operational `core`. Sections cover tool-use discipline,
-   * mode awareness, safety posture, and response behavior.
+   * mode awareness, safety posture, response behavior, and title handling.
    */
   val DefaultCore: String =
-    List(ToolUseGuidance, ModeGuidance, SafetyGuidance, BehaviorGuidance).mkString("\n\n")
+    List(ToolUseGuidance, ModeGuidance, SafetyGuidance, BehaviorGuidance, TitleGuidance).mkString("\n\n")
 
   /**
    * Build an Instructions with the sigil-default operational `core` pre-applied.

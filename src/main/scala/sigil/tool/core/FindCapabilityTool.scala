@@ -1,8 +1,9 @@
 package sigil.tool.core
 
-import sigil.{Sigil, TurnContext}
+import sigil.TurnContext
 import sigil.event.{Event, ToolResults}
-import sigil.tool.{Tool, ToolExample, ToolInput}
+import sigil.signal.EventState
+import sigil.tool.{Tool, ToolExample}
 
 /**
  * Discovery tool. The agent calls `find_capability` when it needs to check
@@ -10,11 +11,8 @@ import sigil.tool.{Tool, ToolExample, ToolInput}
  * or claiming inability to do something. Emits a [[ToolResults]] event
  * carrying the matching tools' schemas directly, so the LLM has everything
  * it needs to call one of them on its next turn.
- *
- * Per-instance: holds a reference to the active [[Sigil]]; execute calls
- * `sigil.findTools(keywords, chain)`.
  */
-case class FindCapabilityTool(sigil: Sigil) extends Tool[FindCapabilityInput] {
+object FindCapabilityTool extends Tool[FindCapabilityInput] {
   override protected def uniqueName: String = "find_capability"
 
   override protected def description: String =
@@ -40,13 +38,14 @@ case class FindCapabilityTool(sigil: Sigil) extends Tool[FindCapabilityInput] {
 
   override def execute(input: FindCapabilityInput, context: TurnContext): rapid.Stream[Event] =
     rapid.Stream.force(
-      sigil
+      context.sigil
         .findTools(input.keywords, context.chain)
         .map { tools =>
           val results = ToolResults(
             schemas = tools.map(_.schema),
             participantId = context.caller,
-            conversationId = context.conversation.id
+            conversationId = context.conversation.id,
+            state = EventState.Complete
           )
           rapid.Stream.emits(List(results))
         }

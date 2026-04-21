@@ -15,9 +15,8 @@ import fabric.rw.*
  * Message being built up by multiple content deltas) start `Active` and
  * transition to `Complete` when the producer signals the end of the stream.
  *
- * Failure information rides inside the Event's own fields (e.g.
- * [[sigil.event.ErrorOccurred]] or a `Failure` content block on a Message)
- * rather than being encoded as a lifecycle state.
+ * Failure is represented inside an Event's own fields (e.g. a `Failure`
+ * content block on a Message) rather than as a lifecycle state.
  */
 enum EventState derives RW {
   case Active

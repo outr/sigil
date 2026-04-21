@@ -1,31 +1,28 @@
 package sigil.tool.core
 
 import fabric.rw.*
-import sigil.Sigil
 import sigil.tool.{Tool, ToolInput}
-import sigil.tool.model.{ChangeModeInput, NoResponseInput, RespondInput}
+import sigil.tool.model.{ChangeModeInput, LookupInformationInput, NoResponseInput, RespondInput}
 
 /**
  * The canonical set of framework-level tools every sigil agent should have
  * access to. Covers the terminal action grammar (`respond`, `no_response`),
- * mode transitions (`change_mode`), and capability discovery
- * (`find_capability`).
+ * mode transitions (`change_mode`), capability discovery (`find_capability`),
+ * and information lookup (`lookup_information`).
  *
- * Constructed per-instance because `FindCapabilityTool` holds a reference
- * to the app's `Sigil` (for tool discovery via `sigil.findTools`). Apps
- * include `all` in their [[sigil.provider.ProviderRequest.tools]]; input
- * RWs are registered automatically by `Sigil.instance.sync()`.
+ * All core tools are singleton objects — they take their `Sigil` from
+ * `TurnContext.sigil` at call time, so there's nothing instance-specific to
+ * construct. Apps include [[CoreTools.all]] in their
+ * [[sigil.provider.ProviderRequest.tools]]; the input RWs are registered
+ * automatically by `Sigil.instance.sync()`.
  */
-case class CoreTools(sigil: Sigil) {
+object CoreTools {
 
   /**
    * The tool instances — pass to `ProviderRequest.tools`.
    */
   val all: Vector[Tool[? <: ToolInput]] =
-    Vector(RespondTool, ChangeModeTool, NoResponseTool, FindCapabilityTool(sigil))
-}
-
-object CoreTools {
+    Vector(RespondTool, ChangeModeTool, NoResponseTool, FindCapabilityTool, LookupInformationTool)
 
   /**
    * The ToolInput RWs for polymorphic registration. Sigil registers these
@@ -36,7 +33,8 @@ object CoreTools {
       summon[RW[RespondInput]],
       summon[RW[ChangeModeInput]],
       summon[RW[NoResponseInput]],
-      summon[RW[FindCapabilityInput]]
+      summon[RW[FindCapabilityInput]],
+      summon[RW[LookupInformationInput]]
     )
 
   /**
@@ -46,10 +44,5 @@ object CoreTools {
    * The dispatcher resolves each name to a live `Tool` instance through
    * [[sigil.tool.ToolFinder.byName]] at call time.
    */
-  val coreToolNames: List[String] = List(
-    RespondTool.schema.name,
-    ChangeModeTool.schema.name,
-    NoResponseTool.schema.name,
-    "find_capability"
-  )
+  val coreToolNames: List[String] = all.map(_.schema.name).toList
 }
