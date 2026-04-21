@@ -4,7 +4,7 @@ import fabric.rw.*
 
 /**
  * Classifies the provenance of an active skill slot on
- * [[ParticipantContext.activeSkills]]. Multiple sources can contribute
+ * [[ParticipantProjection.activeSkills]]. Multiple sources can contribute
  * simultaneously — a participant can have a `Mode`-injected skill AND a
  * `Discovery`-promoted skill active at the same time — without
  * overwriting each other, because the map is keyed by `SkillSource`.

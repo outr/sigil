@@ -92,7 +92,8 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val userMessage = Message(
         participantId = TestUser,
         conversationId = conversationId,
-        content = Vector(ResponseContent.Text("What is 2+2? Respond with just the number."))
+        content = Vector(ResponseContent.Text("What is 2+2? Respond with just the number.")),
+        state = EventState.Complete
       )
 
       val task = for {
@@ -136,7 +137,8 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val userMessage = Message(
         participantId = TestUser,
         conversationId = conversationId,
-        content = Vector(ResponseContent.Text("I need to write a Scala function."))
+        content = Vector(ResponseContent.Text("I need to write a Scala function.")),
+        state = EventState.Complete
       )
 
       val task = for {

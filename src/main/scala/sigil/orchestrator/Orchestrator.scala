@@ -137,7 +137,13 @@ object Orchestrator {
             // Atomic path — run execute and forward resulting Events.
             val tool = toolsByName.get(state.activeToolName.getOrElse(""))
             val executed: Stream[Signal] = tool match {
-              case Some(t) => executeAtomic(t, input, TurnContext(sigil, request.chain, conversation))
+              case Some(t) => executeAtomic(t, input, TurnContext(
+                sigil = sigil,
+                chain = request.chain,
+                conversation = conversation,
+                conversationView = request.turnInput.conversationView,
+                turnInput = request.turnInput
+              ))
               case None => Stream.empty
             }
             Stream.emits(List[Signal](toolDelta)) ++ executed

@@ -106,7 +106,7 @@ trait AgentParticipant extends Participant {
         conversationId = context.conversation.id,
         modelId = modelId,
         instructions = instructions,
-        context = context.conversationContext,
+        turnInput = context.turnInput,
         currentMode = context.conversation.currentMode,
         generationSettings = generationSettings,
         tools = tools,

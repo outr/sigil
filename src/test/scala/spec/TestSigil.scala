@@ -7,7 +7,7 @@ import org.scalactic.Prettifier.default
 import profig.Profig
 import rapid.Task
 import sigil.{Sigil, SignalBroadcaster, TurnContext}
-import sigil.conversation.{ConversationContext, MemorySpaceId}
+import sigil.conversation.MemorySpaceId
 import sigil.db.Model
 import sigil.event.Event
 import sigil.information.{FullInformation, Information}
@@ -40,7 +40,7 @@ object TestSigil extends Sigil {
   override val findTools: ToolFinder =
     InMemoryToolFinder(CoreTools(this).all.toList ++ appTools)
 
-  override def curate(ctx: ConversationContext): Task[ConversationContext] = Task.pure(ctx)
+  // TestSigil uses Sigil's default curator (identity — no memory/summary/info selection).
 
   // -- test-only mutable wiring --
 

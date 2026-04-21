@@ -4,7 +4,7 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
-import sigil.conversation.Conversation
+import sigil.conversation.{ContextFrame, Conversation, ConversationView, TurnInput}
 import sigil.db.Model
 import sigil.event.Message
 import sigil.provider.{GenerationSettings, Instructions, Mode, Provider, ProviderEvent, ProviderRequest, StopReason}
@@ -27,19 +27,25 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   protected def request(message: String,
                         currentMode: Mode = Mode.Conversation): Task[List[ProviderEvent]] = provider.flatMap { p =>
     val conversationId = Conversation.id("test-conversation")
+    val userMessage = Message(
+      participantId = TestUser,
+      conversationId = conversationId,
+      content = Vector(ResponseContent.Text(message))
+    )
+    val view = ConversationView(
+      conversationId = conversationId,
+      frames = Vector(ContextFrame.Text(
+        content = message,
+        participantId = TestUser,
+        sourceEventId = userMessage._id
+      )),
+      _id = ConversationView.idFor(conversationId)
+    )
     val request = ProviderRequest(
       conversationId = conversationId,
       modelId = modelId,
       instructions = Instructions(),
-      context = sigil.conversation.ConversationContext(
-        events = Vector(
-          Message(
-            participantId = TestUser,
-            conversationId = conversationId,
-            content = Vector(ResponseContent.Text(message))
-          )
-        )
-      ),
+      turnInput = TurnInput(view),
       currentMode = currentMode,
       generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0)),
       tools = coreTools,

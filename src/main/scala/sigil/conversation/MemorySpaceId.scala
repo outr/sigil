@@ -12,7 +12,7 @@ import sigil.PolyType
  * Used as:
  *   - `ContextMemory.spaceId` — the space a memory lives in (one per memory)
  *   - `Sigil.findMemories(spaces: Set[MemorySpaceId])` — which spaces to
- *     search when the curator assembles `ConversationContext.memories`
+ *     search when the curator assembles `TurnInput.memories`
  */
 trait MemorySpaceId {
   def value: String

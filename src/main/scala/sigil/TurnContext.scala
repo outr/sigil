@@ -1,7 +1,7 @@
 package sigil
 
 import lightdb.id.Id
-import sigil.conversation.{Conversation, ConversationContext}
+import sigil.conversation.{Conversation, ConversationView, TurnInput}
 import sigil.event.Event
 import sigil.participant.ParticipantId
 
@@ -9,7 +9,7 @@ import sigil.participant.ParticipantId
  * Runtime context supplied at the boundary of a unit of work — both
  * [[sigil.tool.Tool.execute]] and [[sigil.participant.Participant.process]]
  * receive one. Identifies the active Sigil, the chain-of-responsibility, the
- * conversation being acted upon, and the curated context the caller should
+ * conversation being acted upon, and the curated view/input the caller should
  * use to compose provider requests or inspect prior events.
  *
  * @param sigil               the active Sigil instance. Consulted for
@@ -24,12 +24,14 @@ import sigil.participant.ParticipantId
  *                            doing the work); earlier entries are the
  *                            authority lineage.
  * @param conversation        the conversation being acted upon.
- * @param conversationContext the curated view of the conversation (events,
- *                            memories, summaries, participant context). The
- *                            caller is responsible for building this —
- *                            typically by loading from DB and running
- *                            `Sigil.curate` — before handing it to the
- *                            participant or tool.
+ * @param conversationView    the materialized per-conversation projection
+ *                            (rolling frames + participant projections).
+ *                            Maintained by `Sigil.publish` and read cheaply
+ *                            here as a point-lookup.
+ * @param turnInput           the curator's per-turn output — memory /
+ *                            summary / information selections plus any
+ *                            app-supplied overlays. Wraps the view so
+ *                            providers only need one object.
  * @param currentAgentStateId the id of the active [[sigil.event.AgentState]]
  *                            for the agent processing this turn, when
  *                            applicable. Set by the framework's dispatcher
@@ -45,7 +47,8 @@ import sigil.participant.ParticipantId
 case class TurnContext(sigil: Sigil,
                        chain: List[ParticipantId],
                        conversation: Conversation,
-                       conversationContext: ConversationContext = ConversationContext(),
+                       conversationView: ConversationView,
+                       turnInput: TurnInput,
                        currentAgentStateId: Option[Id[Event]] = None) {
 
   /**
