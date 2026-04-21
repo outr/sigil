@@ -1,6 +1,8 @@
 package sigil.signal
 
+import lightdb.id.Id
 import sigil.PolyType
+import sigil.conversation.Conversation
 
 /**
  * Root of sigil's external wire vocabulary. Every value that crosses the
@@ -12,7 +14,13 @@ import sigil.PolyType
  * same discriminator, giving consumers a single deserialization path regardless
  * of whether a given frame is an Event or a Delta. Pattern-matching on
  * `case e: Event` or `case d: Delta` tells consumers which side they got.
+ *
+ * Every Signal belongs to exactly one conversation. The trait-level
+ * `conversationId` lets routing layers (broadcaster, dispatcher) operate on
+ * any Signal without needing to know whether it's an Event or a Delta.
  */
-trait Signal
+trait Signal {
+  def conversationId: Id[Conversation]
+}
 
 object Signal extends PolyType[Signal]

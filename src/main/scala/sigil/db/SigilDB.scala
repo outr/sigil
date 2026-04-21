@@ -7,6 +7,7 @@ import lightdb.rocksdb.RocksDBSharedStore
 import lightdb.store.split.SplitStoreManager
 import lightdb.upgrade.DatabaseUpgrade
 import rapid.Task
+import sigil.conversation.Conversation
 import sigil.event.Event
 import sigil.signal.{Delta, Signal}
 
@@ -21,6 +22,7 @@ case class SigilDB(directory: Option[Path]) extends LightDB {
 
   val model: S[Model, Model.type] = store(Model)
   val events: S[Event, Event.type] = store(Event)
+  val conversations: S[Conversation, Conversation.type] = store(Conversation)
 
   override def upgrades: List[DatabaseUpgrade] = Nil
 

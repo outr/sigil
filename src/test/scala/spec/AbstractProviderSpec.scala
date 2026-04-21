@@ -43,7 +43,10 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       currentMode = currentMode,
       generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0)),
       tools = coreTools,
-      chain = List(TestUser)
+      // Provider expects chain.last to be the actor (the agent). For
+      // provider-level tests we don't have a real AgentParticipant; supply
+      // TestAgent so message-role attribution renders correctly.
+      chain = List(TestUser, TestAgent)
     )
     p(request).toList
   }

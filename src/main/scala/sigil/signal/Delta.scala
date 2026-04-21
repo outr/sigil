@@ -1,7 +1,6 @@
 package sigil.signal
 
 import lightdb.id.Id
-import sigil.conversation.Conversation
 import sigil.event.Event
 
 /**
@@ -14,12 +13,12 @@ import sigil.event.Event
  *   4. Broadcasts the Delta to subscribers
  *
  * Deltas never persist as their own records — only their effect on the target
- * Event does. Each Delta carries `conversationId` (redundant with the target's
- * own conversationId) so the broadcast layer can route without a DB lookup.
+ * Event does. `conversationId` is inherited from [[Signal]] (every Delta
+ * lives in some conversation) and is typically duplicated from the target's
+ * own conversationId so routing layers don't need a DB lookup.
  */
 trait Delta extends Signal {
   def target: Id[? <: Event]
-  def conversationId: Id[Conversation]
 
   /**
    * Apply this delta's mutation semantics to the given target Event,

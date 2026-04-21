@@ -2,15 +2,21 @@ package sigil
 
 import fabric.rw.RW
 import lightdb.id.Id
+import lightdb.time.Timestamp
+import lightdb.util.Nowish
 import profig.Profig
-import rapid.{Task, logger}
-import sigil.conversation.ConversationContext
+import rapid.{Stream, Task, logger}
+import sigil.conversation.{Conversation, ConversationContext}
 import sigil.db.{Model, SigilDB}
+import sigil.dispatcher.TriggerFilter
+import sigil.event.{AgentState, Event, ModeChange}
 import sigil.information.{FullInformation, Information}
-import sigil.participant.ParticipantId
-import sigil.signal.{CoreSignals, Signal}
+import sigil.participant.{AgentParticipant, AgentParticipantId, Participant, ParticipantId}
+import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, EventState, Signal}
 import sigil.tool.core.CoreTools
 import sigil.tool.{ToolFinder, ToolInput}
+
+import java.util.concurrent.atomic.AtomicReference
 
 trait Sigil {
 
@@ -56,9 +62,7 @@ trait Sigil {
   /**
    * Transform the conversation context between turns — prune, summarize,
    * extract memories, collapse stale tool pairs, whatever policy this app
-   * enforces. Apps that don't curate return `Task.pure(ctx)`. The
-   * orchestrator invokes this between turns (the cost of a no-op is
-   * negligible, so no `shouldCurate` gate).
+   * enforces. Apps that don't curate return `Task.pure(ctx)`.
    */
   def curate(ctx: ConversationContext): Task[ConversationContext]
 
@@ -71,6 +75,233 @@ trait Sigil {
    * it lives (DB, filesystem, web, memory store).
    */
   def getInformation(id: Id[Information]): Task[Option[FullInformation]] = Task.pure(None)
+
+  // -- broadcasting --
+
+  /**
+   * The wire transport for [[Signal]]s. The framework calls
+   * `broadcaster.handle(signal)` after persisting and before fanning out.
+   * Apps override to push to WebSocket / SSE / DurableSocket; the default
+   * drops everything silently.
+   */
+  def broadcaster: SignalBroadcaster = SignalBroadcaster.NoOp
+
+  // -- participant resolution --
+
+  /**
+   * Resolve the participants currently active in a conversation. The
+   * framework dispatcher calls this on every fan-out to decide who to
+   * forward each Event to. Default returns Nil; apps override (typically by
+   * loading [[Conversation.participantIds]] from the DB and resolving each
+   * to a concrete [[Participant]] via an app registry).
+   */
+  def participantsFor(conversationId: Id[Conversation]): Task[List[Participant]] = Task.pure(Nil)
+
+  // -- framework dispatch (entry point) --
+
+  /**
+   * Inject a [[Signal]] into the framework. Persists it, broadcasts to wire,
+   * and fans out to participants whose `TriggerFilter` matches. Used both
+   * externally (apps push a user-typed Message in via this) and internally
+   * (every Signal an agent emits during its turn flows back through here).
+   *
+   * Apps don't override this — it's the framework's pipeline.
+   */
+  final def publish(signal: Signal): Task[Unit] =
+    for {
+      _ <- withDB(_.apply(signal))
+      _ <- updateConversationProjection(signal)
+      _ <- broadcaster.handle(signal).handleError(logBroadcastError(signal, _))
+      _ <- signal match {
+             case e: Event => fanOut(e)
+             case _: sigil.signal.Delta => Task.unit
+           }
+    } yield ()
+
+  /** Maintain materialized projections on the [[Conversation]] record. Today
+    * just `currentMode` derived from the latest [[ModeChange]]; future
+    * projections (e.g. title, last-activity timestamp) accrue here too. */
+  private final def updateConversationProjection(signal: Signal): Task[Unit] = signal match {
+    case mc: ModeChange =>
+      withDB(_.conversations.transaction(_.modify(mc.conversationId) {
+        case Some(conv) => Task.pure(Some(conv.copy(currentMode = mc.mode, modified = Timestamp(Nowish()))))
+        case None       => Task.pure(None)
+      })).unit
+    case _ => Task.unit
+  }
+
+  private final def logBroadcastError(signal: Signal, t: Throwable): Task[Unit] =
+    Task(scribe.warn(s"Broadcaster failed for signal: ${signal.getClass.getSimpleName}", t))
+
+  private final def fanOut(event: Event): Task[Unit] =
+    withDB(_.conversations.transaction(_.get(event.conversationId))).flatMap {
+      case None       => Task.unit
+      case Some(conv) =>
+        participantsFor(conv._id).flatMap { participants =>
+          val tasks: List[Task[Unit]] = participants.collect {
+            case agent: AgentParticipant if TriggerFilter.isTriggerFor(agent, event) =>
+              tryFire(agent, conv)
+          }
+          Task.sequence(tasks).unit
+        }
+    }
+
+  /**
+   * Atomically claim `AgentState(Active)` for `(agent, conv)`. If we win the
+   * claim, broadcast the new AgentState and start the agent's self-loop on
+   * a background fiber. If someone else already owns the lock, no-op.
+   *
+   * The lock IS the AgentState record, identified by a stable id derived
+   * from `(agentId, conversationId)`. Each turn upserts the same id; the
+   * `AtomicReference` captures whether OUR `f` was the one that returned a
+   * fresh `Active` (the only way to tell with `tx.modify` semantics).
+   */
+  private final def tryFire(agent: AgentParticipant, conv: Conversation): Task[Unit] = {
+    val lockId = agentStateLockId(agent.id, conv._id)
+    val claimedRef = new AtomicReference[Option[AgentState]](None)
+    withDB(_.events.transaction(_.modify(lockId) {
+      case Some(s: AgentState) if s.state == EventState.Active =>
+        Task.pure(Some(s))  // someone else owns it; observe and bail
+      case _ =>
+        val claim = AgentState(
+          agentId = agent.id,
+          participantId = agent.id,
+          conversationId = conv._id,
+          activity = AgentActivity.Thinking,
+          state = EventState.Active,
+          timestamp = Timestamp(Nowish()),
+          _id = lockId
+        )
+        claimedRef.set(Some(claim))
+        Task.pure(Some(claim))
+    })).flatMap { _ =>
+      claimedRef.get() match {
+        case Some(claim) =>
+          // We won the claim. Broadcast manually (modify already persisted),
+          // then fire the agent on its own fiber.
+          broadcaster.handle(claim).handleError(logBroadcastError(claim, _)).flatMap { _ =>
+            Task {
+              runAgent(agent, conv, claim).startUnit()
+              ()
+            }
+          }
+        case None => Task.unit
+      }
+    }
+  }
+
+  /**
+   * Self-loop while holding the AgentState(Active) claim:
+   *
+   *   - process triggers for the current iteration
+   *   - check DB for any new triggers that arrived during processing
+   *   - if any, loop without releasing the claim
+   *   - if none, transition to Idle/Complete and release
+   */
+  /** Hard cap on dispatcher self-loop iterations within a single AgentState
+    * claim. Prevents an LLM that keeps calling non-terminal tools (e.g. only
+    * `change_mode`, never `respond`) from looping forever. Reaching the cap
+    * raises [[AgentRunawayException]] in the runAgent fiber after releasing
+    * the AgentState claim — it's a real failure, not a normal exit. Apps
+    * can override. */
+  protected def maxAgentIterations: Int = 10
+
+  private final def runAgent(agent: AgentParticipant,
+                             conv: Conversation,
+                             claimed: AgentState): Task[Unit] =
+    runAgentLoop(agent, conv._id, claimed, iteration = 1)
+
+  private final def runAgentLoop(agent: AgentParticipant,
+                                 convId: Id[Conversation],
+                                 claimed: AgentState,
+                                 iteration: Int): Task[Unit] = Task.defer {
+    // Reload the conversation each iteration — materialized projections
+    // (currentMode, modified, etc.) update as Events flow through `publish`,
+    // so the conversation we hand to the agent must reflect the latest state.
+    withDB(_.conversations.transaction(_.get(convId))).flatMap {
+      case None =>
+        // Conversation deleted mid-turn — release the lock and exit cleanly.
+        releaseClaim(claimed)
+      case Some(conv) =>
+        buildContext(agent, conv, sinceTimestamp = claimed.timestamp, claimedId = claimed._id).flatMap {
+          case (ctx, triggers) =>
+            agent.process(ctx, triggers).evalTap(publish).drain
+        }.flatMap { _ =>
+          newTriggersExist(agent, conv, sinceTimestamp = claimed.timestamp).flatMap {
+            case true if iteration < maxAgentIterations =>
+              runAgentLoop(agent, convId, claimed, iteration + 1)
+            case true =>
+              // Cap hit — release the lock, then propagate as an error so the
+              // calling fiber's failure handler sees it. A runaway loop is a
+              // real failure (broken LLM behavior, bad instructions, etc.) and
+              // shouldn't masquerade as a successful exit.
+              releaseClaim(claimed).flatMap(_ =>
+                Task.error(new AgentRunawayException(
+                  s"Agent ${agent.id.value} hit maxAgentIterations ($maxAgentIterations) " +
+                    s"in conversation ${conv._id.value}; check LLM behavior or raise the cap.")))
+            case false =>
+              releaseClaim(claimed)
+          }
+        }
+    }.handleError { t =>
+      // Any unhandled failure mid-turn — release the lock so the agent
+      // isn't stuck Active forever, then re-raise so the fiber's error
+      // boundary logs it. Failure during release itself is swallowed (we
+      // already have the original error to report).
+      scribe.error(s"runAgent failed for ${agent.id.value} in ${convId.value}", t)
+      releaseClaim(claimed).handleError(_ => Task.unit).flatMap(_ => Task.error(t))
+    }
+  }
+
+  private final def releaseClaim(claimed: AgentState): Task[Unit] =
+    publish(AgentStateDelta(
+      target = claimed._id,
+      conversationId = claimed.conversationId,
+      activity = Some(AgentActivity.Idle),
+      state = Some(EventState.Complete)))
+
+  private final def buildContext(agent: AgentParticipant,
+                                 conv: Conversation,
+                                 sinceTimestamp: Timestamp,
+                                 claimedId: Id[Event]): Task[(TurnContext, Stream[Event])] =
+    withDB(_.events.transaction(_.list)).flatMap { all =>
+      val convEvents = all.filter(_.conversationId == conv._id).sortBy(_.timestamp.value).toVector
+      val baseCtx = ConversationContext(events = convEvents)
+      curate(baseCtx).map { curated =>
+        val triggerEvents = convEvents.filter(e =>
+          e.timestamp.value > sinceTimestamp.value && TriggerFilter.isTriggerFor(agent, e)
+        )
+        val triggers: Stream[Event] = Stream.emits(triggerEvents.toList)
+        val chain = buildChain(triggerEvents.toList, agent)
+        val ctx = TurnContext(
+          sigil = this,
+          chain = chain,
+          conversation = conv,
+          conversationContext = curated,
+          currentAgentStateId = Some(claimedId)
+        )
+        (ctx, triggers)
+      }
+    }
+
+  private final def newTriggersExist(agent: AgentParticipant,
+                                     conv: Conversation,
+                                     sinceTimestamp: Timestamp): Task[Boolean] =
+    withDB(_.events.transaction(_.list)).map { all =>
+      all.exists(e => e.conversationId == conv._id
+                   && e.timestamp.value > sinceTimestamp.value
+                   && TriggerFilter.isTriggerFor(agent, e))
+    }
+
+  private final def buildChain(triggers: List[Event], agent: AgentParticipant): List[ParticipantId] = {
+    val source = triggers.find(_.participantId != agent.id).map(_.participantId)
+    source.toList :+ agent.id
+  }
+
+  /** Stable per-(agent, conversation) id used as both the AgentState key and
+    * the lock-acquisition target inside `tx.modify`. */
+  private final def agentStateLockId(agentId: AgentParticipantId, convId: Id[Conversation]): Id[Event] =
+    Id(s"agentlock:${agentId.value}:${convId.value}")
 
   // -- lifecycle --
 

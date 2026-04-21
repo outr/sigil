@@ -5,10 +5,12 @@ import fabric.io.{JsonFormatter, JsonParser}
 import fabric.rw.*
 import rapid.{Stream, Task}
 import sigil.db.Model
-import sigil.event.Message
+import sigil.event.{Event, EventVisibility, Message, ModeChange, TitleChange, ToolInvoke, ToolResults}
 import sigil.provider.*
 import sigil.tool.{DefinitionToSchema, ToolInput, ToolSchema}
 import sigil.tool.model.ResponseContent
+import sigil.tool.ToolInput.given
+import spice.http.{HttpMethod, HttpRequest}
 import spice.http.client.HttpClient
 import spice.http.content.StringContent
 import spice.net.*
@@ -25,17 +27,22 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
    * accumulated into a final `ToolCallComplete` event when `finish_reason`
    * arrives.
    */
-  override def apply(request: ProviderRequest): Stream[ProviderEvent] = {
+  override def requestConverter(request: ProviderRequest): HttpRequest = {
     val modelName = stripProviderPrefix(request.modelId.value)
-    val body = buildBody(modelName, request)
-    val bodyStr = JsonFormatter.Compact(body)
+    val bodyStr = JsonFormatter.Compact(buildBody(modelName, request))
+    HttpRequest(
+      method = HttpMethod.Post,
+      url = url.withPath("/v1/chat/completions"),
+      content = Some(StringContent(bodyStr, ContentType.`application/json`))
+    )
+  }
+
+  override def apply(request: ProviderRequest): Stream[ProviderEvent] = {
+    val httpRequest = requestConverter(request)
     val state = new StreamState(new ToolCallAccumulator(request.tools))
 
     Stream.force(
-      HttpClient
-        .url(url.withPath("/v1/chat/completions"))
-        .post
-        .content(StringContent(bodyStr, ContentType.`application/json`))
+      HttpClient.modify(_ => httpRequest)
         .noFailOnHttpStatus
         .streamLines()
         .map(lines => lines.flatMap(line => Stream.emits(parseLine(line, state))))
@@ -43,19 +50,9 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
   }
 
   private def buildBody(modelName: String, request: ProviderRequest): Json = {
-    val modePreamble = s"Current mode: ${request.currentMode} — ${request.currentMode.description}\n\n"
-    val systemMsg = obj("role" -> str("system"), "content" -> str(modePreamble + request.instructions.render))
-    val messages = request.context.events.collect { case m: Message =>
-      val text = m.content
-        .map {
-          case ResponseContent.Text(t) => t
-          case ResponseContent.Markdown(t) => t
-          case ResponseContent.Code(c, lang) => s"```${lang.getOrElse("")}\n$c\n```"
-          case other => other.toString
-        }
-        .mkString("\n")
-      obj("role" -> str("user"), "content" -> str(text))
-    }
+    val agentId = request.chain.lastOption
+    val systemMsg = obj("role" -> str("system"), "content" -> str(buildSystemContent(request)))
+    val messages = renderHistory(request.context.events, agentId)
 
     val toolsArr = request.tools.map { t =>
       val s = t.schema
@@ -94,6 +91,217 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
 
     obj((baseFields ++ toolFields ++ generationFields)*)
   }
+
+  /**
+   * Compose the system message body from every contextually relevant
+   * field on the request. Each section is omitted when its source is
+   * empty so the wire payload stays compact.
+   *
+   *   - mode + description (always)
+   *   - instructions (always)
+   *   - critical memories (`ConversationContext.criticalMemories`)
+   *   - earlier-conversation summaries (`ConversationContext.summaries`)
+   *   - active memories (`ConversationContext.memories`)
+   *   - referenced information catalog (`ConversationContext.information`)
+   *   - active skills aggregated across chain participants
+   *     (`ConversationContext.aggregatedSkills(chain)`)
+   *   - recent / suggested tools per chain participant
+   *   - app-supplied extra context, both conversation-wide
+   *     (`ConversationContext.extraContext`) and per-participant
+   *     (`ParticipantContext.extraContext`)
+   *
+   * Every Model-visible field on `ConversationContext` /
+   * `ParticipantContext` MUST appear here. The companion
+   * [[spec.LlamaCppRequestCoverageSpec]] is the regression guard.
+   */
+  private def buildSystemContent(request: ProviderRequest): String = {
+    val ctx = request.context
+    val chain = request.chain
+    val sb = new StringBuilder
+
+    sb.append(s"Current mode: ${request.currentMode} — ${request.currentMode.description}\n")
+
+    val instr = request.instructions.render
+    if (instr.nonEmpty) sb.append("\n").append(instr).append("\n")
+
+    if (ctx.criticalMemories.nonEmpty) {
+      sb.append("\n== Critical directives ==\n")
+      ctx.criticalMemories.foreach(m => sb.append(s"- ${m.key}: ${m.fact}\n"))
+    }
+
+    if (ctx.summaries.nonEmpty) {
+      sb.append("\n== Earlier in this conversation ==\n")
+      ctx.summaries.foreach(s => sb.append(s.text).append("\n"))
+    }
+
+    if (ctx.memories.nonEmpty) {
+      sb.append("\n== Memories ==\n")
+      ctx.memories.foreach(m => sb.append(s"- ${m.key}: ${m.fact}\n"))
+    }
+
+    if (ctx.information.nonEmpty) {
+      sb.append("\n== Referenced content (look up by id) ==\n")
+      ctx.information.foreach(i => sb.append(s"- ${i.id.value} [${i.informationType.name}]: ${i.summary}\n"))
+    }
+
+    val skills = ctx.aggregatedSkills(chain)
+    if (skills.nonEmpty) {
+      sb.append("\n== Active skills ==\n")
+      skills.foreach { s =>
+        sb.append(s"- ${s.name}\n")
+        if (s.content.nonEmpty) sb.append(s.content).append("\n")
+      }
+    }
+
+    val recentTools = chain.flatMap(id => ctx.forParticipant(id).recentTools).distinct
+    if (recentTools.nonEmpty) {
+      sb.append("\n== Recently used tools ==\n")
+      recentTools.foreach(t => sb.append(s"- $t\n"))
+    }
+
+    val suggestedTools = chain.flatMap(id => ctx.forParticipant(id).suggestedTools).distinct
+    if (suggestedTools.nonEmpty) {
+      sb.append("\n== Suggested tools ==\n")
+      suggestedTools.foreach(t => sb.append(s"- $t\n"))
+    }
+
+    if (ctx.extraContext.nonEmpty) {
+      sb.append("\n== Conversation context ==\n")
+      ctx.extraContext.foreach { case (k, v) => sb.append(s"- ${k.value}: $v\n") }
+    }
+
+    val perParticipantExtras = chain.flatMap(id => ctx.forParticipant(id).extraContext.map(id -> _))
+    if (perParticipantExtras.nonEmpty) {
+      sb.append("\n== Participant context ==\n")
+      perParticipantExtras.foreach { case (pid, (k, v)) =>
+        sb.append(s"- ${pid.value} ${k.value}: $v\n")
+      }
+    }
+
+    sb.toString
+  }
+
+  /**
+   * Render the conversation event log into the OpenAI/llama.cpp message
+   * format the chat-completions endpoint expects, so the LLM has full
+   * memory of its own prior actions across iterations.
+   *
+   * Only Events whose `visibility` includes `EventVisibility.Model` are
+   * candidates for inclusion — events the framework has explicitly marked
+   * as UI-only (e.g. `TitleChange`, `AgentState` lifecycle markers) are
+   * filtered out before any rendering happens.
+   *
+   * Mapping rules for the surviving events:
+   *   - `Message` from the agent itself → `{role: "assistant", content}`
+   *   - `Message` from anyone else      → `{role: "user", content}`
+   *   - `ToolInvoke` from the agent for any tool *other than* `respond` →
+   *     `{role: "assistant", tool_calls: [{id, function: {name, arguments}}]}`
+   *     where `id` is the ToolInvoke's `_id` and `arguments` is the input
+   *     serialized through the `ToolInput` poly.
+   *   - `ToolInvoke` for `respond` is skipped — the following `Message` IS
+   *     the response, and emitting both yields a tool_call without a
+   *     matching tool_result, which models handle poorly.
+   *   - The next `ModeChange` / `ToolResults` after a pending `ToolInvoke`
+   *     is paired with it as `{role: "tool", tool_call_id, content}`.
+   *     Without pairing the model sees a dangling assistant tool_call and
+   *     may repeat it.
+   */
+  private[llamacpp] def renderHistory(events: Vector[Event], agentId: Option[sigil.participant.ParticipantId]): Vector[Json] = {
+    val out = Vector.newBuilder[Json]
+    var pendingToolCall: Option[(String, String)] = None  // (tool_call_id, tool name)
+
+    def flushAsContent(content: String): Unit = {
+      pendingToolCall.foreach { case (callId, _) =>
+        out += obj(
+          "role" -> str("tool"),
+          "tool_call_id" -> str(callId),
+          "content" -> str(content)
+        )
+      }
+      pendingToolCall = None
+    }
+
+    events.filter(_.visibility.contains(EventVisibility.Model)).foreach {
+      case m: Message =>
+        val isAssistant = agentId.contains(m.participantId)
+        val text = renderMessageText(m)
+        if (isAssistant && pendingToolCall.isDefined) {
+          // Streaming respond path: the agent's Message is the result of
+          // its own preceding ToolInvoke (the `respond` ToolInvoke was
+          // skipped, so this only fires for unusual non-respond streaming
+          // tools). Pair with pending and also emit as assistant.
+          flushAsContent(text)
+          out += obj("role" -> str("assistant"), "content" -> str(text))
+        } else if (isAssistant) {
+          out += obj("role" -> str("assistant"), "content" -> str(text))
+        } else {
+          out += obj("role" -> str("user"), "content" -> str(text))
+        }
+      case ti: ToolInvoke if agentId.contains(ti.participantId) =>
+        if (ti.toolName == "respond") {
+          // Skip — the following Message is the actual response.
+        } else {
+          val callId = ti._id.value
+          val argsJson = ti.input
+            .map(i => JsonFormatter.Compact(summon[RW[ToolInput]].read(i)))
+            .getOrElse("{}")
+          out += obj(
+            "role" -> str("assistant"),
+            "tool_calls" -> arr(obj(
+              "id" -> str(callId),
+              "type" -> str("function"),
+              "function" -> obj(
+                "name" -> str(ti.toolName),
+                "arguments" -> str(argsJson)
+              )
+            ))
+          )
+          pendingToolCall = Some((callId, ti.toolName))
+        }
+      case _: ToolInvoke =>
+        // ToolInvoke from someone else — skip
+      case mc: ModeChange =>
+        flushAsContent(s"Mode changed to ${mc.mode}.")
+      case tc: TitleChange =>
+        flushAsContent(s"Title changed to: ${tc.title}")
+      case tr: ToolResults =>
+        val rendered =
+          if (tr.schemas.isEmpty) "No matches."
+          else tr.schemas.map(s => s"- ${s.name}: ${s.description}").mkString("\n")
+        flushAsContent(rendered)
+      case other =>
+        // Model-visible Event subtype not yet handled by this provider.
+        // Fail loud rather than silently dropping — every Model-visible
+        // event MUST appear in the wire output (regression invariant).
+        throw new RuntimeException(
+          s"LlamaCppProvider.renderHistory: Model-visible Event ${other.getClass.getSimpleName} " +
+            s"has no rendering rule. Add a case to renderHistory or remove EventVisibility.Model from the event."
+        )
+    }
+
+    // Dangling tool_call without a result — fabricate a minimal "ok" so the
+    // history isn't malformed. Defensive: shouldn't happen in correct
+    // dispatcher operation.
+    pendingToolCall.foreach { case (callId, _) =>
+      out += obj(
+        "role" -> str("tool"),
+        "tool_call_id" -> str(callId),
+        "content" -> str("(no result recorded)")
+      )
+    }
+
+    out.result()
+  }
+
+  private def renderMessageText(m: Message): String =
+    m.content
+      .map {
+        case ResponseContent.Text(t) => t
+        case ResponseContent.Markdown(t) => t
+        case ResponseContent.Code(c, lang) => s"```${lang.getOrElse("")}\n$c\n```"
+        case other => other.toString
+      }
+      .mkString("\n")
 
   private def parseLine(line: String, state: StreamState): Vector[ProviderEvent] = {
     val trimmed = line.trim

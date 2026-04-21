@@ -5,13 +5,14 @@ import fabric.rw.*
 import lightdb.id.Id
 import profig.Profig
 import rapid.Task
-import sigil.Sigil
+import sigil.{Sigil, SignalBroadcaster, TurnContext}
 import sigil.conversation.{Conversation, ConversationContext}
 import sigil.event.Event
 import sigil.information.{FullInformation, Information}
-import sigil.participant.{AgentParticipantId, ParticipantId}
-import sigil.TurnContext
+import sigil.participant.{AgentParticipant, AgentParticipantId, Participant, ParticipantId}
 import sigil.tool.{InMemoryToolFinder, Tool, ToolFinder, ToolInput}
+
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Shared test Sigil — single instance reused across all specs to avoid
@@ -30,6 +31,34 @@ object TestSigil extends Sigil {
   override val findTools: ToolFinder = InMemoryToolFinder(tools)
 
   override def curate(ctx: ConversationContext): Task[ConversationContext] = Task.pure(ctx)
+
+  // -- test-only mutable wiring for dispatcher specs --
+
+  private val agentsRegistry = new java.util.concurrent.ConcurrentHashMap[AgentParticipantId, AgentParticipant]()
+  private val broadcasterRef = new AtomicReference[SignalBroadcaster](SignalBroadcaster.NoOp)
+
+  /** Register a test agent so `participantsFor` returns it for any
+    * conversation. Cleared between tests via `resetAgents`. */
+  def registerAgent(agent: AgentParticipant): Unit = {
+    agentsRegistry.put(agent.id, agent)
+    ()
+  }
+
+  def resetAgents(): Unit = agentsRegistry.clear()
+
+  /** Replace the broadcaster for the current test (typically with a
+    * `RecordingBroadcaster` to capture emissions). Reset to `NoOp` between
+    * tests via `resetBroadcaster`. */
+  def setBroadcaster(b: SignalBroadcaster): Unit = broadcasterRef.set(b)
+
+  def resetBroadcaster(): Unit = broadcasterRef.set(SignalBroadcaster.NoOp)
+
+  override def broadcaster: SignalBroadcaster = broadcasterRef.get()
+
+  override def participantsFor(conversationId: Id[Conversation]): Task[List[Participant]] = Task {
+    import scala.jdk.CollectionConverters.*
+    agentsRegistry.values().asScala.toList
+  }
 
   // getInformation uses Sigil's default (Task.pure(None)).
 

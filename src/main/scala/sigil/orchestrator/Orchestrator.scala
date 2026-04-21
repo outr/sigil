@@ -39,9 +39,7 @@ import sigil.tool.{Tool, ToolInput}
 object Orchestrator {
 
   def process(sigil: Sigil, provider: Provider, request: ProviderRequest): Stream[Signal] = {
-    val conversation: Conversation = new Conversation {
-      override val id = request.conversationId
-    }
+    val conversation: Conversation = Conversation(_id = request.conversationId)
     val toolsByName: Map[String, Tool[? <: ToolInput]] = request.tools.map(t => t.schema.name -> t).toMap
     val state = new State()
 

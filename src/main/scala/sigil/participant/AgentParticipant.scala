@@ -4,21 +4,24 @@ import lightdb.id.Id
 import rapid.{Stream, Task}
 import sigil.TurnContext
 import sigil.db.Model
-import sigil.event.{AgentState, Event, Message}
+import sigil.event.{Event, Message}
 import sigil.orchestrator.Orchestrator
-import sigil.provider.{GenerationSettings, Instructions, Mode, Provider, ProviderRequest}
-import sigil.signal.{AgentActivity, AgentStateDelta, EventState, Signal}
+import sigil.provider.{GenerationSettings, Instructions, Provider, ProviderRequest}
+import sigil.signal.{AgentActivity, AgentStateDelta, Signal}
 import sigil.tool.{Tool, ToolInput}
 
 /**
  * A participant that acts autonomously — typically LLM-backed. Carries the
  * configuration needed to drive a provider round-trip and, by default,
- * implements `process` by running the standard LLM loop wrapped in an
- * [[AgentState]] lifecycle (Thinking → … → Idle).
+ * implements `process` by running one LLM round-trip and translating its
+ * provider events into [[Signal]]s.
  *
- * Single-threaded per agent: the app-level dispatcher guarantees one
- * `process` invocation is in flight at a time. Events that arrive during
- * processing accumulate in the agent's mailbox for the next invocation.
+ * The framework dispatcher (`Sigil.publish`) owns the surrounding
+ * [[sigil.event.AgentState]] lifecycle: it claims an `AgentState(Active)`
+ * with `activity = Thinking` before invoking `process`, and emits the
+ * terminal `AgentStateDelta(Idle, Complete)` after the agent's self-loop
+ * settles. `defaultProcess` only emits the mid-turn `Typing` transition,
+ * targeted at `context.currentAgentStateId`.
  *
  * Apps override `process` (or the protected `defaultProcess`) for custom
  * agent behaviors (Planner, Critic, Worker patterns). Vanilla agents just
@@ -43,97 +46,62 @@ trait AgentParticipant extends Participant {
   def tools: Vector[Tool[? <: ToolInput]] = Vector.empty
 
   /**
-   * Current operating mode. Default `Conversation`. Apps override to derive
-   * from the latest `ModeChange` event in the conversation, or from app
-   * state.
-   */
-  def currentMode: Mode = Mode.Conversation
-
-  /**
    * Entry point invoked by the dispatcher. Default delegates to
    * [[defaultProcess]]; override for fundamentally different agent shapes.
    */
-  override def process(context: TurnContext, triggers: List[Event]): Stream[Signal] =
+  override def process(context: TurnContext, triggers: Stream[Event]): Stream[Signal] =
     defaultProcess(context, triggers)
 
   /**
-   * Standard LLM-loop behavior:
+   * Standard one-round-trip behavior:
    *
-   *   1. Decide whether to respond. Default rule: any trigger is a Message
-   *      from another participant. Override [[shouldRespond]] for fancier
-   *      logic (mentions, access rules, persona matching).
-   *   2. Emit [[AgentState]] with `activity = Thinking, state = Active`.
-   *   3. Run the provider round-trip via [[Orchestrator.process]] — produces
-   *      ToolInvokes, Messages, Deltas for everything the LLM emits.
-   *      Transitions activity to `Typing` the first time the orchestrator
-   *      emits a new [[sigil.event.Message]] (streaming content has
-   *      started).
-   *   4. Emit [[AgentStateDelta]] with `activity = Idle, state = Complete`
-   *      at the end of the stream.
+   *   1. Build a [[ProviderRequest]] from the agent's config + the curated
+   *      [[sigil.conversation.ConversationContext]] in `context`.
+   *   2. Invoke the provider; translate the resulting `ProviderEvent`s into
+   *      `Signal`s via [[Orchestrator.process]].
+   *   3. The first time the orchestrator emits a [[Message]] (streaming
+   *      content has started), prepend an [[AgentStateDelta]] transitioning
+   *      `activity = Typing`. Targets `context.currentAgentStateId`.
+   *
+   * This intentionally does NOT emit the surrounding `AgentState(Thinking,
+   * Active)` event nor the terminal `AgentStateDelta(Idle, Complete)` — both
+   * are owned by the framework dispatcher.
+   *
+   * `triggers` is unused here by default; the agent acts purely on the
+   * curated context. Custom overrides can inspect triggers to tailor
+   * behavior (e.g. mention-aware responses).
    */
-  protected def defaultProcess(context: TurnContext, triggers: List[Event]): Stream[Signal] = {
-    if (!shouldRespond(context, triggers)) Stream.empty
-    else runTurn(context)
-  }
-
-  /**
-   * Default "should this agent respond?" rule: any trigger is a Message
-   * from a participant that isn't me. Override for mention-based routing,
-   * persona-specific filters, etc.
-   */
-  protected def shouldRespond(context: TurnContext, triggers: List[Event]): Boolean =
-    triggers.exists {
-      case m: Message => m.participantId != id
-      case _          => false
-    }
-
-  private def runTurn(context: TurnContext): Stream[Signal] = {
-    val agentStateId = Event.id()
-    val conversationId = context.conversation.id
-    val effectiveChain = context.chain :+ id
-
-    val agentState = AgentState(
-      agentId = id,
-      participantId = id,
-      conversationId = conversationId,
-      _id = agentStateId,
-      activity = AgentActivity.Thinking,
-      state = EventState.Active
-    )
-
+  protected def defaultProcess(context: TurnContext, triggers: Stream[Event]): Stream[Signal] = {
+    // Ensure the agent's id is `chain.last` — the chain's invariant is
+    // "actor at the end". In the dispatcher path the chain already ends
+    // with `agent.id`; in direct callers (tests, custom drivers) it might
+    // not. Normalize either way.
+    val effectiveChain = context.chain.filterNot(_ == id) :+ id
     val request = ProviderRequest(
-      conversationId = conversationId,
+      conversationId = context.conversation.id,
       modelId = modelId,
       instructions = instructions,
       context = context.conversationContext,
-      currentMode = currentMode,
+      currentMode = context.conversation.currentMode,
       generationSettings = generationSettings,
       tools = tools,
       chain = effectiveChain
     )
 
     val typingEmitted = new java.util.concurrent.atomic.AtomicBoolean(false)
-    val providerStream: Stream[Signal] =
-      Stream.force(provider.map(p => Orchestrator.process(context.sigil, p, request))).flatMap { sig =>
-        val prefix: List[Signal] = sig match {
-          case _: Message if typingEmitted.compareAndSet(false, true) =>
-            List(AgentStateDelta(
+    Stream.force(provider.map(p => Orchestrator.process(context.sigil, p, request))).flatMap { sig =>
+      val prefix: List[Signal] = sig match {
+        case _: Message if typingEmitted.compareAndSet(false, true) =>
+          context.currentAgentStateId.toList.map { agentStateId =>
+            AgentStateDelta(
               target = agentStateId,
-              conversationId = conversationId,
+              conversationId = context.conversation.id,
               activity = Some(AgentActivity.Typing)
-            ))
-          case _ => Nil
-        }
-        Stream.emits(prefix :+ sig)
+            )
+          }
+        case _ => Nil
       }
-
-    val idleDelta = AgentStateDelta(
-      target = agentStateId,
-      conversationId = conversationId,
-      activity = Some(AgentActivity.Idle),
-      state = Some(EventState.Complete)
-    )
-
-    Stream.emits(List[Signal](agentState)) ++ providerStream ++ Stream.emits(List[Signal](idleDelta))
+      Stream.emits(prefix :+ sig)
+    }
   }
 }

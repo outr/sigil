@@ -1,6 +1,8 @@
 package sigil
 
+import lightdb.id.Id
 import sigil.conversation.{Conversation, ConversationContext}
+import sigil.event.Event
 import sigil.participant.ParticipantId
 
 /**
@@ -28,6 +30,14 @@ import sigil.participant.ParticipantId
  *                            typically by loading from DB and running
  *                            `Sigil.curate` — before handing it to the
  *                            participant or tool.
+ * @param currentAgentStateId the id of the active [[sigil.event.AgentState]]
+ *                            for the agent processing this turn, when
+ *                            applicable. Set by the framework's dispatcher
+ *                            so an agent can target lifecycle deltas
+ *                            (Thinking → Typing transitions) at its own
+ *                            AgentState without a DB lookup. `None` when no
+ *                            AgentState is active (e.g., user-typed Message
+ *                            being published externally).
  *
  * Chain is runtime-only — never persisted on Events. Each invocation's caller
  * supplies it fresh.
@@ -35,7 +45,8 @@ import sigil.participant.ParticipantId
 case class TurnContext(sigil: Sigil,
                        chain: List[ParticipantId],
                        conversation: Conversation,
-                       conversationContext: ConversationContext = ConversationContext()) {
+                       conversationContext: ConversationContext = ConversationContext(),
+                       currentAgentStateId: Option[Id[Event]] = None) {
 
   /**
    * The participant currently acting — `chain.last`.
