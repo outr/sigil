@@ -1,6 +1,7 @@
 package sigil.db
 
 import lightdb.LightDB
+import lightdb.cache.CacheConfig
 import lightdb.id.Id
 import lightdb.lucene.LuceneStore
 import lightdb.rocksdb.RocksDBSharedStore
@@ -13,14 +14,15 @@ import sigil.event.Event
 import sigil.signal.{Delta, Signal}
 
 import java.nio.file.Path
+import scala.concurrent.duration.*
 
 case class SigilDB(directory: Option[Path], storeManager: CollectionManager) extends LightDB {
   override type SM = CollectionManager
 
-  val model: S[Model, Model.type] = store(Model)()
+  val model: S[Model, Model.type] = store(Model).withCache(CacheConfig.unbounded)()
   val events: S[Event, Event.type] = store(Event)()
-  val conversations: S[Conversation, Conversation.type] = store(Conversation)()
-  val memories: S[ContextMemory, ContextMemory.type] = store(ContextMemory)()
+  val conversations: S[Conversation, Conversation.type] = store(Conversation).withCache(CacheConfig.lru(1000))()
+  val memories: S[ContextMemory, ContextMemory.type] = store(ContextMemory).withCache(CacheConfig.lru(500, 5.minutes))()
 
   override def upgrades: List[DatabaseUpgrade] = Nil
 
