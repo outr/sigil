@@ -53,6 +53,7 @@ jobs:
       - name: Build and test
         env:
           GITHUB_TOKEN: ${{ secrets.ADMIN_GITHUB_TOKEN }}
+          SIGIL_LLAMACPP_HOST: ${{ secrets.SIGIL_LLAMACPP_HOST }}
         run: |
           sbt -v -Dfile.encoding=UTF-8 "testOnly -- -l spec.LocalOnly"
           rm -rf "$HOME/.ivy2/local" || true
