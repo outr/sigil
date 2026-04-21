@@ -1,7 +1,7 @@
 package sigil.participant
 
 import rapid.Stream
-import sigil.TurnContext
+import sigil.{PolyType, TurnContext}
 import sigil.event.Event
 import sigil.signal.Signal
 
@@ -42,3 +42,5 @@ trait Participant {
    */
   def process(context: TurnContext, triggers: Stream[Event]): Stream[Signal] = Stream.empty
 }
+
+object Participant extends PolyType[Participant]

@@ -11,10 +11,15 @@ import sigil.signal.{AgentActivity, AgentStateDelta, Signal}
 import sigil.tool.{Tool, ToolInput}
 
 /**
- * A participant that acts autonomously — typically LLM-backed. Carries the
- * configuration needed to drive a provider round-trip and, by default,
- * implements `process` by running one LLM round-trip and translating its
- * provider events into [[Signal]]s.
+ * A participant that acts autonomously — typically LLM-backed. Pure data:
+ * every field is serializable so the full `AgentParticipant` can round-trip
+ * through fabric RW and be persisted on [[sigil.conversation.Conversation]].
+ *
+ * Runtime dependencies — the live [[sigil.provider.Provider]] and the tool
+ * instances to hand to it — are resolved lazily inside `defaultProcess` via
+ * [[sigil.Sigil.providerFor]] and [[sigil.tool.ToolFinder.byName]]. This
+ * keeps the agent itself purely descriptive ("what this agent is") and
+ * leaves the "how to run it right now" to Sigil.
  *
  * The framework dispatcher (`Sigil.publish`) owns the surrounding
  * [[sigil.event.AgentState]] lifecycle: it claims an `AgentState(Active)`
@@ -24,8 +29,8 @@ import sigil.tool.{Tool, ToolInput}
  * targeted at `context.currentAgentStateId`.
  *
  * Apps override `process` (or the protected `defaultProcess`) for custom
- * agent behaviors (Planner, Critic, Worker patterns). Vanilla agents just
- * supply configuration and let the default take over.
+ * agent behaviors (Planner, Critic, Worker patterns). Vanilla agents use
+ * [[DefaultAgentParticipant]] without subclassing.
  */
 trait AgentParticipant extends Participant {
   override def id: AgentParticipantId
@@ -33,17 +38,23 @@ trait AgentParticipant extends Participant {
   /** The model this agent uses for provider round-trips. */
   def modelId: Id[Model]
 
-  /** Factory for the Provider that serves `modelId`. */
-  def provider: Task[Provider]
+  /**
+   * Tools available to this agent, referenced by `schema.name`. The
+   * dispatcher rehydrates each name to a live `Tool` instance at call time
+   * via [[sigil.tool.ToolFinder.byName]]. Names not found are dropped; the
+   * agent runs with whatever the finder resolves.
+   *
+   * Use [[sigil.tool.core.CoreTools.coreToolNames]] for the framework
+   * baseline, e.g.
+   * `toolNames = CoreTools.coreToolNames ++ List("my_app_tool")`.
+   */
+  def toolNames: List[String] = Nil
 
   /** System / developer instructions prepended to every turn. */
   def instructions: Instructions = Instructions()
 
   /** Sampling + limits for provider requests. */
   def generationSettings: GenerationSettings = GenerationSettings()
-
-  /** Tools available to the agent on every turn. */
-  def tools: Vector[Tool[? <: ToolInput]] = Vector.empty
 
   /**
    * Entry point invoked by the dispatcher. Default delegates to
@@ -55,53 +66,68 @@ trait AgentParticipant extends Participant {
   /**
    * Standard one-round-trip behavior:
    *
-   *   1. Build a [[ProviderRequest]] from the agent's config + the curated
-   *      [[sigil.conversation.ConversationContext]] in `context`.
-   *   2. Invoke the provider; translate the resulting `ProviderEvent`s into
-   *      `Signal`s via [[Orchestrator.process]].
-   *   3. The first time the orchestrator emits a [[Message]] (streaming
+   *   1. Resolve the live [[sigil.provider.Provider]] via
+   *      `sigil.providerFor(modelId, chain)` (chain carries the originating
+   *      participant so app credential resolvers can pick the right keys).
+   *   2. Resolve each name in `toolNames` to a live `Tool` via
+   *      `sigil.findTools.byName(name, chain)`. Names that don't resolve
+   *      are dropped.
+   *   3. Build a [[ProviderRequest]] and run it; translate the provider's
+   *      stream into `Signal`s via [[Orchestrator.process]].
+   *   4. The first time the orchestrator emits a [[Message]] (streaming
    *      content has started), prepend an [[AgentStateDelta]] transitioning
    *      `activity = Typing`. Targets `context.currentAgentStateId`.
    *
    * This intentionally does NOT emit the surrounding `AgentState(Thinking,
-   * Active)` event nor the terminal `AgentStateDelta(Idle, Complete)` — both
-   * are owned by the framework dispatcher.
+   * Active)` event nor the terminal `AgentStateDelta(Idle, Complete)` —
+   * both are owned by the framework dispatcher.
    *
    * `triggers` is unused here by default; the agent acts purely on the
    * curated context. Custom overrides can inspect triggers to tailor
    * behavior (e.g. mention-aware responses).
    */
   protected def defaultProcess(context: TurnContext, triggers: Stream[Event]): Stream[Signal] = {
+    val sigil = context.sigil
     // Ensure the agent's id is `chain.last` — the chain's invariant is
     // "actor at the end". In the dispatcher path the chain already ends
     // with `agent.id`; in direct callers (tests, custom drivers) it might
     // not. Normalize either way.
     val effectiveChain = context.chain.filterNot(_ == id) :+ id
-    val request = ProviderRequest(
-      conversationId = context.conversation.id,
-      modelId = modelId,
-      instructions = instructions,
-      context = context.conversationContext,
-      currentMode = context.conversation.currentMode,
-      generationSettings = generationSettings,
-      tools = tools,
-      chain = effectiveChain
-    )
 
-    val typingEmitted = new java.util.concurrent.atomic.AtomicBoolean(false)
-    Stream.force(provider.map(p => Orchestrator.process(context.sigil, p, request))).flatMap { sig =>
-      val prefix: List[Signal] = sig match {
-        case _: Message if typingEmitted.compareAndSet(false, true) =>
-          context.currentAgentStateId.toList.map { agentStateId =>
-            AgentStateDelta(
-              target = agentStateId,
-              conversationId = context.conversation.id,
-              activity = Some(AgentActivity.Typing)
-            )
-          }
-        case _ => Nil
+    val resolved: Task[(Provider, Vector[Tool[? <: ToolInput]])] =
+      for {
+        p <- sigil.providerFor(modelId, effectiveChain)
+        t <- Task.sequence(toolNames.map(n => sigil.findTools.byName(n, effectiveChain)))
+               .map(_.flatten.toVector)
+      } yield (p, t)
+
+    Stream.force(resolved.map { case (provider, tools) =>
+      val request = ProviderRequest(
+        conversationId = context.conversation.id,
+        modelId = modelId,
+        instructions = instructions,
+        context = context.conversationContext,
+        currentMode = context.conversation.currentMode,
+        generationSettings = generationSettings,
+        tools = tools,
+        chain = effectiveChain
+      )
+
+      val typingEmitted = new java.util.concurrent.atomic.AtomicBoolean(false)
+      Orchestrator.process(sigil, provider, request).flatMap { sig =>
+        val prefix: List[Signal] = sig match {
+          case _: Message if typingEmitted.compareAndSet(false, true) =>
+            context.currentAgentStateId.toList.map { agentStateId =>
+              AgentStateDelta(
+                target = agentStateId,
+                conversationId = context.conversation.id,
+                activity = Some(AgentActivity.Typing)
+              )
+            }
+          case _ => Nil
+        }
+        Stream.emits(prefix :+ sig)
       }
-      Stream.emits(prefix :+ sig)
-    }
+    })
   }
 }

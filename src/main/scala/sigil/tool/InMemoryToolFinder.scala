@@ -36,6 +36,9 @@ case class InMemoryToolFinder(tools: List[Tool[? <: ToolInput]]) extends ToolFin
       .map(_._1)
   }
 
+  override def byName(name: String, participants: List[ParticipantId]): Task[Option[Tool[? <: ToolInput]]] =
+    Task(tools.find(_.schema.name.equalsIgnoreCase(name)))
+
   private def score(tool: Tool[? <: ToolInput], keywords: List[String]): Double = {
     val schema = tool.schema
     val nameLower = schema.name.toLowerCase

@@ -8,7 +8,7 @@ import sigil.TurnContext
 import sigil.conversation.{Conversation, ConversationContext}
 import sigil.db.Model
 import sigil.event.{Event, Message, ModeChange, ToolInvoke}
-import sigil.participant.{AgentParticipant, AgentParticipantId}
+import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant}
 import sigil.provider.{GenerationSettings, Instructions, Mode, Provider}
 import sigil.signal.{AgentActivity, AgentStateDelta, EventState, MessageDelta, Signal, ToolDelta}
 import sigil.tool.{Tool, ToolInput}
@@ -30,20 +30,22 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   protected def modelId: Id[Model]
 
-  protected def tools: Vector[Tool[? <: ToolInput]] = CoreTools(TestSigil).all
+  /** Wire the spec's provider into TestSigil so `providerFor` returns it. */
+  TestSigil.setProvider(provider)
 
-  protected def makeAgent(): AgentParticipant = {
-    val spec = this
-    new AgentParticipant {
-      override val id: AgentParticipantId = TestAgent
-      override val modelId: Id[Model] = spec.modelId
-      override def provider: Task[Provider] = spec.provider
-      override def tools: Vector[Tool[? <: ToolInput]] = spec.tools
-      override def instructions: Instructions = Instructions()
-      override def generationSettings: GenerationSettings =
-        GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0))
-    }
-  }
+  /** Tool names the test agent advertises. CoreTools' names + the synthetic
+    * SendSlackMessageTool so `find_capability` has a catalog entry. */
+  protected def toolNames: List[String] =
+    CoreTools.coreToolNames :+ SendSlackMessageTool.schema.name
+
+  protected def makeAgent(): AgentParticipant =
+    DefaultAgentParticipant(
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = toolNames,
+      instructions = Instructions(),
+      generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0))
+    )
 
   /** A synthesized AgentState id used when we want defaultProcess to emit
     * the Typing transition during streaming responses. The real dispatcher

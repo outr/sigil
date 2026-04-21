@@ -11,7 +11,8 @@ import sigil.db.{Model, SigilDB}
 import sigil.dispatcher.TriggerFilter
 import sigil.event.{AgentState, Event, ModeChange}
 import sigil.information.{FullInformation, Information}
-import sigil.participant.{AgentParticipant, AgentParticipantId, Participant, ParticipantId}
+import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
+import sigil.provider.Provider
 import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, EventState, Signal}
 import sigil.tool.core.CoreTools
 import sigil.tool.{ToolFinder, ToolInput}
@@ -86,16 +87,30 @@ trait Sigil {
    */
   def broadcaster: SignalBroadcaster = SignalBroadcaster.NoOp
 
-  // -- participant resolution --
+  // -- participants (registration for polymorphic RW) --
 
   /**
-   * Resolve the participants currently active in a conversation. The
-   * framework dispatcher calls this on every fan-out to decide who to
-   * forward each Event to. Default returns Nil; apps override (typically by
-   * loading [[Conversation.participantIds]] from the DB and resolving each
-   * to a concrete [[Participant]] via an app registry).
+   * App-specific [[Participant]] subtypes registered into the polymorphic
+   * discriminator so [[sigil.conversation.Conversation.participants]] can
+   * round-trip them through fabric RW. Framework subtypes
+   * ([[DefaultAgentParticipant]]) are registered automatically; this list
+   * extends the poly with app-specific agent types (Planner, Critic, etc.).
    */
-  def participantsFor(conversationId: Id[Conversation]): Task[List[Participant]] = Task.pure(Nil)
+  protected def participants: List[RW[? <: Participant]] = Nil
+
+  // -- provider resolution --
+
+  /**
+   * Resolve a live [[Provider]] for the given model, scoped to the
+   * participant chain. The chain lets the app pick credentials
+   * (API keys, OAuth tokens, billing accounts) tied to the originating
+   * participant — typically `chain.head` is the user whose key pays for
+   * the call.
+   *
+   * Called by [[AgentParticipant.defaultProcess]] at every turn; no
+   * caching in the framework. Apps cache if they care.
+   */
+  def providerFor(modelId: Id[Model], chain: List[ParticipantId]): Task[Provider]
 
   // -- framework dispatch (entry point) --
 
@@ -137,13 +152,11 @@ trait Sigil {
     withDB(_.conversations.transaction(_.get(event.conversationId))).flatMap {
       case None       => Task.unit
       case Some(conv) =>
-        participantsFor(conv._id).flatMap { participants =>
-          val tasks: List[Task[Unit]] = participants.collect {
-            case agent: AgentParticipant if TriggerFilter.isTriggerFor(agent, event) =>
-              tryFire(agent, conv)
-          }
-          Task.sequence(tasks).unit
+        val tasks: List[Task[Unit]] = conv.participants.collect {
+          case agent: AgentParticipant if TriggerFilter.isTriggerFor(agent, event) =>
+            tryFire(agent, conv)
         }
+        Task.sequence(tasks).unit
     }
 
   /**
@@ -209,12 +222,28 @@ trait Sigil {
   private final def runAgent(agent: AgentParticipant,
                              conv: Conversation,
                              claimed: AgentState): Task[Unit] =
-    runAgentLoop(agent, conv._id, claimed, iteration = 1)
+    runAgentLoop(agent, conv._id, claimed, iteration = 1, sinceTimestamp = claimed.timestamp)
 
+  /**
+   * `sinceTimestamp` advances per iteration — each loop hands the next one
+   * its own start-time, so events consumed by the previous iteration
+   * (ModeChange from iter 1, ToolResults from iter 2, etc.) don't re-appear
+   * as "new triggers" on every subsequent check and cause spurious loops.
+   *
+   * The very first iteration uses `claim.timestamp` as its starting point
+   * so external triggers that landed between claim-time and iteration-1
+   * start are still visible.
+   */
   private final def runAgentLoop(agent: AgentParticipant,
                                  convId: Id[Conversation],
                                  claimed: AgentState,
-                                 iteration: Int): Task[Unit] = Task.defer {
+                                 iteration: Int,
+                                 sinceTimestamp: Timestamp): Task[Unit] = Task.defer {
+    // Snapshot the start of THIS iteration. The next iteration uses this as
+    // its own `sinceTimestamp`, so events emitted during this iteration
+    // (including self-emitted non-terminal tool results the agent acted on)
+    // don't re-appear as triggers next time.
+    val thisIterationStart = Timestamp(Nowish())
     // Reload the conversation each iteration — materialized projections
     // (currentMode, modified, etc.) update as Events flow through `publish`,
     // so the conversation we hand to the agent must reflect the latest state.
@@ -223,13 +252,13 @@ trait Sigil {
         // Conversation deleted mid-turn — release the lock and exit cleanly.
         releaseClaim(claimed)
       case Some(conv) =>
-        buildContext(agent, conv, sinceTimestamp = claimed.timestamp, claimedId = claimed._id).flatMap {
+        buildContext(agent, conv, sinceTimestamp = sinceTimestamp, claimedId = claimed._id).flatMap {
           case (ctx, triggers) =>
             agent.process(ctx, triggers).evalTap(publish).drain
         }.flatMap { _ =>
-          newTriggersExist(agent, conv, sinceTimestamp = claimed.timestamp).flatMap {
+          newTriggersExist(agent, conv, sinceTimestamp = thisIterationStart).flatMap {
             case true if iteration < maxAgentIterations =>
-              runAgentLoop(agent, convId, claimed, iteration + 1)
+              runAgentLoop(agent, convId, claimed, iteration + 1, thisIterationStart)
             case true =>
               // Cap hit — release the lock, then propagate as an error so the
               // calling fiber's failure handler sees it. A runaway loop is a
@@ -312,6 +341,7 @@ trait Sigil {
       _ = Signal.register((CoreSignals.all ++ signals)*)
       _ = ToolInput.register((CoreTools.inputRWs ++ findTools.toolInputRWs)*)
       _ = ParticipantId.register(participantIds*)
+      _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
       config = Profig("sigil").as[Config]
       db = SigilDB(Some(config.dbPath))
       _ <- db.init

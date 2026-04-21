@@ -243,7 +243,7 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
         } else {
           val callId = ti._id.value
           val argsJson = ti.input
-            .map(i => JsonFormatter.Compact(summon[RW[ToolInput]].read(i)))
+            .map(i => JsonFormatter.Compact(stripPolyDiscriminator(summon[RW[ToolInput]].read(i))))
             .getOrElse("{}")
           out += obj(
             "role" -> str("assistant"),
@@ -302,6 +302,17 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
         case other => other.toString
       }
       .mkString("\n")
+
+  /** `ToolInput`'s poly RW tags each concrete input with a `"type"`
+    * discriminator field. That's wire-correct for sigil but foreign to
+    * OpenAI/llama.cpp tool_call `arguments` — they expect pure
+    * parameter-schema JSON. Strip it so the chat template doesn't choke
+    * on unexpected fields when echoing the tool_call back through the
+    * conversation on a follow-up turn. */
+  private def stripPolyDiscriminator(json: Json): Json = json match {
+    case o: Obj => Obj(o.value - "type")
+    case other  => other
+  }
 
   private def parseLine(line: String, state: StreamState): Vector[ProviderEvent] = {
     val trimmed = line.trim

@@ -26,4 +26,18 @@ trait ToolFinder {
   def toolInputRWs: List[RW[? <: ToolInput]]
 
   def apply(keywords: String, participants: List[ParticipantId]): Task[List[Tool[? <: ToolInput]]]
+
+  /**
+   * Resolve a single tool by its `schema.name`. Used when a persisted
+   * [[sigil.participant.AgentParticipant]] references tools by name and the
+   * dispatcher needs to rehydrate them to live `Tool` instances at call
+   * time.
+   *
+   * Default: delegate to `apply(name, participants)` and pick the first
+   * returned tool whose name matches case-insensitively. Implementations
+   * that can look up by name directly (e.g. in-memory catalogs, indexed DB
+   * queries) should override.
+   */
+  def byName(name: String, participants: List[ParticipantId]): Task[Option[Tool[? <: ToolInput]]] =
+    apply(name, participants).map(_.find(_.schema.name.equalsIgnoreCase(name)))
 }

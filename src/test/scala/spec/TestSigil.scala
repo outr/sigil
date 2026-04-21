@@ -6,11 +6,14 @@ import lightdb.id.Id
 import profig.Profig
 import rapid.Task
 import sigil.{Sigil, SignalBroadcaster, TurnContext}
-import sigil.conversation.{Conversation, ConversationContext}
+import sigil.conversation.ConversationContext
+import sigil.db.Model
 import sigil.event.Event
 import sigil.information.{FullInformation, Information}
-import sigil.participant.{AgentParticipant, AgentParticipantId, Participant, ParticipantId}
+import sigil.participant.{AgentParticipantId, ParticipantId}
+import sigil.provider.Provider
 import sigil.tool.{InMemoryToolFinder, Tool, ToolFinder, ToolInput}
+import sigil.tool.core.CoreTools
 
 import java.util.concurrent.atomic.AtomicReference
 
@@ -26,39 +29,38 @@ import java.util.concurrent.atomic.AtomicReference
 object TestSigil extends Sigil {
   override def testMode: Boolean = true
 
-  private val tools: List[Tool[? <: ToolInput]] = List(SendSlackMessageTool)
+  // Core tools + the synthetic SendSlackMessageTool. Agents reference them
+  // by name; `byName` resolves from this catalog at call time.
+  private val appTools: List[Tool[? <: ToolInput]] = List(SendSlackMessageTool)
 
-  override val findTools: ToolFinder = InMemoryToolFinder(tools)
+  override val findTools: ToolFinder =
+    InMemoryToolFinder(CoreTools(this).all.toList ++ appTools)
 
   override def curate(ctx: ConversationContext): Task[ConversationContext] = Task.pure(ctx)
 
-  // -- test-only mutable wiring for dispatcher specs --
+  // -- test-only mutable wiring --
 
-  private val agentsRegistry = new java.util.concurrent.ConcurrentHashMap[AgentParticipantId, AgentParticipant]()
   private val broadcasterRef = new AtomicReference[SignalBroadcaster](SignalBroadcaster.NoOp)
-
-  /** Register a test agent so `participantsFor` returns it for any
-    * conversation. Cleared between tests via `resetAgents`. */
-  def registerAgent(agent: AgentParticipant): Unit = {
-    agentsRegistry.put(agent.id, agent)
-    ()
-  }
-
-  def resetAgents(): Unit = agentsRegistry.clear()
+  private val providerRef = new AtomicReference[() => Task[Provider]](
+    () => Task.error(new RuntimeException("TestSigil.setProvider was not called — no provider configured"))
+  )
 
   /** Replace the broadcaster for the current test (typically with a
-    * `RecordingBroadcaster` to capture emissions). Reset to `NoOp` between
-    * tests via `resetBroadcaster`. */
+    * `RecordingBroadcaster` to capture emissions). */
   def setBroadcaster(b: SignalBroadcaster): Unit = broadcasterRef.set(b)
 
   def resetBroadcaster(): Unit = broadcasterRef.set(SignalBroadcaster.NoOp)
 
   override def broadcaster: SignalBroadcaster = broadcasterRef.get()
 
-  override def participantsFor(conversationId: Id[Conversation]): Task[List[Participant]] = Task {
-    import scala.jdk.CollectionConverters.*
-    agentsRegistry.values().asScala.toList
-  }
+  /** Set the Provider that `providerFor` returns. Taken by-name so specs
+    * can wire `setProvider(provider)` from a trait body even though the
+    * subclass's `provider` val isn't yet initialized — evaluation defers
+    * until `providerFor` is actually called. */
+  def setProvider(p: => Task[Provider]): Unit = providerRef.set(() => p)
+
+  override def providerFor(modelId: Id[Model], chain: List[ParticipantId]): Task[Provider] =
+    providerRef.get().apply()
 
   // getInformation uses Sigil's default (Task.pure(None)).
 

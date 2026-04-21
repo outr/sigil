@@ -9,13 +9,13 @@ githubRepository := "sigil"
 
 val rapidVersion: String = "2.9.2"
 
-val spiceVersion: String = "1.7.0-SNAPSHOT"
+val spiceVersion: String = "1.7.0"
 
-val profigVersion: String = "3.6.1"
+val profigVersion: String = "3.7.0"
 
 val scribeVersion: String = "3.19.0"
 
-val lightdbVersion: String = "4.31.0-SNAPSHOT"
+val lightdbVersion: String = "4.31.0"
 
 val scalatestVersion: String = "3.2.20"
 

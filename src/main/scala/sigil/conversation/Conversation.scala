@@ -5,17 +5,19 @@ import lightdb.doc.{JsonConversion, RecordDocument, RecordDocumentModel}
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Unique
-import sigil.participant.ParticipantId
+import sigil.participant.Participant
 import sigil.provider.Mode
 
 /**
  * A conversation is a durable scope for events, the participants involved,
  * and any per-conversation metadata. Stored in [[sigil.db.SigilDB.conversations]].
  *
- * `participantIds` drives the dispatcher's fan-out: when a Signal lands, the
- * framework looks up the conversation, resolves participants via
- * [[sigil.Sigil.participantsFor]], and fires the ones whose `TriggerFilter`
- * predicate matches.
+ * `participants` drives the dispatcher's fan-out: when a Signal lands, the
+ * framework reads this list directly and fires any `AgentParticipant` whose
+ * `TriggerFilter` predicate matches. Participants serialize through the
+ * `Participant` poly — agents are persistent by value (modelId, toolNames,
+ * instructions, …), with live `Provider` and `Tool` instances resolved at
+ * call time via `Sigil.providerFor` and `ToolFinder.byName`.
  *
  * `currentMode` is the conversation's active operating mode, kept up to
  * date by the framework as [[sigil.event.ModeChange]] events land. All
@@ -25,7 +27,7 @@ import sigil.provider.Mode
  * `RecordDocument` brings `created` / `modified` timestamps — useful for
  * "last activity" sorting in UIs.
  */
-case class Conversation(participantIds: List[ParticipantId] = Nil,
+case class Conversation(participants: List[Participant] = Nil,
                         title: Option[String] = None,
                         currentMode: Mode = Mode.Conversation,
                         created: Timestamp = Timestamp(),

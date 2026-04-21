@@ -20,9 +20,9 @@ case class SigilDB(directory: Option[Path]) extends LightDB {
   private val traversalManager: TM = RocksDBSharedStore(directory.get)
   override val storeManager: SM = SplitStoreManager(traversalManager, LuceneStore)
 
-  val model: S[Model, Model.type] = store(Model)
-  val events: S[Event, Event.type] = store(Event)
-  val conversations: S[Conversation, Conversation.type] = store(Conversation)
+  val model: S[Model, Model.type] = store(Model)()
+  val events: S[Event, Event.type] = store(Event)()
+  val conversations: S[Conversation, Conversation.type] = store(Conversation)()
 
   override def upgrades: List[DatabaseUpgrade] = Nil
 

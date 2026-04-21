@@ -7,7 +7,7 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.Conversation
 import sigil.db.Model
 import sigil.event.{AgentState, Message, ModeChange, ToolInvoke}
-import sigil.participant.{AgentParticipant, AgentParticipantId}
+import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant}
 import sigil.provider.{GenerationSettings, Instructions, Mode, Provider}
 import sigil.signal.{AgentActivity, AgentStateDelta, EventState, Signal, ToolDelta}
 import sigil.tool.{Tool, ToolInput}
@@ -30,20 +30,22 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
   protected def modelId: Id[Model]
 
-  protected def tools: Vector[Tool[? <: ToolInput]] = CoreTools(TestSigil).all
+  /** Wire the spec's provider into TestSigil so `providerFor` returns it. */
+  TestSigil.setProvider(provider)
 
-  protected def makeAgent(): AgentParticipant = {
-    val spec = this
-    new AgentParticipant {
-      override val id: AgentParticipantId = TestAgent
-      override val modelId: Id[Model] = spec.modelId
-      override def provider: Task[Provider] = spec.provider
-      override def tools: Vector[Tool[? <: ToolInput]] = spec.tools
-      override def instructions: Instructions = Instructions()
-      override def generationSettings: GenerationSettings =
-        GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0))
-    }
-  }
+  /** Tool names the test agent advertises. CoreTools' names + the synthetic
+    * SendSlackMessageTool so `find_capability` has a catalog entry. */
+  protected def toolNames: List[String] =
+    CoreTools.coreToolNames :+ SendSlackMessageTool.schema.name
+
+  protected def makeAgent(): AgentParticipant =
+    DefaultAgentParticipant(
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = toolNames,
+      instructions = Instructions(),
+      generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0))
+    )
 
   /** Poll-based wait for the agent to reach Idle (terminal AgentStateDelta).
     * The broadcaster captures every signal; once we see an Idle/Complete
@@ -65,12 +67,23 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   }
 
   protected def setUp(): RecordingBroadcaster = {
-    TestSigil.resetAgents()
-    TestSigil.registerAgent(makeAgent())
     val recorder = new RecordingBroadcaster
     TestSigil.setBroadcaster(recorder)
     recorder
   }
+
+  /** Upsert a `Conversation` carrying the test agent in its `participants`
+    * list. Specs use this before publishing the external Message so the
+    * dispatcher's fan-out finds the agent on the persisted record. */
+  protected def upsertConversationWithAgent(convId: Id[Conversation]): Task[Unit] =
+    TestSigil.withDB(_.conversations.transaction(_.upsert(
+      Conversation(_id = convId, participants = List(makeAgent()))
+    ))).unit
+
+  protected def upsertEmptyConversation(convId: Id[Conversation]): Task[Unit] =
+    TestSigil.withDB(_.conversations.transaction(_.upsert(
+      Conversation(_id = convId)
+    ))).unit
 
   getClass.getSimpleName should {
     "drive a streaming respond from an external Message through the dispatcher" in {
@@ -83,7 +96,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       )
 
       val task = for {
-        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(_id = conversationId))))
+        _ <- upsertConversationWithAgent(conversationId)
         _ <- TestSigil.publish(userMessage)
         _ <- awaitIdle(recorder)
       } yield recorder.recorded
@@ -127,7 +140,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       )
 
       val task = for {
-        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(_id = conversationId))))
+        _ <- upsertConversationWithAgent(conversationId)
         _ <- TestSigil.publish(userMessage)
         _ <- awaitIdle(recorder, timeoutMs = 60000)
       } yield recorder.recorded
@@ -164,7 +177,6 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     }
 
     "no-op fan-out when no participants match" in {
-      TestSigil.resetAgents()
       val recorder = new RecordingBroadcaster
       TestSigil.setBroadcaster(recorder)
 
@@ -176,7 +188,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       )
 
       val task = for {
-        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(_id = conversationId))))
+        _ <- upsertEmptyConversation(conversationId)
         _ <- TestSigil.publish(userMessage)
       } yield recorder.recorded
 

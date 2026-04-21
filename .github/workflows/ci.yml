@@ -1,0 +1,49 @@
+name: CI
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    services:
+      postgres:
+        image: postgres:latest
+        env:
+          POSTGRES_DB: basic
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: jdbc:postgresql://localhost:5432/basic
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: 23
+      - name: Setup sbt launcher
+        uses: sbt/setup-sbt@v1
+      - name: Coursier cache
+        uses: coursier/cache-action@v6
+      - name: Set CI JVM options
+        run: echo "SBT_OPTS=-Xms512M -Xmx2G -Xss512k -XX:MaxMetaspaceSize=512M -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=." >> $GITHUB_ENV
+      - name: Build and test
+        run: |
+          sbt -v -Dfile.encoding=UTF-8 "testOnly -- -l spec.LocalOnly"
+          rm -rf "$HOME/.ivy2/local" || true
+          find $HOME/Library/Caches/Coursier/v1        -name "ivydata-*.properties" -delete || true
+          find $HOME/.ivy2/cache                       -name "ivydata-*.properties" -delete || true
+          find $HOME/.cache/coursier/v1                -name "ivydata-*.properties" -delete || true
+          find $HOME/.sbt                              -name "*.lock"               -delete || true

@@ -4,10 +4,13 @@ import fabric.rw.*
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.conversation.Conversation
+import sigil.db.Model
 import sigil.event.{Message, ModeChange, ToolInvoke}
-import sigil.provider.{Mode, TokenUsage}
+import sigil.participant.{DefaultAgentParticipant, Participant}
+import sigil.provider.{GenerationSettings, Instructions, Mode, TokenUsage}
 import sigil.signal.{ContentDelta, ContentKind, EventState, MessageDelta, Signal, ToolDelta}
 import sigil.tool.ToolInput
+import sigil.tool.core.CoreTools
 import sigil.tool.model.{ChangeModeInput, RespondInput, ResponseContent}
 
 /**
@@ -124,6 +127,48 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
       val r = restored.asInstanceOf[SendSlackMessageInput]
       r.channel shouldBe "#engineering"
       r.text shouldBe "deploy done"
+    }
+  }
+
+  "Participant poly registration" should {
+    "round-trip a DefaultAgentParticipant via the Participant poly RW" in {
+      val rw = summon[RW[Participant]]
+      val original: Participant = DefaultAgentParticipant(
+        id = TestAgent,
+        modelId = Model.id("test", "model"),
+        toolNames = CoreTools.coreToolNames,
+        instructions = Instructions(),
+        generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0))
+      )
+      val restored = rw.write(rw.read(original))
+      restored shouldBe a[DefaultAgentParticipant]
+      val r = restored.asInstanceOf[DefaultAgentParticipant]
+      r.id shouldBe TestAgent
+      r.modelId shouldBe Model.id("test", "model")
+      r.toolNames shouldBe CoreTools.coreToolNames
+      r.generationSettings.maxOutputTokens shouldBe Some(200)
+    }
+
+    "round-trip a Conversation carrying a DefaultAgentParticipant" in {
+      val rw = summon[RW[Conversation]]
+      val agent = DefaultAgentParticipant(
+        id = TestAgent,
+        modelId = Model.id("test", "model"),
+        toolNames = CoreTools.coreToolNames
+      )
+      val original = Conversation(
+        participants = List(agent),
+        title = Some("Test conversation"),
+        currentMode = Mode.Coding,
+        _id = Conversation.id("wire-test")
+      )
+      val restored = rw.write(rw.read(original))
+      restored._id shouldBe original._id
+      restored.title shouldBe Some("Test conversation")
+      restored.currentMode shouldBe Mode.Coding
+      restored.participants should have size 1
+      restored.participants.head shouldBe a[DefaultAgentParticipant]
+      restored.participants.head.asInstanceOf[DefaultAgentParticipant].toolNames shouldBe CoreTools.coreToolNames
     }
   }
 

@@ -38,4 +38,18 @@ object CoreTools {
       summon[RW[NoResponseInput]],
       summon[RW[FindCapabilityInput]]
     )
+
+  /**
+   * Canonical names of the framework-supplied core tools. Agent authors use
+   * this as the baseline `toolNames` on a persisted [[sigil.participant.AgentParticipant]]
+   * (e.g. `toolNames = CoreTools.coreToolNames ++ List("my_app_tool")`).
+   * The dispatcher resolves each name to a live `Tool` instance through
+   * [[sigil.tool.ToolFinder.byName]] at call time.
+   */
+  val coreToolNames: List[String] = List(
+    RespondTool.schema.name,
+    ChangeModeTool.schema.name,
+    NoResponseTool.schema.name,
+    "find_capability"
+  )
 }
