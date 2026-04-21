@@ -3,7 +3,10 @@ package sigil
 import fabric.rw.RW
 import lightdb.id.Id
 import lightdb.lucene.LuceneStore
+import lightdb.postgresql.PostgreSQLStoreManager
 import lightdb.rocksdb.RocksDBSharedStore
+import lightdb.sql.connect.{HikariConnectionManager, SQLConfig}
+import lightdb.store.CollectionManager
 import lightdb.store.split.SplitStoreManager
 import lightdb.time.Timestamp
 import lightdb.util.Nowish
@@ -375,9 +378,20 @@ trait Sigil {
       _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
       _ = MemorySpaceId.register(memorySpaceIds*)
       config = Profig("sigil").as[Config]
-      directory = config.dbPath
-      collectionStore = SplitStoreManager(RocksDBSharedStore(directory), LuceneStore)
-      db = SigilDB(Some(directory), collectionStore)
+      (directory, collectionStore) = config.postgres match {
+        case Some(pg) =>
+          val cm = HikariConnectionManager(SQLConfig(
+            jdbcUrl = pg.jdbcUrl,
+            driverClassName = Some("org.postgresql.Driver"),
+            username = pg.username,
+            password = pg.password,
+            maximumPoolSize = pg.maximumPoolSize
+          ))
+          (None, PostgreSQLStoreManager(cm): CollectionManager)
+        case None =>
+          (Some(config.dbPath), SplitStoreManager(RocksDBSharedStore(config.dbPath), LuceneStore): CollectionManager)
+      }
+      db = SigilDB(directory, collectionStore)
       _ <- db.init
     } yield SigilInstance(
       config = config,
