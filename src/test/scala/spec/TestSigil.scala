@@ -10,7 +10,6 @@ import sigil.{Sigil, SignalBroadcaster, TurnContext}
 import sigil.conversation.MemorySpaceId
 import sigil.db.Model
 import sigil.event.Event
-import sigil.information.{FullInformation, Information}
 import sigil.participant.{AgentParticipantId, ParticipantId}
 import sigil.provider.Provider
 import sigil.tool.{InMemoryToolFinder, Tool, ToolFinder, ToolInput}
@@ -74,7 +73,7 @@ object TestSigil extends Sigil {
     * exercising [[sigil.tool.core.LookupInformationTool]]. */
   def information: sigil.information.InMemoryInformation = informationRef.get()
 
-  override def getInformation(id: lightdb.id.Id[sigil.information.Information]): Task[Option[sigil.information.FullInformation]] =
+  override def getInformation(id: lightdb.id.Id[sigil.information.Information]): Task[Option[sigil.information.Information]] =
     informationRef.get().get(id)
 
   /** Override the `modeSkill` hook for a test — returns the resolved slot

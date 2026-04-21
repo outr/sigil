@@ -7,14 +7,14 @@ import org.scalatest.wordspec.AnyWordSpec
 import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, ConversationView, MemorySource, MemorySpaceId, ParticipantProjection, SkillSource, TurnInput}
 import sigil.db.Model
 import sigil.event.Event
-import sigil.information.{FullInformation, Information}
+import sigil.information.{Information, InformationSummary}
 import sigil.provider.{GenerationSettings, Instructions, Mode, ProviderRequest}
 import sigil.provider.llamacpp.LlamaCppProvider
 import sigil.tool.core.CoreTools
 import spice.net.URL
 
-/** Synthetic FullInformation subtype for the catalog-rendering test. */
-case class TestInformation(id: Id[Information]) extends FullInformation derives RW
+/** Synthetic Information subtype for the catalog-rendering test. */
+case class TestInformation(id: Id[Information]) extends Information derives RW
 
 /** Synthetic MemorySpaceId for the memory-coverage tests. */
 case object TestSpace extends MemorySpaceId {
@@ -173,9 +173,9 @@ class LlamaCppRequestCoverageSpec extends AnyWordSpec with Matchers {
     "include information catalog entries in the wire payload" in {
       val infoId = Id[Information]("info-marker-42")
       val input = TurnInput(emptyView, information = Vector(
-        Information(
+        InformationSummary(
           id = infoId,
-          informationType = FullInformation.name.of[TestInformation],
+          informationType = Information.name.of[TestInformation],
           summary = "INFO_SUMMARY_42"
         )
       ))
