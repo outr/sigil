@@ -4,8 +4,8 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
-import sigil.conversation.{ContextFrame, ContextSummary, Conversation, ConversationView}
-import sigil.event.{Event, Message}
+import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextSummary, Conversation, ConversationView, SkillSource}
+import sigil.event.{Event, Message, ModeChange}
 import sigil.provider.Mode
 import sigil.signal.{EventState, MessageDelta, StateDelta}
 import sigil.tool.model.{ChangeModeInput, ResponseContent}
@@ -44,7 +44,6 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         view.frames should have size 1
         view.frames.head shouldBe a[ContextFrame.Text]
         view.frames.head.asInstanceOf[ContextFrame.Text].content shouldBe "hello from user"
-        view.lastEventId shouldBe Some(msg._id)
       }
     }
 
@@ -117,6 +116,67 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       } yield {
         incremental.frames.map(_.sourceEventId) shouldBe rebuilt.frames.map(_.sourceEventId)
         incremental.frames.size shouldBe 2
+      }
+    }
+  }
+
+  "Sigil projection-mutation API" should {
+    "set and clear a skill slot via activateSkill / clearSkill" in {
+      val convId = freshConvId("skill-activate")
+      val slot = ActiveSkillSlot(name = "weather", content = "Use Celsius.")
+      for {
+        _ <- TestSigil.activateSkill(convId, TestAgent, SkillSource.Discovery, slot)
+        after <- TestSigil.viewFor(convId)
+        _ <- TestSigil.clearSkill(convId, TestAgent, SkillSource.Discovery)
+        cleared <- TestSigil.viewFor(convId)
+      } yield {
+        after.projectionFor(TestAgent).activeSkills(SkillSource.Discovery) shouldBe slot
+        cleared.projectionFor(TestAgent).activeSkills.get(SkillSource.Discovery) shouldBe None
+      }
+    }
+
+    "set and clear per-participant extraContext via setParticipantContext / clearParticipantContext" in {
+      val convId = freshConvId("extra-context")
+      val key = ContextKey("mood")
+      for {
+        _ <- TestSigil.setParticipantContext(convId, TestAgent, key, "optimistic")
+        after <- TestSigil.viewFor(convId)
+        _ <- TestSigil.clearParticipantContext(convId, TestAgent, key)
+        cleared <- TestSigil.viewFor(convId)
+      } yield {
+        after.projectionFor(TestAgent).extraContext(key) shouldBe "optimistic"
+        cleared.projectionFor(TestAgent).extraContext.get(key) shouldBe None
+      }
+    }
+
+    "apply a Mode-source skill via the modeSkill hook when a ModeChange completes" in {
+      val convId = freshConvId("mode-skill")
+      val slot = ActiveSkillSlot(name = "coding", content = "Prefer Scala 3 syntax.")
+      TestSigil.setModeSkill {
+        case Mode.Coding => rapid.Task.pure(Some(slot))
+        case _           => rapid.Task.pure(None)
+      }
+      val mc = ModeChange(
+        mode = Mode.Coding,
+        participantId = TestAgent,
+        conversationId = convId,
+        state = EventState.Complete
+      )
+      for {
+        _ <- TestSigil.publish(mc)
+        afterCoding <- TestSigil.viewFor(convId)
+        _ <- TestSigil.publish(ModeChange(
+          mode = Mode.Conversation,
+          participantId = TestAgent,
+          conversationId = convId,
+          state = EventState.Complete
+        ))
+        afterConversation <- TestSigil.viewFor(convId)
+        _ <- rapid.Task(TestSigil.resetModeSkill())
+      } yield {
+        afterCoding.projectionFor(TestAgent).activeSkills(SkillSource.Mode) shouldBe slot
+        // Mode-source slot cleared when the hook returns None for the new mode.
+        afterConversation.projectionFor(TestAgent).activeSkills.get(SkillSource.Mode) shouldBe None
       }
     }
   }

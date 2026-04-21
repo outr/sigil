@@ -22,7 +22,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
   protected def modelId: Id[Model]
 
-  protected def coreTools: Vector[Tool[? <: ToolInput]] = CoreTools(TestSigil).all
+  protected def coreTools: Vector[Tool[? <: ToolInput]] = CoreTools.all
 
   protected def request(message: String,
                         currentMode: Mode = Mode.Conversation): Task[List[ProviderEvent]] = provider.flatMap { p =>

@@ -3,14 +3,15 @@ package sigil.conversation
 import fabric.rw.*
 
 /**
- * How a [[ContextMemory]] was created. Drives eviction policy:
- *   - `Critical` memories are user directives ("always reply in Spanish") and
- *     are never pruned.
- *   - `Compression` memories are extracted by the curator when older messages
- *     get summarized; they're prunable when memory budget is exceeded
- *     (oldest first).
- *   - `Explicit` memories are saved by the agent through a memory tool;
- *     prunable like Compression but with their own retention policy.
+ * Origin metadata for a [[ContextMemory]]. Purely descriptive — the
+ * framework doesn't key any behavior off this value. Apps that want
+ * source-specific retention policy (e.g. "never prune Critical") implement
+ * it inside their curator.
+ *
+ *   - `Critical`    — a directive that must stay visible to the model
+ *                     (e.g. "always reply in JSON")
+ *   - `Compression` — extracted by a summarization / compression pass
+ *   - `Explicit`    — written deliberately by the agent via a memory tool
  */
 enum MemorySource derives RW {
   case Critical

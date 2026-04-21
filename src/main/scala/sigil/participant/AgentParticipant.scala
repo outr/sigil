@@ -108,6 +108,7 @@ trait AgentParticipant extends Participant {
         instructions = instructions,
         turnInput = context.turnInput,
         currentMode = context.conversation.currentMode,
+        currentTitle = context.conversation.title,
         generationSettings = generationSettings,
         tools = tools,
         chain = effectiveChain

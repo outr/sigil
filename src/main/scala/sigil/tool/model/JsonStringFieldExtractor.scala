@@ -8,12 +8,11 @@ import java.util.regex.Pattern
  * and produces the unescaped contents of the named string field as decoded
  * deltas.
  *
- * Assumes the JSON is a small object with `field` as the (only) key, which is
- * the shape produced by a tool like `respond` whose input is a single string.
- * Characters before the opening `"` of the value are buffered until the literal
- * `{...<ws>"<field>"<ws>:<ws>"` prefix is seen, after which value bytes are
- * decoded and emitted incrementally. Characters after the closing `"` are
- * ignored.
+ * Assumes the JSON is a small object. The target `field` may appear anywhere
+ * in the object — characters are buffered until a delimiter-prefixed match
+ * (`{` or `,` followed by whitespace, the quoted field name, `:`, and the
+ * opening `"` of the value) is seen, after which value bytes are decoded
+ * and emitted incrementally. Characters after the closing `"` are ignored.
  *
  * Escape handling decodes `\" \\ \/ \n \r \t \b \f \uXXXX` per JSON spec.
  */
@@ -23,7 +22,7 @@ final class JsonStringFieldExtractor(field: String) {
   private var phase: Phase = Phase.Prefix
   private val prefixBuf = new StringBuilder
   private val prefixRegex =
-    ("""\{\s*"""" + Pattern.quote(field) + """"\s*:\s*"""").r
+    ("""[\{,]\s*"""" + Pattern.quote(field) + """"\s*:\s*"""").r
   private var unicodeRemaining: Int = 0
   private val unicodeAcc = new StringBuilder
 

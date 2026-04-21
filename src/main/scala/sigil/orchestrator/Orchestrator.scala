@@ -3,9 +3,10 @@ package sigil.orchestrator
 import rapid.Stream
 import sigil.Sigil
 import sigil.conversation.Conversation
-import sigil.event.{Event, Message, ToolInvoke}
+import sigil.event.{Event, Message, TitleChange, ToolInvoke}
 import sigil.provider.{Provider, ProviderEvent, ProviderRequest}
 import sigil.signal.{ContentDelta, ContentKind, EventState, MessageDelta, Signal, ToolDelta}
+import sigil.tool.model.RespondInput
 import sigil.TurnContext
 import sigil.tool.{Tool, ToolInput}
 
@@ -39,7 +40,7 @@ import sigil.tool.{Tool, ToolInput}
 object Orchestrator {
 
   def process(sigil: Sigil, provider: Provider, request: ProviderRequest): Stream[Signal] = {
-    val conversation: Conversation = Conversation(_id = request.conversationId)
+    val conversation: Conversation = Conversation(_id = request.conversationId, title = request.currentTitle)
     val toolsByName: Map[String, Tool[? <: ToolInput]] = request.tools.map(t => t.schema.name -> t).toMap
     val state = new State()
 
@@ -132,7 +133,21 @@ object Orchestrator {
             // Streaming path — close the open content block (if any), close the Message, close the ToolInvoke.
             val closeBlock = closeCurrentBlock(state, convId)
             val messageDelta = MessageDelta(target = msgId, conversationId = convId, state = Some(EventState.Complete))
-            Stream.emits(closeBlock ::: List[Signal](toolDelta, messageDelta))
+            // If the streamed tool was `respond` and the emitted title
+            // differs from the conversation's current title, emit a
+            // TitleChange alongside. Idempotent: same-title is suppressed.
+            val titlePrelude: List[Signal] = (state.activeToolName, input) match {
+              case (Some("respond"), r: RespondInput)
+                if r.title.nonEmpty && r.title != request.currentTitle =>
+                List(TitleChange(
+                  title = r.title,
+                  participantId = caller,
+                  conversationId = convId,
+                  state = EventState.Complete
+                ))
+              case _ => Nil
+            }
+            Stream.emits(titlePrelude ::: closeBlock ::: List[Signal](toolDelta, messageDelta))
           case None =>
             // Atomic path — run execute and forward resulting Events.
             val tool = toolsByName.get(state.activeToolName.getOrElse(""))

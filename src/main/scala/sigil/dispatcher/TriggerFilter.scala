@@ -15,11 +15,13 @@ import sigil.participant.Participant
  *
  *   - [[AgentState]] events never trigger anyone — they're lifecycle
  *     markers, not new content.
- *   - Messages from `participant.id` itself never re-trigger that
- *     participant (no self-talking-loops).
+ *   - [[Message]] from self never re-triggers (no self-talking-loops).
+ *   - [[TitleChange]] from self never re-triggers — naming a
+ *     conversation isn't content the agent should act on again.
+ *   - [[ModeChange]] DOES re-trigger the emitter: after switching mode,
+ *     the agent is expected to respond *in the new mode*.
  *   - [[Message]], [[ModeChange]], [[TitleChange]], and [[ToolResults]]
- *     are valid triggers when not from self. These represent new content
- *     or state changes a participant might need to react to.
+ *     from others are valid triggers.
  *   - All other Event types are not triggers by default. Apps with
  *     custom Event subtypes can extend this rule by replacing or
  *     wrapping `TriggerFilter`.
@@ -28,6 +30,7 @@ object TriggerFilter {
   def isTriggerFor(p: Participant, e: Event): Boolean = e match {
     case _: AgentState                                                => false
     case m: Message if m.participantId == p.id                        => false
+    case tc: TitleChange if tc.participantId == p.id                  => false
     case _: Message | _: ModeChange | _: TitleChange | _: ToolResults => true
     case _                                                            => false
   }

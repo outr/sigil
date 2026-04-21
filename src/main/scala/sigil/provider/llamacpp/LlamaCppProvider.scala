@@ -9,6 +9,7 @@ import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary}
 import sigil.db.Model
 import sigil.provider.*
 import sigil.tool.{DefinitionToSchema, ToolInput, ToolSchema}
+import sigil.tool.ToolInput.given
 import spice.http.{HttpMethod, HttpRequest}
 import spice.http.client.HttpClient
 import spice.http.content.StringContent
@@ -104,9 +105,15 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
           "tools" -> arr(toolsArr*),
           "tool_choice" -> str("required")
         )
+    val gen = request.generationSettings
     val generationFields: Vector[(String, Json)] =
-      request.generationSettings.temperature.toVector.map("temperature" -> num(_)) ++
-        request.generationSettings.maxOutputTokens.toVector.map("max_tokens" -> num(_))
+      gen.temperature.toVector.map("temperature" -> num(_)) ++
+        gen.maxOutputTokens.toVector.map("max_tokens" -> num(_)) ++
+        gen.topP.toVector.map("top_p" -> num(_)) ++
+        (if (gen.stopSequences.nonEmpty) Vector("stop" -> arr(gen.stopSequences.map(str)*)) else Vector.empty)
+    // `effort` is intentionally not forwarded — llama.cpp's chat-completions
+    // surface has no reasoning-effort knob. Providers that do (Anthropic,
+    // OpenAI reasoning models) will consume it in their own converters.
 
     obj((baseFields ++ toolFields ++ generationFields)*)
   }
@@ -141,6 +148,7 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
     val sb = new StringBuilder
 
     sb.append(s"Current mode: ${request.currentMode} — ${request.currentMode.description}\n")
+    sb.append(s"Current title: \"${request.currentTitle}\"\n")
 
     val instr = request.instructions.render
     if (instr.nonEmpty) sb.append("\n").append(instr).append("\n")
@@ -387,9 +395,27 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
   private def renderDescription[I <: ToolInput](schema: ToolSchema[I]): String =
     if (schema.examples.isEmpty) schema.description
     else {
-      val rendered = schema.examples.map(e => s"- ${e.description}: ${e.input}").mkString("\n")
+      val rendered = schema.examples.map { e =>
+        // Render example inputs as JSON (stripped of the ToolInput poly
+        // discriminator) so the model sees the SAME structural shape its
+        // own tool-call arguments will take — a JSON object with typed
+        // fields. Case-class `toString` would render `RespondInput(...)`
+        // in constructor order, which the model can't distinguish from
+        // a single opaque string value.
+        val json = JsonFormatter.Compact(stripPolyDiscriminator(summon[RW[ToolInput]].read(e.input)))
+        s"- ${e.description}: $json"
+      }.mkString("\n")
       s"${schema.description}\n\nExamples:\n$rendered"
     }
+
+  /** Strip the `ToolInput` poly discriminator from a serialized example.
+    * Frames already carry the clean form; examples rendered in tool
+    * descriptions do the same so the model sees pure parameter-schema
+    * JSON, matching what its own tool_call arguments must produce. */
+  private def stripPolyDiscriminator(json: Json): Json = json match {
+    case o: Obj => Obj(o.value - "type")
+    case other  => other
+  }
 
   private def stripProviderPrefix(id: String): String = {
     val prefix = s"${LlamaCpp.Provider}/"

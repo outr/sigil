@@ -12,10 +12,11 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
-import sigil.conversation.{ContextMemory, ContextSummary, Conversation, ConversationView, FrameBuilder, MemorySpaceId, ParticipantProjection, TurnInput}
+import sigil.conversation.{ActiveSkillSlot, ContextKey, ContextMemory, ContextSummary, Conversation, ConversationView, FrameBuilder, MemorySpaceId, ParticipantProjection, SkillSource, TurnInput}
 import sigil.db.{Model, SigilDB}
 import sigil.dispatcher.TriggerFilter
-import sigil.event.{AgentState, Event, ModeChange}
+import sigil.event.{AgentState, Event, ModeChange, TitleChange}
+import sigil.provider.Mode
 import sigil.information.{FullInformation, Information}
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
 import sigil.provider.Provider
@@ -107,6 +108,20 @@ trait Sigil {
    * `TurnInput.memories`: the curator picks which returned
    * records to include (by id) based on its policy.
    */
+  // -- skills --
+
+  /**
+   * Resolve the Mode-source [[ActiveSkillSlot]] for a given [[Mode]]. Called
+   * by the framework when a [[ModeChange]] event reaches `Complete` — the
+   * returned slot (if any) is written into the changing participant's
+   * [[ParticipantProjection.activeSkills]] keyed by `SkillSource.Mode`;
+   * `None` clears any stale Mode-source slot.
+   *
+   * Default returns `None` for every mode — apps override to map modes to
+   * concrete skill playbooks.
+   */
+  def modeSkill(mode: Mode): Task[Option[ActiveSkillSlot]] = Task.pure(None)
+
   def findMemories(spaces: Set[MemorySpaceId]): Task[List[ContextMemory]] =
     if (spaces.isEmpty) Task.pure(Nil)
     else withDB(_.memories.transaction { tx =>
@@ -166,12 +181,39 @@ trait Sigil {
       _ <- withDB(_.apply(signal))
       _ <- updateConversationProjection(signal)
       _ <- updateView(signal)
+      _ <- maybeApplyModeSkill(signal)
       _ <- broadcaster.handle(signal).handleError(logBroadcastError(signal, _))
       _ <- signal match {
              case e: Event => fanOut(e)
              case _: sigil.signal.Delta => Task.unit
            }
     } yield ()
+
+  /** If this signal settles a [[ModeChange]] to `Complete`, resolve the
+    * Mode-source [[ActiveSkillSlot]] (via [[modeSkill]]) and write it into
+    * the acting participant's projection on the view. */
+  private final def maybeApplyModeSkill(signal: Signal): Task[Unit] = signal match {
+    case mc: ModeChange if mc.state == EventState.Complete => applyModeSkill(mc)
+    case d: sigil.signal.Delta =>
+      withDB(_.events.transaction(_.get(d.target.asInstanceOf[Id[Event]]))).flatMap {
+        case Some(mc: ModeChange) if mc.state == EventState.Complete => applyModeSkill(mc)
+        case _ => Task.unit
+      }
+    case _ => Task.unit
+  }
+
+  private final def applyModeSkill(mc: ModeChange): Task[Unit] =
+    modeSkill(mc.mode).flatMap {
+      case Some(slot) =>
+        updateProjection(mc.conversationId, mc.participantId)(
+          proj => proj.copy(activeSkills = proj.activeSkills + (SkillSource.Mode -> slot))
+        )
+      case None =>
+        // No app-provided skill for this mode — clear any stale Mode-source slot.
+        updateProjection(mc.conversationId, mc.participantId)(
+          proj => proj.copy(activeSkills = proj.activeSkills - SkillSource.Mode)
+        )
+    }
 
   /**
    * Maintain the per-conversation [[ConversationView]] as events/deltas
@@ -215,7 +257,6 @@ trait Sigil {
         Task.pure(Some(view.copy(
           frames = nextFrames,
           participantProjections = nextProjections,
-          lastEventId = Some(event._id),
           modified = Timestamp(Nowish())
         )))
       case None =>
@@ -223,7 +264,6 @@ trait Sigil {
           conversationId = event.conversationId,
           frames = FrameBuilder.appendFor(Vector.empty, event),
           participantProjections = FrameBuilder.updateProjections(Map.empty, event),
-          lastEventId = Some(event._id),
           _id = ConversationView.idFor(event.conversationId)
         )
         Task.pure(Some(seeded))
@@ -255,20 +295,85 @@ trait Sigil {
         .filter(_.conversationId == conversationId)
         .sortBy(_.timestamp.value)
         .toVector
-      val frames = FrameBuilder.build(events.filter(_.state == EventState.Complete))
-      val projections = events
-        .filter(_.state == EventState.Complete)
+      val complete = events.filter(_.state == EventState.Complete)
+      val frames = FrameBuilder.build(complete)
+      val projections = complete
         .foldLeft(Map.empty[ParticipantId, ParticipantProjection])(FrameBuilder.updateProjections)
-      val lastId = events.lastOption.map(_._id)
       val rebuilt = ConversationView(
         conversationId = conversationId,
         frames = frames,
         participantProjections = projections,
-        lastEventId = lastId,
         _id = ConversationView.idFor(conversationId)
       )
-      withDB(_.views.transaction(_.upsert(rebuilt))).map(_ => rebuilt)
+      for {
+        _ <- withDB(_.views.transaction(_.upsert(rebuilt)))
+        // Re-apply Mode-source skill for the most recent Complete ModeChange.
+        withSkill <- {
+          val latestMode = complete.reverseIterator.collectFirst { case mc: ModeChange => mc }
+          latestMode.fold(Task.pure(rebuilt)) { mc =>
+            applyModeSkill(mc).flatMap(_ => viewFor(conversationId))
+          }
+        }
+      } yield withSkill
     }
+
+  /** Update a participant's [[ParticipantProjection]] on the conversation's
+    * view. If the view doesn't exist yet, an empty one is seeded so the
+    * projection has a durable home. Use this from curators, tools, or any
+    * app code that needs to mutate per-participant projection state. */
+  def updateProjection(conversationId: Id[Conversation], participantId: ParticipantId)
+                      (f: ParticipantProjection => ParticipantProjection): Task[Unit] =
+    withDB(_.views.transaction(_.modify(ConversationView.idFor(conversationId)) {
+      case Some(view) =>
+        Task.pure(Some(view
+          .updateParticipant(participantId)(f)
+          .copy(modified = Timestamp(Nowish()))))
+      case None =>
+        val seeded = ConversationView(
+          conversationId = conversationId,
+          participantProjections = Map(participantId -> f(ParticipantProjection())),
+          _id = ConversationView.idFor(conversationId)
+        )
+        Task.pure(Some(seeded))
+    })).unit
+
+  /** Convenience: set (or replace) a skill slot for a participant. Discovery
+    * and User sources are driven through here by tools that want to activate
+    * a skill; Mode-source slots are maintained by the framework via
+    * [[modeSkill]] on `ModeChange`. */
+  def activateSkill(conversationId: Id[Conversation],
+                    participantId: ParticipantId,
+                    source: SkillSource,
+                    slot: ActiveSkillSlot): Task[Unit] =
+    updateProjection(conversationId, participantId)(
+      proj => proj.copy(activeSkills = proj.activeSkills + (source -> slot))
+    )
+
+  /** Convenience: clear a skill slot for a participant (if present). */
+  def clearSkill(conversationId: Id[Conversation],
+                 participantId: ParticipantId,
+                 source: SkillSource): Task[Unit] =
+    updateProjection(conversationId, participantId)(
+      proj => proj.copy(activeSkills = proj.activeSkills - source)
+    )
+
+  /** Convenience: set a single key/value on a participant's
+    * `extraContext`. Same key replaces. */
+  def setParticipantContext(conversationId: Id[Conversation],
+                            participantId: ParticipantId,
+                            key: ContextKey,
+                            value: String): Task[Unit] =
+    updateProjection(conversationId, participantId)(
+      proj => proj.copy(extraContext = proj.extraContext + (key -> value))
+    )
+
+  /** Convenience: remove a key from a participant's `extraContext`. */
+  def clearParticipantContext(conversationId: Id[Conversation],
+                              participantId: ParticipantId,
+                              key: ContextKey): Task[Unit] =
+    updateProjection(conversationId, participantId)(
+      proj => proj.copy(extraContext = proj.extraContext - key)
+    )
 
   /** Persist a new [[ContextSummary]] and return the stored record. The
     * caller (curator or app-specific summarizer) owns the generation
@@ -286,13 +391,20 @@ trait Sigil {
         .map(_.sortBy(_.created.value))
     })
 
-  /** Maintain materialized projections on the [[Conversation]] record. Today
-    * just `currentMode` derived from the latest [[ModeChange]]; future
-    * projections (e.g. title, last-activity timestamp) accrue here too. */
+  /** Maintain materialized projections on the [[Conversation]] record:
+    *   - `currentMode` tracks the latest [[ModeChange]]
+    *   - `title` tracks the latest [[TitleChange]] */
   private final def updateConversationProjection(signal: Signal): Task[Unit] = signal match {
     case mc: ModeChange =>
       withDB(_.conversations.transaction(_.modify(mc.conversationId) {
         case Some(conv) => Task.pure(Some(conv.copy(currentMode = mc.mode, modified = Timestamp(Nowish()))))
+        case None       => Task.pure(None)
+      })).unit
+    case tc: TitleChange =>
+      withDB(_.conversations.transaction(_.modify(tc.conversationId) {
+        case Some(conv) if conv.title != tc.title =>
+          Task.pure(Some(conv.copy(title = tc.title, modified = Timestamp(Nowish()))))
+        case Some(conv) => Task.pure(Some(conv))
         case None       => Task.pure(None)
       })).unit
     case _ => Task.unit

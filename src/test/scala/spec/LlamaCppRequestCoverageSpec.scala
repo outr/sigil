@@ -45,19 +45,25 @@ class LlamaCppRequestCoverageSpec extends AnyWordSpec with Matchers {
     _id = ConversationView.idFor(conversationId)
   )
 
-  private def baseRequest(input: TurnInput): ProviderRequest = ProviderRequest(
+  private def baseRequest(input: TurnInput,
+                          generationSettings: GenerationSettings =
+                            GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
+                         ): ProviderRequest = ProviderRequest(
     conversationId = conversationId,
     modelId = modelId,
     instructions = Instructions(),
     turnInput = input,
     currentMode = Mode.Conversation,
-    generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-    tools = CoreTools(TestSigil).all,
+    generationSettings = generationSettings,
+    tools = CoreTools.all,
     chain = List(TestUser, TestAgent)
   )
 
-  private def bodyOf(input: TurnInput): String =
-    provider.requestConverter(baseRequest(input)).sync().content match {
+  private def bodyOf(input: TurnInput,
+                     generationSettings: GenerationSettings =
+                       GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
+                    ): String =
+    provider.requestConverter(baseRequest(input, generationSettings)).sync().content match {
       case Some(c: spice.http.content.StringContent) => c.value
       case _ => ""
     }
@@ -219,6 +225,27 @@ class LlamaCppRequestCoverageSpec extends AnyWordSpec with Matchers {
       val body = bodyOf(TurnInput(view))
       body should include("PART_EXTRA_KEY_42")
       body should include("PART_EXTRA_VAL_42")
+    }
+
+    "forward topP from GenerationSettings as top_p on the wire" in {
+      val body = bodyOf(
+        TurnInput(emptyView),
+        GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0), topP = Some(0.42))
+      )
+      body should include("\"top_p\":0.42")
+    }
+
+    "forward stopSequences from GenerationSettings as stop on the wire" in {
+      val body = bodyOf(
+        TurnInput(emptyView),
+        GenerationSettings(
+          maxOutputTokens = Some(50),
+          temperature = Some(0.0),
+          stopSequences = Vector("STOP_MARKER_A", "STOP_MARKER_B")
+        )
+      )
+      body should include("STOP_MARKER_A")
+      body should include("STOP_MARKER_B")
     }
   }
 }

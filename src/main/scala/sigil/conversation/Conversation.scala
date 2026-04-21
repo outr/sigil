@@ -28,7 +28,7 @@ import sigil.provider.Mode
  * "last activity" sorting in UIs.
  */
 case class Conversation(participants: List[Participant] = Nil,
-                        title: Option[String] = None,
+                        title: String = Conversation.DefaultTitle,
                         currentMode: Mode = Mode.Conversation,
                         created: Timestamp = Timestamp(),
                         modified: Timestamp = Timestamp(),
@@ -41,6 +41,11 @@ case class Conversation(participants: List[Participant] = Nil,
 
 object Conversation extends RecordDocumentModel[Conversation] with JsonConversion[Conversation] {
   implicit override def rw: RW[Conversation] = RW.gen
+
+  /** Default title for a newly-created conversation. Both renders cleanly
+    * in UI and gives the agent an unambiguous signal ("the title hasn't
+    * been chosen yet — pick one") on the first respond call. */
+  val DefaultTitle: String = "New Conversation"
 
   override def id(value: String = Unique()): Id[Conversation] = Id(value)
 }
