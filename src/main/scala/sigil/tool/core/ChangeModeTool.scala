@@ -19,8 +19,12 @@ object ChangeModeTool extends Tool[ChangeModeInput] {
 
   override protected def description: String = {
     val modeList = Mode.values.map(m => s"- $m: ${m.description}").mkString("\n")
-    s"""Switch the agent's current operating mode. Call this when the user's intent shifts to a task
-       |that belongs to a different mode (e.g., moving from general conversation into coding work).
+    s"""Switch the agent's current operating mode. The current mode is stated at the top of the system
+       |prompt. Call this BEFORE attempting a task whose nature belongs to a different mode — do not
+       |start the task in the wrong mode and then switch.
+       |
+       |Typical example: current mode is Conversation and the user asks you to write a Scala function;
+       |call change_mode to Coding first, then address the request on the next turn.
        |
        |Available modes:
        |$modeList""".stripMargin
