@@ -1,6 +1,7 @@
 package sigil.conversation
 
 import fabric.rw.*
+import lightdb.id.Id
 import sigil.event.Event
 import sigil.information.Information
 import sigil.participant.ParticipantId
@@ -28,13 +29,15 @@ import sigil.signal.{Delta, Signal}
  * domain-specific augmentation (current page URL, active doc id, project
  * metadata, etc.).
  *
- * @param criticalMemories user/agent directives that can never be pruned
+ * @param criticalMemories ids of directives that can never be pruned
  *                         ("always reply in JSON", "never give medical
- *                         advice", etc.). Injected at the top of every
- *                         provider call.
- * @param memories         extracted facts surfaced by curation. Evictable
- *                         when the memory token budget is full (oldest
- *                         first).
+ *                         advice", etc.). Full records live in
+ *                         `SigilDB.memories` and are resolved at render
+ *                         time so updates propagate without stale copies.
+ * @param memories         ids of extracted facts surfaced by curation.
+ *                         Evictable when the memory token budget is full
+ *                         (oldest first). Same resolution model as
+ *                         `criticalMemories`.
  * @param summaries        summaries of older compressed conversation
  *                         segments. Replace runs of pruned events.
  * @param events           active event log — the working set (Messages,
@@ -50,8 +53,8 @@ import sigil.signal.{Delta, Signal}
  *                         "current document title" that all participants
  *                         see).
  */
-case class ConversationContext(criticalMemories: Vector[ContextMemory] = Vector.empty,
-                               memories: Vector[ContextMemory] = Vector.empty,
+case class ConversationContext(criticalMemories: Vector[Id[ContextMemory]] = Vector.empty,
+                               memories: Vector[Id[ContextMemory]] = Vector.empty,
                                summaries: Vector[ContextSummary] = Vector.empty,
                                events: Vector[Event] = Vector.empty,
                                participantContext: Map[ParticipantId, ParticipantContext] = Map.empty,

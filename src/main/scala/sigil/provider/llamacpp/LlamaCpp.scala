@@ -98,7 +98,7 @@ object LlamaCpp {
   /**
    * Fetch and map currently-loaded models from a llama.cpp server.
    */
-  def loadModels(baseUrl: URL = url"http://localhost:8081"): Task[List[Model]] =
+  def loadModels(baseUrl: URL): Task[List[Model]] =
     HttpClient.url(baseUrl.withPath("/v1/models")).call[Json].map { json =>
       val normalized = json.filterOne(SnakeToCamelFilter)
       val data = normalized("data").asVector

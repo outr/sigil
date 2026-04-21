@@ -4,6 +4,8 @@ import fabric.*
 import fabric.io.{JsonFormatter, JsonParser}
 import fabric.rw.*
 import rapid.{Stream, Task}
+import sigil.Sigil
+import sigil.conversation.ContextMemory
 import sigil.db.Model
 import sigil.event.{Event, EventVisibility, Message, ModeChange, TitleChange, ToolInvoke, ToolResults}
 import sigil.provider.*
@@ -15,7 +17,7 @@ import spice.http.client.HttpClient
 import spice.http.content.StringContent
 import spice.net.*
 
-case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
+case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) extends Provider {
   override def `type`: ProviderType = ProviderType.LlamaCpp
 
   /**
@@ -27,31 +29,50 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
    * accumulated into a final `ToolCallComplete` event when `finish_reason`
    * arrives.
    */
-  override def requestConverter(request: ProviderRequest): HttpRequest = {
+  override def requestConverter(request: ProviderRequest): Task[HttpRequest] = {
     val modelName = stripProviderPrefix(request.modelId.value)
-    val bodyStr = JsonFormatter.Compact(buildBody(modelName, request))
-    HttpRequest(
-      method = HttpMethod.Post,
-      url = url.withPath("/v1/chat/completions"),
-      content = Some(StringContent(bodyStr, ContentType.`application/json`))
-    )
+    resolveMemories(request).map { resolved =>
+      val bodyStr = JsonFormatter.Compact(buildBody(modelName, request, resolved))
+      HttpRequest(
+        method = HttpMethod.Post,
+        url = url.withPath("/v1/chat/completions"),
+        content = Some(StringContent(bodyStr, ContentType.`application/json`))
+      )
+    }
   }
 
   override def apply(request: ProviderRequest): Stream[ProviderEvent] = {
-    val httpRequest = requestConverter(request)
     val state = new StreamState(new ToolCallAccumulator(request.tools))
 
     Stream.force(
-      HttpClient.modify(_ => httpRequest)
-        .noFailOnHttpStatus
-        .streamLines()
-        .map(lines => lines.flatMap(line => Stream.emits(parseLine(line, state))))
+      requestConverter(request).map { httpRequest =>
+        HttpClient.modify(_ => httpRequest)
+          .noFailOnHttpStatus
+          .streamLines()
+          .map(lines => lines.flatMap(line => Stream.emits(parseLine(line, state))))
+      }.flatMap(identity)
     )
   }
 
-  private def buildBody(modelName: String, request: ProviderRequest): Json = {
+  /** Resolve the ids in `ConversationContext.criticalMemories` and `.memories`
+    * to full `ContextMemory` records by looking each one up in
+    * `SigilDB.memories`. Ids that don't resolve (deleted memories, stale
+    * references) are dropped silently — the curator's job to keep the
+    * referenced set consistent. */
+  private def resolveMemories(request: ProviderRequest): Task[ResolvedMemories] = {
+    val ctx = request.context
+    for {
+      crit <- Task.sequence(ctx.criticalMemories.toList.map(id => sigilRef.withDB(_.memories.transaction(_.get(id)))))
+      regular <- Task.sequence(ctx.memories.toList.map(id => sigilRef.withDB(_.memories.transaction(_.get(id)))))
+    } yield ResolvedMemories(
+      critical = crit.flatten.toVector,
+      regular = regular.flatten.toVector
+    )
+  }
+
+  private def buildBody(modelName: String, request: ProviderRequest, memories: ResolvedMemories): Json = {
     val agentId = request.chain.lastOption
-    val systemMsg = obj("role" -> str("system"), "content" -> str(buildSystemContent(request)))
+    val systemMsg = obj("role" -> str("system"), "content" -> str(buildSystemContent(request, memories)))
     val messages = renderHistory(request.context.events, agentId)
 
     val toolsArr = request.tools.map { t =>
@@ -114,7 +135,7 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
    * `ParticipantContext` MUST appear here. The companion
    * [[spec.LlamaCppRequestCoverageSpec]] is the regression guard.
    */
-  private def buildSystemContent(request: ProviderRequest): String = {
+  private def buildSystemContent(request: ProviderRequest, memories: ResolvedMemories): String = {
     val ctx = request.context
     val chain = request.chain
     val sb = new StringBuilder
@@ -124,9 +145,9 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
     val instr = request.instructions.render
     if (instr.nonEmpty) sb.append("\n").append(instr).append("\n")
 
-    if (ctx.criticalMemories.nonEmpty) {
+    if (memories.critical.nonEmpty) {
       sb.append("\n== Critical directives ==\n")
-      ctx.criticalMemories.foreach(m => sb.append(s"- ${m.key}: ${m.fact}\n"))
+      memories.critical.foreach(m => sb.append(s"- ${m.fact}\n"))
     }
 
     if (ctx.summaries.nonEmpty) {
@@ -134,9 +155,9 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
       ctx.summaries.foreach(s => sb.append(s.text).append("\n"))
     }
 
-    if (ctx.memories.nonEmpty) {
+    if (memories.regular.nonEmpty) {
       sb.append("\n== Memories ==\n")
-      ctx.memories.foreach(m => sb.append(s"- ${m.key}: ${m.fact}\n"))
+      memories.regular.foreach(m => sb.append(s"- ${m.fact}\n"))
     }
 
     if (ctx.information.nonEmpty) {
@@ -206,7 +227,7 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
    *     Without pairing the model sees a dangling assistant tool_call and
    *     may repeat it.
    */
-  private[llamacpp] def renderHistory(events: Vector[Event], agentId: Option[sigil.participant.ParticipantId]): Vector[Json] = {
+  private[llamacpp] def renderHistory(events: Vector[Event], agentId: Option[_root_.sigil.participant.ParticipantId]): Vector[Json] = {
     val out = Vector.newBuilder[Json]
     var pendingToolCall: Option[(String, String)] = None  // (tool_call_id, tool name)
 
@@ -425,10 +446,8 @@ case class LlamaCppProvider(url: URL, models: List[Model]) extends Provider {
 }
 
 object LlamaCppProvider {
-  def apply(url: URL = url"http://localhost:8081"): Task[LlamaCppProvider] =
+  def apply(sigil: Sigil, url: URL): Task[LlamaCppProvider] =
     LlamaCpp
       .loadModels(url)
-      .map { models =>
-        LlamaCppProvider(url, models)
-      }
+      .map(models => LlamaCppProvider(url, models, sigil))
 }

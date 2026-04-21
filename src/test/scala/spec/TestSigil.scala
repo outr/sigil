@@ -3,10 +3,11 @@ package spec
 import fabric.*
 import fabric.rw.*
 import lightdb.id.Id
+import org.scalactic.Prettifier.default
 import profig.Profig
 import rapid.Task
 import sigil.{Sigil, SignalBroadcaster, TurnContext}
-import sigil.conversation.ConversationContext
+import sigil.conversation.{ConversationContext, MemorySpaceId}
 import sigil.db.Model
 import sigil.event.Event
 import sigil.information.{FullInformation, Information}
@@ -14,6 +15,7 @@ import sigil.participant.{AgentParticipantId, ParticipantId}
 import sigil.provider.Provider
 import sigil.tool.{InMemoryToolFinder, Tool, ToolFinder, ToolInput}
 import sigil.tool.core.CoreTools
+import spice.net.*
 
 import java.util.concurrent.atomic.AtomicReference
 
@@ -28,6 +30,8 @@ import java.util.concurrent.atomic.AtomicReference
  */
 object TestSigil extends Sigil {
   override def testMode: Boolean = true
+
+  lazy val llamaCppHost: URL = Profig("sigil.llamacpp.host").asOr[URL](url"http://localhost:8081")
 
   // Core tools + the synthetic SendSlackMessageTool. Agents reference them
   // by name; `byName` resolves from this catalog at call time.
@@ -71,6 +75,11 @@ object TestSigil extends Sigil {
    */
   override protected def participantIds: List[RW[? <: ParticipantId]] =
     List(RW.static(TestUser), RW.static(TestAgent))
+
+  /** Register TestSpace so ContextMemory's spaceId poly round-trips in
+    * the memories store. */
+  override protected def memorySpaceIds: List[RW[? <: MemorySpaceId]] =
+    List(RW.static(TestSpace))
 
   /**
    * Initialize the test Sigil with a DB path scoped to the calling test

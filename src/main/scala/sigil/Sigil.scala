@@ -6,7 +6,7 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
-import sigil.conversation.{Conversation, ConversationContext}
+import sigil.conversation.{Conversation, ConversationContext, ContextMemory, MemorySpaceId}
 import sigil.db.{Model, SigilDB}
 import sigil.dispatcher.TriggerFilter
 import sigil.event.{AgentState, Event, ModeChange}
@@ -76,6 +76,34 @@ trait Sigil {
    * it lives (DB, filesystem, web, memory store).
    */
   def getInformation(id: Id[Information]): Task[Option[FullInformation]] = Task.pure(None)
+
+  // -- memory --
+
+  /**
+   * App-specific [[MemorySpaceId]] subtypes registered into the polymorphic
+   * discriminator so [[ContextMemory.spaceId]] values round-trip through
+   * fabric RW. Apps define concrete spaces (GlobalSpace, PersonaSpace,
+   * ProjectSpace, UserSpace, etc.) and list their RWs here.
+   */
+  protected def memorySpaceIds: List[RW[? <: MemorySpaceId]] = Nil
+
+  /**
+   * Search memories across the given spaces. Default queries
+   * [[SigilDB.memories]] by indexed `spaceId`. Apps override for relevance
+   * ranking, recency weighting, embedding search, caching, etc.
+   *
+   * Typically called from `curate` when assembling a turn's
+   * `ConversationContext.memories`: the curator picks which returned
+   * records to include (by id) based on its policy.
+   */
+  def findMemories(spaces: Set[MemorySpaceId]): Task[List[ContextMemory]] =
+    if (spaces.isEmpty) Task.pure(Nil)
+    else withDB(_.memories.transaction { tx =>
+      import lightdb.filter.*
+      tx.query
+        .filter(m => spaces.map(s => m.spaceId === s).reduce(_ || _))
+        .toList
+    })
 
   // -- broadcasting --
 
@@ -342,6 +370,7 @@ trait Sigil {
       _ = ToolInput.register((CoreTools.inputRWs ++ findTools.toolInputRWs)*)
       _ = ParticipantId.register(participantIds*)
       _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
+      _ = MemorySpaceId.register(memorySpaceIds*)
       config = Profig("sigil").as[Config]
       db = SigilDB(Some(config.dbPath))
       _ <- db.init

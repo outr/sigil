@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import sigil.conversation.{ActiveSkillSlot, Conversation, ConversationContext, ContextKey, ContextMemory, ContextSummary, MemorySource, ParticipantContext, SkillSource}
+import sigil.conversation.{ActiveSkillSlot, Conversation, ConversationContext, ContextKey, ContextMemory, ContextSummary, MemorySource, MemorySpaceId, ParticipantContext, SkillSource}
 import sigil.db.Model
 import sigil.event.{AgentState, Event, Message, ModeChange, TitleChange, ToolInvoke, ToolResults}
 import sigil.information.{FullInformation, Information}
@@ -19,22 +19,27 @@ import spice.net.URL
 /** Synthetic FullInformation subtype for the catalog-rendering test. */
 case class TestInformation(id: Id[Information]) extends FullInformation derives RW
 
+/** Synthetic MemorySpaceId for the memory-coverage tests. */
+case object TestSpace extends MemorySpaceId {
+  override val value: String = "test-space"
+}
+
 /**
- * Regression guard: every Model-visible Event in a `ConversationContext`
- * MUST appear somewhere in the wire payload that
+ * Regression guard: every Model-visible Event and every populated field on
+ * `ConversationContext` MUST appear somewhere in the wire payload that
  * [[LlamaCppProvider.requestConverter]] produces. The original Phase 4 bug
  * — the provider only rendering Messages, all as user role — would have
  * been caught by this test.
  *
- * Strategy: build a request whose events each carry a unique marker
- * substring, then assert each marker is present in the rendered request
- * body. UI-only events (those without `EventVisibility.Model`) MUST NOT
- * leak into the payload.
+ * Strategy: build a request whose events/memories each carry a unique
+ * marker substring, then assert each marker is present in the rendered
+ * request body. UI-only events (those without `EventVisibility.Model`) MUST
+ * NOT leak into the payload.
  */
 class LlamaCppRequestCoverageSpec extends AnyWordSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  private val provider = LlamaCppProvider(URL.parse("http://localhost:8081"), Nil)
+  private val provider = LlamaCppProvider(TestSigil.llamaCppHost, Nil, TestSigil)
   private val modelId: Id[Model] = Model.id("test", "model")
   private val conversationId = Conversation.id("coverage-conv")
 
@@ -52,10 +57,22 @@ class LlamaCppRequestCoverageSpec extends AnyWordSpec with Matchers {
   private def bodyOf(events: Vector[Event] = Vector.empty,
                      context: ConversationContext = ConversationContext()): String = {
     val ctx = if (events.isEmpty) context else context.copy(events = events)
-    provider.requestConverter(baseRequest(ctx)).content match {
+    provider.requestConverter(baseRequest(ctx)).sync().content match {
       case Some(c: spice.http.content.StringContent) => c.value
       case _ => ""
     }
+  }
+
+  /** Upsert a memory into `db.memories` and return its id for use in
+    * `ConversationContext.criticalMemories` / `memories`. */
+  private def upsertMemory(fact: String, source: MemorySource): Id[ContextMemory] = {
+    val memory = ContextMemory(
+      fact = fact,
+      source = source,
+      spaceId = TestSpace
+    )
+    TestSigil.withDB(_.memories.transaction(_.upsert(memory))).sync()
+    memory._id
   }
 
   "LlamaCppProvider.requestConverter" should {
@@ -105,7 +122,6 @@ class LlamaCppRequestCoverageSpec extends AnyWordSpec with Matchers {
       )
       val body = bodyOf(Vector(invoke, mc))
       body should include("Coding")
-      // The tool_call_id pairing references the ToolInvoke's id
       body should include(invoke._id.value)
     }
 
@@ -150,12 +166,7 @@ class LlamaCppRequestCoverageSpec extends AnyWordSpec with Matchers {
         activity = AgentActivity.Thinking,
         state = EventState.Active
       )
-      // Sanity: AgentState carries no marker text, but its presence in the
-      // payload would still be detectable. We use the agentId as a marker;
-      // for the AgentState NOT to leak, its agentId field shouldn't appear
-      // when AgentState is the only event.
       val body = bodyOf(Vector(agentState))
-      // System mode preamble + empty messages array — agentId shouldn't show
       body should not include agentStateMarker
       body should not include "AgentState"
     }
@@ -166,27 +177,23 @@ class LlamaCppRequestCoverageSpec extends AnyWordSpec with Matchers {
         participantId = TestUser,
         conversationId = conversationId,
         content = Vector(ResponseContent.Text(invisibleMarker)),
-        visibility = Set.empty  // explicitly NOT Model-visible
+        visibility = Set.empty
       )
       val body = bodyOf(Vector(invisibleMessage))
       body should not include invisibleMarker
     }
 
-    "include criticalMemories in the wire payload" in {
-      val ctx = ConversationContext(criticalMemories = Vector(
-        ContextMemory(key = "CRITKEY_42", fact = "CRITFACT_42", source = MemorySource.Critical)
-      ))
+    "include criticalMemories in the wire payload (resolved from db.memories)" in {
+      val memId = upsertMemory("CRITFACT_42", MemorySource.Critical)
+      val ctx = ConversationContext(criticalMemories = Vector(memId))
       val body = bodyOf(context = ctx)
-      body should include("CRITKEY_42")
       body should include("CRITFACT_42")
     }
 
-    "include memories in the wire payload" in {
-      val ctx = ConversationContext(memories = Vector(
-        ContextMemory(key = "MEMKEY_42", fact = "MEMFACT_42", source = MemorySource.Explicit)
-      ))
+    "include memories in the wire payload (resolved from db.memories)" in {
+      val memId = upsertMemory("MEMFACT_42", MemorySource.Explicit)
+      val ctx = ConversationContext(memories = Vector(memId))
       val body = bodyOf(context = ctx)
-      body should include("MEMKEY_42")
       body should include("MEMFACT_42")
     }
 

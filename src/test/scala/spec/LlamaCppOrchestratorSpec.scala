@@ -7,7 +7,7 @@ import sigil.provider.Provider
 import sigil.provider.llamacpp.LlamaCppProvider
 
 class LlamaCppOrchestratorSpec extends AbstractOrchestratorSpec {
-  override protected val provider: Task[Provider] = LlamaCppProvider().singleton
+  override protected val provider: Task[Provider] = LlamaCppProvider(TestSigil, TestSigil.llamaCppHost).singleton
 
   override protected def modelId: Id[Model] = Model.id("qwen3.5-9b-q4_k_m")
 }
