@@ -4,21 +4,20 @@ import lightdb.LightDB
 import lightdb.id.Id
 import lightdb.lucene.LuceneStore
 import lightdb.rocksdb.RocksDBSharedStore
+import lightdb.store.CollectionManager
 import lightdb.store.split.SplitStoreManager
 import lightdb.upgrade.DatabaseUpgrade
 import rapid.Task
-import sigil.conversation.{Conversation, ContextMemory}
+import sigil.conversation.{ContextMemory, Conversation}
 import sigil.event.Event
 import sigil.signal.{Delta, Signal}
 
 import java.nio.file.Path
 
 case class SigilDB(directory: Option[Path]) extends LightDB {
-  private type TM = RocksDBSharedStore
-  override type SM = SplitStoreManager[TM, LuceneStore.type]
+  override type SM = CollectionManager
 
-  private val traversalManager: TM = RocksDBSharedStore(directory.get)
-  override val storeManager: SM = SplitStoreManager(traversalManager, LuceneStore)
+  override val storeManager: SM = SplitStoreManager(RocksDBSharedStore(directory.get), LuceneStore)
 
   val model: S[Model, Model.type] = store(Model)()
   val events: S[Event, Event.type] = store(Event)()
