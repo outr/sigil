@@ -15,7 +15,7 @@ A Scala 3 framework for building multi-agent LLM conversations with tool use, ca
 - **Capability discovery** — agents invoke `find_capability` to search tools, skills, MCP servers, and other agents at runtime
 - **Multi-agent fan-out** — `Participant`s live on `Conversation`, dispatched statelessly via DB-atomic `AgentState` locks; self-loop and @-mention delegation fall out naturally
 - **Streaming signals** — `Event` + `Delta` flow as `Stream[Signal]`; a `SignalBroadcaster` transport carries them to any number of listeners (Slack, WebSocket, logs…)
-- **Scoped memory** — `ContextMemory` persisted with a `MemorySpaceId` discriminator, so apps can layer global / persona / project / user memory spaces
+- **Scoped memory** — `ContextMemory` persisted with a `MemorySpaceId` discriminator, so apps can layer whatever memory spaces they need (global, per-user, per-project, etc.)
 - **Mode system** — conversations carry a `Mode` (Conversation, Coding, …) that tool calls can switch mid-turn to re-select skills and instructions
 - **Pluggable storage** — ships with on-disk RocksDB + Lucene by default; opt into PostgreSQL via `SIGIL_POSTGRES_JDBC_URL` for production deployments
 - **Built-in caching** — per-store LRU/unbounded caches on hot reads (models, conversations, memories)

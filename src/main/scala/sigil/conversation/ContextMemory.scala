@@ -15,7 +15,7 @@ import sigil.conversation.MemorySpaceId.given
  * every conversation using the memory, without stale embedded copies.
  *
  * `spaceId` scopes the memory to a (app-defined) space — global, per
- * persona, per project, per user, etc. `Sigil.findMemories(spaces)`
+ * project, per user, etc. `Sigil.findMemories(spaces)`
  * queries by space to assemble the turn's relevant memory set.
  *
  * `extraContext` is app-specific structured metadata (ownership, tags,
