@@ -5,7 +5,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.TurnContext
-import sigil.conversation.{Conversation, ConversationContext}
+import sigil.conversation.{ContextFrame, Conversation, ConversationView, TurnInput}
 import sigil.db.Model
 import sigil.event.{Event, Message, ModeChange, ToolInvoke}
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant}
@@ -60,12 +60,21 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       content = Vector(ResponseContent.Text(message))
     )
     val conversation = Conversation(_id = conversationId, currentMode = currentMode)
-    val conversationContext = ConversationContext(events = Vector(userMessage))
+    val view = ConversationView(
+      conversationId = conversationId,
+      frames = Vector(ContextFrame.Text(
+        content = message,
+        participantId = TestUser,
+        sourceEventId = userMessage._id
+      )),
+      _id = ConversationView.idFor(conversationId)
+    )
     val turnContext = TurnContext(
       sigil = TestSigil,
       chain = List(TestUser),
       conversation = conversation,
-      conversationContext = conversationContext,
+      conversationView = view,
+      turnInput = TurnInput(view),
       currentAgentStateId = Some(testAgentStateId)
     )
     makeAgent().process(turnContext, Stream.emits(List[Event](userMessage))).toList
@@ -135,12 +144,21 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         content = Vector(ResponseContent.Text("What is 2+2? Respond with just the number."))
       )
       val conversation = Conversation(_id = conversationId)
-      val conversationContext = ConversationContext(events = Vector(userMessage))
+      val view = ConversationView(
+        conversationId = conversationId,
+        frames = Vector(ContextFrame.Text(
+          content = "What is 2+2? Respond with just the number.",
+          participantId = TestUser,
+          sourceEventId = userMessage._id
+        )),
+        _id = ConversationView.idFor(conversationId)
+      )
       val turnContext = TurnContext(
         sigil = TestSigil,
         chain = List(TestUser),
         conversation = conversation,
-        conversationContext = conversationContext,
+        conversationView = view,
+        turnInput = TurnInput(view),
         currentAgentStateId = Some(testAgentStateId)
       )
 

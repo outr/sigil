@@ -10,7 +10,7 @@ import sigil.conversation.MemorySpaceId.given
 /**
  * A persisted fact the LLM should know about during a conversation.
  * First-class DB record stored in [[sigil.db.SigilDB.memories]] and
- * referenced from [[ConversationContext.memories]] by id — the provider
+ * referenced from [[TurnInput.memories]] by id — the provider
  * resolves ids to records at render time so updates are visible across
  * every conversation using the memory, without stale embedded copies.
  *

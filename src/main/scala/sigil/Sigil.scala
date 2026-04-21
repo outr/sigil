@@ -12,7 +12,7 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
-import sigil.conversation.{ContextMemory, Conversation, ConversationContext, MemorySpaceId}
+import sigil.conversation.{ContextMemory, ContextSummary, Conversation, ConversationView, FrameBuilder, MemorySpaceId, ParticipantProjection, TurnInput}
 import sigil.db.{Model, SigilDB}
 import sigil.dispatcher.TriggerFilter
 import sigil.event.{AgentState, Event, ModeChange}
@@ -67,11 +67,16 @@ trait Sigil {
   // -- context curation --
 
   /**
-   * Transform the conversation context between turns — prune, summarize,
-   * extract memories, collapse stale tool pairs, whatever policy this app
-   * enforces. Apps that don't curate return `Task.pure(ctx)`.
+   * Per-turn curator: given the current [[ConversationView]], produce the
+   * [[TurnInput]] the provider will render. Policy lives here — pick which
+   * memories/summaries/information to surface, apply app-specific
+   * overlays, add extra context, etc.
+   *
+   * Apps that need nothing beyond the raw view return
+   * `Task.pure(TurnInput(view))`. The default implementation does exactly
+   * that so implementors can opt in incrementally.
    */
-  def curate(ctx: ConversationContext): Task[ConversationContext]
+  def curate(view: ConversationView): Task[TurnInput] = Task.pure(TurnInput(view))
 
   // -- information lookup --
 
@@ -99,7 +104,7 @@ trait Sigil {
    * ranking, recency weighting, embedding search, caching, etc.
    *
    * Typically called from `curate` when assembling a turn's
-   * `ConversationContext.memories`: the curator picks which returned
+   * `TurnInput.memories`: the curator picks which returned
    * records to include (by id) based on its policy.
    */
   def findMemories(spaces: Set[MemorySpaceId]): Task[List[ContextMemory]] =
@@ -160,12 +165,126 @@ trait Sigil {
     for {
       _ <- withDB(_.apply(signal))
       _ <- updateConversationProjection(signal)
+      _ <- updateView(signal)
       _ <- broadcaster.handle(signal).handleError(logBroadcastError(signal, _))
       _ <- signal match {
              case e: Event => fanOut(e)
              case _: sigil.signal.Delta => Task.unit
            }
     } yield ()
+
+  /**
+   * Maintain the per-conversation [[ConversationView]] as events/deltas
+   * flow through `publish`. A frame lands in the view exactly once per
+   * source event, the moment the event reaches `EventState.Complete`:
+   *
+   *   - Atomic Complete events (e.g. a user-typed Message, a
+   *     `find_capability` ToolResults) — the Event branch appends
+   *     directly.
+   *   - Events that start Active and settle later via a Delta (streaming
+   *     Message, in-flight ToolInvoke) — the Delta branch re-reads the
+   *     target post-apply. If it's now Complete, append.
+   *
+   * Idempotency: `appendToViewIfNew` guards against double-appends by
+   * checking whether a frame with the same `sourceEventId` already exists.
+   * Deltas that don't complete their target, or events that are still
+   * Active, fall through as no-ops.
+   */
+  private final def updateView(signal: Signal): Task[Unit] = signal match {
+    case e: Event if e.state == EventState.Complete =>
+      appendToViewIfNew(e)
+    case d: sigil.signal.Delta =>
+      withDB(_.events.transaction(_.get(d.target.asInstanceOf[Id[Event]]))).flatMap {
+        case Some(target) if target.state == EventState.Complete => appendToViewIfNew(target)
+        case _ => Task.unit
+      }
+    case _ => Task.unit
+  }
+
+  /** Append `event`'s frame(s) and participant-projection updates to the
+    * conversation's view, creating the view if it doesn't yet exist.
+    * Idempotent — if a frame for `event._id` already exists in the view
+    * the modify returns unchanged. */
+  private final def appendToViewIfNew(event: Event): Task[Unit] =
+    withDB(_.views.transaction(_.modify(ConversationView.idFor(event.conversationId)) {
+      case Some(view) if view.frames.exists(_.sourceEventId == event._id) =>
+        Task.pure(Some(view))
+      case Some(view) =>
+        val nextFrames = FrameBuilder.appendFor(view.frames, event)
+        val nextProjections = FrameBuilder.updateProjections(view.participantProjections, event)
+        Task.pure(Some(view.copy(
+          frames = nextFrames,
+          participantProjections = nextProjections,
+          lastEventId = Some(event._id),
+          modified = Timestamp(Nowish())
+        )))
+      case None =>
+        val seeded = ConversationView(
+          conversationId = event.conversationId,
+          frames = FrameBuilder.appendFor(Vector.empty, event),
+          participantProjections = FrameBuilder.updateProjections(Map.empty, event),
+          lastEventId = Some(event._id),
+          _id = ConversationView.idFor(event.conversationId)
+        )
+        Task.pure(Some(seeded))
+    })).unit
+
+  // -- view / summary helpers --
+
+  /** Fetch the [[ConversationView]] for a conversation, returning an empty
+    * seed (no frames, no projections) if one hasn't been materialized yet.
+    * Empty views are NOT persisted — the view only lands on disk once a
+    * Complete event exists to anchor it. */
+  def viewFor(conversationId: Id[Conversation]): Task[ConversationView] =
+    withDB(_.views.transaction(_.get(ConversationView.idFor(conversationId)))).map {
+      case Some(view) => view
+      case None => ConversationView(
+        conversationId = conversationId,
+        _id = ConversationView.idFor(conversationId)
+      )
+    }
+
+  /** Drop the existing view (if any) and rebuild it by folding every
+    * Complete event for the conversation through [[FrameBuilder]]. Useful
+    * for recovery, schema migrations, and tests.
+    *
+    * Returns the newly-materialized view. */
+  def rebuildView(conversationId: Id[Conversation]): Task[ConversationView] =
+    withDB(_.events.transaction(_.list)).flatMap { all =>
+      val events = all
+        .filter(_.conversationId == conversationId)
+        .sortBy(_.timestamp.value)
+        .toVector
+      val frames = FrameBuilder.build(events.filter(_.state == EventState.Complete))
+      val projections = events
+        .filter(_.state == EventState.Complete)
+        .foldLeft(Map.empty[ParticipantId, ParticipantProjection])(FrameBuilder.updateProjections)
+      val lastId = events.lastOption.map(_._id)
+      val rebuilt = ConversationView(
+        conversationId = conversationId,
+        frames = frames,
+        participantProjections = projections,
+        lastEventId = lastId,
+        _id = ConversationView.idFor(conversationId)
+      )
+      withDB(_.views.transaction(_.upsert(rebuilt))).map(_ => rebuilt)
+    }
+
+  /** Persist a new [[ContextSummary]] and return the stored record. The
+    * caller (curator or app-specific summarizer) owns the generation
+    * policy; this helper just writes. */
+  def persistSummary(summary: ContextSummary): Task[ContextSummary] =
+    withDB(_.summaries.transaction(_.upsert(summary)))
+
+  /** Load all summaries for a conversation, oldest-first. */
+  def summariesFor(conversationId: Id[Conversation]): Task[List[ContextSummary]] =
+    withDB(_.summaries.transaction { tx =>
+      import lightdb.filter.*
+      tx.query
+        .filter(_.conversationId === conversationId)
+        .toList
+        .map(_.sortBy(_.created.value))
+    })
 
   /** Maintain materialized projections on the [[Conversation]] record. Today
     * just `currentMode` derived from the latest [[ModeChange]]; future
@@ -327,24 +446,28 @@ trait Sigil {
                                  conv: Conversation,
                                  sinceTimestamp: Timestamp,
                                  claimedId: Id[Event]): Task[(TurnContext, Stream[Event])] =
-    withDB(_.events.transaction(_.list)).flatMap { all =>
-      val convEvents = all.filter(_.conversationId == conv._id).sortBy(_.timestamp.value).toVector
-      val baseCtx = ConversationContext(events = convEvents)
-      curate(baseCtx).map { curated =>
-        val triggerEvents = convEvents.filter(e =>
-          e.timestamp.value > sinceTimestamp.value && TriggerFilter.isTriggerFor(agent, e)
-        )
-        val triggers: Stream[Event] = Stream.emits(triggerEvents.toList)
-        val chain = buildChain(triggerEvents.toList, agent)
-        val ctx = TurnContext(
-          sigil = this,
-          chain = chain,
-          conversation = conv,
-          conversationContext = curated,
-          currentAgentStateId = Some(claimedId)
-        )
-        (ctx, triggers)
+    for {
+      view <- viewFor(conv._id)
+      input <- curate(view)
+      triggerEvents <- withDB(_.events.transaction(_.list)).map { all =>
+        all.view
+          .filter(e => e.conversationId == conv._id
+                    && e.timestamp.value > sinceTimestamp.value
+                    && TriggerFilter.isTriggerFor(agent, e))
+          .toList
       }
+    } yield {
+      val triggers: Stream[Event] = Stream.emits(triggerEvents)
+      val chain = buildChain(triggerEvents, agent)
+      val ctx = TurnContext(
+        sigil = this,
+        chain = chain,
+        conversation = conv,
+        conversationView = view,
+        turnInput = input,
+        currentAgentStateId = Some(claimedId)
+      )
+      (ctx, triggers)
     }
 
   private final def newTriggersExist(agent: AgentParticipant,

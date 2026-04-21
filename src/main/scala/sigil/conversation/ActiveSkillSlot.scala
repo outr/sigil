@@ -9,6 +9,6 @@ import fabric.rw.*
  *
  * Multiple slots can be active simultaneously (e.g. one from the current
  * mode, one promoted by `find_capability`, one set by an explicit user
- * directive); they're keyed by source on [[ParticipantContext.activeSkills]].
+ * directive); they're keyed by source on [[ParticipantProjection.activeSkills]].
  */
 case class ActiveSkillSlot(name: String, content: String) derives RW

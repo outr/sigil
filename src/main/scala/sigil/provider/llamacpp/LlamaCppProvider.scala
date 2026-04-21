@@ -5,13 +5,10 @@ import fabric.io.{JsonFormatter, JsonParser}
 import fabric.rw.*
 import rapid.{Stream, Task}
 import sigil.Sigil
-import sigil.conversation.ContextMemory
+import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary}
 import sigil.db.Model
-import sigil.event.{Event, EventVisibility, Message, ModeChange, TitleChange, ToolInvoke, ToolResults}
 import sigil.provider.*
 import sigil.tool.{DefinitionToSchema, ToolInput, ToolSchema}
-import sigil.tool.model.ResponseContent
-import sigil.tool.ToolInput.given
 import spice.http.{HttpMethod, HttpRequest}
 import spice.http.client.HttpClient
 import spice.http.content.StringContent
@@ -31,7 +28,7 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
    */
   override def requestConverter(request: ProviderRequest): Task[HttpRequest] = {
     val modelName = stripProviderPrefix(request.modelId.value)
-    resolveMemories(request).map { resolved =>
+    resolveReferences(request).map { resolved =>
       val bodyStr = JsonFormatter.Compact(buildBody(modelName, request, resolved))
       HttpRequest(
         method = HttpMethod.Post,
@@ -54,26 +51,27 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
     )
   }
 
-  /** Resolve the ids in `ConversationContext.criticalMemories` and `.memories`
-    * to full `ContextMemory` records by looking each one up in
-    * `SigilDB.memories`. Ids that don't resolve (deleted memories, stale
-    * references) are dropped silently — the curator's job to keep the
-    * referenced set consistent. */
-  private def resolveMemories(request: ProviderRequest): Task[ResolvedMemories] = {
-    val ctx = request.context
+  /** Resolve the ids in `TurnInput.criticalMemories`, `.memories`, and
+    * `.summaries` to full records by looking each one up in the
+    * corresponding store. Ids that don't resolve (deleted, stale) are
+    * dropped silently — the curator keeps the referenced set consistent. */
+  private def resolveReferences(request: ProviderRequest): Task[ResolvedReferences] = {
+    val turn = request.turnInput
     for {
-      crit <- Task.sequence(ctx.criticalMemories.toList.map(id => sigilRef.withDB(_.memories.transaction(_.get(id)))))
-      regular <- Task.sequence(ctx.memories.toList.map(id => sigilRef.withDB(_.memories.transaction(_.get(id)))))
-    } yield ResolvedMemories(
-      critical = crit.flatten.toVector,
-      regular = regular.flatten.toVector
+      crit <- Task.sequence(turn.criticalMemories.toList.map(id => sigilRef.withDB(_.memories.transaction(_.get(id)))))
+      regular <- Task.sequence(turn.memories.toList.map(id => sigilRef.withDB(_.memories.transaction(_.get(id)))))
+      summaries <- Task.sequence(turn.summaries.toList.map(id => sigilRef.withDB(_.summaries.transaction(_.get(id)))))
+    } yield ResolvedReferences(
+      criticalMemories = crit.flatten.toVector,
+      memories = regular.flatten.toVector,
+      summaries = summaries.flatten.toVector
     )
   }
 
-  private def buildBody(modelName: String, request: ProviderRequest, memories: ResolvedMemories): Json = {
+  private def buildBody(modelName: String, request: ProviderRequest, resolved: ResolvedReferences): Json = {
     val agentId = request.chain.lastOption
-    val systemMsg = obj("role" -> str("system"), "content" -> str(buildSystemContent(request, memories)))
-    val messages = renderHistory(request.context.events, agentId)
+    val systemMsg = obj("role" -> str("system"), "content" -> str(buildSystemContent(request, resolved)))
+    val messages = renderFrames(request.turnInput.conversationView.frames, agentId)
 
     val toolsArr = request.tools.map { t =>
       val s = t.schema
@@ -120,23 +118,25 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
    *
    *   - mode + description (always)
    *   - instructions (always)
-   *   - critical memories (`ConversationContext.criticalMemories`)
-   *   - earlier-conversation summaries (`ConversationContext.summaries`)
-   *   - active memories (`ConversationContext.memories`)
-   *   - referenced information catalog (`ConversationContext.information`)
-   *   - active skills aggregated across chain participants
-   *     (`ConversationContext.aggregatedSkills(chain)`)
-   *   - recent / suggested tools per chain participant
+   *   - critical memories (`TurnInput.criticalMemories`)
+   *   - earlier-conversation summaries (`TurnInput.summaries`)
+   *   - active memories (`TurnInput.memories`)
+   *   - referenced information catalog (`TurnInput.information`)
+   *   - active skills aggregated across chain participants (from
+   *     `ConversationView.aggregatedSkills(chain)`)
+   *   - recent / suggested tools per chain participant (from the
+   *     view's per-participant projections)
    *   - app-supplied extra context, both conversation-wide
-   *     (`ConversationContext.extraContext`) and per-participant
-   *     (`ParticipantContext.extraContext`)
+   *     (`TurnInput.extraContext`) and per-participant
+   *     (`ParticipantProjection.extraContext`)
    *
-   * Every Model-visible field on `ConversationContext` /
-   * `ParticipantContext` MUST appear here. The companion
-   * [[spec.LlamaCppRequestCoverageSpec]] is the regression guard.
+   * Every Model-visible field on `TurnInput` / `ConversationView` MUST
+   * appear here. The companion [[spec.LlamaCppRequestCoverageSpec]] is
+   * the regression guard.
    */
-  private def buildSystemContent(request: ProviderRequest, memories: ResolvedMemories): String = {
-    val ctx = request.context
+  private def buildSystemContent(request: ProviderRequest, resolved: ResolvedReferences): String = {
+    val turn = request.turnInput
+    val view = turn.conversationView
     val chain = request.chain
     val sb = new StringBuilder
 
@@ -145,27 +145,27 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
     val instr = request.instructions.render
     if (instr.nonEmpty) sb.append("\n").append(instr).append("\n")
 
-    if (memories.critical.nonEmpty) {
+    if (resolved.criticalMemories.nonEmpty) {
       sb.append("\n== Critical directives ==\n")
-      memories.critical.foreach(m => sb.append(s"- ${m.fact}\n"))
+      resolved.criticalMemories.foreach(m => sb.append(s"- ${m.fact}\n"))
     }
 
-    if (ctx.summaries.nonEmpty) {
+    if (resolved.summaries.nonEmpty) {
       sb.append("\n== Earlier in this conversation ==\n")
-      ctx.summaries.foreach(s => sb.append(s.text).append("\n"))
+      resolved.summaries.foreach(s => sb.append(s.text).append("\n"))
     }
 
-    if (memories.regular.nonEmpty) {
+    if (resolved.memories.nonEmpty) {
       sb.append("\n== Memories ==\n")
-      memories.regular.foreach(m => sb.append(s"- ${m.fact}\n"))
+      resolved.memories.foreach(m => sb.append(s"- ${m.fact}\n"))
     }
 
-    if (ctx.information.nonEmpty) {
+    if (turn.information.nonEmpty) {
       sb.append("\n== Referenced content (look up by id) ==\n")
-      ctx.information.foreach(i => sb.append(s"- ${i.id.value} [${i.informationType.name}]: ${i.summary}\n"))
+      turn.information.foreach(i => sb.append(s"- ${i.id.value} [${i.informationType.name}]: ${i.summary}\n"))
     }
 
-    val skills = ctx.aggregatedSkills(chain)
+    val skills = view.aggregatedSkills(chain)
     if (skills.nonEmpty) {
       sb.append("\n== Active skills ==\n")
       skills.foreach { s =>
@@ -174,24 +174,24 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
       }
     }
 
-    val recentTools = chain.flatMap(id => ctx.forParticipant(id).recentTools).distinct
+    val recentTools = chain.flatMap(id => view.projectionFor(id).recentTools).distinct
     if (recentTools.nonEmpty) {
       sb.append("\n== Recently used tools ==\n")
       recentTools.foreach(t => sb.append(s"- $t\n"))
     }
 
-    val suggestedTools = chain.flatMap(id => ctx.forParticipant(id).suggestedTools).distinct
+    val suggestedTools = chain.flatMap(id => view.projectionFor(id).suggestedTools).distinct
     if (suggestedTools.nonEmpty) {
       sb.append("\n== Suggested tools ==\n")
       suggestedTools.foreach(t => sb.append(s"- $t\n"))
     }
 
-    if (ctx.extraContext.nonEmpty) {
+    if (turn.extraContext.nonEmpty) {
       sb.append("\n== Conversation context ==\n")
-      ctx.extraContext.foreach { case (k, v) => sb.append(s"- ${k.value}: $v\n") }
+      turn.extraContext.foreach { case (k, v) => sb.append(s"- ${k.value}: $v\n") }
     }
 
-    val perParticipantExtras = chain.flatMap(id => ctx.forParticipant(id).extraContext.map(id -> _))
+    val perParticipantExtras = chain.flatMap(id => view.projectionFor(id).extraContext.map(id -> _))
     if (perParticipantExtras.nonEmpty) {
       sb.append("\n== Participant context ==\n")
       perParticipantExtras.foreach { case (pid, (k, v)) =>
@@ -203,107 +203,91 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
   }
 
   /**
-   * Render the conversation event log into the OpenAI/llama.cpp message
-   * format the chat-completions endpoint expects, so the LLM has full
-   * memory of its own prior actions across iterations.
+   * Render the conversation view's [[ContextFrame]]s into the
+   * OpenAI/llama.cpp chat-completions message format.
    *
-   * Only Events whose `visibility` includes `EventVisibility.Model` are
-   * candidates for inclusion — events the framework has explicitly marked
-   * as UI-only (e.g. `TitleChange`, `AgentState` lifecycle markers) are
-   * filtered out before any rendering happens.
+   * Mapping rules:
+   *   - `ContextFrame.Text` from the agent itself → `{role: "assistant", content}`
+   *   - `ContextFrame.Text` from anyone else      → `{role: "user", content}`
+   *   - `ContextFrame.ToolCall` from the agent for any tool *other than*
+   *     `respond` → `{role: "assistant", tool_calls: [...]}`. The `respond`
+   *     tool's call is filtered at render time because the following
+   *     `Text` frame IS the response — emitting both yields a tool_call
+   *     without a matching tool_result, which models handle poorly.
+   *   - `ContextFrame.ToolResult` → `{role: "tool", tool_call_id, content}`,
+   *     paired by `callId` to a prior `ToolCall`.
+   *   - `ContextFrame.System` → `{role: "tool", tool_call_id, content}` when
+   *     paired with a pending tool call; otherwise `{role: "system", content}`.
    *
-   * Mapping rules for the surviving events:
-   *   - `Message` from the agent itself → `{role: "assistant", content}`
-   *   - `Message` from anyone else      → `{role: "user", content}`
-   *   - `ToolInvoke` from the agent for any tool *other than* `respond` →
-   *     `{role: "assistant", tool_calls: [{id, function: {name, arguments}}]}`
-   *     where `id` is the ToolInvoke's `_id` and `arguments` is the input
-   *     serialized through the `ToolInput` poly.
-   *   - `ToolInvoke` for `respond` is skipped — the following `Message` IS
-   *     the response, and emitting both yields a tool_call without a
-   *     matching tool_result, which models handle poorly.
-   *   - The next `ModeChange` / `ToolResults` after a pending `ToolInvoke`
-   *     is paired with it as `{role: "tool", tool_call_id, content}`.
-   *     Without pairing the model sees a dangling assistant tool_call and
-   *     may repeat it.
+   * Only model-visible events become frames in the first place (see
+   * [[sigil.conversation.FrameBuilder]]), so UI-only history never reaches
+   * this renderer.
    */
-  private[llamacpp] def renderHistory(events: Vector[Event], agentId: Option[_root_.sigil.participant.ParticipantId]): Vector[Json] = {
+  private[llamacpp] def renderFrames(frames: Vector[ContextFrame], agentId: Option[_root_.sigil.participant.ParticipantId]): Vector[Json] = {
     val out = Vector.newBuilder[Json]
-    var pendingToolCall: Option[(String, String)] = None  // (tool_call_id, tool name)
+    var pendingToolCall: Option[String] = None
 
-    def flushAsContent(content: String): Unit = {
-      pendingToolCall.foreach { case (callId, _) =>
+    def flushAsToolResultOrSystem(content: String): Unit = pendingToolCall match {
+      case Some(callId) =>
         out += obj(
           "role" -> str("tool"),
           "tool_call_id" -> str(callId),
           "content" -> str(content)
         )
-      }
-      pendingToolCall = None
-    }
-
-    events.filter(_.visibility.contains(EventVisibility.Model)).foreach {
-      case m: Message =>
-        val isAssistant = agentId.contains(m.participantId)
-        val text = renderMessageText(m)
-        if (isAssistant && pendingToolCall.isDefined) {
-          // Streaming respond path: the agent's Message is the result of
-          // its own preceding ToolInvoke (the `respond` ToolInvoke was
-          // skipped, so this only fires for unusual non-respond streaming
-          // tools). Pair with pending and also emit as assistant.
-          flushAsContent(text)
-          out += obj("role" -> str("assistant"), "content" -> str(text))
-        } else if (isAssistant) {
-          out += obj("role" -> str("assistant"), "content" -> str(text))
-        } else {
-          out += obj("role" -> str("user"), "content" -> str(text))
-        }
-      case ti: ToolInvoke if agentId.contains(ti.participantId) =>
-        if (ti.toolName == "respond") {
-          // Skip — the following Message is the actual response.
-        } else {
-          val callId = ti._id.value
-          val argsJson = ti.input
-            .map(i => JsonFormatter.Compact(stripPolyDiscriminator(summon[RW[ToolInput]].read(i))))
-            .getOrElse("{}")
-          out += obj(
-            "role" -> str("assistant"),
-            "tool_calls" -> arr(obj(
-              "id" -> str(callId),
-              "type" -> str("function"),
-              "function" -> obj(
-                "name" -> str(ti.toolName),
-                "arguments" -> str(argsJson)
-              )
-            ))
-          )
-          pendingToolCall = Some((callId, ti.toolName))
-        }
-      case _: ToolInvoke =>
-        // ToolInvoke from someone else — skip
-      case mc: ModeChange =>
-        flushAsContent(s"Mode changed to ${mc.mode}.")
-      case tc: TitleChange =>
-        flushAsContent(s"Title changed to: ${tc.title}")
-      case tr: ToolResults =>
-        val rendered =
-          if (tr.schemas.isEmpty) "No matches."
-          else tr.schemas.map(s => s"- ${s.name}: ${s.description}").mkString("\n")
-        flushAsContent(rendered)
-      case other =>
-        // Model-visible Event subtype not yet handled by this provider.
-        // Fail loud rather than silently dropping — every Model-visible
-        // event MUST appear in the wire output (regression invariant).
-        throw new RuntimeException(
-          s"LlamaCppProvider.renderHistory: Model-visible Event ${other.getClass.getSimpleName} " +
-            s"has no rendering rule. Add a case to renderHistory or remove EventVisibility.Model from the event."
+        pendingToolCall = None
+      case None =>
+        out += obj(
+          "role" -> str("system"),
+          "content" -> str(content)
         )
     }
 
-    // Dangling tool_call without a result — fabricate a minimal "ok" so the
-    // history isn't malformed. Defensive: shouldn't happen in correct
-    // dispatcher operation.
-    pendingToolCall.foreach { case (callId, _) =>
+    frames.foreach {
+      case ContextFrame.Text(content, participantId, _) =>
+        val isAssistant = agentId.contains(participantId)
+        if (isAssistant && pendingToolCall.isDefined) {
+          flushAsToolResultOrSystem(content)
+          out += obj("role" -> str("assistant"), "content" -> str(content))
+        } else if (isAssistant) {
+          out += obj("role" -> str("assistant"), "content" -> str(content))
+        } else {
+          out += obj("role" -> str("user"), "content" -> str(content))
+        }
+
+      case ContextFrame.ToolCall(toolName, _, _, participantId, _) if toolName == "respond" && agentId.contains(participantId) =>
+        // Skip — the following Text frame is the actual response.
+
+      case ContextFrame.ToolCall(toolName, argsJson, callId, participantId, _) if agentId.contains(participantId) =>
+        out += obj(
+          "role" -> str("assistant"),
+          "tool_calls" -> arr(obj(
+            "id" -> str(callId.value),
+            "type" -> str("function"),
+            "function" -> obj(
+              "name" -> str(toolName),
+              "arguments" -> str(argsJson)
+            )
+          ))
+        )
+        pendingToolCall = Some(callId.value)
+
+      case _: ContextFrame.ToolCall =>
+        // ToolCall from someone else — skip (not rendered as a tool call for this agent).
+
+      case ContextFrame.ToolResult(callId, content, _) =>
+        out += obj(
+          "role" -> str("tool"),
+          "tool_call_id" -> str(callId.value),
+          "content" -> str(content)
+        )
+        if (pendingToolCall.contains(callId.value)) pendingToolCall = None
+
+      case ContextFrame.System(content, _) =>
+        flushAsToolResultOrSystem(content)
+    }
+
+    // Dangling tool_call without a result — defensive fallback.
+    pendingToolCall.foreach { callId =>
       out += obj(
         "role" -> str("tool"),
         "tool_call_id" -> str(callId),
@@ -312,27 +296,6 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
     }
 
     out.result()
-  }
-
-  private def renderMessageText(m: Message): String =
-    m.content
-      .map {
-        case ResponseContent.Text(t) => t
-        case ResponseContent.Markdown(t) => t
-        case ResponseContent.Code(c, lang) => s"```${lang.getOrElse("")}\n$c\n```"
-        case other => other.toString
-      }
-      .mkString("\n")
-
-  /** `ToolInput`'s poly RW tags each concrete input with a `"type"`
-    * discriminator field. That's wire-correct for sigil but foreign to
-    * OpenAI/llama.cpp tool_call `arguments` — they expect pure
-    * parameter-schema JSON. Strip it so the chat template doesn't choke
-    * on unexpected fields when echoing the tool_call back through the
-    * conversation on a follow-up turn. */
-  private def stripPolyDiscriminator(json: Json): Json = json match {
-    case o: Obj => Obj(o.value - "type")
-    case other  => other
   }
 
   private def parseLine(line: String, state: StreamState): Vector[ProviderEvent] = {

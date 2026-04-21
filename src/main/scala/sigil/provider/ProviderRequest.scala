@@ -1,7 +1,7 @@
 package sigil.provider
 
 import lightdb.id.Id
-import sigil.conversation.{Conversation, ConversationContext}
+import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.Model
 import sigil.participant.ParticipantId
 import sigil.tool.{Tool, ToolInput}
@@ -11,20 +11,19 @@ import sigil.tool.{Tool, ToolInput}
  * behavior. If/when replay or caching is needed, extract a snapshot with just
  * the serializable fields.
  *
- * @param context the structured conversation context the orchestrator builds
- *                this turn's prompt from. Replaces a flat `Vector[Event]` —
- *                providers read `context.events` (and may consult memories,
- *                summaries, information catalog, extra context) to compose
- *                their wire payload.
- * @param chain   authority lineage for this invocation — the originating
- *                participant followed by each propagator. Forwarded to
- *                `TurnContext.chain` when a tool executes. Supplied fresh per
- *                invocation; never persisted.
+ * @param turnInput the curator's per-turn output — carries the
+ *                  [[sigil.conversation.ConversationView]] (frames +
+ *                  participant projections) plus the memory / summary /
+ *                  information selections the provider should render.
+ * @param chain     authority lineage for this invocation — the originating
+ *                  participant followed by each propagator. Forwarded to
+ *                  `TurnContext.chain` when a tool executes. Supplied fresh
+ *                  per invocation; never persisted.
  */
 case class ProviderRequest(conversationId: Id[Conversation],
                            modelId: Id[Model],
                            instructions: Instructions,
-                           context: ConversationContext,
+                           turnInput: TurnInput,
                            currentMode: Mode,
                            generationSettings: GenerationSettings,
                            tools: Vector[Tool[? <: ToolInput]] = Vector.empty,
