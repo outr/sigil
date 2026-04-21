@@ -2,7 +2,7 @@ package sigil.conversation
 
 import fabric.rw.*
 import lightdb.id.Id
-import sigil.information.Information
+import sigil.information.InformationSummary
 import sigil.participant.ParticipantId
 
 /**
@@ -29,7 +29,7 @@ case class TurnInput(conversationView: ConversationView,
                      criticalMemories: Vector[Id[ContextMemory]] = Vector.empty,
                      memories: Vector[Id[ContextMemory]] = Vector.empty,
                      summaries: Vector[Id[ContextSummary]] = Vector.empty,
-                     information: Vector[Information] = Vector.empty,
+                     information: Vector[InformationSummary] = Vector.empty,
                      extraContext: Map[ContextKey, String] = Map.empty) derives RW {
 
   /** Shortcut: aggregate active skills across a chain via the view. */

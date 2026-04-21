@@ -1,25 +1,34 @@
 package sigil.information
 
-import fabric.rw.*
+import fabric.rw.serialized
 import lightdb.id.Id
-import sigil.PolyName
+import sigil.{PolyName, PolyType}
 
 /**
- * A lightweight reference to content the LLM can look up by id. Entries
- * surface in the provider context as a brief catalog ("Referenced
- * content:") of `id` + `summary` lines; the full typed record is fetched
- * on demand through [[sigil.Sigil.getInformation]] when the LLM cites the id.
+ * The fully-resolved content record referenced by an
+ * [[InformationSummary]] in a conversation's context catalog. Returned by
+ * [[sigil.Sigil.getInformation]] when the LLM invokes
+ * [[sigil.tool.core.LookupInformationTool]] against a catalog id.
  *
- * `informationType` pins the entry to a specific registered
- * [[FullInformation]] subtype so renderers and resolvers can route
- * without resolving the full record first. The valid set of names is
- * derived at runtime from `FullInformation`'s poly registration — sigil
- * itself takes no position on what kinds of content exist.
+ * Open `PolyType` hierarchy. Sigil provides no concrete subtypes because
+ * content types are domain concepts (articles, invoices, tickets,
+ * memories, images — whatever the app has). Apps subclass `Information`
+ * for each of their types, register the RWs into the poly, and implement
+ * `Sigil.getInformation` to dispatch to the right resolver.
  *
- * @param id              typed identifier the LLM uses to look up content
- * @param informationType classifier naming a registered `FullInformation` subtype
- * @param summary         1-2 line description shown in the catalog
+ * The short class name of each registered subtype becomes a valid
+ * `PolyName[Information]` automatically — reachable via
+ * `Information.name.of(...)` / `.from(...)` / `.registered`.
  */
-case class Information(id: Id[Information],
-                       informationType: PolyName[FullInformation],
-                       summary: String) derives RW
+trait Information {
+  def id: Id[Information]
+
+  /**
+   * Classifier matching this subtype's registered name. Default uses the
+   * runtime class's short name; overrides are rarely needed.
+   */
+  @serialized
+  def informationType: PolyName[Information] = Information.name.of(this)
+}
+
+object Information extends PolyType[Information]

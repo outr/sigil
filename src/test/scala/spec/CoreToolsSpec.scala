@@ -8,7 +8,7 @@ import rapid.AsyncTaskSpec
 import sigil.TurnContext
 import sigil.conversation.{Conversation, ConversationView, TurnInput}
 import sigil.event.{Message, TitleChange}
-import sigil.information.{FullInformation, Information}
+import sigil.information.Information
 import sigil.signal.EventState
 import sigil.tool.core.{LookupInformationTool, RespondTool}
 import sigil.tool.model.{LookupInformationInput, RespondInput}
@@ -78,11 +78,11 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "emit a Message carrying the resolved information when the store has it" in {
       val convId = freshConversationId("lookup-hit")
       val infoId = Id[Information]("info-hit")
-      val full = TestFullInformation(id = infoId, body = "HIT_BODY_42")
-      // Register the concrete FullInformation subtype so its poly RW is
+      val full = TestInformationWithBody(id = infoId, body = "HIT_BODY_42")
+      // Register the concrete Information subtype so its poly RW is
       // available to the tool's JSON serialization path. Safe to call
       // repeatedly — PolyType registration is idempotent.
-      FullInformation.register(summon[RW[TestFullInformation]])
+      Information.register(summon[RW[TestInformationWithBody]])
       TestSigil.information.put(full)
 
       val events = LookupInformationTool
@@ -117,5 +117,7 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   }
 }
 
-/** Synthetic FullInformation subtype used only by CoreToolsSpec. */
-case class TestFullInformation(id: Id[Information], body: String) extends FullInformation derives RW
+/** Synthetic Information subtype used only by CoreToolsSpec. Named
+  * distinctly from `TestInformation` in other specs to avoid a collision
+  * in the shared `spec` package. */
+case class TestInformationWithBody(id: Id[Information], body: String) extends Information derives RW

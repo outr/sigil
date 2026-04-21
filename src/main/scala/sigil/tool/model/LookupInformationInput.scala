@@ -7,7 +7,7 @@ import sigil.tool.ToolInput
 
 /**
  * Input for the `lookup_information` tool — the agent calls this to
- * resolve a referenced [[sigil.information.Information]] id to its full
- * content.
+ * resolve an id from the referenced-content catalog to its full
+ * [[sigil.information.Information]] record.
  */
 case class LookupInformationInput(id: Id[Information]) extends ToolInput derives RW

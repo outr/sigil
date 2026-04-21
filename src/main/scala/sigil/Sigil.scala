@@ -17,7 +17,7 @@ import sigil.db.{Model, SigilDB}
 import sigil.dispatcher.TriggerFilter
 import sigil.event.{AgentState, Event, ModeChange, TitleChange}
 import sigil.provider.Mode
-import sigil.information.{FullInformation, Information}
+import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
 import sigil.provider.Provider
 import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, EventState, Signal}
@@ -87,7 +87,7 @@ trait Sigil {
    * dispatch on their own subtype registry and fetch the real content from wherever
    * it lives (DB, filesystem, web, memory store).
    */
-  def getInformation(id: Id[Information]): Task[Option[FullInformation]] = Task.pure(None)
+  def getInformation(id: Id[Information]): Task[Option[Information]] = Task.pure(None)
 
   // -- memory --
 
