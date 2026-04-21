@@ -19,14 +19,11 @@ object RespondTool extends Tool[RespondInput] {
   override protected def uniqueName: String = "respond"
 
   override protected def description: String =
-    """Send your response to the user.
+    """Send your response to the user. Every user-facing reply goes through this call — you cannot emit
+      |plain text to reach the user. Describe what you did in natural language AFTER an action through
+      |this tool; do not narrate tool calls before or as you make them.
       |
-      |The `title` field is REQUIRED. Pass the current conversation title unchanged if it still fits the
-      |conversation; propose a new concise 3-6 word title only when the current title is "New Conversation"
-      |(a freshly-created conversation) or the topic has meaningfully shifted and the existing title no
-      |longer fits. No quotes, no punctuation, short.
-      |
-      |The `content` field is a multipart string. Each block begins with a header line and continues until the
+      |`content` is a multipart string. Each block begins with a header line and continues until the
       |next header or end of input — there are no close markers.
       |
       |Header format: ▶<TYPE>  or  ▶<TYPE> <arg>
@@ -82,7 +79,15 @@ object RespondTool extends Tool[RespondInput] {
       |- Each subsequent ▶ header IMPLICITLY ends the previous block. Do not emit empty blocks.
       |- Use \n for line breaks within the JSON string.
       |- Pick the most specific type for each block. Use Markdown only when no other type fits.
-      |- When asking the user to choose from a fixed set of alternatives, PREFER ▶Options over a numbered prose list.""".stripMargin
+      |- When asking the user to choose from a fixed set of alternatives, PREFER ▶Options over a numbered prose list.
+      |
+      |`title` — REQUIRED on every call:
+      |- If the current conversation title (shown at the top of the system prompt) still fits, pass it
+      |  UNCHANGED. The framework detects the no-op and suppresses the title-change event.
+      |- Propose a new concise 3-6 word title ONLY when:
+      |    a) the current title is "New Conversation" (freshly-created conversation), or
+      |    b) the topic has meaningfully shifted and the existing title no longer fits.
+      |- No quotes, no punctuation in titles.""".stripMargin
 
   override protected def examples: List[ToolExample[RespondInput]] = List(
     ToolExample(

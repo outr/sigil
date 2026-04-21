@@ -34,23 +34,6 @@ object Instructions {
   val DefaultPersonality: String = "You are a helpful assistant."
 
   /**
-   * Tool-use discipline — every user-facing output goes through a tool call.
-   */
-  val ToolUseGuidance: String =
-    """TOOL USE
-      |- Every user-facing reply goes through a tool call — the `respond` tool for natural-language replies. You cannot produce output by emitting plain text.
-      |- When a request requires an action (search, create, modify, lookup), call the appropriate tool rather than describing what you would do.
-      |- Do not narrate your tool calls. Describe what you did in natural language after the fact, via `respond`.
-      |- If the latest message isn't directed at you, or another participant is better positioned to reply, call `no_response` instead of `respond`. Don't pad with filler like "I have nothing to add" — silent decline is cleaner.""".stripMargin
-
-  /**
-   * Mode awareness — the current mode is provided as context; switch when needed.
-   */
-  val ModeGuidance: String =
-    """MODES
-      |- Your current mode is stated at the top of this prompt. When the user's task belongs to a different mode, call `change_mode` to switch before proceeding.""".stripMargin
-
-  /**
    * Safety posture around destructive and external-facing actions.
    */
   val SafetyGuidance: String =
@@ -70,25 +53,14 @@ object Instructions {
       |- Ask for clarification only when a request is genuinely ambiguous, not to confirm obvious intent.""".stripMargin
 
   /**
-   * Conversation-title policy. The `respond` tool's `title` field is
-   * required on every call; this guidance governs when to keep the
-   * current title versus when to propose a new one.
-   */
-  val TitleGuidance: String =
-    """TITLE
-      |- The `title` field on `respond` is REQUIRED on every call.
-      |- If the current title (shown at the top of this prompt) still fits the conversation, pass it UNCHANGED.
-      |- Propose a new concise 3-6 word title ONLY when:
-      |    a) the current title is "New Conversation" (a freshly-created conversation), or
-      |    b) the topic has meaningfully shifted and the current title no longer fits.
-      |- No quotes, no punctuation in titles.""".stripMargin
-
-  /**
-   * The sigil-default operational `core`. Sections cover tool-use discipline,
-   * mode awareness, safety posture, response behavior, and title handling.
+   * The sigil-default operational `core`. Holds only cross-cutting posture
+   * (safety, behavior). Tool-specific guidance — when and how to call a
+   * particular tool — lives on that tool's own `description`, where it's
+   * co-located with the tool's schema and travels with the tool whether
+   * an app keeps, removes, or replaces it.
    */
   val DefaultCore: String =
-    List(ToolUseGuidance, ModeGuidance, SafetyGuidance, BehaviorGuidance, TitleGuidance).mkString("\n\n")
+    List(SafetyGuidance, BehaviorGuidance).mkString("\n\n")
 
   /**
    * Build an Instructions with the sigil-default operational `core` pre-applied.
