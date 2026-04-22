@@ -4,7 +4,20 @@ import fabric.rw.*
 import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, ConversationView, MemorySource, MemorySpaceId, ParticipantProjection, SkillSource, TurnInput}
+import sigil.conversation.{
+  ActiveSkillSlot,
+  ContextFrame,
+  ContextKey,
+  ContextMemory,
+  ContextSummary,
+  Conversation,
+  ConversationView,
+  MemorySource,
+  MemorySpaceId,
+  ParticipantProjection,
+  SkillSource,
+  TurnInput
+}
 import sigil.db.Model
 import sigil.event.Event
 import sigil.information.{Information, InformationSummary}
@@ -13,10 +26,14 @@ import sigil.provider.llamacpp.LlamaCppProvider
 import sigil.tool.core.CoreTools
 import spice.net.URL
 
-/** Synthetic Information subtype for the catalog-rendering test. */
+/**
+ * Synthetic Information subtype for the catalog-rendering test.
+ */
 case class TestInformation(id: Id[Information]) extends Information derives RW
 
-/** Synthetic MemorySpaceId for the memory-coverage tests. */
+/**
+ * Synthetic MemorySpaceId for the memory-coverage tests.
+ */
 case object TestSpace extends MemorySpaceId {
   override val value: String = "test-space"
 }
@@ -47,8 +64,7 @@ class LlamaCppRequestCoverageSpec extends AnyWordSpec with Matchers {
 
   private def baseRequest(input: TurnInput,
                           generationSettings: GenerationSettings =
-                            GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
-                         ): ProviderRequest = ProviderRequest(
+                            GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))): ProviderRequest = ProviderRequest(
     conversationId = conversationId,
     modelId = modelId,
     instructions = Instructions(),
@@ -61,21 +77,24 @@ class LlamaCppRequestCoverageSpec extends AnyWordSpec with Matchers {
 
   private def bodyOf(input: TurnInput,
                      generationSettings: GenerationSettings =
-                       GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
-                    ): String =
+                       GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))): String =
     provider.requestConverter(baseRequest(input, generationSettings)).sync().content match {
       case Some(c: spice.http.content.StringContent) => c.value
       case _ => ""
     }
 
-  /** Upsert a memory into `db.memories` and return its id. */
+  /**
+   * Upsert a memory into `db.memories` and return its id.
+   */
   private def upsertMemory(fact: String, source: MemorySource): Id[ContextMemory] = {
     val memory = ContextMemory(fact = fact, source = source, spaceId = TestSpace)
     TestSigil.withDB(_.memories.transaction(_.upsert(memory))).sync()
     memory._id
   }
 
-  /** Upsert a summary into `db.summaries` and return its id. */
+  /**
+   * Upsert a summary into `db.summaries` and return its id.
+   */
   private def upsertSummary(text: String): Id[ContextSummary] = {
     val summary = ContextSummary(text = text, conversationId = conversationId, tokenEstimate = 7)
     TestSigil.withDB(_.summaries.transaction(_.upsert(summary))).sync()
@@ -172,13 +191,15 @@ class LlamaCppRequestCoverageSpec extends AnyWordSpec with Matchers {
 
     "include information catalog entries in the wire payload" in {
       val infoId = Id[Information]("info-marker-42")
-      val input = TurnInput(emptyView, information = Vector(
-        InformationSummary(
-          id = infoId,
-          informationType = Information.name.of[TestInformation],
-          summary = "INFO_SUMMARY_42"
-        )
-      ))
+      val input = TurnInput(
+        emptyView,
+        information = Vector(
+          InformationSummary(
+            id = infoId,
+            informationType = Information.name.of[TestInformation],
+            summary = "INFO_SUMMARY_42"
+          )
+        ))
       val body = bodyOf(input)
       body should include("info-marker-42")
       body should include("INFO_SUMMARY_42")
@@ -189,7 +210,8 @@ class LlamaCppRequestCoverageSpec extends AnyWordSpec with Matchers {
       val view = emptyView.updateParticipant(TestAgent)(_.copy(
         activeSkills = Map(SkillSource.Mode -> ActiveSkillSlot(
           name = "SKILL_NAME_42",
-          content = "SKILL_CONTENT_42"
+          content =
+            "SKILL_CONTENT_42"
         ))
       ))
       val body = bodyOf(TurnInput(view))
@@ -210,9 +232,11 @@ class LlamaCppRequestCoverageSpec extends AnyWordSpec with Matchers {
     }
 
     "include conversation-wide extraContext (from turn input) in the wire payload" in {
-      val input = TurnInput(emptyView, extraContext = Map(
-        ContextKey("CONV_EXTRA_KEY_42") -> "CONV_EXTRA_VAL_42"
-      ))
+      val input = TurnInput(
+        emptyView,
+        extraContext = Map(
+          ContextKey("CONV_EXTRA_KEY_42") -> "CONV_EXTRA_VAL_42"
+        ))
       val body = bodyOf(input)
       body should include("CONV_EXTRA_KEY_42")
       body should include("CONV_EXTRA_VAL_42")

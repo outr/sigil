@@ -91,12 +91,9 @@ final class ToolCallAccumulator(tools: Vector[Tool[? <: ToolInput]] = Vector.emp
     streamFlush ++ completes
   }
 
-  private case class CallState(callId: CallId,
-                               toolName: String,
-                               buf: StringBuilder,
-                               processor: Option[RespondStreamProcessor])
+  private case class CallState(callId: CallId, toolName: String, buf: StringBuilder, processor: Option[RespondStreamProcessor])
 
-  private final class RespondStreamProcessor(callId: CallId) {
+  final private class RespondStreamProcessor(callId: CallId) {
     private val extractor = new JsonStringFieldExtractor("content")
     private val parser = new MultipartStreamParser
 

@@ -21,7 +21,8 @@ case class MessageDelta(target: Id[Event],
                         conversationId: Id[Conversation],
                         content: Option[ContentDelta] = None,
                         usage: Option[TokenUsage] = None,
-                        state: Option[EventState] = None) extends Delta derives RW {
+                        state: Option[EventState] = None)
+  extends Delta derives RW {
 
   /**
    * Apply this delta to a [[Message]]. Per Option-A semantics:
@@ -46,11 +47,11 @@ case class MessageDelta(target: Id[Event],
   }
 
   private def materialize(cd: ContentDelta): ResponseContent = cd.kind match {
-    case ContentKind.Text     => ResponseContent.Text(cd.delta)
+    case ContentKind.Text => ResponseContent.Text(cd.delta)
     case ContentKind.Markdown => ResponseContent.Markdown(cd.delta)
-    case ContentKind.Code     => ResponseContent.Code(cd.delta, cd.arg)
-    case ContentKind.Heading  => ResponseContent.Heading(cd.delta)
-    case ContentKind.Divider  => ResponseContent.Divider
+    case ContentKind.Code => ResponseContent.Code(cd.delta, cd.arg)
+    case ContentKind.Heading => ResponseContent.Heading(cd.delta)
+    case ContentKind.Divider => ResponseContent.Divider
     case ContentKind.Field | ContentKind.Options =>
       // JSON-bodied kinds — defer parse to the multipart parser via Text fallback.
       // Real implementation would parse the JSON body to the structured type.

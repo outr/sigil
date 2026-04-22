@@ -113,7 +113,8 @@ object RespondTool extends Tool[RespondInput] {
           title = input.title,
           participantId = context.caller,
           conversationId = context.conversation.id,
-          state = EventState.Complete
+          state =
+            EventState.Complete
         ))
       else None
 
