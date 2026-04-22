@@ -150,7 +150,7 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
     val sb = new StringBuilder
 
     sb.append(s"Current mode: ${request.currentMode} — ${request.currentMode.description}\n")
-    sb.append(s"Current title: \"${request.currentTitle}\"\n")
+    sb.append(s"Current topic: \"${request.currentTopicLabel}\"\n")
 
     val instr = request.instructions.render
     if (instr.nonEmpty) sb.append("\n").append(instr).append("\n")

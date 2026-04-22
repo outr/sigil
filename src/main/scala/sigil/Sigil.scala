@@ -12,10 +12,10 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
-import sigil.conversation.{ActiveSkillSlot, ContextKey, ContextMemory, ContextSummary, Conversation, ConversationView, FrameBuilder, MemorySpaceId, ParticipantProjection, SkillSource, TurnInput}
+import sigil.conversation.{ActiveSkillSlot, ContextKey, ContextMemory, ContextSummary, Conversation, ConversationView, FrameBuilder, MemorySpaceId, ParticipantProjection, SkillSource, Topic, TurnInput}
 import sigil.db.{Model, SigilDB}
 import sigil.dispatcher.{StopFlag, TriggerFilter}
-import sigil.event.{AgentState, Event, ModeChange, Stop, TitleChange}
+import sigil.event.{AgentState, Event, ModeChange, Stop, TopicChange, TopicChangeKind}
 import sigil.provider.Mode
 import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
@@ -176,7 +176,7 @@ trait Sigil {
    *
    *   1. Persist via `SigilDB.apply` (insert Event / apply Delta).
    *   2. Update materialized projections on [[Conversation]]
-   *      (`currentMode`, `title`) for Mode/Title changes.
+   *      (`currentMode`, `currentTopicId`) for Mode/Topic changes.
    *   3. Append a frame to the conversation's [[ConversationView]] when
    *      an event settles Complete (via `FrameBuilder`).
    *   4. Resolve and apply the Mode-source skill slot on `ModeChange`.
@@ -436,13 +436,18 @@ trait Sigil {
            targetParticipantId: Option[ParticipantId] = None,
            force: Boolean = false,
            reason: Option[String] = None): Task[Unit] =
-    publish(Stop(
-      participantId = requestedBy,
-      conversationId = conversationId,
-      targetParticipantId = targetParticipantId,
-      force = force,
-      reason = reason
-    ))
+    withDB(_.conversations.transaction(_.get(conversationId))).flatMap {
+      case None => Task.unit
+      case Some(conv) =>
+        publish(Stop(
+          participantId = requestedBy,
+          conversationId = conversationId,
+          topicId = conv.currentTopicId,
+          targetParticipantId = targetParticipantId,
+          force = force,
+          reason = reason
+        ))
+    }
 
   /** Persist a new [[ContextSummary]] and return the stored record. The
     * caller (curator or app-specific summarizer) owns the generation
@@ -462,13 +467,15 @@ trait Sigil {
 
   /** Maintain materialized projections on the [[Conversation]] record:
     *   - `currentMode` tracks the latest [[ModeChange]]
-    *   - `title` tracks the latest [[TitleChange]]
+    *   - `currentTopicId` tracks the latest [[TopicChange]] of kind
+    *     [[TopicChangeKind.Switch]] (Rename mutates the Topic record
+    *     in-place, so the conversation's pointer is unchanged).
     *
     * Fires only on the SETTLE (an Event already at `Complete`, or a
     * `Delta` that transitions its target to `Complete`), never on the
-    * initial Active pulse — so `Conversation.currentMode` / `.title` are
-    * written exactly once per transition even though each change flows
-    * through `publish` twice (event + state delta). */
+    * initial Active pulse — so these projection fields are written
+    * exactly once per transition even though each change flows through
+    * `publish` twice (event + state delta). */
   private final def updateConversationProjection(signal: Signal): Task[Unit] = {
     val settled: Task[Option[Event]] = signal match {
       case e: Event if e.state == EventState.Complete => Task.pure(Some(e))
@@ -485,16 +492,67 @@ trait Sigil {
           case Some(conv) => Task.pure(Some(conv))
           case None       => Task.pure(None)
         })).unit
-      case Some(tc: TitleChange) =>
-        withDB(_.conversations.transaction(_.modify(tc.conversationId) {
-          case Some(conv) if conv.title != tc.title =>
-            Task.pure(Some(conv.copy(title = tc.title, modified = Timestamp(Nowish()))))
-          case Some(conv) => Task.pure(Some(conv))
-          case None       => Task.pure(None)
-        })).unit
+      case Some(tc: TopicChange) =>
+        tc.kind match {
+          case TopicChangeKind.Switch(_) =>
+            withDB(_.conversations.transaction(_.modify(tc.conversationId) {
+              case Some(conv) if conv.currentTopicId != tc.topicId =>
+                Task.pure(Some(conv.copy(currentTopicId = tc.topicId, modified = Timestamp(Nowish()))))
+              case Some(conv) => Task.pure(Some(conv))
+              case None       => Task.pure(None)
+            })).unit
+          case TopicChangeKind.Rename(_) =>
+            // Rename mutated the Topic record directly in the orchestrator;
+            // the conversation's currentTopicId pointer is unchanged.
+            Task.unit
+        }
       case _ => Task.unit
     }
   }
+
+  // -- conversation helpers --
+
+  /**
+   * Create a new [[Conversation]] seeded with an initial [[Topic]]. Both
+   * records are persisted so the conversation's `currentTopicId` resolves
+   * from the moment it's written. Returns the stored conversation.
+   *
+   * Apps should route new-conversation creation through here (rather than
+   * constructing `Conversation` directly) so the Topic invariant is never
+   * violated. `label` defaults to [[Topic.DefaultLabel]] — the LLM is
+   * expected to rename it on its first `respond` call once the subject
+   * becomes clear.
+   */
+  def newConversation(createdBy: ParticipantId,
+                      label: String = Topic.DefaultLabel,
+                      participants: List[Participant] = Nil,
+                      currentMode: Mode = Mode.Conversation,
+                      conversationId: Id[Conversation] = Conversation.id()): Task[Conversation] = {
+    val topic = Topic(
+      conversationId = conversationId,
+      label = label,
+      createdBy = createdBy
+    )
+    val conversation = Conversation(
+      currentTopicId = topic._id,
+      participants = participants,
+      currentMode = currentMode,
+      _id = conversationId
+    )
+    for {
+      _ <- withDB(_.topics.transaction(_.upsert(topic)))
+      stored <- withDB(_.conversations.transaction(_.upsert(conversation)))
+    } yield stored
+  }
+
+  /**
+   * Resolve the current [[Topic]] record for a conversation. Returns
+   * `None` only if the conversation's `currentTopicId` refers to a
+   * missing Topic record (a data-integrity failure — the invariant is
+   * that `newConversation` always persists one).
+   */
+  def currentTopic(conversation: Conversation): Task[Option[Topic]] =
+    withDB(_.topics.transaction(_.get(conversation.currentTopicId)))
 
   private final def logBroadcastError(signal: Signal, t: Throwable): Task[Unit] =
     Task(scribe.warn(s"Broadcaster failed for signal: ${signal.getClass.getSimpleName}", t))
@@ -531,6 +589,7 @@ trait Sigil {
           agentId = agent.id,
           participantId = agent.id,
           conversationId = conv._id,
+          topicId = conv.currentTopicId,
           activity = AgentActivity.Thinking,
           state = EventState.Active,
           timestamp = Timestamp(Nowish()),

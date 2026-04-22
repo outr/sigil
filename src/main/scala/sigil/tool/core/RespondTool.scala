@@ -1,9 +1,9 @@
 package sigil.tool.core
 
 import sigil.TurnContext
-import sigil.event.{Event, Message, TitleChange}
+import sigil.event.{Event, Message}
 import sigil.tool.{Tool, ToolExample}
-import sigil.tool.model.{MultipartParser, RespondInput}
+import sigil.tool.model.{MultipartParser, RespondInput, TopicChangeType}
 
 /**
  * The respond tool. The model calls this to send its response to the user.
@@ -13,6 +13,11 @@ import sigil.tool.model.{MultipartParser, RespondInput}
  * parsed into typed content blocks via [[MultipartParser]], then emitted as a
  * single [[Message]] event. Terminal — a turn that emits respond is considered
  * complete.
+ *
+ * `topic` + `topicConfidence` thread-labeling is applied by the orchestrator
+ * at `ToolCallComplete` time, not here — resolving a switch vs. rename
+ * requires DB access to the current [[sigil.conversation.Topic]] record,
+ * which tools don't perform directly. This tool just emits the [[Message]].
  */
 object RespondTool extends Tool[RespondInput] {
   override protected def uniqueName: String = "respond"
@@ -80,22 +85,55 @@ object RespondTool extends Tool[RespondInput] {
       |- Pick the most specific type for each block. Use Markdown only when no other type fits.
       |- When asking the user to choose from a fixed set of alternatives, PREFER ▶Options over a numbered prose list.
       |
-      |`title` — REQUIRED on every call:
-      |- If the current conversation title (shown at the top of the system prompt) still fits, pass it
-      |  UNCHANGED. The framework detects the no-op and suppresses the title-change event.
-      |- Propose a new concise 3-6 word title ONLY when:
-      |    a) the current title is "New Conversation" (freshly-created conversation), or
-      |    b) the topic has meaningfully shifted and the existing title no longer fits.
-      |- No quotes, no punctuation in titles.""".stripMargin
+      |`topic` — REQUIRED. The label of the current conversation thread. A concise 3–6 word phrase.
+      |No quotes or punctuation. Pass the Current topic (shown at the top of the system prompt) unchanged
+      |when `topicChangeType = NoChange`; propose a fresh label for Change and Update.
+      |
+      |`topicChangeType` — REQUIRED. Pick exactly one:
+      |  - "Change"   — the user has moved to a DIFFERENT subject than the Current topic. Also use Change
+      |    when the Current topic is "New Conversation" (the default bootstrap label) and the user has
+      |    given you any real subject.
+      |  - "Update"   — same subject as the Current topic, but the current label is vague or doesn't yet
+      |    reflect the specific angle the user is asking about. Propose a more precise `topic`.
+      |  - "NoChange" — the Current topic label still fits. Pass it unchanged in `topic`.
+      |
+      |Examples:
+      |  Current topic = "New Conversation", user asks about Rome → Change, topic="Roman Empire".
+      |  Current topic = "Python Programming", user asks specifically about the GIL → Update, topic="Python GIL".
+      |  Current topic = "Python GIL", user asks a follow-up about the GIL → NoChange, topic="Python GIL".""".stripMargin
 
   override protected def examples: List[ToolExample[RespondInput]] = List(
     ToolExample(
-      "Mixed prose and code",
-      RespondInput(title = "JSON Parsing in Scala", content = "▶Text\nHere's how to parse JSON in Scala:\n▶Code scala\nJsonParser(str)\n")
+      "Bootstrap — Current topic is the default, user has given a real subject (Change)",
+      RespondInput(
+        topic = "Roman Empire",
+        content = "▶Text\nRome was founded in 753 BCE by Romulus.\n",
+        topicChangeType = TopicChangeType.Change
+      )
     ),
     ToolExample(
-      "Single text reply",
-      RespondInput(title = "Simple Arithmetic", content = "▶Text\nThe answer is 4.\n")
+      "Refinement — same subject, sharper label (Update)",
+      RespondInput(
+        topic = "Python GIL",
+        content = "▶Text\nThe GIL serializes bytecode execution across threads.\n",
+        topicChangeType = TopicChangeType.Update
+      )
+    ),
+    ToolExample(
+      "Follow-up under the current topic (NoChange)",
+      RespondInput(
+        topic = "Python GIL",
+        content = "▶Text\nIt's less of a problem for I/O-bound code.\n",
+        topicChangeType = TopicChangeType.NoChange
+      )
+    ),
+    ToolExample(
+      "Hard switch to an unrelated subject (Change)",
+      RespondInput(
+        topic = "Database Migration Strategy",
+        content = "▶Text\nOk, moving on to the migration question — here's the approach.\n",
+        topicChangeType = TopicChangeType.Change
+      )
     )
   )
 
@@ -104,18 +142,9 @@ object RespondTool extends Tool[RespondInput] {
     val message = Message(
       participantId = context.caller,
       conversationId = context.conversation.id,
+      topicId = context.conversation.currentTopicId,
       content = blocks
     )
-    val titleChange =
-      if (input.title.nonEmpty && input.title != context.conversation.title)
-        Some(TitleChange(
-          title = input.title,
-          participantId = context.caller,
-          conversationId = context.conversation.id
-        ))
-      else None
-
-    val events: List[Event] = titleChange.toList ::: List(message)
-    rapid.Stream.emits(events)
+    rapid.Stream.emits(List[Event](message))
   }
 }

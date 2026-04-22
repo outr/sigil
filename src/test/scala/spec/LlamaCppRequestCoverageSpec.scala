@@ -71,6 +71,7 @@ class LlamaCppRequestCoverageSpec extends AnyWordSpec with Matchers {
     instructions = Instructions(),
     turnInput = input,
     currentMode = Mode.Conversation,
+    currentTopicId = TestTopicId,
     generationSettings = generationSettings,
     tools = CoreTools.all,
     chain = List(TestUser, TestAgent)

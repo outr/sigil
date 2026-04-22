@@ -1,6 +1,6 @@
 package sigil.dispatcher
 
-import sigil.event.{AgentState, Event, Message, ModeChange, Stop, TitleChange, ToolResults}
+import sigil.event.{AgentState, Event, Message, ModeChange, Stop, TopicChange, ToolResults}
 import sigil.participant.Participant
 
 /**
@@ -19,11 +19,11 @@ import sigil.participant.Participant
  *     dispatcher's stop-handling path, not content the target agent
  *     should act on as a new turn.
  *   - [[Message]] from self never re-triggers (no self-talking-loops).
- *   - [[TitleChange]] from self never re-triggers — naming a
- *     conversation isn't content the agent should act on again.
+ *   - [[TopicChange]] from self never re-triggers — labeling the
+ *     active thread isn't content the agent should act on again.
  *   - [[ModeChange]] DOES re-trigger the emitter: after switching mode,
  *     the agent is expected to respond *in the new mode*.
- *   - [[Message]], [[ModeChange]], [[TitleChange]], and [[ToolResults]]
+ *   - [[Message]], [[ModeChange]], [[TopicChange]], and [[ToolResults]]
  *     from others are valid triggers.
  *   - All other Event types are not triggers by default. Apps with
  *     custom Event subtypes can extend this rule by replacing or
@@ -34,8 +34,8 @@ object TriggerFilter {
     case _: AgentState                                                => false
     case _: Stop                                                      => false
     case m: Message if m.participantId == p.id                        => false
-    case tc: TitleChange if tc.participantId == p.id                  => false
-    case _: Message | _: ModeChange | _: TitleChange | _: ToolResults => true
+    case tc: TopicChange if tc.participantId == p.id                  => false
+    case _: Message | _: ModeChange | _: TopicChange | _: ToolResults => true
     case _                                                            => false
   }
 }

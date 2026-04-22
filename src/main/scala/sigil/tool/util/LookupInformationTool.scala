@@ -37,6 +37,7 @@ object LookupInformationTool extends Tool[LookupInformationInput] {
             Message(
               participantId = context.caller,
               conversationId = context.conversation.id,
+              topicId = context.conversation.currentTopicId,
               content = Vector(ResponseContent.Text(body))
             )
           ))
@@ -45,6 +46,7 @@ object LookupInformationTool extends Tool[LookupInformationInput] {
             Message(
               participantId = context.caller,
               conversationId = context.conversation.id,
+              topicId = context.conversation.currentTopicId,
               content = Vector(ResponseContent.Text(s"No Information found for id '${input.id.value}'."))
             )
           ))

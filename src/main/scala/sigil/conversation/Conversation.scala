@@ -24,11 +24,16 @@ import sigil.provider.Mode
  * agents acting on this conversation read this field for their next
  * provider request — mode is conversation-level state, not agent-level.
  *
+ * `currentTopicId` points at the active [[Topic]] — the thread new events
+ * land on and whose label the LLM sees as "Current topic" in the system
+ * prompt. `TopicChange` events maintain this pointer; `Sigil.newConversation`
+ * bootstraps an initial Topic so the pointer is never dangling.
+ *
  * `RecordDocument` brings `created` / `modified` timestamps — useful for
  * "last activity" sorting in UIs.
  */
-case class Conversation(participants: List[Participant] = Nil,
-                        title: String = Conversation.DefaultTitle,
+case class Conversation(currentTopicId: Id[Topic],
+                        participants: List[Participant] = Nil,
                         currentMode: Mode = Mode.Conversation,
                         created: Timestamp = Timestamp(),
                         modified: Timestamp = Timestamp(),
@@ -43,13 +48,6 @@ case class Conversation(participants: List[Participant] = Nil,
 
 object Conversation extends RecordDocumentModel[Conversation] with JsonConversion[Conversation] {
   implicit override def rw: RW[Conversation] = RW.gen
-
-  /**
-   * Default title for a newly-created conversation. Both renders cleanly
-   * in UI and gives the agent an unambiguous signal ("the title hasn't
-   * been chosen yet — pick one") on the first respond call.
-   */
-  val DefaultTitle: String = "New Conversation"
 
   override def id(value: String = Unique()): Id[Conversation] = Id(value)
 }

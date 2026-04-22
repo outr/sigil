@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import lightdb.util.Nowish
-import sigil.conversation.Conversation
+import sigil.conversation.{Conversation, Topic}
 import sigil.participant.ParticipantId
 import sigil.signal.EventState
 
@@ -34,6 +34,7 @@ import sigil.signal.EventState
  */
 case class Stop(participantId: ParticipantId,
                 conversationId: Id[Conversation],
+                topicId: Id[Topic],
                 targetParticipantId: Option[ParticipantId] = None,
                 force: Boolean = false,
                 reason: Option[String] = None,

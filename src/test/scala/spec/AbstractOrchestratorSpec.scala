@@ -5,9 +5,9 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.TurnContext
-import sigil.conversation.{ContextFrame, Conversation, ConversationView, TurnInput}
+import sigil.conversation.{ContextFrame, Conversation, ConversationView, Topic, TurnInput}
 import sigil.db.Model
-import sigil.event.{Event, Message, ModeChange, ToolInvoke}
+import sigil.event.{Event, Message, ModeChange, TopicChange, TopicChangeKind, ToolInvoke}
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant}
 import sigil.provider.{GenerationSettings, Instructions, Mode, Provider}
 import sigil.signal.{AgentActivity, AgentStateDelta, EventState, MessageDelta, Signal, StateDelta, ToolDelta}
@@ -53,14 +53,100 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     * supplies this via `TurnContext.currentAgentStateId`. */
   private val testAgentStateId: Id[Event] = Id("test-agentstate")
 
+  /**
+   * Run a single turn for a freshly-bootstrapped conversation — a Topic with
+   * the default bootstrap label is persisted, so the orchestrator's topic
+   * resolution has a real record to compare against. Returns the signals the
+   * orchestrator produced AND the initial Topic (callers assert against its
+   * id / label). Used by the live-LLM topic-change coverage test below.
+   */
+  private def orchestrateFresh(message: String, suffix: String): Task[(List[Signal], Topic)] = {
+    val conversationId = Conversation.id(s"test-topic-trigger-$suffix-${rapid.Unique()}")
+    val topic = Topic(conversationId = conversationId, label = Topic.DefaultLabel, createdBy = TestUser)
+    val conv = Conversation(currentTopicId = topic._id, _id = conversationId)
+    val userMessage = Message(
+      participantId = TestUser,
+      conversationId = conversationId,
+      topicId = topic._id,
+      content = Vector(ResponseContent.Text(message))
+    )
+    val view = ConversationView(
+      conversationId = conversationId,
+      frames = Vector(ContextFrame.Text(
+        content = message,
+        participantId = TestUser,
+        sourceEventId = userMessage._id
+      )),
+      _id = ConversationView.idFor(conversationId)
+    )
+    val turnContext = TurnContext(
+      sigil = TestSigil,
+      chain = List(TestUser),
+      conversation = conv,
+      conversationView = view,
+      turnInput = TurnInput(view),
+      currentAgentStateId = Some(testAgentStateId)
+    )
+    for {
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.topics.transaction(_.upsert(topic)))
+      signals <- makeAgent().process(turnContext, Stream.emits(List[Event](userMessage))).toList
+    } yield (signals, topic)
+  }
+
+  /**
+   * Same as [[orchestrateFresh]] but seeds the conversation with a Topic
+   * already past the bootstrap label — the label is exactly `seedLabel`,
+   * `labelLocked = false`. Used for the "iterative rename" and "hard
+   * switch" live-LLM tests: by starting on an established label we
+   * isolate the LLM's judgement about whether the user's next message
+   * refines the current subject (Rename) or moves to a new one (Switch).
+   */
+  private def orchestrateAfterSeed(seedLabel: String,
+                                   userMessage: String,
+                                   suffix: String): Task[(List[Signal], Topic)] = {
+    val conversationId = Conversation.id(s"test-topic-seeded-$suffix-${rapid.Unique()}")
+    val topic = Topic(conversationId = conversationId, label = seedLabel, createdBy = TestUser)
+    val conv = Conversation(currentTopicId = topic._id, _id = conversationId)
+    val userEv = Message(
+      participantId = TestUser,
+      conversationId = conversationId,
+      topicId = topic._id,
+      content = Vector(ResponseContent.Text(userMessage))
+    )
+    val view = ConversationView(
+      conversationId = conversationId,
+      frames = Vector(ContextFrame.Text(
+        content = userMessage,
+        participantId = TestUser,
+        sourceEventId = userEv._id
+      )),
+      _id = ConversationView.idFor(conversationId)
+    )
+    val turnContext = TurnContext(
+      sigil = TestSigil,
+      chain = List(TestUser),
+      conversation = conv,
+      conversationView = view,
+      turnInput = TurnInput(view),
+      currentAgentStateId = Some(testAgentStateId)
+    )
+    for {
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.topics.transaction(_.upsert(topic)))
+      signals <- makeAgent().process(turnContext, Stream.emits(List[Event](userEv))).toList
+    } yield (signals, topic)
+  }
+
   private def orchestrate(message: String, currentMode: Mode = Mode.Conversation): Task[List[Signal]] = {
     val conversationId = Conversation.id("test-orchestrator-conversation")
     val userMessage = Message(
       participantId = TestUser,
       conversationId = conversationId,
+      topicId = TestTopicId,
       content = Vector(ResponseContent.Text(message))
     )
-    val conversation = Conversation(_id = conversationId, currentMode = currentMode)
+    val conversation = Conversation(currentTopicId = TestTopicId, _id = conversationId, currentMode = currentMode)
     val view = ConversationView(
       conversationId = conversationId,
       frames = Vector(ContextFrame.Text(
@@ -142,9 +228,10 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val userMessage = Message(
         participantId = TestUser,
         conversationId = conversationId,
+        topicId = TestTopicId,
         content = Vector(ResponseContent.Text("What is 2+2? Respond with just the number."))
       )
-      val conversation = Conversation(_id = conversationId)
+      val conversation = Conversation(currentTopicId = TestTopicId, _id = conversationId)
       val view = ConversationView(
         conversationId = conversationId,
         frames = Vector(ContextFrame.Text(
@@ -228,6 +315,140 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         // Atomic tool path — no Message emitted, so no Typing transition.
         val agentStateDeltas = signals.collect { case d: AgentStateDelta => d }
         agentStateDeltas.exists(_.activity.contains(AgentActivity.Typing)) shouldBe false
+      }
+    }
+
+    // Live-LLM coverage of the topic-trigger path. The system prompt shows
+    // `Current topic: "New Conversation"` (the bootstrap label). With the
+    // categorical `topicChangeType` schema the RespondTool description
+    // instructs the LLM to pick `Change` on bootstrap (since the default
+    // label is being replaced with a real subject) — probing showed this
+    // is reliable. We assert the orchestrator fires a Switch with a label
+    // other than the default.
+    "fire a TopicChange(Switch) when the LLM gets a clear subject on a fresh conversation" in {
+      val prompt =
+        "I want to talk about the history of the Roman Empire. Give me a brief two-sentence overview " +
+          "of its founding."
+      orchestrateFresh(prompt, suffix = "fresh-subject").map { case (signals, initialTopic) =>
+        // The LLM's respond should have populated `topic` with something
+        // other than the default bootstrap label.
+        val toolCompletes = signals.collect { case d: ToolDelta => d }
+        val respondInput = toolCompletes.flatMap(_.input.toList).collectFirst {
+          case r: sigil.tool.model.RespondInput => r
+        }
+        respondInput should not be empty
+        respondInput.get.topic should not equal Topic.DefaultLabel
+        respondInput.get.topic.trim should not be empty
+
+        // The orchestrator should have materialized the shift as a
+        // TopicChange — either Rename (medium confidence / no confidence
+        // fallback) or Switch (high confidence). Both are valid outcomes
+        // here; the key claim is that SOME TopicChange was emitted.
+        val topicChanges = signals.collect { case tc: TopicChange => tc }
+        topicChanges should have size 1
+        val tc = topicChanges.head
+        tc.newLabel shouldBe respondInput.get.topic
+
+        // Each TopicChange is Active pulse → Complete settle via StateDelta
+        // (orchestrator's own settle, not executeAtomic's).
+        val tcSettle = signals.collectFirst {
+          case sd: StateDelta if sd.target == tc._id && sd.state == EventState.Complete => sd
+        }
+        tcSettle should not be empty
+
+        // The pulse must precede the settle.
+        val pulseIdx = signals.indexWhere {
+          case seen: TopicChange if seen._id == tc._id => true
+          case _ => false
+        }
+        val settleIdx = signals.indexWhere {
+          case sd: StateDelta if sd.target == tc._id => true
+          case _ => false
+        }
+        pulseIdx should be < settleIdx
+
+        // Bootstrap = Switch: LLM correctly picked `Change` (verified by
+        // probe). The event is a Switch pointing at a fresh Topic.
+        val switchKind = tc.kind match {
+          case s: TopicChangeKind.Switch => s
+          case other => fail(s"expected Switch on bootstrap, got: $other")
+        }
+        switchKind.previousTopicId shouldBe initialTopic._id
+        tc.topicId should not be initialTopic._id
+      }
+    }
+
+    // Iterative-refinement path: user refines an already-established
+    // subject. Probe results show Qwen picks `Update` here, which the
+    // orchestrator maps to a `Rename` — same topic id, label mutated.
+    "fire a TopicChange(Rename) when the LLM narrows an existing subject" in {
+      orchestrateAfterSeed(
+        seedLabel = "Python Programming",
+        userMessage =
+          "Specifically, I want to understand how Python's Global Interpreter Lock (GIL) affects " +
+            "concurrent threads. Answer in ONE short sentence only.",
+        suffix = "rename-refine"
+      ).map { case (signals, seeded) =>
+        val topicChanges = signals.collect { case tc: TopicChange => tc }
+        topicChanges should have size 1
+        val tc = topicChanges.head
+        val labelLower = tc.newLabel.toLowerCase
+        // The new label should reflect the GIL refinement. Lenient enough
+        // to accept any synonym the LLM picks.
+        val mentionsRefinement =
+          labelLower.contains("gil") ||
+            labelLower.contains("interpreter lock") ||
+            labelLower.contains("thread") ||
+            labelLower.contains("concurren") ||
+            labelLower.contains("python")
+        withClue(s"LLM produced topic label: '${tc.newLabel}' — expected to reflect the GIL refinement.") {
+          mentionsRefinement shouldBe true
+        }
+        // Refinement = Rename: label mutates in-place, topic id unchanged.
+        val renameKind = tc.kind match {
+          case r: TopicChangeKind.Rename => r
+          case other => fail(s"expected Rename on refinement, got: $other")
+        }
+        renameKind.previousLabel shouldBe "Python Programming"
+        tc.topicId shouldBe seeded._id
+      }
+    }
+
+    // Hard-switch path: user explicitly changes subject. Probe results
+    // show Qwen picks `Change`, which the orchestrator maps to a
+    // `Switch` — fresh Topic with the new label.
+    "fire a TopicChange(Switch) when the LLM detects an abrupt subject change" in {
+      orchestrateAfterSeed(
+        seedLabel = "Roman Empire History",
+        userMessage =
+          "Let's switch topics completely. Forget the Romans — in ONE short sentence only, " +
+            "tell me what TypeScript generics are.",
+        suffix = "hard-switch"
+      ).map { case (signals, seeded) =>
+        val topicChanges = signals.collect { case tc: TopicChange => tc }
+        topicChanges should have size 1
+        val tc = topicChanges.head
+        val labelLower = tc.newLabel.toLowerCase
+        // The new label should reflect the NEW subject (TypeScript /
+        // generics) and NOT the old subject (Rome / Roman Empire).
+        val mentionsNewSubject =
+          labelLower.contains("typescript") ||
+            labelLower.contains("generic") ||
+            labelLower.contains("type")
+        val mentionsOldSubject =
+          labelLower.contains("roman") || labelLower.contains("empire")
+        withClue(s"LLM produced topic label: '${tc.newLabel}' — expected new subject, not the seed.") {
+          mentionsNewSubject shouldBe true
+          mentionsOldSubject shouldBe false
+        }
+        // Hard switch = Switch: fresh Topic, seed topic id preserved as
+        // previousTopicId on the event.
+        val switchKind = tc.kind match {
+          case s: TopicChangeKind.Switch => s
+          case other => fail(s"expected Switch on hard subject change, got: $other")
+        }
+        switchKind.previousTopicId shouldBe seeded._id
+        tc.topicId should not be seeded._id
       }
     }
   }

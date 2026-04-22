@@ -55,6 +55,7 @@ object StopTool extends Tool[StopInput] {
     rapid.Stream.emits(List(Stop(
       participantId = context.caller,
       conversationId = context.conversation.id,
+      topicId = context.conversation.currentTopicId,
       targetParticipantId = input.targetParticipantId,
       force = input.force,
       reason = input.reason

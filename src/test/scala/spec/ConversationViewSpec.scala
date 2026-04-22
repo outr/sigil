@@ -4,8 +4,8 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
-import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextSummary, Conversation, ConversationView, SkillSource}
-import sigil.event.{Event, Message, ModeChange}
+import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextSummary, Conversation, ConversationView, SkillSource, Topic}
+import sigil.event.{Event, Message, ModeChange, TopicChange, TopicChangeKind}
 import sigil.provider.Mode
 import sigil.signal.{EventState, MessageDelta, StateDelta}
 import sigil.tool.model.{ChangeModeInput, ResponseContent}
@@ -34,6 +34,7 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       val msg = Message(
         participantId = TestUser,
         conversationId = convId,
+        topicId = TestTopicId,
         content = Vector(ResponseContent.Text("hello from user")),
         state = EventState.Complete
       )
@@ -52,6 +53,7 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       val msg = Message(
         participantId = TestAgent,
         conversationId = convId,
+        topicId = TestTopicId,
         content = Vector.empty,
         state = EventState.Active
       )
@@ -83,6 +85,7 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       val msg = Message(
         participantId = TestUser,
         conversationId = convId,
+        topicId = TestTopicId,
         content = Vector(ResponseContent.Text("once")),
         state = EventState.Complete
       )
@@ -98,12 +101,14 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       val first = Message(
         participantId = TestUser,
         conversationId = convId,
+        topicId = TestTopicId,
         content = Vector(ResponseContent.Text("first")),
         state = EventState.Complete
       )
       val second = Message(
         participantId = TestAgent,
         conversationId = convId,
+        topicId = TestTopicId,
         content = Vector(ResponseContent.Text("second")),
         state = EventState.Complete
       )
@@ -159,6 +164,7 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         mode = Mode.Coding,
         participantId = TestAgent,
         conversationId = convId,
+        topicId = TestTopicId,
         state = EventState.Complete
       )
       for {
@@ -168,6 +174,7 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
           mode = Mode.Conversation,
           participantId = TestAgent,
           conversationId = convId,
+          topicId = TestTopicId,
           state =
             EventState.Complete
         ))
@@ -187,13 +194,14 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       val pulse = ModeChange(
         mode = Mode.Coding,
         participantId = TestAgent,
-        conversationId = convId
+        conversationId = convId,
+        topicId = TestTopicId
       )
       // Pulse defaults to Active
       pulse.state shouldBe EventState.Active
 
       for {
-        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(_id = convId))))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(currentTopicId = TestTopicId, _id = convId))))
         _ <- TestSigil.publish(pulse)
         // Between pulse and settle, the DB reflects Active.
         mid <- TestSigil.withDB(_.events.transaction(_.get(pulse._id)))
@@ -227,9 +235,9 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       // stray write.
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(
-          Conversation(_id = convId, currentMode = Mode.Conversation)
+          Conversation(currentTopicId = TestTopicId, _id = convId, currentMode = Mode.Conversation)
         )))
-        pulse = ModeChange(mode = Mode.Coding, participantId = TestAgent, conversationId = convId)
+        pulse = ModeChange(mode = Mode.Coding, participantId = TestAgent, conversationId = convId, topicId = TestTopicId)
         _ <- TestSigil.publish(pulse)
         afterPulseOnly <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
         _ <- TestSigil.publish(StateDelta(
@@ -244,6 +252,47 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         afterPulseOnly.map(_.currentMode) shouldBe Some(Mode.Conversation)
         afterSettle.map(_.currentMode) shouldBe Some(Mode.Coding)
       }
+    }
+  }
+
+  "TopicChange → Conversation.currentTopicId" should {
+    "update currentTopicId when a Complete TopicChange(Switch) settles" in {
+      val convId = freshConvId("topic-switch-settle")
+      val initialTopicId = Topic.id(s"initial-${rapid.Unique()}")
+      val newTopicId = Topic.id(s"new-${rapid.Unique()}")
+      val conv = Conversation(currentTopicId = initialTopicId, _id = convId)
+      val tc = TopicChange(
+        kind = TopicChangeKind.Switch(previousTopicId = initialTopicId),
+        newLabel = "Shifted Subject",
+        participantId = TestAgent,
+        conversationId = convId,
+        topicId = newTopicId,
+        state = EventState.Complete
+      )
+      for {
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(tc)
+        after <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
+      } yield after.map(_.currentTopicId) shouldBe Some(newTopicId)
+    }
+
+    "leave currentTopicId unchanged when a TopicChange(Rename) settles (Rename mutates Topic in-place)" in {
+      val convId = freshConvId("topic-rename-settle")
+      val topicId = Topic.id(s"rename-${rapid.Unique()}")
+      val conv = Conversation(currentTopicId = topicId, _id = convId)
+      val tc = TopicChange(
+        kind = TopicChangeKind.Rename(previousLabel = "Old Label"),
+        newLabel = "New Label",
+        participantId = TestAgent,
+        conversationId = convId,
+        topicId = topicId,
+        state = EventState.Complete
+      )
+      for {
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(tc)
+        after <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
+      } yield after.map(_.currentTopicId) shouldBe Some(topicId)
     }
   }
 

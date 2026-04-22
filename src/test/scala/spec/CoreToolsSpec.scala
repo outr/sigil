@@ -6,20 +6,22 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.TurnContext
-import sigil.conversation.{Conversation, ConversationView, TurnInput}
-import sigil.event.{Message, Stop, TitleChange}
+import sigil.conversation.{Conversation, ConversationView, Topic, TurnInput}
+import sigil.event.{Message, Stop, TopicChange}
 import sigil.information.Information
 import sigil.signal.EventState
 import sigil.tool.core.{RespondTool, StopTool}
 import sigil.tool.util.LookupInformationTool
-import sigil.tool.model.{LookupInformationInput, RespondInput, StopInput}
+import sigil.tool.model.{LookupInformationInput, RespondInput, StopInput, TopicChangeType}
 
 /**
  * Round-trip coverage for the new framework tools that close framework
  * gaps exposed by the audit:
- *   - [[RespondTool]] — every call carries a required `title`; emits a
- *     [[TitleChange]] when the submitted title differs from the
- *     conversation's current title, and suppresses it otherwise.
+ *   - [[RespondTool]] — every call carries a required `topic`; the Message
+ *     it emits is tagged with the conversation's `currentTopicId`.
+ *     Topic-change resolution itself lives in
+ *     [[sigil.orchestrator.Orchestrator]], not this tool — so the direct
+ *     `execute` path here emits only the Message, not any `TopicChange`.
  *   - [[LookupInformationTool]] — resolves an Information id via
  *     [[sigil.Sigil.getInformation]] (backed by
  *     [[sigil.information.InMemoryInformation]] in tests) and returns a
@@ -31,49 +33,30 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   private def freshConversationId(suffix: String): Id[Conversation] =
     Conversation.id(s"core-tools-$suffix-${rapid.Unique()}")
 
-  private def turnContextFor(convId: Id[Conversation], currentTitle: String = Conversation.DefaultTitle): TurnContext = {
+  private def turnContextFor(convId: Id[Conversation]): TurnContext = {
     val view = ConversationView(conversationId = convId, _id = ConversationView.idFor(convId))
     TurnContext(
       sigil = TestSigil,
       chain = List(TestUser, TestAgent),
-      conversation = Conversation(_id = convId, title = currentTitle),
+      conversation = Conversation(currentTopicId = TestTopicId, _id = convId),
       conversationView = view,
       turnInput = TurnInput(view)
     )
   }
 
   "RespondTool" should {
-    "emit a TitleChange alongside the Message when the submitted title differs from the current title" in {
-      val convId = freshConversationId("respond-retitle")
-      val input = RespondInput(title = "Refactoring Notes", content = "▶Text\nHello!")
+    "emit a Message tagged with the conversation's currentTopicId" in {
+      val convId = freshConversationId("respond-topic-tag")
+      val input = RespondInput(topic = "Refactoring Notes", content = "▶Text\nHello!", topicChangeType = TopicChangeType.Change)
       val events = RespondTool
-        .execute(input, turnContextFor(convId, currentTitle = Conversation.DefaultTitle))
-        .toList
-      events.map { list =>
-        // TitleChange first (emitted before Message), then the Message itself.
-        list should have size 2
-        val tc = list.head.asInstanceOf[TitleChange]
-        tc.title shouldBe "Refactoring Notes"
-        tc.conversationId shouldBe convId
-        tc.participantId shouldBe TestAgent
-        // Tools emit events as the Active pulse; the Orchestrator's
-        // executeAtomic wrapper pairs each with a StateDelta(Complete).
-        // This spec tests the tool directly (not through the orchestrator)
-        // so we assert on the pulse state.
-        tc.state shouldBe EventState.Active
-        list(1) shouldBe a[Message]
-      }
-    }
-
-    "suppress the TitleChange when the submitted title matches the current title" in {
-      val convId = freshConversationId("respond-notitle")
-      val input = RespondInput(title = "Ongoing Work", content = "▶Text\nContinuing!")
-      val events = RespondTool
-        .execute(input, turnContextFor(convId, currentTitle = "Ongoing Work"))
+        .execute(input, turnContextFor(convId))
         .toList
       events.map { list =>
         list should have size 1
-        list.head shouldBe a[Message]
+        val m = list.head.asInstanceOf[Message]
+        m.conversationId shouldBe convId
+        m.topicId shouldBe TestTopicId
+        m.participantId shouldBe TestAgent
       }
     }
   }
@@ -94,6 +77,7 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         stop.force shouldBe true
         stop.reason shouldBe Some("too risky")
         stop.conversationId shouldBe convId
+        stop.topicId shouldBe TestTopicId
         stop.participantId shouldBe TestAgent
         stop.state shouldBe EventState.Active
       }

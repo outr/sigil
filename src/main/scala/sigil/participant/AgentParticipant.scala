@@ -4,6 +4,7 @@ import lightdb.id.Id
 import rapid.{Stream, Task}
 import sigil.TurnContext
 import sigil.db.Model
+import sigil.conversation.Topic
 import sigil.event.{Event, Message}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{GenerationSettings, Instructions, Provider, ProviderRequest}
@@ -109,14 +110,27 @@ trait AgentParticipant extends Participant {
                .map(_.flatten.toVector)
       } yield (p, t)
 
-    Stream.force(resolved.map { case (provider, tools) =>
+    // Resolve the current Topic's label so the system prompt can render
+    // "Current topic". If the conversation's currentTopicId doesn't resolve
+    // (missing record), fall back to the default label — never block the
+    // turn on a lookup failure.
+    val withContext: Task[(Provider, Vector[Tool[? <: ToolInput]], String)] =
+      resolved.flatMap { case (provider, tools) =>
+        sigil.currentTopic(context.conversation).map { topicOpt =>
+          val label = topicOpt.map(_.label).getOrElse(Topic.DefaultLabel)
+          (provider, tools, label)
+        }
+      }
+
+    Stream.force(withContext.map { case (provider, tools, currentTopicLabel) =>
       val request = ProviderRequest(
         conversationId = context.conversation.id,
         modelId = modelId,
         instructions = instructions,
         turnInput = context.turnInput,
         currentMode = context.conversation.currentMode,
-        currentTitle = context.conversation.title,
+        currentTopicId = context.conversation.currentTopicId,
+        currentTopicLabel = currentTopicLabel,
         generationSettings = generationSettings,
         tools = tools,
         chain = effectiveChain
