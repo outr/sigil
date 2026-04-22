@@ -38,6 +38,6 @@ trait ToolFinder {
    * that can look up by name directly (e.g. in-memory catalogs, indexed DB
    * queries) should override.
    */
-  def byName(name: String, participants: List[ParticipantId]): Task[Option[Tool[? <: ToolInput]]] =
-    apply(name, participants).map(_.find(_.schema.name.equalsIgnoreCase(name)))
+  def byName(name: ToolName, participants: List[ParticipantId]): Task[Option[Tool[? <: ToolInput]]] =
+    apply(name.value, participants).map(_.find(_.schema.name.value.equalsIgnoreCase(name.value)))
 }

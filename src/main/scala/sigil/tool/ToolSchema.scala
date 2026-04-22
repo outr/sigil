@@ -5,7 +5,7 @@ import fabric.rw.*
 import lightdb.id.Id
 
 case class ToolSchema[Input <: ToolInput](id: Id[ToolSchema[Input]],
-                                          name: String,
+                                          name: ToolName,
                                           description: String,
                                           input: Definition,
                                           examples: List[ToolExample[Input]])

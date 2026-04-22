@@ -9,7 +9,7 @@ import sigil.event.{Message, ModeChange, ToolInvoke}
 import sigil.participant.{DefaultAgentParticipant, Participant}
 import sigil.provider.{GenerationSettings, Instructions, Mode, TokenUsage}
 import sigil.signal.{ContentDelta, ContentKind, EventState, MessageDelta, Signal, ToolDelta}
-import sigil.tool.ToolInput
+import sigil.tool.{ToolInput, ToolName}
 import sigil.tool.core.CoreTools
 import sigil.tool.model.{ChangeModeInput, RespondInput, ResponseContent}
 
@@ -49,14 +49,14 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
 
     "round-trip a ToolInvoke" in {
       val original = ToolInvoke(
-        toolName = "respond",
+        toolName = ToolName("respond"),
         participantId = TestUser,
         conversationId = Conversation.id("c1"),
         input = Some(RespondInput(title = "Chat", content = "▶Text\nhi"))
       )
       val restored = roundTripSignal(original)
       restored shouldBe a[ToolInvoke]
-      restored.asInstanceOf[ToolInvoke].toolName shouldBe "respond"
+      restored.asInstanceOf[ToolInvoke].toolName shouldBe ToolName("respond")
     }
 
     "round-trip a ModeChange" in {

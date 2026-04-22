@@ -1,6 +1,7 @@
 package sigil.conversation
 
 import fabric.rw.*
+import sigil.tool.ToolName
 
 /**
  * Materialized per-participant state maintained on [[ConversationView]].
@@ -19,7 +20,7 @@ import fabric.rw.*
  * provider request, but the truth lives on the view.
  */
 case class ParticipantProjection(activeSkills: Map[SkillSource, ActiveSkillSlot] = Map.empty,
-                                 recentTools: List[String] = Nil,
-                                 suggestedTools: List[String] = Nil,
+                                 recentTools: List[ToolName] = Nil,
+                                 suggestedTools: List[ToolName] = Nil,
                                  extraContext: Map[ContextKey, String] = Map.empty)
   derives RW

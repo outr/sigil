@@ -672,7 +672,7 @@ trait Sigil {
     * the NEXT turn can call it. */
   private final def decaySuggestedTools(conversationId: Id[Conversation],
                                          agentId: ParticipantId,
-                                         snapshot: List[String]): Task[Unit] =
+                                         snapshot: List[sigil.tool.ToolName]): Task[Unit] =
     viewFor(conversationId).flatMap { view =>
       val current = view.projectionFor(agentId).suggestedTools
       if (current == snapshot && current.nonEmpty)

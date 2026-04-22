@@ -4,6 +4,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import sigil.event.Event
 import sigil.participant.ParticipantId
+import sigil.tool.ToolName
 
 /**
  * A render-ready unit of conversation history. Frames are the chunkable,
@@ -43,7 +44,7 @@ enum ContextFrame derives RW {
    * An assistant-issued tool call. `callId` is the `ToolInvoke._id` so a
    * following [[ToolResult]] frame can pair with it by id.
    */
-  case ToolCall(toolName: String, argsJson: String, callId: Id[Event], participantId: ParticipantId, sourceEventId: Id[Event])
+  case ToolCall(toolName: ToolName, argsJson: String, callId: Id[Event], participantId: ParticipantId, sourceEventId: Id[Event])
 
   /**
    * The tool-side completion of a prior [[ToolCall]]. Always renders at

@@ -19,7 +19,7 @@ trait Tool[Input <: ToolInput: RW] {
 
   lazy val schema: ToolSchema[Input] = ToolSchema(
     id = Id[ToolSchema[Input]](uniqueName),
-    name = uniqueName,
+    name = ToolName(uniqueName),
     description = description,
     input = summon[RW[Input]].definition,
     examples = examples

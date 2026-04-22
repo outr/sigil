@@ -4,6 +4,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import sigil.db.Model
 import sigil.provider.{GenerationSettings, Instructions}
+import sigil.tool.ToolName
 
 /**
  * Framework-supplied concrete [[AgentParticipant]]. Persists directly on
@@ -17,7 +18,7 @@ import sigil.provider.{GenerationSettings, Instructions}
  */
 case class DefaultAgentParticipant(override val id: AgentParticipantId,
                                    override val modelId: Id[Model],
-                                   override val toolNames: List[String] = Nil,
+                                   override val toolNames: List[ToolName] = Nil,
                                    override val instructions: Instructions = Instructions(),
                                    override val generationSettings: GenerationSettings = GenerationSettings())
   extends AgentParticipant derives RW

@@ -36,7 +36,7 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   /** Tool names the test agent advertises. CoreTools' default roster
     * plus the synthetic SendSlackMessageTool and the non-core SleepTool
     * so orchestrator tests exercising sleep-timing have it available. */
-  protected def toolNames: List[String] =
+  protected def toolNames: List[sigil.tool.ToolName] =
     CoreTools.coreToolNames ++ List(SendSlackMessageTool.schema.name, sigil.tool.util.SleepTool.schema.name)
 
   protected def makeAgent(): AgentParticipant =
@@ -86,7 +86,7 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       orchestrate("What is 2+2? Respond with just the number.").map { signals =>
         val toolInvokes = signals.collect { case t: ToolInvoke => t }
         toolInvokes should not be empty
-        toolInvokes.head.toolName shouldBe "respond"
+        toolInvokes.head.toolName shouldBe sigil.tool.ToolName("respond")
         toolInvokes.head.state shouldBe EventState.Active
 
         val messages = signals.collect { case m: Message => m }
@@ -174,7 +174,7 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       task.map { case (_, stored) =>
         val toolInvokes = stored.collect { case t: ToolInvoke => t }
         toolInvokes should have size 1
-        toolInvokes.head.toolName shouldBe "respond"
+        toolInvokes.head.toolName shouldBe sigil.tool.ToolName("respond")
         toolInvokes.head.state shouldBe EventState.Complete
         toolInvokes.head.input.map(_.getClass.getSimpleName) shouldBe Some("RespondInput")
 
@@ -191,7 +191,7 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       orchestrate("I need to write a Scala function.").map { signals =>
         val toolInvokes = signals.collect { case t: ToolInvoke => t }
         toolInvokes should not be empty
-        toolInvokes.head.toolName shouldBe "change_mode"
+        toolInvokes.head.toolName shouldBe sigil.tool.ToolName("change_mode")
 
         signals.collect { case m: Message => m } shouldBe empty
 

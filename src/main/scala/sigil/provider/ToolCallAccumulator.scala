@@ -31,7 +31,9 @@ import scala.collection.mutable
  */
 final class ToolCallAccumulator(tools: Vector[Tool[? <: ToolInput]] = Vector.empty) {
   private val calls = mutable.LinkedHashMap.empty[Int, CallState]
-  private val toolsByName: Map[String, Tool[? <: ToolInput]] = tools.map(t => t.schema.name -> t).toMap
+  // Keyed by the wire-level tool name string so provider events (which
+  // carry `toolName: String`) can look up without converting.
+  private val toolsByName: Map[String, Tool[? <: ToolInput]] = tools.map(t => t.schema.name.value -> t).toMap
 
   /**
    * Declare a new tool call at the given stream index. Emits `ToolCallStart`.
@@ -41,7 +43,7 @@ final class ToolCallAccumulator(tools: Vector[Tool[? <: ToolInput]] = Vector.emp
     if (calls.contains(index)) Vector.empty
     else {
       val processor =
-        if (toolName == RespondTool.schema.name)
+        if (toolName == RespondTool.schema.name.value)
           Some(new RespondStreamProcessor(callId))
         else None
       calls(index) = CallState(callId, toolName, new StringBuilder, processor)

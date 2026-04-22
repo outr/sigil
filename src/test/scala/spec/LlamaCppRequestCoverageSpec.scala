@@ -23,6 +23,7 @@ import sigil.event.Event
 import sigil.information.{Information, InformationSummary}
 import sigil.provider.{GenerationSettings, Instructions, Mode, ProviderRequest}
 import sigil.provider.llamacpp.LlamaCppProvider
+import sigil.tool.ToolName
 import sigil.tool.core.CoreTools
 import spice.net.URL
 
@@ -126,7 +127,7 @@ class LlamaCppRequestCoverageSpec extends AnyWordSpec with Matchers {
       val callId = syntheticEventId
       val view = emptyView.copy(frames = Vector(
         ContextFrame.ToolCall(
-          toolName = "change_mode",
+          toolName = ToolName("change_mode"),
           argsJson = "{\"reason\":\"REASON_MARKER_42\"}",
           callId = callId,
           participantId = TestAgent,
@@ -142,7 +143,7 @@ class LlamaCppRequestCoverageSpec extends AnyWordSpec with Matchers {
       val callId = syntheticEventId
       val view = emptyView.copy(frames = Vector(
         ContextFrame.ToolCall(
-          toolName = "change_mode",
+          toolName = ToolName("change_mode"),
           argsJson = "{}",
           callId = callId,
           participantId = TestAgent,
@@ -220,13 +221,13 @@ class LlamaCppRequestCoverageSpec extends AnyWordSpec with Matchers {
     }
 
     "include per-participant recentTools (from view projections) in the wire payload" in {
-      val view = emptyView.updateParticipant(TestAgent)(_.copy(recentTools = List("RECENT_TOOL_42")))
+      val view = emptyView.updateParticipant(TestAgent)(_.copy(recentTools = List(ToolName("RECENT_TOOL_42"))))
       val body = bodyOf(TurnInput(view))
       body should include("RECENT_TOOL_42")
     }
 
     "include per-participant suggestedTools (from view projections) in the wire payload" in {
-      val view = emptyView.updateParticipant(TestAgent)(_.copy(suggestedTools = List("SUGGESTED_TOOL_42")))
+      val view = emptyView.updateParticipant(TestAgent)(_.copy(suggestedTools = List(ToolName("SUGGESTED_TOOL_42"))))
       val body = bodyOf(TurnInput(view))
       body should include("SUGGESTED_TOOL_42")
     }

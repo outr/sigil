@@ -8,7 +8,7 @@ import sigil.event.{Event, Message}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{GenerationSettings, Instructions, Provider, ProviderRequest}
 import sigil.signal.{AgentActivity, AgentStateDelta, Signal}
-import sigil.tool.{Tool, ToolInput}
+import sigil.tool.{Tool, ToolInput, ToolName}
 
 /**
  * A participant that acts autonomously — typically LLM-backed. Pure data:
@@ -48,7 +48,7 @@ trait AgentParticipant extends Participant {
    * baseline, e.g.
    * `toolNames = CoreTools.coreToolNames ++ List("my_app_tool")`.
    */
-  def toolNames: List[String] = Nil
+  def toolNames: List[ToolName] = Nil
 
   /** System / developer instructions prepended to every turn. */
   def instructions: Instructions = Instructions()

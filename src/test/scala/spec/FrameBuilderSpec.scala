@@ -7,7 +7,7 @@ import sigil.conversation.{ContextFrame, Conversation, FrameBuilder, Participant
 import sigil.event.{AgentState, Event, Message, ModeChange, Stop, TitleChange, ToolInvoke, ToolResults}
 import sigil.provider.Mode
 import sigil.signal.{AgentActivity, EventState}
-import sigil.tool.ToolSchema
+import sigil.tool.{ToolName, ToolSchema}
 import sigil.tool.core.{ChangeModeTool, RespondTool}
 import sigil.tool.model.{ChangeModeInput, ResponseContent}
 
@@ -70,7 +70,7 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
       val frames = FrameBuilder.appendFor(Vector.empty, invoke)
       frames should have size 1
       val call = frames.head.asInstanceOf[ContextFrame.ToolCall]
-      call.toolName shouldBe "change_mode"
+      call.toolName shouldBe ToolName("change_mode")
       call.callId shouldBe invoke._id
       call.participantId shouldBe TestAgent
       call.argsJson should include("need code mode")
@@ -80,7 +80,7 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
 
     "pair a Complete ToolResults with the most-recent pending ToolCall" in {
       val invoke = ToolInvoke(
-        toolName = "find_capability",
+        toolName = ToolName("find_capability"),
         participantId = TestAgent,
         conversationId = conversationId,
         input = None,
@@ -148,14 +148,14 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
     }
 
     "dedupe recentTools (head = most recent)" in {
-      val first = ToolInvoke(toolName = "a", participantId = TestAgent, conversationId = conversationId, state = EventState.Complete)
-      val second = ToolInvoke(toolName = "b", participantId = TestAgent, conversationId = conversationId, state = EventState.Complete)
-      val third = ToolInvoke(toolName = "a", participantId = TestAgent, conversationId = conversationId, state = EventState.Complete)
+      val first = ToolInvoke(toolName = ToolName("a"), participantId = TestAgent, conversationId = conversationId, state = EventState.Complete)
+      val second = ToolInvoke(toolName = ToolName("b"), participantId = TestAgent, conversationId = conversationId, state = EventState.Complete)
+      val third = ToolInvoke(toolName = ToolName("a"), participantId = TestAgent, conversationId = conversationId, state = EventState.Complete)
       val after = List(
         first,
         second,
         third).foldLeft(Map.empty[sigil.participant.ParticipantId, ParticipantProjection])(FrameBuilder.updateProjections)
-      after(TestAgent).recentTools shouldBe List("a", "b")
+      after(TestAgent).recentTools shouldBe List(ToolName("a"), ToolName("b"))
     }
 
     "replace suggestedTools when a ToolResults completes" in {
@@ -171,7 +171,7 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
 
     "not update projections for events still Active" in {
       val invoke = ToolInvoke(
-        toolName = "pending",
+        toolName = ToolName("pending"),
         participantId = TestAgent,
         conversationId = conversationId,
         state = EventState.Active
