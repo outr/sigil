@@ -31,8 +31,7 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   private def freshConversationId(suffix: String): Id[Conversation] =
     Conversation.id(s"core-tools-$suffix-${rapid.Unique()}")
 
-  private def turnContextFor(convId: Id[Conversation],
-                             currentTitle: String = Conversation.DefaultTitle): TurnContext = {
+  private def turnContextFor(convId: Id[Conversation], currentTitle: String = Conversation.DefaultTitle): TurnContext = {
     val view = ConversationView(conversationId = convId, _id = ConversationView.idFor(convId))
     TurnContext(
       sigil = TestSigil,
@@ -158,7 +157,9 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   }
 }
 
-/** Synthetic Information subtype used only by CoreToolsSpec. Named
-  * distinctly from `TestInformation` in other specs to avoid a collision
-  * in the shared `spec` package. */
+/**
+ * Synthetic Information subtype used only by CoreToolsSpec. Named
+ * distinctly from `TestInformation` in other specs to avoid a collision
+ * in the shared `spec` package.
+ */
 case class TestInformationWithBody(id: Id[Information], body: String) extends Information derives RW

@@ -30,9 +30,12 @@ case class TurnInput(conversationView: ConversationView,
                      memories: Vector[Id[ContextMemory]] = Vector.empty,
                      summaries: Vector[Id[ContextSummary]] = Vector.empty,
                      information: Vector[InformationSummary] = Vector.empty,
-                     extraContext: Map[ContextKey, String] = Map.empty) derives RW {
+                     extraContext: Map[ContextKey, String] = Map.empty)
+  derives RW {
 
-  /** Shortcut: aggregate active skills across a chain via the view. */
+  /**
+   * Shortcut: aggregate active skills across a chain via the view.
+   */
   def aggregatedSkills(chain: List[ParticipantId]): Vector[ActiveSkillSlot] =
     conversationView.aggregatedSkills(chain)
 }

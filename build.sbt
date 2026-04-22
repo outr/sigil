@@ -24,7 +24,8 @@ ThisBuild / scalacOptions ++= Seq(
   "-deprecation",
   "-feature",
   "-unchecked",
-  "-Xmax-inlines", "64"
+  "-Xmax-inlines",
+  "64"
 )
 
 ThisBuild / evictionErrorLevel := Level.Info

@@ -14,7 +14,8 @@ import sigil.event.Event
 case class ToolDelta(target: Id[Event],
                      conversationId: Id[Conversation],
                      input: Option[sigil.tool.ToolInput] = None,
-                     state: Option[EventState] = None) extends Delta derives RW {
+                     state: Option[EventState] = None)
+  extends Delta derives RW {
 
   /**
    * Apply this delta to a [[ToolInvoke]]. Sets `input` (the parsed args) and
