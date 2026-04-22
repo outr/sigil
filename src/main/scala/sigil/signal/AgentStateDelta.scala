@@ -17,7 +17,8 @@ import sigil.event.{AgentState, Event}
 case class AgentStateDelta(target: Id[Event],
                            conversationId: Id[Conversation],
                            activity: Option[AgentActivity] = None,
-                           state: Option[EventState] = None) extends Delta derives RW {
+                           state: Option[EventState] = None)
+  extends Delta derives RW {
 
   override def apply(target: Event): Event = target match {
     case a: AgentState =>

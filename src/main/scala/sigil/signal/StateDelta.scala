@@ -17,8 +17,6 @@ import sigil.event.Event
  * historical readers (replay, late subscribers) see the Complete state and
  * skip reactive side-effects.
  */
-case class StateDelta(target: Id[Event],
-                      conversationId: Id[Conversation],
-                      state: EventState) extends Delta derives RW {
+case class StateDelta(target: Id[Event], conversationId: Id[Conversation], state: EventState) extends Delta derives RW {
   override def apply(target: Event): Event = target.withState(state)
 }

@@ -38,5 +38,5 @@ trait Event extends Signal with Document[Event] {
 object Event extends JsonConversion[Event] {
   import Signal.given
 
-  override implicit def rw: RW[Event] = summon[RW[Signal]].asInstanceOf[RW[Event]]
+  implicit override def rw: RW[Event] = summon[RW[Signal]].asInstanceOf[RW[Event]]
 }

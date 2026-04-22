@@ -65,7 +65,8 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
             kind = sigil.signal.ContentKind.Text,
             arg = None,
             complete = true,
-            delta = "settled content"
+            delta =
+              "settled content"
           )),
           state = Some(EventState.Complete)
         ))
@@ -89,9 +90,7 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         _ <- TestSigil.publish(msg)
         _ <- TestSigil.publish(StateDelta(target = msg._id, conversationId = convId, state = EventState.Complete))
         view <- TestSigil.viewFor(convId)
-      } yield {
-        view.frames.count(_.sourceEventId == msg._id) shouldBe 1
-      }
+      } yield view.frames.count(_.sourceEventId == msg._id) shouldBe 1
     }
 
     "match incremental build and full rebuild for the same event sequence" in {
@@ -154,7 +153,7 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       val slot = ActiveSkillSlot(name = "coding", content = "Prefer Scala 3 syntax.")
       TestSigil.setModeSkill {
         case Mode.Coding => rapid.Task.pure(Some(slot))
-        case _           => rapid.Task.pure(None)
+        case _ => rapid.Task.pure(None)
       }
       val mc = ModeChange(
         mode = Mode.Coding,
@@ -169,7 +168,8 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
           mode = Mode.Conversation,
           participantId = TestAgent,
           conversationId = convId,
-          state = EventState.Complete
+          state =
+            EventState.Complete
         ))
         afterConversation <- TestSigil.viewFor(convId)
         _ <- rapid.Task(TestSigil.resetModeSkill())
@@ -267,15 +267,16 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "return summaries oldest-first when multiple exist" in {
       val convId = freshConvId("summary-order")
       val older = ContextSummary(text = "OLDER", conversationId = convId, tokenEstimate = 1)
-      val newer = ContextSummary(text = "NEWER", conversationId = convId, tokenEstimate = 1,
-                                  created = lightdb.time.Timestamp(lightdb.util.Nowish() + 1000))
+      val newer = ContextSummary(
+        text = "NEWER",
+        conversationId = convId,
+        tokenEstimate = 1,
+        created = lightdb.time.Timestamp(lightdb.util.Nowish() + 1000))
       for {
         _ <- TestSigil.persistSummary(older)
         _ <- TestSigil.persistSummary(newer)
         fetched <- TestSigil.summariesFor(convId)
-      } yield {
-        fetched.map(_.text) shouldBe List("OLDER", "NEWER")
-      }
+      } yield fetched.map(_.text) shouldBe List("OLDER", "NEWER")
     }
   }
 }

@@ -49,7 +49,7 @@ case class SigilDB(directory: Option[Path], storeManager: CollectionManager) ext
       events.transaction { tx =>
         tx.get(d.target.asInstanceOf[Id[Event]]).flatMap {
           case Some(target) => tx.upsert(d(target)).unit
-          case None         => Task.unit
+          case None => Task.unit
         }
       }
   }

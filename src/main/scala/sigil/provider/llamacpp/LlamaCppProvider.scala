@@ -52,10 +52,12 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
     )
   }
 
-  /** Resolve the ids in `TurnInput.criticalMemories`, `.memories`, and
-    * `.summaries` to full records by looking each one up in the
-    * corresponding store. Ids that don't resolve (deleted, stale) are
-    * dropped silently — the curator keeps the referenced set consistent. */
+  /**
+   * Resolve the ids in `TurnInput.criticalMemories`, `.memories`, and
+   * `.summaries` to full records by looking each one up in the
+   * corresponding store. Ids that don't resolve (deleted, stale) are
+   * dropped silently — the curator keeps the referenced set consistent.
+   */
   private def resolveReferences(request: ProviderRequest): Task[ResolvedReferences] = {
     val turn = request.turnInput
     for {
@@ -231,7 +233,8 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
    * [[sigil.conversation.FrameBuilder]]), so UI-only history never reaches
    * this renderer.
    */
-  private[llamacpp] def renderFrames(frames: Vector[ContextFrame], agentId: Option[_root_.sigil.participant.ParticipantId]): Vector[Json] = {
+  private[llamacpp] def renderFrames(frames: Vector[ContextFrame],
+                                     agentId: Option[_root_.sigil.participant.ParticipantId]): Vector[Json] = {
     val out = Vector.newBuilder[Json]
     var pendingToolCall: Option[String] = None
 
@@ -263,7 +266,7 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
         }
 
       case ContextFrame.ToolCall(toolName, _, _, participantId, _) if toolName == "respond" && agentId.contains(participantId) =>
-        // Skip — the following Text frame is the actual response.
+      // Skip — the following Text frame is the actual response.
 
       case ContextFrame.ToolCall(toolName, argsJson, callId, participantId, _) if agentId.contains(participantId) =>
         out += obj(
@@ -280,7 +283,7 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
         pendingToolCall = Some(callId.value)
 
       case _: ContextFrame.ToolCall =>
-        // ToolCall from someone else — skip (not rendered as a tool call for this agent).
+      // ToolCall from someone else — skip (not rendered as a tool call for this agent).
 
       case ContextFrame.ToolResult(callId, content, _) =>
         out += obj(
@@ -408,13 +411,15 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
       s"${schema.description}\n\nExamples:\n$rendered"
     }
 
-  /** Strip the `ToolInput` poly discriminator from a serialized example.
-    * Frames already carry the clean form; examples rendered in tool
-    * descriptions do the same so the model sees pure parameter-schema
-    * JSON, matching what its own tool_call arguments must produce. */
+  /**
+   * Strip the `ToolInput` poly discriminator from a serialized example.
+   * Frames already carry the clean form; examples rendered in tool
+   * descriptions do the same so the model sees pure parameter-schema
+   * JSON, matching what its own tool_call arguments must produce.
+   */
   private def stripPolyDiscriminator(json: Json): Json = json match {
     case o: Obj => Obj(o.value - "type")
-    case other  => other
+    case other => other
   }
 
   private def stripProviderPrefix(id: String): String = {
@@ -422,7 +427,7 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
     if (id.startsWith(prefix)) id.drop(prefix.length) else id
   }
 
-  private final class StreamState(val acc: ToolCallAccumulator) {
+  final private class StreamState(val acc: ToolCallAccumulator) {
     var pendingDone: Option[StopReason] = None
 
     def flushDone(): Vector[ProviderEvent] = pendingDone match {

@@ -149,25 +149,29 @@ object FrameBuilder {
   private def renderMessageText(m: Message): String =
     m.content
       .map {
-        case ResponseContent.Text(t)       => t
-        case ResponseContent.Markdown(t)   => t
+        case ResponseContent.Text(t) => t
+        case ResponseContent.Markdown(t) => t
         case ResponseContent.Code(c, lang) => s"```${lang.getOrElse("")}\n$c\n```"
-        case other                         => other.toString
+        case other => other.toString
       }
       .mkString("\n")
 
-  /** Strip the `ToolInput` poly discriminator so the `arguments` JSON
-    * is pure parameter-schema on the wire. Same logic the llama.cpp
-    * provider used to do at render time; moved here so frames already
-    * carry the clean form. */
+  /**
+   * Strip the `ToolInput` poly discriminator so the `arguments` JSON
+   * is pure parameter-schema on the wire. Same logic the llama.cpp
+   * provider used to do at render time; moved here so frames already
+   * carry the clean form.
+   */
   private def stripPolyDiscriminator(json: Json): Json = json match {
     case o: Obj => Obj(o.value - "type")
-    case other  => other
+    case other => other
   }
 
-  /** Find the most-recently-added `ToolCall` frame that hasn't yet been
-    * paired with a `ToolResult`. A pending call is one that has no
-    * corresponding `ToolResult(callId = _)` later in the vector. */
+  /**
+   * Find the most-recently-added `ToolCall` frame that hasn't yet been
+   * paired with a `ToolResult`. A pending call is one that has no
+   * corresponding `ToolResult(callId = _)` later in the vector.
+   */
   private def pairedCallId(frames: Vector[ContextFrame]): Option[lightdb.id.Id[Event]] = {
     val resolved = frames.collect { case ContextFrame.ToolResult(id, _, _) => id }.toSet
     frames.reverseIterator.collectFirst {

@@ -11,6 +11,7 @@ import spice.net.URL
  * strict `oneOf` via DefinitionToSchema.
  */
 enum ResponseContent derives RW {
+
   /**
    * Plain text.
    */
@@ -89,9 +90,7 @@ enum ResponseContent derives RW {
    *
    * UI renders the list in the order given; numbering is implicit.
    */
-  case Options(prompt: String,
-               options: List[SelectOption],
-               allowMultiple: Boolean = false)
+  case Options(prompt: String, options: List[SelectOption], allowMultiple: Boolean = false)
 
   /**
    * Signal that the agent could not complete the task. Use this content type
@@ -104,4 +103,3 @@ enum ResponseContent derives RW {
    */
   case Failure(reason: String, recoverable: Boolean = false)
 }
-

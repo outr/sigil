@@ -25,6 +25,7 @@ case class Message(participantId: ParticipantId,
                    usage: TokenUsage = TokenUsage(0, 0, 0),
                    state: EventState = EventState.Active,
                    timestamp: Timestamp = Timestamp(Nowish()),
-                   _id: Id[Event] = Event.id()) extends Event derives RW {
+                   _id: Id[Event] = Event.id())
+  extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
 }
