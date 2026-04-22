@@ -21,6 +21,4 @@ import sigil.PolyName
  * @param informationType classifier naming a registered [[Information]] subtype
  * @param summary         1-2 line description shown in the catalog
  */
-case class InformationSummary(id: Id[Information],
-                              informationType: PolyName[Information],
-                              summary: String) derives RW
+case class InformationSummary(id: Id[Information], informationType: PolyName[Information], summary: String) derives RW

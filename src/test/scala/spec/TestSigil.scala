@@ -44,40 +44,46 @@ object TestSigil extends Sigil {
   // -- test-only mutable wiring --
 
   private val broadcasterRef = new AtomicReference[SignalBroadcaster](SignalBroadcaster.NoOp)
-  private val providerRef = new AtomicReference[() => Task[Provider]](
-    () => Task.error(new RuntimeException("TestSigil.setProvider was not called — no provider configured"))
-  )
+  private val providerRef = new AtomicReference[() => Task[Provider]](() =>
+    Task.error(new RuntimeException("TestSigil.setProvider was not called — no provider configured")))
   private val informationRef = new AtomicReference[sigil.information.InMemoryInformation](new sigil.information.InMemoryInformation)
-  private val modeSkillRef = new AtomicReference[sigil.provider.Mode => Task[Option[sigil.conversation.ActiveSkillSlot]]](
-    _ => Task.pure(None)
-  )
+  private val modeSkillRef =
+    new AtomicReference[sigil.provider.Mode => Task[Option[sigil.conversation.ActiveSkillSlot]]](_ => Task.pure(None))
 
-  /** Replace the broadcaster for the current test (typically with a
-    * `RecordingBroadcaster` to capture emissions). */
+  /**
+   * Replace the broadcaster for the current test (typically with a
+   * `RecordingBroadcaster` to capture emissions).
+   */
   def setBroadcaster(b: SignalBroadcaster): Unit = broadcasterRef.set(b)
 
   def resetBroadcaster(): Unit = broadcasterRef.set(SignalBroadcaster.NoOp)
 
   override def broadcaster: SignalBroadcaster = broadcasterRef.get()
 
-  /** Set the Provider that `providerFor` returns. Taken by-name so specs
-    * can wire `setProvider(provider)` from a trait body even though the
-    * subclass's `provider` val isn't yet initialized — evaluation defers
-    * until `providerFor` is actually called. */
+  /**
+   * Set the Provider that `providerFor` returns. Taken by-name so specs
+   * can wire `setProvider(provider)` from a trait body even though the
+   * subclass's `provider` val isn't yet initialized — evaluation defers
+   * until `providerFor` is actually called.
+   */
   def setProvider(p: => Task[Provider]): Unit = providerRef.set(() => p)
 
   override def providerFor(modelId: Id[Model], chain: List[ParticipantId]): Task[Provider] =
     providerRef.get().apply()
 
-  /** Expose an in-memory information store specs can populate before
-    * exercising [[sigil.tool.core.LookupInformationTool]]. */
+  /**
+   * Expose an in-memory information store specs can populate before
+   * exercising [[sigil.tool.core.LookupInformationTool]].
+   */
   def information: sigil.information.InMemoryInformation = informationRef.get()
 
   override def getInformation(id: lightdb.id.Id[sigil.information.Information]): Task[Option[sigil.information.Information]] =
     informationRef.get().get(id)
 
-  /** Override the `modeSkill` hook for a test — returns the resolved slot
-    * (or None) for the given mode. Default is always None. */
+  /**
+   * Override the `modeSkill` hook for a test — returns the resolved slot
+   * (or None) for the given mode. Default is always None.
+   */
   def setModeSkill(f: sigil.provider.Mode => Task[Option[sigil.conversation.ActiveSkillSlot]]): Unit =
     modeSkillRef.set(f)
 
@@ -94,8 +100,10 @@ object TestSigil extends Sigil {
   override protected def participantIds: List[RW[? <: ParticipantId]] =
     List(RW.static(TestUser), RW.static(TestAgent))
 
-  /** Register TestSpace so ContextMemory's spaceId poly round-trips in
-    * the memories store. */
+  /**
+   * Register TestSpace so ContextMemory's spaceId poly round-trips in
+   * the memories store.
+   */
   override protected def memorySpaceIds: List[RW[? <: MemorySpaceId]] =
     List(RW.static(TestSpace))
 
@@ -121,7 +129,7 @@ object TestSigil extends Sigil {
     ()
   }
 
-  private def deleteRecursive(path: java.nio.file.Path): Unit = {
+  private def deleteRecursive(path: java.nio.file.Path): Unit =
     if (java.nio.file.Files.exists(path)) {
       val stream = java.nio.file.Files.walk(path)
       try {
@@ -134,7 +142,6 @@ object TestSigil extends Sigil {
           .foreach(p => java.nio.file.Files.deleteIfExists(p))
       } finally stream.close()
     }
-  }
 }
 
 /**

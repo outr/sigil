@@ -12,7 +12,4 @@ import fabric.rw.*
  *                    block, selecting this option clears any other selections
  *                    — typically used for a "None of the above" escape hatch.
  */
-case class SelectOption(label: String,
-                        value: String,
-                        description: Option[String] = None,
-                        exclusive: Boolean = false) derives RW
+case class SelectOption(label: String, value: String, description: Option[String] = None, exclusive: Boolean = false) derives RW

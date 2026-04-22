@@ -30,11 +30,15 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
   protected def modelId: Id[Model]
 
-  /** Wire the spec's provider into TestSigil so `providerFor` returns it. */
+  /**
+   * Wire the spec's provider into TestSigil so `providerFor` returns it.
+   */
   TestSigil.setProvider(provider)
 
-  /** Tool names the test agent advertises. CoreTools' names + the synthetic
-    * SendSlackMessageTool so `find_capability` has a catalog entry. */
+  /**
+   * Tool names the test agent advertises. CoreTools' names + the synthetic
+   * SendSlackMessageTool so `find_capability` has a catalog entry.
+   */
   protected def toolNames: List[String] =
     CoreTools.coreToolNames :+ SendSlackMessageTool.schema.name
 
@@ -47,9 +51,11 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0))
     )
 
-  /** Poll-based wait for the agent to reach Idle (terminal AgentStateDelta).
-    * The broadcaster captures every signal; once we see an Idle/Complete
-    * delta for the AgentState lock id, we know the chain settled. */
+  /**
+   * Poll-based wait for the agent to reach Idle (terminal AgentStateDelta).
+   * The broadcaster captures every signal; once we see an Idle/Complete
+   * delta for the AgentState lock id, we know the chain settled.
+   */
   protected def awaitIdle(broadcaster: RecordingBroadcaster, timeoutMs: Long = 30000): Task[Unit] = {
     val deadline = System.currentTimeMillis() + timeoutMs
     def loop: Task[Unit] = Task.defer {
@@ -72,9 +78,11 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     recorder
   }
 
-  /** Upsert a `Conversation` carrying the test agent in its `participants`
-    * list. Specs use this before publishing the external Message so the
-    * dispatcher's fan-out finds the agent on the persisted record. */
+  /**
+   * Upsert a `Conversation` carrying the test agent in its `participants`
+   * list. Specs use this before publishing the external Message so the
+   * dispatcher's fan-out finds the agent on the persisted record.
+   */
   protected def upsertConversationWithAgent(convId: Id[Conversation]): Task[Unit] =
     TestSigil.withDB(_.conversations.transaction(_.upsert(
       Conversation(_id = convId, participants = List(makeAgent()))

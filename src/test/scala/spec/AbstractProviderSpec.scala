@@ -24,8 +24,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
   protected def coreTools: Vector[Tool[? <: ToolInput]] = CoreTools.all
 
-  protected def request(message: String,
-                        currentMode: Mode = Mode.Conversation): Task[List[ProviderEvent]] = provider.flatMap { p =>
+  protected def request(message: String, currentMode: Mode = Mode.Conversation): Task[List[ProviderEvent]] = provider.flatMap { p =>
     val conversationId = Conversation.id("test-conversation")
     val userMessage = Message(
       participantId = TestUser,
@@ -37,7 +36,8 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       frames = Vector(ContextFrame.Text(
         content = message,
         participantId = TestUser,
-        sourceEventId = userMessage._id
+        sourceEventId =
+          userMessage._id
       )),
       _id = ConversationView.idFor(conversationId)
     )
@@ -58,13 +58,12 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   }
 
   getClass.getSimpleName should {
-    "properly list models" in {
+    "properly list models" in
       provider.map { p =>
         scribe.info(s"Found models: ${p.models.map(_.name).mkString(", ")}")
         p.models should not be empty
       }
-    }
-    "perform a round-trip request via the respond tool" in {
+    "perform a round-trip request via the respond tool" in
       request("What is 2+2? Respond with just the number.").map { events =>
         val start = events.collectFirst { case s: ProviderEvent.ToolCallStart => s }
         start.map(_.toolName) shouldBe Some(RespondTool.schema.name)
@@ -85,8 +84,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         events.last shouldBe a[ProviderEvent.Done]
         events.last.asInstanceOf[ProviderEvent.Done].stopReason shouldBe StopReason.ToolCall
       }
-    }
-    "emit a single-select ▶Options block when the user asks to be presented choices" in {
+    "emit a single-select ▶Options block when the user asks to be presented choices" in
       request(
         "I need to pick a backend language for a new web service. Ask me which of Python, Node.js, or Go I want."
       ).map { events =>
@@ -98,8 +96,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         options.get.allowMultiple should be(false)
         options.get.options.size should be(3)
       }
-    }
-    "emit a multi-select ▶Options block with an exclusive escape-hatch option" in {
+    "emit a multi-select ▶Options block with an exclusive escape-hatch option" in
       request(
         "I want to enable notifications. Ask me which of email, SMS, or push I want — multiple selections are allowed. Also include a None option that cannot be combined with the others."
       ).map { events =>
@@ -112,8 +109,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         options.get.options.exists(_.exclusive) should be(true)
         options.get.options.count(_.exclusive) should be(1)
       }
-    }
-    "call find_capability when the user requests an action no core tool can perform" in {
+    "call find_capability when the user requests an action no core tool can perform" in
       request(
         "Post a quick update to my team's #engineering Slack channel: \"deploy finished successfully.\""
       ).map { events =>
@@ -124,8 +120,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         input should not be empty
         input.get.keywords should (include("slack") or include("post") or include("message"))
       }
-    }
-    "switch modes when the user's task belongs to a different mode" in {
+    "switch modes when the user's task belongs to a different mode" in
       request("I need to write a Scala function.").map { events =>
         val start = events.collectFirst { case s: ProviderEvent.ToolCallStart => s }
         start.map(_.toolName) shouldBe Some(ChangeModeTool.schema.name)
@@ -138,7 +133,6 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         events.last shouldBe a[ProviderEvent.Done]
         events.last.asInstanceOf[ProviderEvent.Done].stopReason shouldBe StopReason.ToolCall
       }
-    }
   }
 
   implicit class EventsListExtras(events: List[ProviderEvent]) {

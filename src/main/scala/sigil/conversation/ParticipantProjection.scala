@@ -21,4 +21,5 @@ import fabric.rw.*
 case class ParticipantProjection(activeSkills: Map[SkillSource, ActiveSkillSlot] = Map.empty,
                                  recentTools: List[String] = Nil,
                                  suggestedTools: List[String] = Nil,
-                                 extraContext: Map[ContextKey, String] = Map.empty) derives RW
+                                 extraContext: Map[ContextKey, String] = Map.empty)
+  derives RW
