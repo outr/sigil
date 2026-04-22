@@ -14,9 +14,7 @@ import fabric.rw.*
  * is deliberate: personality first (establishes context), core next (operational
  * discipline), guidelines last (specifics that may reference earlier context).
  */
-case class Instructions private (core: String,
-                                 personality: String,
-                                 guidelines: List[String]) derives RW {
+case class Instructions private (core: String, personality: String, guidelines: List[String]) derives RW {
   assert(core.nonEmpty, "Core must not be empty!")
   assert(personality.nonEmpty, "Personality must not be empty!")
 
@@ -66,8 +64,6 @@ object Instructions {
    * Build an Instructions with the sigil-default operational `core` pre-applied.
    * The caller supplies personality and any task-specific guidelines.
    */
-  def apply(core: String = DefaultCore,
-            personality: String = DefaultPersonality,
-            guidelines: List[String] = Nil): Instructions =
+  def apply(core: String = DefaultCore, personality: String = DefaultPersonality, guidelines: List[String] = Nil): Instructions =
     new Instructions(core = core, personality = personality, guidelines = guidelines)
 }

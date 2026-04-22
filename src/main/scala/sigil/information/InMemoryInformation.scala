@@ -31,10 +31,14 @@ final class InMemoryInformation {
 
   def clear(): Unit = store.clear()
 
-  /** Lookup — Task-shaped so callers can plug directly into `Sigil.getInformation`. */
+  /**
+   * Lookup — Task-shaped so callers can plug directly into `Sigil.getInformation`.
+   */
   def get(id: Id[Information]): Task[Option[Information]] =
     Task.pure(Option(store.get(id)))
 
-  /** Current count — useful in tests. */
+  /**
+   * Current count — useful in tests.
+   */
   def size: Int = store.size
 }

@@ -28,10 +28,10 @@ import sigil.participant.Participant
  */
 object TriggerFilter {
   def isTriggerFor(p: Participant, e: Event): Boolean = e match {
-    case _: AgentState                                                => false
-    case m: Message if m.participantId == p.id                        => false
-    case tc: TitleChange if tc.participantId == p.id                  => false
+    case _: AgentState => false
+    case m: Message if m.participantId == p.id => false
+    case tc: TitleChange if tc.participantId == p.id => false
     case _: Message | _: ModeChange | _: TitleChange | _: ToolResults => true
-    case _                                                            => false
+    case _ => false
   }
 }

@@ -32,7 +32,7 @@ object DefinitionToSchema {
     withConstraints(withFormat, definition.constraints)
   }
 
-  private def withConstraints(schema: Json, c: fabric.define.Constraints): Json = {
+  private def withConstraints(schema: Json, c: fabric.define.Constraints): Json =
     if (c.isEmpty) schema
     else {
       val pairs: List[(String, Json)] = List(
@@ -50,7 +50,6 @@ object DefinitionToSchema {
       ).flatten
       if (pairs.isEmpty) schema else schema.merge(obj(pairs*))
     }
-  }
 
   private def convertDefType(defType: DefType): Json =
     defType match {

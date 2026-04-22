@@ -47,15 +47,18 @@ object Orchestrator {
     provider(request).flatMap(pe => translate(pe, sigil, request, conversation, toolsByName, state))
   }
 
-  private final class State {
+  final private class State {
     var activeToolName: Option[String] = None
     var activeToolInvokeId: Option[lightdb.id.Id[Event]] = None
     var activeMessageId: Option[lightdb.id.Id[Event]] = None
     var currentKind: Option[ContentKind] = None
     var currentArg: Option[String] = None
-    /** Accumulated text for the current open content block. Flushed as a
-      * `ContentDelta(complete = true, delta = full text)` when the block
-      * closes (next ContentBlockStart or ToolCallComplete). */
+
+    /**
+     * Accumulated text for the current open content block. Flushed as a
+     * `ContentDelta(complete = true, delta = full text)` when the block
+     * closes (next ContentBlockStart or ToolCallComplete).
+     */
     val currentBuffer: StringBuilder = new StringBuilder
   }
 
@@ -138,12 +141,13 @@ object Orchestrator {
             // TitleChange alongside. Idempotent: same-title is suppressed.
             val titlePrelude: List[Signal] = (state.activeToolName, input) match {
               case (Some("respond"), r: RespondInput)
-                if r.title.nonEmpty && r.title != request.currentTitle =>
+                  if r.title.nonEmpty && r.title != request.currentTitle =>
                 List(TitleChange(
                   title = r.title,
                   participantId = caller,
                   conversationId = convId,
-                  state = EventState.Complete
+                  state =
+                    EventState.Complete
                 ))
               case _ => Nil
             }
@@ -152,13 +156,18 @@ object Orchestrator {
             // Atomic path — run execute and forward resulting Events.
             val tool = toolsByName.get(state.activeToolName.getOrElse(""))
             val executed: Stream[Signal] = tool match {
-              case Some(t) => executeAtomic(t, input, TurnContext(
-                sigil = sigil,
-                chain = request.chain,
-                conversation = conversation,
-                conversationView = request.turnInput.conversationView,
-                turnInput = request.turnInput
-              ))
+              case Some(t) => executeAtomic(
+                  t,
+                  input,
+                  TurnContext(
+                    sigil = sigil,
+                    chain = request.chain,
+                    conversation = conversation,
+                    conversationView = request.turnInput.conversationView,
+                    turnInput =
+                      request.turnInput
+                  )
+                )
               case None => Stream.empty
             }
             Stream.emits(List[Signal](toolDelta)) ++ executed
@@ -171,14 +180,16 @@ object Orchestrator {
           case None => Stream.empty
         }
 
-      case ProviderEvent.TextDelta(_)     => Stream.empty
+      case ProviderEvent.TextDelta(_) => Stream.empty
       case ProviderEvent.ThinkingDelta(_) => Stream.empty
-      case ProviderEvent.Done(_)          => Stream.empty
-      case ProviderEvent.Error(_)         => Stream.empty
+      case ProviderEvent.Done(_) => Stream.empty
+      case ProviderEvent.Error(_) => Stream.empty
     }
   }
 
-  /** Dispatches an atomic tool's `execute` and forwards its events as signals. */
+  /**
+   * Dispatches an atomic tool's `execute` and forwards its events as signals.
+   */
   private def executeAtomic[I <: ToolInput](tool: Tool[I], input: ToolInput, context: TurnContext): Stream[Signal] = {
     val typedInput = input.asInstanceOf[I]
     tool.execute(typedInput, context).map(ev => ev: Signal)
@@ -198,7 +209,7 @@ object Orchestrator {
   private def closeCurrentBlock(state: State, convId: lightdb.id.Id[Conversation]): List[Signal] = {
     val emit = for {
       msgId <- state.activeMessageId
-      kind  <- state.currentKind
+      kind <- state.currentKind
       if state.currentBuffer.nonEmpty
     } yield {
       val text = state.currentBuffer.toString

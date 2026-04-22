@@ -153,7 +153,10 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
       val first = ToolInvoke(toolName = "a", participantId = TestAgent, conversationId = conversationId, state = EventState.Complete)
       val second = ToolInvoke(toolName = "b", participantId = TestAgent, conversationId = conversationId, state = EventState.Complete)
       val third = ToolInvoke(toolName = "a", participantId = TestAgent, conversationId = conversationId, state = EventState.Complete)
-      val after = List(first, second, third).foldLeft(Map.empty[sigil.participant.ParticipantId, ParticipantProjection])(FrameBuilder.updateProjections)
+      val after = List(
+        first,
+        second,
+        third).foldLeft(Map.empty[sigil.participant.ParticipantId, ParticipantProjection])(FrameBuilder.updateProjections)
       after(TestAgent).recentTools shouldBe List("a", "b")
     }
 

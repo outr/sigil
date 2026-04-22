@@ -12,7 +12,19 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
-import sigil.conversation.{ActiveSkillSlot, ContextKey, ContextMemory, ContextSummary, Conversation, ConversationView, FrameBuilder, MemorySpaceId, ParticipantProjection, SkillSource, TurnInput}
+import sigil.conversation.{
+  ActiveSkillSlot,
+  ContextKey,
+  ContextMemory,
+  ContextSummary,
+  Conversation,
+  ConversationView,
+  FrameBuilder,
+  MemorySpaceId,
+  ParticipantProjection,
+  SkillSource,
+  TurnInput
+}
 import sigil.db.{Model, SigilDB}
 import sigil.dispatcher.TriggerFilter
 import sigil.event.{AgentState, Event, ModeChange, TitleChange}
@@ -184,15 +196,17 @@ trait Sigil {
       _ <- maybeApplyModeSkill(signal)
       _ <- broadcaster.handle(signal).handleError(logBroadcastError(signal, _))
       _ <- signal match {
-             case e: Event => fanOut(e)
-             case _: sigil.signal.Delta => Task.unit
-           }
+        case e: Event => fanOut(e)
+        case _: sigil.signal.Delta => Task.unit
+      }
     } yield ()
 
-  /** If this signal settles a [[ModeChange]] to `Complete`, resolve the
-    * Mode-source [[ActiveSkillSlot]] (via [[modeSkill]]) and write it into
-    * the acting participant's projection on the view. */
-  private final def maybeApplyModeSkill(signal: Signal): Task[Unit] = signal match {
+  /**
+   * If this signal settles a [[ModeChange]] to `Complete`, resolve the
+   * Mode-source [[ActiveSkillSlot]] (via [[modeSkill]]) and write it into
+   * the acting participant's projection on the view.
+   */
+  final private def maybeApplyModeSkill(signal: Signal): Task[Unit] = signal match {
     case mc: ModeChange if mc.state == EventState.Complete => applyModeSkill(mc)
     case d: sigil.signal.Delta =>
       withDB(_.events.transaction(_.get(d.target.asInstanceOf[Id[Event]]))).flatMap {
@@ -202,17 +216,14 @@ trait Sigil {
     case _ => Task.unit
   }
 
-  private final def applyModeSkill(mc: ModeChange): Task[Unit] =
+  final private def applyModeSkill(mc: ModeChange): Task[Unit] =
     modeSkill(mc.mode).flatMap {
       case Some(slot) =>
-        updateProjection(mc.conversationId, mc.participantId)(
-          proj => proj.copy(activeSkills = proj.activeSkills + (SkillSource.Mode -> slot))
-        )
+        updateProjection(mc.conversationId, mc.participantId)(proj =>
+          proj.copy(activeSkills = proj.activeSkills + (SkillSource.Mode -> slot)))
       case None =>
         // No app-provided skill for this mode — clear any stale Mode-source slot.
-        updateProjection(mc.conversationId, mc.participantId)(
-          proj => proj.copy(activeSkills = proj.activeSkills - SkillSource.Mode)
-        )
+        updateProjection(mc.conversationId, mc.participantId)(proj => proj.copy(activeSkills = proj.activeSkills - SkillSource.Mode))
     }
 
   /**
@@ -232,7 +243,7 @@ trait Sigil {
    * Deltas that don't complete their target, or events that are still
    * Active, fall through as no-ops.
    */
-  private final def updateView(signal: Signal): Task[Unit] = signal match {
+  final private def updateView(signal: Signal): Task[Unit] = signal match {
     case e: Event if e.state == EventState.Complete =>
       appendToViewIfNew(e)
     case d: sigil.signal.Delta =>
@@ -243,11 +254,13 @@ trait Sigil {
     case _ => Task.unit
   }
 
-  /** Append `event`'s frame(s) and participant-projection updates to the
-    * conversation's view, creating the view if it doesn't yet exist.
-    * Idempotent — if a frame for `event._id` already exists in the view
-    * the modify returns unchanged. */
-  private final def appendToViewIfNew(event: Event): Task[Unit] =
+  /**
+   * Append `event`'s frame(s) and participant-projection updates to the
+   * conversation's view, creating the view if it doesn't yet exist.
+   * Idempotent — if a frame for `event._id` already exists in the view
+   * the modify returns unchanged.
+   */
+  final private def appendToViewIfNew(event: Event): Task[Unit] =
     withDB(_.views.transaction(_.modify(ConversationView.idFor(event.conversationId)) {
       case Some(view) if view.frames.exists(_.sourceEventId == event._id) =>
         Task.pure(Some(view))
@@ -271,24 +284,28 @@ trait Sigil {
 
   // -- view / summary helpers --
 
-  /** Fetch the [[ConversationView]] for a conversation, returning an empty
-    * seed (no frames, no projections) if one hasn't been materialized yet.
-    * Empty views are NOT persisted — the view only lands on disk once a
-    * Complete event exists to anchor it. */
+  /**
+   * Fetch the [[ConversationView]] for a conversation, returning an empty
+   * seed (no frames, no projections) if one hasn't been materialized yet.
+   * Empty views are NOT persisted — the view only lands on disk once a
+   * Complete event exists to anchor it.
+   */
   def viewFor(conversationId: Id[Conversation]): Task[ConversationView] =
     withDB(_.views.transaction(_.get(ConversationView.idFor(conversationId)))).map {
       case Some(view) => view
       case None => ConversationView(
-        conversationId = conversationId,
-        _id = ConversationView.idFor(conversationId)
-      )
+          conversationId = conversationId,
+          _id = ConversationView.idFor(conversationId)
+        )
     }
 
-  /** Drop the existing view (if any) and rebuild it by folding every
-    * Complete event for the conversation through [[FrameBuilder]]. Useful
-    * for recovery, schema migrations, and tests.
-    *
-    * Returns the newly-materialized view. */
+  /**
+   * Drop the existing view (if any) and rebuild it by folding every
+   * Complete event for the conversation through [[FrameBuilder]]. Useful
+   * for recovery, schema migrations, and tests.
+   *
+   * Returns the newly-materialized view.
+   */
   def rebuildView(conversationId: Id[Conversation]): Task[ConversationView] =
     withDB(_.events.transaction(_.list)).flatMap { all =>
       val events = all
@@ -317,12 +334,14 @@ trait Sigil {
       } yield withSkill
     }
 
-  /** Update a participant's [[ParticipantProjection]] on the conversation's
-    * view. If the view doesn't exist yet, an empty one is seeded so the
-    * projection has a durable home. Use this from curators, tools, or any
-    * app code that needs to mutate per-participant projection state. */
-  def updateProjection(conversationId: Id[Conversation], participantId: ParticipantId)
-                      (f: ParticipantProjection => ParticipantProjection): Task[Unit] =
+  /**
+   * Update a participant's [[ParticipantProjection]] on the conversation's
+   * view. If the view doesn't exist yet, an empty one is seeded so the
+   * projection has a durable home. Use this from curators, tools, or any
+   * app code that needs to mutate per-participant projection state.
+   */
+  def updateProjection(conversationId: Id[Conversation],
+                       participantId: ParticipantId)(f: ParticipantProjection => ParticipantProjection): Task[Unit] =
     withDB(_.views.transaction(_.modify(ConversationView.idFor(conversationId)) {
       case Some(view) =>
         Task.pure(Some(view
@@ -337,51 +356,48 @@ trait Sigil {
         Task.pure(Some(seeded))
     })).unit
 
-  /** Convenience: set (or replace) a skill slot for a participant. Discovery
-    * and User sources are driven through here by tools that want to activate
-    * a skill; Mode-source slots are maintained by the framework via
-    * [[modeSkill]] on `ModeChange`. */
+  /**
+   * Convenience: set (or replace) a skill slot for a participant. Discovery
+   * and User sources are driven through here by tools that want to activate
+   * a skill; Mode-source slots are maintained by the framework via
+   * [[modeSkill]] on `ModeChange`.
+   */
   def activateSkill(conversationId: Id[Conversation],
                     participantId: ParticipantId,
                     source: SkillSource,
                     slot: ActiveSkillSlot): Task[Unit] =
-    updateProjection(conversationId, participantId)(
-      proj => proj.copy(activeSkills = proj.activeSkills + (source -> slot))
-    )
+    updateProjection(conversationId, participantId)(proj => proj.copy(activeSkills = proj.activeSkills + (source -> slot)))
 
-  /** Convenience: clear a skill slot for a participant (if present). */
-  def clearSkill(conversationId: Id[Conversation],
-                 participantId: ParticipantId,
-                 source: SkillSource): Task[Unit] =
-    updateProjection(conversationId, participantId)(
-      proj => proj.copy(activeSkills = proj.activeSkills - source)
-    )
+  /**
+   * Convenience: clear a skill slot for a participant (if present).
+   */
+  def clearSkill(conversationId: Id[Conversation], participantId: ParticipantId, source: SkillSource): Task[Unit] =
+    updateProjection(conversationId, participantId)(proj => proj.copy(activeSkills = proj.activeSkills - source))
 
-  /** Convenience: set a single key/value on a participant's
-    * `extraContext`. Same key replaces. */
-  def setParticipantContext(conversationId: Id[Conversation],
-                            participantId: ParticipantId,
-                            key: ContextKey,
-                            value: String): Task[Unit] =
-    updateProjection(conversationId, participantId)(
-      proj => proj.copy(extraContext = proj.extraContext + (key -> value))
-    )
+  /**
+   * Convenience: set a single key/value on a participant's
+   * `extraContext`. Same key replaces.
+   */
+  def setParticipantContext(conversationId: Id[Conversation], participantId: ParticipantId, key: ContextKey, value: String): Task[Unit] =
+    updateProjection(conversationId, participantId)(proj => proj.copy(extraContext = proj.extraContext + (key -> value)))
 
-  /** Convenience: remove a key from a participant's `extraContext`. */
-  def clearParticipantContext(conversationId: Id[Conversation],
-                              participantId: ParticipantId,
-                              key: ContextKey): Task[Unit] =
-    updateProjection(conversationId, participantId)(
-      proj => proj.copy(extraContext = proj.extraContext - key)
-    )
+  /**
+   * Convenience: remove a key from a participant's `extraContext`.
+   */
+  def clearParticipantContext(conversationId: Id[Conversation], participantId: ParticipantId, key: ContextKey): Task[Unit] =
+    updateProjection(conversationId, participantId)(proj => proj.copy(extraContext = proj.extraContext - key))
 
-  /** Persist a new [[ContextSummary]] and return the stored record. The
-    * caller (curator or app-specific summarizer) owns the generation
-    * policy; this helper just writes. */
+  /**
+   * Persist a new [[ContextSummary]] and return the stored record. The
+   * caller (curator or app-specific summarizer) owns the generation
+   * policy; this helper just writes.
+   */
   def persistSummary(summary: ContextSummary): Task[ContextSummary] =
     withDB(_.summaries.transaction(_.upsert(summary)))
 
-  /** Load all summaries for a conversation, oldest-first. */
+  /**
+   * Load all summaries for a conversation, oldest-first.
+   */
   def summariesFor(conversationId: Id[Conversation]): Task[List[ContextSummary]] =
     withDB(_.summaries.transaction { tx =>
       import lightdb.filter.*
@@ -391,31 +407,33 @@ trait Sigil {
         .map(_.sortBy(_.created.value))
     })
 
-  /** Maintain materialized projections on the [[Conversation]] record:
-    *   - `currentMode` tracks the latest [[ModeChange]]
-    *   - `title` tracks the latest [[TitleChange]] */
-  private final def updateConversationProjection(signal: Signal): Task[Unit] = signal match {
+  /**
+   * Maintain materialized projections on the [[Conversation]] record:
+   *   - `currentMode` tracks the latest [[ModeChange]]
+   *   - `title` tracks the latest [[TitleChange]]
+   */
+  final private def updateConversationProjection(signal: Signal): Task[Unit] = signal match {
     case mc: ModeChange =>
       withDB(_.conversations.transaction(_.modify(mc.conversationId) {
         case Some(conv) => Task.pure(Some(conv.copy(currentMode = mc.mode, modified = Timestamp(Nowish()))))
-        case None       => Task.pure(None)
+        case None => Task.pure(None)
       })).unit
     case tc: TitleChange =>
       withDB(_.conversations.transaction(_.modify(tc.conversationId) {
         case Some(conv) if conv.title != tc.title =>
           Task.pure(Some(conv.copy(title = tc.title, modified = Timestamp(Nowish()))))
         case Some(conv) => Task.pure(Some(conv))
-        case None       => Task.pure(None)
+        case None => Task.pure(None)
       })).unit
     case _ => Task.unit
   }
 
-  private final def logBroadcastError(signal: Signal, t: Throwable): Task[Unit] =
+  final private def logBroadcastError(signal: Signal, t: Throwable): Task[Unit] =
     Task(scribe.warn(s"Broadcaster failed for signal: ${signal.getClass.getSimpleName}", t))
 
-  private final def fanOut(event: Event): Task[Unit] =
+  final private def fanOut(event: Event): Task[Unit] =
     withDB(_.conversations.transaction(_.get(event.conversationId))).flatMap {
-      case None       => Task.unit
+      case None => Task.unit
       case Some(conv) =>
         val tasks: List[Task[Unit]] = conv.participants.collect {
           case agent: AgentParticipant if TriggerFilter.isTriggerFor(agent, event) =>
@@ -434,12 +452,12 @@ trait Sigil {
    * `AtomicReference` captures whether OUR `f` was the one that returned a
    * fresh `Active` (the only way to tell with `tx.modify` semantics).
    */
-  private final def tryFire(agent: AgentParticipant, conv: Conversation): Task[Unit] = {
+  final private def tryFire(agent: AgentParticipant, conv: Conversation): Task[Unit] = {
     val lockId = agentStateLockId(agent.id, conv._id)
     val claimedRef = new AtomicReference[Option[AgentState]](None)
     withDB(_.events.transaction(_.modify(lockId) {
       case Some(s: AgentState) if s.state == EventState.Active =>
-        Task.pure(Some(s))  // someone else owns it; observe and bail
+        Task.pure(Some(s)) // someone else owns it; observe and bail
       case _ =>
         val claim = AgentState(
           agentId = agent.id,
@@ -476,17 +494,17 @@ trait Sigil {
    *   - if any, loop without releasing the claim
    *   - if none, transition to Idle/Complete and release
    */
-  /** Hard cap on dispatcher self-loop iterations within a single AgentState
-    * claim. Prevents an LLM that keeps calling non-terminal tools (e.g. only
-    * `change_mode`, never `respond`) from looping forever. Reaching the cap
-    * raises [[AgentRunawayException]] in the runAgent fiber after releasing
-    * the AgentState claim — it's a real failure, not a normal exit. Apps
-    * can override. */
+  /**
+   * Hard cap on dispatcher self-loop iterations within a single AgentState
+   * claim. Prevents an LLM that keeps calling non-terminal tools (e.g. only
+   * `change_mode`, never `respond`) from looping forever. Reaching the cap
+   * raises [[AgentRunawayException]] in the runAgent fiber after releasing
+   * the AgentState claim — it's a real failure, not a normal exit. Apps
+   * can override.
+   */
   protected def maxAgentIterations: Int = 10
 
-  private final def runAgent(agent: AgentParticipant,
-                             conv: Conversation,
-                             claimed: AgentState): Task[Unit] =
+  final private def runAgent(agent: AgentParticipant, conv: Conversation, claimed: AgentState): Task[Unit] =
     runAgentLoop(agent, conv._id, claimed, iteration = 1, sinceTimestamp = claimed.timestamp)
 
   /**
@@ -499,7 +517,7 @@ trait Sigil {
    * so external triggers that landed between claim-time and iteration-1
    * start are still visible.
    */
-  private final def runAgentLoop(agent: AgentParticipant,
+  final private def runAgentLoop(agent: AgentParticipant,
                                  convId: Id[Conversation],
                                  claimed: AgentState,
                                  iteration: Int,
@@ -547,14 +565,14 @@ trait Sigil {
     }
   }
 
-  private final def releaseClaim(claimed: AgentState): Task[Unit] =
+  final private def releaseClaim(claimed: AgentState): Task[Unit] =
     publish(AgentStateDelta(
       target = claimed._id,
       conversationId = claimed.conversationId,
       activity = Some(AgentActivity.Idle),
       state = Some(EventState.Complete)))
 
-  private final def buildContext(agent: AgentParticipant,
+  final private def buildContext(agent: AgentParticipant,
                                  conv: Conversation,
                                  sinceTimestamp: Timestamp,
                                  claimedId: Id[Event]): Task[(TurnContext, Stream[Event])] =
@@ -563,9 +581,10 @@ trait Sigil {
       input <- curate(view)
       triggerEvents <- withDB(_.events.transaction(_.list)).map { all =>
         all.view
-          .filter(e => e.conversationId == conv._id
-                    && e.timestamp.value > sinceTimestamp.value
-                    && TriggerFilter.isTriggerFor(agent, e))
+          .filter(e =>
+            e.conversationId == conv._id
+              && e.timestamp.value > sinceTimestamp.value
+              && TriggerFilter.isTriggerFor(agent, e))
           .toList
       }
     } yield {
@@ -582,23 +601,24 @@ trait Sigil {
       (ctx, triggers)
     }
 
-  private final def newTriggersExist(agent: AgentParticipant,
-                                     conv: Conversation,
-                                     sinceTimestamp: Timestamp): Task[Boolean] =
+  final private def newTriggersExist(agent: AgentParticipant, conv: Conversation, sinceTimestamp: Timestamp): Task[Boolean] =
     withDB(_.events.transaction(_.list)).map { all =>
-      all.exists(e => e.conversationId == conv._id
-                   && e.timestamp.value > sinceTimestamp.value
-                   && TriggerFilter.isTriggerFor(agent, e))
+      all.exists(e =>
+        e.conversationId == conv._id
+          && e.timestamp.value > sinceTimestamp.value
+          && TriggerFilter.isTriggerFor(agent, e))
     }
 
-  private final def buildChain(triggers: List[Event], agent: AgentParticipant): List[ParticipantId] = {
+  final private def buildChain(triggers: List[Event], agent: AgentParticipant): List[ParticipantId] = {
     val source = triggers.find(_.participantId != agent.id).map(_.participantId)
     source.toList :+ agent.id
   }
 
-  /** Stable per-(agent, conversation) id used as both the AgentState key and
-    * the lock-acquisition target inside `tx.modify`. */
-  private final def agentStateLockId(agentId: AgentParticipantId, convId: Id[Conversation]): Id[Event] =
+  /**
+   * Stable per-(agent, conversation) id used as both the AgentState key and
+   * the lock-acquisition target inside `tx.modify`.
+   */
+  final private def agentStateLockId(agentId: AgentParticipantId, convId: Id[Conversation]): Id[Event] =
     Id(s"agentlock:${agentId.value}:${convId.value}")
 
   // -- lifecycle --
@@ -620,7 +640,8 @@ trait Sigil {
             driverClassName = Some("org.postgresql.Driver"),
             username = pg.username,
             password = pg.password,
-            maximumPoolSize = pg.maximumPoolSize
+            maximumPoolSize =
+              pg.maximumPoolSize
           ))
           (None, PostgreSQLStoreManager(cm): CollectionManager)
         case None =>

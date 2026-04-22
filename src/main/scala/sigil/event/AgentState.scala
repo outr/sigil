@@ -34,6 +34,7 @@ case class AgentState(agentId: AgentParticipantId,
                       state: EventState = EventState.Active,
                       visibility: Set[EventVisibility] = Set(EventVisibility.UI),
                       timestamp: Timestamp = Timestamp(Nowish()),
-                      _id: Id[Event] = Event.id()) extends Event derives RW {
+                      _id: Id[Event] = Event.id())
+  extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
 }

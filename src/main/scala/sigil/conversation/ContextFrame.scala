@@ -26,24 +26,35 @@ import sigil.participant.ParticipantId
  * rendering agents in multi-agent conversations.
  */
 enum ContextFrame derives RW {
-  /** The originating [[Event]]'s id. Declared on the enum so every case
-    * must provide it; each case's constructor param implicitly satisfies
-    * this abstract member. */
+
+  /**
+   * The originating [[Event]]'s id. Declared on the enum so every case
+   * must provide it; each case's constructor param implicitly satisfies
+   * this abstract member.
+   */
   def sourceEventId: Id[Event]
 
-  /** A textual message from a participant — user input or agent output. */
+  /**
+   * A textual message from a participant — user input or agent output.
+   */
   case Text(content: String, participantId: ParticipantId, sourceEventId: Id[Event])
 
-  /** An assistant-issued tool call. `callId` is the `ToolInvoke._id` so a
-    * following [[ToolResult]] frame can pair with it by id. */
+  /**
+   * An assistant-issued tool call. `callId` is the `ToolInvoke._id` so a
+   * following [[ToolResult]] frame can pair with it by id.
+   */
   case ToolCall(toolName: String, argsJson: String, callId: Id[Event], participantId: ParticipantId, sourceEventId: Id[Event])
 
-  /** The tool-side completion of a prior [[ToolCall]]. Always renders at
-    * the `tool` role, paired to a `ToolCall` via `callId`. */
+  /**
+   * The tool-side completion of a prior [[ToolCall]]. Always renders at
+   * the `tool` role, paired to a `ToolCall` via `callId`.
+   */
   case ToolResult(callId: Id[Event], content: String, sourceEventId: Id[Event])
 
-  /** Out-of-band framework-authored context — mode transitions, title
-    * changes, etc. Renders at the `system` or `tool` role (provider's
-    * choice); carries no participant attribution. */
+  /**
+   * Out-of-band framework-authored context — mode transitions, title
+   * changes, etc. Renders at the `system` or `tool` role (provider's
+   * choice); carries no participant attribution.
+   */
   case System(content: String, sourceEventId: Id[Event])
 }
