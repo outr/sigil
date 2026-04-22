@@ -35,7 +35,9 @@ import sigil.tool.{Tool, ToolInput}
 trait AgentParticipant extends Participant {
   override def id: AgentParticipantId
 
-  /** The model this agent uses for provider round-trips. */
+  /**
+   * The model this agent uses for provider round-trips.
+   */
   def modelId: Id[Model]
 
   /**
@@ -50,10 +52,14 @@ trait AgentParticipant extends Participant {
    */
   def toolNames: List[String] = Nil
 
-  /** System / developer instructions prepended to every turn. */
+  /**
+   * System / developer instructions prepended to every turn.
+   */
   def instructions: Instructions = Instructions()
 
-  /** Sampling + limits for provider requests. */
+  /**
+   * Sampling + limits for provider requests.
+   */
   def generationSettings: GenerationSettings = GenerationSettings()
 
   /**
@@ -98,7 +104,7 @@ trait AgentParticipant extends Participant {
       for {
         p <- sigil.providerFor(modelId, effectiveChain)
         t <- Task.sequence(toolNames.map(n => sigil.findTools.byName(n, effectiveChain)))
-               .map(_.flatten.toVector)
+          .map(_.flatten.toVector)
       } yield (p, t)
 
     Stream.force(resolved.map { case (provider, tools) =>

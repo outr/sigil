@@ -30,11 +30,15 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   protected def modelId: Id[Model]
 
-  /** Wire the spec's provider into TestSigil so `providerFor` returns it. */
+  /**
+   * Wire the spec's provider into TestSigil so `providerFor` returns it.
+   */
   TestSigil.setProvider(provider)
 
-  /** Tool names the test agent advertises. CoreTools' names + the synthetic
-    * SendSlackMessageTool so `find_capability` has a catalog entry. */
+  /**
+   * Tool names the test agent advertises. CoreTools' names + the synthetic
+   * SendSlackMessageTool so `find_capability` has a catalog entry.
+   */
   protected def toolNames: List[String] =
     CoreTools.coreToolNames :+ SendSlackMessageTool.schema.name
 
@@ -47,9 +51,11 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0))
     )
 
-  /** A synthesized AgentState id used when we want defaultProcess to emit
-    * the Typing transition during streaming responses. The real dispatcher
-    * supplies this via `TurnContext.currentAgentStateId`. */
+  /**
+   * A synthesized AgentState id used when we want defaultProcess to emit
+   * the Typing transition during streaming responses. The real dispatcher
+   * supplies this via `TurnContext.currentAgentStateId`.
+   */
   private val testAgentStateId: Id[Event] = Id("test-agentstate")
 
   private def orchestrate(message: String, currentMode: Mode = Mode.Conversation): Task[List[Signal]] = {
@@ -65,7 +71,8 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       frames = Vector(ContextFrame.Text(
         content = message,
         participantId = TestUser,
-        sourceEventId = userMessage._id
+        sourceEventId =
+          userMessage._id
       )),
       _id = ConversationView.idFor(conversationId)
     )
@@ -81,7 +88,7 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   }
 
   getClass.getSimpleName should {
-    "emit ToolInvoke + Message + Typing transition for a streaming respond call" in {
+    "emit ToolInvoke + Message + Typing transition for a streaming respond call" in
       orchestrate("What is 2+2? Respond with just the number.").map { signals =>
         val toolInvokes = signals.collect { case t: ToolInvoke => t }
         toolInvokes should not be empty
@@ -134,7 +141,6 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
           case _ => false
         } shouldBe true
       }
-    }
 
     "persist Events and apply Deltas to the events store via SigilDB.apply" in {
       val conversationId = Conversation.id("test-persistence-conversation")
@@ -149,7 +155,8 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         frames = Vector(ContextFrame.Text(
           content = "What is 2+2? Respond with just the number.",
           participantId = TestUser,
-          sourceEventId = userMessage._id
+          sourceEventId =
+            userMessage._id
         )),
         _id = ConversationView.idFor(conversationId)
       )
@@ -186,7 +193,7 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       }
     }
 
-    "emit ToolInvoke + ModeChange for an atomic change_mode call" in {
+    "emit ToolInvoke + ModeChange for an atomic change_mode call" in
       orchestrate("I need to write a Scala function.").map { signals =>
         val toolInvokes = signals.collect { case t: ToolInvoke => t }
         toolInvokes should not be empty
@@ -206,6 +213,5 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         val agentStateDeltas = signals.collect { case d: AgentStateDelta => d }
         agentStateDeltas.exists(_.activity.contains(AgentActivity.Typing)) shouldBe false
       }
-    }
   }
 }

@@ -35,16 +35,20 @@ case class Conversation(participants: List[Participant] = Nil,
                         _id: Id[Conversation] = Conversation.id())
   extends RecordDocument[Conversation] {
 
-  /** Convenience alias for `_id`. */
+  /**
+   * Convenience alias for `_id`.
+   */
   def id: Id[Conversation] = _id
 }
 
 object Conversation extends RecordDocumentModel[Conversation] with JsonConversion[Conversation] {
   implicit override def rw: RW[Conversation] = RW.gen
 
-  /** Default title for a newly-created conversation. Both renders cleanly
-    * in UI and gives the agent an unambiguous signal ("the title hasn't
-    * been chosen yet — pick one") on the first respond call. */
+  /**
+   * Default title for a newly-created conversation. Both renders cleanly
+   * in UI and gives the agent an unambiguous signal ("the title hasn't
+   * been chosen yet — pick one") on the first respond call.
+   */
   val DefaultTitle: String = "New Conversation"
 
   override def id(value: String = Unique()): Id[Conversation] = Id(value)

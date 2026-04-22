@@ -17,7 +17,6 @@ import sigil.participant.ParticipantId
  *
  * The view's id is derived from the conversation's id so the lookup is a
  * trivial O(1) fetch.
- *
  */
 case class ConversationView(conversationId: Id[Conversation],
                             frames: Vector[ContextFrame] = Vector.empty,
@@ -27,17 +26,23 @@ case class ConversationView(conversationId: Id[Conversation],
                             _id: Id[ConversationView] = ConversationView.id())
   extends RecordDocument[ConversationView] {
 
-  /** Return the projection for a participant, defaulting to an empty one. */
+  /**
+   * Return the projection for a participant, defaulting to an empty one.
+   */
   def projectionFor(id: ParticipantId): ParticipantProjection =
     participantProjections.getOrElse(id, ParticipantProjection())
 
-  /** Apply a transform to a participant's projection, creating one if needed. */
+  /**
+   * Apply a transform to a participant's projection, creating one if needed.
+   */
   def updateParticipant(id: ParticipantId)(f: ParticipantProjection => ParticipantProjection): ConversationView =
     copy(participantProjections = participantProjections + (id -> f(projectionFor(id))))
 
-  /** Flat list of every active skill contributed by any participant in the
-    * given chain. Same aggregation policy as the pre-refactor
-    * `TurnInput.aggregatedSkills` delegates here. */
+  /**
+   * Flat list of every active skill contributed by any participant in the
+   * given chain. Same aggregation policy as the pre-refactor
+   * `TurnInput.aggregatedSkills` delegates here.
+   */
   def aggregatedSkills(chain: List[ParticipantId]): Vector[ActiveSkillSlot] =
     chain.flatMap(id => projectionFor(id).activeSkills.values).toVector
 }
@@ -45,7 +50,9 @@ case class ConversationView(conversationId: Id[Conversation],
 object ConversationView extends RecordDocumentModel[ConversationView] with JsonConversion[ConversationView] {
   implicit override def rw: RW[ConversationView] = RW.gen
 
-  /** Derive the view's id from its conversation's id — 1:1 relationship. */
+  /**
+   * Derive the view's id from its conversation's id — 1:1 relationship.
+   */
   def idFor(conversationId: Id[Conversation]): Id[ConversationView] = Id(conversationId.value)
 
   override def id(value: String = rapid.Unique()): Id[ConversationView] = Id(value)
