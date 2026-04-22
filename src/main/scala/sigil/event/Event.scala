@@ -25,7 +25,6 @@ trait Event extends Signal with Document[Event] {
   def conversationId: Id[Conversation]
   def timestamp: Timestamp
   def state: EventState
-  def visibility: Set[EventVisibility]
 
   /**
    * Returns a copy of this event with its `state` replaced. Used by

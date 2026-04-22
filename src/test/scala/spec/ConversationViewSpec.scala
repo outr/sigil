@@ -181,6 +181,72 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     }
   }
 
+  "Active → Complete lifecycle" should {
+    "settle an Active event to Complete via a StateDelta published afterward" in {
+      val convId = freshConvId("lifecycle-settle")
+      val pulse = ModeChange(
+        mode = Mode.Coding,
+        participantId = TestAgent,
+        conversationId = convId
+      )
+      // Pulse defaults to Active
+      pulse.state shouldBe EventState.Active
+
+      for {
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(_id = convId))))
+        _ <- TestSigil.publish(pulse)
+        // Between pulse and settle, the DB reflects Active.
+        mid <- TestSigil.withDB(_.events.transaction(_.get(pulse._id)))
+        _ <- TestSigil.publish(StateDelta(
+          target = pulse._id,
+          conversationId = convId,
+          state = EventState.Complete
+        ))
+        // After the settle, the DB reflects Complete.
+        after <- TestSigil.withDB(_.events.transaction(_.get(pulse._id)))
+        // The view projection records the Complete settle (currentMode
+        // updated). Verifies `updateConversationProjection`'s
+        // Complete-only filter on the delta path.
+        conv <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
+      } yield {
+        mid.map(_.state) shouldBe Some(EventState.Active)
+        after.map(_.state) shouldBe Some(EventState.Complete)
+        // currentMode only updates once the settle lands, not on the pulse.
+        // (The pulse publish ran first; currentMode was not touched until
+        // the StateDelta published.)
+        conv.map(_.currentMode) shouldBe Some(Mode.Coding)
+      }
+    }
+
+    "not double-write the Conversation projection on pulse + settle" in {
+      // Publish a pulse (Active); conversation.currentMode should NOT
+      // update yet (projection filters to Complete only). Then settle;
+      // it should update exactly once.
+      val convId = freshConvId("lifecycle-nodouble")
+      // Start conversation in a known initial mode so we can detect any
+      // stray write.
+      for {
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(
+          Conversation(_id = convId, currentMode = Mode.Conversation)
+        )))
+        pulse = ModeChange(mode = Mode.Coding, participantId = TestAgent, conversationId = convId)
+        _ <- TestSigil.publish(pulse)
+        afterPulseOnly <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
+        _ <- TestSigil.publish(StateDelta(
+          target = pulse._id,
+          conversationId = convId,
+          state = EventState.Complete
+        ))
+        afterSettle <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
+      } yield {
+        // Pulse alone must not have shifted currentMode — the settle owns
+        // that write.
+        afterPulseOnly.map(_.currentMode) shouldBe Some(Mode.Conversation)
+        afterSettle.map(_.currentMode) shouldBe Some(Mode.Coding)
+      }
+    }
+  }
+
   "Sigil.persistSummary / summariesFor" should {
     "round-trip a summary through the dedicated summaries store" in {
       val convId = freshConvId("summary")

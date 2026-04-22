@@ -16,13 +16,15 @@ import sigil.tool.{ToolInput, ToolSchema}
  * match on its next turn. No prose summarization in the tool; the schema is
  * the result.
  *
- * Atomic — emitted at `Complete`. Visible to both UI and Model.
+ * Born `Active` so subscribers can react (e.g. UI preview of the
+ * matched tools as they surface). The framework then broadcasts a
+ * `StateDelta` transitioning it to `Complete`, at which point it's
+ * historical — replay is silent.
  */
 case class ToolResults(schemas: List[ToolSchema[? <: ToolInput]],
                        participantId: ParticipantId,
                        conversationId: Id[Conversation],
                        state: EventState = EventState.Active,
-                       visibility: Set[EventVisibility] = Set(EventVisibility.UI, EventVisibility.Model),
                        timestamp: Timestamp = Timestamp(Nowish()),
                        _id: Id[Event] = Event.id()) extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)

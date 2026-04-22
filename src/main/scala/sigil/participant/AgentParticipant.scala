@@ -94,10 +94,18 @@ trait AgentParticipant extends Participant {
     // not. Normalize either way.
     val effectiveChain = context.chain.filterNot(_ == id) :+ id
 
+    // The agent's effective tool roster for THIS turn is the union of its
+    // durable `toolNames` and the (single-turn) `suggestedTools` deposited
+    // on its projection by the most recent `find_capability` result. This
+    // is the mechanism by which non-core tools — sleep, lookup_information,
+    // app-specific tools — become callable after discovery.
+    val suggested = context.conversationView.projectionFor(id).suggestedTools
+    val effectiveNames = (toolNames ++ suggested).distinct
+
     val resolved: Task[(Provider, Vector[Tool[? <: ToolInput]])] =
       for {
         p <- sigil.providerFor(modelId, effectiveChain)
-        t <- Task.sequence(toolNames.map(n => sigil.findTools.byName(n, effectiveChain)))
+        t <- Task.sequence(effectiveNames.map(n => sigil.findTools.byName(n, effectiveChain)))
                .map(_.flatten.toVector)
       } yield (p, t)
 

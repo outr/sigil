@@ -2,7 +2,6 @@ package sigil.tool.core
 
 import sigil.TurnContext
 import sigil.event.{Event, ToolResults}
-import sigil.signal.EventState
 import sigil.tool.{Tool, ToolExample}
 
 /**
@@ -16,8 +15,19 @@ object FindCapabilityTool extends Tool[FindCapabilityInput] {
   override protected def uniqueName: String = "find_capability"
 
   override protected def description: String =
-    """Discover tools available for the current request. Call this when the user asks for something and you
-      |aren't sure whether a tool exists for it — do NOT guess or claim inability until you've checked.
+    """CALL THIS FIRST when the user asks you to DO something and the action isn't obviously covered by the
+      |tools already in your current roster. Most tools in this system are NOT in your default roster — they
+      |are discovered through this call. Before telling the user something is impossible, unavailable, or
+      |unsupported, you MUST call `find_capability`.
+      |
+      |Rules:
+      |- NEVER say "I can't do that" or "that's not supported" without first calling `find_capability` with
+      |  reasonable keywords derived from the user's request.
+      |- When `find_capability` returns matching tools, CALL the most appropriate one immediately on your next
+      |  turn — do not just describe what you found to the user.
+      |- If `find_capability` returns no matches, THEN you may tell the user the capability isn't available.
+      |- The only tools callable directly are those visible in your current tool roster. Everything else is
+      |  reached via `find_capability` first.
       |
       |The `keywords` field is a space-separated list of lowercase alphanumeric keywords describing the
       |desired capability. Prefer multiple keywords — richer queries match better. Use "send slack channel
@@ -28,12 +38,23 @@ object FindCapabilityTool extends Tool[FindCapabilityInput] {
       |- single spaces between words (no leading, trailing, or multiple spaces)
       |- no punctuation, quotes, or special characters
       |
-      |The response lists matching tools with their full schemas; you can then call the right one on your
-      |next turn.""".stripMargin
+      |The response lists matching tools with their full schemas; you then call the right one on your next
+      |turn. Tools surfaced by `find_capability` are available for ONE subsequent turn — if you don't call
+      |them next, they're cleared.""".stripMargin
 
   override protected def examples: List[ToolExample[FindCapabilityInput]] = List(
-    ToolExample("Direct capability lookup", FindCapabilityInput("send slack channel message")),
-    ToolExample("Concept search", FindCapabilityInput("billing invoice payment charge"))
+    ToolExample(
+      "User asked to send a message on some channel — not in default roster, discover it",
+      FindCapabilityInput("send slack channel message")
+    ),
+    ToolExample(
+      "User asked to wait or pause — discover timing / delay tools",
+      FindCapabilityInput("sleep wait delay pause")
+    ),
+    ToolExample(
+      "Concept search — map the user's request to relevant keywords",
+      FindCapabilityInput("billing invoice payment charge")
+    )
   )
 
   override def execute(input: FindCapabilityInput, context: TurnContext): rapid.Stream[Event] =
@@ -44,8 +65,7 @@ object FindCapabilityTool extends Tool[FindCapabilityInput] {
           val results = ToolResults(
             schemas = tools.map(_.schema),
             participantId = context.caller,
-            conversationId = context.conversation.id,
-            state = EventState.Complete
+            conversationId = context.conversation.id
           )
           rapid.Stream.emits(List(results))
         }

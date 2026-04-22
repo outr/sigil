@@ -34,7 +34,14 @@ object TestSigil extends Sigil {
 
   // Core tools + the synthetic SendSlackMessageTool. Agents reference them
   // by name; `byName` resolves from this catalog at call time.
-  private val appTools: List[Tool[? <: ToolInput]] = List(SendSlackMessageTool)
+  // Tests opt into the non-core utility tools explicitly. `SleepTool`
+  // backs timing-sensitive dispatcher tests; `LookupInformationTool`
+  // backs the CoreToolsSpec information-resolution coverage.
+  private val appTools: List[Tool[? <: ToolInput]] = List(
+    SendSlackMessageTool,
+    sigil.tool.util.SleepTool,
+    sigil.tool.util.LookupInformationTool
+  )
 
   override val findTools: ToolFinder =
     InMemoryToolFinder(CoreTools.all.toList ++ appTools)
@@ -70,7 +77,7 @@ object TestSigil extends Sigil {
     providerRef.get().apply()
 
   /** Expose an in-memory information store specs can populate before
-    * exercising [[sigil.tool.core.LookupInformationTool]]. */
+    * exercising [[sigil.tool.util.LookupInformationTool]]. */
   def information: sigil.information.InMemoryInformation = informationRef.get()
 
   override def getInformation(id: lightdb.id.Id[sigil.information.Information]): Task[Option[sigil.information.Information]] =

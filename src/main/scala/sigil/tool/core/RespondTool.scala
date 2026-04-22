@@ -2,7 +2,6 @@ package sigil.tool.core
 
 import sigil.TurnContext
 import sigil.event.{Event, Message, TitleChange}
-import sigil.signal.EventState
 import sigil.tool.{Tool, ToolExample}
 import sigil.tool.model.{MultipartParser, RespondInput}
 
@@ -112,8 +111,7 @@ object RespondTool extends Tool[RespondInput] {
         Some(TitleChange(
           title = input.title,
           participantId = context.caller,
-          conversationId = context.conversation.id,
-          state = EventState.Complete
+          conversationId = context.conversation.id
         ))
       else None
 

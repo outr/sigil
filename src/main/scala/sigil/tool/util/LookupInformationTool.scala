@@ -1,4 +1,4 @@
-package sigil.tool.core
+package sigil.tool.util
 
 import fabric.io.JsonFormatter
 import fabric.rw.*
@@ -6,7 +6,6 @@ import sigil.TurnContext
 import sigil.event.{Event, Message}
 import sigil.information.Information
 import sigil.information.Information.given
-import sigil.signal.EventState
 import sigil.tool.Tool
 import sigil.tool.model.{LookupInformationInput, ResponseContent}
 
@@ -38,8 +37,7 @@ object LookupInformationTool extends Tool[LookupInformationInput] {
             Message(
               participantId = context.caller,
               conversationId = context.conversation.id,
-              content = Vector(ResponseContent.Text(body)),
-              state = EventState.Complete
+              content = Vector(ResponseContent.Text(body))
             )
           ))
         case None =>
@@ -47,8 +45,7 @@ object LookupInformationTool extends Tool[LookupInformationInput] {
             Message(
               participantId = context.caller,
               conversationId = context.conversation.id,
-              content = Vector(ResponseContent.Text(s"No Information found for id '${input.id.value}'.")),
-              state = EventState.Complete
+              content = Vector(ResponseContent.Text(s"No Information found for id '${input.id.value}'."))
             )
           ))
       }
