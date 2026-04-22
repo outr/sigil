@@ -66,7 +66,9 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "perform a round-trip request via the respond tool" in
       request("What is 2+2? Respond with just the number.").map { events =>
         val start = events.collectFirst { case s: ProviderEvent.ToolCallStart => s }
-        start.map(_.toolName) shouldBe Some(RespondTool.schema.name)
+        // ProviderEvent.ToolCallStart.toolName is a wire-level String
+        // (before conversion to ToolName at the Orchestrator boundary).
+        start.map(_.toolName) shouldBe Some(RespondTool.schema.name.value)
 
         val blockStart = events.collectFirst { case s: ProviderEvent.ContentBlockStart => s }
         blockStart.map(_.blockType) shouldBe Some("Text")
@@ -123,7 +125,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "switch modes when the user's task belongs to a different mode" in
       request("I need to write a Scala function.").map { events =>
         val start = events.collectFirst { case s: ProviderEvent.ToolCallStart => s }
-        start.map(_.toolName) shouldBe Some(ChangeModeTool.schema.name)
+        start.map(_.toolName) shouldBe Some(ChangeModeTool.schema.name.value)
 
         val input = events.collectFirst {
           case ProviderEvent.ToolCallComplete(_, i: ChangeModeInput) => i

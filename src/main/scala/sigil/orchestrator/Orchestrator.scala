@@ -6,6 +6,7 @@ import sigil.conversation.Conversation
 import sigil.event.{Event, Message, TitleChange, ToolInvoke}
 import sigil.provider.{Provider, ProviderEvent, ProviderRequest}
 import sigil.signal.{ContentDelta, ContentKind, EventState, MessageDelta, Signal, StateDelta, ToolDelta}
+import sigil.tool.ToolName
 import sigil.tool.model.RespondInput
 import sigil.TurnContext
 import sigil.tool.{Tool, ToolInput}
@@ -41,7 +42,10 @@ object Orchestrator {
 
   def process(sigil: Sigil, provider: Provider, request: ProviderRequest): Stream[Signal] = {
     val conversation: Conversation = Conversation(_id = request.conversationId, title = request.currentTitle)
-    val toolsByName: Map[String, Tool[? <: ToolInput]] = request.tools.map(t => t.schema.name -> t).toMap
+    // Keyed by wire-level string so the provider's `activeToolName`
+    // lookup stays a plain String comparison (the provider reports tool
+    // names via the raw JSON wire).
+    val toolsByName: Map[String, Tool[? <: ToolInput]] = request.tools.map(t => t.schema.name.value -> t).toMap
     val state = new State()
 
     provider(request).flatMap(pe => translate(pe, sigil, request, conversation, toolsByName, state))
@@ -79,7 +83,7 @@ object Orchestrator {
         state.currentKind = None
         state.currentArg = None
         val invoke = ToolInvoke(
-          toolName = toolName,
+          toolName = ToolName(toolName),
           participantId = caller,
           conversationId = convId,
           _id = invokeId,

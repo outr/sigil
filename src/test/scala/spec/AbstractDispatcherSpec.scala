@@ -10,7 +10,7 @@ import sigil.event.{AgentState, Message, ModeChange, Stop, ToolInvoke}
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant}
 import sigil.provider.{GenerationSettings, Instructions, Mode, Provider}
 import sigil.signal.{AgentActivity, AgentStateDelta, EventState, MessageDelta, Signal, ToolDelta}
-import sigil.tool.{Tool, ToolInput}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tool.core.CoreTools
 import sigil.tool.model.ResponseContent
 
@@ -37,7 +37,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     * plus the synthetic SendSlackMessageTool (so `find_capability` has
     * an app-contributed catalog entry to surface) and the non-core
     * SleepTool (required by the graceful/force stop tests). */
-  protected def toolNames: List[String] =
+  protected def toolNames: List[ToolName] =
     CoreTools.coreToolNames ++ List(SendSlackMessageTool.schema.name, sigil.tool.util.SleepTool.schema.name)
 
   protected def makeAgent(): AgentParticipant =
@@ -86,7 +86,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     * for the agent. Used by the discovery tests to stand up an agent whose
     * default roster deliberately doesn't include the target tool, so the
     * test exercises `find_capability` → `suggestedTools` → next-turn call. */
-  protected def upsertConversationWithAgent(convId: Id[Conversation], tools: List[String]): Task[Unit] =
+  protected def upsertConversationWithAgent(convId: Id[Conversation], tools: List[ToolName]): Task[Unit] =
     TestSigil.withDB(_.conversations.transaction(_.upsert(
       Conversation(_id = convId, participants = List(
         DefaultAgentParticipant(
@@ -133,7 +133,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
         // Streaming respond produced a ToolInvoke + Message + content + terminal deltas.
         val toolInvokes = signals.collect { case t: ToolInvoke => t }
-        toolInvokes.exists(_.toolName == "respond") shouldBe true
+        toolInvokes.exists(_.toolName == ToolName("respond")) shouldBe true
 
         val messages = signals.collect { case m: Message => m }.filter(_.participantId == TestAgent)
         messages should not be empty
@@ -169,7 +169,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       task.map { signals =>
         // The atomic change_mode must have fired at least once.
         val toolInvokes = signals.collect { case t: ToolInvoke => t }
-        toolInvokes.exists(_.toolName == "change_mode") shouldBe true
+        toolInvokes.exists(_.toolName == ToolName("change_mode")) shouldBe true
 
         val modeChanges = signals.collect { case m: ModeChange => m }
         modeChanges should not be empty
@@ -238,7 +238,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         // After sleep completes, the loop checks the flag and exits — the
         // agent MUST NOT have fired a `respond` iteration.
         val toolInvokes = signals.collect { case t: ToolInvoke => t }
-        toolInvokes.map(_.toolName) should not contain "respond"
+        toolInvokes.map(_.toolName) should not contain ToolName("respond")
 
         // The claim should still be released cleanly.
         val terminalIdle = signals.reverseIterator.collectFirst {
@@ -323,7 +323,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         val toolInvokes = signals.collect { case t: ToolInvoke => t }
         // The agent's first action on an unknown-capability request should
         // be a find_capability call.
-        toolInvokes.map(_.toolName) should contain("find_capability")
+        toolInvokes.map(_.toolName) should contain(ToolName("find_capability"))
       }
     }
 
@@ -350,11 +350,11 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         val toolInvokes = signals.collect { case t: ToolInvoke => t }
         val names = toolInvokes.map(_.toolName)
         // find_capability must have fired (agent discovered the tool)...
-        names should contain("find_capability")
+        names should contain(ToolName("find_capability"))
         // ...and the sleep tool must have been called afterward, proving the
         // suggestedTools-union path made it callable on the next turn even
         // though `sleep` is NOT in the agent's durable toolNames.
-        names should contain("sleep")
+        names should contain(ToolName("sleep"))
       }
     }
 
@@ -376,7 +376,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         _ <- upsertConversationWithAgent(conversationId, CoreTools.coreToolNames)
         // Seed a stale suggestion that the agent should ignore.
         _ <- TestSigil.updateProjection(conversationId, TestAgent)(
-          _.copy(suggestedTools = List("sleep"))
+          _.copy(suggestedTools = List(ToolName("sleep")))
         )
         before <- TestSigil.viewFor(conversationId)
         _ <- TestSigil.publish(userMessage)
@@ -386,7 +386,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
       task.map { case (before, after) =>
         // Sanity: suggestion was actually present before the turn ran.
-        before.projectionFor(TestAgent).suggestedTools shouldBe List("sleep")
+        before.projectionFor(TestAgent).suggestedTools shouldBe List(ToolName("sleep"))
         // After an agent turn that didn't trigger a new find_capability,
         // the stale suggestion is cleared.
         after.projectionFor(TestAgent).suggestedTools shouldBe empty

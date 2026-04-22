@@ -58,7 +58,7 @@ object FrameBuilder {
           .map(i => JsonFormatter.Compact(stripPolyDiscriminator(summon[RW[ToolInput]].read(i))))
           .getOrElse("{}")
         existing :+ ContextFrame.ToolCall(
-          toolName = ti.toolName,
+          toolName = ti.toolName,   // already ToolName
           argsJson = argsJson,
           callId = ti._id,
           participantId = ti.participantId,

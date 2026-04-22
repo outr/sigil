@@ -81,7 +81,7 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
       obj(
         "type" -> str("function"),
         "function" -> obj(
-          "name" -> str(s.name),
+          "name" -> str(s.name.value),
           "description" -> str(renderDescription(s)),
           "parameters" -> DefinitionToSchema(s.input)
         )
@@ -265,7 +265,8 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
           out += obj("role" -> str("user"), "content" -> str(content))
         }
 
-      case ContextFrame.ToolCall(toolName, _, _, participantId, _) if toolName == "respond" && agentId.contains(participantId) =>
+      case ContextFrame.ToolCall(toolName, _, _, participantId, _)
+        if toolName == sigil.tool.core.RespondTool.schema.name && agentId.contains(participantId) =>
       // Skip — the following Text frame is the actual response.
 
       case ContextFrame.ToolCall(toolName, argsJson, callId, participantId, _) if agentId.contains(participantId) =>
@@ -275,7 +276,7 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
             "id" -> str(callId.value),
             "type" -> str("function"),
             "function" -> obj(
-              "name" -> str(toolName),
+              "name" -> str(toolName.value),
               "arguments" -> str(argsJson)
             )
           ))

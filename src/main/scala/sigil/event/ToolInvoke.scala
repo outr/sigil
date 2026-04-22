@@ -7,7 +7,7 @@ import lightdb.util.Nowish
 import sigil.conversation.Conversation
 import sigil.participant.ParticipantId
 import sigil.signal.EventState
-import sigil.tool.ToolInput
+import sigil.tool.{ToolInput, ToolName}
 
 /**
  * Records that a tool call happened. Created `Active` at `ToolCallStart` by
@@ -20,7 +20,7 @@ import sigil.tool.ToolInput
  * args) and populated via a [[sigil.signal.ToolDelta]] when the call
  * completes.
  */
-case class ToolInvoke(toolName: String,
+case class ToolInvoke(toolName: ToolName,
                       participantId: ParticipantId,
                       conversationId: Id[Conversation],
                       input: Option[ToolInput] = None,

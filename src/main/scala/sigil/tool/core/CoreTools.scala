@@ -44,10 +44,11 @@ object CoreTools {
 
   /**
    * Canonical names of the framework-supplied core tools. Agent authors use
-   * this as the baseline `toolNames` on a persisted [[sigil.participant.AgentParticipant]]
-   * (e.g. `toolNames = CoreTools.coreToolNames ++ List("my_app_tool")`).
-   * The dispatcher resolves each name to a live `Tool` instance through
+   * this as the baseline `toolNames` on a persisted
+   * [[sigil.participant.AgentParticipant]] (e.g. `toolNames =
+   * CoreTools.coreToolNames :+ MyAppTool.schema.name`). The dispatcher
+   * resolves each name to a live `Tool` instance through
    * [[sigil.tool.ToolFinder.byName]] at call time.
    */
-  val coreToolNames: List[String] = all.map(_.schema.name).toList
+  val coreToolNames: List[sigil.tool.ToolName] = all.map(_.schema.name).toList
 }
