@@ -79,7 +79,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     * dispatcher's fan-out finds the agent on the persisted record. */
   protected def upsertConversationWithAgent(convId: Id[Conversation]): Task[Unit] =
     TestSigil.withDB(_.conversations.transaction(_.upsert(
-      Conversation(_id = convId, participants = List(makeAgent()))
+      Conversation(currentTopicId = TestTopicId, _id = convId, participants = List(makeAgent()))
     ))).unit
 
   /** Same as [[upsertConversationWithAgent]] but with a custom tool roster
@@ -88,7 +88,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     * test exercises `find_capability` → `suggestedTools` → next-turn call. */
   protected def upsertConversationWithAgent(convId: Id[Conversation], tools: List[ToolName]): Task[Unit] =
     TestSigil.withDB(_.conversations.transaction(_.upsert(
-      Conversation(_id = convId, participants = List(
+      Conversation(currentTopicId = TestTopicId, _id = convId, participants = List(
         DefaultAgentParticipant(
           id = TestAgent,
           modelId = modelId,
@@ -101,7 +101,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
   protected def upsertEmptyConversation(convId: Id[Conversation]): Task[Unit] =
     TestSigil.withDB(_.conversations.transaction(_.upsert(
-      Conversation(_id = convId)
+      Conversation(currentTopicId = TestTopicId, _id = convId)
     ))).unit
 
   getClass.getSimpleName should {
@@ -111,6 +111,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val userMessage = Message(
         participantId = TestUser,
         conversationId = conversationId,
+        topicId = TestTopicId,
         content = Vector(ResponseContent.Text("What is 2+2? Respond with just the number.")),
         state = EventState.Complete
       )
@@ -156,6 +157,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val userMessage = Message(
         participantId = TestUser,
         conversationId = conversationId,
+        topicId = TestTopicId,
         content = Vector(ResponseContent.Text("I need to write a Scala function.")),
         state = EventState.Complete
       )
@@ -203,6 +205,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val userMessage = Message(
         participantId = TestUser,
         conversationId = conversationId,
+        topicId = TestTopicId,
         content = Vector(ResponseContent.Text(
           "IMPORTANT: Your first action must be to call the `sleep` tool with millis=1500. " +
             "Do not respond, do not change mode, do not call any other tool first — call sleep first. " +
@@ -254,6 +257,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val userMessage = Message(
         participantId = TestUser,
         conversationId = conversationId,
+        topicId = TestTopicId,
         content = Vector(ResponseContent.Text(
           "Respond immediately with a very long, detailed essay about the history of the Roman Empire. " +
             "Aim for at least 500 words with multiple paragraphs. Begin the response right away."
@@ -308,6 +312,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val userMessage = Message(
         participantId = TestUser,
         conversationId = conversationId,
+        topicId = TestTopicId,
         content = Vector(ResponseContent.Text("Please wait 200 milliseconds, then respond with 'done'.")),
         state = EventState.Complete
       )
@@ -333,6 +338,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val userMessage = Message(
         participantId = TestUser,
         conversationId = conversationId,
+        topicId = TestTopicId,
         content = Vector(ResponseContent.Text(
           "The user needs to pause for 200 milliseconds. Use find_capability with the keywords " +
             "\"sleep wait delay\" to find the tool, then call it with millis=200, then respond with 'done'."
@@ -368,6 +374,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val userMessage = Message(
         participantId = TestUser,
         conversationId = conversationId,
+        topicId = TestTopicId,
         content = Vector(ResponseContent.Text("Just respond with 'hi' — no other tools needed.")),
         state = EventState.Complete
       )
@@ -401,6 +408,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val userMessage = Message(
         participantId = TestUser,
         conversationId = conversationId,
+        topicId = TestTopicId,
         content = Vector(ResponseContent.Text("hello"))
       )
 

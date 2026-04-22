@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import lightdb.util.Nowish
-import sigil.conversation.Conversation
+import sigil.conversation.{Conversation, Topic}
 import sigil.participant.ParticipantId
 import sigil.signal.EventState
 import sigil.tool.{ToolInput, ToolSchema}
@@ -24,6 +24,7 @@ import sigil.tool.{ToolInput, ToolSchema}
 case class ToolResults(schemas: List[ToolSchema[? <: ToolInput]],
                        participantId: ParticipantId,
                        conversationId: Id[Conversation],
+                       topicId: Id[Topic],
                        state: EventState = EventState.Active,
                        timestamp: Timestamp = Timestamp(Nowish()),
                        _id: Id[Event] = Event.id())

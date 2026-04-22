@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import lightdb.util.Nowish
-import sigil.conversation.Conversation
+import sigil.conversation.{Conversation, Topic}
 import sigil.participant.{AgentParticipantId, ParticipantId}
 import sigil.signal.{AgentActivity, EventState}
 
@@ -31,6 +31,7 @@ case class AgentState(agentId: AgentParticipantId,
                       activity: AgentActivity = AgentActivity.Thinking,
                       participantId: ParticipantId,
                       conversationId: Id[Conversation],
+                      topicId: Id[Topic],
                       state: EventState = EventState.Active,
                       timestamp: Timestamp = Timestamp(Nowish()),
                       _id: Id[Event] = Event.id())

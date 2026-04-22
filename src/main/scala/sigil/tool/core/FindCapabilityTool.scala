@@ -65,7 +65,8 @@ object FindCapabilityTool extends Tool[FindCapabilityInput] {
           val results = ToolResults(
             schemas = tools.map(_.schema),
             participantId = context.caller,
-            conversationId = context.conversation.id
+            conversationId = context.conversation.id,
+            topicId = context.conversation.currentTopicId
           )
           rapid.Stream.emits(List(results))
         }

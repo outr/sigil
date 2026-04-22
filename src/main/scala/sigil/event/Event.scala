@@ -4,7 +4,7 @@ import fabric.rw.RW
 import lightdb.doc.{Document, JsonConversion}
 import lightdb.id.Id
 import lightdb.time.Timestamp
-import sigil.conversation.Conversation
+import sigil.conversation.{Conversation, Topic}
 import sigil.participant.ParticipantId
 import sigil.signal.{EventState, Signal}
 
@@ -12,6 +12,9 @@ import sigil.signal.{EventState, Signal}
  * A durable, stateful record in the conversation log. Every Event:
  *
  *   - belongs to a single `conversationId`
+ *   - belongs to a single `topicId` within that conversation (the active
+ *     thread at emission time); used for search and topic-to-conversation
+ *     promotion
  *   - is attributed to a `participantId` (who originated or owns it)
  *   - carries a lifecycle `state` (Active while in flight, Complete when terminal)
  *   - is persisted in RocksDB; may be mutated in-place while Active via
@@ -23,6 +26,7 @@ import sigil.signal.{EventState, Signal}
 trait Event extends Signal with Document[Event] {
   def participantId: ParticipantId
   def conversationId: Id[Conversation]
+  def topicId: Id[Topic]
   def timestamp: Timestamp
   def state: EventState
 

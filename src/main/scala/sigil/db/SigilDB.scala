@@ -9,7 +9,7 @@ import lightdb.store.CollectionManager
 import lightdb.store.split.SplitStoreManager
 import lightdb.upgrade.DatabaseUpgrade
 import rapid.Task
-import sigil.conversation.{ContextMemory, ContextSummary, Conversation, ConversationView}
+import sigil.conversation.{ContextMemory, ContextSummary, Conversation, ConversationView, Topic}
 import sigil.event.Event
 import sigil.signal.{Delta, Signal}
 
@@ -25,6 +25,7 @@ case class SigilDB(directory: Option[Path], storeManager: CollectionManager) ext
   val memories: S[ContextMemory, ContextMemory.type] = store(ContextMemory).withCache(CacheConfig.lru(500, 5.minutes))()
   val summaries: S[ContextSummary, ContextSummary.type] = store(ContextSummary).withCache(CacheConfig.lru(500, 5.minutes))()
   val views: S[ConversationView, ConversationView.type] = store(ConversationView).withCache(CacheConfig.lru(1000))()
+  val topics: S[Topic, Topic.type] = store(Topic).withCache(CacheConfig.lru(2000))()
 
   override def upgrades: List[DatabaseUpgrade] = Nil
 

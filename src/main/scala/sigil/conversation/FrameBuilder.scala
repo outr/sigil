@@ -3,7 +3,7 @@ package sigil.conversation
 import fabric.io.JsonFormatter
 import fabric.rw.*
 import fabric.{Json, Obj}
-import sigil.event.{AgentState, Event, Message, ModeChange, Stop, TitleChange, ToolInvoke, ToolResults}
+import sigil.event.{AgentState, Event, Message, ModeChange, Stop, TopicChange, TopicChangeKind, ToolInvoke, ToolResults}
 import sigil.signal.EventState
 import sigil.tool.ToolInput
 import sigil.tool.ToolInput.given
@@ -25,7 +25,8 @@ import sigil.tool.model.ResponseContent
  *     call is found, falls back to a `System` frame so information isn't
  *     silently dropped.
  *   - `ModeChange` → one `ContextFrame.System`.
- *   - `TitleChange` → one `ContextFrame.System`.
+ *   - `TopicChange` → one `ContextFrame.System` (Switch vs. Rename
+ *     reflected in the rendered text).
  *   - `AgentState`, `Stop`, and any other control-plane event →
  *     no frame. These are lifecycle / control signals the LLM shouldn't
  *     be re-reading as content.
@@ -89,9 +90,13 @@ object FrameBuilder {
           sourceEventId = mc._id
         )
 
-      case tc: TitleChange =>
+      case tc: TopicChange =>
+        val content = tc.kind match {
+          case TopicChangeKind.Switch(_)            => s"Topic switched to: ${tc.newLabel}"
+          case TopicChangeKind.Rename(previousLabel) => s"Topic renamed: $previousLabel → ${tc.newLabel}"
+        }
         existing :+ ContextFrame.System(
-          content = s"Title changed to: ${tc.title}",
+          content = content,
           sourceEventId = tc._id
         )
 

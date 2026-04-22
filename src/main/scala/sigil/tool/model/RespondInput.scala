@@ -11,14 +11,17 @@ import sigil.tool.ToolInput
  * the first header at the JSON Schema level so grammar-constrained decoders
  * cannot emit a bare string.
  *
- * `title` is REQUIRED on every call and is listed *after* `content` so the
- * model writes its response first and then names what it wrote — the natural
- * cognitive order for titling.
+ * `topic` is REQUIRED on every call and is the label of the current
+ * conversation thread. Pass the current topic unchanged unless the
+ * subject has shifted — the authoritative signal for what to do is
+ * `topicChangeType`.
  *
- *   - If the current conversation title still fits, pass it unchanged. The
- *     framework detects the no-op and suppresses the `TitleChange` event.
- *   - Otherwise (new conversation or topic has meaningfully shifted),
- *     propose a concise 3-6 word title. The framework emits a `TitleChange`
- *     event that UIs render and the view folds into a System frame.
+ * `topicChangeType` is REQUIRED on every call. Categorical — the LLM
+ * picks one of [[TopicChangeType]] to declare its intent. Forces a
+ * deliberate choice on every turn and gives the framework an
+ * unambiguous basis for deciding whether to emit a
+ * [[sigil.event.TopicChange]] and which kind (Switch vs. Rename).
  */
-case class RespondInput(@pattern("""^▶[A-Z][A-Za-z0-9]*(\s+\S+)?\n""") content: String, title: String) extends ToolInput derives RW
+case class RespondInput(@pattern("""^▶[A-Z][A-Za-z0-9]*(\s+\S+)?\n""") content: String,
+                        topic: String,
+                        topicChangeType: TopicChangeType) extends ToolInput derives RW

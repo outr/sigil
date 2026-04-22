@@ -4,7 +4,7 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.conversation.{ContextFrame, Conversation, FrameBuilder, ParticipantProjection}
-import sigil.event.{AgentState, Event, Message, ModeChange, Stop, TitleChange, ToolInvoke, ToolResults}
+import sigil.event.{AgentState, Event, Message, ModeChange, Stop, TopicChange, TopicChangeKind, ToolInvoke, ToolResults}
 import sigil.provider.Mode
 import sigil.signal.{AgentActivity, EventState}
 import sigil.tool.{ToolName, ToolSchema}
@@ -24,6 +24,7 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
     Message(
       participantId = from,
       conversationId = conversationId,
+      topicId = TestTopicId,
       content = Vector(ResponseContent.Text(text)),
       state = EventState.Complete
     )
@@ -44,6 +45,7 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
       val msg = Message(
         participantId = TestUser,
         conversationId = conversationId,
+        topicId = TestTopicId,
         content = Vector(ResponseContent.Text("active")),
         state = EventState.Active
       )
@@ -54,6 +56,7 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
       val stop = Stop(
         participantId = TestUser,
         conversationId = conversationId,
+        topicId = TestTopicId,
         state = EventState.Complete
       )
       FrameBuilder.appendFor(Vector.empty, stop) shouldBe empty
@@ -64,6 +67,7 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
         toolName = ChangeModeTool.schema.name,
         participantId = TestAgent,
         conversationId = conversationId,
+        topicId = TestTopicId,
         input = Some(ChangeModeInput(mode = Mode.Coding, reason = Some("need code mode"))),
         state = EventState.Complete
       )
@@ -83,6 +87,7 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
         toolName = ToolName("find_capability"),
         participantId = TestAgent,
         conversationId = conversationId,
+        topicId = TestTopicId,
         input = None,
         state = EventState.Complete
       )
@@ -90,6 +95,7 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
         schemas = List.empty[ToolSchema[? <: sigil.tool.ToolInput]],
         participantId = TestAgent,
         conversationId = conversationId,
+        topicId = TestTopicId,
         state = EventState.Complete
       )
       val folded = FrameBuilder.build(List(invoke, results))
@@ -103,6 +109,7 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
         mode = Mode.Coding,
         participantId = TestAgent,
         conversationId = conversationId,
+        topicId = TestTopicId,
         reason = Some("switching"),
         state = EventState.Complete
       )
@@ -111,16 +118,35 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
       frames.head.asInstanceOf[ContextFrame.System].content should (include("Coding") and include("switching"))
     }
 
-    "emit a System frame for a Complete TitleChange" in {
-      val tc = TitleChange(
-        title = "New Title",
+    "emit a System frame for a Complete TopicChange (Switch)" in {
+      val prev = sigil.conversation.Topic.id("prev-topic")
+      val tc = TopicChange(
+        kind = TopicChangeKind.Switch(previousTopicId = prev),
+        newLabel = "Database Migration",
         participantId = TestAgent,
         conversationId = conversationId,
+        topicId = TestTopicId,
         state = EventState.Complete
       )
       val frames = FrameBuilder.appendFor(Vector.empty, tc)
       frames.head shouldBe a[ContextFrame.System]
-      frames.head.asInstanceOf[ContextFrame.System].content should include("New Title")
+      frames.head.asInstanceOf[ContextFrame.System].content should include("Database Migration")
+    }
+
+    "emit a System frame for a Complete TopicChange (Rename)" in {
+      val tc = TopicChange(
+        kind = TopicChangeKind.Rename(previousLabel = "General"),
+        newLabel = "Scala Coding Setup",
+        participantId = TestAgent,
+        conversationId = conversationId,
+        topicId = TestTopicId,
+        state = EventState.Complete
+      )
+      val frames = FrameBuilder.appendFor(Vector.empty, tc)
+      frames.head shouldBe a[ContextFrame.System]
+      val content = frames.head.asInstanceOf[ContextFrame.System].content
+      content should include("General")
+      content should include("Scala Coding Setup")
     }
 
     "drop AgentState lifecycle markers (control-plane)" in {
@@ -128,6 +154,7 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
         agentId = TestAgent,
         participantId = TestAgent,
         conversationId = conversationId,
+        topicId = TestTopicId,
         activity = AgentActivity.Thinking,
         state = EventState.Complete
       )
@@ -141,6 +168,7 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
         toolName = RespondTool.schema.name,
         participantId = TestAgent,
         conversationId = conversationId,
+        topicId = TestTopicId,
         state = EventState.Complete
       )
       val projections = FrameBuilder.updateProjections(Map.empty, invoke)
@@ -148,9 +176,9 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
     }
 
     "dedupe recentTools (head = most recent)" in {
-      val first = ToolInvoke(toolName = ToolName("a"), participantId = TestAgent, conversationId = conversationId, state = EventState.Complete)
-      val second = ToolInvoke(toolName = ToolName("b"), participantId = TestAgent, conversationId = conversationId, state = EventState.Complete)
-      val third = ToolInvoke(toolName = ToolName("a"), participantId = TestAgent, conversationId = conversationId, state = EventState.Complete)
+      val first = ToolInvoke(toolName = ToolName("a"), participantId = TestAgent, conversationId = conversationId, topicId = TestTopicId, state = EventState.Complete)
+      val second = ToolInvoke(toolName = ToolName("b"), participantId = TestAgent, conversationId = conversationId, topicId = TestTopicId, state = EventState.Complete)
+      val third = ToolInvoke(toolName = ToolName("a"), participantId = TestAgent, conversationId = conversationId, topicId = TestTopicId, state = EventState.Complete)
       val after = List(
         first,
         second,
@@ -163,6 +191,7 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
         schemas = List.empty[ToolSchema[? <: sigil.tool.ToolInput]],
         participantId = TestAgent,
         conversationId = conversationId,
+        topicId = TestTopicId,
         state = EventState.Complete
       )
       val projections = FrameBuilder.updateProjections(Map.empty, results)
@@ -174,6 +203,7 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
         toolName = ToolName("pending"),
         participantId = TestAgent,
         conversationId = conversationId,
+        topicId = TestTopicId,
         state = EventState.Active
       )
       FrameBuilder.updateProjections(Map.empty, invoke) shouldBe Map.empty

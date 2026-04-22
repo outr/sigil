@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import lightdb.util.Nowish
-import sigil.conversation.Conversation
+import sigil.conversation.{Conversation, Topic}
 import sigil.participant.ParticipantId
 import sigil.provider.TokenUsage
 import sigil.signal.EventState
@@ -21,6 +21,7 @@ import sigil.tool.model.ResponseContent
  */
 case class Message(participantId: ParticipantId,
                    conversationId: Id[Conversation],
+                   topicId: Id[Topic],
                    content: Vector[ResponseContent] = Vector.empty,
                    usage: TokenUsage = TokenUsage(0, 0, 0),
                    state: EventState = EventState.Active,

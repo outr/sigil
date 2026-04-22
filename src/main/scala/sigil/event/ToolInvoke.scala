@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import lightdb.util.Nowish
-import sigil.conversation.Conversation
+import sigil.conversation.{Conversation, Topic}
 import sigil.participant.ParticipantId
 import sigil.signal.EventState
 import sigil.tool.{ToolInput, ToolName}
@@ -23,6 +23,7 @@ import sigil.tool.{ToolInput, ToolName}
 case class ToolInvoke(toolName: ToolName,
                       participantId: ParticipantId,
                       conversationId: Id[Conversation],
+                      topicId: Id[Topic],
                       input: Option[ToolInput] = None,
                       state: EventState = EventState.Active,
                       timestamp: Timestamp = Timestamp(Nowish()),

@@ -7,7 +7,7 @@ import org.scalactic.Prettifier.default
 import profig.Profig
 import rapid.Task
 import sigil.{Sigil, SignalBroadcaster, TurnContext}
-import sigil.conversation.MemorySpaceId
+import sigil.conversation.{MemorySpaceId, Topic}
 import sigil.db.Model
 import sigil.event.Event
 import sigil.participant.{AgentParticipantId, ParticipantId}
@@ -157,6 +157,15 @@ object SendSlackMessageTool extends Tool[SendSlackMessageInput] {
     "Send a message to a Slack channel on behalf of the user. Takes a channel name and the message text."
   override def execute(input: SendSlackMessageInput, context: TurnContext): rapid.Stream[Event] = rapid.Stream.empty
 }
+
+/**
+ * Shared synthetic topic id used across tests that don't need a live
+ * topic record. Tests that exercise `Sigil.updateConversationProjection`
+ * or the orchestrator's topic lookup upsert a real Topic with this id
+ * via [[TestSigil.withDB]]; tests that only construct events in-memory
+ * can use this id without backing it with a record.
+ */
+val TestTopicId: Id[Topic] = Id[Topic]("test-topic")
 
 /**
  * Stand-in user participant for tests.

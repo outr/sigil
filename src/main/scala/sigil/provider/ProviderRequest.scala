@@ -1,7 +1,7 @@
 package sigil.provider
 
 import lightdb.id.Id
-import sigil.conversation.{Conversation, TurnInput}
+import sigil.conversation.{Conversation, Topic, TurnInput}
 import sigil.db.Model
 import sigil.participant.ParticipantId
 import sigil.tool.{Tool, ToolInput}
@@ -11,21 +11,30 @@ import sigil.tool.{Tool, ToolInput}
  * behavior. If/when replay or caching is needed, extract a snapshot with just
  * the serializable fields.
  *
- * @param turnInput the curator's per-turn output — carries the
- *                  [[sigil.conversation.ConversationView]] (frames +
- *                  participant projections) plus the memory / summary /
- *                  information selections the provider should render.
- * @param chain     authority lineage for this invocation — the originating
- *                  participant followed by each propagator. Forwarded to
- *                  `TurnContext.chain` when a tool executes. Supplied fresh
- *                  per invocation; never persisted.
+ * @param turnInput         the curator's per-turn output — carries the
+ *                          [[sigil.conversation.ConversationView]] (frames +
+ *                          participant projections) plus the memory / summary /
+ *                          information selections the provider should render.
+ * @param currentTopicId    the active topic at request-build time. Events the
+ *                          orchestrator emits (Message, ToolInvoke, …) land
+ *                          under this topic unless a [[sigil.event.TopicChange]]
+ *                          fires during the turn.
+ * @param currentTopicLabel the active topic's label, shown as "Current topic"
+ *                          in the system prompt. The LLM is expected to pass
+ *                          this unchanged via [[sigil.tool.model.RespondInput.topic]]
+ *                          unless the subject has shifted.
+ * @param chain             authority lineage for this invocation — the originating
+ *                          participant followed by each propagator. Forwarded to
+ *                          `TurnContext.chain` when a tool executes. Supplied fresh
+ *                          per invocation; never persisted.
  */
 case class ProviderRequest(conversationId: Id[Conversation],
                            modelId: Id[Model],
                            instructions: Instructions,
                            turnInput: TurnInput,
                            currentMode: Mode,
-                           currentTitle: String = Conversation.DefaultTitle,
+                           currentTopicId: Id[Topic],
+                           currentTopicLabel: String = Topic.DefaultLabel,
                            generationSettings: GenerationSettings,
                            tools: Vector[Tool[? <: ToolInput]] = Vector.empty,
                            chain: List[ParticipantId] = Nil,

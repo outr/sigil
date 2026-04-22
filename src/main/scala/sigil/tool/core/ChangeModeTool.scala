@@ -36,7 +36,8 @@ object ChangeModeTool extends Tool[ChangeModeInput] {
           mode = input.mode,
           reason = input.reason,
           participantId = context.caller,
-          conversationId = context.conversation.id
+          conversationId = context.conversation.id,
+          topicId = context.conversation.currentTopicId
         )
       )
     )

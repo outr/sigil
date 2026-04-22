@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import lightdb.util.Nowish
-import sigil.conversation.Conversation
+import sigil.conversation.{Conversation, Topic}
 import sigil.participant.ParticipantId
 import sigil.provider.Mode
 import sigil.signal.EventState
@@ -27,6 +27,7 @@ import sigil.signal.EventState
 case class ModeChange(mode: Mode,
                       participantId: ParticipantId,
                       conversationId: Id[Conversation],
+                      topicId: Id[Topic],
                       reason: Option[String] = None,
                       state: EventState = EventState.Active,
                       timestamp: Timestamp = Timestamp(Nowish()),
