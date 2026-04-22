@@ -10,7 +10,7 @@ import sigil.db.Model
 import sigil.event.{Event, Message, ModeChange, ToolInvoke}
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant}
 import sigil.provider.{GenerationSettings, Instructions, Mode, Provider}
-import sigil.signal.{AgentActivity, AgentStateDelta, EventState, MessageDelta, Signal, ToolDelta}
+import sigil.signal.{AgentActivity, AgentStateDelta, EventState, MessageDelta, Signal, StateDelta, ToolDelta}
 import sigil.tool.{Tool, ToolInput}
 import sigil.tool.core.CoreTools
 import sigil.tool.model.ResponseContent
@@ -33,10 +33,11 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   /** Wire the spec's provider into TestSigil so `providerFor` returns it. */
   TestSigil.setProvider(provider)
 
-  /** Tool names the test agent advertises. CoreTools' names + the synthetic
-    * SendSlackMessageTool so `find_capability` has a catalog entry. */
+  /** Tool names the test agent advertises. CoreTools' default roster
+    * plus the synthetic SendSlackMessageTool and the non-core SleepTool
+    * so orchestrator tests exercising sleep-timing have it available. */
   protected def toolNames: List[String] =
-    CoreTools.coreToolNames :+ SendSlackMessageTool.schema.name
+    CoreTools.coreToolNames ++ List(SendSlackMessageTool.schema.name, sigil.tool.util.SleepTool.schema.name)
 
   protected def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
@@ -200,7 +201,29 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         val modeChanges = signals.collect { case m: ModeChange => m }
         modeChanges should not be empty
         modeChanges.head.mode shouldBe Mode.Coding
-        modeChanges.head.state shouldBe EventState.Complete
+        // Lifecycle: ModeChange is emitted as the `Active` pulse, then the
+        // orchestrator's `executeAtomic` wrapper emits a `StateDelta(Complete)`
+        // targeting its `_id` right after to settle it. Both must be
+        // present in the signal stream — that's the Active → Complete
+        // invariant in action.
+        modeChanges.head.state shouldBe EventState.Active
+        val modeChangeId = modeChanges.head._id
+        val settle = signals.collectFirst {
+          case sd: StateDelta if sd.target == modeChangeId && sd.state == EventState.Complete => sd
+        }
+        settle should not be empty
+
+        // Sequencing: the settle must follow the pulse (Active pulse is
+        // emitted first, settle after).
+        val pulseIdx = signals.indexWhere {
+          case mc: ModeChange if mc._id == modeChangeId => true
+          case _ => false
+        }
+        val settleIdx = signals.indexWhere {
+          case sd: StateDelta if sd.target == modeChangeId && sd.state == EventState.Complete => true
+          case _ => false
+        }
+        pulseIdx should be < settleIdx
 
         // Atomic tool path — no Message emitted, so no Typing transition.
         val agentStateDeltas = signals.collect { case d: AgentStateDelta => d }

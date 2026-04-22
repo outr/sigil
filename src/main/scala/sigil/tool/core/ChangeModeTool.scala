@@ -3,7 +3,6 @@ package sigil.tool.core
 import sigil.TurnContext
 import sigil.event.{Event, ModeChange}
 import sigil.provider.Mode
-import sigil.signal.EventState
 import sigil.tool.Tool
 import sigil.tool.model.ChangeModeInput
 
@@ -37,8 +36,7 @@ object ChangeModeTool extends Tool[ChangeModeInput] {
           mode = input.mode,
           reason = input.reason,
           participantId = context.caller,
-          conversationId = context.conversation.id,
-          state = EventState.Complete
+          conversationId = context.conversation.id
         )
       )
     )

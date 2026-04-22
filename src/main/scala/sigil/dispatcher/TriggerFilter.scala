@@ -1,6 +1,6 @@
 package sigil.dispatcher
 
-import sigil.event.{AgentState, Event, Message, ModeChange, TitleChange, ToolResults}
+import sigil.event.{AgentState, Event, Message, ModeChange, Stop, TitleChange, ToolResults}
 import sigil.participant.Participant
 
 /**
@@ -15,6 +15,9 @@ import sigil.participant.Participant
  *
  *   - [[AgentState]] events never trigger anyone — they're lifecycle
  *     markers, not new content.
+ *   - [[Stop]] never triggers — it's a control signal consumed by the
+ *     dispatcher's stop-handling path, not content the target agent
+ *     should act on as a new turn.
  *   - [[Message]] from self never re-triggers (no self-talking-loops).
  *   - [[TitleChange]] from self never re-triggers — naming a
  *     conversation isn't content the agent should act on again.
@@ -29,6 +32,7 @@ import sigil.participant.Participant
 object TriggerFilter {
   def isTriggerFor(p: Participant, e: Event): Boolean = e match {
     case _: AgentState                                                => false
+    case _: Stop                                                      => false
     case m: Message if m.participantId == p.id                        => false
     case tc: TitleChange if tc.participantId == p.id                  => false
     case _: Message | _: ModeChange | _: TitleChange | _: ToolResults => true

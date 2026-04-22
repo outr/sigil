@@ -4,7 +4,7 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.conversation.{ContextFrame, Conversation, FrameBuilder, ParticipantProjection}
-import sigil.event.{AgentState, Event, EventVisibility, Message, ModeChange, TitleChange, ToolInvoke, ToolResults}
+import sigil.event.{AgentState, Event, Message, ModeChange, Stop, TitleChange, ToolInvoke, ToolResults}
 import sigil.provider.Mode
 import sigil.signal.{AgentActivity, EventState}
 import sigil.tool.ToolSchema
@@ -29,7 +29,7 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
     )
 
   "FrameBuilder.appendFor" should {
-    "produce a Text frame for a Complete Message with Model visibility" in {
+    "produce a Text frame for a Complete Message" in {
       val msg = completeMessage("hello", TestUser)
       val frames = FrameBuilder.appendFor(Vector.empty, msg)
       frames should have size 1
@@ -50,15 +50,13 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
       FrameBuilder.appendFor(Vector.empty, msg) shouldBe empty
     }
 
-    "drop events whose visibility excludes Model" in {
-      val msg = Message(
+    "drop Stop events (control-plane, no frame)" in {
+      val stop = Stop(
         participantId = TestUser,
         conversationId = conversationId,
-        content = Vector(ResponseContent.Text("invisible")),
-        state = EventState.Complete,
-        visibility = Set.empty
+        state = EventState.Complete
       )
-      FrameBuilder.appendFor(Vector.empty, msg) shouldBe empty
+      FrameBuilder.appendFor(Vector.empty, stop) shouldBe empty
     }
 
     "produce a ToolCall frame for a Complete ToolInvoke" in {
@@ -125,7 +123,7 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
       frames.head.asInstanceOf[ContextFrame.System].content should include("New Title")
     }
 
-    "drop AgentState lifecycle markers (UI-only)" in {
+    "drop AgentState lifecycle markers (control-plane)" in {
       val agentState = AgentState(
         agentId = TestAgent,
         participantId = TestAgent,

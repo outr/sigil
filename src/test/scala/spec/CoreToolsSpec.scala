@@ -7,11 +7,12 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.TurnContext
 import sigil.conversation.{Conversation, ConversationView, TurnInput}
-import sigil.event.{Message, TitleChange}
+import sigil.event.{Message, Stop, TitleChange}
 import sigil.information.Information
 import sigil.signal.EventState
-import sigil.tool.core.{LookupInformationTool, RespondTool}
-import sigil.tool.model.{LookupInformationInput, RespondInput}
+import sigil.tool.core.{RespondTool, StopTool}
+import sigil.tool.util.LookupInformationTool
+import sigil.tool.model.{LookupInformationInput, RespondInput, StopInput}
 
 /**
  * Round-trip coverage for the new framework tools that close framework
@@ -56,7 +57,11 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         tc.title shouldBe "Refactoring Notes"
         tc.conversationId shouldBe convId
         tc.participantId shouldBe TestAgent
-        tc.state shouldBe EventState.Complete
+        // Tools emit events as the Active pulse; the Orchestrator's
+        // executeAtomic wrapper pairs each with a StateDelta(Complete).
+        // This spec tests the tool directly (not through the orchestrator)
+        // so we assert on the pulse state.
+        tc.state shouldBe EventState.Active
         list(1) shouldBe a[Message]
       }
     }
@@ -70,6 +75,42 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       events.map { list =>
         list should have size 1
         list.head shouldBe a[Message]
+      }
+    }
+  }
+
+  "StopTool" should {
+    "emit an Active Stop event with the submitted target + force + reason (orchestrator settles via StateDelta)" in {
+      val convId = freshConversationId("stop-targeted")
+      val events = StopTool
+        .execute(
+          StopInput(targetParticipantId = Some(TestAgent), force = true, reason = Some("too risky")),
+          turnContextFor(convId)
+        )
+        .toList
+      events.map { list =>
+        list should have size 1
+        val stop = list.head.asInstanceOf[Stop]
+        stop.targetParticipantId shouldBe Some(TestAgent)
+        stop.force shouldBe true
+        stop.reason shouldBe Some("too risky")
+        stop.conversationId shouldBe convId
+        stop.participantId shouldBe TestAgent
+        stop.state shouldBe EventState.Active
+      }
+    }
+
+    "default to graceful (force=false) and broadcast (target=None) when inputs omitted" in {
+      val convId = freshConversationId("stop-graceful-all")
+      val events = StopTool
+        .execute(StopInput(), turnContextFor(convId))
+        .toList
+      events.map { list =>
+        list should have size 1
+        val stop = list.head.asInstanceOf[Stop]
+        stop.targetParticipantId shouldBe None
+        stop.force shouldBe false
+        stop.reason shouldBe None
       }
     }
   }

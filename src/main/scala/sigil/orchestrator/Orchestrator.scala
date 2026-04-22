@@ -5,7 +5,7 @@ import sigil.Sigil
 import sigil.conversation.Conversation
 import sigil.event.{Event, Message, TitleChange, ToolInvoke}
 import sigil.provider.{Provider, ProviderEvent, ProviderRequest}
-import sigil.signal.{ContentDelta, ContentKind, EventState, MessageDelta, Signal, ToolDelta}
+import sigil.signal.{ContentDelta, ContentKind, EventState, MessageDelta, Signal, StateDelta, ToolDelta}
 import sigil.tool.model.RespondInput
 import sigil.TurnContext
 import sigil.tool.{Tool, ToolInput}
@@ -135,16 +135,20 @@ object Orchestrator {
             val messageDelta = MessageDelta(target = msgId, conversationId = convId, state = Some(EventState.Complete))
             // If the streamed tool was `respond` and the emitted title
             // differs from the conversation's current title, emit a
-            // TitleChange alongside. Idempotent: same-title is suppressed.
+            // TitleChange (Active pulse + Complete settle) alongside.
+            // Idempotent: same-title is suppressed.
             val titlePrelude: List[Signal] = (state.activeToolName, input) match {
               case (Some("respond"), r: RespondInput)
                 if r.title.nonEmpty && r.title != request.currentTitle =>
-                List(TitleChange(
+                val tc = TitleChange(
                   title = r.title,
                   participantId = caller,
-                  conversationId = convId,
-                  state = EventState.Complete
-                ))
+                  conversationId = convId
+                )
+                List(
+                  tc,
+                  StateDelta(target = tc._id, conversationId = convId, state = EventState.Complete)
+                )
               case _ => Nil
             }
             Stream.emits(titlePrelude ::: closeBlock ::: List[Signal](toolDelta, messageDelta))
@@ -178,10 +182,22 @@ object Orchestrator {
     }
   }
 
-  /** Dispatches an atomic tool's `execute` and forwards its events as signals. */
+  /** Dispatches an atomic tool's `execute` and forwards its events as
+    * signals. Each event the tool emits is followed by a
+    * `StateDelta(Complete)` so the uniform Active → Complete lifecycle
+    * holds for atomic tools too: subscribers see a reactive pulse on the
+    * event, then a settle via the delta. Tools that explicitly emit
+    * `state = Complete` still get a closing `StateDelta`, which is an
+    * idempotent no-op (the event is already Complete).
+    */
   private def executeAtomic[I <: ToolInput](tool: Tool[I], input: ToolInput, context: TurnContext): Stream[Signal] = {
     val typedInput = input.asInstanceOf[I]
-    tool.execute(typedInput, context).map(ev => ev: Signal)
+    tool.execute(typedInput, context).flatMap { ev =>
+      Stream.emits(List[Signal](
+        ev,
+        StateDelta(target = ev._id, conversationId = ev.conversationId, state = EventState.Complete)
+      ))
+    }
   }
 
   private def kindOf(name: String): ContentKind =

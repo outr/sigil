@@ -3,7 +3,7 @@ package sigil.conversation
 import fabric.io.JsonFormatter
 import fabric.rw.*
 import fabric.{Json, Obj}
-import sigil.event.{AgentState, Event, EventVisibility, Message, ModeChange, TitleChange, ToolInvoke, ToolResults}
+import sigil.event.{AgentState, Event, Message, ModeChange, Stop, TitleChange, ToolInvoke, ToolResults}
 import sigil.signal.EventState
 import sigil.tool.ToolInput
 import sigil.tool.ToolInput.given
@@ -14,23 +14,24 @@ import sigil.tool.model.ResponseContent
  * reached `EventState.Complete`) into zero or more [[ContextFrame]]s for
  * a [[ConversationView]].
  *
- * Event → frame mapping rules:
- *   - `Message` whose visibility includes `EventVisibility.Model` →
- *     one `ContextFrame.Text`. UI-only messages are dropped.
- *   - `ToolInvoke` with visibility.Model → one `ContextFrame.ToolCall`.
- *     `respond` is filtered out at render time by the provider (the
- *     following `Message` is the response); the frame is still emitted
- *     here so the view carries the full history.
- *   - `ToolResults` with visibility.Model → one `ContextFrame.ToolResult`
- *     whose `callId` points at the immediately-preceding pending
- *     `ToolInvoke`. If no pending call is found, falls back to a
- *     `System` frame so information isn't silently dropped.
- *   - `ModeChange` with visibility.Model → one `ContextFrame.System`.
- *   - `TitleChange` with visibility.Model → one `ContextFrame.System`.
- *   - `AgentState` and anything UI-only → no frame.
+ * Event → frame mapping rules (per-type, no runtime visibility flag):
+ *   - `Message` → one `ContextFrame.Text`.
+ *   - `ToolInvoke` → one `ContextFrame.ToolCall`. The `respond` tool is
+ *     filtered at render time by the provider (the following `Message`
+ *     is the response); the frame is still emitted here so the view
+ *     carries the full history.
+ *   - `ToolResults` → one `ContextFrame.ToolResult` whose `callId` points
+ *     at the immediately-preceding pending `ToolInvoke`. If no pending
+ *     call is found, falls back to a `System` frame so information isn't
+ *     silently dropped.
+ *   - `ModeChange` → one `ContextFrame.System`.
+ *   - `TitleChange` → one `ContextFrame.System`.
+ *   - `AgentState`, `Stop`, and any other control-plane event →
+ *     no frame. These are lifecycle / control signals the LLM shouldn't
+ *     be re-reading as content.
  *
- * Active events (in-flight) are skipped — `framesFor` returns empty.
- * Only Complete events become frames.
+ * Active events (in-flight) are skipped — only Complete events become
+ * frames.
  */
 object FrameBuilder {
 
@@ -43,7 +44,6 @@ object FrameBuilder {
    */
   def appendFor(existing: Vector[ContextFrame], event: Event): Vector[ContextFrame] = {
     if (event.state != EventState.Complete) return existing
-    if (!event.visibility.contains(EventVisibility.Model)) return existing
 
     event match {
       case m: Message =>
@@ -95,15 +95,16 @@ object FrameBuilder {
           sourceEventId = tc._id
         )
 
-      case _: AgentState =>
+      case _: AgentState | _: Stop =>
         existing
 
       case other =>
-        // Unknown Model-visible event type — fail loud so gaps are caught.
-        // Mirrors the LlamaCppProvider.renderHistory invariant: no silent drops.
+        // Unknown Event type — fail loud so gaps are caught. Adding a new
+        // Event requires making a deliberate decision here: emit a frame,
+        // or mark it as a control-plane event that stays out of the view.
         throw new RuntimeException(
-          s"FrameBuilder: Model-visible Event ${other.getClass.getSimpleName} has no frame rule. " +
-            s"Add a case here or remove EventVisibility.Model from the event."
+          s"FrameBuilder: Event ${other.getClass.getSimpleName} has no frame rule. " +
+            s"Add a case here to either emit a frame or mark it control-plane (no frame)."
         )
     }
   }

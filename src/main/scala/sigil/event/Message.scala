@@ -18,16 +18,12 @@ import sigil.tool.model.ResponseContent
  * `MessageDelta`); transitions to `Complete` when the producer signals end of
  * stream. Atomic Messages — e.g. a user typing a one-shot message or a
  * `FindCapabilityTool` result — are created directly as `Complete`.
- *
- * Default visibility is both UI (rendered to users) and Model (included in
- * subsequent turns' context).
  */
 case class Message(participantId: ParticipantId,
                    conversationId: Id[Conversation],
                    content: Vector[ResponseContent] = Vector.empty,
                    usage: TokenUsage = TokenUsage(0, 0, 0),
                    state: EventState = EventState.Active,
-                   visibility: Set[EventVisibility] = Set(EventVisibility.UI, EventVisibility.Model),
                    timestamp: Timestamp = Timestamp(Nowish()),
                    _id: Id[Event] = Event.id()) extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)

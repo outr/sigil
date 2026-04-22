@@ -1,7 +1,7 @@
 package sigil.signal
 
 import fabric.rw.*
-import sigil.event.{AgentState, Message, ModeChange, TitleChange, ToolInvoke, ToolResults}
+import sigil.event.{AgentState, Message, ModeChange, Stop, TitleChange, ToolInvoke, ToolResults}
 
 /**
  * The framework's built-in Signal subtypes. Sigil registers these into the
@@ -9,8 +9,8 @@ import sigil.event.{AgentState, Message, ModeChange, TitleChange, ToolInvoke, To
  * Event/Delta subtypes via `Sigil.signals`.
  *
  * Includes both Events (Message, ToolInvoke, ToolResults, ModeChange,
- * TitleChange, AgentState) and Deltas (MessageDelta, ToolDelta, StateDelta,
- * AgentStateDelta).
+ * TitleChange, AgentState, Stop) and Deltas (MessageDelta, ToolDelta,
+ * StateDelta, AgentStateDelta).
  */
 object CoreSignals {
 
@@ -21,6 +21,7 @@ object CoreSignals {
     summon[RW[ModeChange]],
     summon[RW[TitleChange]],
     summon[RW[AgentState]],
+    summon[RW[Stop]],
     summon[RW[MessageDelta]],
     summon[RW[ToolDelta]],
     summon[RW[StateDelta]],
