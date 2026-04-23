@@ -9,10 +9,12 @@ import sigil.provider.*
 import sigil.provider.sse.{SSELine, SSELineParser}
 import sigil.tool.{DefinitionToSchema, ToolInput, ToolSchema}
 import sigil.tool.ToolInput.given
-import spice.http.{HttpMethod, HttpRequest}
+import spice.http.{HttpMethod, HttpRequest, HttpResponse, HttpStatus}
 import spice.http.client.HttpClient
 import spice.http.content.StringContent
 import spice.net.*
+
+import scala.util.Success
 
 /**
  * OpenAI provider targeting the Responses API (`/v1/responses`) — the
@@ -48,17 +50,25 @@ case class OpenAIProvider(apiKey: String,
   override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
     val state = new StreamState(new ToolCallAccumulator(input.tools))
     Stream.force(
-      httpRequestFor(input)
-        // Spice's `streamLines()` bypasses interceptors — invoke the
-        // configured wire interceptor manually so wire logging works
-        // for streaming providers too.
-        .flatMap(sigilRef.wireInterceptor.before)
-        .map { httpRequest =>
-          HttpClient.modify(_ => httpRequest)
-            .noFailOnHttpStatus
-            .streamLines()
-            .map(lines => lines.flatMap(line => Stream.emits(parseLine(line, state))))
-        }.flatMap(identity)
+      for {
+        raw         <- httpRequestFor(input)
+        intercepted <- sigilRef.wireInterceptor.before(raw)
+        lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.streamLines()
+      } yield {
+        val bodyBuf = new StringBuilder
+        lines
+          .flatMap { line =>
+            bodyBuf.append(line).append('\n')
+            Stream.emits(parseLine(line, state))
+          }
+          .onFinalize(Task.defer {
+            val response = HttpResponse(
+              status = HttpStatus.OK,
+              content = Some(StringContent(bodyBuf.toString, ContentType("text", "event-stream")))
+            )
+            sigilRef.wireInterceptor.after(intercepted, Success(response)).unit
+          })
+      }
     )
   }
 
@@ -96,13 +106,17 @@ case class OpenAIProvider(apiKey: String,
         Vector("tools" -> arr(toolsArr*), "tool_choice" -> str("required"))
     }
     val gen = input.generationSettings
+    val reasoningField: Vector[(String, Json)] = gen.effort match {
+      case None    => Vector.empty
+      case Some(e) => Vector("reasoning" -> obj("effort" -> str(Effort.openAIEffortLevel(e))))
+    }
     val genFields: Vector[(String, Json)] =
       gen.temperature.toVector.map("temperature" -> num(_)) ++
         gen.maxOutputTokens.toVector.map("max_output_tokens" -> num(_)) ++
         gen.topP.toVector.map("top_p" -> num(_)) ++
         (if (gen.stopSequences.nonEmpty) Vector("stop" -> arr(gen.stopSequences.map(str)*)) else Vector.empty)
 
-    obj((baseFields ++ instructionsField ++ toolFields ++ genFields)*)
+    obj((baseFields ++ instructionsField ++ toolFields ++ reasoningField ++ genFields)*)
   }
 
   /** Render framework-neutral [[ProviderMessage]]s into Responses API
@@ -250,6 +264,31 @@ case class OpenAIProvider(apiKey: String,
         val complete = Vector[ProviderEvent](ProviderEvent.ImageGenerationComplete(callId, imageRef))
         val serverDone = Vector[ProviderEvent](ProviderEvent.ServerToolComplete(callId, BuiltInTool.ImageGeneration))
         complete ++ serverDone
+
+      case "response.output_item.done" =>
+        // Item completion — if it's a built-in tool call (image_generation_call,
+        // web_search_call, etc.) we emit the completion event here, since the
+        // API sometimes delivers the final payload on output_item.done rather
+        // than on a dedicated `.completed` event.
+        val item = json.get("item").getOrElse(Obj.empty)
+        val itemType = item.get("type").map(_.asString).getOrElse("")
+        val callIdRaw = item.get("call_id").map(_.asString).orElse(item.get("id").map(_.asString))
+        val callId = callIdRaw.map(CallId(_)).getOrElse(state.activeItemCallId.getOrElse(CallId("responses-done")))
+        itemType match {
+          case "image_generation_call" =>
+            val imageRef = item.get("result").map(_.asString)
+              .orElse(item.get("image_url").map(_.asString))
+              .map(b => if (b.startsWith("data:") || b.startsWith("http")) b else s"data:image/png;base64,$b")
+              .getOrElse("")
+            if (imageRef.isEmpty) Vector.empty
+            else Vector(
+              ProviderEvent.ImageGenerationComplete(callId, imageRef),
+              ProviderEvent.ServerToolComplete(callId, BuiltInTool.ImageGeneration)
+            )
+          case "web_search_call" =>
+            Vector(ProviderEvent.ServerToolComplete(callId, BuiltInTool.WebSearch))
+          case _ => Vector.empty
+        }
 
       case "response.web_search_call.in_progress" | "response.web_search_call.searching" =>
         val callId = state.activeItemCallId.getOrElse(CallId("responses-websearch"))

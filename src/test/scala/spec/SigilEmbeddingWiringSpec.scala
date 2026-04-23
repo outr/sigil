@@ -55,7 +55,7 @@ class SigilEmbeddingWiringSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
           limit = 5,
           filter = Map("kind" -> "summary")
         )
-      } yield hits.map(_.id) should contain(summary._id.value)
+      } yield hits.flatMap(_.payload.get("summaryId")) should contain(summary._id.value)
     }
   }
 }

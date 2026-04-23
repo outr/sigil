@@ -189,7 +189,28 @@ object Orchestrator {
       case ProviderEvent.ServerToolStart(_, _, _)         => Stream.empty
       case ProviderEvent.ServerToolComplete(_, _)         => Stream.empty
       case ProviderEvent.ImageGenerationPartial(_, _)     => Stream.empty
-      case ProviderEvent.ImageGenerationComplete(_, _)    => Stream.empty
+
+      case ProviderEvent.ImageGenerationComplete(_, imageUrl) =>
+        // Materialize the generated image as a standalone Message
+        // carrying a ResponseContent.Image block. Apps render it via
+        // whatever mechanism they use for other Message content.
+        val parsedUrl = spice.net.URL.get(imageUrl)
+          .orElse(spice.net.URL.get(s"data:image/png;base64,$imageUrl"))
+          .toOption
+        parsedUrl match {
+          case None => Stream.empty
+          case Some(url) =>
+            Stream.emits(List(
+              Message(
+                participantId = caller,
+                conversationId = convId,
+                topicId = topicId,
+                content = Vector(_root_.sigil.tool.model.ResponseContent.Image(url = url)),
+                state = EventState.Complete
+              )
+            ))
+        }
+
       case ProviderEvent.Done(_)                          => Stream.empty
       case ProviderEvent.Error(_)                         => Stream.empty
     }

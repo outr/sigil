@@ -11,10 +11,12 @@ import sigil.provider.*
 import sigil.provider.sse.{SSELine, SSELineParser}
 import sigil.tool.{DefinitionToSchema, ToolInput, ToolName, ToolSchema}
 import sigil.tool.ToolInput.given
-import spice.http.{HttpMethod, HttpRequest}
+import spice.http.{HttpMethod, HttpRequest, HttpResponse, HttpStatus}
 import spice.http.client.HttpClient
 import spice.http.content.StringContent
 import spice.net.*
+
+import scala.util.Success
 
 case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) extends Provider {
   override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -27,17 +29,29 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
   override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
     val state = new StreamState(new ToolCallAccumulator(input.tools))
     Stream.force(
-      httpRequestFor(input)
-        // Spice's `streamLines()` bypasses interceptors — invoke the
-        // configured wire interceptor manually so wire logging works
-        // for streaming providers too.
-        .flatMap(sigilRef.wireInterceptor.before)
-        .map { httpRequest =>
-          HttpClient.modify(_ => httpRequest)
-            .noFailOnHttpStatus
-            .streamLines()
-            .map(lines => lines.flatMap(line => Stream.emits(parseLine(line, state))))
-        }.flatMap(identity)
+      for {
+        raw         <- httpRequestFor(input)
+        intercepted <- sigilRef.wireInterceptor.before(raw)
+        lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.streamLines()
+      } yield {
+        // Tap the stream to accumulate the full SSE body; invoke
+        // `.after()` at stream completion so wireInterceptor records
+        // the response too. Spice's `streamLines()` otherwise bypasses
+        // the interceptor chain entirely.
+        val bodyBuf = new StringBuilder
+        lines
+          .flatMap { line =>
+            bodyBuf.append(line).append('\n')
+            Stream.emits(parseLine(line, state))
+          }
+          .onFinalize(Task.defer {
+            val response = HttpResponse(
+              status = HttpStatus.OK,
+              content = Some(StringContent(bodyBuf.toString, ContentType("text", "event-stream")))
+            )
+            sigilRef.wireInterceptor.after(intercepted, Success(response)).unit
+          })
+      }
     )
   }
 
@@ -72,17 +86,21 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
       )
     }
 
+    // Qwen3 toggles thinking via chat_template_kwargs.enable_thinking.
+    // On when the caller sets `effort`; off otherwise (default keeps
+    // tool selection tight — thinking on Qwen3 nudges the model toward
+    // clarifying tools like `respond` instead of `change_mode`). Other
+    // llama.cpp-hosted models (DeepSeek-R1, gpt-oss) ignore this kwarg
+    // and drive reasoning from their own chat template — which is fine,
+    // because `reasoning_content` parsing below handles either path.
+    val thinkingEnabled = input.generationSettings.effort.isDefined
     val baseFields = Vector[(String, Json)](
       "model" -> str(modelName),
       "messages" -> arr((Vector(systemMsg) ++ rendered)*),
       "stream" -> bool(true),
       // Emit a final chunk with token usage before [DONE]
       "stream_options" -> obj("include_usage" -> bool(true)),
-      // Qwen 3.x: suppress <think> blocks. The content-pattern enforces the
-      // multipart header, but thinking still shifts tool selection (e.g.
-      // clarifying `respond` instead of `change_mode`). Revisit once thinking
-      // is driven per-Mode.
-      "chat_template_kwargs" -> obj("enable_thinking" -> bool(false))
+      "chat_template_kwargs" -> obj("enable_thinking" -> bool(thinkingEnabled))
     )
     val toolFields: Vector[(String, Json)] = input.toolChoice match {
       case ToolChoice.None => Vector.empty
@@ -97,9 +115,6 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
         gen.maxOutputTokens.toVector.map("max_tokens" -> num(_)) ++
         gen.topP.toVector.map("top_p" -> num(_)) ++
         (if (gen.stopSequences.nonEmpty) Vector("stop" -> arr(gen.stopSequences.map(str)*)) else Vector.empty)
-    // `effort` is intentionally not forwarded — llama.cpp's chat-completions
-    // surface has no reasoning-effort knob. Providers that do (Anthropic,
-    // OpenAI reasoning models) will consume it in their own converters.
 
     obj((baseFields ++ toolFields ++ generationFields)*)
   }
