@@ -33,13 +33,6 @@ import spice.net.URL
 case class TestInformation(id: Id[Information]) extends Information derives RW
 
 /**
- * Synthetic MemorySpaceId for the memory-coverage tests.
- */
-case object TestSpace extends MemorySpaceId {
-  override val value: String = "test-space"
-}
-
-/**
  * Regression guard: every populated field on `TurnInput` and
  * `ConversationView` (frames, projections, memory/summary/info ids) MUST
  * appear somewhere in the wire payload that

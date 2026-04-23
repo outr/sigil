@@ -16,16 +16,14 @@ object SummarizationTool extends Tool[SummarizationInput] {
   override protected def uniqueName: String = "summarize_conversation"
 
   override protected def description: String =
-    """Produce a compact, self-contained summary of the provided conversation excerpt that can replace the excerpt in future turns.
+    """Emit the final summary of a conversation excerpt as structured output. The supplied
+      |`summary` will replace the excerpt in every subsequent turn — so it must stand on its own
+      |without the original text.
       |
-      |Summary requirements:
-      |  - Preserve durable facts, names, decisions, and open questions the agents will need later.
-      |  - Drop small-talk, retries, and intermediate reasoning steps the agents would not re-read.
-      |  - Write in third person narrative — never "I said" / "you said". Refer to participants by role.
-      |  - Keep it short (aim for a single paragraph unless the excerpt is long and fact-dense).
+      |`summary` — the compact narrative. See the system prompt for style / content rules.
       |
-      |`tokenEstimate` is your own best estimate of the `summary` length in tokens — the framework uses
-      |it for downstream budget math.""".stripMargin
+      |`tokenEstimate` — your best estimate of `summary` length in tokens (~4 chars/token is fine).
+      |The framework uses this to budget future turns.""".stripMargin
 
   override protected def examples: List[ToolExample[SummarizationInput]] = Nil
 

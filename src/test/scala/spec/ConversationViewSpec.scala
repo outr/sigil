@@ -179,7 +179,7 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
             EventState.Complete
         ))
         afterConversation <- TestSigil.viewFor(convId)
-        _ <- rapid.Task(TestSigil.resetModeSkill())
+        _ <- rapid.Task(TestSigil.reset())
       } yield {
         afterCoding.projectionFor(TestAgent).activeSkills(SkillSource.Mode) shouldBe slot
         // Mode-source slot cleared when the hook returns None for the new mode.
