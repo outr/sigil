@@ -84,6 +84,8 @@ object TestSigil extends Sigil {
   private val defaultPutInformation: Information => Unit = _ => ()
   private val defaultCurate: (ConversationView, Id[Model], List[ParticipantId]) => Task[TurnInput] =
     (view, _, _) => Task.pure(TurnInput(view))
+  private val defaultWireInterceptor: spice.http.client.intercept.Interceptor =
+    spice.http.client.intercept.Interceptor.empty
 
   // ---- mutable refs (per-test overrides) ----
 
@@ -96,6 +98,7 @@ object TestSigil extends Sigil {
   private val compressionSpaceRef = new AtomicReference[Option[MemorySpaceId]](defaultCompressionSpace)
   private val putInformationRef = new AtomicReference[Information => Unit](defaultPutInformation)
   private val curateRef = new AtomicReference[(ConversationView, Id[Model], List[ParticipantId]) => Task[TurnInput]](defaultCurate)
+  private val wireInterceptorRef = new AtomicReference[spice.http.client.intercept.Interceptor](defaultWireInterceptor)
 
   // ---- hook overrides delegate to refs ----
 
@@ -125,6 +128,8 @@ object TestSigil extends Sigil {
                       chain: List[ParticipantId]): Task[TurnInput] =
     curateRef.get().apply(view, modelId, chain)
 
+  override def wireInterceptor: spice.http.client.intercept.Interceptor = wireInterceptorRef.get()
+
   // ---- setters (per-test overrides) ----
 
   def setBroadcaster(b: SignalBroadcaster): Unit = broadcasterRef.set(b)
@@ -143,6 +148,12 @@ object TestSigil extends Sigil {
   def setCurate(f: (ConversationView, Id[Model], List[ParticipantId]) => Task[TurnInput]): Unit =
     curateRef.set(f)
 
+  /** Install a wire interceptor — specs needing full HTTP logging
+    * (e.g. dumping the OpenAI request/response stream) wire a
+    * [[sigil.provider.debug.JsonLinesInterceptor]] via this hook. */
+  def setWireInterceptor(i: spice.http.client.intercept.Interceptor): Unit =
+    wireInterceptorRef.set(i)
+
   /** Reset every mutable hook to its default. Call from `beforeEach`
     * (or inline at the start of a test) to guarantee isolation from
     * prior tests within the same suite. */
@@ -156,6 +167,7 @@ object TestSigil extends Sigil {
     compressionSpaceRef.set(defaultCompressionSpace)
     putInformationRef.set(defaultPutInformation)
     curateRef.set(defaultCurate)
+    wireInterceptorRef.set(defaultWireInterceptor)
   }
 
   /** Expose the in-memory information store that backs `getInformation`
@@ -182,6 +194,17 @@ object TestSigil extends Sigil {
     deleteRecursive(dbPath)
     Profig.merge(obj("sigil" -> obj("dbPath" -> str(dbPath.toString))))
     instance.sync()
+    // Per-suite wire log: always write a jsonl file named after this
+    // suite, so that when a test fails the HTTP back-and-forth is
+    // already on disk for post-mortem inspection. Override the
+    // directory via `sigil.wire.log.dir` (env SIGIL_WIRE_LOG_DIR).
+    val wireDir = {
+      import fabric.rw.*
+      Profig("sigil.wire.log.dir").opt[String].getOrElse("target/wire-logs")
+    }
+    val wirePath = java.nio.file.Path.of(wireDir, s"$name.jsonl")
+    if (java.nio.file.Files.exists(wirePath)) java.nio.file.Files.delete(wirePath)
+    wireInterceptorRef.set(sigil.provider.debug.JsonLinesInterceptor(wirePath))
     ()
   }
 

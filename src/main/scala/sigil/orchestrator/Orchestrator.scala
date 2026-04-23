@@ -184,10 +184,14 @@ object Orchestrator {
           case None => Stream.empty
         }
 
-      case ProviderEvent.TextDelta(_)     => Stream.empty
-      case ProviderEvent.ThinkingDelta(_) => Stream.empty
-      case ProviderEvent.Done(_)          => Stream.empty
-      case ProviderEvent.Error(_)         => Stream.empty
+      case ProviderEvent.TextDelta(_)                    => Stream.empty
+      case ProviderEvent.ThinkingDelta(_)                 => Stream.empty
+      case ProviderEvent.ServerToolStart(_, _, _)         => Stream.empty
+      case ProviderEvent.ServerToolComplete(_, _)         => Stream.empty
+      case ProviderEvent.ImageGenerationPartial(_, _)     => Stream.empty
+      case ProviderEvent.ImageGenerationComplete(_, _)    => Stream.empty
+      case ProviderEvent.Done(_)                          => Stream.empty
+      case ProviderEvent.Error(_)                         => Stream.empty
     }
   }
 

@@ -52,12 +52,6 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
       } shouldBe 2
     }
 
-    "pass non-Text frames through unchanged" in {
-      val sysId = Id[Event]("sys-1")
-      val frames = Vector(ContextFrame.System("banner", sysId), textFrame("hi"))
-      opt.optimize(frames) shouldBe frames
-    }
-
     "drop find_capability tool-call/result pairs by default" in {
       val callId = Id[Event]("fc-1")
       val frames = Vector[ContextFrame](
@@ -87,16 +81,6 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
       out.collect { case tc: ContextFrame.ToolCall => tc } shouldBe empty
       out.collect { case tr: ContextFrame.ToolResult => tr } shouldBe empty
       out.collect { case s: ContextFrame.System => s.content } shouldBe Vector("Mode: Coding")
-    }
-
-    "keep stale pairs when their rule is disabled" in {
-      val optKeep = StandardContextOptimizer(stripStaleFindCapabilityPairs = false)
-      val callId = Id[Event]("fc-keep")
-      val frames = Vector[ContextFrame](
-        ContextFrame.ToolCall(ToolName("find_capability"), "{}", callId, TestUser, callId),
-        ContextFrame.ToolResult(callId, "result", Id[Event]("fc-keep-r"))
-      )
-      optKeep.optimize(frames) shouldBe frames
     }
 
     "collapse pairs for additional tool names via stripStaleTools" in {

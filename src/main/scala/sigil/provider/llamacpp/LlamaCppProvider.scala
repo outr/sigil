@@ -27,12 +27,17 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
   override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
     val state = new StreamState(new ToolCallAccumulator(input.tools))
     Stream.force(
-      httpRequestFor(input).map { httpRequest =>
-        HttpClient.modify(_ => httpRequest)
-          .noFailOnHttpStatus
-          .streamLines()
-          .map(lines => lines.flatMap(line => Stream.emits(parseLine(line, state))))
-      }.flatMap(identity)
+      httpRequestFor(input)
+        // Spice's `streamLines()` bypasses interceptors — invoke the
+        // configured wire interceptor manually so wire logging works
+        // for streaming providers too.
+        .flatMap(sigilRef.wireInterceptor.before)
+        .map { httpRequest =>
+          HttpClient.modify(_ => httpRequest)
+            .noFailOnHttpStatus
+            .streamLines()
+            .map(lines => lines.flatMap(line => Stream.emits(parseLine(line, state))))
+        }.flatMap(identity)
     )
   }
 
@@ -105,8 +110,12 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
     messages.map {
       case ProviderMessage.System(content) =>
         obj("role" -> str("system"), "content" -> str(content))
-      case ProviderMessage.User(content) =>
-        obj("role" -> str("user"), "content" -> str(content))
+      case ProviderMessage.User(blocks) =>
+        // LlamaCpp is text-only; collapse multipart content to a plain
+        // string, dropping any image blocks. Vision-capable providers
+        // will render each block as the API expects.
+        val text = blocks.iterator.collect { case MessageContent.Text(t) => t }.mkString("\n")
+        obj("role" -> str("user"), "content" -> str(text))
       case ProviderMessage.Assistant(content, toolCalls) =>
         if (toolCalls.isEmpty) {
           obj("role" -> str("assistant"), "content" -> str(content))

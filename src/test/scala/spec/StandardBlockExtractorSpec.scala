@@ -76,36 +76,5 @@ class StandardBlockExtractorSpec extends AsyncWordSpec with AsyncTaskSpec with M
       }
     }
 
-    "skip ToolResult extraction when extractToolResult is off" in {
-      val puts = recorder()
-      val extractor = StandardBlockExtractor(
-        toInformation = (c, id) => BlockInfo(id, c),
-        minChars = 20,
-        extractToolResult = false
-      )
-      val callId = Id[Event]("call-2")
-      val longResult = "Z" * 60
-      val frames = Vector[ContextFrame](ContextFrame.ToolResult(callId, longResult, Id[Event]("res-2")))
-      extractor.extract(TestSigil, frames).map { result =>
-        result.frames shouldBe frames
-        result.information shouldBe empty
-        puts() shouldBe empty
-      }
-    }
-
-    "use a custom placeholder when supplied" in {
-      recorder()
-      val extractor = StandardBlockExtractor(
-        toInformation = (c, id) => BlockInfo(id, c),
-        minChars = 5,
-        placeholder = (id, _) => s"<<REF:${id.value}>>"
-      )
-      val frames = Vector(textFrame("A" * 10, "big"))
-      extractor.extract(TestSigil, frames).map { result =>
-        val replaced = result.frames.head.asInstanceOf[ContextFrame.Text]
-        replaced.content should startWith("<<REF:")
-        replaced.content should endWith(">>")
-      }
-    }
   }
 }

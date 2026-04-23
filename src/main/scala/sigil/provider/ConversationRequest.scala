@@ -33,14 +33,15 @@ import sigil.tool.{Tool, ToolInput}
  *                       per invocation; never persisted.
  */
 case class ConversationRequest(conversationId: Id[Conversation],
-                                       modelId: Id[Model],
-                                       instructions: Instructions,
-                                       turnInput: TurnInput,
-                                       currentMode: Mode,
-                                       currentTopic: TopicEntry,
-                                       previousTopics: List[TopicEntry] = Nil,
-                                       generationSettings: GenerationSettings,
-                                       tools: Vector[Tool[? <: ToolInput]] = Vector.empty,
-                                       chain: List[ParticipantId] = Nil,
-                                       requestId: Id[ProviderRequest] = Id())
+                               modelId: Id[Model],
+                               instructions: Instructions,
+                               turnInput: TurnInput,
+                               currentMode: Mode,
+                               currentTopic: TopicEntry,
+                               previousTopics: List[TopicEntry] = Nil,
+                               generationSettings: GenerationSettings,
+                               tools: Vector[Tool[? <: ToolInput]] = Vector.empty,
+                               builtInTools: Set[BuiltInTool] = Set.empty,
+                               chain: List[ParticipantId] = Nil,
+                               requestId: Id[ProviderRequest] = Id())
   extends ProviderRequest

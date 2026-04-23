@@ -43,6 +43,17 @@ enum ResponseContent derives RW {
   case Link(url: URL, label: String)
 
   /**
+   * A raster / vector image to display inline. `url` is either a
+   * public URL or a `data:` URL carrying base64 bytes — both work for
+   * renderers. `altText` is a short textual description for
+   * accessibility + screen readers (and as a fallback when the
+   * image can't be rendered). Emitted by providers with native image
+   * generation (OpenAI GPT-5.4, Gemini) and by app-side tools that
+   * produce images.
+   */
+  case Image(url: URL, altText: Option[String] = None)
+
+  /**
    * Citation / source reference.
    */
   case Citation(source: String, excerpt: Option[String] = None, url: Option[URL] = None)

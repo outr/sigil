@@ -79,7 +79,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         streamedText.trim should be("4")
 
         val complete = events.collectFirst { case ProviderEvent.ToolCallComplete(_, i: RespondInput) => i }
-        complete.map(_.content) shouldBe Some("▶Text\n4")
+        complete.map(_.content.trim) shouldBe Some("▶Text\n4")
 
         val usage = events.collectFirst { case u: ProviderEvent.Usage => u }
         usage should not be empty

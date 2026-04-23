@@ -23,6 +23,11 @@ import sigil.tool.{Tool, ToolInput}
  *                           empty for a OneShot whose user prompt is the
  *                           only payload (already in messages)
  * @param tools              the tools to advertise to the model
+ * @param builtInTools       provider-managed tools the model can use
+ *                           server-side without a client round-trip
+ *                           (web search, image generation, etc.).
+ *                           Providers that don't support a given
+ *                           built-in drop it silently.
  * @param toolChoice         how aggressively to force a tool call
  * @param generationSettings sampling + limits passed through unchanged
  */
@@ -30,5 +35,6 @@ case class ProviderCall(modelId: Id[Model],
                         system: String,
                         messages: Vector[ProviderMessage],
                         tools: Vector[Tool[? <: ToolInput]],
+                        builtInTools: Set[BuiltInTool],
                         toolChoice: ToolChoice,
                         generationSettings: GenerationSettings)

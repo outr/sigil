@@ -55,7 +55,12 @@ trait Provider {
    * Final — providers implement [[httpRequestFor]] instead.
    */
   final def requestConverter(request: ProviderRequest): Task[HttpRequest] =
-    translate(request).flatMap(httpRequestFor)
+    translate(request)
+      .flatMap(httpRequestFor)
+      // Invoke the wire interceptor here too so inspect-only paths
+      // (tests, debug dumps) still produce wire logs — same coverage
+      // as the live streaming path in `call`.
+      .flatMap(sigil.wireInterceptor.before)
 
   // ---- protected: providers implement these ----
 
@@ -91,6 +96,7 @@ trait Provider {
         system = renderSystem(c, resolved),
         messages = renderFrames(c.turnInput.conversationView.frames, agentId),
         tools = c.tools,
+        builtInTools = c.builtInTools,
         toolChoice = toolChoice,
         generationSettings = c.generationSettings
       )
@@ -104,6 +110,7 @@ trait Provider {
       system = s.systemPrompt,
       messages = Vector(ProviderMessage.User(s.userPrompt)),
       tools = s.tools,
+      builtInTools = s.builtInTools,
       toolChoice = toolChoice,
       generationSettings = s.generationSettings
     )

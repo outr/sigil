@@ -207,6 +207,17 @@ trait Sigil {
    */
   def broadcaster: SignalBroadcaster
 
+  /**
+   * An [[spice.http.client.intercept.Interceptor]] chained into every
+   * provider's HTTP client — captures request / response pairs for
+   * diagnostics. The built-in
+   * [[sigil.provider.debug.JsonLinesInterceptor]] writes JSON lines
+   * to a file so the full back-and-forth can be walked post-hoc.
+   * Apps that don't want wire logging return
+   * [[spice.http.client.intercept.Interceptor.empty]] explicitly.
+   */
+  def wireInterceptor: spice.http.client.intercept.Interceptor
+
   // -- participants (registration for polymorphic RW) --
 
   /**
