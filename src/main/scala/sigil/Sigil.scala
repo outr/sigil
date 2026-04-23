@@ -575,11 +575,19 @@ trait Sigil {
 
   // -- vector-indexing internals --
 
+  /** Derive a deterministic UUID for a lightdb id. Qdrant requires
+    * point ids to be UUIDs or unsigned ints; lightdb ids are
+    * arbitrary strings. Using a name-based UUID (v3/v5-style via
+    * `UUID.nameUUIDFromBytes`) gives us a stable point id that
+    * upsert can replace deterministically. */
+  private def vectorPointId(lightdbId: String): String =
+    java.util.UUID.nameUUIDFromBytes(lightdbId.getBytes("UTF-8")).toString
+
   private final def indexSummary(s: ContextSummary): Task[Unit] =
     if (!vectorWired || s.text.isEmpty) Task.unit
     else embeddingProvider.embed(s.text).flatMap { vec =>
       vectorIndex.upsert(VectorPoint(
-        id = s._id.value,
+        id = vectorPointId(s._id.value),
         vector = vec,
         payload = Map(
           "kind" -> "summary",
@@ -595,7 +603,7 @@ trait Sigil {
     if (!vectorWired || m.fact.isEmpty) Task.unit
     else embeddingProvider.embed(m.fact).flatMap { vec =>
       vectorIndex.upsert(VectorPoint(
-        id = m._id.value,
+        id = vectorPointId(m._id.value),
         vector = vec,
         payload = Map(
           "kind" -> "memory",
@@ -615,7 +623,7 @@ trait Sigil {
     if (!vectorWired || text.isEmpty) Task.unit
     else embeddingProvider.embed(text).flatMap { vec =>
       vectorIndex.upsert(VectorPoint(
-        id = m._id.value,
+        id = vectorPointId(m._id.value),
         vector = vec,
         payload = Map(
           "kind" -> "message",

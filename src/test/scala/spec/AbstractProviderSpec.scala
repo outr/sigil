@@ -7,7 +7,7 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.{ContextFrame, Conversation, ConversationView, TurnInput}
 import sigil.db.Model
 import sigil.event.Message
-import sigil.provider.{ConversationRequest, GenerationSettings, Instructions, Mode, Provider, ProviderEvent, StopReason}
+import sigil.provider.{ConversationRequest, Effort, GenerationSettings, Instructions, Mode, Provider, ProviderEvent, StopReason}
 import sigil.tool.core.{ChangeModeTool, CoreTools, FindCapabilityInput, RespondTool}
 import sigil.tool.{Tool, ToolInput}
 import sigil.tool.model.{ChangeModeInput, RespondInput, ResponseContent}
@@ -24,7 +24,15 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
   protected def coreTools: Vector[Tool[? <: ToolInput]] = CoreTools.all
 
-  protected def request(message: String, currentMode: Mode = Mode.Conversation): Task[List[ProviderEvent]] = provider.flatMap { p =>
+  /** Override to false for providers whose wire format has no reasoning
+    * knob (llama.cpp chat-completions). `true` by default — runs the
+    * shared "thinking enabled" smoke test against the real API. */
+  protected def supportsThinking: Boolean = true
+
+  protected def request(message: String,
+                        currentMode: Mode = Mode.Conversation,
+                        generationSettings: GenerationSettings =
+                          GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0))): Task[List[ProviderEvent]] = provider.flatMap { p =>
     val conversationId = Conversation.id("test-conversation")
     val userMessage = Message(
       participantId = TestUser,
@@ -49,7 +57,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       turnInput = TurnInput(view),
       currentMode = currentMode,
       currentTopic = TestTopicEntry,
-      generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0)),
+      generationSettings = generationSettings,
       tools = coreTools,
       // Provider expects chain.last to be the actor (the agent). For
       // provider-level tests we don't have a real AgentParticipant; supply
@@ -137,6 +145,24 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         events.last shouldBe a[ProviderEvent.Done]
         events.last.asInstanceOf[ProviderEvent.Done].stopReason shouldBe StopReason.ToolCall
       }
+    if (supportsThinking) {
+      "still round-trip a tool call when thinking is enabled" in {
+        // Anthropic requires temperature=1.0 with thinking; keep the
+        // generation settings permissive for all three providers and
+        // give the model enough budget to think *and* emit a call.
+        val gen = GenerationSettings(
+          maxOutputTokens = Some(3000),
+          temperature = Some(1.0),
+          effort = Some(Effort.Low)
+        )
+        request("What is 2+2? Respond with just the number.", generationSettings = gen).map { events =>
+          val start = events.collectFirst { case s: ProviderEvent.ToolCallStart => s }
+          start.map(_.toolName) shouldBe Some(RespondTool.schema.name.value)
+          events.last shouldBe a[ProviderEvent.Done]
+          events.last.asInstanceOf[ProviderEvent.Done].stopReason shouldBe StopReason.ToolCall
+        }
+      }
+    }
   }
 
   implicit class EventsListExtras(events: List[ProviderEvent]) {
