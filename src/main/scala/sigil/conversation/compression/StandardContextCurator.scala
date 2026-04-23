@@ -3,7 +3,7 @@ package sigil.conversation.compression
 import lightdb.id.Id
 import rapid.Task
 import sigil.Sigil
-import sigil.conversation.{ContextFrame, ContextMemory, ConversationView, TurnInput}
+import sigil.conversation.{ContextFrame, ConversationView, TurnInput}
 import sigil.db.Model
 import sigil.information.InformationSummary
 import sigil.participant.ParticipantId
@@ -57,14 +57,15 @@ case class StandardContextCurator(sigil: Sigil,
     for {
       blockResult <- blockExtractor.extract(sigil, optimizedFrames)
       postBlockView = view.copy(frames = blockResult.frames)
-      memoryIds <- memoryRetriever.retrieve(sigil, postBlockView, chain)
+      memoryResult <- memoryRetriever.retrieve(sigil, postBlockView, chain)
       tentative = TurnInput(
         conversationView = postBlockView,
-        memories = memoryIds,
+        criticalMemories = memoryResult.criticalMemories,
+        memories = memoryResult.memories,
         information = blockResult.information
       )
       model <- modelFor(modelId)
-      result <- budgetResolve(model, postBlockView, blockResult.frames, tentative, modelId, chain, memoryIds, blockResult.information)
+      result <- budgetResolve(model, postBlockView, blockResult.frames, tentative, modelId, chain, memoryResult, blockResult.information)
     } yield result
   }
 
@@ -74,7 +75,7 @@ case class StandardContextCurator(sigil: Sigil,
                             tentative: TurnInput,
                             modelId: Id[Model],
                             chain: List[ParticipantId],
-                            memoryIds: Vector[Id[ContextMemory]],
+                            memoryResult: MemoryRetrievalResult,
                             information: Vector[InformationSummary]): Task[TurnInput] = {
     val cap = budget.tokensFor(model)
     val estimate = TokenEstimator.estimateFrames(frames)
@@ -86,7 +87,8 @@ case class StandardContextCurator(sigil: Sigil,
         case Some(summary) =>
           TurnInput(
             conversationView = postBlockView.copy(frames = newer),
-            memories = memoryIds,
+            criticalMemories = memoryResult.criticalMemories,
+            memories = memoryResult.memories,
             summaries = Vector(summary._id),
             information = information
           )
