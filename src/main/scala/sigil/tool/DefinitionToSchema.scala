@@ -79,6 +79,11 @@ object DefinitionToSchema {
   }
 
   private def polySchema(values: Map[String, Definition]): Json = {
+    // Empty poly — no subtypes registered. An `enum: []` or `oneOf: []`
+    // is invalid JSON Schema; stricter provider validators (notably
+    // OpenAI gpt-4o-mini) reject the whole tools array. Render as an
+    // unconstrained string so the field remains typed but unvalidated.
+    if (values.isEmpty) return obj("type" -> str("string"))
     val isSimpleEnum = values.values.forall(_.defType == DefType.Null)
     if (isSimpleEnum) {
       obj(
