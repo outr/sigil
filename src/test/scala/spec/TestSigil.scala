@@ -7,7 +7,7 @@ import org.scalactic.Prettifier.default
 import profig.Profig
 import rapid.Task
 import sigil.{Sigil, SignalBroadcaster, TurnContext}
-import sigil.conversation.{MemorySpaceId, Topic}
+import sigil.conversation.{MemorySpaceId, Topic, TopicEntry}
 import sigil.db.Model
 import sigil.event.Event
 import sigil.participant.{AgentParticipantId, ParticipantId}
@@ -166,6 +166,22 @@ object SendSlackMessageTool extends Tool[SendSlackMessageInput] {
  * can use this id without backing it with a record.
  */
 val TestTopicId: Id[Topic] = Id[Topic]("test-topic")
+
+/**
+ * Shared synthetic TopicEntry used across tests that need to seed
+ * a Conversation with a topic stack. Label + summary are generic.
+ */
+val TestTopicEntry: TopicEntry = TopicEntry(
+  id = TestTopicId,
+  label = "Test Topic",
+  summary = "A synthetic topic used in tests."
+)
+
+/**
+ * Shared single-entry topic stack for tests. Most scenarios don't
+ * care about priors; those that do build their own stack.
+ */
+val TestTopicStack: List[TopicEntry] = List(TestTopicEntry)
 
 /**
  * Stand-in user participant for tests.

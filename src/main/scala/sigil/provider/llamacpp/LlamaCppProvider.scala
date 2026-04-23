@@ -8,8 +8,9 @@ import sigil.Sigil
 import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary}
 import sigil.db.Model
 import sigil.provider.*
-import sigil.tool.{DefinitionToSchema, ToolInput, ToolSchema}
+import sigil.tool.{DefinitionToSchema, Tool, ToolInput, ToolName, ToolSchema}
 import sigil.tool.ToolInput.given
+import lightdb.id.Id
 import spice.http.{HttpMethod, HttpRequest}
 import spice.http.client.HttpClient
 import spice.http.content.StringContent
@@ -50,6 +51,90 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
           .map(lines => lines.flatMap(line => Stream.emits(parseLine(line, state))))
       }.flatMap(identity)
     )
+  }
+
+  /**
+   * One-shot consult call — bypasses the conversation-aware request
+   * pipeline. Builds a clean chat-completions request with just the
+   * supplied system + user messages and (optionally) the supplied tools.
+   * Streams the response and accumulates a single [[ConsultResult]].
+   */
+  override def consult(modelId: Id[Model],
+                       systemPrompt: String,
+                       userPrompt: String,
+                       tools: Vector[Tool[? <: ToolInput]],
+                       generationSettings: GenerationSettings): Task[ConsultResult] = {
+    val modelName = stripProviderPrefix(modelId.value)
+    val acc = new ToolCallAccumulator(tools)
+    val state = new StreamState(acc)
+    val textBuf = new StringBuilder
+    val usageRef = new java.util.concurrent.atomic.AtomicReference[TokenUsage](TokenUsage(0, 0, 0))
+
+    val toolsArr = tools.map { t =>
+      val s = t.schema
+      obj(
+        "type" -> str("function"),
+        "function" -> obj(
+          "name" -> str(s.name.value),
+          "description" -> str(renderDescription(s)),
+          "parameters" -> DefinitionToSchema(s.input)
+        )
+      )
+    }
+
+    val baseFields = Vector[(String, Json)](
+      "model" -> str(modelName),
+      "messages" -> arr(
+        obj("role" -> str("system"), "content" -> str(systemPrompt)),
+        obj("role" -> str("user"),   "content" -> str(userPrompt))
+      ),
+      "stream" -> bool(true),
+      "stream_options" -> obj("include_usage" -> bool(true)),
+      "chat_template_kwargs" -> obj("enable_thinking" -> bool(false))
+    )
+    val toolFields: Vector[(String, Json)] =
+      if (toolsArr.isEmpty) Vector.empty
+      else Vector("tools" -> arr(toolsArr*), "tool_choice" -> str("required"))
+    val gen = generationSettings
+    val genFields: Vector[(String, Json)] =
+      gen.temperature.toVector.map("temperature" -> num(_)) ++
+        gen.maxOutputTokens.toVector.map("max_tokens" -> num(_)) ++
+        gen.topP.toVector.map("top_p" -> num(_)) ++
+        (if (gen.stopSequences.nonEmpty) Vector("stop" -> arr(gen.stopSequences.map(str)*)) else Vector.empty)
+
+    val bodyStr = JsonFormatter.Compact(obj((baseFields ++ toolFields ++ genFields)*))
+    val httpRequest = HttpRequest(
+      method = HttpMethod.Post,
+      url = url.withPath("/v1/chat/completions"),
+      content = Some(StringContent(bodyStr, ContentType.`application/json`))
+    )
+
+    val eventsStream: Stream[ProviderEvent] = Stream.force(
+      HttpClient.modify(_ => httpRequest)
+        .noFailOnHttpStatus
+        .streamLines()
+        .map(lines => lines.flatMap(line => Stream.emits(parseLine(line, state))))
+    )
+    eventsStream.toList.map { events =>
+      events.foreach {
+        case ProviderEvent.ContentBlockDelta(_, text) => textBuf.append(text)
+        case ProviderEvent.TextDelta(text)            => textBuf.append(text)
+        case ProviderEvent.Usage(u)                   => usageRef.set(u)
+        case _                                        => ()
+      }
+      val toolName = events.collectFirst {
+        case s: ProviderEvent.ToolCallStart => s.toolName
+      }.getOrElse("")
+      val toolCall = events.collectFirst {
+        case ProviderEvent.ToolCallComplete(_, input) =>
+          ConsultToolCall(ToolName(toolName), input)
+      }
+      val stopReason = events.collectFirst {
+        case d: ProviderEvent.Done => d.stopReason
+      }.getOrElse(StopReason.Complete)
+      val text = if (textBuf.nonEmpty) Some(textBuf.toString) else None
+      ConsultResult(text = text, toolCall = toolCall, usage = usageRef.get(), stopReason = stopReason)
+    }
   }
 
   /**
@@ -150,7 +235,13 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
     val sb = new StringBuilder
 
     sb.append(s"Current mode: ${request.currentMode} — ${request.currentMode.description}\n")
-    sb.append(s"Current topic: \"${request.currentTopicLabel}\"\n")
+    sb.append(s"Current topic: \"${request.currentTopic.label}\" — ${request.currentTopic.summary}\n")
+    if (request.previousTopics.nonEmpty) {
+      sb.append("Previous topics in this conversation:\n")
+      request.previousTopics.foreach { t =>
+        sb.append(s"  - \"${t.label}\" — ${t.summary}\n")
+      }
+    }
 
     val instr = request.instructions.render
     if (instr.nonEmpty) sb.append("\n").append(instr).append("\n")

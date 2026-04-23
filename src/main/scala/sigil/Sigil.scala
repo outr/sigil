@@ -12,7 +12,9 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
-import sigil.conversation.{ActiveSkillSlot, ContextKey, ContextMemory, ContextSummary, Conversation, ConversationView, FrameBuilder, MemorySpaceId, ParticipantProjection, SkillSource, Topic, TurnInput}
+import sigil.conversation.{ActiveSkillSlot, ContextKey, ContextMemory, ContextSummary, Conversation, ConversationView, FrameBuilder, MemorySpaceId, ParticipantProjection, SkillSource, Topic, TopicEntry, TopicShiftResult, TurnInput}
+import sigil.tool.consult.{ConsultTool, TopicClassifierTool}
+import sigil.provider.GenerationSettings
 import sigil.db.{Model, SigilDB}
 import sigil.dispatcher.{StopFlag, TriggerFilter}
 import sigil.event.{AgentState, Event, ModeChange, Stop, TopicChange, TopicChangeKind}
@@ -467,9 +469,11 @@ trait Sigil {
 
   /** Maintain materialized projections on the [[Conversation]] record:
     *   - `currentMode` tracks the latest [[ModeChange]]
-    *   - `currentTopicId` tracks the latest [[TopicChange]] of kind
-    *     [[TopicChangeKind.Switch]] (Rename mutates the Topic record
-    *     in-place, so the conversation's pointer is unchanged).
+    *   - `topics` (the navigation stack) tracks the latest [[TopicChange]]:
+    *     - `Switch` either pushes a new entry (if the topic isn't on the
+    *       stack) or truncates the stack back to that entry (if it is —
+    *       the natural "return to prior topic" flow)
+    *     - `Rename` mutates the active entry's label + summary in place
     *
     * Fires only on the SETTLE (an Event already at `Complete`, or a
     * `Delta` that transitions its target to `Complete`), never on the
@@ -493,22 +497,141 @@ trait Sigil {
           case None       => Task.pure(None)
         })).unit
       case Some(tc: TopicChange) =>
-        tc.kind match {
-          case TopicChangeKind.Switch(_) =>
-            withDB(_.conversations.transaction(_.modify(tc.conversationId) {
-              case Some(conv) if conv.currentTopicId != tc.topicId =>
-                Task.pure(Some(conv.copy(currentTopicId = tc.topicId, modified = Timestamp(Nowish()))))
-              case Some(conv) => Task.pure(Some(conv))
-              case None       => Task.pure(None)
-            })).unit
-          case TopicChangeKind.Rename(_) =>
-            // Rename mutated the Topic record directly in the orchestrator;
-            // the conversation's currentTopicId pointer is unchanged.
-            Task.unit
-        }
+        applyTopicChangeToStack(tc)
       case _ => Task.unit
     }
   }
+
+  /** Update Conversation.topics in response to a settled TopicChange.
+    *
+    * For Switch: the change carries the post-transition topicId; we
+    * either push a fresh entry or truncate the stack back to a matching
+    * entry already present.
+    *
+    * For Rename: walk the stack and update label + summary on every
+    * entry whose id matches the renamed topic (typically just the active
+    * one). The Topic record itself is updated separately by the
+    * orchestrator before publishing.
+    */
+  private final def applyTopicChangeToStack(tc: TopicChange): Task[Unit] =
+    withDB(_.conversations.transaction(_.modify(tc.conversationId) {
+      case None => Task.pure(None)
+      case Some(conv) =>
+        tc.kind match {
+          case TopicChangeKind.Switch(_) =>
+            val existingIdx = conv.topics.indexWhere(_.id == tc.topicId)
+            val nextStack: List[TopicEntry] =
+              if (existingIdx >= 0) {
+                // Truncate back to that entry — return to prior topic.
+                conv.topics.take(existingIdx + 1)
+              } else {
+                // New topic — load the Topic record and push as a new entry.
+                // Fall back to a stub if the record can't be resolved.
+                conv.topics :+ TopicEntry(
+                  id = tc.topicId,
+                  label = tc.newLabel,
+                  summary = ""  // populated below from the Topic record
+                )
+              }
+            // If we appended a stub, fetch the Topic record to fill summary.
+            val withSummary: Task[List[TopicEntry]] =
+              if (existingIdx >= 0) Task.pure(nextStack)
+              else withDB(_.topics.transaction(_.get(tc.topicId))).map {
+                case Some(t) => nextStack.init :+ TopicEntry(t._id, t.label, t.summary)
+                case None    => nextStack
+              }
+            withSummary.map { stack =>
+              if (stack == conv.topics) Some(conv)
+              else Some(conv.copy(topics = stack, modified = Timestamp(Nowish())))
+            }
+          case TopicChangeKind.Rename(_) =>
+            // Refresh the entry whose id matches by reading the (already-renamed)
+            // Topic record. Walk the stack and replace any matches.
+            withDB(_.topics.transaction(_.get(tc.topicId))).map {
+              case None => Some(conv)
+              case Some(t) =>
+                val updatedStack = conv.topics.map { e =>
+                  if (e.id == tc.topicId) TopicEntry(t._id, t.label, t.summary) else e
+                }
+                if (updatedStack == conv.topics) Some(conv)
+                else Some(conv.copy(topics = updatedStack, modified = Timestamp(Nowish())))
+            }
+        }
+    })).unit
+
+  // -- topic classification --
+
+  /**
+   * The framework's two-step topic resolver. Given the conversation's
+   * current topic, its prior topics, and a proposed (label, summary)
+   * from a respond call, ask the model to classify the relationship via
+   * a focused [[TopicClassifierTool]] call (no conversation history,
+   * just the inputs).
+   *
+   * Returns:
+   *   - `NoChange` — same subject as Current; nothing to relabel.
+   *   - `Refine`   — same subject as Current; adopt the sharper label.
+   *   - `Return(prior)` — same subject as one of the priors; truncate
+   *     the stack back to that entry.
+   *   - `New`      — a brand new subject; push a fresh entry.
+   *
+   * If the classifier call fails (provider error, no tool call), falls
+   * back to `NoChange` — the safe default that preserves state.
+   */
+  def classifyTopicShift(modelId: Id[Model],
+                         chain: List[ParticipantId],
+                         current: TopicEntry,
+                         priors: List[TopicEntry],
+                         proposedLabel: String,
+                         proposedSummary: String,
+                         userMessage: String): Task[TopicShiftResult] = {
+    val priorsBlock =
+      if (priors.isEmpty) "  (none)"
+      else priors.map(p => s"  - \"${p.label}\" — ${p.summary}").mkString("\n")
+    val systemPrompt =
+      """You categorize how a proposed topic relates to a conversation's existing topics.
+        |Pick exactly one value from the enum:
+        |  - "NoChange" — proposed is the same subject as Current; nothing new to label.
+        |  - "Refine"   — same subject as Current, but proposed is a sharper / more specific label.
+        |  - <prior label> — same subject as one of the prior topics. The user is returning.
+        |  - "New"      — genuinely different from Current and all priors.""".stripMargin
+    val userPrompt =
+      s"""User just said: ${quote(userMessage)}
+         |
+         |Current topic:
+         |  - "${current.label}" — ${current.summary}
+         |
+         |Previous topics:
+         |$priorsBlock
+         |
+         |Proposed topic for this turn:
+         |  - "$proposedLabel" — $proposedSummary
+         |
+         |Pick exactly one value from the enum.""".stripMargin
+    val tool = new TopicClassifierTool(priors.map(_.label))
+    ConsultTool.invoke(
+      sigil = this,
+      modelId = modelId,
+      chain = chain,
+      systemPrompt = systemPrompt,
+      userPrompt = userPrompt,
+      tool = tool,
+      generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
+    ).map {
+      case None => TopicShiftResult.NoChange
+      case Some(input) => input.kind match {
+        case "NoChange" => TopicShiftResult.NoChange
+        case "Refine"   => TopicShiftResult.Refine
+        case "New"      => TopicShiftResult.New
+        case other      =>
+          priors.find(_.label == other)
+            .map(TopicShiftResult.Return(_))
+            .getOrElse(TopicShiftResult.NoChange)
+      }
+    }
+  }
+
+  private def quote(s: String): String = "\"" + s.replace("\"", "\\\"") + "\""
 
   // -- conversation helpers --
 
@@ -525,16 +648,18 @@ trait Sigil {
    */
   def newConversation(createdBy: ParticipantId,
                       label: String = Topic.DefaultLabel,
+                      summary: String = Topic.DefaultSummary,
                       participants: List[Participant] = Nil,
                       currentMode: Mode = Mode.Conversation,
                       conversationId: Id[Conversation] = Conversation.id()): Task[Conversation] = {
     val topic = Topic(
       conversationId = conversationId,
       label = label,
+      summary = summary,
       createdBy = createdBy
     )
     val conversation = Conversation(
-      currentTopicId = topic._id,
+      topics = List(TopicEntry(topic._id, topic.label, topic.summary)),
       participants = participants,
       currentMode = currentMode,
       _id = conversationId

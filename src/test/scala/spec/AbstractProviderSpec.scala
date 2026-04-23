@@ -48,7 +48,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       instructions = Instructions(),
       turnInput = TurnInput(view),
       currentMode = currentMode,
-      currentTopicId = TestTopicId,
+      currentTopic = TestTopicEntry,
       generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0)),
       tools = coreTools,
       // Provider expects chain.last to be the actor (the agent). For

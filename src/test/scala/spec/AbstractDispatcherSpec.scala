@@ -79,7 +79,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     * dispatcher's fan-out finds the agent on the persisted record. */
   protected def upsertConversationWithAgent(convId: Id[Conversation]): Task[Unit] =
     TestSigil.withDB(_.conversations.transaction(_.upsert(
-      Conversation(currentTopicId = TestTopicId, _id = convId, participants = List(makeAgent()))
+      Conversation(topics = TestTopicStack, _id = convId, participants = List(makeAgent()))
     ))).unit
 
   /** Same as [[upsertConversationWithAgent]] but with a custom tool roster
@@ -88,7 +88,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     * test exercises `find_capability` → `suggestedTools` → next-turn call. */
   protected def upsertConversationWithAgent(convId: Id[Conversation], tools: List[ToolName]): Task[Unit] =
     TestSigil.withDB(_.conversations.transaction(_.upsert(
-      Conversation(currentTopicId = TestTopicId, _id = convId, participants = List(
+      Conversation(topics = TestTopicStack, _id = convId, participants = List(
         DefaultAgentParticipant(
           id = TestAgent,
           modelId = modelId,
@@ -101,7 +101,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
   protected def upsertEmptyConversation(convId: Id[Conversation]): Task[Unit] =
     TestSigil.withDB(_.conversations.transaction(_.upsert(
-      Conversation(currentTopicId = TestTopicId, _id = convId)
+      Conversation(topics = TestTopicStack, _id = convId)
     ))).unit
 
   getClass.getSimpleName should {

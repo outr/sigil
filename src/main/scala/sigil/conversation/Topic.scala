@@ -12,22 +12,31 @@ import sigil.participant.ParticipantId
  * belongs to exactly one Topic (via its `topicId`), which lets search,
  * promotion, and future UI threading carve the event log by topic.
  *
- * Topics are flat siblings inside a conversation — no parent pointers,
- * no tree structure. Each Conversation carries a `currentTopicId`
- * identifying the active thread; new events land on that topic until the
- * agent signals a shift via `topicConfidence` on a `respond` call.
+ * Topics live as flat siblings inside a conversation. The conversation
+ * carries a [[Conversation.topics]] stack of [[TopicEntry]]s — the last
+ * entry is the active thread. New events land on the active topic until
+ * the agent declares a shift via the `topicLabel` / `topicSummary` fields
+ * on a `respond` call; the orchestrator's two-step classifier resolves
+ * whether that shift is a [[TopicChangeKind.Switch]] (push or truncate
+ * the stack) or a [[TopicChangeKind.Rename]] (mutate this Topic's label
+ * in place).
  *
  * Context isn't filtered by topic at render time — the provider sees the
- * whole conversation. Topics serve as a search and promotion key, and as
- * the "current thread label" shown in the system prompt. When sub-topic
- * promotion is added, events scoped to a single topic can be lifted
- * wholesale into a new conversation.
+ * whole conversation. Topics serve as a search and promotion key, and
+ * supply the "Current topic" + "Previous topics" lines in the system
+ * prompt with their `label` and `summary` so the classifier can match
+ * proposed labels against semantic context, not just text.
  *
- * `labelLocked` prevents the LLM's medium-confidence rename path from
- * overwriting a label a user has pinned.
+ * `summary` is a 1-2 sentence description of what's been discussed under
+ * this topic. Used both as UI display and as context the classifier sees
+ * when deciding whether a new label is the same subject as a prior.
+ *
+ * `labelLocked` prevents the classifier's Refine path from overwriting a
+ * label a user has pinned.
  */
 case class Topic(conversationId: Id[Conversation],
                  label: String,
+                 summary: String,
                  labelLocked: Boolean = false,
                  createdBy: ParticipantId,
                  created: Timestamp = Timestamp(),
@@ -44,6 +53,12 @@ object Topic extends RecordDocumentModel[Topic] with JsonConversion[Topic] {
    * label is a clear "pick one" signal when shown in the system prompt).
    */
   val DefaultLabel: String = "New Conversation"
+
+  /**
+   * Summary used at bootstrap, before any actual subject has emerged.
+   * Replaced once a real exchange happens.
+   */
+  val DefaultSummary: String = "(no subject established yet)"
 
   val conversationId: I[Id[Conversation]] = field.index(_.conversationId)
 
