@@ -16,10 +16,11 @@ import sigil.tool.{Tool, ToolInput}
  * supplied) `tool_choice = "required"`.
  */
 case class OneShotRequest(modelId: Id[Model],
-                                  systemPrompt: String,
-                                  userPrompt: String,
-                                  generationSettings: GenerationSettings = GenerationSettings(),
-                                  tools: Vector[Tool[? <: ToolInput]] = Vector.empty,
-                                  chain: List[ParticipantId] = Nil,
-                                  requestId: Id[ProviderRequest] = Id())
+                          systemPrompt: String,
+                          userPrompt: String,
+                          generationSettings: GenerationSettings = GenerationSettings(),
+                          tools: Vector[Tool[? <: ToolInput]] = Vector.empty,
+                          builtInTools: Set[BuiltInTool] = Set.empty,
+                          chain: List[ParticipantId] = Nil,
+                          requestId: Id[ProviderRequest] = Id())
   extends ProviderRequest

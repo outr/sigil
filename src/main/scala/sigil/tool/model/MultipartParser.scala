@@ -2,6 +2,7 @@ package sigil.tool.model
 
 import fabric.io.JsonParser
 import fabric.rw.*
+import spice.net.URL
 
 import scala.util.Try
 import scala.util.matching.Regex
@@ -97,8 +98,14 @@ object MultipartParser {
       case "Field" => parseField(body).getOrElse(ResponseContent.Text(body))
       case "Divider" => ResponseContent.Divider
       case "Options" => parseOptions(body).getOrElse(ResponseContent.Text(body))
+      case "Image" => parseImage(body, arg).getOrElse(ResponseContent.Text(body))
       case _ => ResponseContent.Text(body)
     }
+
+  /** Parse a `▶Image` block. Body is an image URL (public or `data:`);
+    * the optional header arg carries altText. */
+  private def parseImage(body: String, arg: Option[String]): Option[ResponseContent.Image] =
+    URL.get(body.trim).toOption.map(url => ResponseContent.Image(url, arg))
 
   private def parseOptions(body: String): Option[ResponseContent.Options] =
     Try(JsonParser(body).as[OptionsPayload]).toOption.map { p =>

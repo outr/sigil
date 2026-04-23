@@ -18,8 +18,16 @@ object ProviderMessage {
   case class System(content: String) extends ProviderMessage
 
   /** A message from the user (or any non-acting participant). Renders
-    * as `role: "user"`. */
-  case class User(content: String) extends ProviderMessage
+    * as `role: "user"`. Content is a vector of blocks so text and
+    * images can interleave for multimodal providers — providers that
+    * don't support images drop them. Most callers construct the
+    * text-only case via [[User.apply(text: String)]]. */
+  case class User(content: Vector[MessageContent]) extends ProviderMessage
+
+  object User {
+    /** Shortcut for the common single-text-block case. */
+    def apply(text: String): User = User(Vector(MessageContent.Text(text)))
+  }
 
   /** A message from the acting agent. May carry text content, tool
     * calls, or both. Renders as `role: "assistant"`. */
