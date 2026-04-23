@@ -8,10 +8,9 @@ import sigil.conversation.{ConversationView, Conversation, Topic, TopicEntry, To
 import sigil.db.Model
 import sigil.event.{Event, Message, TopicChange, TopicChangeKind}
 import sigil.orchestrator.Orchestrator
-import sigil.provider.{CallId, ConsultResult, ConsultToolCall, GenerationSettings, Instructions, Mode, Provider, ProviderEvent, ProviderRequest, ProviderType, StopReason, TokenUsage}
-import sigil.signal.{Signal, StateDelta}
+import sigil.provider.{CallId, ConversationRequest, GenerationSettings, Instructions, Mode, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason}
+import sigil.signal.Signal
 import sigil.tool.core.RespondTool
-import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tool.consult.TopicClassifierInput
 import sigil.tool.model.RespondInput
 import spice.http.HttpRequest
@@ -35,44 +34,44 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
   private val modelId: Id[Model] = Model.id("test", "model")
 
   /**
-   * Scripted primary provider — emits the ToolCallStart / ContentBlock /
-   * ToolCallComplete sequence for a single `respond` call carrying the
-   * supplied input. The classifier-call path is handled separately by
-   * [[StubConsult]].
+   * Scripted provider — handles both call shapes via tool inspection on
+   * the uniform [[ProviderCall]]:
+   *
+   *   - If the call's tool roster contains `classify_topic_shift`, this
+   *     is the framework's classifier path. Emit a scripted tool call
+   *     carrying [[TopicClassifierInput]] for the configured kind, or an
+   *     empty stream when `classifierKind` is `None` (simulates a
+   *     provider failure / model refusal).
+   *   - Otherwise this is a primary respond turn. Emit a scripted
+   *     `respond` tool call carrying the supplied [[RespondInput]].
    */
   private class StubProvider(input: RespondInput, classifierKind: Option[String]) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
-    override def requestConverter(request: ProviderRequest): Task[HttpRequest] =
+    override protected def sigil: _root_.sigil.Sigil = TestSigil
+    override protected def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
       Task.error(new UnsupportedOperationException("StubProvider: no wire rendering"))
-    override def apply(request: ProviderRequest): Stream[ProviderEvent] = {
-      val callId = CallId("stub-call")
-      Stream.emits(List(
-        ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-        ProviderEvent.ContentBlockStart(callId, "Text", None),
-        ProviderEvent.ContentBlockDelta(callId, "scripted content"),
-        ProviderEvent.ToolCallComplete(callId, input),
-        ProviderEvent.Done(StopReason.ToolCall)
-      ))
-    }
-    /** Stub consult call — returns the scripted classifier kind. */
-    override def consult(modelId: Id[Model],
-                         systemPrompt: String,
-                         userPrompt: String,
-                         tools: Vector[Tool[? <: ToolInput]],
-                         generationSettings: GenerationSettings): Task[ConsultResult] = Task {
-      classifierKind match {
+    override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
+      val isClassifier = input.tools.exists(_.schema.name.value == "classify_topic_shift")
+      if (isClassifier) classifierKind match {
         case Some(kind) =>
-          val toolName = tools.headOption.map(_.schema.name).getOrElse(ToolName("classify_topic_shift"))
-          ConsultResult(
-            text = None,
-            toolCall = Some(ConsultToolCall(toolName, TopicClassifierInput(kind))),
-            usage = TokenUsage(0, 0, 0),
-            stopReason = StopReason.ToolCall
-          )
+          val callId = CallId("stub-classify")
+          Stream.emits(List(
+            ProviderEvent.ToolCallStart(callId, "classify_topic_shift"),
+            ProviderEvent.ToolCallComplete(callId, TopicClassifierInput(kind)),
+            ProviderEvent.Done(StopReason.ToolCall)
+          ))
         case None =>
-          // No classifier expected — return empty
-          ConsultResult(None, None, TokenUsage(0, 0, 0), StopReason.Complete)
+          Stream.emits(List(ProviderEvent.Done(StopReason.Complete)))
+      } else {
+        val callId = CallId("stub-call")
+        Stream.emits(List(
+          ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
+          ProviderEvent.ContentBlockStart(callId, "Text", None),
+          ProviderEvent.ContentBlockDelta(callId, "scripted content"),
+          ProviderEvent.ToolCallComplete(callId, this.input),
+          ProviderEvent.Done(StopReason.ToolCall)
+        ))
       }
     }
   }
@@ -100,7 +99,7 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     val stubProvider = new StubProvider(respondInput, classifierKind)
     // Register stub provider so Sigil.providerFor returns it for classifier calls.
     TestSigil.setProvider(Task.pure(stubProvider))
-    val request = ProviderRequest(
+    val request = ConversationRequest(
       conversationId = convId,
       modelId = modelId,
       instructions = Instructions(),

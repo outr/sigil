@@ -6,7 +6,7 @@ import sigil.TurnContext
 import sigil.db.Model
 import sigil.event.{Event, Message}
 import sigil.orchestrator.Orchestrator
-import sigil.provider.{GenerationSettings, Instructions, Provider, ProviderRequest}
+import sigil.provider.{ConversationRequest, GenerationSettings, Instructions, Provider}
 import sigil.signal.{AgentActivity, AgentStateDelta, Signal}
 import sigil.tool.{Tool, ToolInput, ToolName}
 
@@ -110,7 +110,7 @@ trait AgentParticipant extends Participant {
       } yield (p, t)
 
     Stream.force(resolved.map { case (provider, tools) =>
-      val request = ProviderRequest(
+      val request = ConversationRequest(
         conversationId = context.conversation.id,
         modelId = modelId,
         instructions = instructions,

@@ -1,0 +1,129 @@
+package spec
+
+import lightdb.id.Id
+import org.scalatest.matchers.should.Matchers
+import org.scalatest.wordspec.AsyncWordSpec
+import rapid.{AsyncTaskSpec, Task}
+import lightdb.time.Timestamp
+import sigil.Sigil
+import sigil.conversation.{ContextFrame, ContextSummary, Conversation, ConversationView}
+import sigil.conversation.compression.{ContextCompressor, Fixed, StandardContextCurator, StandardContextOptimizer}
+import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
+import sigil.event.Event
+import sigil.participant.ParticipantId
+
+/**
+ * Covers the curator's budget-driven split/summarize flow with a stub
+ * compressor — no LLM, no DB roundtrip for the compression tool. The
+ * ContextSummary returned is persisted via TestSigil so the full
+ * roundtrip (including vector wiring being a no-op in TestSigil) is
+ * exercised.
+ */
+class StandardContextCuratorSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
+  TestSigil.initFor(getClass.getSimpleName)
+
+  private val convId = Conversation.id(s"curator-${rapid.Unique()}")
+  private val modelId: Id[Model] = Model.id("test", "model")
+
+  // Seed the target Model — the curator always loads it before calling
+  // the budget. Values are synthetic; only `contextLength` matters for
+  // `Percentage`, and `Fixed` ignores the record entirely.
+  TestSigil.withDB(_.model.transaction(_.upsert(Model(
+    canonicalSlug = "test/model",
+    huggingFaceId = "",
+    name = "Test Model",
+    description = "",
+    contextLength = 1000L,
+    architecture = ModelArchitecture(
+      modality = "text->text",
+      inputModalities = List("text"),
+      outputModalities = List("text"),
+      tokenizer = "None",
+      instructType = None
+    ),
+    pricing = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
+    topProvider = ModelTopProvider(contextLength = Some(1000L), maxCompletionTokens = None, isModerated = false),
+    perRequestLimits = None,
+    supportedParameters = Set.empty,
+    knowledgeCutoff = None,
+    expirationDate = None,
+    links = ModelLinks(details = ""),
+    created = Timestamp(),
+    _id = modelId
+  )))).sync()
+
+  private def textFrame(s: String, id: String): ContextFrame.Text =
+    ContextFrame.Text(s, TestUser, Id[Event](id))
+
+  private def viewWith(frames: Vector[ContextFrame]): ConversationView =
+    ConversationView(conversationId = convId, frames = frames, _id = ConversationView.idFor(convId))
+
+  private class RecordingCompressor(result: Option[String]) extends ContextCompressor {
+    @volatile var called: Int = 0
+    @volatile var compressedFrames: Vector[ContextFrame] = Vector.empty
+    override def compress(sigil: Sigil,
+                          modelId: Id[Model],
+                          chain: List[ParticipantId],
+                          frames: Vector[ContextFrame],
+                          conversationId: Id[Conversation]): Task[Option[ContextSummary]] = Task {
+      called += 1
+      compressedFrames = frames
+      result.map(text => ContextSummary(text = text, conversationId = conversationId, tokenEstimate = 5))
+    }
+  }
+
+  "StandardContextCurator" should {
+    "be a no-op when frames fit under the budget" in {
+      val compressor = new RecordingCompressor(None)
+      val curator = StandardContextCurator(
+        sigil = TestSigil,
+        compressor = compressor,
+        budget = Fixed(10_000),
+        optimizer = new StandardContextOptimizer
+      )
+      val frames = (0 until 20).toVector.map(i => textFrame(s"line-$i", s"ev-$i"))
+      curator.curate(viewWith(frames), modelId, chain = Nil).map { out =>
+        out.conversationView.frames shouldBe frames
+        out.summaries shouldBe empty
+        compressor.called shouldBe 0
+      }
+    }
+
+    "invoke the compressor and append a summary id when frames exceed the budget" in {
+      val compressor = new RecordingCompressor(Some("compressed narrative"))
+      val curator = StandardContextCurator(
+        sigil = TestSigil,
+        compressor = compressor,
+        budget = Fixed(1),
+        optimizer = new StandardContextOptimizer
+      )
+      // Make each frame have enough chars that TokenEstimator exceeds the tiny budget.
+      val frames = (0 until 20).toVector.map(i =>
+        textFrame(s"line $i — a fairly verbose sentence that eats up the token budget", s"ev-$i"))
+      curator.curate(viewWith(frames), modelId, chain = Nil).map { out =>
+        compressor.called shouldBe 1
+        out.summaries should have size 1
+        // The newer half is retained; the older half went to the compressor.
+        out.conversationView.frames.size should be < frames.size
+        compressor.compressedFrames.size should be > 0
+      }
+    }
+
+    "fall through with the optimized view when the compressor returns None" in {
+      val compressor = new RecordingCompressor(None)
+      val curator = StandardContextCurator(
+        sigil = TestSigil,
+        compressor = compressor,
+        budget = Fixed(1),
+        optimizer = new StandardContextOptimizer
+      )
+      val frames = (0 until 20).toVector.map(i =>
+        textFrame(s"second-pass line $i — verbose content exceeding the budget", s"ev2-$i"))
+      curator.curate(viewWith(frames), modelId, chain = Nil).map { out =>
+        compressor.called shouldBe 1
+        out.summaries shouldBe empty
+        out.conversationView.frames shouldBe frames
+      }
+    }
+  }
+}

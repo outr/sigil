@@ -13,18 +13,21 @@ import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
 import sigil.conversation.{ActiveSkillSlot, ContextKey, ContextMemory, ContextSummary, Conversation, ConversationView, FrameBuilder, MemorySpaceId, ParticipantProjection, SkillSource, Topic, TopicEntry, TopicShiftResult, TurnInput}
+import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
 import sigil.tool.consult.{ConsultTool, TopicClassifierTool}
 import sigil.provider.GenerationSettings
 import sigil.db.{Model, SigilDB}
 import sigil.dispatcher.{StopFlag, TriggerFilter}
-import sigil.event.{AgentState, Event, ModeChange, Stop, TopicChange, TopicChangeKind}
+import sigil.event.{AgentState, Event, Message, ModeChange, Stop, TopicChange, TopicChangeKind}
 import sigil.provider.Mode
 import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
 import sigil.provider.Provider
 import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, EventState, Signal}
 import sigil.tool.core.CoreTools
+import sigil.tool.model.ResponseContent
 import sigil.tool.{ToolFinder, ToolInput}
+import sigil.vector.{NoOpVectorIndex, VectorIndex, VectorPoint, VectorSearchResult}
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
@@ -71,16 +74,26 @@ trait Sigil {
   // -- context curation --
 
   /**
-   * Per-turn curator: given the current [[ConversationView]], produce the
-   * [[TurnInput]] the provider will render. Policy lives here — pick which
+   * Per-turn curator: given the current [[ConversationView]] plus the
+   * target model and participant chain, produce the [[TurnInput]] the
+   * provider will render. Policy lives here — pick which
    * memories/summaries/information to surface, apply app-specific
-   * overlays, add extra context, etc.
+   * overlays, add extra context, run budget-based compression, etc.
+   *
+   * `modelId` and `chain` are forwarded so implementations that use
+   * [[sigil.conversation.compression.StandardContextCurator]] (or
+   * anything else LLM-driven) can invoke
+   * [[sigil.tool.consult.ConsultTool.invoke]] with the same provider
+   * credentials and chain the turn itself runs under.
    *
    * Apps that need nothing beyond the raw view return
-   * `Task.pure(TurnInput(view))`. The default implementation does exactly
-   * that so implementors can opt in incrementally.
+   * `Task.pure(TurnInput(view))`. The default implementation does
+   * exactly that so implementors can opt in incrementally.
    */
-  def curate(view: ConversationView): Task[TurnInput] = Task.pure(TurnInput(view))
+  def curate(view: ConversationView,
+             modelId: Id[Model],
+             chain: List[ParticipantId]): Task[TurnInput] =
+    Task.pure(TurnInput(view))
 
   // -- information lookup --
 
@@ -133,6 +146,32 @@ trait Sigil {
         .filter(m => spaces.map(s => m.spaceId === s).reduce(_ || _))
         .toList
     })
+
+  // -- embeddings & vector search --
+
+  /**
+   * The [[EmbeddingProvider]] used to vectorize persisted text for
+   * semantic retrieval. Default [[NoOpEmbeddingProvider]] signals "no
+   * embeddings configured" — Sigil skips auto-indexing and semantic
+   * search APIs fall back to Lucene full-text. Apps wire a concrete
+   * provider (e.g. [[sigil.embedding.OpenAICompatibleEmbeddingProvider]])
+   * to opt in. Must be paired with a non-NoOp [[vectorIndex]].
+   */
+  def embeddingProvider: EmbeddingProvider = NoOpEmbeddingProvider
+
+  /**
+   * Backing vector store for semantic search. Default
+   * [[NoOpVectorIndex]] — upserts are dropped, searches return empty.
+   * Apps typically wire [[sigil.vector.QdrantVectorIndex]] in production
+   * or [[sigil.vector.InMemoryVectorIndex]] in tests.
+   */
+  def vectorIndex: VectorIndex = NoOpVectorIndex
+
+  /** `true` when both [[embeddingProvider]] and [[vectorIndex]] are
+    * non-NoOp — the flag the framework checks before auto-embedding on
+    * persist or attempting vector-backed search. */
+  protected final def vectorWired: Boolean =
+    embeddingProvider.dimensions > 0 && (vectorIndex ne NoOpVectorIndex)
 
   // -- broadcasting --
 
@@ -196,6 +235,7 @@ trait Sigil {
       _ <- updateConversationProjection(signal)
       _ <- updateView(signal)
       _ <- maybeApplyModeSkill(signal)
+      _ <- maybeIndexSettledMessage(signal)
       _ <- applyStop(signal)
       _ <- broadcaster.handle(signal).handleError(logBroadcastError(signal, _))
       _ <- signal match {
@@ -203,6 +243,22 @@ trait Sigil {
              case _: sigil.signal.Delta => Task.unit
            }
     } yield ()
+
+  /** When a [[Message]] settles `Complete`, vectorize and upsert its
+    * text into [[vectorIndex]] so the search tool can retrieve it.
+    * No-op when vector search isn't wired. */
+  private final def maybeIndexSettledMessage(signal: Signal): Task[Unit] = {
+    if (!vectorWired) Task.unit
+    else signal match {
+      case m: Message if m.state == EventState.Complete => indexMessageEvent(m)
+      case d: sigil.signal.Delta =>
+        withDB(_.events.transaction(_.get(d.target.asInstanceOf[Id[Event]]))).flatMap {
+          case Some(m: Message) if m.state == EventState.Complete => indexMessageEvent(m)
+          case _ => Task.unit
+        }
+      case _ => Task.unit
+    }
+  }
 
   // -- stop-flag registry --
 
@@ -453,9 +509,24 @@ trait Sigil {
 
   /** Persist a new [[ContextSummary]] and return the stored record. The
     * caller (curator or app-specific summarizer) owns the generation
-    * policy; this helper just writes. */
+    * policy; this helper just writes.
+    *
+    * When vector search is wired ([[vectorWired]]), the summary's text
+    * is embedded and upserted into [[vectorIndex]] with payload
+    * `kind=summary` so `searchConversationEvents` can surface it. */
   def persistSummary(summary: ContextSummary): Task[ContextSummary] =
-    withDB(_.summaries.transaction(_.upsert(summary)))
+    withDB(_.summaries.transaction(_.upsert(summary))).flatMap { stored =>
+      indexSummary(stored).map(_ => stored)
+    }
+
+  /** Persist a new [[ContextMemory]] and return the stored record.
+    * When vector search is wired, auto-embeds `memory.fact` and
+    * upserts into [[vectorIndex]] with payload
+    * `kind=memory, spaceId=…`. */
+  def persistMemory(memory: ContextMemory): Task[ContextMemory] =
+    withDB(_.memories.transaction(_.upsert(memory))).flatMap { stored =>
+      indexMemory(stored).map(_ => stored)
+    }
 
   /** Load all summaries for a conversation, oldest-first. */
   def summariesFor(conversationId: Id[Conversation]): Task[List[ContextSummary]] =
@@ -466,6 +537,140 @@ trait Sigil {
         .toList
         .map(_.sortBy(_.created.value))
     })
+
+  // -- vector-indexing internals --
+
+  private final def indexSummary(s: ContextSummary): Task[Unit] =
+    if (!vectorWired || s.text.isEmpty) Task.unit
+    else embeddingProvider.embed(s.text).flatMap { vec =>
+      vectorIndex.upsert(VectorPoint(
+        id = s._id.value,
+        vector = vec,
+        payload = Map(
+          "kind" -> "summary",
+          "conversationId" -> s.conversationId.value,
+          "summaryId" -> s._id.value
+        )
+      ))
+    }.handleError { e =>
+      Task(scribe.warn(s"Vector index failed for summary ${s._id.value}: ${e.getMessage}"))
+    }
+
+  private final def indexMemory(m: ContextMemory): Task[Unit] =
+    if (!vectorWired || m.fact.isEmpty) Task.unit
+    else embeddingProvider.embed(m.fact).flatMap { vec =>
+      vectorIndex.upsert(VectorPoint(
+        id = m._id.value,
+        vector = vec,
+        payload = Map(
+          "kind" -> "memory",
+          "memoryId" -> m._id.value,
+          "spaceId" -> m.spaceId.value
+        )
+      ))
+    }.handleError { e =>
+      Task(scribe.warn(s"Vector index failed for memory ${m._id.value}: ${e.getMessage}"))
+    }
+
+  /** Index a settled [[Message]]'s text content so `searchConversationEvents`
+    * can surface it by semantic similarity. Skipped when vector search
+    * isn't wired or the message carries no text. */
+  private final def indexMessageEvent(m: Message): Task[Unit] = {
+    val text = m.content.collect { case ResponseContent.Text(t) => t }.mkString("\n").trim
+    if (!vectorWired || text.isEmpty) Task.unit
+    else embeddingProvider.embed(text).flatMap { vec =>
+      vectorIndex.upsert(VectorPoint(
+        id = m._id.value,
+        vector = vec,
+        payload = Map(
+          "kind" -> "message",
+          "conversationId" -> m.conversationId.value,
+          "topicId" -> m.topicId.value,
+          "eventId" -> m._id.value,
+          "participantId" -> m.participantId.value
+        )
+      ))
+    }.handleError { e =>
+      Task(scribe.warn(s"Vector index failed for message ${m._id.value}: ${e.getMessage}"))
+    }
+  }
+
+  // -- search APIs --
+
+  /**
+   * Semantic search across persisted [[ContextMemory]] records,
+   * restricted to the given spaces. When vector search is wired, embed
+   * the query, hit the vector index with a `kind=memory` filter, then
+   * hydrate ids via [[SigilDB.memories]]. When not wired, fall back to
+   * the existing space-scoped listing (relevance-unordered — callers
+   * that care should override this method).
+   */
+  def searchMemories(query: String,
+                     spaces: Set[MemorySpaceId],
+                     limit: Int = 10): Task[List[ContextMemory]] =
+    if (!vectorWired) findMemories(spaces).map(_.take(limit))
+    else embeddingProvider.embed(query).flatMap { vec =>
+      vectorIndex.search(vec, limit = limit, filter = Map("kind" -> "memory")).flatMap { hits =>
+        val ids = hits.flatMap(_.payload.get("memoryId")).map(Id[ContextMemory](_))
+        withDB { db =>
+          db.memories.transaction { tx =>
+            Task.sequence(ids.map(id => tx.get(id))).map { loaded =>
+              val filtered = loaded.flatten.filter(m => spaces.isEmpty || spaces.contains(m.spaceId))
+              filtered
+            }
+          }
+        }
+      }
+    }
+
+  /**
+   * Semantic (or Lucene-fallback) search across persisted events in a
+   * conversation. Used by the `search_conversation` tool and by app
+   * UIs. `topicId` restricts to a single topic when supplied.
+   */
+  def searchConversationEvents(conversationId: Id[Conversation],
+                               query: String,
+                               topicId: Option[Id[Topic]] = None,
+                               limit: Int = 10): Task[List[Event]] =
+    if (!vectorWired) searchEventsLucene(conversationId, query, topicId, limit)
+    else embeddingProvider.embed(query).flatMap { vec =>
+      val baseFilter = Map("kind" -> "message", "conversationId" -> conversationId.value)
+      val filter = topicId.map(t => baseFilter + ("topicId" -> t.value)).getOrElse(baseFilter)
+      vectorIndex.search(vec, limit = limit, filter = filter).flatMap { hits =>
+        val ids = hits.flatMap(_.payload.get("eventId")).map(Id[Event](_))
+        withDB { db =>
+          db.events.transaction { tx =>
+            Task.sequence(ids.map(id => tx.get(id))).map(_.flatten)
+          }
+        }
+      }
+    }
+
+  /** Fallback substring search over conversation events when vector
+    * search isn't wired. In-memory scan — fine for the default fallback
+    * path; apps that need relevance ranking or large corpora should
+    * wire a vector index. */
+  private final def searchEventsLucene(conversationId: Id[Conversation],
+                                       query: String,
+                                       topicId: Option[Id[Topic]],
+                                       limit: Int): Task[List[Event]] =
+    withDB(_.events.transaction(_.list)).map { all =>
+      val needle = query.toLowerCase
+      all.filter { e =>
+        e.conversationId == conversationId &&
+          topicId.forall(e.topicId == _) &&
+          eventSearchText(e).toLowerCase.contains(needle)
+      }.take(limit)
+    }
+
+  /** Best-effort text representation of an event for Lucene-fallback
+    * substring search. Apps that add custom event subtypes override
+    * this hook to contribute their own searchable text. */
+  protected def eventSearchText(event: Event): String = event match {
+    case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString("\n")
+    case tc: TopicChange => s"${tc.newLabel}"
+    case other => other.toString
+  }
 
   /** Maintain materialized projections on the [[Conversation]] record:
     *   - `currentMode` tracks the latest [[ModeChange]]
@@ -889,7 +1094,6 @@ trait Sigil {
                                  claimedId: Id[Event]): Task[(TurnContext, Stream[Event])] =
     for {
       view <- viewFor(conv._id)
-      input <- curate(view)
       triggerEvents <- withDB(_.events.transaction(_.list)).map { all =>
         all.view
           .filter(e => e.conversationId == conv._id
@@ -897,9 +1101,10 @@ trait Sigil {
                     && TriggerFilter.isTriggerFor(agent, e))
           .toList
       }
+      chain = buildChain(triggerEvents, agent)
+      input <- curate(view, agent.modelId, chain)
     } yield {
       val triggers: Stream[Event] = Stream.emits(triggerEvents)
-      val chain = buildChain(triggerEvents, agent)
       val ctx = TurnContext(
         sigil = this,
         chain = chain,
@@ -957,6 +1162,8 @@ trait Sigil {
       }
       db = SigilDB(directory, collectionStore)
       _ <- db.init
+      _ <- if (vectorWired) vectorIndex.ensureCollection(embeddingProvider.dimensions)
+           else Task.unit
     } yield SigilInstance(
       config = config,
       db = db

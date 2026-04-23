@@ -7,7 +7,7 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.{ContextFrame, Conversation, ConversationView, TurnInput}
 import sigil.db.Model
 import sigil.event.Message
-import sigil.provider.{GenerationSettings, Instructions, Mode, Provider, ProviderEvent, ProviderRequest, StopReason}
+import sigil.provider.{ConversationRequest, GenerationSettings, Instructions, Mode, Provider, ProviderEvent, StopReason}
 import sigil.tool.core.{ChangeModeTool, CoreTools, FindCapabilityInput, RespondTool}
 import sigil.tool.{Tool, ToolInput}
 import sigil.tool.model.{ChangeModeInput, RespondInput, ResponseContent}
@@ -42,7 +42,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       )),
       _id = ConversationView.idFor(conversationId)
     )
-    val request = ProviderRequest(
+    val request = ConversationRequest(
       conversationId = conversationId,
       modelId = modelId,
       instructions = Instructions(),
