@@ -32,6 +32,7 @@ object MultipartParser {
   private val Header: Regex = """^▶([A-Za-z][A-Za-z0-9]*)(?:\s+(\S+))?$""".r
 
   def parse(content: String): Vector[ResponseContent] = {
+    val normalized = normalizeEscapes(content)
     val blocks = Vector.newBuilder[ResponseContent]
     var current: Option[(String, Option[String])] = None
     val buf = new StringBuilder
@@ -42,7 +43,7 @@ object MultipartParser {
       buf.clear()
     }
 
-    content.linesIterator.foreach {
+    normalized.linesIterator.foreach {
       case Header(typeName, arg) =>
         flush()
         current = Some((typeName, Option(arg)))
@@ -54,6 +55,37 @@ object MultipartParser {
     }
     flush()
     blocks.result()
+  }
+
+  /**
+   * Treat literal `\n` / `\r` / `\t` / `\\` byte pairs as their resolved
+   * characters. Some llama.cpp server builds (GPU-dependent token choice)
+   * emit newlines as a literal backslash-n sequence instead of an actual
+   * newline character — the outer JSON decode leaves them as two chars
+   * (`\` + `n`), so multipart boundaries never match unless we accept
+   * either representation. Also unescapes `\\` so legitimately-escaped
+   * backslashes don't get mangled.
+   */
+  def normalizeEscapes(s: String): String = {
+    if (s.indexOf('\\') < 0) return s
+    val sb = new StringBuilder(s.length)
+    var i = 0
+    while (i < s.length) {
+      val c = s.charAt(i)
+      if (c == '\\' && i + 1 < s.length) {
+        s.charAt(i + 1) match {
+          case 'n'  => sb.append('\n'); i += 2
+          case 'r'  => sb.append('\r'); i += 2
+          case 't'  => sb.append('\t'); i += 2
+          case '\\' => sb.append('\\'); i += 2
+          case _    => sb.append(c);    i += 1
+        }
+      } else {
+        sb.append(c)
+        i += 1
+      }
+    }
+    sb.toString
   }
 
   private def materialize(typeName: String, arg: Option[String], body: String): ResponseContent =
