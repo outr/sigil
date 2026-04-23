@@ -12,7 +12,7 @@ import sigil.information.Information
 import sigil.signal.EventState
 import sigil.tool.core.{RespondTool, StopTool}
 import sigil.tool.util.LookupInformationTool
-import sigil.tool.model.{LookupInformationInput, RespondInput, StopInput, TopicChangeType}
+import sigil.tool.model.{LookupInformationInput, RespondInput, StopInput}
 
 /**
  * Round-trip coverage for the new framework tools that close framework
@@ -38,7 +38,7 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     TurnContext(
       sigil = TestSigil,
       chain = List(TestUser, TestAgent),
-      conversation = Conversation(currentTopicId = TestTopicId, _id = convId),
+      conversation = Conversation(topics = TestTopicStack, _id = convId),
       conversationView = view,
       turnInput = TurnInput(view)
     )
@@ -47,7 +47,11 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   "RespondTool" should {
     "emit a Message tagged with the conversation's currentTopicId" in {
       val convId = freshConversationId("respond-topic-tag")
-      val input = RespondInput(topic = "Refactoring Notes", content = "▶Text\nHello!", topicChangeType = TopicChangeType.Change)
+      val input = RespondInput(
+        topicLabel = "Refactoring Notes",
+        topicSummary = "Notes on refactoring strategies.",
+        content = "▶Text\nHello!"
+      )
       val events = RespondTool
         .execute(input, turnContextFor(convId))
         .toList

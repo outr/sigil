@@ -3,7 +3,7 @@ package spec
 import fabric.rw.*
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import sigil.conversation.{Conversation, Topic}
+import sigil.conversation.{Conversation, Topic, TopicEntry}
 import sigil.db.Model
 import sigil.event.{Message, ModeChange, TopicChange, TopicChangeKind, ToolInvoke}
 import sigil.participant.{DefaultAgentParticipant, Participant}
@@ -11,7 +11,7 @@ import sigil.provider.{GenerationSettings, Instructions, Mode, TokenUsage}
 import sigil.signal.{ContentDelta, ContentKind, EventState, MessageDelta, Signal, ToolDelta}
 import sigil.tool.{ToolInput, ToolName}
 import sigil.tool.core.CoreTools
-import sigil.tool.model.{ChangeModeInput, RespondInput, ResponseContent, TopicChangeType}
+import sigil.tool.model.{ChangeModeInput, RespondInput, ResponseContent}
 
 /**
  * Verifies that [[TestSigil.instance]] registers core Signal and ToolInput
@@ -54,7 +54,7 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
         participantId = TestUser,
         conversationId = Conversation.id("c1"),
         topicId = TestTopicId,
-        input = Some(RespondInput(topic = "Chat", content = "▶Text\nhi", topicChangeType = TopicChangeType.NoChange))
+        input = Some(RespondInput(topicLabel = "Chat", topicSummary = "Casual chat.", content = "▶Text\nhi"))
       )
       val restored = roundTripSignal(original)
       restored shouldBe a[ToolInvoke]
@@ -141,41 +141,16 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
   "ToolInput poly registration" should {
     "round-trip a RespondInput (core tool)" in {
       val original: ToolInput = RespondInput(
-        topic = "Greetings",
-        content = "▶Text\nhello",
-        topicChangeType = TopicChangeType.NoChange
+        topicLabel = "Greetings",
+        topicSummary = "A friendly greeting exchange.",
+        content = "▶Text\nhello"
       )
       val restored = roundTripToolInput(original)
       restored shouldBe a[RespondInput]
       val r = restored.asInstanceOf[RespondInput]
-      r.topic shouldBe "Greetings"
+      r.topicLabel shouldBe "Greetings"
+      r.topicSummary shouldBe "A friendly greeting exchange."
       r.content shouldBe "▶Text\nhello"
-      r.topicChangeType shouldBe TopicChangeType.NoChange
-    }
-
-    "round-trip a RespondInput declaring a topic Change" in {
-      val original: ToolInput = RespondInput(
-        topic = "Database Migration",
-        content = "▶Text\nswitching gears",
-        topicChangeType = TopicChangeType.Change
-      )
-      val restored = roundTripToolInput(original)
-      restored shouldBe a[RespondInput]
-      val r = restored.asInstanceOf[RespondInput]
-      r.topic shouldBe "Database Migration"
-      r.topicChangeType shouldBe TopicChangeType.Change
-    }
-
-    "round-trip a RespondInput declaring a topic Update" in {
-      val original: ToolInput = RespondInput(
-        topic = "Python GIL",
-        content = "▶Text\nnarrowing subject",
-        topicChangeType = TopicChangeType.Update
-      )
-      val restored = roundTripToolInput(original)
-      restored shouldBe a[RespondInput]
-      val r = restored.asInstanceOf[RespondInput]
-      r.topicChangeType shouldBe TopicChangeType.Update
     }
 
     "round-trip a ChangeModeInput (core tool)" in {
@@ -222,13 +197,14 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
         toolNames = CoreTools.coreToolNames
       )
       val original = Conversation(
-        currentTopicId = TestTopicId,
+        topics = TestTopicStack,
         participants = List(agent),
         currentMode = Mode.Coding,
         _id = Conversation.id("wire-test")
       )
       val restored = rw.write(rw.read(original))
       restored._id shouldBe original._id
+      restored.topics shouldBe TestTopicStack
       restored.currentTopicId shouldBe TestTopicId
       restored.currentMode shouldBe Mode.Coding
       restored.participants should have size 1
@@ -238,26 +214,39 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
   }
 
   "Topic persistence" should {
-    "round-trip a Topic record through the topics store" in {
+    "round-trip a Topic record (with summary) through the topics store" in {
       val topic = Topic(
         conversationId = Conversation.id("topic-persist-conv"),
         label = "Initial Topic",
+        summary = "A summary for testing round-trip persistence.",
         createdBy = TestUser
       )
       TestSigil.withDB(_.topics.transaction(_.upsert(topic))).sync()
       val loaded = TestSigil.withDB(_.topics.transaction(_.get(topic._id))).sync()
       loaded.isDefined shouldBe true
       loaded.get.label shouldBe "Initial Topic"
+      loaded.get.summary shouldBe "A summary for testing round-trip persistence."
       loaded.get.conversationId shouldBe topic.conversationId
       loaded.get.createdBy shouldBe TestUser
     }
 
-    "rehydrate Conversation.currentTopicId via newConversation" in {
+    "round-trip a TopicEntry as part of Conversation.topics" in {
+      val entry = TopicEntry(Topic.id("wire-entry"), "Wire Entry", "A TopicEntry used for wire-round-trip verification.")
+      val rw = summon[RW[TopicEntry]]
+      val restored = rw.write(rw.read(entry))
+      restored shouldBe entry
+    }
+
+    "rehydrate Conversation.topics via newConversation" in {
       val conv = TestSigil.newConversation(
         createdBy = TestUser,
         label = "Bootstrap Topic",
+        summary = "Bootstrap summary.",
         conversationId = Conversation.id("topic-bootstrap-conv")
       ).sync()
+      conv.topics should have size 1
+      conv.topics.head.label shouldBe "Bootstrap Topic"
+      conv.topics.head.summary shouldBe "Bootstrap summary."
       val loadedTopic = TestSigil.withDB(_.topics.transaction(_.get(conv.currentTopicId))).sync()
       loadedTopic.isDefined shouldBe true
       loadedTopic.get.label shouldBe "Bootstrap Topic"

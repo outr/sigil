@@ -1,7 +1,9 @@
 package sigil.provider
 
+import lightdb.id.Id
 import rapid.{Stream, Task}
 import sigil.db.Model
+import sigil.tool.{Tool, ToolInput}
 import spice.http.HttpRequest
 
 trait Provider {
@@ -33,4 +35,22 @@ trait Provider {
    * stream terminates with a `Done` event (or `Error`).
    */
   def apply(request: ProviderRequest): Stream[ProviderEvent]
+
+  /**
+   * One-shot synchronous call with a clean prompt — no conversation
+   * frames, no priors, no projection rendering. Used by the framework
+   * for focused sub-decisions (topic classification, intent detection,
+   * structured-output extraction) and exposed to LLMs via
+   * [[sigil.tool.consult.ConsultTool]] for cross-model consultation.
+   *
+   * If `tools` is non-empty, the call is sent with `tool_choice = required`
+   * so the model is forced to invoke one of them; the result's `toolCall`
+   * carries the parsed input. If `tools` is empty, the model returns
+   * free-form text in `text`.
+   */
+  def consult(modelId: Id[Model],
+              systemPrompt: String,
+              userPrompt: String,
+              tools: Vector[Tool[? <: ToolInput]] = Vector.empty,
+              generationSettings: GenerationSettings = GenerationSettings()): Task[ConsultResult]
 }

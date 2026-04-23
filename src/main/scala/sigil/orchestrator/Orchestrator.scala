@@ -4,13 +4,13 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.{Stream, Task}
 import sigil.Sigil
-import sigil.conversation.{Conversation, Topic}
+import sigil.conversation.{ContextFrame, Conversation, Topic, TopicShiftResult}
 import sigil.event.{Event, Message, TopicChange, TopicChangeKind, ToolInvoke}
 import sigil.participant.ParticipantId
 import sigil.provider.{Provider, ProviderEvent, ProviderRequest}
 import sigil.signal.{ContentDelta, ContentKind, EventState, MessageDelta, Signal, StateDelta, ToolDelta}
 import sigil.tool.ToolName
-import sigil.tool.model.{RespondInput, TopicChangeType}
+import sigil.tool.model.RespondInput
 import sigil.TurnContext
 import sigil.tool.{Tool, ToolInput}
 
@@ -45,7 +45,7 @@ object Orchestrator {
 
   def process(sigil: Sigil, provider: Provider, request: ProviderRequest): Stream[Signal] = {
     val conversation: Conversation = Conversation(
-      currentTopicId = request.currentTopicId,
+      topics = (request.previousTopics :+ request.currentTopic),
       _id = request.conversationId
     )
     // Keyed by wire-level string so the provider's `activeToolName`
@@ -79,7 +79,7 @@ object Orchestrator {
       throw new IllegalStateException("ProviderRequest.chain is empty; orchestrator needs at least one participant.")
     }
     val convId = request.conversationId
-    val topicId = request.currentTopicId
+    val topicId = request.currentTopic.id
 
     event match {
       case ProviderEvent.ToolCallStart(_, toolName) =>
@@ -154,7 +154,7 @@ object Orchestrator {
             (state.activeToolName, input) match {
               case (Some("respond"), r: RespondInput) =>
                 Stream.force(
-                  resolveTopicPrelude(sigil, r, caller, conversation).map { prelude =>
+                  resolveTopicPrelude(sigil, r, caller, conversation, request).map { prelude =>
                     Stream.emits(prelude ::: closeBlock ::: List[Signal](toolDelta, messageDelta))
                   }
                 )
@@ -210,104 +210,131 @@ object Orchestrator {
   }
 
   /**
-   * Decide whether a respond call's `topicChangeType` + `topic` implies a
-   * topic transition, and if so return the [[TopicChange]] (plus its
-   * settling [[StateDelta]]) as a ready-to-emit prelude.
+   * Given a respond call's `topicLabel` + `topicSummary`, decide via the
+   * framework's two-step classifier (see [[Sigil.classifyTopicShift]])
+   * what kind of topic transition — if any — this turn represents, and
+   * return the signal prelude to emit (a TopicChange + its settling
+   * StateDelta, or nothing).
    *
-   * The LLM's categorical choice is authoritative; the label comparison
-   * is a safety net for inconsistent input.
+   * Fast-path shortcuts avoid a classifier call when the answer is
+   * unambiguous from label equality:
+   *   - proposed label equals the active topic's label → NoChange
+   *     (the LLM is saying nothing shifted)
+   *   - proposed label equals a prior topic's label → Return to that
+   *     prior (the LLM literally re-picked the prior's label)
    *
-   *   - `TopicChangeType.NoChange`                   → empty prelude.
-   *   - `r.topic == currentLabel` (regardless of type) → empty prelude.
-   *     (Label is the source of truth when the LLM declares a change but
-   *     then supplies the unchanged label.)
-   *   - `TopicChangeType.Change` + different label   → find existing Topic
-   *     in this conversation whose label (case-insensitively) matches;
-   *     if found, switch to it; otherwise insert a new Topic record and
-   *     switch. Emits `TopicChange(Switch, ...)`.
-   *   - `TopicChangeType.Update` + different label   → if the current
-   *     Topic is not `labelLocked`, update its label in-place. Emits
-   *     `TopicChange(Rename, ...)`. Locked Topic → empty prelude.
+   * Otherwise the classifier runs on (current, priors, proposed, last
+   * user message) and returns NoChange / Refine / New / Return(prior).
+   * The orchestrator emits the right TopicChange kind and persists any
+   * Topic-record updates (new Topic for New; in-place label+summary
+   * update for Refine).
    */
   private def resolveTopicPrelude(sigil: Sigil,
                                   r: RespondInput,
                                   caller: ParticipantId,
-                                  conversation: Conversation): Task[List[Signal]] =
-    r.topicChangeType match {
-      case TopicChangeType.NoChange => Task.pure(Nil)
-      case TopicChangeType.Change | TopicChangeType.Update =>
-        sigil.withDB(_.topics.transaction(_.get(conversation.currentTopicId))).flatMap {
-          case None =>
-            // Current topic record missing — nothing to compare against; skip.
-            Task.pure(Nil)
-          case Some(current) =>
-            if (r.topic.isEmpty || r.topic == current.label) Task.pure(Nil)
-            else r.topicChangeType match {
-              case TopicChangeType.Change =>
-                resolveSwitch(sigil, r, caller, conversation, current)
-              case TopicChangeType.Update if !current.labelLocked =>
-                resolveRename(sigil, r, caller, conversation, current)
-              case _ => Task.pure(Nil)  // Update on a labelLocked topic: suppressed.
-            }
-        }
+                                  conversation: Conversation,
+                                  request: ProviderRequest): Task[List[Signal]] = {
+    val currentEntry = request.currentTopic
+    val priors = request.previousTopics
+
+    // Quick label-match shortcuts — no classifier LLM call needed.
+    if (r.topicLabel.equalsIgnoreCase(currentEntry.label)) {
+      return Task.pure(Nil)
+    }
+    priors.find(_.label.equalsIgnoreCase(r.topicLabel)) match {
+      case Some(prior) =>
+        return Task.pure(emitSwitchSignals(caller, conversation._id, currentEntry.id, prior.id, prior.label))
+      case None => // fall through to classifier
     }
 
-  private def resolveSwitch(sigil: Sigil,
-                            r: RespondInput,
-                            caller: ParticipantId,
-                            conversation: Conversation,
-                            current: Topic): Task[List[Signal]] = {
-    val findExisting = sigil.withDB(_.topics.transaction { tx =>
-      import lightdb.filter.*
-      tx.query.filter(_.conversationId === conversation._id).toList
-    })
-    findExisting.flatMap { all =>
-      val matched = all.find(t => t.label.equalsIgnoreCase(r.topic) && t._id != current._id)
-      val topicTask: Task[Topic] = matched match {
-        case Some(existing) => Task.pure(existing)
-        case None =>
-          val created = Topic(
-            conversationId = conversation._id,
-            label = r.topic,
-            createdBy = caller
-          )
-          sigil.withDB(_.topics.transaction(_.upsert(created)))
-      }
-      topicTask.map { topic =>
-        val tc = TopicChange(
-          kind = TopicChangeKind.Switch(previousTopicId = current._id),
-          newLabel = topic.label,
-          participantId = caller,
-          conversationId = conversation._id,
-          topicId = topic._id
-        )
-        List[Signal](
-          tc,
-          StateDelta(target = tc._id, conversationId = conversation._id, state = EventState.Complete)
-        )
-      }
+    // Derive the last user (non-caller) message as context for the classifier.
+    val userMessage = request.turnInput.conversationView.frames.reverseIterator.collectFirst {
+      case t: ContextFrame.Text if t.participantId != caller => t.content
+    }.getOrElse("")
+
+    sigil.classifyTopicShift(
+      modelId = request.modelId,
+      chain = request.chain,
+      current = currentEntry,
+      priors = priors,
+      proposedLabel = r.topicLabel,
+      proposedSummary = r.topicSummary,
+      userMessage = userMessage
+    ).flatMap {
+      case TopicShiftResult.NoChange =>
+        Task.pure(Nil)
+      case TopicShiftResult.Refine =>
+        resolveRename(sigil, r, caller, conversation, currentEntry.id)
+      case TopicShiftResult.New =>
+        resolveNew(sigil, r, caller, conversation, currentEntry.id)
+      case TopicShiftResult.Return(prior) =>
+        Task.pure(emitSwitchSignals(caller, conversation._id, currentEntry.id, prior.id, prior.label))
     }
   }
 
+  /** Create a fresh Topic record with the proposed label + summary and
+    * emit a TopicChange(Switch) pointing to it. */
+  private def resolveNew(sigil: Sigil,
+                         r: RespondInput,
+                         caller: ParticipantId,
+                         conversation: Conversation,
+                         previousTopicId: lightdb.id.Id[Topic]): Task[List[Signal]] = {
+    val created = Topic(
+      conversationId = conversation._id,
+      label = r.topicLabel,
+      summary = r.topicSummary,
+      createdBy = caller
+    )
+    sigil.withDB(_.topics.transaction(_.upsert(created))).map { stored =>
+      emitSwitchSignals(caller, conversation._id, previousTopicId, stored._id, stored.label)
+    }
+  }
+
+  /** Update the current Topic's label + summary in place and emit a
+    * TopicChange(Rename). Suppressed if `labelLocked` is set (caller
+    * keeps the record unchanged and emits nothing). */
   private def resolveRename(sigil: Sigil,
                             r: RespondInput,
                             caller: ParticipantId,
                             conversation: Conversation,
-                            current: Topic): Task[List[Signal]] = {
-    val renamed = current.copy(label = r.topic, modified = Timestamp())
-    sigil.withDB(_.topics.transaction(_.upsert(renamed))).map { _ =>
-      val tc = TopicChange(
-        kind = TopicChangeKind.Rename(previousLabel = current.label),
-        newLabel = r.topic,
-        participantId = caller,
-        conversationId = conversation._id,
-        topicId = current._id
-      )
-      List[Signal](
-        tc,
-        StateDelta(target = tc._id, conversationId = conversation._id, state = EventState.Complete)
-      )
+                            currentTopicId: lightdb.id.Id[Topic]): Task[List[Signal]] = {
+    sigil.withDB(_.topics.transaction(_.get(currentTopicId))).flatMap {
+      case None => Task.pure(Nil)
+      case Some(current) if current.labelLocked => Task.pure(Nil)
+      case Some(current) =>
+        val renamed = current.copy(label = r.topicLabel, summary = r.topicSummary, modified = Timestamp())
+        sigil.withDB(_.topics.transaction(_.upsert(renamed))).map { _ =>
+          val tc = TopicChange(
+            kind = TopicChangeKind.Rename(previousLabel = current.label),
+            newLabel = r.topicLabel,
+            participantId = caller,
+            conversationId = conversation._id,
+            topicId = current._id
+          )
+          List[Signal](
+            tc,
+            StateDelta(target = tc._id, conversationId = conversation._id, state = EventState.Complete)
+          )
+        }
     }
+  }
+
+  private def emitSwitchSignals(caller: ParticipantId,
+                                 convId: lightdb.id.Id[Conversation],
+                                 previousTopicId: lightdb.id.Id[Topic],
+                                 newTopicId: lightdb.id.Id[Topic],
+                                 newLabel: String): List[Signal] = {
+    val tc = TopicChange(
+      kind = TopicChangeKind.Switch(previousTopicId = previousTopicId),
+      newLabel = newLabel,
+      participantId = caller,
+      conversationId = convId,
+      topicId = newTopicId
+    )
+    List[Signal](
+      tc,
+      StateDelta(target = tc._id, conversationId = convId, state = EventState.Complete)
+    )
   }
 
   private def kindOf(name: String): ContentKind =

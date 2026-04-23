@@ -3,7 +3,7 @@ package sigil.tool.core
 import sigil.TurnContext
 import sigil.event.{Event, Message}
 import sigil.tool.{Tool, ToolExample}
-import sigil.tool.model.{MultipartParser, RespondInput, TopicChangeType}
+import sigil.tool.model.{MultipartParser, RespondInput}
 
 /**
  * The respond tool. The model calls this to send its response to the user.
@@ -14,10 +14,11 @@ import sigil.tool.model.{MultipartParser, RespondInput, TopicChangeType}
  * single [[Message]] event. Terminal — a turn that emits respond is considered
  * complete.
  *
- * `topic` + `topicConfidence` thread-labeling is applied by the orchestrator
- * at `ToolCallComplete` time, not here — resolving a switch vs. rename
- * requires DB access to the current [[sigil.conversation.Topic]] record,
- * which tools don't perform directly. This tool just emits the [[Message]].
+ * Topic-shift resolution (new / refine / return / no-change) is handled by
+ * the orchestrator at `ToolCallComplete` time via a focused two-step
+ * classifier — see [[sigil.Sigil.classifyTopicShift]]. This tool just emits
+ * the [[Message]]; the topicLabel + topicSummary fields it carries are the
+ * inputs to that classifier.
  */
 object RespondTool extends Tool[RespondInput] {
   override protected def uniqueName: String = "respond"
@@ -85,54 +86,47 @@ object RespondTool extends Tool[RespondInput] {
       |- Pick the most specific type for each block. Use Markdown only when no other type fits.
       |- When asking the user to choose from a fixed set of alternatives, PREFER ▶Options over a numbered prose list.
       |
-      |`topic` — REQUIRED. The label of the current conversation thread. A concise 3–6 word phrase.
-      |No quotes or punctuation. Pass the Current topic (shown at the top of the system prompt) unchanged
-      |when `topicChangeType = NoChange`; propose a fresh label for Change and Update.
+      |`topicLabel` — REQUIRED. A concise 3-6 word label describing the subject of THIS turn.
+      |No quotes, no punctuation. Examples:
+      |  - On a fresh "New Conversation" with the user asking about Rome → "Roman Empire"
+      |  - When the user narrows from general Python to GIL specifically → "Python GIL"
+      |  - When following up on the same subject → keep the Current topic label unchanged
+      |  - When the user explicitly returns to a Previous topic → use that prior label exactly
       |
-      |`topicChangeType` — REQUIRED. Pick exactly one:
-      |  - "Change"   — the user has moved to a DIFFERENT subject than the Current topic. Also use Change
-      |    when the Current topic is "New Conversation" (the default bootstrap label) and the user has
-      |    given you any real subject.
-      |  - "Update"   — same subject as the Current topic, but the current label is vague or doesn't yet
-      |    reflect the specific angle the user is asking about. Propose a more precise `topic`.
-      |  - "NoChange" — the Current topic label still fits. Pass it unchanged in `topic`.
-      |
-      |Examples:
-      |  Current topic = "New Conversation", user asks about Rome → Change, topic="Roman Empire".
-      |  Current topic = "Python Programming", user asks specifically about the GIL → Update, topic="Python GIL".
-      |  Current topic = "Python GIL", user asks a follow-up about the GIL → NoChange, topic="Python GIL".""".stripMargin
+      |`topicSummary` — REQUIRED. A 1-2 sentence summary of the subject. Used both as UI display and
+      |as semantic context the framework's classifier uses to compare against prior topics.""".stripMargin
 
   override protected def examples: List[ToolExample[RespondInput]] = List(
     ToolExample(
-      "Bootstrap — Current topic is the default, user has given a real subject (Change)",
+      "Bootstrap — Current topic is the default, user has given a real subject",
       RespondInput(
-        topic = "Roman Empire",
-        content = "▶Text\nRome was founded in 753 BCE by Romulus.\n",
-        topicChangeType = TopicChangeType.Change
+        topicLabel = "Roman Empire",
+        topicSummary = "Discussion of the founding and history of the Roman Empire.",
+        content = "▶Text\nRome was founded in 753 BCE by Romulus.\n"
       )
     ),
     ToolExample(
-      "Refinement — same subject, sharper label (Update)",
+      "Refinement — Current topic is Python Programming, user asked about GIL",
       RespondInput(
-        topic = "Python GIL",
-        content = "▶Text\nThe GIL serializes bytecode execution across threads.\n",
-        topicChangeType = TopicChangeType.Update
+        topicLabel = "Python GIL",
+        topicSummary = "Python's Global Interpreter Lock and its effect on threading.",
+        content = "▶Text\nThe GIL serializes bytecode execution across threads.\n"
       )
     ),
     ToolExample(
-      "Follow-up under the current topic (NoChange)",
+      "Follow-up under the current topic — keep label and summary aligned with what's discussed",
       RespondInput(
-        topic = "Python GIL",
-        content = "▶Text\nIt's less of a problem for I/O-bound code.\n",
-        topicChangeType = TopicChangeType.NoChange
+        topicLabel = "Python GIL",
+        topicSummary = "Python's GIL — current discussion focuses on its impact on I/O-bound code.",
+        content = "▶Text\nIt's less of a problem for I/O-bound code.\n"
       )
     ),
     ToolExample(
-      "Hard switch to an unrelated subject (Change)",
+      "Hard switch to an unrelated subject",
       RespondInput(
-        topic = "Database Migration Strategy",
-        content = "▶Text\nOk, moving on to the migration question — here's the approach.\n",
-        topicChangeType = TopicChangeType.Change
+        topicLabel = "Database Migration Strategy",
+        topicSummary = "Strategy for migrating between database systems while minimizing downtime.",
+        content = "▶Text\nOk, moving on to the migration question — here's the approach.\n"
       )
     )
   )

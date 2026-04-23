@@ -24,15 +24,29 @@ import sigil.provider.Mode
  * agents acting on this conversation read this field for their next
  * provider request — mode is conversation-level state, not agent-level.
  *
- * `currentTopicId` points at the active [[Topic]] — the thread new events
- * land on and whose label the LLM sees as "Current topic" in the system
- * prompt. `TopicChange` events maintain this pointer; `Sigil.newConversation`
- * bootstraps an initial Topic so the pointer is never dangling.
+ * `topics` is the navigation stack of [[TopicEntry]]s for this
+ * conversation. The LAST entry is the active thread (`currentTopic`); the
+ * preceding entries are subjects the conversation has been on before and
+ * could return to. The framework maintains this stack via
+ * [[sigil.event.TopicChange]] events:
+ *
+ *   - `Switch` to a new label → push a new entry
+ *   - `Switch` to a label already on the stack → truncate the stack back
+ *     to that entry (the natural "return to prior subject" flow)
+ *   - `Rename` → mutate the active entry in place
+ *
+ * Each `TopicEntry` carries the Topic's id plus a denormalized `label` +
+ * `summary` so the system prompt and UI sidebar can render the stack
+ * without a join. Rename events update both the Topic record and the
+ * matching stack entries to keep these in sync.
+ *
+ * `Sigil.newConversation` bootstraps an initial entry so `topics.last`
+ * always resolves.
  *
  * `RecordDocument` brings `created` / `modified` timestamps — useful for
  * "last activity" sorting in UIs.
  */
-case class Conversation(currentTopicId: Id[Topic],
+case class Conversation(topics: List[TopicEntry],
                         participants: List[Participant] = Nil,
                         currentMode: Mode = Mode.Conversation,
                         created: Timestamp = Timestamp(),
@@ -44,6 +58,29 @@ case class Conversation(currentTopicId: Id[Topic],
    * Convenience alias for `_id`.
    */
   def id: Id[Conversation] = _id
+
+  /**
+   * The active topic — last entry on the stack. Throws if the stack is
+   * empty (which violates the invariant that `newConversation` upholds).
+   */
+  def currentTopic: TopicEntry = topics.lastOption.getOrElse {
+    throw new IllegalStateException(
+      s"Conversation $_id has no topics — newConversation must be used to bootstrap one."
+    )
+  }
+
+  /**
+   * Convenience alias for the active topic's id. Most call sites that
+   * used to read `currentTopicId` migrate to this.
+   */
+  def currentTopicId: Id[Topic] = currentTopic.id
+
+  /**
+   * Entries earlier than the active topic — i.e. priors the conversation
+   * could return to. Empty when this conversation only has its bootstrap
+   * topic.
+   */
+  def previousTopics: List[TopicEntry] = topics.dropRight(1)
 }
 
 object Conversation extends RecordDocumentModel[Conversation] with JsonConversion[Conversation] {

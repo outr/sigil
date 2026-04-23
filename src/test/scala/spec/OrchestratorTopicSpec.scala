@@ -4,36 +4,30 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
-import sigil.conversation.{ConversationView, Conversation, Topic, TurnInput}
+import sigil.conversation.{ConversationView, Conversation, Topic, TopicEntry, TopicShiftResult, TurnInput}
 import sigil.db.Model
 import sigil.event.{Event, Message, TopicChange, TopicChangeKind}
 import sigil.orchestrator.Orchestrator
-import sigil.provider.{CallId, GenerationSettings, Instructions, Mode, Provider, ProviderEvent, ProviderRequest, ProviderType, StopReason}
+import sigil.provider.{CallId, ConsultResult, ConsultToolCall, GenerationSettings, Instructions, Mode, Provider, ProviderEvent, ProviderRequest, ProviderType, StopReason, TokenUsage}
 import sigil.signal.{Signal, StateDelta}
 import sigil.tool.core.RespondTool
-import sigil.tool.model.{RespondInput, TopicChangeType}
+import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.consult.TopicClassifierInput
+import sigil.tool.model.RespondInput
 import spice.http.HttpRequest
 
 /**
- * Verifies the orchestrator's categorical topic-resolution logic end-to-end:
- * a scripted [[StubProvider]] emits the ProviderEvent sequence for a
- * streamed `respond` call carrying a specific `topic` + `topicChangeType`,
- * and we assert on the resulting [[Signal]] stream — specifically whether
- * (and how) a [[TopicChange]] was emitted.
+ * Verifies the orchestrator's two-step topic-resolution flow end-to-end
+ * using scripted providers (no real LLM).
  *
- * Coverage matrix:
- *   - `NoChange`              + any label        → NO TopicChange
- *   - `Change` + new label                       → Switch + persist new Topic
- *   - `Change` + label matching existing Topic   → Switch to existing Topic
- *   - `Change` + label == current label          → NO TopicChange (inconsistent input; label wins)
- *   - `Update` + new label  (unlocked)           → Rename current Topic
- *   - `Update` + new label  (locked)             → NO TopicChange
- *   - `Update` + label == current label          → NO TopicChange
- *
- * The multi-turn invariant (second message after a switch carries the
- * new topicId) is covered in [[ConversationViewSpec]] because it's
- * driven by `Sigil.updateConversationProjection` on the TopicChange
- * settle rather than by the orchestrator itself.
+ * Coverage matrix (label matches short-circuit the classifier; all others
+ * go through it):
+ *   - Exact match with current label       → NoChange (no classifier call)
+ *   - Exact match with prior label         → Switch (return), no classifier call
+ *   - Classifier says NoChange             → no event
+ *   - Classifier says Refine               → Rename current (label + summary update)
+ *   - Classifier says New                  → create new Topic + Switch (push)
+ *   - Classifier says Return:<prior>       → Switch to that prior (truncate)
  */
 class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -41,12 +35,12 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
   private val modelId: Id[Model] = Model.id("test", "model")
 
   /**
-   * Scripted provider — emits the ToolCallStart / ContentBlockStart /
-   * ContentBlockDelta / ToolCallComplete sequence for a single `respond`
-   * call carrying the supplied input. Used to drive `Orchestrator.process`
-   * deterministically without talking to an LLM.
+   * Scripted primary provider — emits the ToolCallStart / ContentBlock /
+   * ToolCallComplete sequence for a single `respond` call carrying the
+   * supplied input. The classifier-call path is handled separately by
+   * [[StubConsult]].
    */
-  private class StubProvider(input: RespondInput) extends Provider {
+  private class StubProvider(input: RespondInput, classifierKind: Option[String]) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override def requestConverter(request: ProviderRequest): Task[HttpRequest] =
@@ -61,216 +55,228 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         ProviderEvent.Done(StopReason.ToolCall)
       ))
     }
+    /** Stub consult call — returns the scripted classifier kind. */
+    override def consult(modelId: Id[Model],
+                         systemPrompt: String,
+                         userPrompt: String,
+                         tools: Vector[Tool[? <: ToolInput]],
+                         generationSettings: GenerationSettings): Task[ConsultResult] = Task {
+      classifierKind match {
+        case Some(kind) =>
+          val toolName = tools.headOption.map(_.schema.name).getOrElse(ToolName("classify_topic_shift"))
+          ConsultResult(
+            text = None,
+            toolCall = Some(ConsultToolCall(toolName, TopicClassifierInput(kind))),
+            usage = TokenUsage(0, 0, 0),
+            stopReason = StopReason.ToolCall
+          )
+        case None =>
+          // No classifier expected — return empty
+          ConsultResult(None, None, TokenUsage(0, 0, 0), StopReason.Complete)
+      }
+    }
   }
 
-  /**
-   * Upsert a conversation + seeded Topic, then run `Orchestrator.process`
-   * with a StubProvider emitting a `respond` carrying `input`. Returns
-   * (signals, initialTopic, conversationId) for assertions.
-   */
-  private def runWithTopic(label: String,
-                           locked: Boolean,
-                           input: RespondInput,
-                           suffix: String): Task[(List[Signal], Topic, Id[Conversation])] = {
-    val convId = Conversation.id(s"topic-orchestrator-$suffix-${rapid.Unique()}")
-    val topic = Topic(
+  /** Upsert a conversation + seeded Topic stack, then run
+    * `Orchestrator.process` with a StubProvider emitting a `respond` carrying
+    * `respondInput`. If `classifierKind` is supplied, the stubbed consult
+    * call returns that kind to drive the classifier path. */
+  private def runScenario(currentLabel: String,
+                          currentSummary: String,
+                          priors: List[TopicEntry],
+                          respondInput: RespondInput,
+                          classifierKind: Option[String],
+                          suffix: String): Task[(List[Signal], Topic, Id[Conversation])] = {
+    val convId = Conversation.id(s"topic-orch-$suffix-${rapid.Unique()}")
+    val current = Topic(
       conversationId = convId,
-      label = label,
-      labelLocked = locked,
+      label = currentLabel,
+      summary = currentSummary,
       createdBy = TestUser
     )
-    val conv = Conversation(currentTopicId = topic._id, _id = convId)
+    val currentEntry = TopicEntry(current._id, current.label, current.summary)
+    val conv = Conversation(topics = priors :+ currentEntry, _id = convId)
     val view = ConversationView(conversationId = convId, _id = ConversationView.idFor(convId))
+    val stubProvider = new StubProvider(respondInput, classifierKind)
+    // Register stub provider so Sigil.providerFor returns it for classifier calls.
+    TestSigil.setProvider(Task.pure(stubProvider))
     val request = ProviderRequest(
       conversationId = convId,
       modelId = modelId,
       instructions = Instructions(),
       turnInput = TurnInput(view),
       currentMode = Mode.Conversation,
-      currentTopicId = topic._id,
-      currentTopicLabel = topic.label,
+      currentTopic = currentEntry,
+      previousTopics = priors,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
       chain = List(TestUser, TestAgent)
     )
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-      _ <- TestSigil.withDB(_.topics.transaction(_.upsert(topic)))
-      signals <- Orchestrator.process(TestSigil, new StubProvider(input), request).toList
-    } yield (signals, topic, convId)
+      _ <- TestSigil.withDB(_.topics.transaction(_.upsert(current)))
+      signals <- Orchestrator.process(TestSigil, stubProvider, request).toList
+    } yield (signals, current, convId)
   }
 
-  "Orchestrator topic resolution on a respond" should {
+  "Orchestrator topic resolution — label-equality shortcuts" should {
 
-    "emit NO TopicChange when topicChangeType = NoChange (even if the submitted topic differs)" in {
-      // NoChange is authoritative — the framework ignores any diff in the
-      // topic label and emits nothing.
+    "emit NO TopicChange when the proposed label equals the current label (no classifier call)" in {
       val input = RespondInput(
-        content = "▶Text\nscripted content",
-        topic = "Something Else Entirely",
-        topicChangeType = TopicChangeType.NoChange
+        content = "▶Text\nscripted",
+        topicLabel = "Existing Thread",
+        topicSummary = "Same thread."
       )
-      runWithTopic("Current Thread", locked = false, input, "no-change-wins").map { case (signals, _, _) =>
+      runScenario("Existing Thread", "Current thread summary", Nil, input, classifierKind = None,
+                  suffix = "same-label").map { case (signals, _, _) =>
         signals.collect { case tc: TopicChange => tc } shouldBe empty
         signals.collect { case m: Message => m } should have size 1
       }
     }
 
-    "emit NO TopicChange when the submitted label matches the current label" in {
+    "emit a TopicChange(Switch) directly when the proposed label equals a prior label (no classifier call)" in {
+      val priorId = Topic.id("prior-py")
+      val priorEntry = TopicEntry(priorId, "Python GIL", "Python Global Interpreter Lock.")
       val input = RespondInput(
-        content = "▶Text\nscripted content",
-        topic = "Existing Thread",
-        topicChangeType = TopicChangeType.NoChange
+        content = "▶Text\nback to GIL",
+        topicLabel = "Python GIL",
+        topicSummary = "Returning to the GIL topic."
       )
-      runWithTopic("Existing Thread", locked = false, input, "same-label").map { case (signals, _, _) =>
+      runScenario("Cooking", "Culinary discussion.", List(priorEntry), input, classifierKind = None,
+                  suffix = "exact-return").map { case (signals, current, _) =>
+        val topicChanges = signals.collect { case tc: TopicChange => tc }
+        topicChanges should have size 1
+        val tc = topicChanges.head
+        tc.kind shouldBe a[TopicChangeKind.Switch]
+        tc.kind.asInstanceOf[TopicChangeKind.Switch].previousTopicId shouldBe current._id
+        tc.topicId shouldBe priorId
+        tc.newLabel shouldBe "Python GIL"
+      }
+    }
+  }
+
+  "Orchestrator topic resolution — classifier outcomes" should {
+
+    "emit NO TopicChange when the classifier returns NoChange" in {
+      val input = RespondInput(
+        content = "▶Text\nscripted",
+        topicLabel = "Python GIL and I/O",
+        topicSummary = "Effect of GIL on I/O-bound Python code."
+      )
+      runScenario("Python GIL", "Python's Global Interpreter Lock.", Nil, input,
+                  classifierKind = Some("NoChange"), suffix = "cls-nochange").map { case (signals, _, _) =>
         signals.collect { case tc: TopicChange => tc } shouldBe empty
       }
     }
 
-    "emit a TopicChange(Switch) and persist a new Topic when topicChangeType = Change and label is new" in {
+    "emit a TopicChange(Rename) with label + summary updated when the classifier returns Refine" in {
       val input = RespondInput(
-        content = "▶Text\nscripted content",
-        topic = "Brand New Subject",
-        topicChangeType = TopicChangeType.Change
+        content = "▶Text\nscripted",
+        topicLabel = "Python GIL",
+        topicSummary = "Python's Global Interpreter Lock and threading."
       )
-      runWithTopic("Initial", locked = false, input, "switch-new").flatMap {
-        case (signals, initial, convId) =>
+      runScenario("Python Programming", "General Python.", Nil, input,
+                  classifierKind = Some("Refine"), suffix = "cls-refine").flatMap {
+        case (signals, current, _) =>
+          val topicChanges = signals.collect { case tc: TopicChange => tc }
+          topicChanges should have size 1
+          val tc = topicChanges.head
+          tc.kind shouldBe TopicChangeKind.Rename("Python Programming")
+          tc.newLabel shouldBe "Python GIL"
+          tc.topicId shouldBe current._id
+
+          TestSigil.withDB(_.topics.transaction(_.get(current._id))).map { loaded =>
+            loaded.map(_.label) shouldBe Some("Python GIL")
+            loaded.map(_.summary) shouldBe Some("Python's Global Interpreter Lock and threading.")
+          }
+      }
+    }
+
+    "emit a TopicChange(Switch) and persist a new Topic when the classifier returns New" in {
+      val input = RespondInput(
+        content = "▶Text\nscripted",
+        topicLabel = "TypeScript Generics",
+        topicSummary = "TypeScript's generic type parameterization."
+      )
+      runScenario("Roman Empire", "Roman history.", Nil, input,
+                  classifierKind = Some("New"), suffix = "cls-new").flatMap {
+        case (signals, current, convId) =>
           val topicChanges = signals.collect { case tc: TopicChange => tc }
           topicChanges should have size 1
           val tc = topicChanges.head
           tc.kind shouldBe a[TopicChangeKind.Switch]
-          tc.kind.asInstanceOf[TopicChangeKind.Switch].previousTopicId shouldBe initial._id
-          tc.newLabel shouldBe "Brand New Subject"
-          tc.topicId should not be initial._id
+          tc.kind.asInstanceOf[TopicChangeKind.Switch].previousTopicId shouldBe current._id
+          tc.topicId should not be current._id
+          tc.newLabel shouldBe "TypeScript Generics"
 
-          // Settling StateDelta follows the TopicChange pulse.
-          val settle = signals.collectFirst {
-            case sd: StateDelta if sd.target == tc._id => sd
-          }
-          settle should not be empty
-
-          // The new Topic record is persisted with the new label.
           TestSigil.withDB(_.topics.transaction(_.get(tc.topicId))).map { loaded =>
-            loaded.map(_.label) shouldBe Some("Brand New Subject")
+            loaded.map(_.label) shouldBe Some("TypeScript Generics")
+            loaded.map(_.summary) shouldBe Some("TypeScript's generic type parameterization.")
             loaded.map(_.conversationId) shouldBe Some(convId)
           }
       }
     }
 
-    "emit a TopicChange(Switch) that reuses an existing Topic in the conversation when the label already exists" in {
+    "emit a TopicChange(Switch) to a prior when the classifier returns that prior's label" in {
+      val priorId = Topic.id("prior-returning")
+      val priorEntry = TopicEntry(priorId, "Python GIL", "GIL topic from earlier.")
+      // Proposed label is different from current AND different from the prior's exact label,
+      // but classifier decides it's semantically the same as the prior.
       val input = RespondInput(
-        content = "▶Text\nscripted content",
-        topic = "Prior Thread",
-        topicChangeType = TopicChangeType.Change
+        content = "▶Text\nscripted",
+        topicLabel = "GIL and NumPy",
+        topicSummary = "GIL implications for NumPy."
       )
-      // Start with topic "Current", and pre-populate the conversation with
-      // another topic "Prior Thread" that the switch should reuse.
-      val convId = Conversation.id(s"topic-orchestrator-switch-reuse-${rapid.Unique()}")
-      val current = Topic(conversationId = convId, label = "Current", createdBy = TestUser)
-      val prior   = Topic(conversationId = convId, label = "Prior Thread", createdBy = TestUser)
-      val conv = Conversation(currentTopicId = current._id, _id = convId)
-      val view = ConversationView(conversationId = convId, _id = ConversationView.idFor(convId))
-      val request = ProviderRequest(
-        conversationId = convId,
-        modelId = modelId,
-        instructions = Instructions(),
-        turnInput = TurnInput(view),
-        currentMode = Mode.Conversation,
-        currentTopicId = current._id,
-        currentTopicLabel = current.label,
-        generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-        chain = List(TestUser, TestAgent)
-      )
-      for {
-        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _ <- TestSigil.withDB(_.topics.transaction(_.upsert(current)))
-        _ <- TestSigil.withDB(_.topics.transaction(_.upsert(prior)))
-        signals <- Orchestrator.process(TestSigil, new StubProvider(input), request).toList
-      } yield {
-        val topicChanges = signals.collect { case tc: TopicChange => tc }
-        topicChanges should have size 1
-        topicChanges.head.topicId shouldBe prior._id
-        topicChanges.head.newLabel shouldBe "Prior Thread"
-      }
-    }
-
-    "emit a TopicChange(Rename) and mutate the Topic in-place when topicChangeType = Update on an unlocked topic" in {
-      val input = RespondInput(
-        content = "▶Text\nscripted content",
-        topic = "Refined Label",
-        topicChangeType = TopicChangeType.Update
-      )
-      runWithTopic("Initial Label", locked = false, input, "rename-unlocked").flatMap {
-        case (signals, initial, _) =>
+      runScenario("Cooking", "Culinary topic.", List(priorEntry), input,
+                  classifierKind = Some("Python GIL"), suffix = "cls-return").map {
+        case (signals, current, _) =>
           val topicChanges = signals.collect { case tc: TopicChange => tc }
           topicChanges should have size 1
           val tc = topicChanges.head
-          tc.kind shouldBe TopicChangeKind.Rename("Initial Label")
-          tc.newLabel shouldBe "Refined Label"
-          tc.topicId shouldBe initial._id
-
-          TestSigil.withDB(_.topics.transaction(_.get(initial._id))).map { loaded =>
-            loaded.map(_.label) shouldBe Some("Refined Label")
-          }
+          tc.kind shouldBe a[TopicChangeKind.Switch]
+          tc.kind.asInstanceOf[TopicChangeKind.Switch].previousTopicId shouldBe current._id
+          tc.topicId shouldBe priorId
+          tc.newLabel shouldBe "Python GIL"
       }
     }
 
-    "emit NO TopicChange when the Topic is labelLocked and topicChangeType = Update" in {
+    "emit NO TopicChange when the classifier call fails (fallback)" in {
       val input = RespondInput(
-        content = "▶Text\nscripted content",
-        topic = "Attempted Rename",
-        topicChangeType = TopicChangeType.Update
+        content = "▶Text\nscripted",
+        topicLabel = "Unrelated Label",
+        topicSummary = "Something."
       )
-      runWithTopic("Pinned", locked = true, input, "rename-locked").flatMap {
-        case (signals, initial, _) =>
-          signals.collect { case tc: TopicChange => tc } shouldBe empty
-          TestSigil.withDB(_.topics.transaction(_.get(initial._id))).map { loaded =>
-            loaded.map(_.label) shouldBe Some("Pinned")
-          }
-      }
-    }
-
-    "emit NO TopicChange when topicChangeType = Change but the label matches the current label (inconsistent input)" in {
-      // LLM declared a Change but handed back the same label — label wins,
-      // no event fires and no duplicate Topic gets created.
-      val input = RespondInput(
-        content = "▶Text\nscripted content",
-        topic = "Stable Topic",
-        topicChangeType = TopicChangeType.Change
-      )
-      runWithTopic("Stable Topic", locked = false, input, "change-same-label").map {
-        case (signals, _, _) =>
-          signals.collect { case tc: TopicChange => tc } shouldBe empty
-      }
-    }
-
-    "tag the emitted Message with the original topicId (Switch takes effect on the NEXT message)" in {
-      val input = RespondInput(
-        content = "▶Text\nscripted content",
-        topic = "New Subject",
-        topicChangeType = TopicChangeType.Change
-      )
-      runWithTopic("Original Subject", locked = false, input, "message-topic-tag").map {
-        case (signals, initial, _) =>
-          // The Message emitted during this turn was created at
-          // ContentBlockDelta time — BEFORE the ToolCallComplete revealed
-          // the topic shift. So its topicId is the topic that was active
-          // when the stream started.
-          val messages = signals.collect { case m: Message => m }
-          messages should have size 1
-          messages.head.topicId shouldBe initial._id
+      // classifierKind = None → stub returns no tool call → classify falls back to NoChange
+      runScenario("Current", "Current summary.", Nil, input,
+                  classifierKind = None, suffix = "cls-fail").map { case (signals, _, _) =>
+        signals.collect { case tc: TopicChange => tc } shouldBe empty
       }
     }
   }
 
-  "Multi-turn topic switching" should {
-    "route a subsequent publish's Message to the new topic after a TopicChange(Switch) settles" in {
-      // Simulate two turns:
-      //   Turn 1 — publish a TopicChange(Switch) complete event and its settle; projection moves currentTopicId.
-      //   Turn 2 — publish a Message; verify it lands on the new topic because the Conversation record says so.
+  "Message topicId tagging" should {
+    "tag the emitted Message with the current topicId (shift takes effect next message)" in {
+      val input = RespondInput(
+        content = "▶Text\nscripted",
+        topicLabel = "New Subject",
+        topicSummary = "A new subject."
+      )
+      runScenario("Original", "Original summary.", Nil, input,
+                  classifierKind = Some("New"), suffix = "msg-topicid").map {
+        case (signals, current, _) =>
+          val messages = signals.collect { case m: Message => m }
+          messages should have size 1
+          messages.head.topicId shouldBe current._id
+      }
+    }
+  }
+
+  "Multi-turn topic switching via publish pipeline" should {
+    "update Conversation.topics after a TopicChange(Switch) settles, so the next turn reads the new stack" in {
       val convId = Conversation.id(s"topic-multiturn-${rapid.Unique()}")
-      val firstTopic = Topic(conversationId = convId, label = "First", createdBy = TestUser)
-      val secondTopic = Topic(conversationId = convId, label = "Second", createdBy = TestUser)
-      val conv = Conversation(currentTopicId = firstTopic._id, _id = convId)
+      val firstTopic = Topic(conversationId = convId, label = "First", summary = "First subject.", createdBy = TestUser)
+      val secondTopic = Topic(conversationId = convId, label = "Second", summary = "Second subject.", createdBy = TestUser)
+      val firstEntry = TopicEntry(firstTopic._id, firstTopic.label, firstTopic.summary)
+      val conv = Conversation(topics = List(firstEntry), _id = convId)
       val tc = TopicChange(
         kind = TopicChangeKind.Switch(previousTopicId = firstTopic._id),
         newLabel = "Second",
@@ -285,19 +291,9 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         _ <- TestSigil.withDB(_.topics.transaction(_.upsert(secondTopic)))
         _ <- TestSigil.publish(tc)
         convAfterSwitch <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
-        // The caller of publish (e.g. the agent building its next request)
-        // reads the updated currentTopicId and tags its next Message with it.
-        nextMsg = Message(
-          participantId = TestUser,
-          conversationId = convId,
-          topicId = convAfterSwitch.get.currentTopicId,
-          content = Vector(sigil.tool.model.ResponseContent.Text("continuing on new topic")),
-          state = sigil.signal.EventState.Complete
-        )
-        _ <- TestSigil.publish(nextMsg)
       } yield {
-        convAfterSwitch.map(_.currentTopicId) shouldBe Some(secondTopic._id)
-        nextMsg.topicId shouldBe secondTopic._id
+        convAfterSwitch.get.topics.map(_.id) shouldBe List(firstTopic._id, secondTopic._id)
+        convAfterSwitch.get.currentTopicId shouldBe secondTopic._id
       }
     }
   }

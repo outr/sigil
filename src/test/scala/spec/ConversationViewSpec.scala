@@ -4,7 +4,7 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
-import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextSummary, Conversation, ConversationView, SkillSource, Topic}
+import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextSummary, Conversation, ConversationView, SkillSource, Topic, TopicEntry}
 import sigil.event.{Event, Message, ModeChange, TopicChange, TopicChangeKind}
 import sigil.provider.Mode
 import sigil.signal.{EventState, MessageDelta, StateDelta}
@@ -201,7 +201,7 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       pulse.state shouldBe EventState.Active
 
       for {
-        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(currentTopicId = TestTopicId, _id = convId))))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(topics = TestTopicStack, _id = convId))))
         _ <- TestSigil.publish(pulse)
         // Between pulse and settle, the DB reflects Active.
         mid <- TestSigil.withDB(_.events.transaction(_.get(pulse._id)))
@@ -235,7 +235,7 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       // stray write.
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(
-          Conversation(currentTopicId = TestTopicId, _id = convId, currentMode = Mode.Conversation)
+          Conversation(topics = TestTopicStack, _id = convId, currentMode = Mode.Conversation)
         )))
         pulse = ModeChange(mode = Mode.Coding, participantId = TestAgent, conversationId = convId, topicId = TestTopicId)
         _ <- TestSigil.publish(pulse)
@@ -255,44 +255,95 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     }
   }
 
-  "TopicChange → Conversation.currentTopicId" should {
-    "update currentTopicId when a Complete TopicChange(Switch) settles" in {
+  "TopicChange → Conversation.topics stack" should {
+    "push a new TopicEntry when a Complete TopicChange(Switch) settles for a fresh topic" in {
       val convId = freshConvId("topic-switch-settle")
-      val initialTopicId = Topic.id(s"initial-${rapid.Unique()}")
-      val newTopicId = Topic.id(s"new-${rapid.Unique()}")
-      val conv = Conversation(currentTopicId = initialTopicId, _id = convId)
+      val initial = Topic(conversationId = convId, label = "Initial", summary = "First subject", createdBy = TestUser)
+      val incoming = Topic(conversationId = convId, label = "Shifted Subject", summary = "Second subject", createdBy = TestUser)
+      val initialEntry = TopicEntry(initial._id, initial.label, initial.summary)
+      val conv = Conversation(topics = List(initialEntry), _id = convId)
       val tc = TopicChange(
-        kind = TopicChangeKind.Switch(previousTopicId = initialTopicId),
+        kind = TopicChangeKind.Switch(previousTopicId = initial._id),
         newLabel = "Shifted Subject",
         participantId = TestAgent,
         conversationId = convId,
-        topicId = newTopicId,
+        topicId = incoming._id,
         state = EventState.Complete
       )
       for {
+        _ <- TestSigil.withDB(_.topics.transaction(_.upsert(initial)))
+        _ <- TestSigil.withDB(_.topics.transaction(_.upsert(incoming)))
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- TestSigil.publish(tc)
         after <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
-      } yield after.map(_.currentTopicId) shouldBe Some(newTopicId)
+      } yield {
+        val stack = after.get.topics
+        stack.map(_.id) shouldBe List(initial._id, incoming._id)
+        stack.last.label shouldBe "Shifted Subject"
+        stack.last.summary shouldBe "Second subject"
+      }
     }
 
-    "leave currentTopicId unchanged when a TopicChange(Rename) settles (Rename mutates Topic in-place)" in {
+    "truncate the stack back to a prior entry when a Switch targets a topic already on the stack (return)" in {
+      val convId = freshConvId("topic-switch-return")
+      val a = Topic(conversationId = convId, label = "A", summary = "Alpha", createdBy = TestUser)
+      val b = Topic(conversationId = convId, label = "B", summary = "Bravo", createdBy = TestUser)
+      val c = Topic(conversationId = convId, label = "C", summary = "Charlie", createdBy = TestUser)
+      val conv = Conversation(
+        topics = List(
+          TopicEntry(a._id, a.label, a.summary),
+          TopicEntry(b._id, b.label, b.summary),
+          TopicEntry(c._id, c.label, c.summary)
+        ),
+        _id = convId
+      )
+      val tc = TopicChange(
+        kind = TopicChangeKind.Switch(previousTopicId = c._id),
+        newLabel = "A",
+        participantId = TestAgent,
+        conversationId = convId,
+        topicId = a._id,
+        state = EventState.Complete
+      )
+      for {
+        _ <- TestSigil.withDB(_.topics.transaction(_.upsert(a)))
+        _ <- TestSigil.withDB(_.topics.transaction(_.upsert(b)))
+        _ <- TestSigil.withDB(_.topics.transaction(_.upsert(c)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(tc)
+        after <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
+      } yield after.get.topics.map(_.id) shouldBe List(a._id)
+    }
+
+    "update label + summary on the active entry when a TopicChange(Rename) settles" in {
       val convId = freshConvId("topic-rename-settle")
-      val topicId = Topic.id(s"rename-${rapid.Unique()}")
-      val conv = Conversation(currentTopicId = topicId, _id = convId)
+      val original = Topic(conversationId = convId, label = "Old Label", summary = "Old summary", createdBy = TestUser)
+      val conv = Conversation(
+        topics = List(TopicEntry(original._id, original.label, original.summary)),
+        _id = convId
+      )
+      // Pretend the orchestrator already updated the Topic record with the new label + summary.
+      val renamed = original.copy(label = "New Label", summary = "New summary")
       val tc = TopicChange(
         kind = TopicChangeKind.Rename(previousLabel = "Old Label"),
         newLabel = "New Label",
         participantId = TestAgent,
         conversationId = convId,
-        topicId = topicId,
+        topicId = original._id,
         state = EventState.Complete
       )
       for {
+        _ <- TestSigil.withDB(_.topics.transaction(_.upsert(original)))
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.topics.transaction(_.upsert(renamed)))
         _ <- TestSigil.publish(tc)
         after <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
-      } yield after.map(_.currentTopicId) shouldBe Some(topicId)
+      } yield {
+        val stack = after.get.topics
+        stack.map(_.id) shouldBe List(original._id)
+        stack.head.label shouldBe "New Label"
+        stack.head.summary shouldBe "New summary"
+      }
     }
   }
 
