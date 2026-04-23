@@ -24,11 +24,22 @@ final class MultipartStreamParser {
   private var inBlock = false
 
   /**
+   * When the previous chunk ended with a `\` and the escape target hasn't
+   * arrived yet. The next char determines whether this is a `\n` / `\r` /
+   * `\t` / `\\` escape (consume both as the resolved char) or something
+   * else (emit the `\` literally then process the char). See
+   * [[MultipartParser.normalizeEscapes]] for the rationale — some
+   * llama.cpp server builds emit newlines as literal `\n` byte pairs
+   * rather than actual newline characters.
+   */
+  private var pendingBackslash = false
+
+  /**
    * Feed a chunk of decoded body text. Returns the events produced by this chunk.
    */
   def append(chunk: String): Vector[ToolStreamEvent] = {
     out.clear()
-    chunk.foreach(processChar)
+    chunk.foreach(feedChar)
     flushBody()
     out.result()
   }
@@ -40,6 +51,10 @@ final class MultipartStreamParser {
    */
   def finish(): Vector[ToolStreamEvent] = {
     out.clear()
+    if (pendingBackslash) {
+      pendingBackslash = false
+      processChar('\\')
+    }
     headerBuf.foreach { hb =>
       val s = hb.toString
       if (Header.findFirstMatchIn(s).isEmpty && inBlock) {
@@ -52,6 +67,28 @@ final class MultipartStreamParser {
     flushBody()
     pendingNewline = false
     out.result()
+  }
+
+  /** Normalize literal escape sequences (`\n`, `\r`, `\t`, `\\`) that some
+    * llama.cpp server builds emit where actual control characters were
+    * intended. State carries across chunks via [[pendingBackslash]]. */
+  private def feedChar(c: Char): Unit = {
+    if (pendingBackslash) {
+      pendingBackslash = false
+      c match {
+        case 'n'  => processChar('\n')
+        case 'r'  => processChar('\r')
+        case 't'  => processChar('\t')
+        case '\\' => processChar('\\')
+        case other =>
+          processChar('\\')
+          processChar(other)
+      }
+    } else if (c == '\\') {
+      pendingBackslash = true
+    } else {
+      processChar(c)
+    }
   }
 
   private def processChar(c: Char): Unit = headerBuf match {
