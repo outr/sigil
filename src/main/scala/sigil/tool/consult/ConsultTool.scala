@@ -6,7 +6,7 @@ import sigil.{Sigil, TurnContext}
 import sigil.db.Model
 import sigil.event.{Event, Message}
 import sigil.participant.ParticipantId
-import sigil.provider.GenerationSettings
+import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent}
 import sigil.tool.model.ResponseContent
 import sigil.tool.{Tool, ToolExample, ToolInput}
 
@@ -16,14 +16,16 @@ import sigil.tool.{Tool, ToolExample, ToolInput}
  * 1. [[execute]] — the LLM-callable path. The agent invokes the tool
  *    with system + user prompts; the consulted model returns free-form
  *    text, which is emitted as a [[Message]] back into the conversation
- *    so the agent can read it on its next turn. Use cases: ask a stronger
- *    model a hard sub-question, get a fresh perspective without history,
- *    delegate a focused sub-task.
+ *    so the agent can read it on its next turn.
  *
  * 2. [[invoke]] — the framework-callable path. Returns a typed
  *    `Option[I]` directly, no events emitted. Used by framework
  *    machinery that needs structured sub-decisions (e.g.
  *    [[Sigil.classifyTopicShift]]).
+ *
+ * Both surfaces build an [[OneShotRequest]] and dispatch through
+ * `Provider.apply` — there is no separate `Provider.consult` method;
+ * one-shot is just a request-shape, not a parallel API.
  *
  * Apps that want to expose cross-model consultation to their agents must
  * explicitly add this tool to the agent's roster — it is NOT in
@@ -64,26 +66,27 @@ object ConsultTool extends Tool[ConsultInput] {
 
   override def execute(input: ConsultInput, context: TurnContext): Stream[Event] = Stream.force {
     context.sigil.providerFor(input.modelId, context.chain).flatMap { provider =>
-      provider.consult(
+      val request = OneShotRequest(
         modelId = input.modelId,
         systemPrompt = input.systemPrompt,
         userPrompt = input.userPrompt,
-        tools = Vector.empty
+        chain = context.chain
       )
-    }.map { result =>
-      val text = result.text.getOrElse("(no response)")
-      val message = Message(
-        participantId = context.caller,
-        conversationId = context.conversation.id,
-        topicId = context.conversation.currentTopicId,
-        content = Vector(ResponseContent.Text(text))
-      )
-      Stream.emits(List[Event](message))
+      provider(request).toList.map { events =>
+        val text = collectText(events)
+        val message = Message(
+          participantId = context.caller,
+          conversationId = context.conversation.id,
+          topicId = context.conversation.currentTopicId,
+          content = Vector(ResponseContent.Text(if (text.isEmpty) "(no response)" else text))
+        )
+        Stream.emits(List[Event](message))
+      }
     }
   }
 
   /**
-   * Framework-facing typed consult. Builds a one-shot provider call
+   * Framework-facing typed consult. Builds a one-shot provider request
    * forced to invoke `tool` (`tool_choice = "required"`), drains the
    * result, and returns the parsed input or `None` if the call did not
    * produce a tool call (provider error, model refusal, etc.).
@@ -100,17 +103,34 @@ object ConsultTool extends Tool[ConsultInput] {
                              tool: Tool[I],
                              generationSettings: GenerationSettings = GenerationSettings()): Task[Option[I]] = {
     sigil.providerFor(modelId, chain).flatMap { provider =>
-      provider.consult(
+      val request = OneShotRequest(
         modelId = modelId,
         systemPrompt = systemPrompt,
         userPrompt = userPrompt,
+        generationSettings = generationSettings,
         tools = Vector(tool),
-        generationSettings = generationSettings
+        chain = chain
       )
-    }.map { result =>
-      result.toolCall.collect {
-        case tc if tc.toolName == tool.schema.name => tc.input.asInstanceOf[I]
+      provider(request).toList.map { events =>
+        events.collectFirst {
+          case ProviderEvent.ToolCallComplete(_, parsedInput) => parsedInput.asInstanceOf[I]
+        }
       }
     }
+  }
+
+  /** Collect all text content from a one-shot stream — both
+    * `ContentBlockDelta` (streamed multipart-format text from a `respond`-
+    * style call) and bare `TextDelta` (free-form text outside the
+    * multipart format). The consult call has no tools when used by
+    * `execute`, so text is the only payload. */
+  private def collectText(events: List[ProviderEvent]): String = {
+    val sb = new StringBuilder
+    events.foreach {
+      case ProviderEvent.ContentBlockDelta(_, t) => sb.append(t)
+      case ProviderEvent.TextDelta(t)            => sb.append(t)
+      case _                                     => ()
+    }
+    sb.toString
   }
 }

@@ -21,7 +21,7 @@ import sigil.conversation.{
 import sigil.db.Model
 import sigil.event.Event
 import sigil.information.{Information, InformationSummary}
-import sigil.provider.{GenerationSettings, Instructions, Mode, ProviderRequest}
+import sigil.provider.{ConversationRequest, GenerationSettings, Instructions, Mode, ProviderRequest}
 import sigil.provider.llamacpp.LlamaCppProvider
 import sigil.tool.ToolName
 import sigil.tool.core.CoreTools
@@ -65,7 +65,7 @@ class LlamaCppRequestCoverageSpec extends AnyWordSpec with Matchers {
 
   private def baseRequest(input: TurnInput,
                           generationSettings: GenerationSettings =
-                            GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))): ProviderRequest = ProviderRequest(
+                            GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))): ProviderRequest = ConversationRequest(
     conversationId = conversationId,
     modelId = modelId,
     instructions = Instructions(),

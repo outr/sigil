@@ -7,7 +7,7 @@ import sigil.Sigil
 import sigil.conversation.{ContextFrame, Conversation, Topic, TopicShiftResult}
 import sigil.event.{Event, Message, TopicChange, TopicChangeKind, ToolInvoke}
 import sigil.participant.ParticipantId
-import sigil.provider.{Provider, ProviderEvent, ProviderRequest}
+import sigil.provider.{ConversationRequest, Provider, ProviderEvent}
 import sigil.signal.{ContentDelta, ContentKind, EventState, MessageDelta, Signal, StateDelta, ToolDelta}
 import sigil.tool.ToolName
 import sigil.tool.model.RespondInput
@@ -43,7 +43,7 @@ import sigil.tool.{Tool, ToolInput}
  */
 object Orchestrator {
 
-  def process(sigil: Sigil, provider: Provider, request: ProviderRequest): Stream[Signal] = {
+  def process(sigil: Sigil, provider: Provider, request: ConversationRequest): Stream[Signal] = {
     val conversation: Conversation = Conversation(
       topics = (request.previousTopics :+ request.currentTopic),
       _id = request.conversationId
@@ -71,7 +71,7 @@ object Orchestrator {
 
   private def translate(event: ProviderEvent,
                         sigil: Sigil,
-                        request: ProviderRequest,
+                        request: ConversationRequest,
                         conversation: Conversation,
                         toolsByName: Map[String, Tool[? <: ToolInput]],
                         state: State): Stream[Signal] = {
@@ -233,7 +233,7 @@ object Orchestrator {
                                   r: RespondInput,
                                   caller: ParticipantId,
                                   conversation: Conversation,
-                                  request: ProviderRequest): Task[List[Signal]] = {
+                                  request: ConversationRequest): Task[List[Signal]] = {
     val currentEntry = request.currentTopic
     val priors = request.previousTopics
 

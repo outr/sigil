@@ -1,42 +1,23 @@
 package sigil.provider
 
 import lightdb.id.Id
-import sigil.conversation.{Conversation, TopicEntry, TurnInput}
-import sigil.db.Model
 import sigil.participant.ParticipantId
 import sigil.tool.{Tool, ToolInput}
 
 /**
- * Runtime request to a provider. Not serializable — `tools` carry executable
- * behavior. If/when replay or caching is needed, extract a snapshot with just
- * the serializable fields.
+ * A provider invocation. Two variants — [[ConversationRequest]]
+ * for agent turns (carries conversation context, topic stack,
+ * instructions, frames) or [[OneShotRequest]] for focused /
+ * framework / consult-style calls (just a system prompt + user prompt).
  *
- * @param turnInput      the curator's per-turn output — carries the
- *                       [[sigil.conversation.ConversationView]] (frames +
- *                       participant projections) plus the memory / summary /
- *                       information selections the provider should render.
- * @param currentTopic   the active topic at request-build time. Events the
- *                       orchestrator emits (Message, ToolInvoke, …) land
- *                       under this topic unless a [[sigil.event.TopicChange]]
- *                       fires during the turn.
- * @param previousTopics earlier entries on the conversation's topic stack —
- *                       subjects this conversation has been on before and
- *                       could return to. Rendered in the system prompt as
- *                       "Previous topics" so the LLM can recognize implicit
- *                       returns.
- * @param chain          authority lineage for this invocation — the originating
- *                       participant followed by each propagator. Forwarded to
- *                       `TurnContext.chain` when a tool executes. Supplied fresh
- *                       per invocation; never persisted.
+ * Providers never inspect the variant directly. The framework's `apply`
+ * is `final` and translates each variant into a uniform [[ProviderCall]]
+ * before dispatching to the provider's `call` implementation.
  */
-case class ProviderRequest(conversationId: Id[Conversation],
-                           modelId: Id[Model],
-                           instructions: Instructions,
-                           turnInput: TurnInput,
-                           currentMode: Mode,
-                           currentTopic: TopicEntry,
-                           previousTopics: List[TopicEntry] = Nil,
-                           generationSettings: GenerationSettings,
-                           tools: Vector[Tool[? <: ToolInput]] = Vector.empty,
-                           chain: List[ParticipantId] = Nil,
-                           requestId: Id[ProviderRequest] = Id())
+trait ProviderRequest {
+  def modelId: Id[sigil.db.Model]
+  def generationSettings: GenerationSettings
+  def tools: Vector[Tool[? <: ToolInput]]
+  def chain: List[ParticipantId]
+  def requestId: Id[ProviderRequest]
+}

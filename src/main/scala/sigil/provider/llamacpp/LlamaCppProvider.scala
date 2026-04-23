@@ -1,16 +1,16 @@
 package sigil.provider.llamacpp
 
 import fabric.*
-import fabric.io.{JsonFormatter, JsonParser}
+import fabric.io.JsonFormatter
 import fabric.rw.*
+import lightdb.id.Id
 import rapid.{Stream, Task}
 import sigil.Sigil
-import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary}
 import sigil.db.Model
 import sigil.provider.*
-import sigil.tool.{DefinitionToSchema, Tool, ToolInput, ToolName, ToolSchema}
+import sigil.provider.sse.{SSELine, SSELineParser}
+import sigil.tool.{DefinitionToSchema, ToolInput, ToolName, ToolSchema}
 import sigil.tool.ToolInput.given
-import lightdb.id.Id
 import spice.http.{HttpMethod, HttpRequest}
 import spice.http.client.HttpClient
 import spice.http.content.StringContent
@@ -19,32 +19,15 @@ import spice.net.*
 case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) extends Provider {
   override def `type`: ProviderType = ProviderType.LlamaCpp
 
-  /**
-   * Streaming implementation: POST to `/v1/chat/completions` with `stream: true`,
-   * parse the SSE line stream into [[ProviderEvent]]s.
-   *
-   * When `request.tools` is non-empty, `tool_choice: "required"` is sent so the
-   * model is forced to emit a tool call. Tool-call argument streaming is
-   * accumulated into a final `ToolCallComplete` event when `finish_reason`
-   * arrives.
-   */
-  override def requestConverter(request: ProviderRequest): Task[HttpRequest] = {
-    val modelName = stripProviderPrefix(request.modelId.value)
-    resolveReferences(request).map { resolved =>
-      val bodyStr = JsonFormatter.Compact(buildBody(modelName, request, resolved))
-      HttpRequest(
-        method = HttpMethod.Post,
-        url = url.withPath("/v1/chat/completions"),
-        content = Some(StringContent(bodyStr, ContentType.`application/json`))
-      )
-    }
-  }
+  override protected def sigil: Sigil = sigilRef
 
-  override def apply(request: ProviderRequest): Stream[ProviderEvent] = {
-    val state = new StreamState(new ToolCallAccumulator(request.tools))
-
+  /** Serialize the uniform [[ProviderCall]] to a llama.cpp / OpenAI-compatible
+    * chat-completions request and run the streaming response through
+    * [[SSELineParser]] + chunk parsing. */
+  override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
+    val state = new StreamState(new ToolCallAccumulator(input.tools))
     Stream.force(
-      requestConverter(request).map { httpRequest =>
+      httpRequestFor(input).map { httpRequest =>
         HttpClient.modify(_ => httpRequest)
           .noFailOnHttpStatus
           .streamLines()
@@ -53,115 +36,26 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
     )
   }
 
-  /**
-   * One-shot consult call — bypasses the conversation-aware request
-   * pipeline. Builds a clean chat-completions request with just the
-   * supplied system + user messages and (optionally) the supplied tools.
-   * Streams the response and accumulates a single [[ConsultResult]].
-   */
-  override def consult(modelId: Id[Model],
-                       systemPrompt: String,
-                       userPrompt: String,
-                       tools: Vector[Tool[? <: ToolInput]],
-                       generationSettings: GenerationSettings): Task[ConsultResult] = {
-    val modelName = stripProviderPrefix(modelId.value)
-    val acc = new ToolCallAccumulator(tools)
-    val state = new StreamState(acc)
-    val textBuf = new StringBuilder
-    val usageRef = new java.util.concurrent.atomic.AtomicReference[TokenUsage](TokenUsage(0, 0, 0))
-
-    val toolsArr = tools.map { t =>
-      val s = t.schema
-      obj(
-        "type" -> str("function"),
-        "function" -> obj(
-          "name" -> str(s.name.value),
-          "description" -> str(renderDescription(s)),
-          "parameters" -> DefinitionToSchema(s.input)
-        )
-      )
-    }
-
-    val baseFields = Vector[(String, Json)](
-      "model" -> str(modelName),
-      "messages" -> arr(
-        obj("role" -> str("system"), "content" -> str(systemPrompt)),
-        obj("role" -> str("user"),   "content" -> str(userPrompt))
-      ),
-      "stream" -> bool(true),
-      "stream_options" -> obj("include_usage" -> bool(true)),
-      "chat_template_kwargs" -> obj("enable_thinking" -> bool(false))
-    )
-    val toolFields: Vector[(String, Json)] =
-      if (toolsArr.isEmpty) Vector.empty
-      else Vector("tools" -> arr(toolsArr*), "tool_choice" -> str("required"))
-    val gen = generationSettings
-    val genFields: Vector[(String, Json)] =
-      gen.temperature.toVector.map("temperature" -> num(_)) ++
-        gen.maxOutputTokens.toVector.map("max_tokens" -> num(_)) ++
-        gen.topP.toVector.map("top_p" -> num(_)) ++
-        (if (gen.stopSequences.nonEmpty) Vector("stop" -> arr(gen.stopSequences.map(str)*)) else Vector.empty)
-
-    val bodyStr = JsonFormatter.Compact(obj((baseFields ++ toolFields ++ genFields)*))
-    val httpRequest = HttpRequest(
+  /** Build the wire-level chat-completions HttpRequest from a uniform
+    * ProviderCall. Used both by [[call]] and (via the trait's final
+    * `requestConverter`) by inspect-only test paths. */
+  override protected def httpRequestFor(input: ProviderCall): Task[HttpRequest] = Task {
+    val bodyStr = JsonFormatter.Compact(buildBody(input))
+    HttpRequest(
       method = HttpMethod.Post,
       url = url.withPath("/v1/chat/completions"),
       content = Some(StringContent(bodyStr, ContentType.`application/json`))
     )
-
-    val eventsStream: Stream[ProviderEvent] = Stream.force(
-      HttpClient.modify(_ => httpRequest)
-        .noFailOnHttpStatus
-        .streamLines()
-        .map(lines => lines.flatMap(line => Stream.emits(parseLine(line, state))))
-    )
-    eventsStream.toList.map { events =>
-      events.foreach {
-        case ProviderEvent.ContentBlockDelta(_, text) => textBuf.append(text)
-        case ProviderEvent.TextDelta(text)            => textBuf.append(text)
-        case ProviderEvent.Usage(u)                   => usageRef.set(u)
-        case _                                        => ()
-      }
-      val toolName = events.collectFirst {
-        case s: ProviderEvent.ToolCallStart => s.toolName
-      }.getOrElse("")
-      val toolCall = events.collectFirst {
-        case ProviderEvent.ToolCallComplete(_, input) =>
-          ConsultToolCall(ToolName(toolName), input)
-      }
-      val stopReason = events.collectFirst {
-        case d: ProviderEvent.Done => d.stopReason
-      }.getOrElse(StopReason.Complete)
-      val text = if (textBuf.nonEmpty) Some(textBuf.toString) else None
-      ConsultResult(text = text, toolCall = toolCall, usage = usageRef.get(), stopReason = stopReason)
-    }
   }
 
-  /**
-   * Resolve the ids in `TurnInput.criticalMemories`, `.memories`, and
-   * `.summaries` to full records by looking each one up in the
-   * corresponding store. Ids that don't resolve (deleted, stale) are
-   * dropped silently — the curator keeps the referenced set consistent.
-   */
-  private def resolveReferences(request: ProviderRequest): Task[ResolvedReferences] = {
-    val turn = request.turnInput
-    for {
-      crit <- Task.sequence(turn.criticalMemories.toList.map(id => sigilRef.withDB(_.memories.transaction(_.get(id)))))
-      regular <- Task.sequence(turn.memories.toList.map(id => sigilRef.withDB(_.memories.transaction(_.get(id)))))
-      summaries <- Task.sequence(turn.summaries.toList.map(id => sigilRef.withDB(_.summaries.transaction(_.get(id)))))
-    } yield ResolvedReferences(
-      criticalMemories = crit.flatten.toVector,
-      memories = regular.flatten.toVector,
-      summaries = summaries.flatten.toVector
-    )
-  }
+  // ---- request body construction ----
 
-  private def buildBody(modelName: String, request: ProviderRequest, resolved: ResolvedReferences): Json = {
-    val agentId = request.chain.lastOption
-    val systemMsg = obj("role" -> str("system"), "content" -> str(buildSystemContent(request, resolved)))
-    val messages = renderFrames(request.turnInput.conversationView.frames, agentId)
+  private def buildBody(input: ProviderCall): Json = {
+    val modelName = stripProviderPrefix(input.modelId.value)
+    val systemMsg = obj("role" -> str("system"), "content" -> str(input.system))
+    val rendered = renderMessages(input.messages)
 
-    val toolsArr = request.tools.map { t =>
+    val toolsArr = input.tools.map { t =>
       val s = t.schema
       obj(
         "type" -> str("function"),
@@ -175,7 +69,7 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
 
     val baseFields = Vector[(String, Json)](
       "model" -> str(modelName),
-      "messages" -> arr((Vector(systemMsg) ++ messages)*),
+      "messages" -> arr((Vector(systemMsg) ++ rendered)*),
       "stream" -> bool(true),
       // Emit a final chunk with token usage before [DONE]
       "stream_options" -> obj("include_usage" -> bool(true)),
@@ -185,14 +79,14 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
       // is driven per-Mode.
       "chat_template_kwargs" -> obj("enable_thinking" -> bool(false))
     )
-    val toolFields: Vector[(String, Json)] =
-      if (toolsArr.isEmpty) Vector.empty
-      else
-        Vector(
-          "tools" -> arr(toolsArr*),
-          "tool_choice" -> str("required")
-        )
-    val gen = request.generationSettings
+    val toolFields: Vector[(String, Json)] = input.toolChoice match {
+      case ToolChoice.None => Vector.empty
+      case ToolChoice.Auto =>
+        Vector("tools" -> arr(toolsArr*), "tool_choice" -> str("auto"))
+      case ToolChoice.Required =>
+        Vector("tools" -> arr(toolsArr*), "tool_choice" -> str("required"))
+    }
+    val gen = input.generationSettings
     val generationFields: Vector[(String, Json)] =
       gen.temperature.toVector.map("temperature" -> num(_)) ++
         gen.maxOutputTokens.toVector.map("max_tokens" -> num(_)) ++
@@ -205,215 +99,50 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
     obj((baseFields ++ toolFields ++ generationFields)*)
   }
 
-  /**
-   * Compose the system message body from every contextually relevant
-   * field on the request. Each section is omitted when its source is
-   * empty so the wire payload stays compact.
-   *
-   *   - mode + description (always)
-   *   - instructions (always)
-   *   - critical memories (`TurnInput.criticalMemories`)
-   *   - earlier-conversation summaries (`TurnInput.summaries`)
-   *   - active memories (`TurnInput.memories`)
-   *   - referenced information catalog (`TurnInput.information`)
-   *   - active skills aggregated across chain participants (from
-   *     `ConversationView.aggregatedSkills(chain)`)
-   *   - recent / suggested tools per chain participant (from the
-   *     view's per-participant projections)
-   *   - app-supplied extra context, both conversation-wide
-   *     (`TurnInput.extraContext`) and per-participant
-   *     (`ParticipantProjection.extraContext`)
-   *
-   * Every Model-visible field on `TurnInput` / `ConversationView` MUST
-   * appear here. The companion [[spec.LlamaCppRequestCoverageSpec]] is
-   * the regression guard.
-   */
-  private def buildSystemContent(request: ProviderRequest, resolved: ResolvedReferences): String = {
-    val turn = request.turnInput
-    val view = turn.conversationView
-    val chain = request.chain
-    val sb = new StringBuilder
-
-    sb.append(s"Current mode: ${request.currentMode} — ${request.currentMode.description}\n")
-    sb.append(s"Current topic: \"${request.currentTopic.label}\" — ${request.currentTopic.summary}\n")
-    if (request.previousTopics.nonEmpty) {
-      sb.append("Previous topics in this conversation:\n")
-      request.previousTopics.foreach { t =>
-        sb.append(s"  - \"${t.label}\" — ${t.summary}\n")
-      }
-    }
-
-    val instr = request.instructions.render
-    if (instr.nonEmpty) sb.append("\n").append(instr).append("\n")
-
-    if (resolved.criticalMemories.nonEmpty) {
-      sb.append("\n== Critical directives ==\n")
-      resolved.criticalMemories.foreach(m => sb.append(s"- ${m.fact}\n"))
-    }
-
-    if (resolved.summaries.nonEmpty) {
-      sb.append("\n== Earlier in this conversation ==\n")
-      resolved.summaries.foreach(s => sb.append(s.text).append("\n"))
-    }
-
-    if (resolved.memories.nonEmpty) {
-      sb.append("\n== Memories ==\n")
-      resolved.memories.foreach(m => sb.append(s"- ${m.fact}\n"))
-    }
-
-    if (turn.information.nonEmpty) {
-      sb.append("\n== Referenced content (look up by id) ==\n")
-      turn.information.foreach(i => sb.append(s"- ${i.id.value} [${i.informationType.name}]: ${i.summary}\n"))
-    }
-
-    val skills = view.aggregatedSkills(chain)
-    if (skills.nonEmpty) {
-      sb.append("\n== Active skills ==\n")
-      skills.foreach { s =>
-        sb.append(s"- ${s.name}\n")
-        if (s.content.nonEmpty) sb.append(s.content).append("\n")
-      }
-    }
-
-    val recentTools = chain.flatMap(id => view.projectionFor(id).recentTools).distinct
-    if (recentTools.nonEmpty) {
-      sb.append("\n== Recently used tools ==\n")
-      recentTools.foreach(t => sb.append(s"- $t\n"))
-    }
-
-    val suggestedTools = chain.flatMap(id => view.projectionFor(id).suggestedTools).distinct
-    if (suggestedTools.nonEmpty) {
-      sb.append("\n== Suggested tools ==\n")
-      suggestedTools.foreach(t => sb.append(s"- $t\n"))
-    }
-
-    if (turn.extraContext.nonEmpty) {
-      sb.append("\n== Conversation context ==\n")
-      turn.extraContext.foreach { case (k, v) => sb.append(s"- ${k.value}: $v\n") }
-    }
-
-    val perParticipantExtras = chain.flatMap(id => view.projectionFor(id).extraContext.map(id -> _))
-    if (perParticipantExtras.nonEmpty) {
-      sb.append("\n== Participant context ==\n")
-      perParticipantExtras.foreach { case (pid, (k, v)) =>
-        sb.append(s"- ${pid.value} ${k.value}: $v\n")
-      }
-    }
-
-    sb.toString
-  }
-
-  /**
-   * Render the conversation view's [[ContextFrame]]s into the
-   * OpenAI/llama.cpp chat-completions message format.
-   *
-   * Mapping rules:
-   *   - `ContextFrame.Text` from the agent itself → `{role: "assistant", content}`
-   *   - `ContextFrame.Text` from anyone else      → `{role: "user", content}`
-   *   - `ContextFrame.ToolCall` from the agent for any tool *other than*
-   *     `respond` → `{role: "assistant", tool_calls: [...]}`. The `respond`
-   *     tool's call is filtered at render time because the following
-   *     `Text` frame IS the response — emitting both yields a tool_call
-   *     without a matching tool_result, which models handle poorly.
-   *   - `ContextFrame.ToolResult` → `{role: "tool", tool_call_id, content}`,
-   *     paired by `callId` to a prior `ToolCall`.
-   *   - `ContextFrame.System` → `{role: "tool", tool_call_id, content}` when
-   *     paired with a pending tool call; otherwise `{role: "system", content}`.
-   *
-   * Only model-visible events become frames in the first place (see
-   * [[sigil.conversation.FrameBuilder]]), so UI-only history never reaches
-   * this renderer.
-   */
-  private[llamacpp] def renderFrames(frames: Vector[ContextFrame],
-                                     agentId: Option[_root_.sigil.participant.ParticipantId]): Vector[Json] = {
-    val out = Vector.newBuilder[Json]
-    var pendingToolCall: Option[String] = None
-
-    def flushAsToolResultOrSystem(content: String): Unit = pendingToolCall match {
-      case Some(callId) =>
-        out += obj(
-          "role" -> str("tool"),
-          "tool_call_id" -> str(callId),
-          "content" -> str(content)
-        )
-        pendingToolCall = None
-      case None =>
-        out += obj(
-          "role" -> str("system"),
-          "content" -> str(content)
-        )
-    }
-
-    frames.foreach {
-      case ContextFrame.Text(content, participantId, _) =>
-        val isAssistant = agentId.contains(participantId)
-        if (isAssistant && pendingToolCall.isDefined) {
-          flushAsToolResultOrSystem(content)
-          out += obj("role" -> str("assistant"), "content" -> str(content))
-        } else if (isAssistant) {
-          out += obj("role" -> str("assistant"), "content" -> str(content))
+  /** Render format-neutral [[ProviderMessage]]s into OpenAI chat-completions
+    * message format. */
+  private def renderMessages(messages: Vector[ProviderMessage]): Vector[Json] =
+    messages.map {
+      case ProviderMessage.System(content) =>
+        obj("role" -> str("system"), "content" -> str(content))
+      case ProviderMessage.User(content) =>
+        obj("role" -> str("user"), "content" -> str(content))
+      case ProviderMessage.Assistant(content, toolCalls) =>
+        if (toolCalls.isEmpty) {
+          obj("role" -> str("assistant"), "content" -> str(content))
         } else {
-          out += obj("role" -> str("user"), "content" -> str(content))
+          obj(
+            "role" -> str("assistant"),
+            "tool_calls" -> arr(toolCalls.map { tc =>
+              obj(
+                "id" -> str(tc.id),
+                "type" -> str("function"),
+                "function" -> obj(
+                  "name" -> str(tc.name),
+                  "arguments" -> str(tc.argsJson)
+                )
+              )
+            }*)
+          )
         }
-
-      case ContextFrame.ToolCall(toolName, _, _, participantId, _)
-        if toolName == sigil.tool.core.RespondTool.schema.name && agentId.contains(participantId) =>
-      // Skip — the following Text frame is the actual response.
-
-      case ContextFrame.ToolCall(toolName, argsJson, callId, participantId, _) if agentId.contains(participantId) =>
-        out += obj(
-          "role" -> str("assistant"),
-          "tool_calls" -> arr(obj(
-            "id" -> str(callId.value),
-            "type" -> str("function"),
-            "function" -> obj(
-              "name" -> str(toolName.value),
-              "arguments" -> str(argsJson)
-            )
-          ))
-        )
-        pendingToolCall = Some(callId.value)
-
-      case _: ContextFrame.ToolCall =>
-      // ToolCall from someone else — skip (not rendered as a tool call for this agent).
-
-      case ContextFrame.ToolResult(callId, content, _) =>
-        out += obj(
+      case ProviderMessage.ToolResult(toolCallId, content) =>
+        obj(
           "role" -> str("tool"),
-          "tool_call_id" -> str(callId.value),
+          "tool_call_id" -> str(toolCallId),
           "content" -> str(content)
         )
-        if (pendingToolCall.contains(callId.value)) pendingToolCall = None
-
-      case ContextFrame.System(content, _) =>
-        flushAsToolResultOrSystem(content)
     }
 
-    // Dangling tool_call without a result — defensive fallback.
-    pendingToolCall.foreach { callId =>
-      out += obj(
-        "role" -> str("tool"),
-        "tool_call_id" -> str(callId),
-        "content" -> str("(no result recorded)")
-      )
+  // ---- streaming response parsing ----
+
+  private def parseLine(line: String, state: StreamState): Vector[ProviderEvent] =
+    SSELineParser.parse(line) match {
+      case SSELine.Data(json) => parseChunk(json, state)
+      case SSELine.Done       => state.flushDone()
+      case SSELine.MalformedData(_, reason) =>
+        Vector(ProviderEvent.Error(s"Failed to parse chunk: $reason"))
+      case SSELine.Blank | SSELine.Comment | _: SSELine.Other => Vector.empty
     }
-
-    out.result()
-  }
-
-  private def parseLine(line: String, state: StreamState): Vector[ProviderEvent] = {
-    val trimmed = line.trim
-    if (trimmed.isEmpty || trimmed.startsWith(":")) Vector.empty
-    else if (trimmed == "data: [DONE]") state.flushDone()
-    else if (trimmed.startsWith("data: ")) {
-      val payload = trimmed.drop(6)
-      try parseChunk(JsonParser(payload), state)
-      catch {
-        case t: Throwable =>
-          Vector(ProviderEvent.Error(s"Failed to parse chunk: ${t.getMessage}"))
-      }
-    } else Vector.empty
-  }
 
   private def parseChunk(json: Json, state: StreamState): Vector[ProviderEvent] = {
     val events = Vector.newBuilder[ProviderEvent]
@@ -449,9 +178,9 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
       }
     }
 
-    // finish_reason precedes usage in the emitted order. Flush any tool-call
-    // completes now, but hold `Done` back until usage arrives (or [DONE]) so
-    // `Done` remains terminal.
+    // finish_reason precedes usage. Flush any tool-call completes now,
+    // but hold `Done` back until usage arrives (or [DONE]) so `Done`
+    // remains terminal.
     choice.flatMap(_.get("finish_reason")).foreach { reason =>
       if (!reason.isNull) {
         val stopReason = mapFinishReason(reason.asString)
@@ -476,42 +205,29 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
       totalTokens = json.get("total_tokens").map(_.asInt).getOrElse(0)
     )
 
-  private def mapFinishReason(reason: String): StopReason =
-    reason match {
-      case "stop" => StopReason.Complete
-      case "length" => StopReason.MaxTokens
-      case "tool_calls" => StopReason.ToolCall
-      case "content_filter" => StopReason.ContentFiltered
-      case other =>
-        scribe.warn(s"Unmapped finish_reason from llama.cpp: '$other' — treating as Complete")
-        StopReason.Complete
-    }
+  private def mapFinishReason(reason: String): StopReason = reason match {
+    case "stop"           => StopReason.Complete
+    case "length"         => StopReason.MaxTokens
+    case "tool_calls"     => StopReason.ToolCall
+    case "content_filter" => StopReason.ContentFiltered
+    case other =>
+      scribe.warn(s"Unmapped finish_reason from llama.cpp: '$other' — treating as Complete")
+      StopReason.Complete
+  }
 
   private def renderDescription[I <: ToolInput](schema: ToolSchema[I]): String =
     if (schema.examples.isEmpty) schema.description
     else {
       val rendered = schema.examples.map { e =>
-        // Render example inputs as JSON (stripped of the ToolInput poly
-        // discriminator) so the model sees the SAME structural shape its
-        // own tool-call arguments will take — a JSON object with typed
-        // fields. Case-class `toString` would render `RespondInput(...)`
-        // in constructor order, which the model can't distinguish from
-        // a single opaque string value.
         val json = JsonFormatter.Compact(stripPolyDiscriminator(summon[RW[ToolInput]].read(e.input)))
         s"- ${e.description}: $json"
       }.mkString("\n")
       s"${schema.description}\n\nExamples:\n$rendered"
     }
 
-  /**
-   * Strip the `ToolInput` poly discriminator from a serialized example.
-   * Frames already carry the clean form; examples rendered in tool
-   * descriptions do the same so the model sees pure parameter-schema
-   * JSON, matching what its own tool_call arguments must produce.
-   */
   private def stripPolyDiscriminator(json: Json): Json = json match {
     case o: Obj => Obj(o.value - "type")
-    case other => other
+    case other  => other
   }
 
   private def stripProviderPrefix(id: String): String = {
