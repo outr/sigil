@@ -448,8 +448,24 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
             "tell me what TypeScript generics are.",
         suffix = "hard-switch"
       ).map { case (signals, seeded) =>
+        // Extract what the LLM's respond call produced — CI failures
+        // otherwise can't tell if this was the short-circuit path
+        // (topicLabel == current) or a classifier NoChange verdict.
+        val respondInput = signals.collect { case d: ToolDelta => d }
+          .flatMap(_.input.toList)
+          .collectFirst { case r: sigil.tool.model.RespondInput => r }
         val topicChanges = signals.collect { case tc: TopicChange => tc }
-        topicChanges should have size 1
+        val diagnostic =
+          s"""Diagnostic:
+             |  seed label           = 'Roman Empire History'
+             |  respond.topicLabel   = ${respondInput.map(r => s"'${r.topicLabel}'").getOrElse("(missing)")}
+             |  respond.topicSummary = ${respondInput.map(r => s"'${r.topicSummary}'").getOrElse("(missing)")}
+             |  TopicChange count    = ${topicChanges.size}
+             |  TopicChange labels   = ${topicChanges.map(tc => s"'${tc.newLabel}'").mkString(", ")}
+             |""".stripMargin
+        withClue(diagnostic) {
+          topicChanges should have size 1
+        }
         val tc = topicChanges.head
         val labelLower = tc.newLabel.toLowerCase
         // The new label should reflect the NEW subject (TypeScript /
