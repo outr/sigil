@@ -7,7 +7,7 @@ import rapid.{AsyncTaskSpec, Task}
 import lightdb.time.Timestamp
 import sigil.Sigil
 import sigil.conversation.{ContextFrame, ContextSummary, Conversation, ConversationView}
-import sigil.conversation.compression.{ContextCompressor, Fixed, StandardContextCurator, StandardContextOptimizer}
+import sigil.conversation.compression.{ContextCompressor, Fixed, NoOpContextCompressor, StandardContextCurator, StandardContextOptimizer}
 import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
 import sigil.event.Event
 import sigil.participant.ParticipantId
@@ -123,6 +123,31 @@ class StandardContextCuratorSpec extends AsyncWordSpec with AsyncTaskSpec with M
         compressor.called shouldBe 1
         out.summaries shouldBe empty
         out.conversationView.frames shouldBe frames
+      }
+    }
+
+    "run the BlockExtractor and merge extracted InformationSummary into TurnInput" in {
+      import sigil.conversation.compression.StandardBlockExtractor
+      import sigil.information.Information
+      import fabric.rw.*
+      case class BlockInfo(id: lightdb.id.Id[Information], content: String) extends Information derives RW
+      val extractor = StandardBlockExtractor(
+        toInformation = (c, id) => BlockInfo(id, c),
+        minChars = 20
+      )
+      val curator = StandardContextCurator(
+        sigil = TestSigil,
+        optimizer = new StandardContextOptimizer,
+        blockExtractor = extractor,
+        compressor = NoOpContextCompressor,
+        budget = Fixed(10_000)
+      )
+      val big = "A" * 50
+      val frames = Vector(textFrame(big, "big"), textFrame("short", "short"))
+      curator.curate(viewWith(frames), modelId, chain = Nil).map { out =>
+        out.information should have size 1
+        val extracted = out.conversationView.frames.head.asInstanceOf[ContextFrame.Text]
+        extracted.content should include("Information[")
       }
     }
   }

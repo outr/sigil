@@ -40,13 +40,13 @@ trait Sigil {
    * automatically; this list extends the polymorphic discriminator with
    * additional types.
    */
-  protected def signals: List[RW[? <: Signal]] = Nil
+  protected def signals: List[RW[? <: Signal]]
 
   /**
    * App-specific ParticipantId subtypes. Apps register their own
    * `ParticipantId` implementations here for polymorphic serialization.
    */
-  protected def participantIds: List[RW[? <: ParticipantId]] = Nil
+  protected def participantIds: List[RW[? <: ParticipantId]]
 
   /**
    * When `true`, tools that would normally cause external side effects (send
@@ -86,24 +86,33 @@ trait Sigil {
    * [[sigil.tool.consult.ConsultTool.invoke]] with the same provider
    * credentials and chain the turn itself runs under.
    *
-   * Apps that need nothing beyond the raw view return
-   * `Task.pure(TurnInput(view))`. The default implementation does
-   * exactly that so implementors can opt in incrementally.
+   * Apps that want no curation return `Task.pure(TurnInput(view))`
+   * explicitly.
    */
   def curate(view: ConversationView,
              modelId: Id[Model],
-             chain: List[ParticipantId]): Task[TurnInput] =
-    Task.pure(TurnInput(view))
+             chain: List[ParticipantId]): Task[TurnInput]
 
   // -- information lookup --
 
   /**
-   * Resolve the full content of an [[Information]] catalog entry. Default
-   * returns `None` — apps that use the Information catalog override to
-   * dispatch on their own subtype registry and fetch the real content from wherever
-   * it lives (DB, filesystem, web, memory store).
+   * Resolve the full content of an [[Information]] catalog entry. Apps
+   * that don't use the Information catalog return `Task.pure(None)`
+   * explicitly.
    */
-  def getInformation(id: Id[Information]): Task[Option[Information]] = Task.pure(None)
+  def getInformation(id: Id[Information]): Task[Option[Information]]
+
+  /**
+   * Persist an [[Information]] record so it can be resolved later via
+   * [[getInformation]]. Apps that enable block-extraction on compression
+   * (see [[sigil.conversation.compression.StandardBlockExtractor]]) MUST
+   * implement this — references emitted by the extractor resolve through
+   * [[getInformation]] reading whatever this writes.
+   *
+   * Apps that don't use the Information catalog return `Task.unit`
+   * explicitly.
+   */
+  def putInformation(information: Information): Task[Unit]
 
   // -- memory --
 
@@ -113,7 +122,7 @@ trait Sigil {
    * fabric RW. Apps define concrete spaces (GlobalSpace, ProjectSpace,
    * UserSpace, etc.) and list their RWs here.
    */
-  protected def memorySpaceIds: List[RW[? <: MemorySpaceId]] = Nil
+  protected def memorySpaceIds: List[RW[? <: MemorySpaceId]]
 
   /**
    * Search memories across the given spaces. Default queries
@@ -133,10 +142,22 @@ trait Sigil {
    * [[ParticipantProjection.activeSkills]] keyed by `SkillSource.Mode`;
    * `None` clears any stale Mode-source slot.
    *
-   * Default returns `None` for every mode — apps override to map modes to
-   * concrete skill playbooks.
+   * Apps that don't use mode-scoped skills return
+   * `Task.pure(None)` explicitly.
    */
-  def modeSkill(mode: Mode): Task[Option[ActiveSkillSlot]] = Task.pure(None)
+  def modeSkill(mode: Mode): Task[Option[ActiveSkillSlot]]
+
+  /**
+   * The [[MemorySpaceId]] into which a
+   * [[sigil.conversation.compression.MemoryContextCompressor]] should
+   * write facts extracted during compression of this conversation.
+   *
+   * Apps that don't want memory extraction return
+   * `Task.pure(None)` — the compressor collapses to summary-only.
+   * Apps that do want it return a concrete space (per-conversation,
+   * per-user, or a global compression-facts space).
+   */
+  def compressionMemorySpace(conversationId: Id[Conversation]): Task[Option[MemorySpaceId]]
 
   def findMemories(spaces: Set[MemorySpaceId]): Task[List[ContextMemory]] =
     if (spaces.isEmpty) Task.pure(Nil)
@@ -151,21 +172,23 @@ trait Sigil {
 
   /**
    * The [[EmbeddingProvider]] used to vectorize persisted text for
-   * semantic retrieval. Default [[NoOpEmbeddingProvider]] signals "no
-   * embeddings configured" — Sigil skips auto-indexing and semantic
-   * search APIs fall back to Lucene full-text. Apps wire a concrete
-   * provider (e.g. [[sigil.embedding.OpenAICompatibleEmbeddingProvider]])
-   * to opt in. Must be paired with a non-NoOp [[vectorIndex]].
+   * semantic retrieval. Apps that don't use embeddings return
+   * [[NoOpEmbeddingProvider]] — Sigil skips auto-indexing and semantic
+   * search falls back to the Lucene path. Apps that do use
+   * embeddings wire a concrete provider (e.g.
+   * [[sigil.embedding.OpenAICompatibleEmbeddingProvider]]) and must
+   * pair it with a non-NoOp [[vectorIndex]].
    */
-  def embeddingProvider: EmbeddingProvider = NoOpEmbeddingProvider
+  def embeddingProvider: EmbeddingProvider
 
   /**
-   * Backing vector store for semantic search. Default
-   * [[NoOpVectorIndex]] — upserts are dropped, searches return empty.
-   * Apps typically wire [[sigil.vector.QdrantVectorIndex]] in production
-   * or [[sigil.vector.InMemoryVectorIndex]] in tests.
+   * Backing vector store for semantic search. Apps that don't use
+   * vector search return [[NoOpVectorIndex]] (upserts dropped, searches
+   * empty). Apps that do typically wire
+   * [[sigil.vector.QdrantVectorIndex]] in production or
+   * [[sigil.vector.InMemoryVectorIndex]] in tests.
    */
-  def vectorIndex: VectorIndex = NoOpVectorIndex
+  def vectorIndex: VectorIndex
 
   /** `true` when both [[embeddingProvider]] and [[vectorIndex]] are
     * non-NoOp — the flag the framework checks before auto-embedding on
@@ -178,10 +201,11 @@ trait Sigil {
   /**
    * The wire transport for [[Signal]]s. The framework calls
    * `broadcaster.handle(signal)` after persisting and before fanning out.
-   * Apps override to push to WebSocket / SSE / DurableSocket; the default
-   * drops everything silently.
+   * Apps push to WebSocket / SSE / DurableSocket, or return
+   * [[SignalBroadcaster.NoOp]] explicitly when no wire transport is
+   * wanted.
    */
-  def broadcaster: SignalBroadcaster = SignalBroadcaster.NoOp
+  def broadcaster: SignalBroadcaster
 
   // -- participants (registration for polymorphic RW) --
 
@@ -192,7 +216,7 @@ trait Sigil {
    * ([[DefaultAgentParticipant]]) are registered automatically; this list
    * extends the poly with app-specific agent types (Planner, Critic, etc.).
    */
-  protected def participants: List[RW[? <: Participant]] = Nil
+  protected def participants: List[RW[? <: Participant]]
 
   // -- provider resolution --
 
