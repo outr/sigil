@@ -57,15 +57,18 @@ object Orchestrator {
     provider(request).flatMap(pe => translate(pe, sigil, request, conversation, toolsByName, state))
   }
 
-  private final class State {
+  final private class State {
     var activeToolName: Option[String] = None
     var activeToolInvokeId: Option[lightdb.id.Id[Event]] = None
     var activeMessageId: Option[lightdb.id.Id[Event]] = None
     var currentKind: Option[ContentKind] = None
     var currentArg: Option[String] = None
-    /** Accumulated text for the current open content block. Flushed as a
-      * `ContentDelta(complete = true, delta = full text)` when the block
-      * closes (next ContentBlockStart or ToolCallComplete). */
+
+    /**
+     * Accumulated text for the current open content block. Flushed as a
+     * `ContentDelta(complete = true, delta = full text)` when the block
+     * closes (next ContentBlockStart or ToolCallComplete).
+     */
     val currentBuffer: StringBuilder = new StringBuilder
   }
 
@@ -165,13 +168,17 @@ object Orchestrator {
             // Atomic path — run execute and forward resulting Events.
             val tool = toolsByName.get(state.activeToolName.getOrElse(""))
             val executed: Stream[Signal] = tool match {
-              case Some(t) => executeAtomic(t, input, TurnContext(
-                sigil = sigil,
-                chain = request.chain,
-                conversation = conversation,
-                conversationView = request.turnInput.conversationView,
-                turnInput = request.turnInput
-              ))
+              case Some(t) => executeAtomic(
+                  t,
+                  input,
+                  TurnContext(
+                    sigil = sigil,
+                    chain = request.chain,
+                    conversation = conversation,
+                    conversationView = request.turnInput.conversationView,
+                    turnInput = request.turnInput
+                  )
+                )
               case None => Stream.empty
             }
             Stream.emits(List[Signal](toolDelta)) ++ executed
@@ -184,21 +191,22 @@ object Orchestrator {
           case None => Stream.empty
         }
 
-      case ProviderEvent.TextDelta(_)     => Stream.empty
+      case ProviderEvent.TextDelta(_) => Stream.empty
       case ProviderEvent.ThinkingDelta(_) => Stream.empty
-      case ProviderEvent.Done(_)          => Stream.empty
-      case ProviderEvent.Error(_)         => Stream.empty
+      case ProviderEvent.Done(_) => Stream.empty
+      case ProviderEvent.Error(_) => Stream.empty
     }
   }
 
-  /** Dispatches an atomic tool's `execute` and forwards its events as
-    * signals. Each event the tool emits is followed by a
-    * `StateDelta(Complete)` so the uniform Active → Complete lifecycle
-    * holds for atomic tools too: subscribers see a reactive pulse on the
-    * event, then a settle via the delta. Tools that explicitly emit
-    * `state = Complete` still get a closing `StateDelta`, which is an
-    * idempotent no-op (the event is already Complete).
-    */
+  /**
+   * Dispatches an atomic tool's `execute` and forwards its events as
+   * signals. Each event the tool emits is followed by a
+   * `StateDelta(Complete)` so the uniform Active → Complete lifecycle
+   * holds for atomic tools too: subscribers see a reactive pulse on the
+   * event, then a settle via the delta. Tools that explicitly emit
+   * `state = Complete` still get a closing `StateDelta`, which is an
+   * idempotent no-op (the event is already Complete).
+   */
   private def executeAtomic[I <: ToolInput](tool: Tool[I], input: ToolInput, context: TurnContext): Stream[Signal] = {
     val typedInput = input.asInstanceOf[I]
     tool.execute(typedInput, context).flatMap { ev =>
@@ -247,7 +255,7 @@ object Orchestrator {
                 resolveSwitch(sigil, r, caller, conversation, current)
               case TopicChangeType.Update if !current.labelLocked =>
                 resolveRename(sigil, r, caller, conversation, current)
-              case _ => Task.pure(Nil)  // Update on a labelLocked topic: suppressed.
+              case _ => Task.pure(Nil) // Update on a labelLocked topic: suppressed.
             }
         }
     }
@@ -324,7 +332,7 @@ object Orchestrator {
   private def closeCurrentBlock(state: State, convId: lightdb.id.Id[Conversation]): List[Signal] = {
     val emit = for {
       msgId <- state.activeMessageId
-      kind  <- state.currentKind
+      kind <- state.currentKind
       if state.currentBuffer.nonEmpty
     } yield {
       val text = state.currentBuffer.toString

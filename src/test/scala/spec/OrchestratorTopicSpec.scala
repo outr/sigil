@@ -166,7 +166,7 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       // another topic "Prior Thread" that the switch should reuse.
       val convId = Conversation.id(s"topic-orchestrator-switch-reuse-${rapid.Unique()}")
       val current = Topic(conversationId = convId, label = "Current", createdBy = TestUser)
-      val prior   = Topic(conversationId = convId, label = "Prior Thread", createdBy = TestUser)
+      val prior = Topic(conversationId = convId, label = "Prior Thread", createdBy = TestUser)
       val conv = Conversation(currentTopicId = current._id, _id = convId)
       val view = ConversationView(conversationId = convId, _id = ConversationView.idFor(convId))
       val request = ProviderRequest(

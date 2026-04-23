@@ -24,4 +24,5 @@ import sigil.tool.ToolInput
  */
 case class RespondInput(@pattern("""^▶[A-Z][A-Za-z0-9]*(\s+\S+)?\n""") content: String,
                         topic: String,
-                        topicChangeType: TopicChangeType) extends ToolInput derives RW
+                        topicChangeType: TopicChangeType)
+  extends ToolInput derives RW

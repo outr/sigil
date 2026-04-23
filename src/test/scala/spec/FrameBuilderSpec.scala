@@ -176,9 +176,24 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
     }
 
     "dedupe recentTools (head = most recent)" in {
-      val first = ToolInvoke(toolName = ToolName("a"), participantId = TestAgent, conversationId = conversationId, topicId = TestTopicId, state = EventState.Complete)
-      val second = ToolInvoke(toolName = ToolName("b"), participantId = TestAgent, conversationId = conversationId, topicId = TestTopicId, state = EventState.Complete)
-      val third = ToolInvoke(toolName = ToolName("a"), participantId = TestAgent, conversationId = conversationId, topicId = TestTopicId, state = EventState.Complete)
+      val first = ToolInvoke(
+        toolName = ToolName("a"),
+        participantId = TestAgent,
+        conversationId = conversationId,
+        topicId = TestTopicId,
+        state = EventState.Complete)
+      val second = ToolInvoke(
+        toolName = ToolName("b"),
+        participantId = TestAgent,
+        conversationId = conversationId,
+        topicId = TestTopicId,
+        state = EventState.Complete)
+      val third = ToolInvoke(
+        toolName = ToolName("a"),
+        participantId = TestAgent,
+        conversationId = conversationId,
+        topicId = TestTopicId,
+        state = EventState.Complete)
       val after = List(
         first,
         second,

@@ -30,12 +30,16 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   protected def modelId: Id[Model]
 
-  /** Wire the spec's provider into TestSigil so `providerFor` returns it. */
+  /**
+   * Wire the spec's provider into TestSigil so `providerFor` returns it.
+   */
   TestSigil.setProvider(provider)
 
-  /** Tool names the test agent advertises. CoreTools' default roster
-    * plus the synthetic SendSlackMessageTool and the non-core SleepTool
-    * so orchestrator tests exercising sleep-timing have it available. */
+  /**
+   * Tool names the test agent advertises. CoreTools' default roster
+   * plus the synthetic SendSlackMessageTool and the non-core SleepTool
+   * so orchestrator tests exercising sleep-timing have it available.
+   */
   protected def toolNames: List[sigil.tool.ToolName] =
     CoreTools.coreToolNames ++ List(SendSlackMessageTool.schema.name, sigil.tool.util.SleepTool.schema.name)
 
@@ -48,9 +52,11 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0))
     )
 
-  /** A synthesized AgentState id used when we want defaultProcess to emit
-    * the Typing transition during streaming responses. The real dispatcher
-    * supplies this via `TurnContext.currentAgentStateId`. */
+  /**
+   * A synthesized AgentState id used when we want defaultProcess to emit
+   * the Typing transition during streaming responses. The real dispatcher
+   * supplies this via `TurnContext.currentAgentStateId`.
+   */
   private val testAgentStateId: Id[Event] = Id("test-agentstate")
 
   /**
@@ -168,7 +174,7 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   }
 
   getClass.getSimpleName should {
-    "emit ToolInvoke + Message + Typing transition for a streaming respond call" in {
+    "emit ToolInvoke + Message + Typing transition for a streaming respond call" in
       orchestrate("What is 2+2? Respond with just the number.").map { signals =>
         val toolInvokes = signals.collect { case t: ToolInvoke => t }
         toolInvokes should not be empty
@@ -221,7 +227,6 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
           case _ => false
         } shouldBe true
       }
-    }
 
     "persist Events and apply Deltas to the events store via SigilDB.apply" in {
       val conversationId = Conversation.id("test-persistence-conversation")
@@ -274,7 +279,7 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       }
     }
 
-    "emit ToolInvoke + ModeChange for an atomic change_mode call" in {
+    "emit ToolInvoke + ModeChange for an atomic change_mode call" in
       orchestrate("I need to write a Scala function.").map { signals =>
         val toolInvokes = signals.collect { case t: ToolInvoke => t }
         toolInvokes should not be empty
@@ -316,7 +321,6 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         val agentStateDeltas = signals.collect { case d: AgentStateDelta => d }
         agentStateDeltas.exists(_.activity.contains(AgentActivity.Typing)) shouldBe false
       }
-    }
 
     // Live-LLM coverage of the topic-trigger path. The system prompt shows
     // `Current topic: "New Conversation"` (the bootstrap label). With the
@@ -381,7 +385,7 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     // Iterative-refinement path: user refines an already-established
     // subject. Probe results show Qwen picks `Update` here, which the
     // orchestrator maps to a `Rename` — same topic id, label mutated.
-    "fire a TopicChange(Rename) when the LLM narrows an existing subject" in {
+    "fire a TopicChange(Rename) when the LLM narrows an existing subject" in
       orchestrateAfterSeed(
         seedLabel = "Python Programming",
         userMessage =
@@ -412,12 +416,11 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         renameKind.previousLabel shouldBe "Python Programming"
         tc.topicId shouldBe seeded._id
       }
-    }
 
     // Hard-switch path: user explicitly changes subject. Probe results
     // show Qwen picks `Change`, which the orchestrator maps to a
     // `Switch` — fresh Topic with the new label.
-    "fire a TopicChange(Switch) when the LLM detects an abrupt subject change" in {
+    "fire a TopicChange(Switch) when the LLM detects an abrupt subject change" in
       orchestrateAfterSeed(
         seedLabel = "Roman Empire History",
         userMessage =
@@ -450,6 +453,5 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         switchKind.previousTopicId shouldBe seeded._id
         tc.topicId should not be seeded._id
       }
-    }
   }
 }

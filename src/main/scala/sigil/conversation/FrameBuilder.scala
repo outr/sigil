@@ -59,7 +59,7 @@ object FrameBuilder {
           .map(i => JsonFormatter.Compact(stripPolyDiscriminator(summon[RW[ToolInput]].read(i))))
           .getOrElse("{}")
         existing :+ ContextFrame.ToolCall(
-          toolName = ti.toolName,   // already ToolName
+          toolName = ti.toolName, // already ToolName
           argsJson = argsJson,
           callId = ti._id,
           participantId = ti.participantId,
@@ -92,7 +92,7 @@ object FrameBuilder {
 
       case tc: TopicChange =>
         val content = tc.kind match {
-          case TopicChangeKind.Switch(_)            => s"Topic switched to: ${tc.newLabel}"
+          case TopicChangeKind.Switch(_) => s"Topic switched to: ${tc.newLabel}"
           case TopicChangeKind.Rename(previousLabel) => s"Topic renamed: $previousLabel → ${tc.newLabel}"
         }
         existing :+ ContextFrame.System(

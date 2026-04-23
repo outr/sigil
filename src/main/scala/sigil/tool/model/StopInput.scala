@@ -16,4 +16,5 @@ import sigil.tool.ToolInput
  */
 case class StopInput(targetParticipantId: Option[ParticipantId] = None,
                      force: Boolean = false,
-                     reason: Option[String] = None) extends ToolInput derives RW
+                     reason: Option[String] = None)
+  extends ToolInput derives RW

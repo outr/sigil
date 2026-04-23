@@ -266,7 +266,7 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
         }
 
       case ContextFrame.ToolCall(toolName, _, _, participantId, _)
-        if toolName == sigil.tool.core.RespondTool.schema.name && agentId.contains(participantId) =>
+          if toolName == sigil.tool.core.RespondTool.schema.name && agentId.contains(participantId) =>
       // Skip — the following Text frame is the actual response.
 
       case ContextFrame.ToolCall(toolName, argsJson, callId, participantId, _) if agentId.contains(participantId) =>

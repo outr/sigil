@@ -12,7 +12,10 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
-import sigil.conversation.{ActiveSkillSlot, ContextKey, ContextMemory, ContextSummary, Conversation, ConversationView, FrameBuilder, MemorySpaceId, ParticipantProjection, SkillSource, Topic, TurnInput}
+import sigil.conversation.{
+  ActiveSkillSlot, ContextKey, ContextMemory, ContextSummary, Conversation, ConversationView, FrameBuilder, MemorySpaceId,
+  ParticipantProjection, SkillSource, Topic, TurnInput
+}
 import sigil.db.{Model, SigilDB}
 import sigil.dispatcher.{StopFlag, TriggerFilter}
 import sigil.event.{AgentState, Event, ModeChange, Stop, TopicChange, TopicChangeKind}
@@ -197,54 +200,60 @@ trait Sigil {
       _ <- applyStop(signal)
       _ <- broadcaster.handle(signal).handleError(logBroadcastError(signal, _))
       _ <- signal match {
-             case e: Event => fanOut(e)
-             case _: sigil.signal.Delta => Task.unit
-           }
+        case e: Event => fanOut(e)
+        case _: sigil.signal.Delta => Task.unit
+      }
     } yield ()
 
   // -- stop-flag registry --
 
-  /** Active per-claim [[StopFlag]]s, keyed by the `AgentState._id` that
-    * owns the claim. Populated when `tryFire` wins a claim and removed
-    * when `releaseClaim` completes (successfully or via error). */
-  private final val stopFlags: ConcurrentHashMap[Id[Event], StopFlag] = new ConcurrentHashMap()
+  /**
+   * Active per-claim [[StopFlag]]s, keyed by the `AgentState._id` that
+   * owns the claim. Populated when `tryFire` wins a claim and removed
+   * when `releaseClaim` completes (successfully or via error).
+   */
+  final private val stopFlags: ConcurrentHashMap[Id[Event], StopFlag] = new ConcurrentHashMap()
 
-  /** On a [[Stop]] event, set the matching flag(s): one specific agent if
-    * `targetParticipantId` is set, else every agent in the conversation.
-    * Also logs the stop (with `reason`, if supplied) so operators can see
-    * where stops originate — otherwise `Stop.reason` would be metadata
-    * that only shows up if someone trawls the event log. */
-  private final def applyStop(signal: Signal): Task[Unit] = signal match {
+  /**
+   * On a [[Stop]] event, set the matching flag(s): one specific agent if
+   * `targetParticipantId` is set, else every agent in the conversation.
+   * Also logs the stop (with `reason`, if supplied) so operators can see
+   * where stops originate — otherwise `Stop.reason` would be metadata
+   * that only shows up if someone trawls the event log.
+   */
+  final private def applyStop(signal: Signal): Task[Unit] = signal match {
     case s: Stop => Task {
-      val target = s.targetParticipantId.map(_.value).getOrElse("*")
-      val why = s.reason.map(r => s" reason=\"$r\"").getOrElse("")
-      scribe.info(
-        s"Stop received: conversation=${s.conversationId.value} target=$target " +
-          s"force=${s.force} by=${s.participantId.value}$why"
-      )
-      import scala.jdk.CollectionConverters.*
-      stopFlags.entrySet().iterator().asScala.foreach { entry =>
-        val lockId = entry.getKey
-        val flag = entry.getValue
-        // Lock id encodes `agentlock:<agentId>:<convId>`; cheapest match is
-        // on the id suffix for conversation + participant.
-        val matchesConv = lockId.value.endsWith(s":${s.conversationId.value}")
-        val matchesTarget = s.targetParticipantId match {
-          case None     => true
-          case Some(id) => lockId.value == s"agentlock:${id.value}:${s.conversationId.value}"
-        }
-        if (matchesConv && matchesTarget) {
-          if (s.force) flag.force.set(true) else flag.graceful.set(true)
+        val target = s.targetParticipantId.map(_.value).getOrElse("*")
+        val why = s.reason.map(r => s" reason=\"$r\"").getOrElse("")
+        scribe.info(
+          s"Stop received: conversation=${s.conversationId.value} target=$target " +
+            s"force=${s.force} by=${s.participantId.value}$why"
+        )
+        import scala.jdk.CollectionConverters.*
+        stopFlags.entrySet().iterator().asScala.foreach { entry =>
+          val lockId = entry.getKey
+          val flag = entry.getValue
+          // Lock id encodes `agentlock:<agentId>:<convId>`; cheapest match is
+          // on the id suffix for conversation + participant.
+          val matchesConv = lockId.value.endsWith(s":${s.conversationId.value}")
+          val matchesTarget = s.targetParticipantId match {
+            case None => true
+            case Some(id) => lockId.value == s"agentlock:${id.value}:${s.conversationId.value}"
+          }
+          if (matchesConv && matchesTarget) {
+            if (s.force) flag.force.set(true) else flag.graceful.set(true)
+          }
         }
       }
-    }
     case _ => Task.unit
   }
 
-  /** If this signal settles a [[ModeChange]] to `Complete`, resolve the
-    * Mode-source [[ActiveSkillSlot]] (via [[modeSkill]]) and write it into
-    * the acting participant's projection on the view. */
-  private final def maybeApplyModeSkill(signal: Signal): Task[Unit] = signal match {
+  /**
+   * If this signal settles a [[ModeChange]] to `Complete`, resolve the
+   * Mode-source [[ActiveSkillSlot]] (via [[modeSkill]]) and write it into
+   * the acting participant's projection on the view.
+   */
+  final private def maybeApplyModeSkill(signal: Signal): Task[Unit] = signal match {
     case mc: ModeChange if mc.state == EventState.Complete => applyModeSkill(mc)
     case d: sigil.signal.Delta =>
       withDB(_.events.transaction(_.get(d.target.asInstanceOf[Id[Event]]))).flatMap {
@@ -254,17 +263,14 @@ trait Sigil {
     case _ => Task.unit
   }
 
-  private final def applyModeSkill(mc: ModeChange): Task[Unit] =
+  final private def applyModeSkill(mc: ModeChange): Task[Unit] =
     modeSkill(mc.mode).flatMap {
       case Some(slot) =>
-        updateProjection(mc.conversationId, mc.participantId)(
-          proj => proj.copy(activeSkills = proj.activeSkills + (SkillSource.Mode -> slot))
-        )
+        updateProjection(mc.conversationId, mc.participantId)(proj =>
+          proj.copy(activeSkills = proj.activeSkills + (SkillSource.Mode -> slot)))
       case None =>
         // No app-provided skill for this mode — clear any stale Mode-source slot.
-        updateProjection(mc.conversationId, mc.participantId)(
-          proj => proj.copy(activeSkills = proj.activeSkills - SkillSource.Mode)
-        )
+        updateProjection(mc.conversationId, mc.participantId)(proj => proj.copy(activeSkills = proj.activeSkills - SkillSource.Mode))
     }
 
   /**
@@ -284,7 +290,7 @@ trait Sigil {
    * Deltas that don't complete their target, or events that are still
    * Active, fall through as no-ops.
    */
-  private final def updateView(signal: Signal): Task[Unit] = signal match {
+  final private def updateView(signal: Signal): Task[Unit] = signal match {
     case e: Event if e.state == EventState.Complete =>
       appendToViewIfNew(e)
     case d: sigil.signal.Delta =>
@@ -295,11 +301,13 @@ trait Sigil {
     case _ => Task.unit
   }
 
-  /** Append `event`'s frame(s) and participant-projection updates to the
-    * conversation's view, creating the view if it doesn't yet exist.
-    * Idempotent — if a frame for `event._id` already exists in the view
-    * the modify returns unchanged. */
-  private final def appendToViewIfNew(event: Event): Task[Unit] =
+  /**
+   * Append `event`'s frame(s) and participant-projection updates to the
+   * conversation's view, creating the view if it doesn't yet exist.
+   * Idempotent — if a frame for `event._id` already exists in the view
+   * the modify returns unchanged.
+   */
+  final private def appendToViewIfNew(event: Event): Task[Unit] =
     withDB(_.views.transaction(_.modify(ConversationView.idFor(event.conversationId)) {
       case Some(view) if view.frames.exists(_.sourceEventId == event._id) =>
         Task.pure(Some(view))
@@ -323,24 +331,28 @@ trait Sigil {
 
   // -- view / summary helpers --
 
-  /** Fetch the [[ConversationView]] for a conversation, returning an empty
-    * seed (no frames, no projections) if one hasn't been materialized yet.
-    * Empty views are NOT persisted — the view only lands on disk once a
-    * Complete event exists to anchor it. */
+  /**
+   * Fetch the [[ConversationView]] for a conversation, returning an empty
+   * seed (no frames, no projections) if one hasn't been materialized yet.
+   * Empty views are NOT persisted — the view only lands on disk once a
+   * Complete event exists to anchor it.
+   */
   def viewFor(conversationId: Id[Conversation]): Task[ConversationView] =
     withDB(_.views.transaction(_.get(ConversationView.idFor(conversationId)))).map {
       case Some(view) => view
       case None => ConversationView(
-        conversationId = conversationId,
-        _id = ConversationView.idFor(conversationId)
-      )
+          conversationId = conversationId,
+          _id = ConversationView.idFor(conversationId)
+        )
     }
 
-  /** Drop the existing view (if any) and rebuild it by folding every
-    * Complete event for the conversation through [[FrameBuilder]]. Useful
-    * for recovery, schema migrations, and tests.
-    *
-    * Returns the newly-materialized view. */
+  /**
+   * Drop the existing view (if any) and rebuild it by folding every
+   * Complete event for the conversation through [[FrameBuilder]]. Useful
+   * for recovery, schema migrations, and tests.
+   *
+   * Returns the newly-materialized view.
+   */
   def rebuildView(conversationId: Id[Conversation]): Task[ConversationView] =
     withDB(_.events.transaction(_.list)).flatMap { all =>
       val events = all
@@ -369,12 +381,14 @@ trait Sigil {
       } yield withSkill
     }
 
-  /** Update a participant's [[ParticipantProjection]] on the conversation's
-    * view. If the view doesn't exist yet, an empty one is seeded so the
-    * projection has a durable home. Use this from curators, tools, or any
-    * app code that needs to mutate per-participant projection state. */
-  def updateProjection(conversationId: Id[Conversation], participantId: ParticipantId)
-                      (f: ParticipantProjection => ParticipantProjection): Task[Unit] =
+  /**
+   * Update a participant's [[ParticipantProjection]] on the conversation's
+   * view. If the view doesn't exist yet, an empty one is seeded so the
+   * projection has a durable home. Use this from curators, tools, or any
+   * app code that needs to mutate per-participant projection state.
+   */
+  def updateProjection(conversationId: Id[Conversation],
+                       participantId: ParticipantId)(f: ParticipantProjection => ParticipantProjection): Task[Unit] =
     withDB(_.views.transaction(_.modify(ConversationView.idFor(conversationId)) {
       case Some(view) =>
         Task.pure(Some(view
@@ -389,48 +403,50 @@ trait Sigil {
         Task.pure(Some(seeded))
     })).unit
 
-  /** Convenience: set (or replace) a skill slot for a participant. Discovery
-    * and User sources are driven through here by tools that want to activate
-    * a skill; Mode-source slots are maintained by the framework via
-    * [[modeSkill]] on `ModeChange`. */
+  /**
+   * Convenience: set (or replace) a skill slot for a participant. Discovery
+   * and User sources are driven through here by tools that want to activate
+   * a skill; Mode-source slots are maintained by the framework via
+   * [[modeSkill]] on `ModeChange`.
+   */
   def activateSkill(conversationId: Id[Conversation],
                     participantId: ParticipantId,
                     source: SkillSource,
                     slot: ActiveSkillSlot): Task[Unit] =
-    updateProjection(conversationId, participantId)(
-      proj => proj.copy(activeSkills = proj.activeSkills + (source -> slot))
-    )
+    updateProjection(conversationId, participantId)(proj => proj.copy(activeSkills = proj.activeSkills + (source -> slot)))
 
-  /** Convenience: clear a skill slot for a participant (if present). */
+  /**
+   * Convenience: clear a skill slot for a participant (if present).
+   */
   def clearSkill(conversationId: Id[Conversation],
                  participantId: ParticipantId,
                  source: SkillSource): Task[Unit] =
-    updateProjection(conversationId, participantId)(
-      proj => proj.copy(activeSkills = proj.activeSkills - source)
-    )
+    updateProjection(conversationId, participantId)(proj => proj.copy(activeSkills = proj.activeSkills - source))
 
-  /** Convenience: set a single key/value on a participant's
-    * `extraContext`. Same key replaces. */
+  /**
+   * Convenience: set a single key/value on a participant's
+   * `extraContext`. Same key replaces.
+   */
   def setParticipantContext(conversationId: Id[Conversation],
                             participantId: ParticipantId,
                             key: ContextKey,
                             value: String): Task[Unit] =
-    updateProjection(conversationId, participantId)(
-      proj => proj.copy(extraContext = proj.extraContext + (key -> value))
-    )
+    updateProjection(conversationId, participantId)(proj => proj.copy(extraContext = proj.extraContext + (key -> value)))
 
-  /** Convenience: remove a key from a participant's `extraContext`. */
+  /**
+   * Convenience: remove a key from a participant's `extraContext`.
+   */
   def clearParticipantContext(conversationId: Id[Conversation],
                               participantId: ParticipantId,
                               key: ContextKey): Task[Unit] =
-    updateProjection(conversationId, participantId)(
-      proj => proj.copy(extraContext = proj.extraContext - key)
-    )
+    updateProjection(conversationId, participantId)(proj => proj.copy(extraContext = proj.extraContext - key))
 
-  /** Convenience: publish a [[Stop]] event for the conversation. Lets
-    * UI layers (stop button) and programmatic callers issue stops
-    * without reconstructing the event by hand. For LLM-initiated stops
-    * use [[sigil.tool.core.StopTool]] instead. */
+  /**
+   * Convenience: publish a [[Stop]] event for the conversation. Lets
+   * UI layers (stop button) and programmatic callers issue stops
+   * without reconstructing the event by hand. For LLM-initiated stops
+   * use [[sigil.tool.core.StopTool]] instead.
+   */
   def stop(conversationId: Id[Conversation],
            requestedBy: ParticipantId,
            targetParticipantId: Option[ParticipantId] = None,
@@ -449,13 +465,17 @@ trait Sigil {
         ))
     }
 
-  /** Persist a new [[ContextSummary]] and return the stored record. The
-    * caller (curator or app-specific summarizer) owns the generation
-    * policy; this helper just writes. */
+  /**
+   * Persist a new [[ContextSummary]] and return the stored record. The
+   * caller (curator or app-specific summarizer) owns the generation
+   * policy; this helper just writes.
+   */
   def persistSummary(summary: ContextSummary): Task[ContextSummary] =
     withDB(_.summaries.transaction(_.upsert(summary)))
 
-  /** Load all summaries for a conversation, oldest-first. */
+  /**
+   * Load all summaries for a conversation, oldest-first.
+   */
   def summariesFor(conversationId: Id[Conversation]): Task[List[ContextSummary]] =
     withDB(_.summaries.transaction { tx =>
       import lightdb.filter.*
@@ -465,18 +485,20 @@ trait Sigil {
         .map(_.sortBy(_.created.value))
     })
 
-  /** Maintain materialized projections on the [[Conversation]] record:
-    *   - `currentMode` tracks the latest [[ModeChange]]
-    *   - `currentTopicId` tracks the latest [[TopicChange]] of kind
-    *     [[TopicChangeKind.Switch]] (Rename mutates the Topic record
-    *     in-place, so the conversation's pointer is unchanged).
-    *
-    * Fires only on the SETTLE (an Event already at `Complete`, or a
-    * `Delta` that transitions its target to `Complete`), never on the
-    * initial Active pulse — so these projection fields are written
-    * exactly once per transition even though each change flows through
-    * `publish` twice (event + state delta). */
-  private final def updateConversationProjection(signal: Signal): Task[Unit] = {
+  /**
+   * Maintain materialized projections on the [[Conversation]] record:
+   *   - `currentMode` tracks the latest [[ModeChange]]
+   *   - `currentTopicId` tracks the latest [[TopicChange]] of kind
+   *     [[TopicChangeKind.Switch]] (Rename mutates the Topic record
+   *     in-place, so the conversation's pointer is unchanged).
+   *
+   * Fires only on the SETTLE (an Event already at `Complete`, or a
+   * `Delta` that transitions its target to `Complete`), never on the
+   * initial Active pulse — so these projection fields are written
+   * exactly once per transition even though each change flows through
+   * `publish` twice (event + state delta).
+   */
+  final private def updateConversationProjection(signal: Signal): Task[Unit] = {
     val settled: Task[Option[Event]] = signal match {
       case e: Event if e.state == EventState.Complete => Task.pure(Some(e))
       case d: sigil.signal.Delta =>
@@ -490,7 +512,7 @@ trait Sigil {
           case Some(conv) if conv.currentMode != mc.mode =>
             Task.pure(Some(conv.copy(currentMode = mc.mode, modified = Timestamp(Nowish()))))
           case Some(conv) => Task.pure(Some(conv))
-          case None       => Task.pure(None)
+          case None => Task.pure(None)
         })).unit
       case Some(tc: TopicChange) =>
         tc.kind match {
@@ -499,7 +521,7 @@ trait Sigil {
               case Some(conv) if conv.currentTopicId != tc.topicId =>
                 Task.pure(Some(conv.copy(currentTopicId = tc.topicId, modified = Timestamp(Nowish()))))
               case Some(conv) => Task.pure(Some(conv))
-              case None       => Task.pure(None)
+              case None => Task.pure(None)
             })).unit
           case TopicChangeKind.Rename(_) =>
             // Rename mutated the Topic record directly in the orchestrator;
@@ -554,12 +576,12 @@ trait Sigil {
   def currentTopic(conversation: Conversation): Task[Option[Topic]] =
     withDB(_.topics.transaction(_.get(conversation.currentTopicId)))
 
-  private final def logBroadcastError(signal: Signal, t: Throwable): Task[Unit] =
+  final private def logBroadcastError(signal: Signal, t: Throwable): Task[Unit] =
     Task(scribe.warn(s"Broadcaster failed for signal: ${signal.getClass.getSimpleName}", t))
 
-  private final def fanOut(event: Event): Task[Unit] =
+  final private def fanOut(event: Event): Task[Unit] =
     withDB(_.conversations.transaction(_.get(event.conversationId))).flatMap {
-      case None       => Task.unit
+      case None => Task.unit
       case Some(conv) =>
         val tasks: List[Task[Unit]] = conv.participants.collect {
           case agent: AgentParticipant if TriggerFilter.isTriggerFor(agent, event) =>
@@ -578,12 +600,12 @@ trait Sigil {
    * `AtomicReference` captures whether OUR `f` was the one that returned a
    * fresh `Active` (the only way to tell with `tx.modify` semantics).
    */
-  private final def tryFire(agent: AgentParticipant, conv: Conversation): Task[Unit] = {
+  final private def tryFire(agent: AgentParticipant, conv: Conversation): Task[Unit] = {
     val lockId = agentStateLockId(agent.id, conv._id)
     val claimedRef = new AtomicReference[Option[AgentState]](None)
     withDB(_.events.transaction(_.modify(lockId) {
       case Some(s: AgentState) if s.state == EventState.Active =>
-        Task.pure(Some(s))  // someone else owns it; observe and bail
+        Task.pure(Some(s)) // someone else owns it; observe and bail
       case _ =>
         val claim = AgentState(
           agentId = agent.id,
@@ -624,15 +646,17 @@ trait Sigil {
    *   - if any, loop without releasing the claim
    *   - if none, transition to Idle/Complete and release
    */
-  /** Hard cap on dispatcher self-loop iterations within a single AgentState
-    * claim. Prevents an LLM that keeps calling non-terminal tools (e.g. only
-    * `change_mode`, never `respond`) from looping forever. Reaching the cap
-    * raises [[AgentRunawayException]] in the runAgent fiber after releasing
-    * the AgentState claim — it's a real failure, not a normal exit. Apps
-    * can override. */
+  /**
+   * Hard cap on dispatcher self-loop iterations within a single AgentState
+   * claim. Prevents an LLM that keeps calling non-terminal tools (e.g. only
+   * `change_mode`, never `respond`) from looping forever. Reaching the cap
+   * raises [[AgentRunawayException]] in the runAgent fiber after releasing
+   * the AgentState claim — it's a real failure, not a normal exit. Apps
+   * can override.
+   */
   protected def maxAgentIterations: Int = 10
 
-  private final def runAgent(agent: AgentParticipant,
+  final private def runAgent(agent: AgentParticipant,
                              conv: Conversation,
                              claimed: AgentState): Task[Unit] =
     runAgentLoop(agent, conv._id, claimed, iteration = 1, sinceTimestamp = claimed.timestamp)
@@ -647,7 +671,7 @@ trait Sigil {
    * so external triggers that landed between claim-time and iteration-1
    * start are still visible.
    */
-  private final def runAgentLoop(agent: AgentParticipant,
+  final private def runAgentLoop(agent: AgentParticipant,
                                  convId: Id[Conversation],
                                  claimed: AgentState,
                                  iteration: Int,
@@ -664,74 +688,76 @@ trait Sigil {
     // release and exit.
     if (stopFlag.exists(_.requested)) releaseClaim(claimed)
     else
-    // Reload the conversation each iteration — materialized projections
-    // (currentMode, modified, etc.) update as Events flow through `publish`,
-    // so the conversation we hand to the agent must reflect the latest state.
-    withDB(_.conversations.transaction(_.get(convId))).flatMap {
-      case None =>
-        // Conversation deleted mid-turn — release the lock and exit cleanly.
-        releaseClaim(claimed)
-      case Some(conv) =>
-        // Snapshot suggestedTools BEFORE the iteration so we can detect
-        // whether a fresh `find_capability` during the turn replaced them.
-        // If it did, the new list survives to the next turn. If it didn't,
-        // the snapshot (which the agent saw in its roster this turn)
-        // decays — suggestions live for exactly ONE turn; an agent that
-        // doesn't call what it discovered loses it.
-        viewFor(convId).map(_.projectionFor(agent.id).suggestedTools).flatMap { suggestedSnapshot =>
-          buildContext(agent, conv, sinceTimestamp = sinceTimestamp, claimedId = claimed._id).flatMap {
-            case (ctx, triggers) =>
-              // Wrap the agent's signal stream with a force-stop check so a
-              // Stop(force=true) mid-iteration terminates the stream promptly.
-              val rawStream = agent.process(ctx, triggers)
-              val interruptible = stopFlag match {
-                case Some(flag) => rawStream.takeWhile(_ => !flag.force.get())
-                case None       => rawStream
-              }
-              interruptible.evalTap(publish).drain
-          }.flatMap(_ => decaySuggestedTools(convId, agent.id, suggestedSnapshot))
-        }.flatMap { _ =>
-          // After the iteration drains, check stop flags before anything
-          // else — a Stop that fired mid-stream means exit now, don't
-          // continue looping even if there are new triggers.
-          if (stopFlag.exists(_.requested)) releaseClaim(claimed)
-          else newTriggersExist(agent, conv, sinceTimestamp = thisIterationStart).flatMap {
-            case true if iteration < maxAgentIterations =>
-              runAgentLoop(agent, convId, claimed, iteration + 1, thisIterationStart)
-            case true =>
-              // Cap hit — release the lock, then propagate as an error so the
-              // calling fiber's failure handler sees it. A runaway loop is a
-              // real failure (broken LLM behavior, bad instructions, etc.) and
-              // shouldn't masquerade as a successful exit.
-              releaseClaim(claimed).flatMap(_ =>
-                Task.error(new AgentRunawayException(
-                  s"Agent ${agent.id.value} hit maxAgentIterations ($maxAgentIterations) " +
-                    s"in conversation ${conv._id.value}; check LLM behavior or raise the cap.")))
-            case false =>
-              releaseClaim(claimed)
+      // Reload the conversation each iteration — materialized projections
+      // (currentMode, modified, etc.) update as Events flow through `publish`,
+      // so the conversation we hand to the agent must reflect the latest state.
+      withDB(_.conversations.transaction(_.get(convId))).flatMap {
+        case None =>
+          // Conversation deleted mid-turn — release the lock and exit cleanly.
+          releaseClaim(claimed)
+        case Some(conv) =>
+          // Snapshot suggestedTools BEFORE the iteration so we can detect
+          // whether a fresh `find_capability` during the turn replaced them.
+          // If it did, the new list survives to the next turn. If it didn't,
+          // the snapshot (which the agent saw in its roster this turn)
+          // decays — suggestions live for exactly ONE turn; an agent that
+          // doesn't call what it discovered loses it.
+          viewFor(convId).map(_.projectionFor(agent.id).suggestedTools).flatMap { suggestedSnapshot =>
+            buildContext(agent, conv, sinceTimestamp = sinceTimestamp, claimedId = claimed._id).flatMap {
+              case (ctx, triggers) =>
+                // Wrap the agent's signal stream with a force-stop check so a
+                // Stop(force=true) mid-iteration terminates the stream promptly.
+                val rawStream = agent.process(ctx, triggers)
+                val interruptible = stopFlag match {
+                  case Some(flag) => rawStream.takeWhile(_ => !flag.force.get())
+                  case None => rawStream
+                }
+                interruptible.evalTap(publish).drain
+            }.flatMap(_ => decaySuggestedTools(convId, agent.id, suggestedSnapshot))
+          }.flatMap { _ =>
+            // After the iteration drains, check stop flags before anything
+            // else — a Stop that fired mid-stream means exit now, don't
+            // continue looping even if there are new triggers.
+            if (stopFlag.exists(_.requested)) releaseClaim(claimed)
+            else newTriggersExist(agent, conv, sinceTimestamp = thisIterationStart).flatMap {
+              case true if iteration < maxAgentIterations =>
+                runAgentLoop(agent, convId, claimed, iteration + 1, thisIterationStart)
+              case true =>
+                // Cap hit — release the lock, then propagate as an error so the
+                // calling fiber's failure handler sees it. A runaway loop is a
+                // real failure (broken LLM behavior, bad instructions, etc.) and
+                // shouldn't masquerade as a successful exit.
+                releaseClaim(claimed).flatMap(_ =>
+                  Task.error(new AgentRunawayException(
+                    s"Agent ${agent.id.value} hit maxAgentIterations ($maxAgentIterations) " +
+                      s"in conversation ${conv._id.value}; check LLM behavior or raise the cap.")))
+              case false =>
+                releaseClaim(claimed)
+            }
           }
-        }
-    }.handleError { t =>
-      // Any unhandled failure mid-turn — release the lock so the agent
-      // isn't stuck Active forever, then re-raise so the fiber's error
-      // boundary logs it. Failure during release itself is swallowed (we
-      // already have the original error to report).
-      scribe.error(s"runAgent failed for ${agent.id.value} in ${convId.value}", t)
-      releaseClaim(claimed).handleError(_ => Task.unit).flatMap(_ => Task.error(t))
-    }
+      }.handleError { t =>
+        // Any unhandled failure mid-turn — release the lock so the agent
+        // isn't stuck Active forever, then re-raise so the fiber's error
+        // boundary logs it. Failure during release itself is swallowed (we
+        // already have the original error to report).
+        scribe.error(s"runAgent failed for ${agent.id.value} in ${convId.value}", t)
+        releaseClaim(claimed).handleError(_ => Task.unit).flatMap(_ => Task.error(t))
+      }
   }
 
-  /** One-turn decay for `suggestedTools` on the acting participant's
-    * projection. If the current list equals the snapshot we took before
-    * the iteration started, no fresh `find_capability` ran this turn —
-    * the agent either called a previously-discovered tool (and the list
-    * has served its purpose) or ignored it. Either way, clear so the
-    * suggestion doesn't leak into another turn. If the list differs, a
-    * new discovery landed during the iteration; keep the new list so
-    * the NEXT turn can call it. */
-  private final def decaySuggestedTools(conversationId: Id[Conversation],
-                                         agentId: ParticipantId,
-                                         snapshot: List[sigil.tool.ToolName]): Task[Unit] =
+  /**
+   * One-turn decay for `suggestedTools` on the acting participant's
+   * projection. If the current list equals the snapshot we took before
+   * the iteration started, no fresh `find_capability` ran this turn —
+   * the agent either called a previously-discovered tool (and the list
+   * has served its purpose) or ignored it. Either way, clear so the
+   * suggestion doesn't leak into another turn. If the list differs, a
+   * new discovery landed during the iteration; keep the new list so
+   * the NEXT turn can call it.
+   */
+  final private def decaySuggestedTools(conversationId: Id[Conversation],
+                                        agentId: ParticipantId,
+                                        snapshot: List[sigil.tool.ToolName]): Task[Unit] =
     viewFor(conversationId).flatMap { view =>
       val current = view.projectionFor(agentId).suggestedTools
       if (current == snapshot && current.nonEmpty)
@@ -739,7 +765,7 @@ trait Sigil {
       else Task.unit
     }
 
-  private final def releaseClaim(claimed: AgentState): Task[Unit] = {
+  final private def releaseClaim(claimed: AgentState): Task[Unit] = {
     // Always-run cleanup — the flag must never leak even if the
     // Idle/Complete publish fails (broadcaster error, DB error, etc.).
     // A leaked flag is a minor map entry, but across many failures it'd
@@ -758,7 +784,7 @@ trait Sigil {
       .handleError(t => cleanup.flatMap(_ => Task.error(t)))
   }
 
-  private final def buildContext(agent: AgentParticipant,
+  final private def buildContext(agent: AgentParticipant,
                                  conv: Conversation,
                                  sinceTimestamp: Timestamp,
                                  claimedId: Id[Event]): Task[(TurnContext, Stream[Event])] =
@@ -767,9 +793,10 @@ trait Sigil {
       input <- curate(view)
       triggerEvents <- withDB(_.events.transaction(_.list)).map { all =>
         all.view
-          .filter(e => e.conversationId == conv._id
-                    && e.timestamp.value > sinceTimestamp.value
-                    && TriggerFilter.isTriggerFor(agent, e))
+          .filter(e =>
+            e.conversationId == conv._id
+              && e.timestamp.value > sinceTimestamp.value
+              && TriggerFilter.isTriggerFor(agent, e))
           .toList
       }
     } yield {
@@ -786,23 +813,26 @@ trait Sigil {
       (ctx, triggers)
     }
 
-  private final def newTriggersExist(agent: AgentParticipant,
+  final private def newTriggersExist(agent: AgentParticipant,
                                      conv: Conversation,
                                      sinceTimestamp: Timestamp): Task[Boolean] =
     withDB(_.events.transaction(_.list)).map { all =>
-      all.exists(e => e.conversationId == conv._id
-                   && e.timestamp.value > sinceTimestamp.value
-                   && TriggerFilter.isTriggerFor(agent, e))
+      all.exists(e =>
+        e.conversationId == conv._id
+          && e.timestamp.value > sinceTimestamp.value
+          && TriggerFilter.isTriggerFor(agent, e))
     }
 
-  private final def buildChain(triggers: List[Event], agent: AgentParticipant): List[ParticipantId] = {
+  final private def buildChain(triggers: List[Event], agent: AgentParticipant): List[ParticipantId] = {
     val source = triggers.find(_.participantId != agent.id).map(_.participantId)
     source.toList :+ agent.id
   }
 
-  /** Stable per-(agent, conversation) id used as both the AgentState key and
-    * the lock-acquisition target inside `tx.modify`. */
-  private final def agentStateLockId(agentId: AgentParticipantId, convId: Id[Conversation]): Id[Event] =
+  /**
+   * Stable per-(agent, conversation) id used as both the AgentState key and
+   * the lock-acquisition target inside `tx.modify`.
+   */
+  final private def agentStateLockId(agentId: AgentParticipantId, convId: Id[Conversation]): Id[Event] =
     Id(s"agentlock:${agentId.value}:${convId.value}")
 
   // -- lifecycle --
