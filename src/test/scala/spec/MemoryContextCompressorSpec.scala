@@ -11,6 +11,7 @@ import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopPro
 import sigil.event.Event
 import sigil.provider.{CallId, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason}
 import sigil.tool.consult.{ExtractMemoriesInput, SummarizationInput}
+import sigil.vector.InMemoryVectorIndex
 import spice.http.HttpRequest
 
 /**
@@ -110,6 +111,37 @@ class MemoryContextCompressorSpec extends AsyncWordSpec with AsyncTaskSpec with 
         memories.map(_.fact) should contain("Deploy target is staging.us-east-1.")
         memories.filter(_.source == MemorySource.Compression) should have size 2
         summariesForConv.map(_.text) should contain(result.get.text)
+      }
+    }
+
+    "make extracted facts semantically retrievable via Sigil.searchMemories" in {
+      TestSigil.reset()
+      // Vector-wire TestSigil so persistMemory auto-indexes + searchMemories
+      // goes through the vector branch (not the Lucene fallback).
+      TestSigil.setEmbeddingProvider(TestHashEmbeddingProvider)
+      TestSigil.setVectorIndex(new InMemoryVectorIndex)
+      val convId = Conversation.id(s"mcc-retrieve-${rapid.Unique()}")
+      TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
+        _id = convId, topics = List(TestTopicEntry)
+      )))).sync()
+      TestSigil.setCompressionSpace(Some(MemoryTestSpace))
+      TestSigil.setProvider(Task.pure(new StubProvider(
+        facts = List(
+          "User `alice` prefers dark mode.",
+          "The deployment target is staging.us-east-1.",
+          "Maximum response time constraint is 500 milliseconds."
+        ),
+        summary = "Alice shared preferences and deployment constraints."
+      )))
+      val compressor = MemoryContextCompressor()
+      val frames = Vector(textFrame("preferences conversation", "ev-0"))
+      for {
+        _ <- compressor.compress(TestSigil, modelId, chain = List(TestUser, TestAgent), frames, convId)
+        hitsForDarkMode <- TestSigil.searchMemories("user alice dark mode preference", Set(MemoryTestSpace), limit = 5)
+        hitsForDeploy <- TestSigil.searchMemories("deployment staging target", Set(MemoryTestSpace), limit = 5)
+      } yield {
+        hitsForDarkMode.map(_.fact) should contain("User `alice` prefers dark mode.")
+        hitsForDeploy.map(_.fact) should contain("The deployment target is staging.us-east-1.")
       }
     }
 

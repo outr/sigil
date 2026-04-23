@@ -271,3 +271,27 @@ case object WiringSpace extends MemorySpaceId {
 case object MemoryTestSpace extends MemorySpaceId {
   override val value: String = "memory-compressor-space"
 }
+
+/** Deterministic test embedder — each token contributes to a
+  * fixed-dim vector via a stable hash. Avoids a real embedding API
+  * while exercising the vector-wired code paths. Used by any spec
+  * that needs [[sigil.Sigil.searchMemories]] or
+  * [[sigil.Sigil.searchConversationEvents]] to go through the vector
+  * branch rather than the Lucene fallback. */
+object TestHashEmbeddingProvider extends EmbeddingProvider {
+  override def dimensions: Int = 32
+
+  override def embed(text: String): Task[Vector[Double]] = Task {
+    val buf = Array.fill(dimensions)(0.0)
+    text.toLowerCase.split("\\W+").filter(_.nonEmpty).foreach { tok =>
+      val h = tok.hashCode
+      val i = math.floorMod(h, dimensions)
+      buf(i) += 1.0
+    }
+    val norm = math.sqrt(buf.map(x => x * x).sum)
+    if (norm == 0.0) buf.toVector else buf.map(_ / norm).toVector
+  }
+
+  override def embedBatch(texts: List[String]): Task[List[Vector[Double]]] =
+    Task.sequence(texts.map(embed))
+}
