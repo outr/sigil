@@ -5,7 +5,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import profig.Profig
 import rapid.Task
-import sigil.{Sigil, SignalBroadcaster, TurnContext}
+import sigil.{Sigil, TurnContext}
 import sigil.conversation.{ActiveSkillSlot, Conversation, ConversationView, MemorySpaceId, Topic, TopicEntry, TurnInput}
 import sigil.conversation.compression.extract.{MemoryExtractor, NoOpMemoryExtractor}
 import sigil.db.Model
@@ -59,7 +59,7 @@ object TestSigil extends Sigil {
 
   // ---- registration lists ----
 
-  override protected def signals: List[RW[? <: Signal]] = Nil
+  override protected def signalRegistrations: List[RW[? <: Signal]] = Nil
 
   override protected def participants: List[RW[? <: Participant]] = Nil
 
@@ -78,7 +78,6 @@ object TestSigil extends Sigil {
 
   private val defaultProvider: () => Task[Provider] =
     () => Task.error(new RuntimeException("TestSigil.setProvider was not called — no provider configured"))
-  private val defaultBroadcaster: SignalBroadcaster = SignalBroadcaster.NoOp
   private val defaultModeSkill: Mode => Task[Option[ActiveSkillSlot]] = _ => Task.pure(None)
   private val defaultEmbedding: EmbeddingProvider = NoOpEmbeddingProvider
   private val defaultVectorIndex: VectorIndex = NoOpVectorIndex
@@ -96,7 +95,6 @@ object TestSigil extends Sigil {
   // ---- mutable refs (per-test overrides) ----
 
   private val providerRef = new AtomicReference[() => Task[Provider]](defaultProvider)
-  private val broadcasterRef = new AtomicReference[SignalBroadcaster](defaultBroadcaster)
   private val informationRef = new AtomicReference[InMemoryInformation](new InMemoryInformation)
   private val modeSkillRef = new AtomicReference[Mode => Task[Option[ActiveSkillSlot]]](defaultModeSkill)
   private val embeddingProviderRef = new AtomicReference[EmbeddingProvider](defaultEmbedding)
@@ -110,8 +108,6 @@ object TestSigil extends Sigil {
   private val geocoderRef = new AtomicReference[Geocoder](defaultGeocoder)
 
   // ---- hook overrides delegate to refs ----
-
-  override def broadcaster: SignalBroadcaster = broadcasterRef.get()
 
   override def providerFor(modelId: Id[Model], chain: List[ParticipantId]): Task[Provider] =
     providerRef.get().apply()
@@ -149,7 +145,6 @@ object TestSigil extends Sigil {
 
   // ---- setters (per-test overrides) ----
 
-  def setBroadcaster(b: SignalBroadcaster): Unit = broadcasterRef.set(b)
   def setProvider(p: => Task[Provider]): Unit = providerRef.set(() => p)
   def setModeSkill(f: Mode => Task[Option[ActiveSkillSlot]]): Unit = modeSkillRef.set(f)
   def setEmbeddingProvider(p: EmbeddingProvider): Unit = embeddingProviderRef.set(p)
@@ -189,7 +184,6 @@ object TestSigil extends Sigil {
     * prior tests within the same suite. */
   def reset(): Unit = {
     providerRef.set(defaultProvider)
-    broadcasterRef.set(defaultBroadcaster)
     informationRef.set(new InMemoryInformation)
     modeSkillRef.set(defaultModeSkill)
     embeddingProviderRef.set(defaultEmbedding)

@@ -22,13 +22,14 @@ import sigil.event.{AgentState, Event, Message, ModeChange, Stop, TopicChange, T
 import sigil.provider.Mode
 import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
+import sigil.pipeline.{GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MessageIndexingEffect, RedactLocationTransform, SettledEffect, SignalHub, ViewerTransform}
 import sigil.provider.Provider
 import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, EventState, LocationDelta, Signal}
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
 import sigil.tool.core.CoreTools
 import sigil.tool.model.ResponseContent
 import sigil.tool.{ToolFinder, ToolInput}
-import sigil.vector.{NoOpVectorIndex, VectorIndex, VectorPoint, VectorSearchResult}
+import sigil.vector.{NoOpVectorIndex, VectorIndex, VectorPoint, VectorPointId, VectorSearchResult}
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
@@ -41,7 +42,7 @@ trait Sigil {
    * automatically; this list extends the polymorphic discriminator with
    * additional types.
    */
-  protected def signals: List[RW[? <: Signal]]
+  protected def signalRegistrations: List[RW[? <: Signal]]
 
   /**
    * App-specific ParticipantId subtypes. Apps register their own
@@ -204,19 +205,40 @@ trait Sigil {
   // -- geospatial capture & enrichment --
 
   /**
-   * Opt-in capture hook. Called in [[publish]] for non-agent-authored
-   * [[Message]]s whose `location` is empty — the returned `Place`, if
-   * any, is attached before the message is persisted. Default no-op;
-   * apps that want geotagging override and consult their own
-   * per-participant opt-in registry + device-location source.
+   * Opt-in capture hook consulted by the default
+   * [[LocationCaptureTransform]]. Returns the `Place` to attach to a
+   * non-agent-authored [[Message]] whose `location` is empty; returns
+   * `None` to skip. Default no-op.
    *
-   * Apps that populate `Message.location` explicitly at the client
-   * bypass this hook — the framework does not overwrite an already-
-   * present Place.
+   * Apps that want geotagging override and consult their own
+   * per-participant opt-in registry + device-location source. Apps
+   * that populate `Message.location` explicitly at the client bypass
+   * this path — the transform leaves present Places untouched.
    */
   def locationFor(participantId: ParticipantId,
                   conversationId: Id[Conversation]): Task[Option[Place]] =
     Task.pure(None)
+
+  // -- inbound pipeline --
+
+  /**
+   * Pre-persist transforms applied in order by [[publish]] before a
+   * signal hits [[SigilDB.apply]]. Defaults to
+   * `[LocationCaptureTransform]`. Apps override to add, remove, or
+   * reorder — see `sigil.pipeline.InboundTransform`.
+   */
+  def inboundTransforms: List[InboundTransform] = List(LocationCaptureTransform)
+
+  /**
+   * Post-persist side effects triggered by every signal that reaches
+   * [[publish]]. Defaults to `[MessageIndexingEffect,
+   * GeocodingEnrichmentEffect]` — vector indexing of settled
+   * Messages and fire-and-forget geocoding of bare GPS points. Apps
+   * override to add, remove, or reorder. Each effect returns
+   * `Task[Unit]`; the framework awaits each in declaration order.
+   */
+  def settledEffects: List[SettledEffect] =
+    List(MessageIndexingEffect, GeocodingEnrichmentEffect)
 
   /**
    * Reverse-geocoding service used to enrich user-authored Messages
@@ -233,16 +255,60 @@ trait Sigil {
    */
   def geocoder: Geocoder = NoOpGeocoder
 
+  // -- outbound / per-viewer pipeline --
+
   /**
-   * Redact a Message's `location` for a viewer other than its sender.
-   * Read paths that surface Messages to a participant MUST call this
-   * helper — non-senders see `location = None`. Projection reads
-   * (`ConversationView` / `ContextFrame`) are safe by construction
-   * and don't need this call.
+   * Per-subscriber transforms applied by
+   * [[applyViewerTransforms]] (and by the per-viewer stream helper
+   * `signalsFor`) to every signal heading to a specific viewer.
+   * Defaults to `[RedactLocationTransform]` — sender-private
+   * `Message.location` is stripped for non-senders. Apps override to
+   * add/remove/reorder — see `sigil.pipeline.ViewerTransform`.
    */
-  def redactLocation(msg: Message, viewerId: ParticipantId): Message =
-    if (viewerId == msg.participantId) msg
-    else msg.copy(location = None)
+  def viewerTransforms: List[ViewerTransform] = List(RedactLocationTransform)
+
+  /**
+   * Fold a signal through [[viewerTransforms]] in declaration order,
+   * returning the version a specific viewer should see. Apps that
+   * consume [[signals]] directly and fan out to subscribers call this
+   * per (signal, viewer) pair to apply redaction/filtering.
+   */
+  final def applyViewerTransforms(signal: Signal, viewer: ParticipantId): Signal =
+    viewerTransforms.foldLeft(signal)((s, t) => t.apply(s, viewer, this))
+
+  // -- broadcast stream --
+
+  /** Multicast dispatcher populated by [[publish]]. One per Sigil
+    * instance; initialized lazily so initialization order is safe. */
+  private final lazy val hub: SignalHub = new SignalHub()
+
+  /**
+   * Broadcast-level stream of every signal that has completed its
+   * publish pipeline (transforms applied, persisted, projections
+   * updated, settled effects fired). Each call returns a new
+   * subscriber — slow subscribers drop oldest on overflow and don't
+   * block peers.
+   *
+   * Signals are emitted unchanged — viewer-dependent transforms are
+   * NOT applied. Subscribers that need per-viewer redaction should
+   * consume [[signalsFor]] instead.
+   *
+   * The hub is not a replay log; late subscribers see only signals
+   * emitted after they subscribe. Durable history lives in the events
+   * store.
+   */
+  final def signals: Stream[Signal] = hub.subscribe
+
+  /**
+   * Per-viewer stream derived from [[signals]] by applying
+   * [[viewerTransforms]] to each signal. Wire transports subscribe
+   * to one of these per connected client — the returned stream has
+   * `RedactLocationTransform` (and any other configured viewer
+   * transforms) already applied, so the app does not have to call
+   * `applyViewerTransforms` itself.
+   */
+  final def signalsFor(viewer: ParticipantId): Stream[Signal] =
+    signals.map(applyViewerTransforms(_, viewer))
 
   // -- embeddings & vector search --
 
@@ -274,14 +340,6 @@ trait Sigil {
 
   // -- broadcasting --
 
-  /**
-   * The wire transport for [[Signal]]s. The framework calls
-   * `broadcaster.handle(signal)` after persisting and before fanning out.
-   * Apps push to WebSocket / SSE / DurableSocket, or return
-   * [[SignalBroadcaster.NoOp]] explicitly when no wire transport is
-   * wanted.
-   */
-  def broadcaster: SignalBroadcaster
 
   /**
    * An [[spice.http.client.intercept.Interceptor]] chained into every
@@ -326,92 +384,55 @@ trait Sigil {
    * signal passes through, on the way in from outside or back out from
    * an agent's own turn. In order:
    *
-   *   1. Persist via `SigilDB.apply` (insert Event / apply Delta).
-   *   2. Update materialized projections on [[Conversation]]
+   *   1. Apply [[inboundTransforms]] (e.g. `LocationCaptureTransform`).
+   *   2. Persist via `SigilDB.apply` (insert Event / apply Delta).
+   *   3. Update materialized projections on [[Conversation]]
    *      (`currentMode`, `currentTopicId`) for Mode/Topic changes.
-   *   3. Append a frame to the conversation's [[ConversationView]] when
+   *   4. Append a frame to the conversation's [[ConversationView]] when
    *      an event settles Complete (via `FrameBuilder`).
-   *   4. Resolve and apply the Mode-source skill slot on `ModeChange`.
-   *   5. Dispatch control signals — a [[Stop]] event updates the
+   *   5. Resolve and apply the Mode-source skill slot on `ModeChange`.
+   *   6. Dispatch control signals — a [[Stop]] event updates the
    *      matching agent's [[sigil.dispatcher.StopFlag]] so the agent's
    *      next iteration check (or in-flight `takeWhile`) exits.
-   *   6. Broadcast to the wire via [[SignalBroadcaster]].
-   *   7. Fan out to participants whose [[TriggerFilter]] matches.
+   *   7. Emit to the [[SignalHub]] for subscribers of [[signals]] /
+   *      [[signalsFor]].
+   *   8. Fan out to participants whose [[TriggerFilter]] matches.
+   *   9. Run [[settledEffects]] (e.g. vector indexing, geocoding).
    *
    * Apps don't override this — it's the framework's pipeline.
    */
   final def publish(signal: Signal): Task[Unit] =
-    captureLocation(signal).flatMap { resolved =>
+    applyInboundTransforms(signal).flatMap { resolved =>
       for {
         _ <- withDB(_.apply(resolved))
         _ <- updateConversationProjection(resolved)
         _ <- updateView(resolved)
         _ <- maybeApplyModeSkill(resolved)
-        _ <- maybeIndexSettledMessage(resolved)
         _ <- applyStop(resolved)
-        _ <- broadcaster.handle(resolved).handleError(logBroadcastError(resolved, _))
+        _ <- Task { hub.emit(resolved); () }
         _ <- resolved match {
                case e: Event => fanOut(e)
                case _: sigil.signal.Delta => Task.unit
              }
-        _ <- maybeEnrichLocation(resolved)
+        _ <- applySettledEffects(resolved)
       } yield ()
     }
 
-  /** Pre-persist hook for non-agent-authored Messages: when `location`
-    * is empty, consult [[locationFor]] and attach the returned Place
-    * before the message hits the DB. Non-Message signals pass through
-    * unchanged. */
-  private final def captureLocation(signal: Signal): Task[Signal] = signal match {
-    case m: Message if m.location.isEmpty && !m.participantId.isInstanceOf[AgentParticipantId] =>
-      locationFor(m.participantId, m.conversationId).map {
-        case Some(place) => m.copy(location = Some(place))
-        case None => m
-      }
-    case other => Task.pure(other)
-  }
-
-  /** Post-persist fire-and-forget enrichment: when a non-agent Message
-    * carries a raw point with no Place metadata and a non-NoOp
-    * [[geocoder]] is configured, spawn a background task that resolves
-    * the point to a named Place and publishes a [[LocationDelta]] to
-    * update the persisted Message. Failures are logged and do not
-    * propagate. */
-  private final def maybeEnrichLocation(signal: Signal): Task[Unit] = signal match {
-    case m: Message if shouldEnrichLocation(m) =>
-      val point = m.location.get.point
-      val task = geocoder.geocode(point).flatMap {
-        case Some(result) =>
-          publish(LocationDelta(target = m._id, conversationId = m.conversationId, location = result.place))
-        case None => Task.unit
-      }.handleError { t =>
-        Task(scribe.warn(s"Geocoding failed for message ${m._id.value}", t))
-      }
-      Task(task.startUnit()).unit
-    case _ => Task.unit
-  }
-
-  private final def shouldEnrichLocation(m: Message): Boolean = {
-    if (geocoder eq NoOpGeocoder) false
-    else if (m.participantId.isInstanceOf[AgentParticipantId]) false
-    else m.location.exists(p => p.name.isEmpty && p.address.isEmpty)
-  }
-
-  /** When a [[Message]] settles `Complete`, vectorize and upsert its
-    * text into [[vectorIndex]] so the search tool can retrieve it.
-    * No-op when vector search isn't wired. */
-  private final def maybeIndexSettledMessage(signal: Signal): Task[Unit] = {
-    if (!vectorWired) Task.unit
-    else signal match {
-      case m: Message if m.state == EventState.Complete => indexMessageEvent(m)
-      case d: sigil.signal.Delta =>
-        withDB(_.events.transaction(_.get(d.target.asInstanceOf[Id[Event]]))).flatMap {
-          case Some(m: Message) if m.state == EventState.Complete => indexMessageEvent(m)
-          case _ => Task.unit
-        }
-      case _ => Task.unit
+  /** Fold the signal through [[inboundTransforms]] in declaration order.
+    * Each transform sees the output of the previous one. */
+  private final def applyInboundTransforms(signal: Signal): Task[Signal] =
+    inboundTransforms.foldLeft(Task.pure(signal)) { (acc, transform) =>
+      acc.flatMap(s => transform.apply(s, this))
     }
-  }
+
+  /** Run each [[SettledEffect]] in declaration order, awaiting each
+    * before the next. Effects that want fire-and-forget semantics
+    * spawn their own fiber inside the returned Task. */
+  private final def applySettledEffects(signal: Signal): Task[Unit] =
+    settledEffects.foldLeft(Task.unit) { (acc, effect) =>
+      acc.flatMap(_ => effect.apply(signal, this))
+    }
+
 
   // -- stop-flag registry --
 
@@ -803,7 +824,7 @@ trait Sigil {
       }).flatMap { removed =>
         if (!vectorWired) Task.pure(removed)
         else Task
-          .sequence(versions.map(v => vectorIndex.delete(vectorPointId(v._id.value))))
+          .sequence(versions.map(v => vectorIndex.delete(VectorPointId(v._id.value))))
           .map(_ => removed)
           .handleError { e =>
             Task(scribe.warn(s"Vector delete failed during forgetMemory(key=$key): ${e.getMessage}"))
@@ -841,19 +862,11 @@ trait Sigil {
 
   // -- vector-indexing internals --
 
-  /** Derive a deterministic UUID for a lightdb id. Qdrant requires
-    * point ids to be UUIDs or unsigned ints; lightdb ids are
-    * arbitrary strings. Using a name-based UUID (v3/v5-style via
-    * `UUID.nameUUIDFromBytes`) gives us a stable point id that
-    * upsert can replace deterministically. */
-  private def vectorPointId(lightdbId: String): String =
-    java.util.UUID.nameUUIDFromBytes(lightdbId.getBytes("UTF-8")).toString
-
   private final def indexSummary(s: ContextSummary): Task[Unit] =
     if (!vectorWired || s.text.isEmpty) Task.unit
     else embeddingProvider.embed(s.text).flatMap { vec =>
       vectorIndex.upsert(VectorPoint(
-        id = vectorPointId(s._id.value),
+        id = VectorPointId(s._id.value),
         vector = vec,
         payload = Map(
           "kind" -> "summary",
@@ -869,7 +882,7 @@ trait Sigil {
     if (!vectorWired || m.fact.isEmpty) Task.unit
     else embeddingProvider.embed(m.fact).flatMap { vec =>
       vectorIndex.upsert(VectorPoint(
-        id = vectorPointId(m._id.value),
+        id = VectorPointId(m._id.value),
         vector = vec,
         payload = Map(
           "kind" -> "memory",
@@ -881,29 +894,6 @@ trait Sigil {
     }.handleError { e =>
       Task(scribe.warn(s"Vector index failed for memory ${m._id.value}: ${e.getMessage}"))
     }
-
-  /** Index a settled [[Message]]'s text content so `searchConversationEvents`
-    * can surface it by semantic similarity. Skipped when vector search
-    * isn't wired or the message carries no text. */
-  private final def indexMessageEvent(m: Message): Task[Unit] = {
-    val text = m.content.collect { case ResponseContent.Text(t) => t }.mkString("\n").trim
-    if (!vectorWired || text.isEmpty) Task.unit
-    else embeddingProvider.embed(text).flatMap { vec =>
-      vectorIndex.upsert(VectorPoint(
-        id = vectorPointId(m._id.value),
-        vector = vec,
-        payload = Map(
-          "kind" -> "message",
-          "conversationId" -> m.conversationId.value,
-          "topicId" -> m.topicId.value,
-          "eventId" -> m._id.value,
-          "participantId" -> m.participantId.value
-        )
-      ))
-    }.handleError { e =>
-      Task(scribe.warn(s"Vector index failed for message ${m._id.value}: ${e.getMessage}"))
-    }
-  }
 
   // -- search APIs --
 
@@ -1194,9 +1184,6 @@ trait Sigil {
   def currentTopic(conversation: Conversation): Task[Option[Topic]] =
     withDB(_.topics.transaction(_.get(conversation.currentTopicId)))
 
-  private final def logBroadcastError(signal: Signal, t: Throwable): Task[Unit] =
-    Task(scribe.warn(s"Broadcaster failed for signal: ${signal.getClass.getSimpleName}", t))
-
   private final def fanOut(event: Event): Task[Unit] =
     withDB(_.conversations.transaction(_.get(event.conversationId))).flatMap {
       case None       => Task.unit
@@ -1245,11 +1232,10 @@ trait Sigil {
           stopFlags.put(claim._id, new StopFlag)
           // Broadcast manually (modify already persisted), then fire the
           // agent on its own fiber.
-          broadcaster.handle(claim).handleError(logBroadcastError(claim, _)).flatMap { _ =>
-            Task {
-              runAgent(agent, conv, claim).startUnit()
-              ()
-            }
+          Task {
+            hub.emit(claim)
+            runAgent(agent, conv, claim).startUnit()
+            ()
           }
         case None => Task.unit
       }
@@ -1451,7 +1437,7 @@ trait Sigil {
     for {
       _ <- logger.info("Sigil initializing...")
       _ <- Task(Profig.initConfiguration())
-      _ = Signal.register((CoreSignals.all ++ signals)*)
+      _ = Signal.register((CoreSignals.all ++ signalRegistrations)*)
       _ = ToolInput.register((CoreTools.inputRWs ++ findTools.toolInputRWs)*)
       _ = ParticipantId.register(participantIds*)
       _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)

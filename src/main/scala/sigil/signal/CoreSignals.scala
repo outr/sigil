@@ -6,7 +6,7 @@ import sigil.event.{AgentState, Message, ModeChange, Stop, TopicChange, ToolInvo
 /**
  * The framework's built-in Signal subtypes. Sigil registers these into the
  * `Signal` poly automatically at initialization; apps add their own custom
- * Event/Delta subtypes via `Sigil.signals`.
+ * Event/Delta subtypes via `Sigil.signalRegistrations`.
  *
  * Includes both Events (Message, ToolInvoke, ToolResults, ModeChange,
  * TopicChange, AgentState, Stop) and Deltas (MessageDelta, ToolDelta,

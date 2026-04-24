@@ -30,9 +30,11 @@ import sigil.tool.model.ResponseContent
  *
  * Privacy: the framework treats `location` as sender-private. Read paths
  * that surface Messages to another viewer MUST call
- * `Sigil.redactLocation(msg, viewerId)` — non-senders see `location = None`.
- * Projection-level reads are safe by construction: `ContextFrame` carries
- * no geo field.
+ * `Sigil.applyViewerTransforms(signal, viewerId)` (or subscribe to
+ * `Sigil.signalsFor(viewer)`) — the default
+ * `RedactLocationTransform` strips `location` for non-senders.
+ * Projection-level reads are safe by construction: `ContextFrame`
+ * carries no geo field.
  *
  * `location` is kept on `Message` rather than on the `Event` trait because
  * admin/system events (`TitleUpdated`, `Deleted`, `ErrorOccurred`) have

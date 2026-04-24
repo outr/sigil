@@ -51,6 +51,21 @@ Apps extend `Sigil` and provide: `findTools`, `curate`, `getInformation`/`putInf
 - `ConversationView` is the projection: a list of `ContextFrame`s built by `FrameBuilder` one-for-one from `Complete` events, plus per-participant `ParticipantProjection` (active skills, extra context, suggested tools). It's maintained by `Sigil.publish` idempotently and rebuildable from scratch via `Sigil.rebuildView`.
 - `curate(view, modelId, chain) => TurnInput` runs on every turn. Apps decide which memories/summaries/information to surface. There is no implicit history truncation — the curator owns policy.
 
+### Signal pipeline
+
+`publish(signal)` is the single ingress; it is a three-level pipeline plus framework-internal steps:
+
+1. **Inbound transforms** (`Sigil.inboundTransforms: List[InboundTransform]`) — rewrite the signal *pre-persist*. Runs on the hot path; implementations should be fast. Default: `[LocationCaptureTransform]`.
+2. *(Framework: persist → projection → view → mode-skill → stop-dispatch.)*
+3. **Broadcast** — the signal is emitted into `SignalHub`, a multicast dispatcher. `Sigil.signals: Stream[Signal]` returns a fresh subscriber per call (each with its own bounded queue; slow subscribers drop oldest with a warn, don't block peers).
+4. **Per-viewer stream** — `Sigil.signalsFor(viewer): Stream[Signal]` is `signals.map(applyViewerTransforms(_, viewer))`. `viewerTransforms: List[ViewerTransform]` runs once per (signal, viewer) pair — different viewers can see different versions. Default: `[RedactLocationTransform]` strips sender-private `Message.location`.
+5. *(Framework: fan-out to agent participants via `TriggerFilter`.)*
+6. **Settled effects** (`Sigil.settledEffects: List[SettledEffect]`) — post-persist side effects. Each returns `Task[Unit]`; effects decide internally whether to run sync (block publish) or spawn a fiber (fire-and-forget). Default: `[MessageIndexingEffect, GeocodingEnrichmentEffect]`.
+
+Apps extend by overriding the list-returning methods — add, remove, or reorder. No custom DSL: `List[T]` + `T.apply(...)` is the whole contract. See `design/signal-pipeline.md` for the full rationale and level boundaries.
+
+`SignalBroadcaster` (callback-style wire transport) has been removed. Apps that need to push to WebSocket/SSE consume `sigil.signals` or `sigil.signalsFor(viewer)` and drive the wire themselves.
+
 ### Providers
 
 `sigil.provider.Provider` is a wire-agnostic trait returning `Stream[ProviderEvent]`. Implementations live under `sigil/provider/{anthropic,openai,google,deepseek,llamacpp}/`. Each carries a `ProviderType` enum case.
@@ -78,6 +93,20 @@ When vector search is wired (`embeddingProvider.dimensions > 0 && vectorIndex !=
 ### MemorySpaceId
 
 `MemorySpaceId` is an open `PolyType` — Sigil does NOT ship concrete cases. Apps define their own (GlobalSpace, UserSpace, ProjectSpace, etc.) and register them via `memorySpaceIds: List[RW[? <: MemorySpaceId]]`. See project memory `project_sigil_memory_spaceid.md`.
+
+### Geospatial (`sigil.spatial`)
+
+`Message.location: Option[Place]` carries a `Place(point, address, name)`. Three first-class configurations:
+
+1. **No geo** — default; framework does nothing.
+2. **Raw-GPS only** — app overrides `locationFor` (or attaches `Place(point, None, None)` at the client); keeps `geocoder = NoOpGeocoder`. Messages persist with the point; no enrichment or cache writes.
+3. **Full enrichment** — app wires a non-NoOp `Geocoder` (typically `CachingGeocoder(delegate, sigil, ttl)`). In `publish`, non-agent Messages with a bare point spawn a fire-and-forget task: cache lookup via `spatialContains`, delegate on miss, then `publish(LocationDelta(...))` updates the persisted Message in place.
+
+Privacy: `location` is sender-private. The default `RedactLocationTransform` in `Sigil.viewerTransforms` strips `Message.location` for any viewer who isn't the sender — wire transports that consume `sigil.signalsFor(viewer)` get redaction for free. Projections (`ContextFrame`) never carry geo by construction.
+
+- `locationFor` runs synchronously inside `publish` — implementations should be fast (opt-in lookup + cached GPS, not a remote call per invocation).
+
+The Google Places HTTP client (or any concrete geocoder) lives in apps, not Sigil. The framework ships the abstractions + spatial-containment cache only.
 
 ## Conventions
 
