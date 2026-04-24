@@ -1,6 +1,6 @@
 # `benchmark/` — sbt subproject
 
-Runners for sigil's memory-retrieval benchmarks. For the strategy and measured scores, see the top-level [`benchmarks.md`](../benchmarks.md).
+Runners for sigil's memory-retrieval benchmarks. Current measured scores: [`scores.md`](scores.md). Strategy around which benchmarks we run and why: top-level [`benchmarks.md`](../benchmarks.md).
 
 ## Prerequisites
 

@@ -12,6 +12,7 @@ import rapid.Task
 import sigil.conversation.{ContextMemory, ContextSummary, Conversation, ConversationView, Topic}
 import sigil.event.Event
 import sigil.signal.{Delta, Signal}
+import sigil.spatial.GeocodingCache
 
 import java.nio.file.Path
 import scala.concurrent.duration.*
@@ -26,6 +27,7 @@ case class SigilDB(directory: Option[Path], storeManager: CollectionManager) ext
   val summaries: S[ContextSummary, ContextSummary.type] = store(ContextSummary).withCache(CacheConfig.lru(500, 5.minutes))()
   val views: S[ConversationView, ConversationView.type] = store(ConversationView).withCache(CacheConfig.lru(1000))()
   val topics: S[Topic, Topic.type] = store(Topic).withCache(CacheConfig.lru(2000))()
+  val geocodingCache: S[GeocodingCache, GeocodingCache.type] = store(GeocodingCache)()
 
   override def upgrades: List[DatabaseUpgrade] = Nil
 

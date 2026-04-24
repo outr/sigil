@@ -10,7 +10,7 @@ import sigil.event.{AgentState, Message, ModeChange, Stop, TopicChange, ToolInvo
  *
  * Includes both Events (Message, ToolInvoke, ToolResults, ModeChange,
  * TopicChange, AgentState, Stop) and Deltas (MessageDelta, ToolDelta,
- * StateDelta, AgentStateDelta).
+ * StateDelta, AgentStateDelta, LocationDelta).
  */
 object CoreSignals {
 
@@ -25,6 +25,7 @@ object CoreSignals {
     summon[RW[MessageDelta]],
     summon[RW[ToolDelta]],
     summon[RW[StateDelta]],
-    summon[RW[AgentStateDelta]]
+    summon[RW[AgentStateDelta]],
+    summon[RW[LocationDelta]]
   )
 }
