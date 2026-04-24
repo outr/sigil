@@ -19,14 +19,15 @@ import sigil.provider.GenerationSettings
 import sigil.db.{Model, SigilDB}
 import sigil.dispatcher.{StopFlag, TriggerFilter}
 import sigil.event.{AgentState, Event, Message, ModeChange, Stop, TopicChange, TopicChangeKind}
-import sigil.provider.Mode
+import sigil.provider.{ConversationMode, Mode, ModeTools}
 import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
 import sigil.pipeline.{GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MessageIndexingEffect, RedactLocationTransform, SettledEffect, SignalHub, ViewerTransform}
 import sigil.provider.Provider
 import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, EventState, LocationDelta, Signal}
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
-import sigil.tool.core.CoreTools
+import sigil.tool.Tool
+import sigil.tool.core.{CoreTools, FindCapabilityTool}
 import sigil.tool.model.ResponseContent
 import sigil.tool.{ToolFinder, ToolInput}
 import sigil.vector.{NoOpVectorIndex, VectorIndex, VectorPoint, VectorPointId, VectorSearchResult}
@@ -135,19 +136,89 @@ trait Sigil {
    * `TurnInput.memories`: the curator picks which returned
    * records to include (by id) based on its policy.
    */
-  // -- skills --
+  // -- modes --
 
   /**
-   * Resolve the Mode-source [[ActiveSkillSlot]] for a given [[Mode]]. Called
-   * by the framework when a [[ModeChange]] event reaches `Complete` — the
-   * returned slot (if any) is written into the changing participant's
-   * [[ParticipantProjection.activeSkills]] keyed by `SkillSource.Mode`;
-   * `None` clears any stale Mode-source slot.
+   * App-specific [[Mode]] case objects. Sigil registers these into the
+   * polymorphic `Mode` discriminator (via `RW.static`) AND indexes them
+   * by `name` for `modeByName` lookup at `change_mode` call time.
    *
-   * Apps that don't use mode-scoped skills return
-   * `Task.pure(None)` explicitly.
+   * Sigil ships [[ConversationMode]] and prepends it automatically —
+   * apps only list their own modes. Example:
+   * {{{
+   *   override protected def modes: List[Mode] = List(CodingMode, WorkflowMode)
+   * }}}
    */
-  def modeSkill(mode: Mode): Task[Option[ActiveSkillSlot]]
+  protected def modes: List[Mode] = Nil
+
+  /** All modes available in this Sigil, keyed by stable name. Computed
+    * lazily from `ConversationMode :: modes`. Used by `change_mode` to
+    * resolve a name-based tool argument into a real instance. */
+  private final lazy val modesByName: Map[String, Mode] =
+    (ConversationMode :: modes).map(m => m.name -> m).toMap
+
+  /** Look up a registered [[Mode]] by its stable `name`. Returns `None`
+    * for unknown names (e.g. an LLM produced a typo in its
+    * `change_mode` call). */
+  final def modeByName(name: String): Option[Mode] = modesByName.get(name)
+
+  /**
+   * Compose the effective tool name list for an agent's turn, given
+   * the current [[Mode]]'s [[ModeTools]] policy and the participant's
+   * one-turn suggested tools from `find_capability`.
+   *
+   * Framework essentials (`respond`, `no_response`, `change_mode`,
+   * `stop`) are always included. `find_capability` is included unless
+   * the mode is [[ModeTools.None]].
+   *
+   * Apps override for exotic composition (e.g. per-agent tool gating).
+   */
+  def effectiveToolNames(agent: AgentParticipant,
+                         mode: Mode,
+                         suggested: List[sigil.tool.ToolName]): List[sigil.tool.ToolName] = {
+    import sigil.tool.core.{ChangeModeTool, FindCapabilityTool, NoResponseTool, RespondTool, StopTool}
+    val essentials = List(RespondTool, NoResponseTool, ChangeModeTool, StopTool).map(_.schema.name)
+    val withDiscovery = essentials :+ FindCapabilityTool.schema.name
+    mode.tools match {
+      case ModeTools.Standard         => (withDiscovery ++ agent.toolNames ++ suggested).distinct
+      case ModeTools.None             => (essentials ++ suggested).distinct
+      case ModeTools.Active(names)    => (withDiscovery ++ agent.toolNames ++ names ++ suggested).distinct
+      case ModeTools.Discoverable(_)  => (withDiscovery ++ agent.toolNames ++ suggested).distinct
+      case ModeTools.Exclusive(names) => (withDiscovery ++ names ++ suggested).distinct
+      case ModeTools.Scoped(_)        => (withDiscovery ++ agent.toolNames ++ suggested).distinct
+    }
+  }
+
+  /**
+   * Per-tool predicate: is `toolName` visible to `find_capability`
+   * while the given [[Mode]] is active?
+   *
+   *   - `Standard` / `Active` / `Discoverable` → always true
+   *   - `None`                                 → always false
+   *   - `Exclusive(names)` / `Scoped(names)`   → true iff `toolName`
+   *     is in the listed names
+   *
+   * The predicate model deliberately avoids iterating a full tool
+   * catalog — [[sigil.tool.ToolFinder]] produces a keyword-matched
+   * subset (DB-backed finders may stream results), and callers apply
+   * this predicate per result. No "all tools" list ever lands in
+   * memory.
+   *
+   * [[ModeTools.Discoverable]] carries Reading-A intent: "this tool is
+   * visible to `find_capability` ONLY while this mode is active." The
+   * default returns true for Discoverable names (no cross-mode gating)
+   * because the framework doesn't know the app's full mode set. Apps
+   * wanting cross-mode gating override this method with knowledge of
+   * their registered modes.
+   */
+  def modeAllowsDiscovery(mode: Mode, toolName: sigil.tool.ToolName): Boolean = {
+    mode.tools match {
+      case ModeTools.Standard | ModeTools.Active(_) | ModeTools.Discoverable(_) => true
+      case ModeTools.None                                                       => false
+      case ModeTools.Exclusive(names)                                           => names.contains(toolName)
+      case ModeTools.Scoped(names)                                              => names.contains(toolName)
+    }
+  }
 
   /**
    * The [[MemorySpaceId]] into which a
@@ -487,13 +558,13 @@ trait Sigil {
   }
 
   private final def applyModeSkill(mc: ModeChange): Task[Unit] =
-    modeSkill(mc.mode).flatMap {
+    mc.mode.skill match {
       case Some(slot) =>
         updateProjection(mc.conversationId, mc.participantId)(
           proj => proj.copy(activeSkills = proj.activeSkills + (SkillSource.Mode -> slot))
         )
       case None =>
-        // No app-provided skill for this mode — clear any stale Mode-source slot.
+        // No skill on this mode — clear any stale Mode-source slot.
         updateProjection(mc.conversationId, mc.participantId)(
           proj => proj.copy(activeSkills = proj.activeSkills - SkillSource.Mode)
         )
@@ -1155,7 +1226,7 @@ trait Sigil {
                       label: String = Topic.DefaultLabel,
                       summary: String = Topic.DefaultSummary,
                       participants: List[Participant] = Nil,
-                      currentMode: Mode = Mode.Conversation,
+                      currentMode: Mode = ConversationMode,
                       conversationId: Id[Conversation] = Conversation.id()): Task[Conversation] = {
     val topic = Topic(
       conversationId = conversationId,
@@ -1442,6 +1513,7 @@ trait Sigil {
       _ = ParticipantId.register(participantIds*)
       _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
       _ = MemorySpaceId.register(memorySpaceIds*)
+      _ = Mode.register((ConversationMode :: modes).distinct.map(m => RW.static(m))*)
       config = Profig("sigil").as[Config]
       (directory, collectionStore) = config.postgres match {
         case Some(pg) =>

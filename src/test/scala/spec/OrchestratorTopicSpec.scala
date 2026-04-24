@@ -8,7 +8,7 @@ import sigil.conversation.{ConversationView, Conversation, Topic, TopicEntry, To
 import sigil.db.Model
 import sigil.event.{Event, Message, TopicChange, TopicChangeKind}
 import sigil.orchestrator.Orchestrator
-import sigil.provider.{CallId, ConversationRequest, GenerationSettings, Instructions, Mode, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason}
+import sigil.provider.{CallId, ConversationRequest, GenerationSettings, Instructions, Mode, ConversationMode, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason}
 import sigil.signal.Signal
 import sigil.tool.core.RespondTool
 import sigil.tool.consult.TopicClassifierInput
@@ -104,7 +104,7 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       modelId = modelId,
       instructions = Instructions(),
       turnInput = TurnInput(view),
-      currentMode = Mode.Conversation,
+      currentMode = ConversationMode,
       currentTopic = currentEntry,
       previousTopics = priors,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),

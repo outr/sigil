@@ -62,8 +62,10 @@ object FindCapabilityTool extends Tool[FindCapabilityInput] {
       context.sigil
         .findTools(input.keywords, context.chain)
         .map { tools =>
+          val mode = context.conversation.currentMode
+          val scoped = tools.filter(t => context.sigil.modeAllowsDiscovery(mode, t.schema.name))
           val results = ToolResults(
-            schemas = tools.map(_.schema),
+            schemas = scoped.map(_.schema),
             participantId = context.caller,
             conversationId = context.conversation.id,
             topicId = context.conversation.currentTopicId

@@ -1,0 +1,141 @@
+package spec
+
+import fabric.rw.*
+import org.scalatest.matchers.should.Matchers
+import org.scalatest.wordspec.AsyncWordSpec
+import rapid.{AsyncTaskSpec, Task}
+import sigil.participant.DefaultAgentParticipant
+import sigil.provider.{ConversationMode, GenerationSettings, Instructions, Mode, ModeTools}
+import sigil.tool.ToolName
+import sigil.tool.core.{ChangeModeTool, CoreTools, FindCapabilityTool, NoResponseTool, RespondTool, StopTool}
+
+/**
+ * Coverage for the [[Mode]] PolyType, [[ModeTools]] policy cases,
+ * and the Sigil helpers that compose tools per turn
+ * (`effectiveToolNames`, `discoveryCatalog`).
+ */
+class ModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
+
+  TestSigil.initFor(getClass.getSimpleName)
+
+  private val essentials: Set[ToolName] =
+    List(RespondTool, NoResponseTool, ChangeModeTool, StopTool).map(_.schema.name).toSet
+  private val withDiscovery: Set[ToolName] =
+    essentials + FindCapabilityTool.schema.name
+
+  private val toolA = ToolName("tool_a")
+  private val toolB = ToolName("tool_b")
+  private val toolC = ToolName("tool_c")
+  private val toolD = ToolName("tool_d")
+
+  private def agent(tools: List[ToolName]): DefaultAgentParticipant =
+    DefaultAgentParticipant(
+      id = TestAgent,
+      modelId = sigil.db.Model.id("test", "model"),
+      toolNames = tools,
+      instructions = Instructions(),
+      generationSettings = GenerationSettings()
+    )
+
+  private def mode(modeTools: ModeTools): Mode = new Mode {
+    override val name: String = "test-mode"
+    override val description: String = "test"
+    override val tools: ModeTools = modeTools
+  }
+
+  "Mode PolyType serialization" should {
+    "round-trip ConversationMode via Mode's polymorphic RW" in Task {
+      val rw = summon[RW[Mode]]
+      val restored = rw.write(rw.read(ConversationMode))
+      restored shouldBe ConversationMode
+    }
+
+    "round-trip a registered app mode via Mode's polymorphic RW" in Task {
+      val rw = summon[RW[Mode]]
+      val restored = rw.write(rw.read(TestCodingMode))
+      restored shouldBe TestCodingMode
+    }
+  }
+
+  "Sigil.modeByName" should {
+    "resolve ConversationMode" in Task {
+      TestSigil.modeByName("conversation") shouldBe Some(ConversationMode)
+    }
+
+    "resolve app-registered modes" in Task {
+      TestSigil.modeByName("coding") shouldBe Some(TestCodingMode)
+      TestSigil.modeByName("skilled") shouldBe Some(TestSkilledMode)
+    }
+
+    "return None for unknown names" in Task {
+      TestSigil.modeByName("nope") shouldBe None
+    }
+  }
+
+  "Sigil.effectiveToolNames" should {
+    val a = agent(List(toolA, toolB))
+
+    "leave baseline untouched under ModeTools.Standard" in Task {
+      val result = TestSigil.effectiveToolNames(a, mode(ModeTools.Standard), suggested = Nil).toSet
+      result shouldBe (withDiscovery ++ Set(toolA, toolB))
+    }
+
+    "suppress baseline AND find_capability under ModeTools.None" in Task {
+      val result = TestSigil.effectiveToolNames(a, mode(ModeTools.None), suggested = Nil).toSet
+      result shouldBe essentials
+      result should not contain FindCapabilityTool.schema.name
+    }
+
+    "add mode tools on top of baseline under ModeTools.Active" in Task {
+      val result = TestSigil.effectiveToolNames(a, mode(ModeTools.Active(List(toolC))), suggested = Nil).toSet
+      result shouldBe (withDiscovery ++ Set(toolA, toolB, toolC))
+    }
+
+    "not add mode tools to the roster under ModeTools.Discoverable" in Task {
+      val result = TestSigil.effectiveToolNames(a, mode(ModeTools.Discoverable(List(toolC))), suggested = Nil).toSet
+      result shouldBe (withDiscovery ++ Set(toolA, toolB))
+    }
+
+    "replace baseline with mode tools under ModeTools.Exclusive" in Task {
+      val result = TestSigil.effectiveToolNames(a, mode(ModeTools.Exclusive(List(toolC))), suggested = Nil).toSet
+      result shouldBe (withDiscovery ++ Set(toolC))
+      result should not contain toolA
+    }
+
+    "leave baseline untouched under ModeTools.Scoped" in Task {
+      val result = TestSigil.effectiveToolNames(a, mode(ModeTools.Scoped(List(toolC))), suggested = Nil).toSet
+      result shouldBe (withDiscovery ++ Set(toolA, toolB))
+    }
+
+    "always include suggested tools (regardless of policy)" in Task {
+      val suggested = List(toolD)
+      val active = TestSigil.effectiveToolNames(a, mode(ModeTools.Active(Nil)), suggested).toSet
+      val excl   = TestSigil.effectiveToolNames(a, mode(ModeTools.Exclusive(Nil)), suggested).toSet
+      val none   = TestSigil.effectiveToolNames(a, mode(ModeTools.None), suggested).toSet
+      active should contain(toolD)
+      excl should contain(toolD)
+      none should contain(toolD)
+    }
+  }
+
+  "Sigil.modeAllowsDiscovery" should {
+    "accept every tool under Standard / Active / Discoverable" in Task {
+      TestSigil.modeAllowsDiscovery(mode(ModeTools.Standard), toolA) shouldBe true
+      TestSigil.modeAllowsDiscovery(mode(ModeTools.Active(Nil)), toolA) shouldBe true
+      TestSigil.modeAllowsDiscovery(mode(ModeTools.Discoverable(List(toolB))), toolA) shouldBe true
+    }
+
+    "reject every tool under None" in Task {
+      TestSigil.modeAllowsDiscovery(mode(ModeTools.None), toolA) shouldBe false
+      TestSigil.modeAllowsDiscovery(mode(ModeTools.None), RespondTool.schema.name) shouldBe false
+    }
+
+    "accept only the listed tools under Exclusive / Scoped" in Task {
+      val pick = RespondTool.schema.name
+      TestSigil.modeAllowsDiscovery(mode(ModeTools.Exclusive(List(pick))), pick) shouldBe true
+      TestSigil.modeAllowsDiscovery(mode(ModeTools.Exclusive(List(pick))), toolA) shouldBe false
+      TestSigil.modeAllowsDiscovery(mode(ModeTools.Scoped(List(pick))), pick) shouldBe true
+      TestSigil.modeAllowsDiscovery(mode(ModeTools.Scoped(List(pick))), toolA) shouldBe false
+    }
+  }
+}

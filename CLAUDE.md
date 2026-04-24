@@ -94,6 +94,39 @@ When vector search is wired (`embeddingProvider.dimensions > 0 && vectorIndex !=
 
 `MemorySpaceId` is an open `PolyType` — Sigil does NOT ship concrete cases. Apps define their own (GlobalSpace, UserSpace, ProjectSpace, etc.) and register them via `memorySpaceIds: List[RW[? <: MemorySpaceId]]`. See project memory `project_sigil_memory_spaceid.md`.
 
+### Mode (open PolyType)
+
+`Mode` is a trait, not an enum. Sigil ships only `ConversationMode` (`name = "conversation"`). Apps define their own case objects (`CodingMode`, `WorkflowMode`, `WebNavigationMode`, whatever) and register them via a single list on `Sigil`:
+
+```scala
+override protected def modes: List[Mode] = List(WorkflowMode, CodingMode)
+```
+
+The framework derives both the polymorphic RW registrations (via `RW.static(_)`) and the `modeByName(name)` index from that one list. `ConversationMode` is prepended automatically; if apps accidentally list it, the registration dedupes.
+
+A `Mode` carries:
+- `name` — stable discriminator persisted in events and used by `change_mode` tool args (the tool takes a string; framework resolves via `modeByName`).
+- `description` — rendered into the system prompt.
+- `skill: Option[ActiveSkillSlot]` — replaces the old `modeSkill` hook; framework reads `mode.skill` directly on `ModeChange` settle.
+- `tools: ModeTools` — tool-availability policy.
+
+`ModeTools` is a sum type (`sigil.provider.ModeTools`) covering six composition policies:
+
+| Case | Roster | Discovery catalog |
+|---|---|---|
+| `Standard` | baseline + `find_capability` | full |
+| `None` | essentials only (no `find_capability`) | empty |
+| `Active(names)` | baseline + names | full |
+| `Discoverable(names)` | baseline | full (apps override `discoveryCatalog` for cross-mode gating) |
+| `Exclusive(names)` | essentials + names (baseline suppressed) | names only |
+| `Scoped(names)` | baseline | names only |
+
+Framework essentials (always in the roster) are `respond`, `no_response`, `change_mode`, `stop`. `find_capability` joins them unless `ModeTools.None` is active.
+
+Composition happens in `Sigil.effectiveToolNames(agent, mode, suggested)` and `Sigil.modeAllowsDiscovery(mode, toolName): Boolean` — both are `def`s apps override for exotic rules. `AgentParticipant.defaultProcess` calls `effectiveToolNames`; `FindCapabilityTool.execute` filters its `ToolFinder` results through `modeAllowsDiscovery`.
+
+The discovery path is deliberately predicate-based, not list-based — `ToolFinder` produces keyword-matched subsets (DB-backed finders may stream) and the framework applies the mode predicate per result. No "all tools" list ever materializes.
+
 ### Geospatial (`sigil.spatial`)
 
 `Message.location: Option[Place]` carries a `Place(point, address, name)`. Three first-class configurations:

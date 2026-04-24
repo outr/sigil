@@ -6,7 +6,7 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Unique
 import sigil.participant.Participant
-import sigil.provider.Mode
+import sigil.provider.{ConversationMode, Mode}
 
 /**
  * A conversation is a durable scope for events, the participants involved,
@@ -48,7 +48,7 @@ import sigil.provider.Mode
  */
 case class Conversation(topics: List[TopicEntry],
                         participants: List[Participant] = Nil,
-                        currentMode: Mode = Mode.Conversation,
+                        currentMode: Mode = ConversationMode,
                         created: Timestamp = Timestamp(),
                         modified: Timestamp = Timestamp(),
                         _id: Id[Conversation] = Conversation.id())

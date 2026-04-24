@@ -19,7 +19,7 @@ import sigil.conversation.{
 import sigil.db.Model
 import sigil.event.Event
 import sigil.information.{Information, InformationSummary}
-import sigil.provider.{ConversationRequest, GenerationSettings, Instructions, Mode, Provider, ProviderRequest}
+import sigil.provider.{ConversationRequest, GenerationSettings, Instructions, Mode, ConversationMode, Provider, ProviderRequest}
 import sigil.tool.ToolName
 import sigil.tool.core.CoreTools
 
@@ -88,7 +88,7 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
       modelId = modelId,
       instructions = Instructions(),
       turnInput = input,
-      currentMode = Mode.Conversation,
+      currentMode = ConversationMode,
       currentTopic = TestTopicEntry,
       generationSettings = generationSettings,
       tools = CoreTools.all,

@@ -9,7 +9,7 @@ import sigil.conversation.{ContextFrame, ContextMemory, Conversation, Conversati
 import sigil.conversation.compression.{NoOpBlockExtractor, NoOpContextCompressor, Percentage, StandardContextCurator, StandardContextOptimizer, StandardMemoryRetriever}
 import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
 import sigil.event.Event
-import sigil.provider.{ConversationRequest, GenerationSettings, Instructions, Mode, ProviderEvent}
+import sigil.provider.{ConversationRequest, GenerationSettings, Instructions, Mode, ConversationMode, ProviderEvent}
 import sigil.provider.llamacpp.LlamaCppProvider
 import sigil.tool.core.CoreTools
 import sigil.tool.model.RespondInput
@@ -119,7 +119,7 @@ class MemoryRetrievalEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with 
           modelId = modelId,
           instructions = Instructions(),
           turnInput = turnInput,
-          currentMode = Mode.Conversation,
+          currentMode = ConversationMode,
           currentTopic = TestTopicEntry,
           generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0)),
           tools = CoreTools.all,

@@ -8,7 +8,7 @@ import sigil.conversation.Conversation
 import sigil.db.Model
 import sigil.event.{AgentState, Message, ModeChange, Stop, ToolInvoke}
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant}
-import sigil.provider.{GenerationSettings, Instructions, Mode, Provider}
+import sigil.provider.{GenerationSettings, Instructions, Mode, ConversationMode, Provider}
 import sigil.signal.{AgentActivity, AgentStateDelta, EventState, MessageDelta, Signal, ToolDelta}
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tool.core.CoreTools
@@ -175,7 +175,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
         val modeChanges = signals.collect { case m: ModeChange => m }
         modeChanges should not be empty
-        modeChanges.head.mode shouldBe Mode.Coding
+        modeChanges.head.mode shouldBe TestCodingMode
 
         // Exactly one AgentState claim — the self-loop holds the lock across
         // every iteration in the chain.

@@ -2,43 +2,48 @@ package sigil.tool.core
 
 import sigil.TurnContext
 import sigil.event.{Event, ModeChange}
-import sigil.provider.Mode
 import sigil.tool.Tool
 import sigil.tool.model.ChangeModeInput
 
 /**
  * Allows the model to transition between operating modes mid-conversation.
  *
- * Emits a `ModeChange` that orchestrators use to update the
- * `currentMode` on the next `ProviderRequest`. The tool itself does not mutate
- * any state — the conversation's event log is the source of truth.
+ * Emits a `ModeChange` that the framework uses to update
+ * `Conversation.currentMode` and re-render the next provider request.
+ * The tool itself does not mutate state — the event log is the source
+ * of truth.
  */
 object ChangeModeTool extends Tool[ChangeModeInput] {
   override protected def uniqueName: String = "change_mode"
 
-  override protected def description: String = {
-    val modeList = Mode.values.map(m => s"- $m: ${m.description}").mkString("\n")
-    s"""Switch the agent's current operating mode. The current mode is stated at the top of the system
-       |prompt. Call this BEFORE attempting a task whose nature belongs to a different mode — do not
-       |start the task in the wrong mode and then switch.
-       |
-       |Typical example: current mode is Conversation and the user asks you to write a Scala function;
-       |call change_mode to Coding first, then address the request on the next turn.
-       |
-       |Available modes:
-       |$modeList""".stripMargin
-  }
+  override protected def description: String =
+    """Switch the agent's current operating mode. The current mode is stated at the top of the system
+      |prompt along with the list of modes available in this conversation. Call this BEFORE attempting
+      |a task whose nature belongs to a different mode — do not start the task in the wrong mode and
+      |then switch.
+      |
+      |Typical example: the current mode is conversational and the user asks you to write a Scala
+      |function; call change_mode to the coding-style mode first, then address the request on the
+      |next turn.
+      |
+      |The `mode` argument is the target mode's stable name as shown in the system prompt's mode
+      |listing (e.g. "conversation", "coding", "workflow" — whatever this conversation's registered
+      |mode set contains). Unknown names are rejected.""".stripMargin
 
   override def execute(input: ChangeModeInput, context: TurnContext): rapid.Stream[Event] =
-    rapid.Stream.emits(
-      List(
-        ModeChange(
-          mode = input.mode,
-          reason = input.reason,
-          participantId = context.caller,
-          conversationId = context.conversation.id,
-          topicId = context.conversation.currentTopicId
-        )
-      )
-    )
+    context.sigil.modeByName(input.mode) match {
+      case Some(mode) =>
+        rapid.Stream.emits(List(
+          ModeChange(
+            mode = mode,
+            reason = input.reason,
+            participantId = context.caller,
+            conversationId = context.conversation.id,
+            topicId = context.conversation.currentTopicId
+          )
+        ))
+      case None =>
+        scribe.warn(s"change_mode called with unknown mode name: ${input.mode}")
+        rapid.Stream.empty
+    }
 }

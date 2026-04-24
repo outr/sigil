@@ -5,7 +5,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.conversation.{ContextFrame, Conversation, FrameBuilder, ParticipantProjection}
 import sigil.event.{AgentState, Event, Message, ModeChange, Stop, TopicChange, TopicChangeKind, ToolInvoke, ToolResults}
-import sigil.provider.Mode
+import sigil.provider.{ConversationMode, Mode}
 import sigil.signal.{AgentActivity, EventState}
 import sigil.tool.{ToolName, ToolSchema}
 import sigil.tool.core.{ChangeModeTool, RespondTool}
@@ -68,7 +68,7 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
         participantId = TestAgent,
         conversationId = conversationId,
         topicId = TestTopicId,
-        input = Some(ChangeModeInput(mode = Mode.Coding, reason = Some("need code mode"))),
+        input = Some(ChangeModeInput(mode = "coding", reason = Some("need code mode"))),
         state = EventState.Complete
       )
       val frames = FrameBuilder.appendFor(Vector.empty, invoke)
@@ -106,7 +106,7 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
 
     "emit a System frame for a Complete ModeChange" in {
       val mc = ModeChange(
-        mode = Mode.Coding,
+        mode = TestCodingMode,
         participantId = TestAgent,
         conversationId = conversationId,
         topicId = TestTopicId,

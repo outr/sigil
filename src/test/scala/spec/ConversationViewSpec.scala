@@ -6,7 +6,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextSummary, Conversation, ConversationView, SkillSource, Topic, TopicEntry}
 import sigil.event.{Event, Message, ModeChange, TopicChange, TopicChangeKind}
-import sigil.provider.Mode
+import sigil.provider.{ConversationMode, Mode}
 import sigil.signal.{EventState, MessageDelta, StateDelta}
 import sigil.tool.model.{ChangeModeInput, ResponseContent}
 
@@ -153,15 +153,10 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       }
     }
 
-    "apply a Mode-source skill via the modeSkill hook when a ModeChange completes" in {
+    "apply the active Mode's skill to the projection when a ModeChange completes" in {
       val convId = freshConvId("mode-skill")
-      val slot = ActiveSkillSlot(name = "coding", content = "Prefer Scala 3 syntax.")
-      TestSigil.setModeSkill {
-        case Mode.Coding => rapid.Task.pure(Some(slot))
-        case _ => rapid.Task.pure(None)
-      }
       val mc = ModeChange(
-        mode = Mode.Coding,
+        mode = TestSkilledMode,
         participantId = TestAgent,
         conversationId = convId,
         topicId = TestTopicId,
@@ -169,20 +164,19 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       )
       for {
         _ <- TestSigil.publish(mc)
-        afterCoding <- TestSigil.viewFor(convId)
+        afterSkilled <- TestSigil.viewFor(convId)
         _ <- TestSigil.publish(ModeChange(
-          mode = Mode.Conversation,
+          mode = ConversationMode,
           participantId = TestAgent,
           conversationId = convId,
           topicId = TestTopicId,
-          state =
-            EventState.Complete
+          state = EventState.Complete
         ))
         afterConversation <- TestSigil.viewFor(convId)
-        _ <- rapid.Task(TestSigil.reset())
       } yield {
-        afterCoding.projectionFor(TestAgent).activeSkills(SkillSource.Mode) shouldBe slot
-        // Mode-source slot cleared when the hook returns None for the new mode.
+        // TestSkilledMode carries a skill slot; it should land on the projection.
+        afterSkilled.projectionFor(TestAgent).activeSkills(SkillSource.Mode) shouldBe TestSkilledMode.skill.get
+        // ConversationMode has no skill; switching to it clears the Mode-source slot.
         afterConversation.projectionFor(TestAgent).activeSkills.get(SkillSource.Mode) shouldBe None
       }
     }
@@ -192,7 +186,7 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "settle an Active event to Complete via a StateDelta published afterward" in {
       val convId = freshConvId("lifecycle-settle")
       val pulse = ModeChange(
-        mode = Mode.Coding,
+        mode = TestCodingMode,
         participantId = TestAgent,
         conversationId = convId,
         topicId = TestTopicId
@@ -222,7 +216,7 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         // currentMode only updates once the settle lands, not on the pulse.
         // (The pulse publish ran first; currentMode was not touched until
         // the StateDelta published.)
-        conv.map(_.currentMode) shouldBe Some(Mode.Coding)
+        conv.map(_.currentMode) shouldBe Some(TestCodingMode)
       }
     }
 
@@ -235,9 +229,9 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       // stray write.
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(
-          Conversation(topics = TestTopicStack, _id = convId, currentMode = Mode.Conversation)
+          Conversation(topics = TestTopicStack, _id = convId, currentMode = ConversationMode)
         )))
-        pulse = ModeChange(mode = Mode.Coding, participantId = TestAgent, conversationId = convId, topicId = TestTopicId)
+        pulse = ModeChange(mode = TestCodingMode, participantId = TestAgent, conversationId = convId, topicId = TestTopicId)
         _ <- TestSigil.publish(pulse)
         afterPulseOnly <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
         _ <- TestSigil.publish(StateDelta(
@@ -249,8 +243,8 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       } yield {
         // Pulse alone must not have shifted currentMode — the settle owns
         // that write.
-        afterPulseOnly.map(_.currentMode) shouldBe Some(Mode.Conversation)
-        afterSettle.map(_.currentMode) shouldBe Some(Mode.Coding)
+        afterPulseOnly.map(_.currentMode) shouldBe Some(ConversationMode)
+        afterSettle.map(_.currentMode) shouldBe Some(TestCodingMode)
       }
     }
   }

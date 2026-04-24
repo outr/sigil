@@ -4,12 +4,12 @@ import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
 import sigil.{Sigil, TurnContext}
-import sigil.conversation.{ActiveSkillSlot, ConversationView, MemorySpaceId, TurnInput}
+import sigil.conversation.{ConversationView, MemorySpaceId, TurnInput}
 import sigil.db.Model
 import sigil.embedding.EmbeddingProvider
 import sigil.information.Information
 import sigil.participant.{Participant, ParticipantId}
-import sigil.provider.{Mode, Provider}
+import sigil.provider.Provider
 import sigil.provider.anthropic.AnthropicProvider
 import sigil.provider.llamacpp.LlamaCppProvider
 import sigil.provider.openai.OpenAIProvider
@@ -48,7 +48,6 @@ case class BenchmarkSigil(override val embeddingProvider: EmbeddingProvider,
 
   override def getInformation(id: Id[Information]): Task[Option[Information]] = Task.pure(None)
   override def putInformation(information: Information): Task[Unit] = Task.unit
-  override def modeSkill(mode: Mode): Task[Option[ActiveSkillSlot]] = Task.pure(None)
   override def compressionMemorySpace(conversationId: Id[sigil.conversation.Conversation]): Task[Option[MemorySpaceId]] =
     Task.pure(None)
 
