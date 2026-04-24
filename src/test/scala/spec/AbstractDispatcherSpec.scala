@@ -70,7 +70,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
   protected def setUp(): RecordingBroadcaster = {
     val recorder = new RecordingBroadcaster
-    TestSigil.setBroadcaster(recorder)
+    recorder.attach(TestSigil)
     recorder
   }
 
@@ -402,7 +402,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
     "no-op fan-out when no participants match" in {
       val recorder = new RecordingBroadcaster
-      TestSigil.setBroadcaster(recorder)
+      recorder.attach(TestSigil)
 
       val conversationId = Conversation.id("dispatcher-noparticipants-conversation")
       val userMessage = Message(

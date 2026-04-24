@@ -113,7 +113,7 @@ class PlaceEnrichmentSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     "not emit a LocationDelta when geocoder is NoOpGeocoder (raw-GPS-only mode)" in {
       TestSigil.reset()
       val recorder = new RecordingBroadcaster
-      TestSigil.setBroadcaster(recorder)
+      recorder.attach(TestSigil)
       TestSigil.setLocationFor((_, _) => Task.pure(Some(Place(point = mint))))
       // geocoder stays at default NoOpGeocoder
       val msg = bareMessage()
@@ -190,15 +190,15 @@ class PlaceEnrichmentSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     }
   }
 
-  "redactLocation" should {
+  "applyViewerTransforms (redaction)" should {
     "leave the Message untouched when the viewer is the sender" in Task {
       val msg = bareMessage(location = Some(enrichedPlace))
-      TestSigil.redactLocation(msg, TestUser) shouldBe msg
+      TestSigil.applyViewerTransforms(msg, TestUser) shouldBe msg
     }
 
     "strip location for any other viewer" in Task {
       val msg = bareMessage(location = Some(enrichedPlace))
-      val redacted = TestSigil.redactLocation(msg, TestAgent)
+      val redacted = TestSigil.applyViewerTransforms(msg, TestAgent).asInstanceOf[Message]
       redacted.location shouldBe None
       redacted.copy(location = Some(enrichedPlace)) shouldBe msg
     }

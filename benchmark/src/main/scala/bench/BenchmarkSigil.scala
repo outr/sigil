@@ -3,7 +3,7 @@ package bench
 import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
-import sigil.{Sigil, SignalBroadcaster, TurnContext}
+import sigil.{Sigil, TurnContext}
 import sigil.conversation.{ActiveSkillSlot, ConversationView, MemorySpaceId, TurnInput}
 import sigil.db.Model
 import sigil.embedding.EmbeddingProvider
@@ -34,7 +34,7 @@ case class BenchmarkSigil(override val embeddingProvider: EmbeddingProvider,
                           override val vectorIndex: VectorIndex,
                           providerFactory: Id[Model] => Task[Provider]) extends Sigil {
 
-  override protected def signals: List[RW[? <: Signal]] = Nil
+  override protected def signalRegistrations: List[RW[? <: Signal]] = Nil
   override protected def participantIds: List[RW[? <: ParticipantId]] = Nil
   override protected def memorySpaceIds: List[RW[? <: MemorySpaceId]] = Nil
   override protected def participants: List[RW[? <: Participant]] = Nil
@@ -52,7 +52,6 @@ case class BenchmarkSigil(override val embeddingProvider: EmbeddingProvider,
   override def compressionMemorySpace(conversationId: Id[sigil.conversation.Conversation]): Task[Option[MemorySpaceId]] =
     Task.pure(None)
 
-  override def broadcaster: SignalBroadcaster = SignalBroadcaster.NoOp
   override def wireInterceptor: spice.http.client.intercept.Interceptor =
     spice.http.client.intercept.Interceptor.empty
 
