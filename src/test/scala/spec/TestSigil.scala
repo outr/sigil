@@ -15,6 +15,7 @@ import sigil.information.{InMemoryInformation, Information}
 import sigil.participant.{AgentParticipantId, Participant, ParticipantId}
 import sigil.provider.{Mode, Provider}
 import sigil.signal.Signal
+import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
 import sigil.tool.{InMemoryToolFinder, Tool, ToolFinder, ToolInput}
 import sigil.tool.core.CoreTools
 import sigil.vector.{NoOpVectorIndex, VectorIndex}
@@ -88,6 +89,9 @@ object TestSigil extends Sigil {
   private val defaultMemoryExtractor: MemoryExtractor = NoOpMemoryExtractor
   private val defaultWireInterceptor: spice.http.client.intercept.Interceptor =
     spice.http.client.intercept.Interceptor.empty
+  private val defaultLocationFor: (ParticipantId, Id[Conversation]) => Task[Option[Place]] =
+    (_, _) => Task.pure(None)
+  private val defaultGeocoder: Geocoder = NoOpGeocoder
 
   // ---- mutable refs (per-test overrides) ----
 
@@ -102,6 +106,8 @@ object TestSigil extends Sigil {
   private val curateRef = new AtomicReference[(ConversationView, Id[Model], List[ParticipantId]) => Task[TurnInput]](defaultCurate)
   private val wireInterceptorRef = new AtomicReference[spice.http.client.intercept.Interceptor](defaultWireInterceptor)
   private val memoryExtractorRef = new AtomicReference[MemoryExtractor](defaultMemoryExtractor)
+  private val locationForRef = new AtomicReference[(ParticipantId, Id[Conversation]) => Task[Option[Place]]](defaultLocationFor)
+  private val geocoderRef = new AtomicReference[Geocoder](defaultGeocoder)
 
   // ---- hook overrides delegate to refs ----
 
@@ -135,6 +141,12 @@ object TestSigil extends Sigil {
 
   override def memoryExtractor: MemoryExtractor = memoryExtractorRef.get()
 
+  override def locationFor(participantId: ParticipantId,
+                           conversationId: Id[Conversation]): Task[Option[Place]] =
+    locationForRef.get().apply(participantId, conversationId)
+
+  override def geocoder: Geocoder = geocoderRef.get()
+
   // ---- setters (per-test overrides) ----
 
   def setBroadcaster(b: SignalBroadcaster): Unit = broadcasterRef.set(b)
@@ -163,6 +175,15 @@ object TestSigil extends Sigil {
     * Orchestrator's extraction hook wire a stub here. */
   def setMemoryExtractor(e: MemoryExtractor): Unit = memoryExtractorRef.set(e)
 
+  /** Install a capture hook — specs exercising the publish-time
+    * location capture wire a stub here. */
+  def setLocationFor(f: (ParticipantId, Id[Conversation]) => Task[Option[Place]]): Unit =
+    locationForRef.set(f)
+
+  /** Install a [[Geocoder]] — specs exercising async enrichment wire
+    * an [[sigil.spatial.InMemoryGeocoder]] or custom impl here. */
+  def setGeocoder(g: Geocoder): Unit = geocoderRef.set(g)
+
   /** Reset every mutable hook to its default. Call from `beforeEach`
     * (or inline at the start of a test) to guarantee isolation from
     * prior tests within the same suite. */
@@ -178,6 +199,8 @@ object TestSigil extends Sigil {
     curateRef.set(defaultCurate)
     wireInterceptorRef.set(defaultWireInterceptor)
     memoryExtractorRef.set(defaultMemoryExtractor)
+    locationForRef.set(defaultLocationFor)
+    geocoderRef.set(defaultGeocoder)
   }
 
   /** Expose the in-memory information store that backs `getInformation`

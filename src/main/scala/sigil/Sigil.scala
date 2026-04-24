@@ -23,7 +23,8 @@ import sigil.provider.Mode
 import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
 import sigil.provider.Provider
-import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, EventState, Signal}
+import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, EventState, LocationDelta, Signal}
+import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
 import sigil.tool.core.CoreTools
 import sigil.tool.model.ResponseContent
 import sigil.tool.{ToolFinder, ToolInput}
@@ -200,6 +201,49 @@ trait Sigil {
         .toList
     })
 
+  // -- geospatial capture & enrichment --
+
+  /**
+   * Opt-in capture hook. Called in [[publish]] for non-agent-authored
+   * [[Message]]s whose `location` is empty — the returned `Place`, if
+   * any, is attached before the message is persisted. Default no-op;
+   * apps that want geotagging override and consult their own
+   * per-participant opt-in registry + device-location source.
+   *
+   * Apps that populate `Message.location` explicitly at the client
+   * bypass this hook — the framework does not overwrite an already-
+   * present Place.
+   */
+  def locationFor(participantId: ParticipantId,
+                  conversationId: Id[Conversation]): Task[Option[Place]] =
+    Task.pure(None)
+
+  /**
+   * Reverse-geocoding service used to enrich user-authored Messages
+   * whose `location` carries only a raw point. When `geocoder` is
+   * [[NoOpGeocoder]] (the default), enrichment is skipped entirely —
+   * no cache lookup, no background task, no log. This is a
+   * first-class configuration: apps wanting GPS tagging without
+   * Place lookups keep the default.
+   *
+   * Apps that want enrichment typically wire
+   * [[sigil.spatial.CachingGeocoder]] around a concrete geocoder
+   * (Google Places or similar) so repeated GPS samples in the same
+   * physical boundary hit the cache instead of the external API.
+   */
+  def geocoder: Geocoder = NoOpGeocoder
+
+  /**
+   * Redact a Message's `location` for a viewer other than its sender.
+   * Read paths that surface Messages to a participant MUST call this
+   * helper — non-senders see `location = None`. Projection reads
+   * (`ConversationView` / `ContextFrame`) are safe by construction
+   * and don't need this call.
+   */
+  def redactLocation(msg: Message, viewerId: ParticipantId): Message =
+    if (viewerId == msg.participantId) msg
+    else msg.copy(location = None)
+
   // -- embeddings & vector search --
 
   /**
@@ -297,19 +341,61 @@ trait Sigil {
    * Apps don't override this — it's the framework's pipeline.
    */
   final def publish(signal: Signal): Task[Unit] =
-    for {
-      _ <- withDB(_.apply(signal))
-      _ <- updateConversationProjection(signal)
-      _ <- updateView(signal)
-      _ <- maybeApplyModeSkill(signal)
-      _ <- maybeIndexSettledMessage(signal)
-      _ <- applyStop(signal)
-      _ <- broadcaster.handle(signal).handleError(logBroadcastError(signal, _))
-      _ <- signal match {
-             case e: Event => fanOut(e)
-             case _: sigil.signal.Delta => Task.unit
-           }
-    } yield ()
+    captureLocation(signal).flatMap { resolved =>
+      for {
+        _ <- withDB(_.apply(resolved))
+        _ <- updateConversationProjection(resolved)
+        _ <- updateView(resolved)
+        _ <- maybeApplyModeSkill(resolved)
+        _ <- maybeIndexSettledMessage(resolved)
+        _ <- applyStop(resolved)
+        _ <- broadcaster.handle(resolved).handleError(logBroadcastError(resolved, _))
+        _ <- resolved match {
+               case e: Event => fanOut(e)
+               case _: sigil.signal.Delta => Task.unit
+             }
+        _ <- maybeEnrichLocation(resolved)
+      } yield ()
+    }
+
+  /** Pre-persist hook for non-agent-authored Messages: when `location`
+    * is empty, consult [[locationFor]] and attach the returned Place
+    * before the message hits the DB. Non-Message signals pass through
+    * unchanged. */
+  private final def captureLocation(signal: Signal): Task[Signal] = signal match {
+    case m: Message if m.location.isEmpty && !m.participantId.isInstanceOf[AgentParticipantId] =>
+      locationFor(m.participantId, m.conversationId).map {
+        case Some(place) => m.copy(location = Some(place))
+        case None => m
+      }
+    case other => Task.pure(other)
+  }
+
+  /** Post-persist fire-and-forget enrichment: when a non-agent Message
+    * carries a raw point with no Place metadata and a non-NoOp
+    * [[geocoder]] is configured, spawn a background task that resolves
+    * the point to a named Place and publishes a [[LocationDelta]] to
+    * update the persisted Message. Failures are logged and do not
+    * propagate. */
+  private final def maybeEnrichLocation(signal: Signal): Task[Unit] = signal match {
+    case m: Message if shouldEnrichLocation(m) =>
+      val point = m.location.get.point
+      val task = geocoder.geocode(point).flatMap {
+        case Some(result) =>
+          publish(LocationDelta(target = m._id, conversationId = m.conversationId, location = result.place))
+        case None => Task.unit
+      }.handleError { t =>
+        Task(scribe.warn(s"Geocoding failed for message ${m._id.value}", t))
+      }
+      Task(task.startUnit()).unit
+    case _ => Task.unit
+  }
+
+  private final def shouldEnrichLocation(m: Message): Boolean = {
+    if (geocoder eq NoOpGeocoder) false
+    else if (m.participantId.isInstanceOf[AgentParticipantId]) false
+    else m.location.exists(p => p.name.isEmpty && p.address.isEmpty)
+  }
 
   /** When a [[Message]] settles `Complete`, vectorize and upsert its
     * text into [[vectorIndex]] so the search tool can retrieve it.
