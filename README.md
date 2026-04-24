@@ -55,6 +55,12 @@ object MySigil extends Sigil {
 }
 ```
 
+## Benchmarks
+
+Retrieval-quality benchmarks live under [`benchmark/`](benchmark/README.md) as an sbt subproject. The full benchmarking strategy — what sigil measures today, what's next, and what belongs in apps rather than the library — is tracked in [`benchmarks.md`](benchmarks.md).
+
+Currently implemented: LongMemEval, LoCoMo, ConvoMem, MemBench. Next in scope (memory + tool-use + safety): MemoryAgentBench, REALTALK, MemoryBench, BFCL v4, τ-bench, ToolSandbox, AgentDojo, AgentHarm.
+
 ## Design Notes
 
 More in-depth design documents live under the `docs/design` directory.

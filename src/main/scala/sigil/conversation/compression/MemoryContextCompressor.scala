@@ -17,6 +17,14 @@ import sigil.tool.consult.{ConsultTool, ExtractMemoriesInput, ExtractMemoriesToo
  * so the summary is free to stay short — the facts it would otherwise
  * repeat are already on disk.
  *
+ * This is the compression-time pathway. For per-turn extraction (fire
+ * after every agent response, before compression thresholds trigger),
+ * see
+ * [[sigil.conversation.compression.extract.StandardMemoryExtractor]]
+ * which uses richer keyed memories via
+ * [[sigil.tool.consult.ExtractMemoriesWithKeysTool]] +
+ * `Sigil.upsertMemoryByKey` for automatic versioning.
+ *
  * Falls back to [[SummaryOnlyCompressor]]'s behavior in these cases:
  *   - `compressionMemorySpace(conversationId)` returns `None` (app
  *     hasn't opted into extraction)
