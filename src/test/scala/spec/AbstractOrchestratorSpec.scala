@@ -9,7 +9,7 @@ import sigil.conversation.{ContextFrame, Conversation, ConversationView, Topic, 
 import sigil.db.Model
 import sigil.event.{Event, Message, ModeChange, TopicChange, TopicChangeKind, ToolInvoke}
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant}
-import sigil.provider.{GenerationSettings, Instructions, Mode, Provider}
+import sigil.provider.{GenerationSettings, Instructions, Mode, ConversationMode, Provider}
 import sigil.signal.{AgentActivity, AgentStateDelta, EventState, MessageDelta, Signal, StateDelta, ToolDelta}
 import sigil.tool.{Tool, ToolInput}
 import sigil.tool.core.CoreTools
@@ -154,7 +154,7 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     } yield (signals, topic)
   }
 
-  private def orchestrate(message: String, currentMode: Mode = Mode.Conversation): Task[List[Signal]] = {
+  private def orchestrate(message: String, currentMode: Mode = ConversationMode): Task[List[Signal]] = {
     val conversationId = Conversation.id("test-orchestrator-conversation")
     val userMessage = Message(
       participantId = TestUser,
@@ -303,7 +303,7 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
         val modeChanges = signals.collect { case m: ModeChange => m }
         modeChanges should not be empty
-        modeChanges.head.mode shouldBe Mode.Coding
+        modeChanges.head.mode shouldBe TestCodingMode
         // Lifecycle: ModeChange is emitted as the `Active` pulse, then the
         // orchestrator's `executeAtomic` wrapper emits a `StateDelta(Complete)`
         // targeting its `_id` right after to settle it. Both must be

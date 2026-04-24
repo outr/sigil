@@ -7,7 +7,7 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.{ContextFrame, Conversation, ConversationView, TurnInput}
 import sigil.db.Model
 import sigil.event.Message
-import sigil.provider.{ConversationRequest, Effort, GenerationSettings, Instructions, Mode, Provider, ProviderEvent, StopReason}
+import sigil.provider.{ConversationRequest, Effort, GenerationSettings, Instructions, Mode, ConversationMode, Provider, ProviderEvent, StopReason}
 import sigil.tool.core.{ChangeModeTool, CoreTools, FindCapabilityInput, RespondTool}
 import sigil.tool.{Tool, ToolInput}
 import sigil.tool.model.{ChangeModeInput, RespondInput, ResponseContent}
@@ -30,7 +30,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   protected def supportsThinking: Boolean = true
 
   protected def request(message: String,
-                        currentMode: Mode = Mode.Conversation,
+                        currentMode: Mode = ConversationMode,
                         generationSettings: GenerationSettings =
                           GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0))): Task[List[ProviderEvent]] = provider.flatMap { p =>
     val conversationId = Conversation.id("test-conversation")
@@ -140,7 +140,9 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         val input = events.collectFirst {
           case ProviderEvent.ToolCallComplete(_, i: ChangeModeInput) => i
         }
-        input.map(_.mode) shouldBe Some(Mode.Coding)
+        // ChangeModeInput.mode is now the stable name string (the framework
+        // resolves it to a Mode instance via Sigil.modeByName at execute time).
+        input.map(_.mode) shouldBe Some(TestCodingMode.name)
 
         events.last shouldBe a[ProviderEvent.Done]
         events.last.asInstanceOf[ProviderEvent.Done].stopReason shouldBe StopReason.ToolCall

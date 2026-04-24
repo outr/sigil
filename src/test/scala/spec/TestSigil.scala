@@ -74,11 +74,15 @@ object TestSigil extends Sigil {
   override protected def memorySpaceIds: List[RW[? <: MemorySpaceId]] =
     List(RW.static(TestSpace), RW.static(WiringSpace), RW.static(MemoryTestSpace))
 
+  /** Registers the test-only `TestCodingMode` and `TestSkilledMode` for
+    * both polymorphic Mode RW and `modeByName` resolution. */
+  override protected def modes: List[Mode] =
+    List(TestCodingMode, TestSkilledMode)
+
   // ---- default values for mutable hooks ----
 
   private val defaultProvider: () => Task[Provider] =
     () => Task.error(new RuntimeException("TestSigil.setProvider was not called — no provider configured"))
-  private val defaultModeSkill: Mode => Task[Option[ActiveSkillSlot]] = _ => Task.pure(None)
   private val defaultEmbedding: EmbeddingProvider = NoOpEmbeddingProvider
   private val defaultVectorIndex: VectorIndex = NoOpVectorIndex
   private val defaultCompressionSpace: Option[MemorySpaceId] = None
@@ -96,7 +100,6 @@ object TestSigil extends Sigil {
 
   private val providerRef = new AtomicReference[() => Task[Provider]](defaultProvider)
   private val informationRef = new AtomicReference[InMemoryInformation](new InMemoryInformation)
-  private val modeSkillRef = new AtomicReference[Mode => Task[Option[ActiveSkillSlot]]](defaultModeSkill)
   private val embeddingProviderRef = new AtomicReference[EmbeddingProvider](defaultEmbedding)
   private val vectorIndexRef = new AtomicReference[VectorIndex](defaultVectorIndex)
   private val compressionSpaceRef = new AtomicReference[Option[MemorySpaceId]](defaultCompressionSpace)
@@ -117,9 +120,6 @@ object TestSigil extends Sigil {
 
   override def putInformation(information: Information): Task[Unit] =
     Task(putInformationRef.get().apply(information))
-
-  override def modeSkill(mode: Mode): Task[Option[ActiveSkillSlot]] =
-    modeSkillRef.get().apply(mode)
 
   override def embeddingProvider: EmbeddingProvider = embeddingProviderRef.get()
 
@@ -146,7 +146,6 @@ object TestSigil extends Sigil {
   // ---- setters (per-test overrides) ----
 
   def setProvider(p: => Task[Provider]): Unit = providerRef.set(() => p)
-  def setModeSkill(f: Mode => Task[Option[ActiveSkillSlot]]): Unit = modeSkillRef.set(f)
   def setEmbeddingProvider(p: EmbeddingProvider): Unit = embeddingProviderRef.set(p)
   def setVectorIndex(v: VectorIndex): Unit = vectorIndexRef.set(v)
   def setCompressionSpace(s: Option[MemorySpaceId]): Unit = compressionSpaceRef.set(s)
@@ -185,7 +184,6 @@ object TestSigil extends Sigil {
   def reset(): Unit = {
     providerRef.set(defaultProvider)
     informationRef.set(new InMemoryInformation)
-    modeSkillRef.set(defaultModeSkill)
     embeddingProviderRef.set(defaultEmbedding)
     vectorIndexRef.set(defaultVectorIndex)
     compressionSpaceRef.set(defaultCompressionSpace)
@@ -320,6 +318,30 @@ case object WiringSpace extends MemorySpaceId {
 /** Memory space used by the memory-compressor spec for extracted facts. */
 case object MemoryTestSpace extends MemorySpaceId {
   override val value: String = "memory-compressor-space"
+}
+
+/**
+ * Stand-in for the old `Mode.Coding` enum case in tests — a test-only
+ * mode registered by [[TestSigil]] so specs can exercise mode-switch
+ * behaviour. No skill, no tool policy — a plain named mode.
+ */
+case object TestCodingMode extends sigil.provider.Mode {
+  override val name: String = "coding"
+  override val description: String = "Test coding mode — code generation, editing, review."
+}
+
+/**
+ * Test-only mode that ships a non-empty skill slot. Used by specs
+ * exercising the Mode-source skill path (`ParticipantProjection.activeSkills`
+ * key `SkillSource.Mode`). Replaces the old `modeSkill` hook-based test.
+ */
+case object TestSkilledMode extends sigil.provider.Mode {
+  override val name: String = "skilled"
+  override val description: String = "Test mode carrying a skill slot."
+  override val skill: Option[ActiveSkillSlot] = Some(ActiveSkillSlot(
+    name = "test-skill",
+    content = "You are a test agent with a test skill."
+  ))
 }
 
 /** Deterministic test embedder — each token contributes to a

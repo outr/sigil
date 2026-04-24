@@ -12,7 +12,7 @@ import sigil.conversation.compression.extract.MemoryExtractor
 import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
 import sigil.event.Event
 import sigil.participant.ParticipantId
-import sigil.provider.{CallId, ConversationRequest, GenerationSettings, Instructions, Mode, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason}
+import sigil.provider.{CallId, ConversationRequest, GenerationSettings, Instructions, Mode, ConversationMode, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason}
 import sigil.orchestrator.Orchestrator
 import spice.http.HttpRequest
 
@@ -108,7 +108,7 @@ class OrchestratorMemoryExtractionSpec extends AsyncWordSpec with AsyncTaskSpec 
         modelId = modelId,
         instructions = Instructions(),
         turnInput = TurnInput(view),
-        currentMode = Mode.Conversation,
+        currentMode = ConversationMode,
         currentTopic = TestTopicEntry,
         generationSettings = GenerationSettings(),
         tools = Vector(sigil.tool.core.RespondTool),

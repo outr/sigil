@@ -7,7 +7,7 @@ import sigil.conversation.{Conversation, Topic, TopicEntry}
 import sigil.db.Model
 import sigil.event.{Message, ModeChange, TopicChange, TopicChangeKind, ToolInvoke}
 import sigil.participant.{DefaultAgentParticipant, Participant}
-import sigil.provider.{GenerationSettings, Instructions, Mode, TokenUsage}
+import sigil.provider.{GenerationSettings, Instructions, Mode, ConversationMode, TokenUsage}
 import sigil.signal.{ContentDelta, ContentKind, EventState, MessageDelta, Signal, ToolDelta}
 import sigil.tool.{ToolInput, ToolName}
 import sigil.tool.core.CoreTools
@@ -63,14 +63,14 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
 
     "round-trip a ModeChange" in {
       val original = ModeChange(
-        mode = Mode.Coding,
+        mode = TestCodingMode,
         participantId = TestUser,
         conversationId = Conversation.id("c1"),
         topicId = TestTopicId
       )
       val restored = roundTripSignal(original)
       restored shouldBe a[ModeChange]
-      restored.asInstanceOf[ModeChange].mode shouldBe Mode.Coding
+      restored.asInstanceOf[ModeChange].mode shouldBe TestCodingMode
     }
 
     "round-trip a MessageDelta" in {
@@ -126,7 +126,7 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
       val original = ToolDelta(
         target = toolId,
         conversationId = Conversation.id("c1"),
-        input = Some(ChangeModeInput(Mode.Coding, Some("user asked for code"))),
+        input = Some(ChangeModeInput("coding", Some("user asked for code"))),
         state = Some(EventState.Complete)
       )
       val restored = roundTripSignal(original)
@@ -154,10 +154,10 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
     }
 
     "round-trip a ChangeModeInput (core tool)" in {
-      val original: ToolInput = ChangeModeInput(Mode.Coding, None)
+      val original: ToolInput = ChangeModeInput("coding", None)
       val restored = roundTripToolInput(original)
       restored shouldBe a[ChangeModeInput]
-      restored.asInstanceOf[ChangeModeInput].mode shouldBe Mode.Coding
+      restored.asInstanceOf[ChangeModeInput].mode shouldBe "coding"
     }
 
     "round-trip a SendSlackMessageInput (app-supplied via ToolFinder.toolInputRWs)" in {
@@ -199,14 +199,14 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
       val original = Conversation(
         topics = TestTopicStack,
         participants = List(agent),
-        currentMode = Mode.Coding,
+        currentMode = TestCodingMode,
         _id = Conversation.id("wire-test")
       )
       val restored = rw.write(rw.read(original))
       restored._id shouldBe original._id
       restored.topics shouldBe TestTopicStack
       restored.currentTopicId shouldBe TestTopicId
-      restored.currentMode shouldBe Mode.Coding
+      restored.currentMode shouldBe TestCodingMode
       restored.participants should have size 1
       restored.participants.head shouldBe a[DefaultAgentParticipant]
       restored.participants.head.asInstanceOf[DefaultAgentParticipant].toolNames shouldBe CoreTools.coreToolNames

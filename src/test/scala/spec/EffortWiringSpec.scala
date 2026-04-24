@@ -7,6 +7,7 @@ import sigil.conversation.{ContextFrame, ConversationView, TurnInput}
 import sigil.db.Model
 import sigil.event.Event
 import sigil.provider.{
+  ConversationMode,
   ConversationRequest,
   Effort,
   GenerationSettings,
@@ -49,7 +50,7 @@ class EffortWiringSpec extends AnyWordSpec with Matchers {
       modelId = modelId,
       instructions = Instructions(),
       turnInput = TurnInput(view),
-      currentMode = Mode.Conversation,
+      currentMode = ConversationMode,
       currentTopic = TestTopicEntry,
       generationSettings = gen,
       tools = Vector.empty,

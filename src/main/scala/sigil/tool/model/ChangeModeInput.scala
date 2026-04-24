@@ -1,12 +1,13 @@
 package sigil.tool.model
 
 import fabric.rw.*
-import sigil.provider.Mode
 import sigil.tool.ToolInput
 
 /**
- * Input for the change_mode tool. The model calls this to transition the
- * agent into a different operating mode — e.g., from Conversation to Coding
- * when the user's intent shifts.
+ * Input for the change_mode tool. The model calls this to transition
+ * the agent into a different operating mode. `mode` is the target
+ * mode's stable `name` — the framework resolves it to a registered
+ * [[sigil.provider.Mode]] instance at call time via
+ * `Sigil.modeByName`.
  */
-case class ChangeModeInput(mode: Mode, reason: Option[String] = None) extends ToolInput derives RW
+case class ChangeModeInput(mode: String, reason: Option[String] = None) extends ToolInput derives RW

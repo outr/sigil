@@ -7,7 +7,7 @@ import rapid.AsyncTaskSpec
 import sigil.conversation.{ContextFrame, Conversation, ConversationView, TurnInput}
 import sigil.db.Model
 import sigil.event.Event
-import sigil.provider.{BuiltInTool, ConversationRequest, GenerationSettings, Instructions, Mode, ProviderEvent}
+import sigil.provider.{BuiltInTool, ConversationRequest, GenerationSettings, Instructions, Mode, ConversationMode, ProviderEvent}
 import sigil.provider.openai.OpenAIProvider
 import sigil.tool.core.CoreTools
 
@@ -45,7 +45,7 @@ class OpenAIWebSearchSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         modelId = Model.id("openai", "gpt-5.4-nano"),
         instructions = Instructions(),
         turnInput = TurnInput(view),
-        currentMode = Mode.Conversation,
+        currentMode = ConversationMode,
         currentTopic = TestTopicEntry,
         generationSettings = GenerationSettings(maxOutputTokens = Some(500), temperature = Some(0.0)),
         tools = CoreTools.all,

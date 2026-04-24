@@ -8,7 +8,7 @@ import sigil.conversation.{ContextFrame, Conversation, ConversationView, TurnInp
 import sigil.db.Model
 import sigil.event.{Event, Message}
 import sigil.orchestrator.Orchestrator
-import sigil.provider.{BuiltInTool, ConversationRequest, GenerationSettings, Instructions, Mode}
+import sigil.provider.{BuiltInTool, ConversationRequest, GenerationSettings, Instructions, Mode, ConversationMode}
 import sigil.provider.openai.OpenAIProvider
 import sigil.tool.core.CoreTools
 import sigil.tool.model.ResponseContent
@@ -51,7 +51,7 @@ class OpenAIImageGenerationSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         modelId = Model.id("openai", "gpt-5.4-nano"),
         instructions = Instructions(),
         turnInput = TurnInput(view),
-        currentMode = Mode.Conversation,
+        currentMode = ConversationMode,
         currentTopic = TestTopicEntry,
         generationSettings = GenerationSettings(maxOutputTokens = Some(400), temperature = Some(0.0)),
         tools = CoreTools.all,
