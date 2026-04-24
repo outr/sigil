@@ -12,7 +12,7 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
-import sigil.conversation.{ActiveSkillSlot, ContextKey, ContextMemory, ContextSummary, Conversation, ConversationView, FrameBuilder, MemorySpaceId, ParticipantProjection, SkillSource, Topic, TopicEntry, TopicShiftResult, TurnInput}
+import sigil.conversation.{ActiveSkillSlot, ContextKey, ContextMemory, ContextSummary, Conversation, ConversationView, FrameBuilder, MemorySpaceId, MemoryStatus, ParticipantProjection, SkillSource, Topic, TopicEntry, TopicShiftResult, TurnInput, UpsertMemoryResult}
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
 import sigil.tool.consult.{ConsultTool, TopicClassifierTool}
 import sigil.provider.GenerationSettings
@@ -159,12 +159,44 @@ trait Sigil {
    */
   def compressionMemorySpace(conversationId: Id[Conversation]): Task[Option[MemorySpaceId]]
 
+  /**
+   * Hook point for per-turn memory extraction. Invoked by the
+   * [[sigil.orchestrator.Orchestrator]] after each agent turn's
+   * `Done` event on a background fiber — failures are logged but do
+   * not affect the response stream. Default is
+   * [[sigil.conversation.compression.extract.NoOpMemoryExtractor]];
+   * apps that want per-turn memory capture override this with
+   * [[sigil.conversation.compression.extract.StandardMemoryExtractor]]
+   * (or a custom implementation).
+   */
+  def memoryExtractor: sigil.conversation.compression.extract.MemoryExtractor =
+    sigil.conversation.compression.extract.NoOpMemoryExtractor
+
+  /**
+   * The default [[MemorySpaceId]] for agent-written memories (e.g.
+   * `RememberTool` invocations) when the agent doesn't supply one
+   * explicitly. Apps that want per-user / per-conversation /
+   * per-project scoping return the appropriate concrete subtype; apps
+   * that haven't wired memory yet return `Task.pure(None)` (the
+   * memory tools fail with a helpful error in that case).
+   */
+  def defaultMemorySpace(conversationId: Id[Conversation]): Task[Option[MemorySpaceId]] =
+    Task.pure(None)
+
+  /**
+   * The default [[MemorySpaceId]] set used by recall-style searches
+   * (e.g. `RecallTool`) when the agent doesn't supply a filter. Apps
+   * typically return the caller's user/space combination.
+   */
+  def defaultRecallSpaces(conversationId: Id[Conversation]): Task[Set[MemorySpaceId]] =
+    defaultMemorySpace(conversationId).map(_.toSet)
+
   def findMemories(spaces: Set[MemorySpaceId]): Task[List[ContextMemory]] =
     if (spaces.isEmpty) Task.pure(Nil)
     else withDB(_.memories.transaction { tx =>
       import lightdb.filter.*
       tx.query
-        .filter(m => spaces.map(s => m.spaceId === s).reduce(_ || _))
+        .filter(m => spaces.map(s => m.spaceIdValue === s.value).reduce(_ || _))
         .toList
     })
 
@@ -563,6 +595,154 @@ trait Sigil {
       indexMemory(stored).map(_ => stored)
     }
 
+  /**
+   * Upsert a keyed memory with versioning semantics:
+   *   - If no prior memory exists at `(spaceId, key)` → insert with
+   *     `validFrom = now`, return the new record.
+   *   - If the prior memory's `fact` matches → refresh metadata
+   *     (label, summary, tags, memoryType, modified) in place, keep
+   *     same `_id`. Returns the refreshed record.
+   *   - If the prior memory's `fact` differs → archive the prior
+   *     (`validUntil = now`, `supersededBy = new._id`) and insert the
+   *     new memory with `supersedes = prior._id`, `validFrom = now`.
+   *     Returns the new record.
+   *
+   * Empty `key` is rejected — un-keyed memories must use
+   * [[persistMemory]] (the single-shot path; no versioning).
+   */
+  def upsertMemoryByKey(memory: ContextMemory): Task[UpsertMemoryResult] = {
+    if (memory.key.isEmpty)
+      Task.error(new IllegalArgumentException("upsertMemoryByKey requires a non-empty key; use persistMemory for un-keyed inserts"))
+    else withDB { db =>
+      db.memories.transaction { tx =>
+        import lightdb.filter.*
+        tx.query
+          .filter(m => (m.spaceIdValue === memory.spaceId.value) && (m.key === memory.key))
+          .toList
+          .flatMap { sameKey =>
+            sameKey.find(_.validUntil.isEmpty) match {
+              case None =>
+                val fresh = memory.copy(validFrom = Some(Timestamp()), modified = Timestamp())
+                tx.upsert(fresh).map(_ => UpsertMemoryResult.Stored(fresh))
+              case Some(prior) if prior.fact == memory.fact =>
+                val refreshed = prior.copy(
+                  label = memory.label,
+                  summary = memory.summary,
+                  tags = memory.tags,
+                  memoryType = memory.memoryType,
+                  confidence = memory.confidence,
+                  pinned = memory.pinned,
+                  extraContext = memory.extraContext,
+                  modified = Timestamp()
+                )
+                tx.upsert(refreshed).map(_ => UpsertMemoryResult.Refreshed(refreshed))
+              case Some(prior) =>
+                val now = Timestamp()
+                val fresh = memory.copy(
+                  supersedes = Some(prior._id),
+                  validFrom = Some(now),
+                  modified = now
+                )
+                val archived = prior.copy(
+                  validUntil = Some(now),
+                  supersededBy = Some(fresh._id),
+                  modified = now
+                )
+                tx.upsert(fresh).flatMap(_ => tx.upsert(archived)).map(_ => UpsertMemoryResult.Versioned(fresh, archived))
+            }
+          }
+      }
+    }.flatMap { result =>
+      indexMemory(result.memory).map(_ => result)
+    }
+  }
+
+  /** All versions of a keyed memory in `spaceId`, chronologically
+    * (oldest first by `created`). */
+  def memoryHistory(key: String, spaceId: MemorySpaceId): Task[List[ContextMemory]] =
+    if (key.isEmpty) Task.pure(Nil)
+    else withDB(_.memories.transaction { tx =>
+      import lightdb.filter.*
+      tx.query
+        .filter(m => (m.spaceIdValue === spaceId.value) && (m.key === key))
+        .toList
+        .map(_.sortBy(_.created.value))
+    })
+
+  /** Pending (awaiting approval) memories in the given spaces. */
+  def listPendingMemories(spaces: Set[MemorySpaceId]): Task[List[ContextMemory]] =
+    if (spaces.isEmpty) Task.pure(Nil)
+    else withDB(_.memories.transaction { tx =>
+      import lightdb.filter.*
+      tx.query
+        .filter(m => (m.statusName === MemoryStatus.Pending.toString) && spaces.map(s => m.spaceIdValue === s.value).reduce(_ || _))
+        .toList
+    })
+
+  /** Transition a memory from `Pending` → `Approved`. Returns the
+    * updated record, or `None` if the id isn't found. No-op if the
+    * memory is already approved. */
+  def approveMemory(id: Id[ContextMemory]): Task[Option[ContextMemory]] =
+    withDB(_.memories.transaction { tx =>
+      tx.get(id).flatMap {
+        case None => Task.pure(None)
+        case Some(m) if m.status == MemoryStatus.Approved => Task.pure(Some(m))
+        case Some(m) =>
+          val updated = m.copy(status = MemoryStatus.Approved, modified = Timestamp())
+          tx.upsert(updated).map(_ => Some(updated))
+      }
+    })
+
+  /** Transition a memory to `Rejected` (kept on disk for lineage, but
+    * hidden from retrievers). Use [[forgetMemory]] for hard delete. */
+  def rejectMemory(id: Id[ContextMemory]): Task[Option[ContextMemory]] =
+    withDB(_.memories.transaction { tx =>
+      tx.get(id).flatMap {
+        case None => Task.pure(None)
+        case Some(m) =>
+          val updated = m.copy(status = MemoryStatus.Rejected, modified = Timestamp())
+          tx.upsert(updated).map(_ => Some(updated))
+      }
+    })
+
+  /** Hard-delete every version of a keyed memory in `spaceId`. Returns
+    * the number of records removed. Also removes corresponding points
+    * from the vector index so semantic search doesn't return stale
+    * hits. */
+  def forgetMemory(key: String, spaceId: MemorySpaceId): Task[Int] =
+    if (key.isEmpty) Task.pure(0)
+    else memoryHistory(key, spaceId).flatMap { versions =>
+      withDB(_.memories.transaction { tx =>
+        Task.sequence(versions.map(v => tx.delete(v._id))).map(_ => versions.size)
+      }).flatMap { removed =>
+        if (!vectorWired) Task.pure(removed)
+        else Task
+          .sequence(versions.map(v => vectorIndex.delete(vectorPointId(v._id.value))))
+          .map(_ => removed)
+          .handleError { e =>
+            Task(scribe.warn(s"Vector delete failed during forgetMemory(key=$key): ${e.getMessage}"))
+              .map(_ => removed)
+          }
+      }
+    }
+
+  /** Bump `accessCount` and `lastAccessedAt` on a memory. Called by
+    * retrieval paths (RecallTool, MemoryRetriever) so apps can
+    * implement LRU-based retention without Sigil needing its own
+    * pruner. */
+  def recordMemoryAccess(id: Id[ContextMemory]): Task[Unit] =
+    withDB(_.memories.transaction { tx =>
+      tx.get(id).flatMap {
+        case None => Task.unit
+        case Some(m) =>
+          val updated = m.copy(
+            accessCount = m.accessCount + 1,
+            lastAccessedAt = Timestamp()
+          )
+          tx.upsert(updated).unit
+      }
+    })
+
   /** Load all summaries for a conversation, oldest-first. */
   def summariesFor(conversationId: Id[Conversation]): Task[List[ContextSummary]] =
     withDB(_.summaries.transaction { tx =>
@@ -608,7 +788,8 @@ trait Sigil {
         payload = Map(
           "kind" -> "memory",
           "memoryId" -> m._id.value,
-          "spaceId" -> m.spaceId.value
+          "spaceId" -> m.spaceId.value,
+          sigil.vector.HybridSearch.TextKey -> m.fact
         )
       ))
     }.handleError { e =>

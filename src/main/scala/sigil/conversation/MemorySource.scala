@@ -11,10 +11,13 @@ import fabric.rw.*
  *   - `Critical`    — a directive that must stay visible to the model
  *                     (e.g. "always reply in JSON")
  *   - `Compression` — extracted by a summarization / compression pass
+ *                     or by the per-turn extractor
  *   - `Explicit`    — written deliberately by the agent via a memory tool
+ *   - `UserInput`   — authored or edited directly by a human via the app UI
  */
 enum MemorySource derives RW {
   case Critical
   case Compression
   case Explicit
+  case UserInput
 }

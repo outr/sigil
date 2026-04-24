@@ -67,6 +67,13 @@ object Orchestrator {
       * `ContentDelta(complete = true, delta = full text)` when the block
       * closes (next ContentBlockStart or ToolCallComplete). */
     val currentBuffer: StringBuilder = new StringBuilder
+    /** Accumulates every text fragment the agent produced across the
+      * whole turn. Used by the per-turn memory extractor after `Done`. */
+    val turnBuffer: StringBuilder = new StringBuilder
+    /** Set to true once the per-turn extractor has been fired for this
+      * turn so repeated `Done` events (Usage → Done race) don't
+      * double-fire. */
+    var extractorFired: Boolean = false
   }
 
   private def translate(event: ProviderEvent,
@@ -109,6 +116,7 @@ object Orchestrator {
       case ProviderEvent.ContentBlockDelta(_, text) =>
         val kind = state.currentKind.getOrElse(ContentKind.Text)
         state.currentBuffer.append(text)
+        state.turnBuffer.append(text)
         val (createMessageSignal, msgId) = state.activeMessageId match {
           case Some(id) => (None, id)
           case None =>
@@ -211,9 +219,48 @@ object Orchestrator {
             ))
         }
 
-      case ProviderEvent.Done(_)                          => Stream.empty
+      case ProviderEvent.Done(_)                          =>
+        if (!state.extractorFired) {
+          state.extractorFired = true
+          fireMemoryExtractor(sigil, request, state).startUnit()
+        }
+        Stream.empty
       case ProviderEvent.Error(_)                         => Stream.empty
     }
+  }
+
+  /**
+   * Fire-and-forget per-turn memory extraction. Extracts the last
+   * user-authored text frame from the turn's view, pairs it with
+   * the agent's accumulated response text, and hands both to the
+   * app-wired [[sigil.conversation.compression.extract.MemoryExtractor]].
+   * Failures are logged but never propagate — extraction is best-
+   * effort latency-hidden work.
+   */
+  private def fireMemoryExtractor(sigil: Sigil,
+                                  request: ConversationRequest,
+                                  state: State): Task[Unit] = {
+    val agentResponse = state.turnBuffer.toString.trim
+    val caller = request.chain.lastOption
+    val userText = request.turnInput.conversationView.frames.reverseIterator
+      .collectFirst {
+        case t: ContextFrame.Text if !caller.contains(t.participantId) => t.content
+      }
+      .getOrElse("")
+    if (userText.isEmpty && agentResponse.isEmpty) Task.unit
+    else sigil.memoryExtractor
+      .extract(
+        sigil = sigil,
+        conversationId = request.conversationId,
+        modelId = request.modelId,
+        chain = request.chain,
+        userMessage = userText,
+        agentResponse = agentResponse
+      )
+      .unit
+      .handleError { e =>
+        Task(scribe.warn(s"MemoryExtractor failed for conversation ${request.conversationId.value}: ${e.getMessage}"))
+      }
   }
 
   /** Dispatches an atomic tool's `execute` and forwards its events as

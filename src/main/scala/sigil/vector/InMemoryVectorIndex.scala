@@ -45,6 +45,10 @@ class InMemoryVectorIndex extends VectorIndex {
 
   override def ensureCollection(dimensions: Int): Task[Unit] = Task.unit
 
+  /** Drop every stored point. Useful for tests and benchmark harness
+    * resets (between per-iteration fixtures). */
+  def clear(): Unit = points.clear()
+
   private def norm(v: Vector[Double]): Double = math.sqrt(v.foldLeft(0.0)((acc, x) => acc + x * x))
 
   private def cosine(a: Vector[Double], b: Vector[Double], na: Double, nb: Double): Double = {

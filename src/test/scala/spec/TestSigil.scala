@@ -7,6 +7,7 @@ import profig.Profig
 import rapid.Task
 import sigil.{Sigil, SignalBroadcaster, TurnContext}
 import sigil.conversation.{ActiveSkillSlot, Conversation, ConversationView, MemorySpaceId, Topic, TopicEntry, TurnInput}
+import sigil.conversation.compression.extract.{MemoryExtractor, NoOpMemoryExtractor}
 import sigil.db.Model
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
 import sigil.event.Event
@@ -84,6 +85,7 @@ object TestSigil extends Sigil {
   private val defaultPutInformation: Information => Unit = _ => ()
   private val defaultCurate: (ConversationView, Id[Model], List[ParticipantId]) => Task[TurnInput] =
     (view, _, _) => Task.pure(TurnInput(view))
+  private val defaultMemoryExtractor: MemoryExtractor = NoOpMemoryExtractor
   private val defaultWireInterceptor: spice.http.client.intercept.Interceptor =
     spice.http.client.intercept.Interceptor.empty
 
@@ -99,6 +101,7 @@ object TestSigil extends Sigil {
   private val putInformationRef = new AtomicReference[Information => Unit](defaultPutInformation)
   private val curateRef = new AtomicReference[(ConversationView, Id[Model], List[ParticipantId]) => Task[TurnInput]](defaultCurate)
   private val wireInterceptorRef = new AtomicReference[spice.http.client.intercept.Interceptor](defaultWireInterceptor)
+  private val memoryExtractorRef = new AtomicReference[MemoryExtractor](defaultMemoryExtractor)
 
   // ---- hook overrides delegate to refs ----
 
@@ -130,6 +133,8 @@ object TestSigil extends Sigil {
 
   override def wireInterceptor: spice.http.client.intercept.Interceptor = wireInterceptorRef.get()
 
+  override def memoryExtractor: MemoryExtractor = memoryExtractorRef.get()
+
   // ---- setters (per-test overrides) ----
 
   def setBroadcaster(b: SignalBroadcaster): Unit = broadcasterRef.set(b)
@@ -154,6 +159,10 @@ object TestSigil extends Sigil {
   def setWireInterceptor(i: spice.http.client.intercept.Interceptor): Unit =
     wireInterceptorRef.set(i)
 
+  /** Install a per-turn memory extractor — specs exercising the
+    * Orchestrator's extraction hook wire a stub here. */
+  def setMemoryExtractor(e: MemoryExtractor): Unit = memoryExtractorRef.set(e)
+
   /** Reset every mutable hook to its default. Call from `beforeEach`
     * (or inline at the start of a test) to guarantee isolation from
     * prior tests within the same suite. */
@@ -168,6 +177,7 @@ object TestSigil extends Sigil {
     putInformationRef.set(defaultPutInformation)
     curateRef.set(defaultCurate)
     wireInterceptorRef.set(defaultWireInterceptor)
+    memoryExtractorRef.set(defaultMemoryExtractor)
   }
 
   /** Expose the in-memory information store that backs `getInformation`

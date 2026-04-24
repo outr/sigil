@@ -59,6 +59,19 @@ lazy val root = (project in file("."))
     }
   )
 
+lazy val benchmark = project
+  .in(file("benchmark"))
+  .dependsOn(root % "compile->compile;test->test")
+  .settings(
+    name := "sigil-benchmark",
+    publish / skip := true,
+    fork := true,
+    libraryDependencies ++= Seq(
+      "org.scalatest" %% "scalatest" % scalatestVersion % Test,
+      "com.outr" %% "rapid-test" % rapidVersion % Test
+    )
+  )
+
 lazy val docs = project
   .in(file("documentation"))
   .dependsOn(root)
