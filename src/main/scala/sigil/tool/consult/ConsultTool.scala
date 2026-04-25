@@ -8,33 +8,24 @@ import sigil.event.{Event, Message}
 import sigil.participant.ParticipantId
 import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent}
 import sigil.tool.model.ResponseContent
-import sigil.tool.{Tool, ToolExample, ToolInput}
+import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, TypedTool}
+
+import scala.reflect.ClassTag
 
 /**
  * One-shot LLM consultation. Two surfaces on the same object:
  *
- * 1. [[execute]] — the LLM-callable path. The agent invokes the tool
+ * 1. `executeTyped` — the LLM-callable path. The agent invokes the tool
  *    with system + user prompts; the consulted model returns free-form
- *    text, which is emitted as a [[Message]] back into the conversation
- *    so the agent can read it on its next turn.
+ *    text, which is emitted as a [[Message]] back into the conversation.
  *
  * 2. [[invoke]] — the framework-callable path. Returns a typed
  *    `Option[I]` directly, no events emitted. Used by framework
- *    machinery that needs structured sub-decisions (e.g.
- *    [[Sigil.classifyTopicShift]]).
- *
- * Both surfaces build an [[OneShotRequest]] and dispatch through
- * `Provider.apply` — there is no separate `Provider.consult` method;
- * one-shot is just a request-shape, not a parallel API.
- *
- * Apps that want to expose cross-model consultation to their agents must
- * explicitly add this tool to the agent's roster — it is NOT in
- * `CoreTools`.
+ *    machinery that needs structured sub-decisions.
  */
-object ConsultTool extends Tool[ConsultInput] {
-  override protected def uniqueName: String = "consult"
-
-  override protected def description: String =
+case object ConsultTool extends TypedTool[ConsultInput](
+  name = ToolName("consult"),
+  description =
     """Consult another model — or yourself with no conversation history — for a focused sub-question.
       |
       |Use this when:
@@ -51,9 +42,8 @@ object ConsultTool extends Tool[ConsultInput] {
       |
       |`systemPrompt` — set the consulted model's role / context for this question. One paragraph max.
       |
-      |`userPrompt` — the actual question or task. Be specific; the consulted model has no other context.""".stripMargin
-
-  override protected def examples: List[ToolExample[ConsultInput]] = List(
+      |`userPrompt` — the actual question or task. Be specific; the consulted model has no other context.""".stripMargin,
+  examples = List(
     ToolExample(
       "Ask a stronger model for a focused legal interpretation",
       ConsultInput(
@@ -63,8 +53,8 @@ object ConsultTool extends Tool[ConsultInput] {
       )
     )
   )
-
-  override def execute(input: ConsultInput, context: TurnContext): Stream[Event] = Stream.force {
+) {
+  override protected def executeTyped(input: ConsultInput, context: TurnContext): Stream[Event] = Stream.force {
     context.sigil.providerFor(input.modelId, context.chain).flatMap { provider =>
       val request = OneShotRequest(
         modelId = input.modelId,
@@ -73,7 +63,7 @@ object ConsultTool extends Tool[ConsultInput] {
         chain = context.chain
       )
       provider(request).toList.map { events =>
-        val text = collectText(events)
+        val text = ConsultTool.collectText(events)
         val message = Message(
           participantId = context.caller,
           conversationId = context.conversation.id,
@@ -88,20 +78,17 @@ object ConsultTool extends Tool[ConsultInput] {
   /**
    * Framework-facing typed consult. Builds a one-shot provider request
    * forced to invoke `tool` (`tool_choice = "required"`), drains the
-   * result, and returns the parsed input or `None` if the call did not
-   * produce a tool call (provider error, model refusal, etc.).
-   *
-   * No events are emitted into the conversation — this is for framework
-   * machinery (topic classifier, intent detection, etc.) that needs a
-   * sub-decision without polluting the conversation log.
+   * result, and returns the parsed input cast to `I` (or `None` if the
+   * model didn't produce a tool call of the expected type).
    */
-  def invoke[I <: ToolInput](sigil: Sigil,
-                             modelId: Id[Model],
-                             chain: List[ParticipantId],
-                             systemPrompt: String,
-                             userPrompt: String,
-                             tool: Tool[I],
-                             generationSettings: GenerationSettings = GenerationSettings()): Task[Option[I]] = {
+  def invoke[I <: ToolInput: ClassTag](sigil: Sigil,
+                                       modelId: Id[Model],
+                                       chain: List[ParticipantId],
+                                       systemPrompt: String,
+                                       userPrompt: String,
+                                       tool: Tool,
+                                       generationSettings: GenerationSettings = GenerationSettings()): Task[Option[I]] = {
+    val ct = summon[ClassTag[I]]
     sigil.providerFor(modelId, chain).flatMap { provider =>
       val request = OneShotRequest(
         modelId = modelId,
@@ -113,18 +100,14 @@ object ConsultTool extends Tool[ConsultInput] {
       )
       provider(request).toList.map { events =>
         events.collectFirst {
-          case ProviderEvent.ToolCallComplete(_, parsedInput) => parsedInput.asInstanceOf[I]
+          case ProviderEvent.ToolCallComplete(_, parsedInput) if ct.runtimeClass.isInstance(parsedInput) =>
+            parsedInput.asInstanceOf[I]
         }
       }
     }
   }
 
-  /** Collect all text content from a one-shot stream — both
-    * `ContentBlockDelta` (streamed multipart-format text from a `respond`-
-    * style call) and bare `TextDelta` (free-form text outside the
-    * multipart format). The consult call has no tools when used by
-    * `execute`, so text is the only payload. */
-  private def collectText(events: List[ProviderEvent]): String = {
+  private[consult] def collectText(events: List[ProviderEvent]): String = {
     val sb = new StringBuilder
     events.foreach {
       case ProviderEvent.ContentBlockDelta(_, t) => sb.append(t)

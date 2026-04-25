@@ -118,24 +118,7 @@ class ModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     }
   }
 
-  "Sigil.modeAllowsDiscovery" should {
-    "accept every tool under Standard / Active / Discoverable" in Task {
-      TestSigil.modeAllowsDiscovery(mode(ModeTools.Standard), toolA) shouldBe true
-      TestSigil.modeAllowsDiscovery(mode(ModeTools.Active(Nil)), toolA) shouldBe true
-      TestSigil.modeAllowsDiscovery(mode(ModeTools.Discoverable(List(toolB))), toolA) shouldBe true
-    }
-
-    "reject every tool under None" in Task {
-      TestSigil.modeAllowsDiscovery(mode(ModeTools.None), toolA) shouldBe false
-      TestSigil.modeAllowsDiscovery(mode(ModeTools.None), RespondTool.schema.name) shouldBe false
-    }
-
-    "accept only the listed tools under Exclusive / Scoped" in Task {
-      val pick = RespondTool.schema.name
-      TestSigil.modeAllowsDiscovery(mode(ModeTools.Exclusive(List(pick))), pick) shouldBe true
-      TestSigil.modeAllowsDiscovery(mode(ModeTools.Exclusive(List(pick))), toolA) shouldBe false
-      TestSigil.modeAllowsDiscovery(mode(ModeTools.Scoped(List(pick))), pick) shouldBe true
-      TestSigil.modeAllowsDiscovery(mode(ModeTools.Scoped(List(pick))), toolA) shouldBe false
-    }
-  }
+  // Discovery filtering is exercised by DbToolFinderSpec, which covers
+  // the same matrix as the prior `modeAllowsDiscovery` tests but against
+  // the live finder + DiscoveryFilter helper.
 }

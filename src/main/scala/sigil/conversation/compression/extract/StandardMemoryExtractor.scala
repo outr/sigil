@@ -3,7 +3,8 @@ package sigil.conversation.compression.extract
 import lightdb.id.Id
 import rapid.Task
 import sigil.Sigil
-import sigil.conversation.{ContextMemory, Conversation, MemorySource, MemorySpaceId, MemoryStatus, MemoryType}
+import sigil.conversation.{ContextMemory, Conversation, MemorySource, MemoryStatus, MemoryType}
+import sigil.SpaceId
 import sigil.db.Model
 import sigil.participant.ParticipantId
 import sigil.tool.consult.{ConsultTool, ExtractMemoriesWithKeysInput, ExtractMemoriesWithKeysTool}
@@ -17,7 +18,7 @@ import sigil.tool.consult.{ConsultTool, ExtractMemoriesWithKeysInput, ExtractMem
  *      [[ExtractMemoriesWithKeysTool]] wrapping the user message +
  *      agent response.
  *   3. For each extracted memory, resolves the target
- *      [[MemorySpaceId]] via `spaceIdFor`, then calls
+ *      [[SpaceId]] via `spaceIdFor`, then calls
  *      [[Sigil.upsertMemoryByKey]] so versioning happens
  *      automatically.
  *   4. Persists with `status = defaultStatus` (defaulting to
@@ -29,7 +30,7 @@ import sigil.tool.consult.{ConsultTool, ExtractMemoriesWithKeysInput, ExtractMem
  * participant attribution.
  */
 case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalFilter,
-                                   spaceIdFor: Id[Conversation] => Task[Option[MemorySpaceId]],
+                                   spaceIdFor: Id[Conversation] => Task[Option[SpaceId]],
                                    defaultStatus: MemoryStatus = MemoryStatus.Pending,
                                    defaultType: MemoryType = MemoryType.Fact,
                                    systemPrompt: String = StandardMemoryExtractor.DefaultSystemPrompt)

@@ -5,24 +5,15 @@ import sigil.TurnContext
 import sigil.conversation.{ContextMemory, MemorySource, MemoryStatus, UpsertMemoryResult}
 import sigil.event.{Event, Message}
 import sigil.tool.model.ResponseContent
-import sigil.tool.{Tool, ToolExample}
+import sigil.tool.{ToolExample, ToolName, TypedTool}
 
 /**
- * Opt-in tool: agent-driven persistence of a durable fact. Stores
- * memories keyed by `(spaceId, key)` with versioning — re-calling
- * with the same key + identical content refreshes metadata; a
- * different content versions the record.
- *
- * Not in [[sigil.tool.core.CoreTools]]; apps add it to the roster of
- * agents that should be allowed to write memories. Apps are
- * responsible for `Sigil.defaultMemorySpace` (so un-scoped calls
- * land somewhere sensible) and for resolving `MemoryStatus` policy
- * (explicit writes default to `Approved`).
+ * Opt-in tool: agent-driven persistence of a durable fact. Versions on
+ * `(spaceId, key)` via `Sigil.upsertMemoryByKey`.
  */
-object RememberTool extends Tool[RememberInput] {
-  override protected def uniqueName: String = "remember"
-
-  override protected def description: String =
+case object RememberTool extends TypedTool[RememberInput](
+  name = ToolName("remember"),
+  description =
     """Persist a durable fact so future turns and future conversations can recall it.
       |
       |`key`     — a stable identifier for this fact, e.g. "user.preferred_language" or
@@ -34,9 +25,8 @@ object RememberTool extends Tool[RememberInput] {
       |`content` — the full fact text. This is what recall / retrieval searches over.
       |`tags`    — optional categorization tokens.
       |`memoryType` — Fact | Decision | Preference | ActionItem | Other.
-      |`spaceId` — optional; omit to use the caller's default scope.""".stripMargin
-
-  override protected def examples: List[ToolExample[RememberInput]] = List(
+      |`spaceId` — optional; omit to use the caller's default scope.""".stripMargin,
+  examples = List(
     ToolExample(
       "Remember that the user prefers dark mode",
       RememberInput(
@@ -46,9 +36,10 @@ object RememberTool extends Tool[RememberInput] {
         content = "The user has stated a preference for the dark UI theme across all sessions."
       )
     )
-  )
-
-  override def execute(input: RememberInput, context: TurnContext): Stream[Event] =
+  ),
+  keywords = Set("remember", "save", "store", "memory")
+) {
+  override protected def executeTyped(input: RememberInput, context: TurnContext): Stream[Event] =
     Stream.force {
       resolveSpace(input, context).flatMap {
         case None =>

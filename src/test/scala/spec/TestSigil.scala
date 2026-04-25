@@ -6,7 +6,8 @@ import lightdb.id.Id
 import profig.Profig
 import rapid.Task
 import sigil.{Sigil, TurnContext}
-import sigil.conversation.{ActiveSkillSlot, Conversation, ConversationView, MemorySpaceId, Topic, TopicEntry, TurnInput}
+import sigil.conversation.{ActiveSkillSlot, Conversation, ConversationView, Topic, TopicEntry, TurnInput}
+import sigil.SpaceId
 import sigil.conversation.compression.extract.{MemoryExtractor, NoOpMemoryExtractor}
 import sigil.db.Model
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
@@ -43,19 +44,15 @@ object TestSigil extends Sigil {
 
   lazy val llamaCppHost: URL = Profig("sigil.llamacpp.host").asOr[URL](url"http://localhost:8081")
 
-  // Core tools + the synthetic SendSlackMessageTool. Agents reference them
-  // by name; `byName` resolves from this catalog at call time.
-  // Tests opt into the non-core utility tools explicitly. `SleepTool`
-  // backs timing-sensitive dispatcher tests; `LookupInformationTool`
-  // backs the CoreToolsSpec information-resolution coverage.
-  private val appTools: List[Tool[? <: ToolInput]] = List(
-    SendSlackMessageTool,
-    sigil.tool.util.SleepTool,
-    sigil.tool.util.LookupInformationTool
-  )
-
-  override val findTools: ToolFinder =
-    InMemoryToolFinder(CoreTools.all.toList ++ appTools)
+  // Core tools + a few app tools. The framework's StaticToolSyncUpgrade
+  // writes all of these into SigilDB.tools at startup; the default
+  // DbToolFinder resolves by name from there.
+  override def staticTools: List[Tool] =
+    super.staticTools ++ List(
+      SendSlackMessageTool,
+      sigil.tool.util.SleepTool,
+      sigil.tool.util.LookupInformationTool
+    )
 
   // ---- registration lists ----
 
@@ -69,9 +66,9 @@ object TestSigil extends Sigil {
   override protected def participantIds: List[RW[? <: ParticipantId]] =
     List(RW.static(TestUser), RW.static(TestAgent))
 
-  /** Registers every test-only [[MemorySpaceId]] once. Add new test
+  /** Registers every test-only [[SpaceId]] once. Add new test
     * spaces here when specs introduce them. */
-  override protected def memorySpaceIds: List[RW[? <: MemorySpaceId]] =
+  override protected def spaceIds: List[RW[? <: SpaceId]] =
     List(RW.static(TestSpace), RW.static(WiringSpace), RW.static(MemoryTestSpace))
 
   /** Registers the test-only `TestCodingMode` and `TestSkilledMode` for
@@ -85,7 +82,7 @@ object TestSigil extends Sigil {
     () => Task.error(new RuntimeException("TestSigil.setProvider was not called — no provider configured"))
   private val defaultEmbedding: EmbeddingProvider = NoOpEmbeddingProvider
   private val defaultVectorIndex: VectorIndex = NoOpVectorIndex
-  private val defaultCompressionSpace: Option[MemorySpaceId] = None
+  private val defaultCompressionSpace: Option[SpaceId] = None
   private val defaultPutInformation: Information => Unit = _ => ()
   private val defaultCurate: (ConversationView, Id[Model], List[ParticipantId]) => Task[TurnInput] =
     (view, _, _) => Task.pure(TurnInput(view))
@@ -102,7 +99,7 @@ object TestSigil extends Sigil {
   private val informationRef = new AtomicReference[InMemoryInformation](new InMemoryInformation)
   private val embeddingProviderRef = new AtomicReference[EmbeddingProvider](defaultEmbedding)
   private val vectorIndexRef = new AtomicReference[VectorIndex](defaultVectorIndex)
-  private val compressionSpaceRef = new AtomicReference[Option[MemorySpaceId]](defaultCompressionSpace)
+  private val compressionSpaceRef = new AtomicReference[Option[SpaceId]](defaultCompressionSpace)
   private val putInformationRef = new AtomicReference[Information => Unit](defaultPutInformation)
   private val curateRef = new AtomicReference[(ConversationView, Id[Model], List[ParticipantId]) => Task[TurnInput]](defaultCurate)
   private val wireInterceptorRef = new AtomicReference[spice.http.client.intercept.Interceptor](defaultWireInterceptor)
@@ -125,7 +122,7 @@ object TestSigil extends Sigil {
 
   override def vectorIndex: VectorIndex = vectorIndexRef.get()
 
-  override def compressionMemorySpace(conversationId: Id[Conversation]): Task[Option[MemorySpaceId]] =
+  override def compressionMemorySpace(conversationId: Id[Conversation]): Task[Option[SpaceId]] =
     Task.pure(compressionSpaceRef.get())
 
   override def curate(view: ConversationView,
@@ -148,7 +145,7 @@ object TestSigil extends Sigil {
   def setProvider(p: => Task[Provider]): Unit = providerRef.set(() => p)
   def setEmbeddingProvider(p: EmbeddingProvider): Unit = embeddingProviderRef.set(p)
   def setVectorIndex(v: VectorIndex): Unit = vectorIndexRef.set(v)
-  def setCompressionSpace(s: Option[MemorySpaceId]): Unit = compressionSpaceRef.set(s)
+  def setCompressionSpace(s: Option[SpaceId]): Unit = compressionSpaceRef.set(s)
 
   /** Install a callback invoked on every `putInformation` call — specs
     * that want to capture writes for assertions pass an appender. */
@@ -256,11 +253,12 @@ object TestSigil extends Sigil {
  */
 case class SendSlackMessageInput(channel: String, text: String) extends ToolInput derives RW
 
-object SendSlackMessageTool extends Tool[SendSlackMessageInput] {
-  override protected def uniqueName: String = "send_slack_message"
-  override protected def description: String =
-    "Send a message to a Slack channel on behalf of the user. Takes a channel name and the message text."
-  override def execute(input: SendSlackMessageInput, context: TurnContext): rapid.Stream[Event] = rapid.Stream.empty
+case object SendSlackMessageTool extends sigil.tool.TypedTool[SendSlackMessageInput](
+  name = sigil.tool.ToolName("send_slack_message"),
+  description = "Send a message to a Slack channel on behalf of the user. Takes a channel name and the message text.",
+  keywords = Set("slack", "message", "channel")
+) {
+  override protected def executeTyped(input: SendSlackMessageInput, context: TurnContext): rapid.Stream[Event] = rapid.Stream.empty
 }
 
 /**
@@ -305,18 +303,18 @@ case object TestAgent extends AgentParticipantId {
 
 /** General-purpose memory space used by specs that need to persist
   * memories without caring about the scope. Registered once via
-  * [[TestSigil.memorySpaceIds]]. */
-case object TestSpace extends MemorySpaceId {
+  * [[TestSigil.spaceIds]]. */
+case object TestSpace extends SpaceId {
   override val value: String = "test-space"
 }
 
 /** Memory space used by the Sigil embedding-wiring spec. */
-case object WiringSpace extends MemorySpaceId {
+case object WiringSpace extends SpaceId {
   override val value: String = "wiring-space"
 }
 
 /** Memory space used by the memory-compressor spec for extracted facts. */
-case object MemoryTestSpace extends MemorySpaceId {
+case object MemoryTestSpace extends SpaceId {
   override val value: String = "memory-compressor-space"
 }
 

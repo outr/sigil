@@ -34,7 +34,7 @@ import sigil.tool.{Tool, ToolInput}
 case class ProviderCall(modelId: Id[Model],
                         system: String,
                         messages: Vector[ProviderMessage],
-                        tools: Vector[Tool[? <: ToolInput]],
+                        tools: Vector[Tool],
                         builtInTools: Set[BuiltInTool],
                         toolChoice: ToolChoice,
                         generationSettings: GenerationSettings)

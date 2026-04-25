@@ -4,7 +4,8 @@ import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
 import sigil.{Sigil, TurnContext}
-import sigil.conversation.{ConversationView, MemorySpaceId, TurnInput}
+import sigil.conversation.{ConversationView, TurnInput}
+import sigil.SpaceId
 import sigil.db.Model
 import sigil.embedding.EmbeddingProvider
 import sigil.information.Information
@@ -36,7 +37,7 @@ case class BenchmarkSigil(override val embeddingProvider: EmbeddingProvider,
 
   override protected def signalRegistrations: List[RW[? <: Signal]] = Nil
   override protected def participantIds: List[RW[? <: ParticipantId]] = Nil
-  override protected def memorySpaceIds: List[RW[? <: MemorySpaceId]] = Nil
+  override protected def spaceIds: List[RW[? <: SpaceId]] = Nil
   override protected def participants: List[RW[? <: Participant]] = Nil
 
   override val findTools: ToolFinder = InMemoryToolFinder(Nil)
@@ -48,7 +49,7 @@ case class BenchmarkSigil(override val embeddingProvider: EmbeddingProvider,
 
   override def getInformation(id: Id[Information]): Task[Option[Information]] = Task.pure(None)
   override def putInformation(information: Information): Task[Unit] = Task.unit
-  override def compressionMemorySpace(conversationId: Id[sigil.conversation.Conversation]): Task[Option[MemorySpaceId]] =
+  override def compressionMemorySpace(conversationId: Id[sigil.conversation.Conversation]): Task[Option[SpaceId]] =
     Task.pure(None)
 
   override def wireInterceptor: spice.http.client.intercept.Interceptor =

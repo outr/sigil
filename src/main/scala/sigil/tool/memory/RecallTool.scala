@@ -5,35 +5,32 @@ import sigil.TurnContext
 import sigil.conversation.{ContextMemory, MemoryStatus}
 import sigil.event.{Event, Message}
 import sigil.tool.model.ResponseContent
-import sigil.tool.{Tool, ToolExample}
+import sigil.tool.{ToolExample, ToolName, TypedTool}
 
 /**
  * Opt-in tool: agent-driven retrieval of persisted memories. Hits
- * [[sigil.Sigil.searchMemories]] (vector-semantic when wired, listing
- * fallback otherwise), post-filters to approved + current versions
- * by default, and renders the results as a [[Message]] the agent
- * will read on its next turn.
+ * `Sigil.searchMemories`, post-filters to approved + current versions
+ * by default, and renders the results as a Message the agent reads next.
  */
-object RecallTool extends Tool[RecallInput] {
-  override protected def uniqueName: String = "recall"
-
-  override protected def description: String =
+case object RecallTool extends TypedTool[RecallInput](
+  name = ToolName("recall"),
+  description =
     """Retrieve durable facts previously stored via `remember` (or auto-extracted from conversation).
       |
       |`query`          — what you're looking for. For semantic search, a short phrase works;
       |                   for the substring fallback, include distinctive words.
       |`limit`          — max results (default 10).
       |`includeHistory` — include superseded (archived) versions too (default false).
-      |`spaces`         — optional scopes. Omit to use the caller's default.""".stripMargin
-
-  override protected def examples: List[ToolExample[RecallInput]] = List(
+      |`spaces`         — optional scopes. Omit to use the caller's default.""".stripMargin,
+  examples = List(
     ToolExample(
       "What did the user say about their preferred UI theme?",
       RecallInput(query = "user UI theme preference")
     )
-  )
-
-  override def execute(input: RecallInput, context: TurnContext): Stream[Event] =
+  ),
+  keywords = Set("recall", "remember", "find", "memory", "retrieve")
+) {
+  override protected def executeTyped(input: RecallInput, context: TurnContext): Stream[Event] =
     Stream.force {
       resolveSpaces(input, context).flatMap { spaces =>
         if (spaces.isEmpty)
@@ -44,7 +41,6 @@ object RecallTool extends Tool[RecallInput] {
               m.status == MemoryStatus.Approved &&
                 (input.includeHistory || m.validUntil.isEmpty)
             }
-            // Record access for LRU-style retention policy.
             Task.sequence(filtered.map(m => context.sigil.recordMemoryAccess(m._id)))
               .map(_ => renderHits(context, input.query, filtered))
           }

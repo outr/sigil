@@ -57,12 +57,14 @@ trait PolyType[T: ClassTag] {
     }
   }
 
-  given RW[T] =
-    new RW[T] {
-      override def read(t: T): Json = _poly.read(t)
+  /** The polymorphic RW. Named so subclasses (notably `Tool` which is
+    * also a `RecordDocumentModel`) can expose it as their own `rw`
+    * without re-summoning the given (which would self-recurse). */
+  protected val polyRW: RW[T] = new RW[T] {
+    override def read(t: T): Json = _poly.read(t)
+    override def write(json: Json): T = _poly.write(json)
+    override def definition: Definition = _poly.definition
+  }
 
-      override def write(json: Json): T = _poly.write(json)
-
-      override def definition: Definition = _poly.definition
-    }
+  given RW[T] = polyRW
 }

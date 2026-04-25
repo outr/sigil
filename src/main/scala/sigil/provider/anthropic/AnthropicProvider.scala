@@ -210,7 +210,7 @@ case class AnthropicProvider(apiKey: String,
     case _ => None // Anthropic doesn't ship the others as built-ins.
   }
 
-  private def renderDescription[I <: ToolInput](schema: ToolSchema[I]): String =
+  private def renderDescription[I <: ToolInput](schema: ToolSchema): String =
     if (schema.examples.isEmpty) schema.description
     else {
       val rendered = schema.examples.map { e =>

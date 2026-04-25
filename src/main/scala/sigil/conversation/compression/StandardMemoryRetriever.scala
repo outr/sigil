@@ -3,7 +3,8 @@ package sigil.conversation.compression
 import lightdb.id.Id
 import rapid.Task
 import sigil.Sigil
-import sigil.conversation.{ContextFrame, ContextMemory, ConversationView, MemorySource, MemorySpaceId}
+import sigil.conversation.{ContextFrame, ContextMemory, ConversationView, MemorySource}
+import sigil.SpaceId
 import sigil.participant.ParticipantId
 
 /**
@@ -11,7 +12,7 @@ import sigil.participant.ParticipantId
  *
  *   - `memories`: top-K semantically similar to a query derived from
  *     the view (default: the latest non-agent message). Uses
- *     [[Sigil.searchMemories]] over the configured [[MemorySpaceId]]s.
+ *     [[Sigil.searchMemories]] over the configured [[SpaceId]]s.
  *     Requires vector wiring on the Sigil
  *     ([[sigil.Sigil.embeddingProvider]] + [[sigil.Sigil.vectorIndex]]
  *     both non-NoOp); without it `searchMemories` falls back to a
@@ -27,7 +28,7 @@ import sigil.participant.ParticipantId
  * double-rendering.
  *
  * Knobs:
- *   - [[spaces]]: which [[MemorySpaceId]]s to search. Apps that keep
+ *   - [[spaces]]: which [[SpaceId]]s to search. Apps that keep
  *     a single global space pass `Set(globalSpace)`; apps that
  *     partition (per-user, per-project) pass the relevant subset.
  *   - [[limit]]: cap on semantic-search returns per turn (critical
@@ -40,7 +41,7 @@ import sigil.participant.ParticipantId
  *   - [[includeCritical]]: kill switch for the always-on pass. Set
  *     false when the app wants purely query-driven retrieval.
  */
-case class StandardMemoryRetriever(spaces: Set[MemorySpaceId],
+case class StandardMemoryRetriever(spaces: Set[SpaceId],
                                    limit: Int = 5,
                                    queryFrom: StandardMemoryRetriever.QueryBuilder =
                                      StandardMemoryRetriever.lastNonAgentMessage,
@@ -71,7 +72,7 @@ case class StandardMemoryRetriever(spaces: Set[MemorySpaceId],
 
   /** Load every Critical-source memory in the configured spaces.
     * Uses `_.list` + in-memory filter because
-    * [[MemorySpaceId]] is polymorphic and the Lucene store doesn't
+    * [[SpaceId]] is polymorphic and the Lucene store doesn't
     * support equality on poly fields — same pattern the specs use. */
   private def loadCriticals(sigil: Sigil): Task[Vector[Id[ContextMemory]]] =
     if (spaces.isEmpty) Task.pure(Vector.empty)

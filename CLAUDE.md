@@ -90,9 +90,25 @@ Full write-up in `src/main/scala/sigil/conversation/compression/README.md`.
 
 When vector search is wired (`embeddingProvider.dimensions > 0 && vectorIndex != NoOpVectorIndex`), `Sigil` auto-embeds settled Messages, persisted memories, and persisted summaries into `VectorIndex`. Point ids are name-based UUIDs derived from lightdb ids so upserts are deterministic.
 
-### MemorySpaceId
+### SpaceId (multi-tenancy)
 
-`MemorySpaceId` is an open `PolyType` — Sigil does NOT ship concrete cases. Apps define their own (GlobalSpace, UserSpace, ProjectSpace, etc.) and register them via `memorySpaceIds: List[RW[? <: MemorySpaceId]]`. See project memory `project_sigil_memory_spaceid.md`.
+`SpaceId` (in package `sigil`) is an open `PolyType` for scoping persisted resources — memories, tools, future records. Sigil ships no concrete cases. Apps define their own (UserSpace, ProjectSpace, GlobalSpace, etc.) and register them via `spaceIds: List[RW[? <: SpaceId]]`. Used by `ContextMemory.spaceId`, `Tool.spaces`, and `Sigil.accessibleSpaces(chain)`.
+
+### Tool collection (DB-backed)
+
+Tools are persistable records — `Tool` is a trait that extends both `RecordDocument[Tool]` and `PolyType[Tool]`. They live in `SigilDB.tools` and are queryable by indexed fields (`toolName`, `modeIds`, `spaceIds`, `keywordIndex`, `createdByIndex`).
+
+Two authoring shapes:
+- **Static singletons**: typically `case object MyTool extends TypedTool[MyInput](name = …, description = …, …)`. `TypedTool` is the authoring helper that takes input metadata as constructor args + a `ClassTag` for runtime input matching.
+- **Dynamic records**: `case class ScriptTool(...) extends Tool derives RW`. Apps construct instances at runtime and persist via `Sigil.createTool(tool)`.
+
+`Sigil.staticTools` defaults to `CoreTools.all` (the framework essentials); apps override and concatenate to add their own. The `StaticToolSyncUpgrade` (a `DatabaseUpgrade` with `alwaysRun = true, blockStartup = true`) upserts `staticTools` into the DB on every startup, prunes orphan static records (`createdBy = None` whose name isn't in the current set), and leaves user-created records (`createdBy.nonEmpty`) untouched.
+
+Discovery — `find_capability` builds a `DiscoveryRequest` (keywords, chain, mode, accessible spaces) and hands it to `Sigil.findTools(request)` which by default is a `DbToolFinder`. Filtering uses `DiscoveryFilter.matches` which checks mode affinity (`tool.modes.contains(currentMode.id)`), space affinity (`tool.spaces` empty OR intersects `callerSpaces`), and keyword scoring across name/description/keywords. Apps override the finder for marketplace integrations or union-of-sources strategies.
+
+Authorization — `Sigil.accessibleSpaces(chain): Task[Set[SpaceId]]` is the hook apps wire to expose the caller's authorized scope. Default `Set.empty` (fail-closed): scoped tools are hidden unless apps explicitly authorize.
+
+User-created tools — apps' agent flows that dynamically generate tools (e.g. an LLM-generated scraper) call `sigil.createTool(MyAppTool(spaces = Set(userId), …))`. The record's polymorphic RW must be registered via `toolRegistrations: List[RW[? <: Tool]]` for round-trip.
 
 ### Mode (open PolyType)
 

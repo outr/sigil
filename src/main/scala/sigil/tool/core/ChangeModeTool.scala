@@ -2,7 +2,7 @@ package sigil.tool.core
 
 import sigil.TurnContext
 import sigil.event.{Event, ModeChange}
-import sigil.tool.Tool
+import sigil.tool.{ToolName, TypedTool}
 import sigil.tool.model.ChangeModeInput
 
 /**
@@ -10,13 +10,10 @@ import sigil.tool.model.ChangeModeInput
  *
  * Emits a `ModeChange` that the framework uses to update
  * `Conversation.currentMode` and re-render the next provider request.
- * The tool itself does not mutate state — the event log is the source
- * of truth.
  */
-object ChangeModeTool extends Tool[ChangeModeInput] {
-  override protected def uniqueName: String = "change_mode"
-
-  override protected def description: String =
+case object ChangeModeTool extends TypedTool[ChangeModeInput](
+  name = ToolName("change_mode"),
+  description =
     """Switch the agent's current operating mode. The current mode is stated at the top of the system
       |prompt along with the list of modes available in this conversation. Call this BEFORE attempting
       |a task whose nature belongs to a different mode — do not start the task in the wrong mode and
@@ -29,8 +26,8 @@ object ChangeModeTool extends Tool[ChangeModeInput] {
       |The `mode` argument is the target mode's stable name as shown in the system prompt's mode
       |listing (e.g. "conversation", "coding", "workflow" — whatever this conversation's registered
       |mode set contains). Unknown names are rejected.""".stripMargin
-
-  override def execute(input: ChangeModeInput, context: TurnContext): rapid.Stream[Event] =
+) {
+  override protected def executeTyped(input: ChangeModeInput, context: TurnContext): rapid.Stream[Event] =
     context.sigil.modeByName(input.mode) match {
       case Some(mode) =>
         rapid.Stream.emits(List(

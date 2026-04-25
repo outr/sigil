@@ -4,23 +4,14 @@ import fabric.define.Definition
 import fabric.rw.*
 import lightdb.id.Id
 
-case class ToolSchema[Input <: ToolInput](id: Id[ToolSchema[Input]],
-                                          name: ToolName,
-                                          description: String,
-                                          input: Definition,
-                                          examples: List[ToolExample[Input]])
+/**
+ * Render-ready descriptor of a [[Tool]]: the data providers serialize into
+ * each LLM request's tool list. Computed by `Tool.schema` from a tool's
+ * name, description, input RW definition, and examples.
+ */
+case class ToolSchema(id: Id[ToolSchema],
+                     name: ToolName,
+                     description: String,
+                     input: Definition,
+                     examples: List[ToolExample])
   derives RW
-
-object ToolSchema {
-  import ToolInput.given
-
-  /**
-   * Existential RW used by carriers like `sigil.event.ToolResults` that hold
-   * `List[ToolSchema[? <: ToolInput]]`. Delegates to the macro-derived
-   * `RW[ToolSchema[ToolInput]]`, serializing each example's input via the
-   * `ToolInput` poly. Concrete `ToolSchema[Input]` RWs continue to come from
-   * this class's own `derives RW`.
-   */
-  given erasedRW: RW[ToolSchema[? <: ToolInput]] =
-    summon[RW[ToolSchema[ToolInput]]].asInstanceOf[RW[ToolSchema[? <: ToolInput]]]
-}

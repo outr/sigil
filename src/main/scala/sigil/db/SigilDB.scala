@@ -3,21 +3,21 @@ package sigil.db
 import lightdb.LightDB
 import lightdb.cache.CacheConfig
 import lightdb.id.Id
-import lightdb.lucene.LuceneStore
-import lightdb.rocksdb.RocksDBSharedStore
 import lightdb.store.CollectionManager
-import lightdb.store.split.SplitStoreManager
 import lightdb.upgrade.DatabaseUpgrade
 import rapid.Task
 import sigil.conversation.{ContextMemory, ContextSummary, Conversation, ConversationView, Topic}
 import sigil.event.Event
 import sigil.signal.{Delta, Signal}
 import sigil.spatial.GeocodingCache
+import sigil.tool.Tool
 
 import java.nio.file.Path
 import scala.concurrent.duration.*
 
-case class SigilDB(directory: Option[Path], storeManager: CollectionManager) extends LightDB {
+case class SigilDB(directory: Option[Path],
+                   storeManager: CollectionManager,
+                   appUpgrades: List[DatabaseUpgrade] = Nil) extends LightDB {
   override type SM = CollectionManager
 
   val model: S[Model, Model.type] = store(Model).withCache(CacheConfig.unbounded)()
@@ -28,22 +28,12 @@ case class SigilDB(directory: Option[Path], storeManager: CollectionManager) ext
   val views: S[ConversationView, ConversationView.type] = store(ConversationView).withCache(CacheConfig.lru(1000))()
   val topics: S[Topic, Topic.type] = store(Topic).withCache(CacheConfig.lru(2000))()
   val geocodingCache: S[GeocodingCache, GeocodingCache.type] = store(GeocodingCache)()
+  val tools: S[Tool, Tool.type] = store(Tool).withCache(CacheConfig.lru(500))()
 
-  override def upgrades: List[DatabaseUpgrade] = Nil
+  override def upgrades: List[DatabaseUpgrade] = appUpgrades
 
   /**
-   * Apply a [[Signal]] to the events store:
-   *   - `Event` → `insert`
-   *   - `Delta` → `get` target, call `delta.apply(target)`, `upsert` the result
-   *
-   * If a Delta's target doesn't exist (e.g. the orchestrator emitted a delta
-   * before its parent Event was persisted, or the parent was deleted), the
-   * delta becomes a silent no-op.
-   *
-   * Apps wire this as a subscriber on the orchestrator's `Stream[Signal]`:
-   * {{{
-   *   Orchestrator.process(sigil, provider, request).evalTap(sigil.db.applySignal)
-   * }}}
+   * Apply a [[Signal]] to the events store.
    */
   def apply(signal: Signal): Task[Unit] = signal match {
     case e: Event =>

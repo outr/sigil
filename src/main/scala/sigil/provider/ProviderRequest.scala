@@ -17,7 +17,7 @@ import sigil.tool.{Tool, ToolInput}
 trait ProviderRequest {
   def modelId: Id[sigil.db.Model]
   def generationSettings: GenerationSettings
-  def tools: Vector[Tool[? <: ToolInput]]
+  def tools: Vector[Tool]
   def chain: List[ParticipantId]
   def requestId: Id[ProviderRequest]
 }

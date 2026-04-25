@@ -141,7 +141,7 @@ case class DeepSeekProvider(apiKey: String,
         obj("role" -> str("tool"), "tool_call_id" -> str(toolCallId), "content" -> str(content))
     }
 
-  private def renderDescription[I <: ToolInput](schema: ToolSchema[I]): String =
+  private def renderDescription[I <: ToolInput](schema: ToolSchema): String =
     if (schema.examples.isEmpty) schema.description
     else {
       val rendered = schema.examples.map { e =>

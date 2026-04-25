@@ -5,7 +5,7 @@ import sigil.PolyType
 
 /**
  * Taxonomy of a [[ContextMemory]]. Same polymorphic pattern as
- * [[MemorySpaceId]] — Sigil ships common defaults (Fact, Decision,
+ * [[SpaceId]] — Sigil ships common defaults (Fact, Decision,
  * Preference, ActionItem, Other) and apps can register domain-specific
  * types (e.g. `Medical`, `Financial`, `Code`) by extending the trait and
  * registering their RW via `MemoryType.register(...)` at startup.
@@ -31,7 +31,7 @@ object MemoryType extends PolyType[MemoryType] {
   // Register the built-ins with the poly RW so they round-trip without
   // the app having to call `MemoryType.register(...)` first. Case-object
   // RWs come from `RW.static` (fabric's singleton path), matching the
-  // way `MemorySpaceId` subtypes are registered in TestSigil.
+  // way `SpaceId` subtypes are registered in TestSigil.
   register(
     RW.static(Fact),
     RW.static(Decision),

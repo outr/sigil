@@ -3,7 +3,7 @@ package sigil.tool.consult
 import rapid.Stream
 import sigil.TurnContext
 import sigil.event.Event
-import sigil.tool.{Tool, ToolExample}
+import sigil.tool.{ToolName, TypedTool}
 
 /**
  * Internal tool invoked by
@@ -11,15 +11,13 @@ import sigil.tool.{Tool, ToolExample}
  * Never registered on any agent's roster — the extractor calls it via
  * `ConsultTool.invoke` with `tool_choice = required`.
  *
- * Richer than [[ExtractMemoriesTool]]: each fact carries a stable
- * `key` (e.g. "user.preferred_language") so `upsertMemoryByKey` can
- * version the record instead of creating a new row every time the
- * same fact shows up.
+ * Each fact carries a stable `key` (e.g. "user.preferred_language") so
+ * `upsertMemoryByKey` can version the record instead of creating a new
+ * row every time the same fact shows up.
  */
-object ExtractMemoriesWithKeysTool extends Tool[ExtractMemoriesWithKeysInput] {
-  override protected def uniqueName: String = "extract_memories_with_keys"
-
-  override protected def description: String =
+case object ExtractMemoriesWithKeysTool extends TypedTool[ExtractMemoriesWithKeysInput](
+  name = ToolName("extract_memories_with_keys"),
+  description =
     """Extract durable facts from a conversation excerpt. Each fact must be self-contained
       |(a reader seeing the fact alone must still be able to act on it).
       |
@@ -39,9 +37,7 @@ object ExtractMemoriesWithKeysTool extends Tool[ExtractMemoriesWithKeysInput] {
       |Do NOT include:
       |  - intermediate reasoning, small-talk, acknowledgements
       |  - content that belongs in a summary (narrative / ongoing context).""".stripMargin
-
-  override protected def examples: List[ToolExample[ExtractMemoriesWithKeysInput]] = Nil
-
-  override def execute(input: ExtractMemoriesWithKeysInput, context: TurnContext): Stream[Event] =
+) {
+  override protected def executeTyped(input: ExtractMemoriesWithKeysInput, context: TurnContext): Stream[Event] =
     Stream.empty
 }

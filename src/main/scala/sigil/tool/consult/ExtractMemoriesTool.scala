@@ -3,7 +3,7 @@ package sigil.tool.consult
 import rapid.Stream
 import sigil.TurnContext
 import sigil.event.Event
-import sigil.tool.{Tool, ToolExample}
+import sigil.tool.{ToolName, TypedTool}
 
 /**
  * Internal-only tool invoked by
@@ -12,10 +12,9 @@ import sigil.tool.{Tool, ToolExample}
  * compressor calls it via [[ConsultTool.invoke]] with
  * `tool_choice = required`.
  */
-object ExtractMemoriesTool extends Tool[ExtractMemoriesInput] {
-  override protected def uniqueName: String = "extract_memories"
-
-  override protected def description: String =
+case object ExtractMemoriesTool extends TypedTool[ExtractMemoriesInput](
+  name = ToolName("extract_memories"),
+  description =
     """List the durable facts to store from a conversation excerpt. The framework will persist each fact
       |as a separate memory that future turns can look up.
       |
@@ -31,9 +30,7 @@ object ExtractMemoriesTool extends Tool[ExtractMemoriesInput] {
       |
       |Each fact must be self-contained: a reader seeing the fact alone, without the transcript, must
       |still be able to act on it. Quote identifiers by name. Prefer ≤ 2 sentences per fact.""".stripMargin
-
-  override protected def examples: List[ToolExample[ExtractMemoriesInput]] = Nil
-
-  override def execute(input: ExtractMemoriesInput, context: TurnContext): Stream[Event] =
+) {
+  override protected def executeTyped(input: ExtractMemoriesInput, context: TurnContext): Stream[Event] =
     Stream.empty
 }

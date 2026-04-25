@@ -1,29 +1,75 @@
 package sigil.tool
 
-import fabric.define.Definition
 import fabric.rw.*
+import lightdb.doc.{JsonConversion, RecordDocument, RecordDocumentModel}
 import lightdb.id.Id
-import sigil.TurnContext
+import lightdb.time.Timestamp
+import sigil.{PolyType, SpaceId, TurnContext}
 import sigil.event.Event
+import sigil.participant.ParticipantId
+import sigil.provider.{ConversationMode, Mode}
 
-trait Tool[Input <: ToolInput: RW] {
-  protected def uniqueName: String
-  protected def description: String
-  protected def examples: List[ToolExample[Input]] = Nil
+/**
+ * A capability available to agents at runtime. Persisted in
+ * [[sigil.db.SigilDB.tools]] so static (app-defined) tools and dynamic
+ * (user-created) tools share one collection, one query path, and one
+ * polymorphic RW.
+ *
+ * Two authoring shapes:
+ *   - **Static singleton**: typically authored via [[TypedTool]] for
+ *     ergonomics; persisted via `RW.static`.
+ *   - **Dynamic record**: `case class ScriptTool(...) extends Tool derives RW`
+ *     constructed at runtime by app flows and persisted via
+ *     `Sigil.createTool`.
+ *
+ * `inputRW` declares the [[ToolInput]] subclass this tool consumes.
+ * The provider stack parses LLM-supplied tool-call arguments through
+ * that RW directly — no raw JSON crosses the dispatch boundary.
+ */
+trait Tool extends RecordDocument[Tool] {
+  // ---- abstract ----
 
-  /**
-   * The RW codec for this tool's Input type. Used by provider accumulators to
-   * deserialize tool-call arguments from JSON into the typed Input.
-   */
-  def inputRW: RW[Input] = summon[RW[Input]]
+  def name: ToolName
+  def description: String
+  def inputRW: RW[? <: ToolInput]
+  def execute(input: ToolInput, context: TurnContext): rapid.Stream[Event]
 
-  lazy val schema: ToolSchema[Input] = ToolSchema(
-    id = Id[ToolSchema[Input]](uniqueName),
-    name = ToolName(uniqueName),
+  // ---- defaults ----
+
+  def modes: Set[Id[Mode]] = Set(ConversationMode.id)
+  def spaces: Set[SpaceId] = Set.empty
+  def keywords: Set[String] = Set.empty
+  def examples: List[ToolExample] = Nil
+  def createdBy: Option[ParticipantId] = None
+  def _id: Id[Tool] = Id(name.value)
+  def created: Timestamp = Tool.Epoch
+  def modified: Timestamp = Tool.Epoch
+
+  /** The schema's input definition. Defaults to `inputRW.definition`;
+    * tools that need a dynamic schema (e.g. an enum populated from
+    * runtime config) override this. */
+  def inputDefinition: fabric.define.Definition = inputRW.definition
+
+  /** Render-ready schema — providers turn this into the LLM's tool list. */
+  lazy val schema: ToolSchema = ToolSchema(
+    id = Id[ToolSchema](_id.value),
+    name = name,
     description = description,
-    input = summon[RW[Input]].definition,
+    input = inputDefinition,
     examples = examples
   )
+}
 
-  def execute(input: Input, context: TurnContext): rapid.Stream[Event]
+object Tool extends RecordDocumentModel[Tool] with JsonConversion[Tool] with PolyType[Tool] {
+  /** Sentinel epoch for static tool timestamps. Dynamic tools set their own. */
+  val Epoch: Timestamp = Timestamp(0L)
+
+  // Expose PolyType's RW as the rw RecordDocumentModel needs.
+  implicit override val rw: RW[Tool] = polyRW
+
+  val toolName: I[String]          = field.index(_.name.value)
+  val modeIds: I[Set[String]]      = field.index(_.modes.map(_.value))
+  val spaceIds: I[Set[String]]     = field.index(_.spaces.map(_.value))
+  val keywordIndex: I[Set[String]] = field.index(_.keywords)
+  val createdByIndex: I[Option[String]] = field.index(_.createdBy.map(_.value))
 }

@@ -29,11 +29,11 @@ import scala.collection.mutable
  * Each provider's stream parser is responsible for translating upstream events
  * into calls to [[start]], [[appendArgs]], and at stream end [[complete]].
  */
-final class ToolCallAccumulator(tools: Vector[Tool[? <: ToolInput]] = Vector.empty) {
+final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty) {
   private val calls = mutable.LinkedHashMap.empty[Int, CallState]
   // Keyed by the wire-level tool name string so provider events (which
   // carry `toolName: String`) can look up without converting.
-  private val toolsByName: Map[String, Tool[? <: ToolInput]] = tools.map(t => t.schema.name.value -> t).toMap
+  private val toolsByName: Map[String, Tool] = tools.map(t => t.schema.name.value -> t).toMap
 
   /**
    * Declare a new tool call at the given stream index. Emits `ToolCallStart`.

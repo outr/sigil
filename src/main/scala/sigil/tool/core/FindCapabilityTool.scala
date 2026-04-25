@@ -2,19 +2,17 @@ package sigil.tool.core
 
 import sigil.TurnContext
 import sigil.event.{Event, ToolResults}
-import sigil.tool.{Tool, ToolExample}
+import sigil.tool.{DiscoveryRequest, ToolExample, ToolName, TypedTool}
 
 /**
  * Discovery tool. The agent calls `find_capability` when it needs to check
- * what tools exist to satisfy the current request — rather than guessing
- * or claiming inability to do something. Emits a [[ToolResults]] event
- * carrying the matching tools' schemas directly, so the LLM has everything
- * it needs to call one of them on its next turn.
+ * what tools exist to satisfy the current request. Emits a [[ToolResults]]
+ * event carrying the matching tools' schemas directly so the LLM has
+ * everything it needs to call one of them on its next turn.
  */
-object FindCapabilityTool extends Tool[FindCapabilityInput] {
-  override protected def uniqueName: String = "find_capability"
-
-  override protected def description: String =
+case object FindCapabilityTool extends TypedTool[FindCapabilityInput](
+  name = ToolName("find_capability"),
+  description =
     """CALL THIS FIRST when the user asks you to DO something and the action isn't obviously covered by the
       |tools already in your current roster. Most tools in this system are NOT in your default roster — they
       |are discovered through this call. Before telling the user something is impossible, unavailable, or
@@ -40,9 +38,8 @@ object FindCapabilityTool extends Tool[FindCapabilityInput] {
       |
       |The response lists matching tools with their full schemas; you then call the right one on your next
       |turn. Tools surfaced by `find_capability` are available for ONE subsequent turn — if you don't call
-      |them next, they're cleared.""".stripMargin
-
-  override protected def examples: List[ToolExample[FindCapabilityInput]] = List(
+      |them next, they're cleared.""".stripMargin,
+  examples = List(
     ToolExample(
       "User asked to send a message on some channel — not in default roster, discover it",
       FindCapabilityInput("send slack channel message")
@@ -56,21 +53,25 @@ object FindCapabilityTool extends Tool[FindCapabilityInput] {
       FindCapabilityInput("billing invoice payment charge")
     )
   )
-
-  override def execute(input: FindCapabilityInput, context: TurnContext): rapid.Stream[Event] =
+) {
+  override protected def executeTyped(input: FindCapabilityInput, context: TurnContext): rapid.Stream[Event] =
     rapid.Stream.force(
-      context.sigil
-        .findTools(input.keywords, context.chain)
-        .map { tools =>
-          val mode = context.conversation.currentMode
-          val scoped = tools.filter(t => context.sigil.modeAllowsDiscovery(mode, t.schema.name))
+      context.sigil.accessibleSpaces(context.chain).flatMap { spaces =>
+        val request = DiscoveryRequest(
+          keywords = input.keywords,
+          chain = context.chain,
+          mode = context.conversation.currentMode,
+          callerSpaces = spaces
+        )
+        context.sigil.findTools(request).map { tools =>
           val results = ToolResults(
-            schemas = scoped.map(_.schema),
+            schemas = tools.map(_.schema),
             participantId = context.caller,
             conversationId = context.conversation.id,
             topicId = context.conversation.currentTopicId
           )
           rapid.Stream.emits(List(results))
         }
+      }
     )
 }

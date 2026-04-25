@@ -101,10 +101,10 @@ trait AgentParticipant extends Participant {
     val suggested = context.conversationView.projectionFor(id).suggestedTools
     val effectiveNames = sigil.effectiveToolNames(this, context.conversation.currentMode, suggested).distinct
 
-    val resolved: Task[(Provider, Vector[Tool[? <: ToolInput]])] =
+    val resolved: Task[(Provider, Vector[Tool])] =
       for {
         p <- sigil.providerFor(modelId, effectiveChain)
-        t <- Task.sequence(effectiveNames.map(n => sigil.findTools.byName(n, effectiveChain)))
+        t <- Task.sequence(effectiveNames.map(n => sigil.findTools.byName(n)))
                .map(_.flatten.toVector)
       } yield (p, t)
 

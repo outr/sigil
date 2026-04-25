@@ -149,7 +149,7 @@ case class GoogleProvider(apiKey: String,
         )
     }
 
-  private def toFunctionDeclaration(t: Tool[? <: ToolInput]): Json = {
+  private def toFunctionDeclaration(t: Tool): Json = {
     val s = t.schema
     obj(
       "name" -> str(s.name.value),
@@ -175,7 +175,7 @@ case class GoogleProvider(apiKey: String,
     case _ => None
   }
 
-  private def renderDescription[I <: ToolInput](schema: ToolSchema[I]): String =
+  private def renderDescription[I <: ToolInput](schema: ToolSchema): String =
     if (schema.examples.isEmpty) schema.description
     else {
       val rendered = schema.examples.map { e =>
