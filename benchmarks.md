@@ -26,8 +26,8 @@ Sigil *is* a memory library — every one of these tests something `sigil.vector
 | LoCoMo | implemented | via ConvoMem repo's `legacy_benchmarks/locomo` |
 | ConvoMem | implemented | HuggingFace `Salesforce/ConvoMem` core_benchmark/pre_mixed_testcases |
 | MemBench (ACL 2025, arXiv 2506.21605) | implemented | GitHub `import-myself/Membench` |
+| REALTALK (arXiv 2502.13270, [danny911kr/REALTALK](https://github.com/danny911kr/REALTALK)) | implemented | 10 real-world 21-day chats × 70-85 ground-truth questions; evidence is per-utterance `dia_id` refs (clean retrieval signal vs LLM-generated benchmarks) |
 | **MemoryAgentBench** (ICLR 2026, [HUST-AI-HYZ/MemoryAgentBench](https://github.com/HUST-AI-HYZ/MemoryAgentBench)) | next | extends memory into an agent loop — requires orchestrator-driven rather than pure-retrieval harness |
-| **REALTALK** | next | multi-turn dialogue memory; schema + dataset path to confirm |
 | **MemoryBench** (arXiv 2510.17281 — continual learning for LLM systems) | next | adds a mutation/update dimension on top of retrieval |
 | **MemoryArena** | deferred | need to confirm canonical source/schema |
 

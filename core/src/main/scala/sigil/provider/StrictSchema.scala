@@ -1,4 +1,4 @@
-package sigil.provider.openai
+package sigil.provider
 
 import fabric.*
 
@@ -30,7 +30,12 @@ import fabric.*
  */
 object StrictSchema {
 
-  private val UnsupportedKeys: Set[String] = Set(
+  /** Keywords that grammar-constrained decoders (OpenAI strict mode,
+    * Gemini function calling, etc.) reject because they constrain
+    * character-level content that doesn't compose with token-level
+    * sampling. Sigil keeps these on the Scala types for non-strict
+    * use and post-decode validation; on the wire they're stripped. */
+  val UnsupportedKeys: Set[String] = Set(
     "pattern", "format",
     "minLength", "maxLength",
     "minimum", "maximum",
@@ -39,6 +44,21 @@ object StrictSchema {
     "minItems", "maxItems",
     "uniqueItems"
   )
+
+  /** Recursively strip [[UnsupportedKeys]] from a JSON Schema without
+    * altering its required / property / object shape. Suitable for
+    * providers (Gemini) that natively grammar-constrain function-call
+    * args but reject the unsupported keywords. */
+  def stripUnsupportedKeys(schema: Json): Json = schema match {
+    case Obj(map) =>
+      val cleaned = map.iterator.collect {
+        case (k, v) if !UnsupportedKeys.contains(k) => k -> stripUnsupportedKeys(v)
+      }.toList
+      obj(cleaned*)
+    case Arr(items, _) =>
+      arr(items.map(stripUnsupportedKeys)*)
+    case other => other
+  }
 
   def apply(schema: Json): Json = transform(schema)
 

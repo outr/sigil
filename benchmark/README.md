@@ -40,6 +40,9 @@ sbt "benchmark/runMain bench.ConvoMemBench /path/to/pre_mixed_testcases [--limit
 
 # MemBench — github.com/import-myself/Membench, MemData/
 sbt "benchmark/runMain bench.MemBenchBench /path/to/MemData [--limit N] [--k N] [--category CAT] [--agent FirstAgent|ThirdAgent]"
+
+# REALTALK — danny911kr/REALTALK, data/Chat_*.json (10 real-world 21-day chats)
+sbt "benchmark/runMain bench.RealTalkBench /path/to/realtalk-data [--limit N] [--k N] [--max-questions N] [--report PATH]"
 ```
 
 LongMemEval writes a markdown report to `--report PATH` (default `benchmark-results.md`); the others print to stdout only.

@@ -31,7 +31,10 @@ object ConvoMemBench {
       sys.exit(1)
     }
     val limit = RetrievalFlags.flagInt(args, "--limit").getOrElse(1)
-    val k = RetrievalFlags.flagInt(args, "--k").getOrElse(5)
+    // Default k=1 ("did the top-ranked conversation contain the evidence?").
+    // Scoring also skips cases where conversations.size <= k — see the
+    // hit-counting block below for why.
+    val k = RetrievalFlags.flagInt(args, "--k").getOrElse(1)
     val categoryFilter = RetrievalFlags.flagString(args, "--category")
     val maxQuestions = RetrievalFlags.flagInt(args, "--max-questions").getOrElse(Int.MaxValue)
     val batchNum = RetrievalFlags.flagInt(args, "--batch")
@@ -134,24 +137,35 @@ object ConvoMemBench {
                     }
                   }.toSet
 
-                  val results = harness.searchByQueryEnhanced(question, retrieval, limit = 50).sync()
-                  val rankedConvs = results.flatMap(r => msgToConv.get(r.id)).distinct
-                  val topK = rankedConvs.take(k).toSet
-                  val hit = evidenceIndices.exists(topK.contains)
+                  // Skip trivially-correct cases: when the test fixture contains
+                  // `conversations.size <= k`, every conversation lands in the
+                  // top-K regardless of ranking, so a "hit" carries no retrieval
+                  // signal. ConvoMem's 1-evidence and 2-evidence levels are 1-2
+                  // conversations per case — at k=5 the entire benchmark
+                  // collapses to 100%. Counting only cases with strictly more
+                  // conversations than k surfaces the actual retrieval quality.
+                  if (conversations.size <= k) {
+                    // skip — not informative
+                  } else {
+                    val results = harness.searchByQueryEnhanced(question, retrieval, limit = 50).sync()
+                    val rankedConvs = results.flatMap(r => msgToConv.get(r.id)).distinct
+                    val topK = rankedConvs.take(k).toSet
+                    val hit = evidenceIndices.exists(topK.contains)
 
-                  if (hit) totalCorrect += 1
-                  totalRun += 1
+                    if (hit) totalCorrect += 1
+                    totalRun += 1
 
-                  val (cc, ct) = categoryBreakdown.getOrElse(catName, (0, 0))
-                  categoryBreakdown(catName) = (cc + (if (hit) 1 else 0), ct + 1)
+                    val (cc, ct) = categoryBreakdown.getOrElse(catName, (0, 0))
+                    categoryBreakdown(catName) = (cc + (if (hit) 1 else 0), ct + 1)
 
-                  if (!hit && reportPath.nonEmpty) {
-                    val snippets = results.take(k).flatMap { r =>
-                      msgToConv.get(r.id).flatMap { ci =>
-                        conversations(ci)("messages").asVector.headOption.map(_("text").asString.take(140))
+                    if (!hit && reportPath.nonEmpty) {
+                      val snippets = results.take(k).flatMap { r =>
+                        msgToConv.get(r.id).flatMap { ci =>
+                          conversations(ci)("messages").asVector.headOption.map(_("text").asString.take(140))
+                        }
                       }
+                      failures += ((catName, evidenceLevel, batchFile.getName, question, evidenceIndices, rankedConvs.take(k).toList, snippets))
                     }
-                    failures += ((catName, evidenceLevel, batchFile.getName, question, evidenceIndices, rankedConvs.take(k).toList, snippets))
                   }
                 }
               }
