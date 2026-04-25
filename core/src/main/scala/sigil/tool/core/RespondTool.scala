@@ -19,6 +19,20 @@ case object RespondTool extends TypedTool[RespondInput](
       |user-facing message MUST go through `respond`. Describe what you did in natural language AFTER an
       |action through this tool; do not narrate tool calls before or as you make them.
       |
+      |Emit args in this exact order: `topicLabel`, then `topicSummary`, then `content`. The small required
+      |fields come first by design — if your output is truncated under a tight token budget, the topic
+      |fields still arrive complete and the partial content is still useful.
+      |
+      |`topicLabel` — REQUIRED. A concise 3-6 word label describing the subject of THIS turn.
+      |No quotes, no punctuation. Examples:
+      |  - On a fresh "New Conversation" with the user asking about Rome → "Roman Empire"
+      |  - When the user narrows from general Python to GIL specifically → "Python GIL"
+      |  - When following up on the same subject → keep the Current topic label unchanged
+      |  - When the user explicitly returns to a Previous topic → use that prior label exactly
+      |
+      |`topicSummary` — REQUIRED. A 1-2 sentence summary of the subject. Used both as UI display and
+      |as semantic context the framework's classifier uses to compare against prior topics.
+      |
       |`content` is a multipart string. Each block begins with a header line and continues until the
       |next header or end of input — there are no close markers.
       |
@@ -74,18 +88,10 @@ case object RespondTool extends TypedTool[RespondInput](
       |  WRONG: "▶Text Hello"   RIGHT: "▶Text\nHello"
       |- Each subsequent ▶ header IMPLICITLY ends the previous block. Do not emit empty blocks.
       |- Use \n for line breaks within the JSON string.
-      |- Pick the most specific type for each block. Use Markdown only when no other type fits.
-      |- When asking the user to choose from a fixed set of alternatives, PREFER ▶Options over a numbered prose list.
-      |
-      |`topicLabel` — REQUIRED. A concise 3-6 word label describing the subject of THIS turn.
-      |No quotes, no punctuation. Examples:
-      |  - On a fresh "New Conversation" with the user asking about Rome → "Roman Empire"
-      |  - When the user narrows from general Python to GIL specifically → "Python GIL"
-      |  - When following up on the same subject → keep the Current topic label unchanged
-      |  - When the user explicitly returns to a Previous topic → use that prior label exactly
-      |
-      |`topicSummary` — REQUIRED. A 1-2 sentence summary of the subject. Used both as UI display and
-      |as semantic context the framework's classifier uses to compare against prior topics.""".stripMargin,
+      |- Pick the most specific type for each block. Use ▶Text for plain literal answers (single tokens,
+      |  numbers, names, short factual replies); reach for ▶Markdown only when formatting genuinely matters
+      |  (lists, headings, emphasis) and never wrap a one-word answer in Markdown for emphasis alone.
+      |- When asking the user to choose from a fixed set of alternatives, PREFER ▶Options over a numbered prose list.""".stripMargin,
   examples = List(
     ToolExample(
       "Bootstrap — Current topic is the default, user has given a real subject",
