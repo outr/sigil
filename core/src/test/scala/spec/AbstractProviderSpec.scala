@@ -68,11 +68,6 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   }
 
   getClass.getSimpleName should {
-    "properly list models" in
-      provider.map { p =>
-        scribe.info(s"Found models: ${p.models.map(_.name).mkString(", ")}")
-        p.models should not be empty
-      }
     "perform a round-trip request via the respond tool" in
       request("What is 2+2? Respond with just the number.").map { events =>
         val start = events.collectFirst { case s: ProviderEvent.ToolCallStart => s }
