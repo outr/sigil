@@ -31,8 +31,15 @@ ThisBuild / scalacOptions ++= Seq(
 ThisBuild / evictionErrorLevel := Level.Info
 
 lazy val root = (project in file("."))
+  .aggregate(core, benchmark, docs)
   .settings(
     name := "sigil",
+    publish / skip := true
+  )
+
+lazy val core = (project in file("core"))
+  .settings(
+    name := "sigil-core",
     libraryDependencies ++= Seq(
       "com.outr" %% "profig" % profigVersion,
       "com.outr" %% "scribe" % scribeVersion,
@@ -61,7 +68,7 @@ lazy val root = (project in file("."))
 
 lazy val benchmark = project
   .in(file("benchmark"))
-  .dependsOn(root % "compile->compile;test->test")
+  .dependsOn(core % "compile->compile;test->test")
   .settings(
     name := "sigil-benchmark",
     publish / skip := true,
@@ -74,7 +81,7 @@ lazy val benchmark = project
 
 lazy val docs = project
   .in(file("documentation"))
-  .dependsOn(root)
+  .dependsOn(core)
   .enablePlugins(MdocPlugin)
   .settings(
     publish / skip := true,

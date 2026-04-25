@@ -6,4 +6,5 @@ target/
 /design/
 wip.md
 benchmark/db
+core/db
 *.log
