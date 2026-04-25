@@ -41,10 +41,10 @@ import scala.util.Success
  * / [[ProviderEvent.ImageGeneration*]].
  */
 case class OpenAIProvider(apiKey: String,
-                          models: List[Model],
                           sigilRef: Sigil,
                           baseUrl: URL = url"https://api.openai.com") extends Provider {
   override def `type`: ProviderType = ProviderType.OpenAI
+  override val providerKey: String = OpenAI.Provider
   override protected def sigil: Sigil = sigilRef
 
   override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
@@ -395,12 +395,10 @@ case class OpenAIProvider(apiKey: String,
 }
 
 object OpenAIProvider {
-  /** Construct an OpenAIProvider with models discovered from
-    * `/v1/models`. Hits the default OpenAI endpoint; use the
-    * overload below for custom base URLs. */
-  def create(sigil: Sigil, apiKey: String): Task[OpenAIProvider] =
-    create(sigil, apiKey, url"https://api.openai.com")
-
-  def create(sigil: Sigil, apiKey: String, baseUrl: URL): Task[OpenAIProvider] =
-    OpenAI.loadModels(apiKey, baseUrl).map(ms => OpenAIProvider(apiKey, ms, sigil, baseUrl))
+  /** Construct an OpenAIProvider. Models are read from
+    * [[sigil.db.SigilDB.model]] at access time, so the DB just needs
+    * to be populated (typically via
+    * [[sigil.controller.OpenRouter.refreshModels]]). */
+  def create(sigil: Sigil, apiKey: String, baseUrl: URL = url"https://api.openai.com"): Task[OpenAIProvider] =
+    Task.pure(OpenAIProvider(apiKey, sigil, baseUrl))
 }

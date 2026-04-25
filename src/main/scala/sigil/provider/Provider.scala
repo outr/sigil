@@ -27,11 +27,31 @@ import spice.http.HttpRequest
  */
 trait Provider {
   def `type`: ProviderType
-  def models: List[Model]
+
+  /** This provider's namespace key — matches the prefix on
+    * `Model.canonicalSlug` and `Model._id`. Default derives from the
+    * `type` enum value's lowercased name (`OpenAI` → `"openai"`).
+    * Override only when a provider's models live under a different
+    * namespace. */
+  def providerKey: String = `type`.toString.toLowerCase
 
   /** DB / configuration access for the shared translation pass. Wired
     * by each provider implementation (typically as a constructor arg). */
   protected def sigil: Sigil
+
+  /**
+   * Models available in this provider's namespace, read from
+   * [[sigil.db.SigilDB.model]] on every access. The DB is populated by
+   * [[sigil.controller.OpenRouter.refreshModels]] (or whatever
+   * model-sync the app runs) — long-running apps see fresh metadata as
+   * the DB updates without reconstructing the provider.
+   *
+   * Local providers like [[sigil.provider.llamacpp.LlamaCppProvider]]
+   * override with their own list (loaded from the running server,
+   * not openrouter).
+   */
+  def models: List[Model] =
+    sigil.cache.findModel(provider = Some(providerKey)).toList.sync()
 
   // ---- public entry points (final) ----
 

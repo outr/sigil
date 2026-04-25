@@ -31,10 +31,10 @@ import scala.util.Success
  * `message_delta`, `message_stop`).
  */
 case class AnthropicProvider(apiKey: String,
-                             models: List[Model],
                              sigilRef: Sigil,
                              baseUrl: URL = url"https://api.anthropic.com") extends Provider {
   override def `type`: ProviderType = ProviderType.Anthropic
+  override val providerKey: String = Anthropic.Provider
   override protected def sigil: Sigil = sigilRef
 
   override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
@@ -349,9 +349,8 @@ case class AnthropicProvider(apiKey: String,
 }
 
 object AnthropicProvider {
-  def create(sigil: Sigil, apiKey: String): Task[AnthropicProvider] =
-    create(sigil, apiKey, url"https://api.anthropic.com")
-
-  def create(sigil: Sigil, apiKey: String, baseUrl: URL): Task[AnthropicProvider] =
-    Anthropic.loadModels(apiKey, baseUrl).map(ms => AnthropicProvider(apiKey, ms, sigil, baseUrl))
+  /** Construct an AnthropicProvider. Models are read from
+    * [[sigil.db.SigilDB.model]] at access time. */
+  def create(sigil: Sigil, apiKey: String, baseUrl: URL = url"https://api.anthropic.com"): Task[AnthropicProvider] =
+    Task.pure(AnthropicProvider(apiKey, sigil, baseUrl))
 }

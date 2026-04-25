@@ -7,6 +7,6 @@ import sigil.provider.deepseek.{DeepSeek, DeepSeekProvider}
 
 class DeepSeekRequestCoverageSpec extends AbstractRequestCoverageSpec {
   override protected def providerInstance: Provider =
-    DeepSeekProvider(apiKey = "sk-test-placeholder", models = DeepSeek.models, sigilRef = TestSigil)
+    DeepSeekProvider(apiKey = "sk-test-placeholder", sigilRef = TestSigil)
   override protected def modelId: Id[Model] = Model.id("deepseek", "deepseek-chat")
 }

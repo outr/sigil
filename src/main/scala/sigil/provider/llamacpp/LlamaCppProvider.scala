@@ -18,8 +18,9 @@ import spice.net.*
 
 import scala.util.Success
 
-case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) extends Provider {
+case class LlamaCppProvider(url: URL, override val models: List[Model], sigilRef: Sigil) extends Provider {
   override def `type`: ProviderType = ProviderType.LlamaCpp
+  override val providerKey: String = LlamaCpp.Provider
 
   override protected def sigil: Sigil = sigilRef
 

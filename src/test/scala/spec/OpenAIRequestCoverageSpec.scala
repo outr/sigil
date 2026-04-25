@@ -19,6 +19,6 @@ import sigil.provider.openai.OpenAIProvider
  */
 class OpenAIRequestCoverageSpec extends AbstractRequestCoverageSpec {
   override protected def providerInstance: Provider =
-    OpenAIProvider(apiKey = "sk-test-placeholder", models = Nil, sigilRef = TestSigil)
+    OpenAIProvider(apiKey = "sk-test-placeholder", sigilRef = TestSigil)
   override protected def modelId: Id[Model] = Model.id("openai", "gpt-5.4-nano")
 }
