@@ -198,7 +198,7 @@ case class OpenAIProvider(apiKey: String,
     case BuiltInTool.ComputerUse     => Some(obj("type" -> str("computer_use_preview")))
   }
 
-  private def renderDescription[I <: ToolInput](schema: ToolSchema[I]): String =
+  private def renderDescription[I <: ToolInput](schema: ToolSchema): String =
     if (schema.examples.isEmpty) schema.description
     else {
       val rendered = schema.examples.map { e =>

@@ -3,7 +3,8 @@ package sigil.conversation.compression
 import lightdb.id.Id
 import rapid.Task
 import sigil.Sigil
-import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary, Conversation, MemorySource, MemorySpaceId}
+import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary, Conversation, MemorySource}
+import sigil.SpaceId
 import sigil.db.Model
 import sigil.participant.ParticipantId
 import sigil.tool.consult.{ConsultTool, ExtractMemoriesInput, ExtractMemoriesTool, SummarizationInput, SummarizationTool}
@@ -70,7 +71,7 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                                 chain: List[ParticipantId],
                                 transcript: String,
                                 conversationId: Id[Conversation],
-                                space: MemorySpaceId): Task[Unit] = {
+                                space: SpaceId): Task[Unit] = {
     val userPrompt =
       s"""List durable facts from the following conversation excerpt. Output via the `extract_memories` tool.
          |

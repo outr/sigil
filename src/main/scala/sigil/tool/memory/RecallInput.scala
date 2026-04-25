@@ -1,8 +1,8 @@
 package sigil.tool.memory
 
 import fabric.rw.*
-import sigil.conversation.MemorySpaceId
-import sigil.conversation.MemorySpaceId.given
+import sigil.SpaceId
+import sigil.SpaceId.given
 import sigil.tool.ToolInput
 
 /**
@@ -21,5 +21,5 @@ import sigil.tool.ToolInput
 case class RecallInput(query: String,
                        limit: Int = 10,
                        includeHistory: Boolean = false,
-                       spaces: Set[MemorySpaceId] = Set.empty)
+                       spaces: Set[SpaceId] = Set.empty)
   extends ToolInput derives RW

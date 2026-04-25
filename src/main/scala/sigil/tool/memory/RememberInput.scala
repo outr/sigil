@@ -1,9 +1,10 @@
 package sigil.tool.memory
 
 import fabric.rw.*
-import sigil.conversation.{MemorySpaceId, MemoryType}
+import sigil.conversation.{MemoryType}
+import sigil.SpaceId
 import sigil.tool.ToolInput
-import sigil.conversation.MemorySpaceId.given
+import sigil.SpaceId.given
 import sigil.conversation.MemoryType.given
 
 /**
@@ -24,5 +25,5 @@ case class RememberInput(key: String,
                          content: String,
                          tags: Vector[String] = Vector.empty,
                          memoryType: MemoryType = MemoryType.Fact,
-                         spaceId: Option[MemorySpaceId] = None)
+                         spaceId: Option[SpaceId] = None)
   extends ToolInput derives RW

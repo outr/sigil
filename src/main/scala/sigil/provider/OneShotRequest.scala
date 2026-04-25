@@ -19,7 +19,7 @@ case class OneShotRequest(modelId: Id[Model],
                           systemPrompt: String,
                           userPrompt: String,
                           generationSettings: GenerationSettings = GenerationSettings(),
-                          tools: Vector[Tool[? <: ToolInput]] = Vector.empty,
+                          tools: Vector[Tool] = Vector.empty,
                           builtInTools: Set[BuiltInTool] = Set.empty,
                           chain: List[ParticipantId] = Nil,
                           requestId: Id[ProviderRequest] = Id())

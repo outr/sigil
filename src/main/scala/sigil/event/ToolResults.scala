@@ -21,7 +21,7 @@ import sigil.tool.{ToolInput, ToolSchema}
  * `StateDelta` transitioning it to `Complete`, at which point it's
  * historical — replay is silent.
  */
-case class ToolResults(schemas: List[ToolSchema[? <: ToolInput]],
+case class ToolResults(schemas: List[ToolSchema],
                        participantId: ParticipantId,
                        conversationId: Id[Conversation],
                        topicId: Id[Topic],

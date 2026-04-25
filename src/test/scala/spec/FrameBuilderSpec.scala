@@ -92,7 +92,7 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
         state = EventState.Complete
       )
       val results = ToolResults(
-        schemas = List.empty[ToolSchema[? <: sigil.tool.ToolInput]],
+        schemas = List.empty[ToolSchema],
         participantId = TestAgent,
         conversationId = conversationId,
         topicId = TestTopicId,
@@ -188,7 +188,7 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
 
     "replace suggestedTools when a ToolResults completes" in {
       val results = ToolResults(
-        schemas = List.empty[ToolSchema[? <: sigil.tool.ToolInput]],
+        schemas = List.empty[ToolSchema],
         participantId = TestAgent,
         conversationId = conversationId,
         topicId = TestTopicId,

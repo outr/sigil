@@ -12,7 +12,8 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
-import sigil.conversation.{ActiveSkillSlot, ContextKey, ContextMemory, ContextSummary, Conversation, ConversationView, FrameBuilder, MemorySpaceId, MemoryStatus, ParticipantProjection, SkillSource, Topic, TopicEntry, TopicShiftResult, TurnInput, UpsertMemoryResult}
+import sigil.conversation.{ActiveSkillSlot, ContextKey, ContextMemory, ContextSummary, Conversation, ConversationView, FrameBuilder, MemoryStatus, ParticipantProjection, SkillSource, Topic, TopicEntry, TopicShiftResult, TurnInput, UpsertMemoryResult}
+import sigil.SpaceId
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
 import sigil.tool.consult.{ConsultTool, TopicClassifierTool}
 import sigil.provider.GenerationSettings
@@ -62,17 +63,66 @@ trait Sigil {
    */
   def testMode: Boolean = false
 
-  // -- tool discovery --
+  // -- tool catalog --
 
   /**
-   * Resolves tools matching capability-discovery queries. Called by
-   * `find_capability` and slash-command dispatch. Implementations back onto
-   * whatever catalog the app maintains (in-memory, DB, remote registry).
+   * Static tool singletons synced into [[sigil.db.SigilDB.tools]] on
+   * every startup by [[sigil.tool.StaticToolSyncUpgrade]] and registered
+   * into the polymorphic `Tool` RW via `RW.static`.
    *
-   * The finder also supplies the `ToolInput` RWs for its tools; Sigil
-   * registers them into the polymorphic discriminator at init.
+   * Defaults to [[sigil.tool.core.CoreTools.all]] so the framework
+   * essentials (`respond`, `no_response`, `change_mode`, `stop`,
+   * `find_capability`) are always resolvable by name. Apps add their
+   * own static tools by overriding and concatenating:
+   * {{{
+   *   override def staticTools: List[Tool] = super.staticTools ++ List(MyTool, OtherTool)
+   * }}}
    */
-  def findTools: ToolFinder
+  def staticTools: List[sigil.tool.Tool] = sigil.tool.core.CoreTools.all.toList
+
+  /**
+   * App-provided `Tool` subtypes that support runtime instance
+   * creation (e.g. `ScriptTool`, `WorkflowTool` — case classes whose
+   * instances are persisted via `createTool`). Each entry is the RW of
+   * a `Tool` subclass so the polymorphic RW can round-trip records.
+   */
+  def toolRegistrations: List[RW[? <: sigil.tool.Tool]] = Nil
+
+  /**
+   * App-provided [[sigil.tool.ToolInput]] RWs. Registered into the
+   * `ToolInput` poly at init so providers can deserialize tool-call
+   * arguments. `staticTools`' input RWs are auto-derived; this list
+   * adds inputs for runtime-created tools (e.g. `ScriptInput` even if
+   * no static `ScriptTool` is registered).
+   */
+  def toolInputRegistrations: List[RW[? <: sigil.tool.ToolInput]] = Nil
+
+  /**
+   * Capability-discovery finder. Default queries [[sigil.db.SigilDB.tools]]
+   * via [[sigil.tool.DbToolFinder]] — apps override only when they
+   * need a custom finder (marketplace union, in-memory test catalog,
+   * etc.).
+   */
+  def findTools: sigil.tool.ToolFinder = defaultFindTools
+
+  /** The set of [[SpaceId]]s the caller chain is authorized to see —
+    * used to filter `find_capability` results. Default empty
+    * (fail-closed). Apps override with their own policy. */
+  def accessibleSpaces(chain: List[ParticipantId]): Task[Set[SpaceId]] =
+    Task.pure(Set.empty)
+
+  /** Persist a user-created tool. Typical call site: an app's agent
+    * flow that dynamically generates a `ScriptTool(...)` with the
+    * caller's `SpaceId`, then writes it via this helper. Returns the
+    * stored tool. */
+  def createTool(tool: sigil.tool.Tool): Task[sigil.tool.Tool] =
+    withDB(_.tools.transaction(_.upsert(tool)))
+
+  private final lazy val defaultFindTools: sigil.tool.ToolFinder = {
+    val staticInputs = staticTools.map(_.inputRW).distinctBy(_.definition.className)
+    val allInputs = (staticInputs ++ toolInputRegistrations).distinctBy(_.definition.className)
+    sigil.tool.DbToolFinder(this, allInputs)
+  }
 
   // -- context curation --
 
@@ -120,12 +170,12 @@ trait Sigil {
   // -- memory --
 
   /**
-   * App-specific [[MemorySpaceId]] subtypes registered into the polymorphic
+   * App-specific [[SpaceId]] subtypes registered into the polymorphic
    * discriminator so [[ContextMemory.spaceId]] values round-trip through
    * fabric RW. Apps define concrete spaces (GlobalSpace, ProjectSpace,
    * UserSpace, etc.) and list their RWs here.
    */
-  protected def memorySpaceIds: List[RW[? <: MemorySpaceId]]
+  protected def spaceIds: List[RW[? <: SpaceId]]
 
   /**
    * Search memories across the given spaces. Default queries
@@ -189,39 +239,9 @@ trait Sigil {
     }
   }
 
-  /**
-   * Per-tool predicate: is `toolName` visible to `find_capability`
-   * while the given [[Mode]] is active?
-   *
-   *   - `Standard` / `Active` / `Discoverable` → always true
-   *   - `None`                                 → always false
-   *   - `Exclusive(names)` / `Scoped(names)`   → true iff `toolName`
-   *     is in the listed names
-   *
-   * The predicate model deliberately avoids iterating a full tool
-   * catalog — [[sigil.tool.ToolFinder]] produces a keyword-matched
-   * subset (DB-backed finders may stream results), and callers apply
-   * this predicate per result. No "all tools" list ever lands in
-   * memory.
-   *
-   * [[ModeTools.Discoverable]] carries Reading-A intent: "this tool is
-   * visible to `find_capability` ONLY while this mode is active." The
-   * default returns true for Discoverable names (no cross-mode gating)
-   * because the framework doesn't know the app's full mode set. Apps
-   * wanting cross-mode gating override this method with knowledge of
-   * their registered modes.
-   */
-  def modeAllowsDiscovery(mode: Mode, toolName: sigil.tool.ToolName): Boolean = {
-    mode.tools match {
-      case ModeTools.Standard | ModeTools.Active(_) | ModeTools.Discoverable(_) => true
-      case ModeTools.None                                                       => false
-      case ModeTools.Exclusive(names)                                           => names.contains(toolName)
-      case ModeTools.Scoped(names)                                              => names.contains(toolName)
-    }
-  }
 
   /**
-   * The [[MemorySpaceId]] into which a
+   * The [[SpaceId]] into which a
    * [[sigil.conversation.compression.MemoryContextCompressor]] should
    * write facts extracted during compression of this conversation.
    *
@@ -230,7 +250,7 @@ trait Sigil {
    * Apps that do want it return a concrete space (per-conversation,
    * per-user, or a global compression-facts space).
    */
-  def compressionMemorySpace(conversationId: Id[Conversation]): Task[Option[MemorySpaceId]]
+  def compressionMemorySpace(conversationId: Id[Conversation]): Task[Option[SpaceId]]
 
   /**
    * Hook point for per-turn memory extraction. Invoked by the
@@ -246,25 +266,25 @@ trait Sigil {
     sigil.conversation.compression.extract.NoOpMemoryExtractor
 
   /**
-   * The default [[MemorySpaceId]] for agent-written memories (e.g.
+   * The default [[SpaceId]] for agent-written memories (e.g.
    * `RememberTool` invocations) when the agent doesn't supply one
    * explicitly. Apps that want per-user / per-conversation /
    * per-project scoping return the appropriate concrete subtype; apps
    * that haven't wired memory yet return `Task.pure(None)` (the
    * memory tools fail with a helpful error in that case).
    */
-  def defaultMemorySpace(conversationId: Id[Conversation]): Task[Option[MemorySpaceId]] =
+  def defaultMemorySpace(conversationId: Id[Conversation]): Task[Option[SpaceId]] =
     Task.pure(None)
 
   /**
-   * The default [[MemorySpaceId]] set used by recall-style searches
+   * The default [[SpaceId]] set used by recall-style searches
    * (e.g. `RecallTool`) when the agent doesn't supply a filter. Apps
    * typically return the caller's user/space combination.
    */
-  def defaultRecallSpaces(conversationId: Id[Conversation]): Task[Set[MemorySpaceId]] =
+  def defaultRecallSpaces(conversationId: Id[Conversation]): Task[Set[SpaceId]] =
     defaultMemorySpace(conversationId).map(_.toSet)
 
-  def findMemories(spaces: Set[MemorySpaceId]): Task[List[ContextMemory]] =
+  def findMemories(spaces: Set[SpaceId]): Task[List[ContextMemory]] =
     if (spaces.isEmpty) Task.pure(Nil)
     else withDB(_.memories.transaction { tx =>
       import lightdb.filter.*
@@ -837,7 +857,7 @@ trait Sigil {
 
   /** All versions of a keyed memory in `spaceId`, chronologically
     * (oldest first by `created`). */
-  def memoryHistory(key: String, spaceId: MemorySpaceId): Task[List[ContextMemory]] =
+  def memoryHistory(key: String, spaceId: SpaceId): Task[List[ContextMemory]] =
     if (key.isEmpty) Task.pure(Nil)
     else withDB(_.memories.transaction { tx =>
       import lightdb.filter.*
@@ -848,7 +868,7 @@ trait Sigil {
     })
 
   /** Pending (awaiting approval) memories in the given spaces. */
-  def listPendingMemories(spaces: Set[MemorySpaceId]): Task[List[ContextMemory]] =
+  def listPendingMemories(spaces: Set[SpaceId]): Task[List[ContextMemory]] =
     if (spaces.isEmpty) Task.pure(Nil)
     else withDB(_.memories.transaction { tx =>
       import lightdb.filter.*
@@ -887,7 +907,7 @@ trait Sigil {
     * the number of records removed. Also removes corresponding points
     * from the vector index so semantic search doesn't return stale
     * hits. */
-  def forgetMemory(key: String, spaceId: MemorySpaceId): Task[Int] =
+  def forgetMemory(key: String, spaceId: SpaceId): Task[Int] =
     if (key.isEmpty) Task.pure(0)
     else memoryHistory(key, spaceId).flatMap { versions =>
       withDB(_.memories.transaction { tx =>
@@ -977,7 +997,7 @@ trait Sigil {
    * that care should override this method).
    */
   def searchMemories(query: String,
-                     spaces: Set[MemorySpaceId],
+                     spaces: Set[SpaceId],
                      limit: Int = 10): Task[List[ContextMemory]] =
     if (!vectorWired) findMemories(spaces).map(_.take(limit))
     else embeddingProvider.embed(query).flatMap { vec =>
@@ -1185,7 +1205,7 @@ trait Sigil {
          |
          |Pick exactly one value from the enum.""".stripMargin
     val tool = new TopicClassifierTool(priors.map(_.label))
-    ConsultTool.invoke(
+    ConsultTool.invoke[sigil.tool.consult.TopicClassifierInput](
       sigil = this,
       modelId = modelId,
       chain = chain,
@@ -1512,8 +1532,9 @@ trait Sigil {
       _ = ToolInput.register((CoreTools.inputRWs ++ findTools.toolInputRWs)*)
       _ = ParticipantId.register(participantIds*)
       _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
-      _ = MemorySpaceId.register(memorySpaceIds*)
+      _ = SpaceId.register(spaceIds*)
       _ = Mode.register((ConversationMode :: modes).distinct.map(m => RW.static(m))*)
+      _ = sigil.tool.Tool.register((staticTools.map(t => RW.static(t)) ++ toolRegistrations).distinct*)
       config = Profig("sigil").as[Config]
       (directory, collectionStore) = config.postgres match {
         case Some(pg) =>
@@ -1528,7 +1549,11 @@ trait Sigil {
         case None =>
           (Some(config.dbPath), SplitStoreManager(RocksDBSharedStore(config.dbPath), LuceneStore): CollectionManager)
       }
-      db = SigilDB(directory, collectionStore)
+      db = SigilDB(
+        directory = directory,
+        storeManager = collectionStore,
+        appUpgrades = List(new sigil.tool.StaticToolSyncUpgrade(staticTools))
+      )
       _ <- db.init
       _ <- if (vectorWired) vectorIndex.ensureCollection(embeddingProvider.dimensions)
            else Task.unit

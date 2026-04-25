@@ -4,28 +4,25 @@ import rapid.{Stream, Task}
 import sigil.TurnContext
 import sigil.event.{Event, Message}
 import sigil.tool.model.ResponseContent
-import sigil.tool.{Tool, ToolExample}
+import sigil.tool.{ToolExample, ToolName, TypedTool}
 
 /**
- * Opt-in tool: agent-driven hard-delete of a keyed memory (all
- * versions). Use [[sigil.Sigil.rejectMemory]] instead if the app
- * wants to keep lineage for rejected facts.
+ * Opt-in tool: agent-driven hard-delete of a keyed memory (all versions).
  */
-object ForgetTool extends Tool[ForgetInput] {
-  override protected def uniqueName: String = "forget"
-
-  override protected def description: String =
+case object ForgetTool extends TypedTool[ForgetInput](
+  name = ToolName("forget"),
+  description =
     """Hard-delete every version of a keyed memory. Irreversible — use when you're sure
       |the fact is no longer true or relevant and no history is needed.
       |
       |`key`     — the memory key to remove.
-      |`spaceId` — optional; omit to use the caller's default scope.""".stripMargin
-
-  override protected def examples: List[ToolExample[ForgetInput]] = List(
+      |`spaceId` — optional; omit to use the caller's default scope.""".stripMargin,
+  examples = List(
     ToolExample("Forget the user's old theme preference", ForgetInput(key = "user.ui.theme"))
-  )
-
-  override def execute(input: ForgetInput, context: TurnContext): Stream[Event] =
+  ),
+  keywords = Set("forget", "delete", "remove", "memory")
+) {
+  override protected def executeTyped(input: ForgetInput, context: TurnContext): Stream[Event] =
     Stream.force {
       resolveSpace(input, context).flatMap {
         case None =>

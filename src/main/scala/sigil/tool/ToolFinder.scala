@@ -2,42 +2,27 @@ package sigil.tool
 
 import fabric.rw.RW
 import rapid.Task
-import sigil.participant.ParticipantId
 
 /**
- * Resolves tool matches for a capability-discovery query. Implementations may
- * be backed by an in-memory catalog, a database, a remote registry, or any
- * combination — sigil core makes no assumption about where tools come from.
+ * Resolves [[Tool]]s for capability-discovery and by-name lookup.
+ * Backed by [[DbToolFinder]] in production; apps can override with
+ * their own implementation for in-memory test catalogs, marketplace
+ * integrations, or union-of-sources strategies.
  *
- * `participants` is the chain-of-responsibility for the current invocation
- * (origin followed by propagators). Implementations that enforce per-
- * participant access control scope matches accordingly.
- *
- * Invoked from [[sigil.tool.core.FindCapabilityTool]] and any slash-command
- * that dispatches to capability discovery.
- *
- * The finder also declares the bounded set of `ToolInput` RWs its tools use.
- * Tool *instances* may be generated dynamically (DB-backed, per-user), but
- * their Input *types* are a fixed set colocated with whichever finder
- * materializes the tools. Sigil registers these into the polymorphic
- * discriminator at init.
+ * Filtering happens inside the finder — no framework post-filter. The
+ * reference semantics live in [[DiscoveryFilter]].
  */
 trait ToolFinder {
+  /** Polymorphic-RW registrations for every [[ToolInput]] subclass the
+    * finder's tools may emit. Sigil registers these into the
+    * `ToolInput` poly at init. */
   def toolInputRWs: List[RW[? <: ToolInput]]
 
-  def apply(keywords: String, participants: List[ParticipantId]): Task[List[Tool[? <: ToolInput]]]
+  /** Find tools matching a discovery request: keyword + mode + space
+    * filters, scored. */
+  def apply(request: DiscoveryRequest): Task[List[Tool]]
 
-  /**
-   * Resolve a single tool by its `schema.name`. Used when a persisted
-   * [[sigil.participant.AgentParticipant]] references tools by name and the
-   * dispatcher needs to rehydrate them to live `Tool` instances at call
-   * time.
-   *
-   * Default: delegate to `apply(name, participants)` and pick the first
-   * returned tool whose name matches case-insensitively. Implementations
-   * that can look up by name directly (e.g. in-memory catalogs, indexed DB
-   * queries) should override.
-   */
-  def byName(name: ToolName, participants: List[ParticipantId]): Task[Option[Tool[? <: ToolInput]]] =
-    apply(name.value, participants).map(_.find(_.schema.name.value.equalsIgnoreCase(name.value)))
+  /** Exact-name lookup. Used by the orchestrator and the agent
+    * dispatcher to resolve a tool the caller already named. */
+  def byName(name: ToolName): Task[Option[Tool]]
 }

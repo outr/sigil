@@ -40,7 +40,7 @@ case class ConversationRequest(conversationId: Id[Conversation],
                                currentTopic: TopicEntry,
                                previousTopics: List[TopicEntry] = Nil,
                                generationSettings: GenerationSettings,
-                               tools: Vector[Tool[? <: ToolInput]] = Vector.empty,
+                               tools: Vector[Tool] = Vector.empty,
                                builtInTools: Set[BuiltInTool] = Set.empty,
                                chain: List[ParticipantId] = Nil,
                                requestId: Id[ProviderRequest] = Id())

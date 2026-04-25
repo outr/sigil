@@ -239,7 +239,7 @@ case class LlamaCppProvider(url: URL, models: List[Model], sigilRef: Sigil) exte
       StopReason.Complete
   }
 
-  private def renderDescription[I <: ToolInput](schema: ToolSchema[I]): String =
+  private def renderDescription[I <: ToolInput](schema: ToolSchema): String =
     if (schema.examples.isEmpty) schema.description
     else {
       val rendered = schema.examples.map { e =>

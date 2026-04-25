@@ -4,33 +4,17 @@ import rapid.Stream
 import sigil.TurnContext
 import sigil.event.{Event, Message, TopicChange}
 import sigil.tool.model.{ResponseContent, SearchConversationInput}
-import sigil.tool.{Tool, ToolExample}
+import sigil.tool.{ToolExample, ToolName, TypedTool}
 
 /**
- * Opt-in util-tier tool: retrieves historical events from the
- * persistent event log of the caller's current conversation. The
- * agent receives the rendered results as a Message it can read on its
- * next turn.
- *
- * When an [[sigil.embedding.EmbeddingProvider]] + [[sigil.vector.VectorIndex]]
- * are wired on the [[sigil.Sigil]] instance, the query is
- * embedded and hit against the vector index with a
- * `kind=message, conversationId=…` filter (semantic search). Otherwise
- * [[sigil.Sigil.searchConversationEvents]] falls back to an in-memory
- * substring scan over events.
- *
- * Companion to conversation compression — compression trims the
- * rolling context to stay under a token budget, but the event log
- * retains everything. This tool is how the agent recovers detail that
- * compression dropped from its immediate view.
- *
- * Not in [[sigil.tool.core.CoreTools]]; apps add it explicitly to an
- * agent's roster or expose it via capability discovery.
+ * Opt-in util-tier tool: retrieves historical events from the persistent
+ * event log of the caller's current conversation. Companion to
+ * conversation compression — compression trims the rolling context;
+ * the event log retains everything; this tool recovers detail.
  */
-object SearchConversationTool extends Tool[SearchConversationInput] {
-  override protected def uniqueName: String = "search_conversation"
-
-  override protected def description: String =
+case object SearchConversationTool extends TypedTool[SearchConversationInput](
+  name = ToolName("search_conversation"),
+  description =
     """Search the persistent log of the current conversation for earlier events that match a query.
       |
       |Use this when:
@@ -46,16 +30,16 @@ object SearchConversationTool extends Tool[SearchConversationInput] {
       |
       |`topicId` — optional; restrict to events tagged with a specific topic.
       |
-      |`limit` — max results (default 10).""".stripMargin
-
-  override protected def examples: List[ToolExample[SearchConversationInput]] = List(
+      |`limit` — max results (default 10).""".stripMargin,
+  examples = List(
     ToolExample(
       "Find earlier exchanges mentioning the Qdrant deployment",
       SearchConversationInput(query = "Qdrant deployment")
     )
-  )
-
-  override def execute(input: SearchConversationInput, context: TurnContext): Stream[Event] =
+  ),
+  keywords = Set("search", "conversation", "history", "find", "recall")
+) {
+  override protected def executeTyped(input: SearchConversationInput, context: TurnContext): Stream[Event] =
     Stream.force {
       context.sigil
         .searchConversationEvents(

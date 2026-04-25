@@ -51,7 +51,7 @@ object Orchestrator {
     // Keyed by wire-level string so the provider's `activeToolName`
     // lookup stays a plain String comparison (the provider reports tool
     // names via the raw JSON wire).
-    val toolsByName: Map[String, Tool[? <: ToolInput]] = request.tools.map(t => t.schema.name.value -> t).toMap
+    val toolsByName: Map[String, Tool] = request.tools.map(t => t.schema.name.value -> t).toMap
     val state = new State()
 
     provider(request).flatMap(pe => translate(pe, sigil, request, conversation, toolsByName, state))
@@ -80,7 +80,7 @@ object Orchestrator {
                         sigil: Sigil,
                         request: ConversationRequest,
                         conversation: Conversation,
-                        toolsByName: Map[String, Tool[? <: ToolInput]],
+                        toolsByName: Map[String, Tool],
                         state: State): Stream[Signal] = {
     val caller = request.chain.lastOption.getOrElse {
       throw new IllegalStateException("ProviderRequest.chain is empty; orchestrator needs at least one participant.")
@@ -271,9 +271,8 @@ object Orchestrator {
     * `state = Complete` still get a closing `StateDelta`, which is an
     * idempotent no-op (the event is already Complete).
     */
-  private def executeAtomic[I <: ToolInput](tool: Tool[I], input: ToolInput, context: TurnContext): Stream[Signal] = {
-    val typedInput = input.asInstanceOf[I]
-    tool.execute(typedInput, context).flatMap { ev =>
+  private def executeAtomic(tool: Tool, input: ToolInput, context: TurnContext): Stream[Signal] = {
+    tool.execute(input, context).flatMap { ev =>
       Stream.emits(List[Signal](
         ev,
         StateDelta(target = ev._id, conversationId = ev.conversationId, state = EventState.Complete)

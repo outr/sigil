@@ -5,7 +5,8 @@ import lightdb.doc.{JsonConversion, RecordDocument, RecordDocumentModel}
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Unique
-import sigil.conversation.MemorySpaceId.given
+import sigil.SpaceId
+import sigil.SpaceId.given
 import sigil.conversation.MemoryType.given
 
 /**
@@ -29,7 +30,7 @@ import sigil.conversation.MemoryType.given
  */
 case class ContextMemory(fact: String,
                          source: MemorySource,
-                         spaceId: MemorySpaceId,
+                         spaceId: SpaceId,
                          key: String = "",
                          label: String = "",
                          summary: String = "",

@@ -2,28 +2,19 @@ package sigil.tool.core
 
 import sigil.TurnContext
 import sigil.event.{Event, Message}
-import sigil.tool.{Tool, ToolExample}
+import sigil.tool.{ToolExample, ToolName, TypedTool}
 import sigil.tool.model.{MultipartParser, RespondInput}
 
 /**
  * The respond tool. The model calls this to send its response to the user.
  *
- * The tool's `content` field is a string in the multipart format described in
- * the system prompt — each block headed by a `▶<TYPE>` marker. The string is
- * parsed into typed content blocks via [[MultipartParser]], then emitted as a
- * single [[Message]] event. Terminal — a turn that emits respond is considered
- * complete.
- *
  * Topic-shift resolution (new / refine / return / no-change) is handled by
  * the orchestrator at `ToolCallComplete` time via a focused two-step
- * classifier — see [[sigil.Sigil.classifyTopicShift]]. This tool just emits
- * the [[Message]]; the topicLabel + topicSummary fields it carries are the
- * inputs to that classifier.
+ * classifier — see [[sigil.Sigil.classifyTopicShift]].
  */
-object RespondTool extends Tool[RespondInput] {
-  override protected def uniqueName: String = "respond"
-
-  override protected def description: String =
+case object RespondTool extends TypedTool[RespondInput](
+  name = ToolName("respond"),
+  description =
     """Send your response to the user. Every user-facing reply goes through this call — you cannot emit
       |plain text to reach the user. Describe what you did in natural language AFTER an action through
       |this tool; do not narrate tool calls before or as you make them.
@@ -94,9 +85,8 @@ object RespondTool extends Tool[RespondInput] {
       |  - When the user explicitly returns to a Previous topic → use that prior label exactly
       |
       |`topicSummary` — REQUIRED. A 1-2 sentence summary of the subject. Used both as UI display and
-      |as semantic context the framework's classifier uses to compare against prior topics.""".stripMargin
-
-  override protected def examples: List[ToolExample[RespondInput]] = List(
+      |as semantic context the framework's classifier uses to compare against prior topics.""".stripMargin,
+  examples = List(
     ToolExample(
       "Bootstrap — Current topic is the default, user has given a real subject",
       RespondInput(
@@ -130,8 +120,8 @@ object RespondTool extends Tool[RespondInput] {
       )
     )
   )
-
-  override def execute(input: RespondInput, context: TurnContext): rapid.Stream[Event] = {
+) {
+  override protected def executeTyped(input: RespondInput, context: TurnContext): rapid.Stream[Event] = {
     val blocks = MultipartParser.parse(input.content)
     val message = Message(
       participantId = context.caller,

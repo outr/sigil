@@ -2,29 +2,18 @@ package sigil.tool.core
 
 import sigil.TurnContext
 import sigil.event.{Event, Stop}
-import sigil.tool.{Tool, ToolExample}
+import sigil.tool.{ToolExample, ToolName, TypedTool}
 import sigil.tool.model.StopInput
 
 /**
  * Halt the current turn for a target agent (or every agent in the
  * conversation when no target is specified).
  *
- * Two use cases shape the design:
- *   - A user clicking "Stop" in the UI to redirect the conversation. The
- *     stop is typically graceful (`force = false`): the in-flight
- *     iteration finishes and no further iterations start.
- *   - A monitor agent detecting that a peer is heading off-path or
- *     about to take a destructive action. Here `force = true` interrupts
- *     the peer's in-flight streaming call immediately.
- *
- * Atomic — emits a single Complete [[Stop]] event. The dispatcher
- * consumes it via `Sigil.publish`'s stop-handling path and does not
- * route it as a trigger.
+ * Atomic — emits a single Complete [[Stop]] event.
  */
-object StopTool extends Tool[StopInput] {
-  override protected def uniqueName: String = "stop"
-
-  override protected def description: String =
+case object StopTool extends TypedTool[StopInput](
+  name = ToolName("stop"),
+  description =
     """Halt the current turn for a target agent (or every agent in the conversation when no target is
       |specified).
       |
@@ -38,9 +27,8 @@ object StopTool extends Tool[StopInput] {
       |    pattern when you've spotted another agent about to take a destructive or clearly wrong action
       |    and need to cut its output now.
       |
-      |`reason` is an optional short explanation displayed in UI and logs.""".stripMargin
-
-  override protected def examples: List[ToolExample[StopInput]] = List(
+      |`reason` is an optional short explanation displayed in UI and logs.""".stripMargin,
+  examples = List(
     ToolExample(
       "Graceful stop of everyone in the conversation",
       StopInput()
@@ -50,8 +38,8 @@ object StopTool extends Tool[StopInput] {
       StopInput(force = true, reason = Some("Peer is about to take a destructive action"))
     )
   )
-
-  override def execute(input: StopInput, context: TurnContext): rapid.Stream[Event] =
+) {
+  override protected def executeTyped(input: StopInput, context: TurnContext): rapid.Stream[Event] =
     rapid.Stream.emits(List(Stop(
       participantId = context.caller,
       conversationId = context.conversation.id,

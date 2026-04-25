@@ -1,6 +1,7 @@
 package sigil.provider
 
 import fabric.rw.*
+import lightdb.id.Id
 import sigil.PolyType
 import sigil.conversation.ActiveSkillSlot
 
@@ -34,6 +35,10 @@ trait Mode {
 
   /** Tool availability policy for this mode — see [[ModeTools]]. */
   def tools: ModeTools = ModeTools.Standard
+
+  /** Stable `Id[Mode]` derived from [[name]]. Used by `Tool.modes`
+    * to declare mode affinity in a persistable, query-friendly shape. */
+  final lazy val id: Id[Mode] = Id(name)
 }
 
 object Mode extends PolyType[Mode]

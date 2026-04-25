@@ -1,8 +1,8 @@
 package sigil.tool.memory
 
 import fabric.rw.*
-import sigil.conversation.MemorySpaceId
-import sigil.conversation.MemorySpaceId.given
+import sigil.SpaceId
+import sigil.SpaceId.given
 import sigil.tool.ToolInput
 
 /**
@@ -10,5 +10,5 @@ import sigil.tool.ToolInput
  * memory in the given space (or the caller's default space).
  */
 case class ForgetInput(key: String,
-                       spaceId: Option[MemorySpaceId] = None)
+                       spaceId: Option[SpaceId] = None)
   extends ToolInput derives RW

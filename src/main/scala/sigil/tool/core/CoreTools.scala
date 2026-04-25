@@ -26,7 +26,7 @@ object CoreTools {
   /**
    * The tool instances — pass to `ProviderRequest.tools`.
    */
-  val all: Vector[Tool[? <: ToolInput]] =
+  val all: Vector[Tool] =
     Vector(RespondTool, ChangeModeTool, NoResponseTool, FindCapabilityTool, StopTool)
 
   /**

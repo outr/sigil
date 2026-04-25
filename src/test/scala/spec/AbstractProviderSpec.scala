@@ -22,7 +22,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
   protected def modelId: Id[Model]
 
-  protected def coreTools: Vector[Tool[? <: ToolInput]] = CoreTools.all
+  protected def coreTools: Vector[Tool] = CoreTools.all
 
   /** Override to false for providers whose wire format has no reasoning
     * knob (llama.cpp chat-completions). `true` by default — runs the
