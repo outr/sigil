@@ -350,7 +350,7 @@ case class AnthropicProvider(apiKey: String,
 
 object AnthropicProvider {
   /** Construct an AnthropicProvider. Models are read from
-    * [[sigil.db.SigilDB.model]] at access time. */
+    * [[sigil.cache.ModelRegistry]] at access time. */
   def create(sigil: Sigil, apiKey: String, baseUrl: URL = url"https://api.anthropic.com"): Task[AnthropicProvider] =
     Task.pure(AnthropicProvider(apiKey, sigil, baseUrl))
 }

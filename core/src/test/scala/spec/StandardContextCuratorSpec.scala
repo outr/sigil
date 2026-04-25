@@ -28,7 +28,7 @@ class StandardContextCuratorSpec extends AsyncWordSpec with AsyncTaskSpec with M
   // Seed the target Model — the curator always loads it before calling
   // the budget. Values are synthetic; only `contextLength` matters for
   // `Percentage`, and `Fixed` ignores the record entirely.
-  TestSigil.withDB(_.model.transaction(_.upsert(Model(
+  TestSigil.cache.replace(List(Model(
     canonicalSlug = "test/model",
     huggingFaceId = "",
     name = "Test Model",
@@ -50,7 +50,7 @@ class StandardContextCuratorSpec extends AsyncWordSpec with AsyncTaskSpec with M
     links = ModelLinks(details = ""),
     created = Timestamp(),
     _id = modelId
-  )))).sync()
+  ))).sync()
 
   private def textFrame(s: String, id: String): ContextFrame.Text =
     ContextFrame.Text(s, TestUser, Id[Event](id))

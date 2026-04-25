@@ -29,7 +29,7 @@ class MemoryContextCompressorSpec extends AsyncWordSpec with AsyncTaskSpec with 
   private val modelId: Id[Model] = Model.id("test", "model")
 
   // Seed a Model record so curator / downstream code can resolve it.
-  TestSigil.withDB(_.model.transaction(_.upsert(Model(
+  TestSigil.cache.replace(List(Model(
     canonicalSlug = "test/model",
     huggingFaceId = "",
     name = "Test Model",
@@ -51,7 +51,7 @@ class MemoryContextCompressorSpec extends AsyncWordSpec with AsyncTaskSpec with 
     links = ModelLinks(details = ""),
     created = Timestamp(),
     _id = modelId
-  )))).sync()
+  ))).sync()
 
   private def textFrame(s: String, id: String): ContextFrame.Text =
     ContextFrame.Text(s, TestUser, Id[Event](id))

@@ -70,6 +70,8 @@ Apps extend by overriding the list-returning methods — add, remove, or reorder
 
 `sigil.provider.Provider` is a wire-agnostic trait returning `Stream[ProviderEvent]`. Implementations live under `sigil/provider/{anthropic,openai,google,deepseek,llamacpp}/`. Each carries a `ProviderType` enum case.
 
+`Provider.models: List[Model]` reads from `Sigil.cache: ModelRegistry` — an in-memory `AtomicReference[Map[Id[Model], Model]]` populated by `OpenRouter.refreshModels` and persisted to `${dbPath}/models.json` as a fallback for offline boots. Reads are synchronous (no DB roundtrip), safe to call on hot paths like `isImageOnlyModel`. The framework auto-refreshes every `Sigil.modelRefreshInterval` (default 8 hours) on a background fiber; apps that want a different cadence (or `None` for manual-only) override the hook.
+
 `Orchestrator.process` (`sigil/orchestrator/Orchestrator.scala`) translates `ProviderEvent` → `Signal`. It also runs `tool.execute` for atomic tool calls inline (calls where no `ContentBlockDelta` streamed — otherwise they're pre-streaming and the provider handles the content).
 
 ### Tools

@@ -25,7 +25,7 @@ class StandardMemoryExtractorSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   private val modelId: Id[Model] = Model.id("test", "extractor-model")
 
-  TestSigil.withDB(_.model.transaction(_.upsert(Model(
+  TestSigil.cache.replace(List(Model(
     canonicalSlug = "test/extractor-model",
     huggingFaceId = "",
     name = "Test Extractor Model",
@@ -47,7 +47,7 @@ class StandardMemoryExtractorSpec extends AsyncWordSpec with AsyncTaskSpec with 
     links = ModelLinks(details = ""),
     created = Timestamp(),
     _id = modelId
-  )))).sync()
+  ))).sync()
 
   private class StubProvider(memories: List[ExtractedMemory]) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp

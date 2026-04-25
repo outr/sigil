@@ -2,7 +2,7 @@ package sigil.provider.openai
 
 /**
  * OpenAI-specific constants. Model metadata (context, pricing,
- * tokenizer, etc.) lives in [[sigil.db.SigilDB.model]] — populated by
+ * tokenizer, etc.) lives in [[sigil.cache.ModelRegistry]] — populated by
  * [[sigil.controller.OpenRouter.refreshModels]] — and is read fresh on
  * each access via `Provider.models`.
  */

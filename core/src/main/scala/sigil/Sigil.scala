@@ -1,6 +1,6 @@
 package sigil
 
-import fabric.rw.RW
+import fabric.rw.*
 import lightdb.id.Id
 import lightdb.lucene.LuceneStore
 import lightdb.postgresql.PostgreSQLStoreManager
@@ -14,7 +14,12 @@ import profig.Profig
 import rapid.{Stream, Task, logger}
 import sigil.conversation.{ActiveSkillSlot, ContextKey, ContextMemory, ContextSummary, Conversation, ConversationView, FrameBuilder, MemoryStatus, ParticipantProjection, SkillSource, Topic, TopicEntry, TopicShiftResult, TurnInput, UpsertMemoryResult}
 import sigil.SpaceId
+import sigil.cache.ModelRegistry
+import sigil.controller.OpenRouter
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
+
+import java.nio.file.Path
+import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import sigil.tool.consult.{ConsultTool, TopicClassifierTool}
 import sigil.provider.GenerationSettings
 import sigil.db.{Model, SigilDB}
@@ -1557,33 +1562,62 @@ trait Sigil {
       _ <- db.init
       _ <- if (vectorWired) vectorIndex.ensureCollection(embeddingProvider.dimensions)
            else Task.unit
+      _ <- cache.loadFromDisk
+      _ <- startModelRefresh()
     } yield SigilInstance(
       config = config,
       db = db
     )
   }.singleton
 
+  /**
+   * Kick off the periodic model-registry refresh. First refresh runs
+   * immediately; subsequent ones every [[modelRefreshInterval]].
+   * Failures are logged and swallowed — the registry keeps its last
+   * known state (loaded from disk on init), so a transient OpenRouter
+   * outage doesn't break the app.
+   */
+  private def startModelRefresh(): Task[Unit] = modelRefreshInterval match {
+    case None => Task.unit
+    case Some(interval) =>
+      def safeRefresh: Task[Unit] = OpenRouter.refreshModels(this).handleError { e =>
+        Task { scribe.warn(s"Model refresh failed: ${e.getMessage}; keeping current registry"); () }
+      }
+      def loop: Task[Unit] = safeRefresh.flatMap(_ => Task.sleep(interval)).flatMap(_ => loop)
+      Task { loop.startUnit(); () }
+  }
+
   def withDB[Return](f: SigilDB => Task[Return]): Task[Return] = instance.flatMap(sigil => f(sigil.db))
 
-  object cache {
-
-    def findModel(provider: Option[String] = None, model: Option[String] = None): rapid.Stream[Model] =
-      rapid.Stream.force(withDB { db =>
-        db.model.transaction { modelCache =>
-          modelCache.query
-            .filterOption(mc => provider.map(p => mc.provider === p.toLowerCase))
-            .filterOption(mc => model.map(m => mc.model === m.toLowerCase))
-            .toList
-        }
-      }.map(rapid.Stream.emits))
-
-    def apply(provider: String, model: String): Task[Option[Model]] =
-      withDB { db =>
-        db.model.transaction { modelCache =>
-          modelCache.get(Model.id(provider, model))
-        }
-      }
+  /**
+   * Disk fallback location for the model registry. Default: a
+   * `models.json` file alongside the configured `sigil.dbPath`.
+   * Apps can override to put it elsewhere or return `None` to disable
+   * disk persistence entirely.
+   */
+  def modelCachePath: Option[Path] = {
+    val raw = Profig("sigil.dbPath").asOr[String]("db/sigil")
+    Some(Path.of(raw).resolve("models.json"))
   }
+
+  /**
+   * How often the in-memory model registry is refreshed from
+   * upstream (OpenRouter). Default 8 hours — the catalog rarely
+   * changes more than once or twice per week, and a single refresh
+   * is one cheap HTTP call. Override to a smaller value for
+   * fresher data, or to `None` to disable periodic refresh entirely
+   * (apps that prefer manual `OpenRouter.refreshModels` calls).
+   */
+  def modelRefreshInterval: Option[FiniteDuration] = Some(8.hours)
+
+  /**
+   * In-memory model registry — the canonical source of catalog
+   * lookups. `Provider.models` and `isImageOnlyModel`-style hot paths
+   * read it synchronously (single `AtomicReference` deref, no DB
+   * round-trip). Populated from disk on init and refreshed in the
+   * background per [[modelRefreshInterval]].
+   */
+  final lazy val cache: ModelRegistry = new ModelRegistry(modelCachePath)
 
   case class SigilInstance(config: Config, db: SigilDB)
 }

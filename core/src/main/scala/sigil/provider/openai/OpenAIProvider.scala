@@ -459,7 +459,7 @@ case class OpenAIProvider(apiKey: String,
 
 object OpenAIProvider {
   /** Construct an OpenAIProvider. Models are read from
-    * [[sigil.db.SigilDB.model]] at access time, so the DB just needs
+    * [[sigil.cache.ModelRegistry]] at access time, so the DB just needs
     * to be populated (typically via
     * [[sigil.controller.OpenRouter.refreshModels]]). */
   def create(sigil: Sigil, apiKey: String, baseUrl: URL = url"https://api.openai.com"): Task[OpenAIProvider] =
