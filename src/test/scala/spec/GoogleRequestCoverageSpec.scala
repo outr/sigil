@@ -7,6 +7,6 @@ import sigil.provider.google.{Google, GoogleProvider}
 
 class GoogleRequestCoverageSpec extends AbstractRequestCoverageSpec {
   override protected def providerInstance: Provider =
-    GoogleProvider(apiKey = "test-placeholder", models = Google.models, sigilRef = TestSigil)
+    GoogleProvider(apiKey = "test-placeholder", sigilRef = TestSigil)
   override protected def modelId: Id[Model] = Model.id("google", "gemini-2.5-flash-lite")
 }

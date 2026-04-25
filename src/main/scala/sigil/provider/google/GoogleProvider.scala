@@ -25,10 +25,10 @@ import scala.util.Success
  * `generationConfig` for sampling knobs.
  */
 case class GoogleProvider(apiKey: String,
-                          models: List[Model],
                           sigilRef: Sigil,
                           baseUrl: URL = url"https://generativelanguage.googleapis.com") extends Provider {
   override def `type`: ProviderType = ProviderType.Google
+  override val providerKey: String = Google.Provider
   override protected def sigil: Sigil = sigilRef
 
   override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
@@ -298,9 +298,6 @@ case class GoogleProvider(apiKey: String,
 }
 
 object GoogleProvider {
-  def create(sigil: Sigil, apiKey: String): Task[GoogleProvider] =
-    create(sigil, apiKey, url"https://generativelanguage.googleapis.com")
-
-  def create(sigil: Sigil, apiKey: String, baseUrl: URL): Task[GoogleProvider] =
-    Task.pure(GoogleProvider(apiKey, Google.models, sigil, baseUrl))
+  def create(sigil: Sigil, apiKey: String, baseUrl: URL = url"https://generativelanguage.googleapis.com"): Task[GoogleProvider] =
+    Task.pure(GoogleProvider(apiKey, sigil, baseUrl))
 }

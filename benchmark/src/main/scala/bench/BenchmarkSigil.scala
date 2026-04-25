@@ -75,7 +75,6 @@ object BenchmarkSigil {
       vectorIndex = vectorIndex,
       providerFactory = _ => Task.pure(OpenAIProvider(
         apiKey = openaiApiKey,
-        models = Nil,
         sigilRef = self,
         baseUrl = openaiBaseUrl
       ))
@@ -116,7 +115,6 @@ object BenchmarkSigil {
           case "openai" =>
             Task.pure(OpenAIProvider(
               apiKey = openaiApiKeyFromEnv,
-              models = Nil,
               sigilRef = self,
               baseUrl = openaiBaseUrlFromEnv
             ))
@@ -127,7 +125,6 @@ object BenchmarkSigil {
             }
             Task.pure(AnthropicProvider(
               apiKey = key,
-              models = Nil,
               sigilRef = self
             ))
           case "llamacpp" =>

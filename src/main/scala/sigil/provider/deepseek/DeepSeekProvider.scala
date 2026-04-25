@@ -32,10 +32,10 @@ import scala.util.Success
  * doesn't require balance.
  */
 case class DeepSeekProvider(apiKey: String,
-                            models: List[Model],
                             sigilRef: Sigil,
                             baseUrl: URL = url"https://api.deepseek.com") extends Provider {
   override def `type`: ProviderType = ProviderType.DeepSeek
+  override val providerKey: String = DeepSeek.Provider
   override protected def sigil: Sigil = sigilRef
 
   override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
@@ -236,9 +236,6 @@ case class DeepSeekProvider(apiKey: String,
 }
 
 object DeepSeekProvider {
-  def create(sigil: Sigil, apiKey: String): Task[DeepSeekProvider] =
-    create(sigil, apiKey, url"https://api.deepseek.com")
-
-  def create(sigil: Sigil, apiKey: String, baseUrl: URL): Task[DeepSeekProvider] =
-    Task.pure(DeepSeekProvider(apiKey, DeepSeek.models, sigil, baseUrl))
+  def create(sigil: Sigil, apiKey: String, baseUrl: URL = url"https://api.deepseek.com"): Task[DeepSeekProvider] =
+    Task.pure(DeepSeekProvider(apiKey, sigil, baseUrl))
 }

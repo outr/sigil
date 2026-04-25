@@ -64,7 +64,7 @@ class EffortWiringSpec extends AnyWordSpec with Matchers {
     }
 
   "GoogleProvider thinkingConfig" should {
-    val provider = GoogleProvider(apiKey = "t", models = Google.models, sigilRef = TestSigil)
+    val provider = GoogleProvider(apiKey = "t", sigilRef = TestSigil)
     val modelId = Model.id("google", "gemini-2.5-flash")
 
     "emit thinkingBudget=0 when effort is None (default off)" in {
@@ -89,7 +89,7 @@ class EffortWiringSpec extends AnyWordSpec with Matchers {
   }
 
   "AnthropicProvider thinking" should {
-    val provider = AnthropicProvider(apiKey = "k", models = Nil, sigilRef = TestSigil)
+    val provider = AnthropicProvider(apiKey = "k", sigilRef = TestSigil)
     val modelId = Model.id("anthropic", "claude-haiku-4-5")
 
     "omit the thinking field when effort is None" in {
@@ -162,7 +162,7 @@ class EffortWiringSpec extends AnyWordSpec with Matchers {
   }
 
   "DeepSeekProvider reasoning_effort" should {
-    val provider = DeepSeekProvider(apiKey = "sk-test", models = Nil, sigilRef = TestSigil)
+    val provider = DeepSeekProvider(apiKey = "sk-test", sigilRef = TestSigil)
     val modelId = Model.id("deepseek", "deepseek-reasoner")
 
     "omit reasoning_effort when effort is None" in {
@@ -177,7 +177,7 @@ class EffortWiringSpec extends AnyWordSpec with Matchers {
   }
 
   "OpenAIProvider reasoning" should {
-    val provider = OpenAIProvider(apiKey = "sk-test", models = Nil, sigilRef = TestSigil)
+    val provider = OpenAIProvider(apiKey = "sk-test", sigilRef = TestSigil)
     val modelId = Model.id("openai", "gpt-5")
 
     "omit reasoning when effort is None" in {
