@@ -220,10 +220,17 @@ case class OpenAIProvider(apiKey: String,
     val functionTools = input.tools.map { t =>
       val s = t.schema
       obj(
-        "type" -> str("function"),
-        "name" -> str(s.name.value),
+        "type"        -> str("function"),
+        "name"        -> str(s.name.value),
         "description" -> str(renderDescription(s)),
-        "parameters" -> DefinitionToSchema(s.input)
+        // Strict mode enables grammar-constrained decoding — the model
+        // can't emit malformed args. Requires a schema dialect with
+        // every property `required` (optionals widened to nullable),
+        // `additionalProperties: false` everywhere, and no `pattern` /
+        // `format` / numeric-bound keywords. `StrictSchema` rewrites
+        // sigil's standard schema into that shape.
+        "strict"      -> bool(true),
+        "parameters"  -> StrictSchema(DefinitionToSchema(s.input))
       )
     }
     val builtIn = input.builtInTools.iterator.flatMap(renderBuiltIn).toVector

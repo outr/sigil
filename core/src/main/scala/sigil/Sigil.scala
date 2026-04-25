@@ -206,11 +206,18 @@ trait Sigil {
    */
   protected def modes: List[Mode] = Nil
 
-  /** All modes available in this Sigil, keyed by stable name. Computed
-    * lazily from `ConversationMode :: modes`. Used by `change_mode` to
-    * resolve a name-based tool argument into a real instance. */
+  /** All modes available in this Sigil, in declaration order with
+    * [[ConversationMode]] first, deduplicated. Public so the provider's
+    * system-prompt rendering can advertise the full mode catalog (the
+    * `change_mode` tool depends on the model knowing what modes exist
+    * to switch to). */
+  final lazy val availableModes: List[Mode] = (ConversationMode :: modes).distinct
+
+  /** All modes available in this Sigil, keyed by stable name. Used by
+    * `change_mode` to resolve a name-based tool argument into a real
+    * instance. */
   private final lazy val modesByName: Map[String, Mode] =
-    (ConversationMode :: modes).map(m => m.name -> m).toMap
+    availableModes.map(m => m.name -> m).toMap
 
   /** Look up a registered [[Mode]] by its stable `name`. Returns `None`
     * for unknown names (e.g. an LLM produced a typo in its
