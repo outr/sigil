@@ -4,7 +4,7 @@ import fabric.rw.*
 import fabric.io.JsonParser
 import sigil.tool.core.RespondTool
 import sigil.tool.model.{JsonStringFieldExtractor, MultipartStreamParser, ToolStreamEvent}
-import sigil.tool.{Tool, ToolInput}
+import sigil.tool.{Tool, ToolInput, ToolInputValidator}
 
 import scala.collection.mutable
 
@@ -80,8 +80,22 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty) {
         case Some(tool) =>
           try {
             val json = JsonParser(s.buf.toString)
-            val input: ToolInput = tool.inputRW.write(json)
-            Vector(ProviderEvent.ToolCallComplete(s.callId, input))
+            // Validate against the schema's constraints (pattern, length,
+            // numeric bounds, ...) BEFORE writing to the typed input.
+            // OpenAI strict mode strips most of these from the wire schema
+            // because grammar-constrained decoders can't enforce them at
+            // generation time; non-strict providers also treat them as
+            // advisory. Re-checking here means the typed input handed to
+            // `tool.execute` always satisfies its declared constraints.
+            val violations = ToolInputValidator.validate(json, tool.inputRW.definition)
+            if (violations.nonEmpty) {
+              Vector(ProviderEvent.Error(
+                s"Args for tool ${s.toolName} violated schema constraints: ${violations.mkString("; ")}"
+              ))
+            } else {
+              val input: ToolInput = tool.inputRW.write(json)
+              Vector(ProviderEvent.ToolCallComplete(s.callId, input))
+            }
           } catch {
             case t: Throwable =>
               Vector(ProviderEvent.Error(s"Failed to parse args for tool ${s.toolName}: ${t.getMessage}"))

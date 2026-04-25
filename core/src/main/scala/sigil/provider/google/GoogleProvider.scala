@@ -149,12 +149,22 @@ case class GoogleProvider(apiKey: String,
         )
     }
 
+  /** Gemini's function-calling path is natively grammar-constrained —
+    * the model emits args matching the parameters schema by virtue of
+    * the function-call output mechanism, so an explicit `strict: true`
+    * isn't required. The schema must still be the supported subset:
+    * we strip `additionalProperties` (Gemini's validator rejects it)
+    * and the unsupported keywords (`pattern`, `format`,
+    * `minLength`/`maxLength`/numeric bounds) that don't compose with
+    * token-level decoding. The latter are also stripped on OpenAI
+    * strict mode — sigil preserves them on the Scala types for
+    * post-decode validation. */
   private def toFunctionDeclaration(t: Tool): Json = {
     val s = t.schema
     obj(
-      "name" -> str(s.name.value),
+      "name"        -> str(s.name.value),
       "description" -> str(renderDescription(s)),
-      "parameters" -> stripAdditionalProperties(DefinitionToSchema(s.input))
+      "parameters"  -> stripAdditionalProperties(StrictSchema.stripUnsupportedKeys(DefinitionToSchema(s.input)))
     )
   }
 

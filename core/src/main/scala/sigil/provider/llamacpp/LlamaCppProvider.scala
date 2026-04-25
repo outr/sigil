@@ -75,14 +75,21 @@ case class LlamaCppProvider(url: URL, override val models: List[Model], sigilRef
     val systemMsg = obj("role" -> str("system"), "content" -> str(input.system))
     val rendered = renderMessages(input.messages)
 
+    // llama.cpp's chat-completions endpoint grammar-constrains tool
+    // call args natively from the `parameters` schema — no `strict`
+    // flag is needed and tool_choice=required is already enforced.
+    // Strip the unsupported JSON-schema keywords that the grammar
+    // generator can't translate (pattern/format/numeric bounds), same
+    // as OpenAI strict mode and Gemini do. The annotations stay on
+    // the Scala types for `ToolInputValidator`'s post-decode check.
     val toolsArr = input.tools.map { t =>
       val s = t.schema
       obj(
         "type" -> str("function"),
         "function" -> obj(
-          "name" -> str(s.name.value),
+          "name"        -> str(s.name.value),
           "description" -> str(renderDescription(s)),
-          "parameters" -> DefinitionToSchema(s.input)
+          "parameters"  -> StrictSchema.stripUnsupportedKeys(DefinitionToSchema(s.input))
         )
       )
     }

@@ -65,7 +65,17 @@ class OpenAIImageGenerationSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
           case _: ResponseContent.Image => true
           case _ => false
         })
-        withClue(s"received messages: ${messages.map(_.content).mkString(" | ")}") {
+        // Failure diagnostic: dump every signal class (not just Messages)
+        // so a flaky run captures whether ImageDelta/StateDelta arrived,
+        // whether the orchestrator emitted any errors, etc. Image-gen
+        // streaming has occasionally produced no Image-bearing Message
+        // in full-suite runs while passing in isolation; without this
+        // breadcrumb the failure is unactionable.
+        val signalSummary = signals.iterator.map(_.getClass.getSimpleName).toList
+        withClue(
+          s"received signals: ${signalSummary.mkString(", ")}; " +
+            s"messages.content: ${messages.map(_.content).mkString(" | ")}"
+        ) {
           imageMessage should not be empty
         }
         val imageContent = imageMessage.get.content.collectFirst {

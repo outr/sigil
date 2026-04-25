@@ -190,10 +190,19 @@ case class AnthropicProvider(apiKey: String,
   private def renderTools(input: ProviderCall): Vector[Json] = {
     val fns = input.tools.map { t =>
       val s = t.schema
+      // Anthropic has no `strict` flag for tools — generation isn't
+      // grammar-constrained, and the schema's `pattern`/`format`/length
+      // bounds are advisory at best (the model may produce values that
+      // violate them). Sigil's safety net is two-layered: strip the
+      // unsupported keywords from the wire schema (same as OpenAI
+      // strict mode and Gemini) so the API can't reject the schema for
+      // unrecognized keys, and rely on `ToolInputValidator` (run by the
+      // `ToolCallAccumulator` for every provider) to re-check the
+      // parsed args against those constraints post-decode.
       obj(
-        "name" -> str(s.name.value),
-        "description" -> str(renderDescription(s)),
-        "input_schema" -> DefinitionToSchema(s.input)
+        "name"         -> str(s.name.value),
+        "description"  -> str(renderDescription(s)),
+        "input_schema" -> StrictSchema.stripUnsupportedKeys(DefinitionToSchema(s.input))
       )
     }
     val builtIn = input.builtInTools.iterator.flatMap(renderBuiltIn).toVector

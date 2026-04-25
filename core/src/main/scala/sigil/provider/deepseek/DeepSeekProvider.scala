@@ -77,14 +77,22 @@ case class DeepSeekProvider(apiKey: String,
     val systemMsg = obj("role" -> str("system"), "content" -> str(input.system))
     val rendered = renderMessages(input.messages)
 
+    // DeepSeek mirrors the OpenAI chat-completions wire format,
+    // including its strict-mode shape (`strict: true` inside the
+    // `function` object). Strict mode enables grammar-constrained
+    // decoding so the model can't produce malformed args. The
+    // schema is rewritten by `StrictSchema` to satisfy the dialect's
+    // requirements (every property required, optionals nullable,
+    // no `pattern` / `format` / numeric-bound keywords).
     val toolsArr = input.tools.map { t =>
       val s = t.schema
       obj(
         "type" -> str("function"),
         "function" -> obj(
-          "name" -> str(s.name.value),
+          "name"        -> str(s.name.value),
           "description" -> str(renderDescription(s)),
-          "parameters" -> DefinitionToSchema(s.input)
+          "strict"      -> bool(true),
+          "parameters"  -> StrictSchema(DefinitionToSchema(s.input))
         )
       )
     }

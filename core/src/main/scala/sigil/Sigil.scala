@@ -17,6 +17,7 @@ import sigil.SpaceId
 import sigil.cache.ModelRegistry
 import sigil.controller.OpenRouter
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
+import sigil.transport.SignalTransport
 
 import java.nio.file.Path
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
@@ -1625,6 +1626,15 @@ trait Sigil {
    * background per [[modelRefreshInterval]].
    */
   final lazy val cache: ModelRegistry = new ModelRegistry(modelCachePath)
+
+  /**
+   * Convenience accessor for [[sigil.transport.SignalTransport]] — the
+   * bridge from `signalsFor(viewer)` to wire sinks (SSE, DurableSocket).
+   * Apps can construct a `new SignalTransport(this)` directly; this
+   * accessor exists so the typical "subscribe a sink for a viewer" call
+   * site reads as `sigil.signalTransport.attach(viewer, sink, resume)`.
+   */
+  final lazy val signalTransport: SignalTransport = new SignalTransport(this)
 
   case class SigilInstance(config: Config, db: SigilDB)
 }
