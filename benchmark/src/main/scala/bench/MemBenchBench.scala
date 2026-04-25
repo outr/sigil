@@ -71,6 +71,7 @@ object MemBenchBench {
     val k = RetrievalFlags.flagInt(args, "--k").getOrElse(5)
     val categoryFilter = RetrievalFlags.flagString(args, "--category")
     val agent = RetrievalFlags.flagString(args, "--agent").getOrElse("FirstAgent")
+    val reportPath = RetrievalFlags.flagString(args, "--report")
 
     val harness = BenchmarkHarness.fromEnv(Collection)
     BenchmarkHarness.ensureQdrantReachable(BenchmarkHarness.qdrantUrlFromEnv)
@@ -94,6 +95,9 @@ object MemBenchBench {
     var totalRun = 0
     val categoryBreakdown = scala.collection.mutable.Map.empty[String, (Int, Int)]
     val startTime = System.currentTimeMillis()
+
+    // Failures: (category, tid, question, expected sids, top-K sids).
+    val failures = scala.collection.mutable.ListBuffer.empty[(String, Int, String, Set[Int], List[Int])]
 
     for (cat <- cats) {
       val file = new File(new File(dataDir, agent), s"$cat.json")
@@ -161,6 +165,10 @@ object MemBenchBench {
             totalRun += 1
             catRun += 1
 
+            if (!hit && reportPath.nonEmpty) {
+              failures += ((cat, tid, question, targets, rankedSids.take(k)))
+            }
+
             if (roleIdx % 50 == 0 || roleIdx == roles.size - 1) {
               val elapsed = (System.currentTimeMillis() - startTime) / 1000.0
               val pct = if (totalRun > 0) totalCorrect.toDouble / totalRun * 100 else 0.0
@@ -187,6 +195,30 @@ object MemBenchBench {
     categoryBreakdown.toList.sortBy(_._1).foreach { case (cat, (c, t)) =>
       val pct = if (t > 0) c.toDouble / t * 100 else 0.0
       println(f"  $cat%-18s $c/$t ($pct%.1f%%)")
+    }
+
+    reportPath.foreach { path =>
+      val sb = new StringBuilder
+      sb.append("# Sigil MemBench Benchmark Results\n\n")
+      sb.append(s"**Date:** ${java.time.Instant.now()}\n")
+      sb.append(s"**Pipeline:** Sigil (VectorIndex + OpenAI-compatible embeddings)\n")
+      sb.append(s"**Agent:** $agent\n")
+      sb.append(s"**Retrieval:** ${RetrievalFlags.describe(retrieval)}\n")
+      sb.append(f"**Score:** $totalCorrect/$totalRun ($overall%.1f%% R@$k)\n\n")
+      sb.append("## Per-category accuracy\n\n")
+      sb.append("| Category | Correct | Total | Accuracy |\n|---|---|---|---|\n")
+      categoryBreakdown.toList.sortBy(_._1).foreach { case (cat, (c, t)) =>
+        val pct = if (t > 0) c.toDouble / t * 100 else 0.0
+        sb.append(f"| $cat | $c | $t | $pct%.1f%% |\n")
+      }
+      sb.append(s"\n## Failures (${failures.size})\n\n")
+      failures.toList.foreach { case (cat, tid, q, expected, topK) =>
+        sb.append(s"### [$cat tid=$tid] `${q}`\n\n")
+        sb.append(s"- expected sids: ${expected.toList.sorted.mkString(", ")}\n")
+        sb.append(s"- top-${k} sids: ${topK.mkString(", ")}\n\n")
+      }
+      java.nio.file.Files.writeString(java.nio.file.Paths.get(path), sb.toString)
+      println(s"\nReport written: $path")
     }
 
     System.exit(0)

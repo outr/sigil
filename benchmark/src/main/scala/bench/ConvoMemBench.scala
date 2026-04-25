@@ -35,6 +35,7 @@ object ConvoMemBench {
     val categoryFilter = RetrievalFlags.flagString(args, "--category")
     val maxQuestions = RetrievalFlags.flagInt(args, "--max-questions").getOrElse(Int.MaxValue)
     val batchNum = RetrievalFlags.flagInt(args, "--batch")
+    val reportPath = RetrievalFlags.flagString(args, "--report")
 
     val harness = BenchmarkHarness.fromEnv(Collection)
     BenchmarkHarness.ensureQdrantReachable(BenchmarkHarness.qdrantUrlFromEnv)
@@ -66,6 +67,9 @@ object ConvoMemBench {
     var totalRun = 0
     val categoryBreakdown = scala.collection.mutable.Map.empty[String, (Int, Int)]
     val startTime = System.currentTimeMillis()
+
+    // Failure entries: (category, evidenceLevel, batchFile, question, expected, topK, snippets).
+    val failures = scala.collection.mutable.ListBuffer.empty[(String, Int, String, String, Set[Int], List[Int], List[String])]
 
     for ((catName, evidenceLevels) <- categories) {
       println(s"\n--- $catName ---")
@@ -140,6 +144,15 @@ object ConvoMemBench {
 
                   val (cc, ct) = categoryBreakdown.getOrElse(catName, (0, 0))
                   categoryBreakdown(catName) = (cc + (if (hit) 1 else 0), ct + 1)
+
+                  if (!hit && reportPath.nonEmpty) {
+                    val snippets = results.take(k).flatMap { r =>
+                      msgToConv.get(r.id).flatMap { ci =>
+                        conversations(ci)("messages").asVector.headOption.map(_("text").asString.take(140))
+                      }
+                    }
+                    failures += ((catName, evidenceLevel, batchFile.getName, question, evidenceIndices, rankedConvs.take(k).toList, snippets))
+                  }
                 }
               }
 
@@ -163,6 +176,34 @@ object ConvoMemBench {
     categoryBreakdown.toList.sortBy(_._1).foreach { case (cat, (c, t)) =>
       val pct = if (t > 0) c.toDouble / t * 100 else 0.0
       println(f"  $cat%-35s $c/$t ($pct%.1f%%)")
+    }
+
+    reportPath.foreach { path =>
+      val sb = new StringBuilder
+      sb.append("# Sigil ConvoMem Benchmark Results\n\n")
+      sb.append(s"**Date:** ${java.time.Instant.now()}\n")
+      sb.append(s"**Pipeline:** Sigil (VectorIndex + OpenAI-compatible embeddings)\n")
+      sb.append(s"**Retrieval:** ${RetrievalFlags.describe(retrieval)}\n")
+      sb.append(f"**Score:** $totalCorrect/$totalRun ($overall%.1f%% R@$k)\n\n")
+      sb.append("## Per-category accuracy\n\n")
+      sb.append("| Category | Correct | Total | Accuracy |\n|---|---|---|---|\n")
+      categoryBreakdown.toList.sortBy(_._1).foreach { case (cat, (c, t)) =>
+        val pct = if (t > 0) c.toDouble / t * 100 else 0.0
+        sb.append(f"| $cat | $c | $t | $pct%.1f%% |\n")
+      }
+      sb.append(s"\n## Failures (${failures.size})\n\n")
+      failures.toList.foreach { case (cat, ev, fname, q, expected, topK, snips) =>
+        sb.append(s"### [$cat / ${ev}_evidence / $fname] `${q}`\n\n")
+        sb.append(s"- expected conv indices: ${expected.toList.sorted.mkString(", ")}\n")
+        sb.append(s"- top-${k} ranked: ${topK.mkString(", ")}\n")
+        if (snips.nonEmpty) {
+          sb.append("- top-K snippets:\n")
+          snips.zipWithIndex.foreach { case (s, i) => sb.append(s"  ${i + 1}. ${s}\n") }
+        }
+        sb.append("\n")
+      }
+      java.nio.file.Files.writeString(java.nio.file.Paths.get(path), sb.toString)
+      println(s"\nReport written: $path")
     }
 
     System.exit(0)

@@ -43,6 +43,7 @@ object BFCLBench {
     val limit = RetrievalFlags.flagInt(args, "--limit").getOrElse(Int.MaxValue)
     // Failures always logged at end-of-run unless explicitly silenced.
     val dumpFailures = !args.contains("--no-dump-failures")
+    val reportPath = RetrievalFlags.flagString(args, "--report")
 
     val testFile = new File(dataDir, s"BFCL_v4_$category.json")
     val answerFile = new File(new File(dataDir, "possible_answer"), s"BFCL_v4_$category.json")
@@ -159,6 +160,28 @@ object BFCLBench {
         println(s"  ground_truth: ${fabric.io.JsonFormatter.Compact(gt)}")
       }
     }
+
+    reportPath.foreach { path =>
+      val sb = new StringBuilder
+      sb.append("# Sigil BFCL Benchmark Results\n\n")
+      sb.append(s"**Date:** ${java.time.Instant.now()}\n")
+      sb.append(s"**Pipeline:** Sigil (Provider abstraction + BFCLScorer port of `ast_checker.py`)\n")
+      sb.append(s"**Model:** $modelStr\n")
+      sb.append(s"**Category:** $category\n")
+      sb.append(f"**Score:** $correct/$total ($accPct%.1f%% accuracy, $parseFail no-tool-call)\n\n")
+      sb.append(s"## Failures (${failures.size})\n\n")
+      failures.toList.foreach { case (id, kind, obs, gt) =>
+        sb.append(s"### `$id` — $kind\n\n")
+        obs match {
+          case Some((n, a)) => sb.append(s"- observed: `$n(${fabric.io.JsonFormatter.Compact(a)})`\n")
+          case None         => sb.append("- observed: _no tool call_\n")
+        }
+        sb.append(s"- ground_truth: `${fabric.io.JsonFormatter.Compact(gt)}`\n\n")
+      }
+      java.nio.file.Files.writeString(java.nio.file.Paths.get(path), sb.toString)
+      println(s"\nReport written: $path")
+    }
+
     System.exit(0)
   }
 

@@ -5,3 +5,5 @@ target/
 /docs/design/
 /design/
 wip.md
+benchmark/db
+*.log
