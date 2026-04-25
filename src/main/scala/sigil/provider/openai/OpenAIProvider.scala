@@ -73,12 +73,54 @@ case class OpenAIProvider(apiKey: String,
   }
 
   override protected def httpRequestFor(input: ProviderCall): Task[HttpRequest] = Task {
-    val bodyStr = JsonFormatter.Compact(buildBody(input))
+    val (path, body) =
+      if (isImageOnlyModel(input.modelId)) ("/v1/images/generations", buildImagesBody(input))
+      else ("/v1/responses", buildBody(input))
+    val bodyStr = JsonFormatter.Compact(body)
     HttpRequest(
       method = HttpMethod.Post,
-      url = baseUrl.withPath("/v1/responses"),
+      url = baseUrl.withPath(path),
       content = Some(StringContent(bodyStr, ContentType.`application/json`))
     ).withHeader("Authorization", s"Bearer $apiKey")
+  }
+
+  /** True when the configured Model record's outputModalities indicate an
+    * image-only model (e.g. `gpt-image-2`) — these go to
+    * `/v1/images/generations` with a different request shape and a
+    * different streaming event grammar. */
+  private def isImageOnlyModel(modelId: lightdb.id.Id[Model]): Boolean =
+    models.find(_._id == modelId).exists { m =>
+      val out = m.architecture.outputModalities.toSet
+      out.contains("image") && !out.contains("text")
+    }
+
+  /** Body for `/v1/images/generations`. Streams partial previews via
+    * `stream: true, partial_images: 2`; OpenAI emits
+    * `image_generation.partial_image` events progressively followed by
+    * `image_generation.completed`. */
+  private def buildImagesBody(input: ProviderCall): Json = {
+    val modelName = OpenAI.stripProviderPrefix(input.modelId.value)
+    val prompt = extractImagePrompt(input)
+    obj(
+      "model" -> str(modelName),
+      "prompt" -> str(prompt),
+      "n" -> num(1),
+      "stream" -> bool(true),
+      "partial_images" -> num(2)
+    )
+  }
+
+  /** Pull the prompt for a direct image-generation call. Concatenates
+    * the system instructions (if any) with the most-recent user
+    * message's text — the model takes a single string. Multi-turn
+    * conversation history is not meaningful for image-only models. */
+  private def extractImagePrompt(input: ProviderCall): String = {
+    val systemPart = if (input.system.isEmpty) "" else input.system + "\n\n"
+    val userText = input.messages.reverseIterator.collectFirst {
+      case ProviderMessage.User(content) =>
+        content.collect { case MessageContent.Text(t) => t }.mkString(" ")
+    }.getOrElse("")
+    (systemPart + userText).trim
   }
 
   // ---- request body construction ----
@@ -320,6 +362,27 @@ case class OpenAIProvider(apiKey: String,
           .orElse(json.get("message").map(_.asString))
           .getOrElse("unknown error")
         Vector(ProviderEvent.Error(msg))
+
+      // Direct `/v1/images/generations` streaming events (gpt-image-* models).
+      // Same ProviderEvent vocabulary as the built-in tool path so apps render
+      // the same way regardless of dispatch path.
+      case "image_generation.partial_image" =>
+        val callId = CallId("openai-image")
+        val b64 = json.get("b64_json").map(_.asString)
+        val url = json.get("url").map(_.asString)
+        val imageRef = url.orElse(b64.map(b => s"data:image/png;base64,$b")).getOrElse("")
+        if (imageRef.isEmpty) Vector.empty
+        else Vector(ProviderEvent.ImageGenerationPartial(callId, imageRef))
+
+      case "image_generation.completed" =>
+        val callId = CallId("openai-image")
+        val imageRef = json.get("url").map(_.asString)
+          .orElse(json.get("b64_json").map(b => s"data:image/png;base64,${b.asString}"))
+          .getOrElse("")
+        val complete: Vector[ProviderEvent] =
+          if (imageRef.isEmpty) Vector.empty
+          else Vector(ProviderEvent.ImageGenerationComplete(callId, imageRef))
+        complete :+ ProviderEvent.Done(StopReason.Complete)
 
       case _ => Vector.empty
     }

@@ -26,6 +26,7 @@ object CoreSignals {
     summon[RW[ToolDelta]],
     summon[RW[StateDelta]],
     summon[RW[AgentStateDelta]],
-    summon[RW[LocationDelta]]
+    summon[RW[LocationDelta]],
+    summon[RW[ImageDelta]]
   )
 }
