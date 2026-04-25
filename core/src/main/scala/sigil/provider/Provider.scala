@@ -40,18 +40,19 @@ trait Provider {
   protected def sigil: Sigil
 
   /**
-   * Models available in this provider's namespace, read from
-   * [[sigil.db.SigilDB.model]] on every access. The DB is populated by
-   * [[sigil.controller.OpenRouter.refreshModels]] (or whatever
-   * model-sync the app runs) — long-running apps see fresh metadata as
-   * the DB updates without reconstructing the provider.
+   * Models available in this provider's namespace, read synchronously
+   * from [[sigil.cache.ModelRegistry]]. The registry is populated by
+   * [[sigil.controller.OpenRouter.refreshModels]] (run automatically
+   * on the background refresh interval, or manually by the app) —
+   * long-running apps see fresh metadata as it lands without
+   * reconstructing the provider, and the read is a single
+   * `AtomicReference` deref so this is safe to call on every request.
    *
    * Local providers like [[sigil.provider.llamacpp.LlamaCppProvider]]
    * override with their own list (loaded from the running server,
    * not openrouter).
    */
-  def models: List[Model] =
-    sigil.cache.findModel(provider = Some(providerKey)).toList.sync()
+  def models: List[Model] = sigil.cache.find(provider = Some(providerKey))
 
   // ---- public entry points (final) ----
 

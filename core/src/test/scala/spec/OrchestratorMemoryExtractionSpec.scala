@@ -28,7 +28,7 @@ class OrchestratorMemoryExtractionSpec extends AsyncWordSpec with AsyncTaskSpec 
 
   private val modelId: Id[Model] = Model.id("test", "orch-extract-model")
 
-  TestSigil.withDB(_.model.transaction(_.upsert(Model(
+  TestSigil.cache.replace(List(Model(
     canonicalSlug = "test/orch-extract-model",
     huggingFaceId = "",
     name = "Test Orch Extract Model",
@@ -50,7 +50,7 @@ class OrchestratorMemoryExtractionSpec extends AsyncWordSpec with AsyncTaskSpec 
     links = ModelLinks(details = ""),
     created = Timestamp(),
     _id = modelId
-  )))).sync()
+  ))).sync()
 
   private class RecordingExtractor extends MemoryExtractor {
     val captured = new AtomicReference[Option[(String, String)]](None)

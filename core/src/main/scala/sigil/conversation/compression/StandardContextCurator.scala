@@ -98,8 +98,9 @@ case class StandardContextCurator(sigil: Sigil,
     }
   }
 
-  private def modelFor(modelId: Id[Model]): Task[Model] =
-    sigil.withDB(_.model.transaction(_.get(modelId))).map(_.getOrElse(
+  private def modelFor(modelId: Id[Model]): Task[Model] = Task.pure(
+    sigil.cache.find(modelId).getOrElse(
       throw new NoSuchElementException(s"Model ${modelId.value} not found in cache — cannot run curator")
-    ))
+    )
+  )
 }

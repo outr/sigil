@@ -26,7 +26,7 @@ class LlamaCppCompressionSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   private val modelId: Id[Model] = Model.id(sigil.provider.llamacpp.LlamaCpp.Provider, "qwen3.5-9b-q4_k_m")
 
   // Seed the model record so the curator's budget check can resolve it.
-  TestSigil.withDB(_.model.transaction(_.upsert(Model(
+  TestSigil.cache.replace(List(Model(
     canonicalSlug = s"${sigil.provider.llamacpp.LlamaCpp.Provider}/qwen3.5-9b-q4_k_m",
     huggingFaceId = "",
     name = "qwen3.5-9b-q4_k_m",
@@ -48,7 +48,7 @@ class LlamaCppCompressionSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     links = ModelLinks(details = ""),
     created = Timestamp(),
     _id = modelId
-  )))).sync()
+  ))).sync()
 
   "StandardContextCurator with SummaryOnlyCompressor (llama.cpp)" should {
     "fire compression when frames exceed the token budget, persist a summary, and swap it into TurnInput" in {

@@ -22,7 +22,7 @@ class LLMRerankerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   private val modelId: Id[Model] = Model.id("test", "reranker-model")
 
-  TestSigil.withDB(_.model.transaction(_.upsert(Model(
+  TestSigil.cache.replace(List(Model(
     canonicalSlug = "test/reranker-model",
     huggingFaceId = "",
     name = "Test Reranker Model",
@@ -44,7 +44,7 @@ class LLMRerankerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     links = ModelLinks(details = ""),
     created = Timestamp(),
     _id = modelId
-  )))).sync()
+  ))).sync()
 
   private class StubProvider(orderedIds: List[String]) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp

@@ -2,7 +2,7 @@ package sigil.provider.anthropic
 
 /**
  * Anthropic-specific constants. Model metadata lives in
- * [[sigil.db.SigilDB.model]] — populated by
+ * [[sigil.cache.ModelRegistry]] — populated by
  * [[sigil.controller.OpenRouter.refreshModels]] — and is read fresh on
  * each access via `Provider.models`.
  */

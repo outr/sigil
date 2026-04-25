@@ -25,7 +25,7 @@ class LlamaCppPerTurnExtractionSpec extends AsyncWordSpec with AsyncTaskSpec wit
 
   private val modelId: Id[Model] = Model.id(sigil.provider.llamacpp.LlamaCpp.Provider, "qwen3.5-9b-q4_k_m")
 
-  TestSigil.withDB(_.model.transaction(_.upsert(Model(
+  TestSigil.cache.replace(List(Model(
     canonicalSlug = s"${sigil.provider.llamacpp.LlamaCpp.Provider}/qwen3.5-9b-q4_k_m",
     huggingFaceId = "",
     name = "qwen3.5-9b-q4_k_m",
@@ -47,7 +47,7 @@ class LlamaCppPerTurnExtractionSpec extends AsyncWordSpec with AsyncTaskSpec wit
     links = ModelLinks(details = ""),
     created = Timestamp(),
     _id = modelId
-  )))).sync()
+  ))).sync()
 
   "StandardMemoryExtractor (llama.cpp)" should {
     "persist a keyed memory from a high-signal user turn against a real LLM" in {

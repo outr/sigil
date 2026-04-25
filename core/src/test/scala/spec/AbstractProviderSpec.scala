@@ -13,9 +13,6 @@ import sigil.tool.{Tool, ToolInput}
 import sigil.tool.model.{ChangeModeInput, RespondInput, ResponseContent}
 
 trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
-  // Initialize TestSigil with a DB path scoped to this concrete spec class.
-  // With per-suite JVM forking (testGrouping in build.sbt), this gives each
-  // suite its own RocksDB instance.
   TestSigil.initFor(getClass.getSimpleName)
 
   protected def provider: Task[Provider]
@@ -24,9 +21,6 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
   protected def coreTools: Vector[Tool] = CoreTools.all
 
-  /** Override to false for providers whose wire format has no reasoning
-    * knob (llama.cpp chat-completions). `true` by default — runs the
-    * shared "thinking enabled" smoke test against the real API. */
   protected def supportsThinking: Boolean = true
 
   protected def request(message: String,
@@ -59,9 +53,6 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       currentTopic = TestTopicEntry,
       generationSettings = generationSettings,
       tools = coreTools,
-      // Provider expects chain.last to be the actor (the agent). For
-      // provider-level tests we don't have a real AgentParticipant; supply
-      // TestAgent so message-role attribution renders correctly.
       chain = List(TestUser, TestAgent)
     )
     p(request).toList

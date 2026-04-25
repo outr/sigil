@@ -46,7 +46,7 @@ class MemoryRetrievalEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with 
   private val modelId: Id[Model] = Model.id("test", "model")
 
   // Seed a Model record — curator always loads the target model.
-  TestSigil.withDB(_.model.transaction(_.upsert(Model(
+  TestSigil.cache.replace(List(Model(
     canonicalSlug = "test/model",
     huggingFaceId = "",
     name = "Test Model",
@@ -68,7 +68,7 @@ class MemoryRetrievalEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with 
     links = ModelLinks(details = ""),
     created = Timestamp(),
     _id = modelId
-  )))).sync()
+  ))).sync()
 
   "StandardContextCurator + StandardMemoryRetriever" should {
     "surface a stored memory into TurnInput.memories and cause the LLM's response to reference the stored fact" in {

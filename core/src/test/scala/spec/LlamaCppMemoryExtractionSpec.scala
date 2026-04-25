@@ -32,7 +32,7 @@ class LlamaCppMemoryExtractionSpec extends AsyncWordSpec with AsyncTaskSpec with
 
   private val modelId: Id[Model] = Model.id(sigil.provider.llamacpp.LlamaCpp.Provider, "qwen3.5-9b-q4_k_m")
 
-  TestSigil.withDB(_.model.transaction(_.upsert(Model(
+  TestSigil.cache.replace(List(Model(
     canonicalSlug = s"${sigil.provider.llamacpp.LlamaCpp.Provider}/qwen3.5-9b-q4_k_m",
     huggingFaceId = "",
     name = "qwen3.5-9b-q4_k_m",
@@ -54,7 +54,7 @@ class LlamaCppMemoryExtractionSpec extends AsyncWordSpec with AsyncTaskSpec with
     links = ModelLinks(details = ""),
     created = Timestamp(),
     _id = modelId
-  )))).sync()
+  ))).sync()
 
   "MemoryContextCompressor (llama.cpp)" should {
     "extract durable facts into the memory space and make them retrievable via searchMemories" in {
