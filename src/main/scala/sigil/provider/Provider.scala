@@ -166,6 +166,13 @@ trait Provider {
     val chain = c.chain
     val sb = new StringBuilder
 
+    if (c.tools.nonEmpty) {
+      sb.append(
+        "You communicate exclusively through tool calls. Plain text output is never delivered to the user — " +
+          "every user-facing reply MUST go through the `respond` tool. Always pick a tool.\n\n"
+      )
+    }
+
     sb.append(s"Current mode: ${c.currentMode} — ${c.currentMode.description}\n")
     sb.append(s"Current topic: \"${c.currentTopic.label}\" — ${c.currentTopic.summary}\n")
     if (c.previousTopics.nonEmpty) {

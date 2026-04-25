@@ -8,7 +8,8 @@ import sigil.conversation.{ContextFrame, Conversation, Topic, TopicShiftResult}
 import sigil.event.{Event, Message, TopicChange, TopicChangeKind, ToolInvoke}
 import sigil.participant.ParticipantId
 import sigil.provider.{ConversationRequest, Provider, ProviderEvent}
-import sigil.signal.{ContentDelta, ContentKind, EventState, MessageDelta, Signal, StateDelta, ToolDelta}
+import sigil.signal.{ContentDelta, ContentKind, EventState, ImageDelta, MessageDelta, Signal, StateDelta, ToolDelta}
+import sigil.tool.model.ResponseContent
 import sigil.tool.ToolName
 import sigil.tool.model.RespondInput
 import sigil.TurnContext
@@ -74,6 +75,12 @@ object Orchestrator {
       * turn so repeated `Done` events (Usage → Done race) don't
       * double-fire. */
     var extractorFired: Boolean = false
+    /** Stable Message id per image-generation callId. The first
+      * ImageGenerationPartial creates an Active Message; subsequent
+      * partials emit `ImageDelta` updates targeting this id; the
+      * `Complete` settles it via a final `ImageDelta` plus
+      * `StateDelta(Complete)`. */
+    var imageMessageIds: Map[String, lightdb.id.Id[Event]] = Map.empty
   }
 
   private def translate(event: ProviderEvent,
@@ -196,27 +203,59 @@ object Orchestrator {
       case ProviderEvent.ThinkingDelta(_)                 => Stream.empty
       case ProviderEvent.ServerToolStart(_, _, _)         => Stream.empty
       case ProviderEvent.ServerToolComplete(_, _)         => Stream.empty
-      case ProviderEvent.ImageGenerationPartial(_, _)     => Stream.empty
 
-      case ProviderEvent.ImageGenerationComplete(_, imageUrl) =>
-        // Materialize the generated image as a standalone Message
-        // carrying a ResponseContent.Image block. Apps render it via
-        // whatever mechanism they use for other Message content.
-        val parsedUrl = spice.net.URL.get(imageUrl)
-          .orElse(spice.net.URL.get(s"data:image/png;base64,$imageUrl"))
-          .toOption
-        parsedUrl match {
+      case ProviderEvent.ImageGenerationPartial(callId, imageUrl) =>
+        // First partial creates an Active Message keyed by callId; subsequent
+        // partials emit ImageDelta updates so the same Message progressively
+        // shows better previews until ImageGenerationComplete settles it.
+        parseImageUrl(imageUrl) match {
           case None => Stream.empty
           case Some(url) =>
-            Stream.emits(List(
-              Message(
-                participantId = caller,
-                conversationId = convId,
-                topicId = topicId,
-                content = Vector(_root_.sigil.tool.model.ResponseContent.Image(url = url)),
-                state = EventState.Complete
-              )
-            ))
+            state.imageMessageIds.get(callId.value) match {
+              case Some(messageId) =>
+                Stream.emits(List(ImageDelta(
+                  target = messageId,
+                  conversationId = convId,
+                  url = url
+                )))
+              case None =>
+                val message = Message(
+                  participantId = caller,
+                  conversationId = convId,
+                  topicId = topicId,
+                  content = Vector(ResponseContent.Image(url = url)),
+                  state = EventState.Active
+                )
+                state.imageMessageIds = state.imageMessageIds + (callId.value -> message._id)
+                Stream.emits(List[Signal](message))
+            }
+        }
+
+      case ProviderEvent.ImageGenerationComplete(callId, imageUrl) =>
+        // Settle the streaming Message (created on the first partial). When
+        // there were no partials — built-in tool path or non-streaming —
+        // synthesize a fresh Complete Message carrying the image.
+        parseImageUrl(imageUrl) match {
+          case None => Stream.empty
+          case Some(url) =>
+            state.imageMessageIds.get(callId.value) match {
+              case Some(messageId) =>
+                state.imageMessageIds = state.imageMessageIds - callId.value
+                Stream.emits(List[Signal](
+                  ImageDelta(target = messageId, conversationId = convId, url = url),
+                  StateDelta(target = messageId, conversationId = convId, state = EventState.Complete)
+                ))
+              case None =>
+                Stream.emits(List(
+                  Message(
+                    participantId = caller,
+                    conversationId = convId,
+                    topicId = topicId,
+                    content = Vector(ResponseContent.Image(url = url)),
+                    state = EventState.Complete
+                  )
+                ))
+            }
         }
 
       case ProviderEvent.Done(_)                          =>
@@ -436,5 +475,16 @@ object Orchestrator {
     state.currentKind = None
     state.currentArg = None
     emit.toList
+  }
+
+  /** Convert a provider's image-ref string (HTTP URL or `data:` URI) into
+    * a `spice.net.URL`. Bare base64 (no `data:` prefix) is wrapped as
+    * PNG by convention. Returns `None` when the string is empty or
+    * unparseable. */
+  private def parseImageUrl(ref: String): Option[spice.net.URL] = {
+    if (ref.isEmpty) None
+    else spice.net.URL.get(ref)
+      .orElse(spice.net.URL.get(s"data:image/png;base64,$ref"))
+      .toOption
   }
 }

@@ -45,7 +45,7 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       modelId = modelId,
       toolNames = toolNames,
       instructions = Instructions(),
-      generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0))
+      generationSettings = GenerationSettings(maxOutputTokens = Some(500), temperature = Some(0.0))
     )
 
   /** A synthesized AgentState id used when we want defaultProcess to emit

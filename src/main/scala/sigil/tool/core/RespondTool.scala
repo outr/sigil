@@ -15,9 +15,9 @@ import sigil.tool.model.{MultipartParser, RespondInput}
 case object RespondTool extends TypedTool[RespondInput](
   name = ToolName("respond"),
   description =
-    """Send your response to the user. Every user-facing reply goes through this call — you cannot emit
-      |plain text to reach the user. Describe what you did in natural language AFTER an action through
-      |this tool; do not narrate tool calls before or as you make them.
+    """ALWAYS use this tool to reply to the user. Plain text output is dropped by the framework — every
+      |user-facing message MUST go through `respond`. Describe what you did in natural language AFTER an
+      |action through this tool; do not narrate tool calls before or as you make them.
       |
       |`content` is a multipart string. Each block begins with a header line and continues until the
       |next header or end of input — there are no close markers.
