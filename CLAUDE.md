@@ -157,6 +157,30 @@ Privacy: `location` is sender-private. The default `RedactLocationTransform` in 
 
 The Google Places HTTP client (or any concrete geocoder) lives in apps, not Sigil. The framework ships the abstractions + spatial-containment cache only.
 
+### Transport (`sigil.transport`)
+
+`SignalTransport(sigil)` is the bridge from `Sigil.signalsFor(viewer): Stream[Signal]` to a wire `SignalSink`. It owns subscribe → replay → forward and exposes a single `attach(viewer, sink, resume, conversations): Task[SinkHandle]`. Detaching closes the sink and stops further delivery.
+
+**Replay is database-driven.** No in-memory buffer — `SignalTransport.replay(viewer, resume)` queries `SigilDB.events` directly. `ResumeRequest` cases:
+
+- `None` — skip replay, attach to live only.
+- `After(cursor)` — events with `timestamp.value > cursor`. Cursor is epoch-millis, used as `Last-Event-ID` (SSE) or in the resume payload (DurableSocket).
+- `RecentMessages(n)` — most recent `n` `Message` events PLUS every non-Message event (ToolInvoke, ToolResults, ModeChange, TopicChange, ...) that landed after the nth-newest Message. Counts Messages, not events — chatty turns full of tool calls can't crowd Messages out of the budget.
+
+`viewerTransforms` are applied to every replayed event (same redaction the live path applies via `signalsFor`). Replay returns Events only — Deltas are not separately persisted, so on reconnect the client receives the *settled* state of any events it missed; the live stream picks up future Deltas as normal.
+
+Boundary de-dupe: live Events with `timestamp.value` ≤ the latest replayed timestamp are filtered out so a publish racing with replay isn't double-delivered. Deltas always pass through.
+
+**Built-in sinks:**
+
+- `SseFramer.sink(write, config)` — wraps a `String => Task[Unit]` write callback (typically the HTTP response body sink). Each push becomes `id: <epoch-millis>\ndata: <json>\n\n` for Events; Deltas emit only `data:` (no resume cursor). Heartbeats are not driven by the framer — apps interleave `SseFramer.Heartbeat` (`:hb\n\n`) at the HTTP layer.
+- `DurableSocketSink(session)` — wraps a `spice.http.durable.DurableSession[Id, Event, Info]`. Events go through `protocol.push` (which appends to the outbound `EventLog` so they're resumable); Deltas go through `protocol.sendEphemeral` (in-flight state, not replayed).
+- `SigilDbEventLog(sigil)` — a `spice.http.durable.EventLog[Id[Conversation], Event]` adapter for apps that wire a `DurableSocketServer` and want resume reads to hit `SigilDB.events` rather than spice's in-memory log. `append` is a no-op (Sigil.publish already persists); `replay` queries by conversationId + timestamp cursor.
+
+Channels default to per-`ParticipantId` (matching `signalsFor(viewer)`) — apps that want per-conversation channels pass `conversations = Some(Set(...))` to `attach`.
+
+`spice-server` is a core dep because of `DurableSocketSink`. Apps that don't need DurableSocket simply don't reference it; the import is unused but the runtime overhead is just the spice-server jar on the classpath.
+
 ## Conventions
 
 - **One top-level class per file.** Enums/traits too. Companion objects may co-locate. (User memory: `feedback_one_class_per_file.md`.)
