@@ -46,6 +46,7 @@ object LoCoMoBench {
     val limit = RetrievalFlags.flagInt(args, "--limit").getOrElse(Int.MaxValue)
     val k = RetrievalFlags.flagInt(args, "--k").getOrElse(10)
     val categoryFilter = RetrievalFlags.flagInt(args, "--category")
+    val reportPath = RetrievalFlags.flagString(args, "--report")
 
     val harness = BenchmarkHarness.fromEnv(Collection)
     BenchmarkHarness.ensureQdrantReachable(BenchmarkHarness.qdrantUrlFromEnv)
@@ -73,6 +74,10 @@ object LoCoMoBench {
     var totalRun = 0
     val typeBreakdown = scala.collection.mutable.Map.empty[Int, (Int, Int)]
     val startTime = System.currentTimeMillis()
+
+    // Capture failure details for the optional report file. Each
+    // entry: (categoryNum, fileName, question, evidenceConvIndices, topK indices, top hit content).
+    val failures = scala.collection.mutable.ListBuffer.empty[(Int, String, String, Set[Int], List[Int], List[String])]
 
     for ((catNum, catDir) <- categories) {
       val dir = new File(dataDir, catDir)
@@ -144,6 +149,16 @@ object LoCoMoBench {
 
             val (tc, tt) = typeBreakdown.getOrElse(catNum, (0, 0))
             typeBreakdown(catNum) = (tc + (if (hit) 1 else 0), tt + 1)
+
+            if (!hit && reportPath.nonEmpty) {
+              val topHitContent = results.take(k).flatMap { r =>
+                convToIdx.get(r.id).flatMap { ci =>
+                  val msgs = conversations(ci)("messages").asVector
+                  msgs.headOption.map(m => m("text").asString.take(140))
+                }
+              }
+              failures += ((catNum, file.getName, question, evidenceConvIndices, rankedConvIndices.take(k).toList, topHitContent))
+            }
           }
 
           val elapsed = (System.currentTimeMillis() - startTime) / 1000.0
@@ -161,15 +176,43 @@ object LoCoMoBench {
     println(f"Time: ${elapsed}%.0fs")
     println()
     println("By category:")
+    val catLabel: Int => String = {
+      case 1 => "basic_facts"
+      case 2 => "temporal"
+      case 5 => "abstention"
+      case n => s"category_$n"
+    }
     typeBreakdown.toList.sortBy(_._1).foreach { case (cat, (c, t)) =>
-      val catName = cat match {
-        case 1 => "basic_facts"
-        case 2 => "temporal"
-        case 5 => "abstention"
-        case _ => s"category_$cat"
-      }
       val pct = if (t > 0) c.toDouble / t * 100 else 0.0
-      println(f"  $catName%-20s $c/$t ($pct%.1f%%)")
+      println(f"  ${catLabel(cat)}%-20s $c/$t ($pct%.1f%%)")
+    }
+
+    reportPath.foreach { path =>
+      val sb = new StringBuilder
+      sb.append("# Sigil LoCoMo Benchmark Results\n\n")
+      sb.append(s"**Date:** ${java.time.Instant.now()}\n")
+      sb.append(s"**Pipeline:** Sigil (VectorIndex + OpenAI-compatible embeddings)\n")
+      sb.append(s"**Retrieval:** ${RetrievalFlags.describe(retrieval)}\n")
+      sb.append(f"**Score:** $totalCorrect/$totalRun ($overall%.1f%% R@$k)\n\n")
+      sb.append("## Per-category accuracy\n\n")
+      sb.append("| Category | Correct | Total | Accuracy |\n|---|---|---|---|\n")
+      typeBreakdown.toList.sortBy(_._1).foreach { case (cat, (c, t)) =>
+        val pct = if (t > 0) c.toDouble / t * 100 else 0.0
+        sb.append(f"| ${catLabel(cat)} | $c | $t | $pct%.1f%% |\n")
+      }
+      sb.append(s"\n## Failures (${failures.size})\n\n")
+      failures.toList.foreach { case (catNum, fname, q, expected, topK, topHits) =>
+        sb.append(s"### [${catLabel(catNum)}] ${fname} — `${q}`\n\n")
+        sb.append(s"- expected conv indices: ${expected.toList.sorted.mkString(", ")}\n")
+        sb.append(s"- top-${k} ranked conv indices: ${topK.mkString(", ")}\n")
+        if (topHits.nonEmpty) {
+          sb.append("- top-K snippets:\n")
+          topHits.zipWithIndex.foreach { case (s, i) => sb.append(s"  ${i + 1}. ${s}\n") }
+        }
+        sb.append("\n")
+      }
+      java.nio.file.Files.writeString(java.nio.file.Paths.get(path), sb.toString)
+      println(s"\nReport written: $path")
     }
 
     System.exit(0)
