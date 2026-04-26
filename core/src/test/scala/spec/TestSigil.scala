@@ -48,7 +48,7 @@ object TestSigil extends Sigil {
 
   override def testMode: Boolean = true
 
-  lazy val llamaCppHost: URL = Profig("sigil.llamacpp.host").asOr[URL](url"http://localhost:8081")
+  lazy val llamaCppHost: URL = Profig("sigil.llamacpp.host").asOr[URL](url"https://llama.voidcraft.ai")
 
   // Core tools + a few app tools. The framework's StaticToolSyncUpgrade
   // writes all of these into SigilDB.tools at startup; the default

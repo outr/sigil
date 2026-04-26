@@ -31,14 +31,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-      - name: Connect to Tailscale
-        uses: tailscale/github-action@v4
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          audience: ${{ secrets.TS_AUDIENCE }}
-          tags: tag:ci
-      - name: Verify Tailscale connection
-        run: tailscale status
       - name: Setup JDK
         uses: actions/setup-java@v5
         with:
@@ -53,7 +45,6 @@ jobs:
       - name: Build and test
         env:
           GITHUB_TOKEN: ${{ secrets.ADMIN_GITHUB_TOKEN }}
-          SIGIL_LLAMACPP_HOST: ${{ secrets.SIGIL_LLAMACPP_HOST }}
         run: |
           sbt -v -Dfile.encoding=UTF-8 "testOnly -- -l spec.LocalOnly"
           rm -rf "$HOME/.ivy2/local" || true
