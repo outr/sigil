@@ -40,6 +40,12 @@ import java.util.concurrent.atomic.AtomicReference
  * opt for stub responses via `context.sigil.testMode`.
  */
 object TestSigil extends Sigil {
+  override type DB = sigil.db.DefaultSigilDB
+  override protected def buildDB(directory: Option[java.nio.file.Path],
+                                  storeManager: lightdb.store.CollectionManager,
+                                  appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
+    new sigil.db.DefaultSigilDB(directory, storeManager, appUpgrades)
+
   override def testMode: Boolean = true
 
   lazy val llamaCppHost: URL = Profig("sigil.llamacpp.host").asOr[URL](url"http://localhost:8081")

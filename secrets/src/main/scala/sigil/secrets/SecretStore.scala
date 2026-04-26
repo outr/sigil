@@ -1,5 +1,6 @@
-package sigil.secret
+package sigil.secrets
 
+import sigil.security.SecretKind
 import fabric.rw.RW
 import lightdb.id.Id
 import rapid.Task

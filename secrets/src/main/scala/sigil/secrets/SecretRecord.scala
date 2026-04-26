@@ -1,5 +1,6 @@
-package sigil.secret
+package sigil.secrets
 
+import sigil.security.SecretKind
 import fabric.rw.*
 import lightdb.doc.{JsonConversion, RecordDocument, RecordDocumentModel}
 import lightdb.id.Id

@@ -1,6 +1,7 @@
 package sigil.tool.model
 
 import fabric.rw.*
+import sigil.security.SecretKind
 import spice.net.URL
 
 /**
@@ -113,4 +114,57 @@ enum ResponseContent derives RW {
    * for this request (missing permissions, unsupported input, etc.).
    */
   case Failure(reason: String, recoverable: Boolean = false)
+
+  /**
+   * Typed text-input form field. Renders a single-line text field
+   * inline in the conversation. The user's submitted value comes back
+   * as part of a normal Message reply — apps consuming the wire
+   * decide how to associate the form with its reply (typically by
+   * `id`).
+   *
+   *   - `id` — stable identifier the agent assigned to this field.
+   *     Apps use it to correlate the user's reply with the form.
+   *   - `placeholder` — hint shown when the field is empty.
+   *   - `defaultValue` — pre-filled value the user can edit or clear.
+   */
+  case TextInput(label: String, id: String,
+                 placeholder: Option[String] = None,
+                 defaultValue: Option[String] = None)
+
+  /**
+   * Sensitive-value form field. Renders a password-style field
+   * inline. The submitted value flows through the wire as a
+   * [[sigil.signal.Signal]] handled by the `sigil-secrets` module's
+   * `SecretCaptureTransform` (which writes to `SecretStore` and
+   * replaces the in-flight signal with a Message-from-user
+   * containing a [[SecretRef]] — so the plaintext never enters
+   * `SigilDB.events`).
+   *
+   *   - `secretId` — stable identifier under which the value will
+   *     be stored. Match the same id when later reading via
+   *     `SecretStore.get` / `verify` / `delete`.
+   *   - `kind` — [[SecretKind.Encrypted]] (retrievable, e.g. API
+   *     tokens) or [[SecretKind.Hashed]] (verify-only, e.g.
+   *     passwords).
+   *
+   * Apps that don't load `sigil-secrets` can still emit this content
+   * type — without `SecretCaptureTransform` installed, the wire
+   * value will not be processed and the field has no server-side
+   * effect.
+   */
+  case SecretInput(label: String, secretId: String, kind: SecretKind)
+
+  /**
+   * Reference to a previously-stored secret. Renders as a
+   * sensitive-value pill (`••••••••` + Copy button — the Copy button
+   * fetches the plaintext via the app's `secretStore.get` REST
+   * endpoint over TLS). Doesn't carry the value itself; safe to
+   * include in conversation history, events, and replays.
+   *
+   *   - `secretId` — the stored secret's id. Matches the id used at
+   *     `SecretInput`-submission time (or set elsewhere via
+   *     `SecretStore.setEncrypted` / `setHashed`).
+   *   - `label` — human-readable label for the UI.
+   */
+  case SecretRef(secretId: String, label: String)
 }
