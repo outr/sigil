@@ -8,6 +8,7 @@ import sigil.conversation.{Conversation, Topic}
 import sigil.event.{AgentState, Event, Message, ModeChange, ToolInvoke}
 import sigil.participant.ParticipantId
 import sigil.signal.EventState
+import sigil.tool.{ToolFinder, model}
 import sigil.tool.model.ResponseContent
 
 import scala.concurrent.duration.*
@@ -68,6 +69,29 @@ final class AgentBenchHarness(sigil: Sigil, viewer: ParticipantId) {
                  userMessage: String,
                  timeout: FiniteDuration = 60.seconds): Task[ConversationTrace] =
     runConversation(conversationFactory, List(userMessage), timeout)
+
+  /** Run `body` with `finder` installed as the active [[ToolFinder]],
+    * restoring the previous finder on completion (success or failure).
+    * Requires the wrapped Sigil to be a [[BenchmarkAgentSigil]] —
+    * other Sigils don't expose a swappable tool catalog. Benchmarks
+    * with per-scenario tools (AgentDojo banking, τ-bench retail) wrap
+    * each scenario in this helper so each scenario's mutable env is
+    * isolated from its neighbors. */
+  def withToolFinder[A](finder: ToolFinder)(body: => Task[A]): Task[A] = sigil match {
+    case agentSigil: BenchmarkAgentSigil =>
+      val previous = agentSigil.setToolFinder(finder)
+      body.attempt.flatMap { result =>
+        agentSigil.setToolFinder(previous)
+        result match {
+          case scala.util.Success(a) => Task.pure(a)
+          case scala.util.Failure(t) => Task.error(t)
+        }
+      }
+    case _ =>
+      Task.error(new IllegalStateException(
+        "AgentBenchHarness.withToolFinder requires a BenchmarkAgentSigil — current Sigil does not expose a swappable ToolFinder"
+      ))
+  }
 
   private def runTurns(convId: Id[Conversation],
                        topicId: Id[Topic],

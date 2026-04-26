@@ -51,7 +51,8 @@ object TestSigil extends Sigil {
     super.staticTools ++ List(
       SendSlackMessageTool,
       sigil.tool.util.SleepTool,
-      sigil.tool.util.LookupInformationTool
+      sigil.tool.util.LookupInformationTool,
+      GetMagicNumberTool
     )
 
   // ---- registration lists ----

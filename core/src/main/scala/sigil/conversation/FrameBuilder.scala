@@ -3,7 +3,7 @@ package sigil.conversation
 import fabric.io.JsonFormatter
 import fabric.rw.*
 import fabric.{Json, Obj}
-import sigil.event.{AgentState, Event, Message, ModeChange, Stop, TopicChange, TopicChangeKind, ToolInvoke, ToolResults}
+import sigil.event.{AgentState, Event, Message, ModeChange, Role, Stop, TopicChange, TopicChangeKind, ToolInvoke, ToolResults}
 import sigil.signal.EventState
 import sigil.tool.ToolInput
 import sigil.tool.ToolInput.given
@@ -46,6 +46,29 @@ object FrameBuilder {
   def appendFor(existing: Vector[ContextFrame], event: Event): Vector[ContextFrame] = {
     if (event.state != EventState.Complete) return existing
 
+    // Tool-result rendering takes precedence over the per-subclass match
+    // — any event whose role is Role.Tool is paired against the
+    // most-recent unresolved ToolInvoke and rendered to JSON via
+    // [[stripEventBoilerplate]] (framework metadata fields removed so
+    // the model sees only the typed payload).
+    if (event.role == Role.Tool) {
+      val payload = stripEventBoilerplate(Event.rw.read(event))
+      val content = JsonFormatter.Compact(payload)
+      return pairedCallId(existing) match {
+        case Some(callId) =>
+          existing :+ ContextFrame.ToolResult(
+            callId = callId,
+            content = content,
+            sourceEventId = event._id
+          )
+        case None =>
+          existing :+ ContextFrame.System(
+            content = s"Tool result (orphan): $content",
+            sourceEventId = event._id
+          )
+      }
+    }
+
     event match {
       case m: Message =>
         existing :+ ContextFrame.Text(
@@ -65,24 +88,6 @@ object FrameBuilder {
           participantId = ti.participantId,
           sourceEventId = ti._id
         )
-
-      case tr: ToolResults =>
-        val content =
-          if (tr.schemas.isEmpty) "No matches."
-          else tr.schemas.map(s => s"- ${s.name}: ${s.description}").mkString("\n")
-        pairedCallId(existing) match {
-          case Some(callId) =>
-            existing :+ ContextFrame.ToolResult(
-              callId = callId,
-              content = content,
-              sourceEventId = tr._id
-            )
-          case None =>
-            existing :+ ContextFrame.System(
-              content = s"Tool results (orphan): $content",
-              sourceEventId = tr._id
-            )
-        }
 
       case mc: ModeChange =>
         existing :+ ContextFrame.System(
@@ -169,6 +174,27 @@ object FrameBuilder {
    */
   private def stripPolyDiscriminator(json: Json): Json = json match {
     case o: Obj => Obj(o.value - "type")
+    case other => other
+  }
+
+  /**
+   * Strip the framework's standard Event fields (`_id`,
+   * `participantId`, `conversationId`, `topicId`, `state`,
+   * `timestamp`, `role`) plus the polymorphic Signal discriminator
+   * (`type`) from a JSON-rendered Event. What remains is the
+   * event-specific typed payload — what the model should see when
+   * the event is rendered as a tool result.
+   *
+   * Example: `BalanceRead(balance = 1810.0, ...)` rendered via
+   * `Event.rw.read` gives `{"type": "BalanceRead", "balance":
+   * 1810.0, "participantId": "...", ...}`. After this strip:
+   * `{"balance": 1810.0}` — clean payload only.
+   */
+  private val EventBoilerplateFields: Set[String] =
+    Set("type", "_id", "participantId", "conversationId", "topicId", "state", "timestamp", "role")
+
+  private def stripEventBoilerplate(json: Json): Json = json match {
+    case o: Obj => Obj(o.value -- EventBoilerplateFields)
     case other => other
   }
 

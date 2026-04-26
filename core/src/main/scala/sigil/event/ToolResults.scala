@@ -7,7 +7,7 @@ import lightdb.util.Nowish
 import sigil.conversation.{Conversation, Topic}
 import sigil.participant.ParticipantId
 import sigil.signal.EventState
-import sigil.tool.{ToolInput, ToolSchema}
+import sigil.tool.ToolSchema
 
 /**
  * Result of a capability-discovery tool call (currently `find_capability`).
@@ -20,6 +20,9 @@ import sigil.tool.{ToolInput, ToolSchema}
  * matched tools as they surface). The framework then broadcasts a
  * `StateDelta` transitioning it to `Complete`, at which point it's
  * historical — replay is silent.
+ *
+ * Always `Role.Tool` — find_capability's whole purpose is to feed
+ * tool-result data back to the agent's next iteration.
  */
 case class ToolResults(schemas: List[ToolSchema],
                        participantId: ParticipantId,
@@ -27,6 +30,7 @@ case class ToolResults(schemas: List[ToolSchema],
                        topicId: Id[Topic],
                        state: EventState = EventState.Active,
                        timestamp: Timestamp = Timestamp(Nowish()),
+                       role: Role = Role.Tool,
                        _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)

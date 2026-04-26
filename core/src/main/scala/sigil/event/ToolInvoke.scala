@@ -27,6 +27,7 @@ case class ToolInvoke(toolName: ToolName,
                       input: Option[ToolInput] = None,
                       state: EventState = EventState.Active,
                       timestamp: Timestamp = Timestamp(Nowish()),
+                      role: Role = Role.Standard,
                       _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)

@@ -49,6 +49,7 @@ case class Message(participantId: ParticipantId,
                    state: EventState = EventState.Active,
                    timestamp: Timestamp = Timestamp(Nowish()),
                    location: Option[Place] = None,
+                   role: Role = Role.Standard,
                    _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
