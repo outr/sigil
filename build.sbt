@@ -33,7 +33,7 @@ ThisBuild / scalacOptions ++= Seq(
 ThisBuild / evictionErrorLevel := Level.Info
 
 lazy val root = (project in file("."))
-  .aggregate(core, secrets, benchmark, docs)
+  .aggregate(core, secrets, script, benchmark, docs)
   .settings(
     name := "sigil",
     publish / skip := true
@@ -76,6 +76,29 @@ lazy val secrets = (project in file("secrets"))
     name := "sigil-secrets",
     libraryDependencies ++= Seq(
       "com.outr" %% "scalapass" % scalapassVersion,
+      "org.scalatest" %% "scalatest" % scalatestVersion % Test,
+      "com.outr" %% "rapid-test" % rapidVersion % Test
+    ),
+    fork := true,
+    Test / parallelExecution := false,
+    Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
+    Test / testGrouping := (Test / definedTests).value.map { test =>
+      Tests.Group(
+        name = test.name,
+        tests = Seq(test),
+        runPolicy = Tests.SubProcess(ForkOptions())
+      )
+    }
+  )
+
+lazy val script = (project in file("script"))
+  .dependsOn(core % "compile->compile;test->test")
+  .settings(
+    name := "sigil-script",
+    libraryDependencies ++= Seq(
+      // dotty.tools.repl.ScriptEngine — the heavy dep that justifies a separate sub-project.
+      // Apps that don't need arbitrary-code execution don't pay this cost.
+      "org.scala-lang" %% "scala3-repl" % scalaVersion.value,
       "org.scalatest" %% "scalatest" % scalatestVersion % Test,
       "com.outr" %% "rapid-test" % rapidVersion % Test
     ),

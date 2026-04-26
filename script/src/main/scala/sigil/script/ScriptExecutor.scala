@@ -1,0 +1,34 @@
+package sigil.script
+
+import rapid.Task
+
+/**
+ * Pluggable code-execution engine. The default
+ * [[ScalaScriptExecutor]] uses Scala 3's REPL `ScriptEngine`, but
+ * apps can plug in a sandboxed runtime, a different language (JS,
+ * Python via Polyglot), or a remote evaluator.
+ *
+ * Bindings expose host-side values (typically tool instances and a
+ * [[sigil.secrets.SecretStore]]-style accessor when the secrets
+ * module is wired) into the script's namespace so the script can
+ * call into them by name.
+ */
+trait ScriptExecutor {
+
+  /**
+   * Execute `code` with `bindings` available in scope. Returns the
+   * stringified result of the last expression. Implementations decide
+   * whether the executor is reusable across calls (the default Scala
+   * impl is — its REPL state persists between invocations).
+   */
+  def execute(code: String, bindings: Map[String, Any]): Task[String]
+
+  /**
+   * Execute and return the raw result without `.toString` flattening —
+   * useful when callers need the typed value (e.g. a compiled `Tool`
+   * instance from a tool-creation script). Default delegates to
+   * [[execute]].
+   */
+  def executeRaw(code: String, bindings: Map[String, Any]): Task[Any] =
+    execute(code, bindings)
+}
