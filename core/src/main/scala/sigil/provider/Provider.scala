@@ -278,25 +278,10 @@ trait Provider {
     val out = Vector.newBuilder[ProviderMessage]
     var pendingToolCallId: Option[String] = None
 
-    def flushAsToolResultOrSystem(content: String): Unit = pendingToolCallId match {
-      case Some(callId) =>
-        out += ProviderMessage.ToolResult(toolCallId = callId, content = content)
-        pendingToolCallId = None
-      case None =>
-        out += ProviderMessage.System(content)
-    }
-
     frames.foreach {
       case ContextFrame.Text(content, participantId, _) =>
-        val isAssistant = agentId.contains(participantId)
-        if (isAssistant && pendingToolCallId.isDefined) {
-          flushAsToolResultOrSystem(content)
-          out += ProviderMessage.Assistant(content)
-        } else if (isAssistant) {
-          out += ProviderMessage.Assistant(content)
-        } else {
-          out += ProviderMessage.User(content)
-        }
+        if (agentId.contains(participantId)) out += ProviderMessage.Assistant(content)
+        else out += ProviderMessage.User(content)
 
       case ContextFrame.ToolCall(toolName, _, _, participantId, _)
         if toolName == RespondTool.schema.name && agentId.contains(participantId) =>
@@ -321,10 +306,14 @@ trait Provider {
         if (pendingToolCallId.contains(callId.value)) pendingToolCallId = None
 
       case ContextFrame.System(content, _) =>
-        flushAsToolResultOrSystem(content)
+        out += ProviderMessage.System(content)
     }
 
-    // Dangling tool_call without a result — defensive fallback.
+    // Dangling tool_call without a result — defensive fallback. Should
+    // never fire under the normal flow (every non-terminal tool emits
+    // a `Role.Tool` event that produces a paired `ToolResult` frame),
+    // but providers reject bare `tool_calls` in the request, so we
+    // ensure every dangling pending id has SOMETHING.
     pendingToolCallId.foreach { callId =>
       out += ProviderMessage.ToolResult(toolCallId = callId, content = "(no result recorded)")
     }

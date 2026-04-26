@@ -31,6 +31,22 @@ trait Event extends Signal with Document[Event] {
   def state: EventState
 
   /**
+   * Conversational role this event plays in the agent ↔ provider
+   * exchange. `Role.Tool` marks the event as a tool's result —
+   * always re-triggers the agent's self-loop and renders as
+   * `role: "tool"` on the wire. `Role.Standard` (default for most
+   * subclasses) is everything else.
+   *
+   * Each concrete Event subclass declares this as a constructor
+   * field so callers can pick the role at emission time (e.g. a
+   * tool that wants its `Message` to be a tool result emits
+   * `Message(content = ..., role = Role.Tool)`). Subclasses whose
+   * role is invariant (e.g. `ToolResults`) default the field to
+   * the appropriate value.
+   */
+  def role: Role
+
+  /**
    * Returns a copy of this event with its `state` replaced. Used by
    * [[sigil.signal.StateDelta]] to drive the universal Active → Complete
    * transition. Each concrete Event implements this by delegating to its

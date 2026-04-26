@@ -359,6 +359,28 @@ trait Sigil {
    */
   def geocoder: Geocoder = NoOpGeocoder
 
+  // -- secret storage --
+
+  /**
+   * Server-side store for secrets — encrypted (retrievable) tokens
+   * and hashed (verify-only) passwords. Backs the
+   * [[sigil.tool.model.ResponseContent.SecretInput]] UI primitive
+   * and any tool that needs to dereference a credential at execute
+   * time. See [[sigil.secret.SecretStore]] for the contract.
+   *
+   * Default: [[sigil.secret.DatabaseSecretStore.default]] — Argon2
+   * hashing + AES/CBC/PKCS5 encryption (via `com.outr.scalapass`),
+   * persisted via lightdb to `SigilDB.secrets`, with a symmetric key
+   * read from (or auto-generated at) `<dbPath>/crypto.key`.
+   *
+   * Apps that need a managed-secrets backend (Vault, AWS KMS, GCP
+   * Secret Manager) override this with their own implementation.
+   */
+  def secretStore: sigil.secret.SecretStore = defaultSecretStore
+
+  private final lazy val defaultSecretStore: sigil.secret.SecretStore =
+    sigil.secret.DatabaseSecretStore.default(this)
+
   // -- outbound / per-viewer pipeline --
 
   /**

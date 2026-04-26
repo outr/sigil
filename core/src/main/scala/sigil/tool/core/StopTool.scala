@@ -1,7 +1,7 @@
 package sigil.tool.core
 
 import sigil.TurnContext
-import sigil.event.{Event, Stop}
+import sigil.event.{Event, Role, Stop}
 import sigil.tool.{ToolExample, ToolName, TypedTool}
 import sigil.tool.model.StopInput
 
@@ -46,6 +46,7 @@ case object StopTool extends TypedTool[StopInput](
       topicId = context.conversation.currentTopicId,
       targetParticipantId = input.targetParticipantId,
       force = input.force,
-      reason = input.reason
+      reason = input.reason,
+      role = Role.Tool
     )))
 }

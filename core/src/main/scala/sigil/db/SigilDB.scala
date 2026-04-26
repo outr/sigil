@@ -9,6 +9,7 @@ import rapid.Task
 import sigil.conversation.{ContextMemory, ContextSummary, Conversation, ConversationView, Topic}
 import sigil.event.Event
 import sigil.signal.{Delta, Signal}
+import sigil.secret.SecretRecord
 import sigil.spatial.GeocodingCache
 import sigil.tool.Tool
 
@@ -28,6 +29,7 @@ case class SigilDB(directory: Option[Path],
   val topics: S[Topic, Topic.type] = store(Topic).withCache(CacheConfig.lru(2000))()
   val geocodingCache: S[GeocodingCache, GeocodingCache.type] = store(GeocodingCache)()
   val tools: S[Tool, Tool.type] = store(Tool).withCache(CacheConfig.lru(500))()
+  val secrets: S[SecretRecord, SecretRecord.type] = store(SecretRecord)()
 
   override def upgrades: List[DatabaseUpgrade] = appUpgrades
 

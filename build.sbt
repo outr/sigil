@@ -18,6 +18,8 @@ val lightdbVersion: String = "4.31.1"
 
 val scalatestVersion: String = "3.2.20"
 
+val scalapassVersion: String = "1.4.0"
+
 ThisBuild / versionScheme := Some("early-semver")
 ThisBuild / licenses := Seq("MIT" -> url("https://github.com/outr/sigil/blob/master/LICENSE"))
 ThisBuild / scalacOptions ++= Seq(
@@ -48,6 +50,7 @@ lazy val core = (project in file("core"))
       "com.outr" %% "spice-client-netty" % spiceVersion,
       "com.outr" %% "spice-server" % spiceVersion,
       "com.outr" %% "lightdb-all" % lightdbVersion,
+      "com.outr" %% "scalapass" % scalapassVersion,
       "org.scalatest" %% "scalatest" % scalatestVersion % Test,
       "com.outr" %% "rapid-test" % rapidVersion % Test,
       "com.outr" %% "spice-server-undertow" % spiceVersion % Test

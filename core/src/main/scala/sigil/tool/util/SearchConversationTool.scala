@@ -56,7 +56,8 @@ case object SearchConversationTool extends TypedTool[SearchConversationInput](
               participantId = context.caller,
               conversationId = context.conversation.id,
               topicId = context.conversation.currentTopicId,
-              content = Vector(ResponseContent.Text(body))
+              content = Vector(ResponseContent.Text(body)),
+              role = sigil.event.Role.Tool
             )
           ))
         }
