@@ -49,7 +49,8 @@ lazy val core = (project in file("core"))
       "com.outr" %% "spice-server" % spiceVersion,
       "com.outr" %% "lightdb-all" % lightdbVersion,
       "org.scalatest" %% "scalatest" % scalatestVersion % Test,
-      "com.outr" %% "rapid-test" % rapidVersion % Test
+      "com.outr" %% "rapid-test" % rapidVersion % Test,
+      "com.outr" %% "spice-server-undertow" % spiceVersion % Test
     ),
     fork := true,
     Test / parallelExecution := false,

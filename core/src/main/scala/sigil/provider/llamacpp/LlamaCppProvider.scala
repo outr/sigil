@@ -128,9 +128,23 @@ case class LlamaCppProvider(url: URL, override val models: List[Model], sigilRef
   }
 
   /** Render format-neutral [[ProviderMessage]]s into OpenAI chat-completions
-    * message format. */
-  private def renderMessages(messages: Vector[ProviderMessage]): Vector[Json] =
-    messages.map {
+    * message format.
+    *
+    * **System-message folding.** Some llama.cpp chat templates (notably
+    * Qwen3.5) reject any `system`-role message that isn't the very
+    * first in the array — they raise "System message must be at the
+    * beginning" with an HTTP 500. Sigil's `FrameBuilder` legitimately
+    * emits mid-conversation `System` frames for things like
+    * `TopicChange` settles, which then surface as `ProviderMessage.System`
+    * mid-array. We pre-process by folding any non-leading System
+    * content into the next non-system message as a `[system: ...]`
+    * prefix on its content; if there is no following message we fold
+    * into the previous assistant/user message. The framework's leading
+    * system prompt (assembled in `buildBody`) is untouched.
+    */
+  private def renderMessages(messages: Vector[ProviderMessage]): Vector[Json] = {
+    val folded = foldMidArraySystems(messages)
+    folded.map {
       case ProviderMessage.System(content) =>
         obj("role" -> str("system"), "content" -> str(content))
       case ProviderMessage.User(blocks) =>
@@ -164,6 +178,52 @@ case class LlamaCppProvider(url: URL, override val models: List[Model], sigilRef
           "content" -> str(content)
         )
     }
+  }
+
+  /** Walk the message array; collect mid-array System content into a
+    * pending buffer; flush the buffer onto the next non-system message
+    * (User / Assistant / ToolResult) as a `[system: ...]` prefix. If
+    * the array ends with pending System content, fold it into the last
+    * non-system message instead. Leading System messages pass through
+    * unchanged. */
+  private def foldMidArraySystems(messages: Vector[ProviderMessage]): Vector[ProviderMessage] = {
+    val out = scala.collection.mutable.ArrayBuffer.empty[ProviderMessage]
+    val pending = scala.collection.mutable.ListBuffer.empty[String]
+    var seenNonSystem = false
+    messages.foreach {
+      case ProviderMessage.System(content) if !seenNonSystem =>
+        out += ProviderMessage.System(content)
+      case ProviderMessage.System(content) =>
+        pending += content
+      case other =>
+        seenNonSystem = true
+        out += (if (pending.nonEmpty) prependSystem(pending.toList, other) else other)
+        pending.clear()
+    }
+    if (pending.nonEmpty) {
+      // Trailing system content with nothing to fold into — append onto
+      // the last entry (or just drop if `out` is empty).
+      out.lastOption match {
+        case Some(last) =>
+          out(out.size - 1) = prependSystem(pending.toList, last)
+        case None => ()
+      }
+    }
+    out.toVector
+  }
+
+  private def prependSystem(systems: List[String], target: ProviderMessage): ProviderMessage = {
+    val prefix = systems.map(s => s"[system: $s]").mkString("\n") + "\n"
+    target match {
+      case ProviderMessage.User(blocks) =>
+        ProviderMessage.User(MessageContent.Text(prefix) +: blocks)
+      case ProviderMessage.Assistant(content, toolCalls) =>
+        ProviderMessage.Assistant(prefix + content, toolCalls)
+      case ProviderMessage.ToolResult(id, content) =>
+        ProviderMessage.ToolResult(id, prefix + content)
+      case s: ProviderMessage.System => s  // shouldn't happen — caller filters
+    }
+  }
 
   // ---- streaming response parsing ----
 
