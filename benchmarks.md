@@ -96,11 +96,16 @@ Apps that want any of these (e.g. a build that ships browser tools) can absolute
 
 **Phase 1 — finish the memory row.** Close out LongMemEval / ConvoMem / MemBench with full scores (vanilla + hybrid + rerank variants). Debug the ConvoMem runner. This ships the first honest "sigil parity numbers" table.
 
-**Phase 2 — add the three next-up memory benchmarks.** MemoryAgentBench, REALTALK, MemoryBench. MemoryAgentBench specifically requires the harness to drive a real orchestrator loop, so this is also the moment `BenchmarkSigil` grows into a more capable `AgentBenchHarness` (multi-turn agents that can call tools and mutate memory across turns).
+**Phase 2 — agent-loop harness landed.** [`AgentBenchHarness`](benchmark/src/main/scala/bench/AgentBenchHarness.scala) drives a `Sigil`-backed conversation programmatically (publish user message → wait for `AgentState(Complete)` → window the turn's events) and returns a [`ConversationTrace`](benchmark/src/main/scala/bench/ConversationTrace.scala) — the shape every agent-loop benchmark scorer pattern-matches against. Validated end-to-end against local llama.cpp (`AgentBenchHarnessSpec`) covering single-turn and multi-turn-with-mode-change. Sibling to `BenchmarkHarness` (which stays retrieval-only); the two coexist.
 
-**Phase 3 — tool-use row.** BFCL v4 first. Define a `sigil.bench.tooluse` harness interface analogous to the memory harness. Port BFCL's catalog + scoring. Then τ-bench + ToolSandbox on the same harness.
+**Phase 3 — agent-loop benchmark ports.** Port the next memory + tool + safety entries onto the harness:
+- MemoryAgentBench — orchestrator-driven memory recall across turns
+- τ-bench — multi-turn tool use (retail / airline domains)
+- BFCL v4 multi-turn — port the multi-turn category (BFCL simple_python is already shipped via the non-agentic path)
+- ToolSandbox — sandboxed tool catalog
+- MemoryBench (continual learning) — memory mutation across turns
 
-**Phase 4 — safety row.** AgentDojo first (attacks the tool-call path). AgentHarm + peers follow the same harness pattern.
+**Phase 4 — safety row.** AgentDojo first (attacks the tool-call path; consumes the same `ConversationTrace` shape). AgentHarm + peers follow.
 
 Tier 2 benchmarks (GAIA, AssistantBench, Terminal-Bench, etc.) land when a consumer supplies the tooling — not from sigil's own benchmark module.
 
@@ -109,6 +114,5 @@ Tier 2 benchmarks (GAIA, AssistantBench, Terminal-Bench, etc.) land when a consu
 ## Open questions
 
 1. **Results reporting** — three columns (vanilla / hybrid / rerank) or best-variant only in the headline table?
-2. **Agent-loop harness shape** — extend `BenchmarkSigil` for MemoryAgentBench, or introduce `AgentBenchHarness` as a sibling?
-3. **Dataset hosting** — add `SIGIL_BENCH_DATA` default that benchmark runners fall back to so CI / shared environments can point at one location?
-4. **Score persistence** — commit results under `benchmarks/results/YYYY-MM-DD/` for longitudinal tracking, or leave them ephemeral?
+2. **Dataset hosting** — add `SIGIL_BENCH_DATA` default that benchmark runners fall back to so CI / shared environments can point at one location?
+3. **Score persistence** — commit results under `benchmarks/results/YYYY-MM-DD/` for longitudinal tracking, or leave them ephemeral?
