@@ -17,10 +17,10 @@ object TokenEstimator {
     * estimated separately via [[estimateText]]. */
   def estimateFrames(frames: Vector[ContextFrame]): Int =
     frames.iterator.map {
-      case ContextFrame.Text(c, _, _)        => c.length
-      case ContextFrame.ToolCall(_, args, _, _, _) => args.length
-      case ContextFrame.ToolResult(_, c, _)  => c.length
-      case ContextFrame.System(c, _)         => c.length
+      case ContextFrame.Text(c, _, _, _)              => c.length
+      case ContextFrame.ToolCall(_, args, _, _, _, _) => args.length
+      case ContextFrame.ToolResult(_, c, _, _)        => c.length
+      case ContextFrame.System(c, _, _)               => c.length
     }.sum / CharsPerToken.toInt
 
   def estimateText(text: String): Int =

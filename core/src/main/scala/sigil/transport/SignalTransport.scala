@@ -108,18 +108,22 @@ final class SignalTransport(sigil: Sigil) {
         case Some(cs) => all.filter(e => cs.contains(e.conversationId))
         case None     => all
       }
+      // Apply visibility BEFORE the RecentMessages walk so the count reflects
+      // what the viewer actually receives — otherwise an Agents-only message
+      // would consume budget despite being filtered.
+      val visible: List[Event] = scoped.filter(e => sigil.canSee(e, viewer))
       val selected: List[Event] = resume match {
         case ResumeRequest.None =>
           Nil
         case ResumeRequest.After(cursor) =>
-          scoped.filter(_.timestamp.value > cursor).sortBy(_.timestamp.value)
+          visible.filter(_.timestamp.value > cursor).sortBy(_.timestamp.value)
         case ResumeRequest.RecentMessages(max) if max <= 0 =>
           Nil
         case ResumeRequest.RecentMessages(max) =>
           // Walk newest-first, accumulate, stop after the `max`th Message.
           // The non-Message events trailing the cutoff Message are already
           // included by virtue of being newer than (or equal to) it.
-          val desc = scoped.sortBy(-_.timestamp.value)
+          val desc = visible.sortBy(-_.timestamp.value)
           val acc = scala.collection.mutable.ListBuffer.empty[Event]
           var msgCount = 0
           val it = desc.iterator

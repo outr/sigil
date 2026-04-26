@@ -78,7 +78,7 @@ case class StandardContextOptimizer(dropWhitespaceFrames: Boolean = true,
 
   private def pruneWhitespace(frames: Vector[ContextFrame]): Vector[ContextFrame] =
     frames.filter {
-      case ContextFrame.Text(content, _, _) => content.trim.nonEmpty
+      case ContextFrame.Text(content, _, _, _) => content.trim.nonEmpty
       case _                                => true
     }
 

@@ -2,7 +2,7 @@ package sigil.provider
 
 /**
  * The framework's only default [[Mode]]. General chat, Q&A, free-form
- * conversation. Ships with `ModeTools.Standard` — the baseline
+ * conversation. Ships with `ToolPolicy.Standard` — the baseline
  * participant roster and full discovery catalog apply unchanged.
  *
  * Apps that want other modes (Coding, Workflow, WebNavigation, etc.)

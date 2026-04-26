@@ -279,15 +279,15 @@ trait Provider {
     var pendingToolCallId: Option[String] = None
 
     frames.foreach {
-      case ContextFrame.Text(content, participantId, _) =>
+      case ContextFrame.Text(content, participantId, _, _) =>
         if (agentId.contains(participantId)) out += ProviderMessage.Assistant(content)
         else out += ProviderMessage.User(content)
 
-      case ContextFrame.ToolCall(toolName, _, _, participantId, _)
+      case ContextFrame.ToolCall(toolName, _, _, participantId, _, _)
         if toolName == RespondTool.schema.name && agentId.contains(participantId) =>
       // Skip — the following Text frame IS the response.
 
-      case ContextFrame.ToolCall(toolName, argsJson, callId, participantId, _) if agentId.contains(participantId) =>
+      case ContextFrame.ToolCall(toolName, argsJson, callId, participantId, _, _) if agentId.contains(participantId) =>
         out += ProviderMessage.Assistant(
           content = "",
           toolCalls = List(ToolCallMessage(
@@ -301,11 +301,11 @@ trait Provider {
       case _: ContextFrame.ToolCall =>
       // ToolCall from someone else — skip (not rendered as a tool call for this agent).
 
-      case ContextFrame.ToolResult(callId, content, _) =>
+      case ContextFrame.ToolResult(callId, content, _, _) =>
         out += ProviderMessage.ToolResult(toolCallId = callId.value, content = content)
         if (pendingToolCallId.contains(callId.value)) pendingToolCallId = None
 
-      case ContextFrame.System(content, _) =>
+      case ContextFrame.System(content, _, _) =>
         out += ProviderMessage.System(content)
     }
 

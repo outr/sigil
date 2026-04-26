@@ -59,12 +59,14 @@ object FrameBuilder {
           existing :+ ContextFrame.ToolResult(
             callId = callId,
             content = content,
-            sourceEventId = event._id
+            sourceEventId = event._id,
+            visibility = event.visibility
           )
         case None =>
           existing :+ ContextFrame.System(
             content = s"Tool result (orphan): $content",
-            sourceEventId = event._id
+            sourceEventId = event._id,
+            visibility = event.visibility
           )
       }
     }
@@ -74,7 +76,8 @@ object FrameBuilder {
         existing :+ ContextFrame.Text(
           content = renderMessageText(m),
           participantId = m.participantId,
-          sourceEventId = m._id
+          sourceEventId = m._id,
+          visibility = m.visibility
         )
 
       case ti: ToolInvoke =>
@@ -86,13 +89,15 @@ object FrameBuilder {
           argsJson = argsJson,
           callId = ti._id,
           participantId = ti.participantId,
-          sourceEventId = ti._id
+          sourceEventId = ti._id,
+          visibility = ti.visibility
         )
 
       case mc: ModeChange =>
         existing :+ ContextFrame.System(
           content = s"Mode changed to ${mc.mode}${mc.reason.map(r => s" ($r)").getOrElse("")}.",
-          sourceEventId = mc._id
+          sourceEventId = mc._id,
+          visibility = mc.visibility
         )
 
       case tc: TopicChange =>
@@ -102,7 +107,8 @@ object FrameBuilder {
         }
         existing :+ ContextFrame.System(
           content = content,
-          sourceEventId = tc._id
+          sourceEventId = tc._id,
+          visibility = tc.visibility
         )
 
       case _: AgentState | _: Stop =>
@@ -204,9 +210,9 @@ object FrameBuilder {
    * corresponding `ToolResult(callId = _)` later in the vector.
    */
   private def pairedCallId(frames: Vector[ContextFrame]): Option[lightdb.id.Id[Event]] = {
-    val resolved = frames.collect { case ContextFrame.ToolResult(id, _, _) => id }.toSet
+    val resolved = frames.collect { case ContextFrame.ToolResult(id, _, _, _) => id }.toSet
     frames.reverseIterator.collectFirst {
-      case ContextFrame.ToolCall(_, _, callId, _, _) if !resolved.contains(callId) => callId
+      case ContextFrame.ToolCall(_, _, callId, _, _, _) if !resolved.contains(callId) => callId
     }
   }
 }
