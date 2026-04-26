@@ -23,7 +23,7 @@ import java.nio.file.Path
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import sigil.tool.consult.{ConsultTool, TopicClassifierTool}
 import sigil.provider.GenerationSettings
-import sigil.db.{Model, SigilDB}
+import sigil.db.{DefaultSigilDB, Model, SigilDB}
 import sigil.dispatcher.{StopFlag, TriggerFilter}
 import sigil.event.{AgentState, Event, Message, ModeChange, Stop, TopicChange, TopicChangeKind}
 import sigil.provider.{ConversationMode, Mode, ModeTools}
@@ -43,6 +43,35 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 
 trait Sigil {
+
+  /**
+   * The concrete [[SigilDB]] type this Sigil uses. Defaults to
+   * [[SigilDB]] itself (collections only); apps that pull in
+   * extension modules (e.g. `sigil-secrets`, `sigil-mcp`) refine
+   * this to a class that mixes in the modules' collection traits:
+   *
+   * {{{
+   *   class MyAppDB(...) extends SigilDB(...) with SecretsCollections
+   *   class MyAppSigil extends SecretsSigil {
+   *     type DB = MyAppDB
+   *     protected def buildDB(d, sm, u) = new MyAppDB(d, sm, u)
+   *   }
+   * }}}
+   *
+   * `withDB` returns the refined type, so module helpers and tools
+   * see `db.secrets`, `db.mcpServers`, etc. without casts.
+   */
+  type DB <: SigilDB
+
+  /**
+   * Construct the concrete [[DB]]. Apps using only the standard
+   * collections set `type DB = DefaultSigilDB` and `buildDB(...) =
+   * new DefaultSigilDB(...)`. Apps using extension modules supply a
+   * subclass that mixes in the modules' collection traits.
+   */
+  protected def buildDB(directory: Option[java.nio.file.Path],
+                        storeManager: lightdb.store.CollectionManager,
+                        appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB
 
   /**
    * App-specific Signal subtypes (custom Events / Deltas the app introduces
@@ -358,28 +387,6 @@ trait Sigil {
    * physical boundary hit the cache instead of the external API.
    */
   def geocoder: Geocoder = NoOpGeocoder
-
-  // -- secret storage --
-
-  /**
-   * Server-side store for secrets — encrypted (retrievable) tokens
-   * and hashed (verify-only) passwords. Backs the
-   * [[sigil.tool.model.ResponseContent.SecretInput]] UI primitive
-   * and any tool that needs to dereference a credential at execute
-   * time. See [[sigil.secret.SecretStore]] for the contract.
-   *
-   * Default: [[sigil.secret.DatabaseSecretStore.default]] — Argon2
-   * hashing + AES/CBC/PKCS5 encryption (via `com.outr.scalapass`),
-   * persisted via lightdb to `SigilDB.secrets`, with a symmetric key
-   * read from (or auto-generated at) `<dbPath>/crypto.key`.
-   *
-   * Apps that need a managed-secrets backend (Vault, AWS KMS, GCP
-   * Secret Manager) override this with their own implementation.
-   */
-  def secretStore: sigil.secret.SecretStore = defaultSecretStore
-
-  private final lazy val defaultSecretStore: sigil.secret.SecretStore =
-    sigil.secret.DatabaseSecretStore.default(this)
 
   // -- outbound / per-viewer pipeline --
 
@@ -1584,7 +1591,7 @@ trait Sigil {
         case None =>
           (Some(config.dbPath), SplitStoreManager(RocksDBSharedStore(config.dbPath), LuceneStore): CollectionManager)
       }
-      db = SigilDB(
+      db = buildDB(
         directory = directory,
         storeManager = collectionStore,
         appUpgrades = List(new sigil.tool.StaticToolSyncUpgrade(staticTools))
@@ -1617,7 +1624,7 @@ trait Sigil {
       Task { loop.startUnit(); () }
   }
 
-  def withDB[Return](f: SigilDB => Task[Return]): Task[Return] = instance.flatMap(sigil => f(sigil.db))
+  def withDB[Return](f: DB => Task[Return]): Task[Return] = instance.flatMap(sigil => f(sigil.db))
 
   /**
    * Disk fallback location for the model registry. Default: a
@@ -1658,5 +1665,5 @@ trait Sigil {
    */
   final lazy val signalTransport: SignalTransport = new SignalTransport(this)
 
-  case class SigilInstance(config: Config, db: SigilDB)
+  case class SigilInstance(config: Config, db: DB)
 }

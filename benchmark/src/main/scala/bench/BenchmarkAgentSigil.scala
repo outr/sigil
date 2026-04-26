@@ -48,6 +48,12 @@ final class BenchmarkAgentSigil(viewer: ParticipantId,
                                 override val embeddingProvider: EmbeddingProvider = NoOpEmbeddingProvider,
                                 override val vectorIndex: VectorIndex = NoOpVectorIndex) extends Sigil {
 
+  override type DB = sigil.db.DefaultSigilDB
+  override protected def buildDB(directory: Option[java.nio.file.Path],
+                                  storeManager: lightdb.store.CollectionManager,
+                                  appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
+    new sigil.db.DefaultSigilDB(directory, storeManager, appUpgrades)
+
   private val toolFinderRef = new AtomicReference[ToolFinder](InMemoryToolFinder(Nil))
 
   /** Install a [[ToolFinder]] for subsequent agent turns. Returns the

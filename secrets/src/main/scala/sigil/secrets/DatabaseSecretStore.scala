@@ -1,5 +1,6 @@
-package sigil.secret
+package sigil.secrets
 
+import sigil.security.SecretKind
 import com.outr.scalapass.{Argon2PasswordFactory, PasswordFactory}
 import fabric.io.{JsonFormatter, JsonParser}
 import fabric.rw.RW
@@ -7,6 +8,7 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.Sigil
+import sigil.db.SigilDB
 
 import java.security.{MessageDigest, SecureRandom}
 import java.util.Base64
@@ -47,7 +49,7 @@ import scala.util.Try
  * last-writer-wins outcome via `upsert`. Apps that want stricter
  * semantics layer that above this trait.
  */
-final class DatabaseSecretStore(sigil: Sigil,
+final class DatabaseSecretStore(sigil: Sigil { type DB <: SigilDB & SecretsCollections },
                                 cryptoKey: String,
                                 passwordFactory: PasswordFactory = Argon2PasswordFactory(),
                                 clock: () => Long = () => System.currentTimeMillis()) extends SecretStore {
@@ -159,14 +161,14 @@ object DatabaseSecretStore {
    * env-var-injected) construct [[DatabaseSecretStore]] directly with
    * the key string they obtain however they like.
    */
-  def fromKeyFile(sigil: Sigil, keyPath: java.nio.file.Path): DatabaseSecretStore = {
+  def fromKeyFile(sigil: Sigil { type DB <: SigilDB & SecretsCollections }, keyPath: java.nio.file.Path): DatabaseSecretStore = {
     val key = readOrGenerateKey(keyPath)
     new DatabaseSecretStore(sigil, key)
   }
 
   /** Default key path — `<dbPath>/crypto.key` if `dbPath` is set,
     * otherwise `data/sigil/crypto.key` relative to the working dir. */
-  def defaultKeyPath(sigil: Sigil): java.nio.file.Path = {
+  def defaultKeyPath(sigil: Sigil { type DB <: SigilDB & SecretsCollections }): java.nio.file.Path = {
     val dbPathStr = profig.Profig("sigil.dbPath").opt[String](using fabric.rw.stringRW).getOrElse("data/sigil")
     java.nio.file.Path.of(dbPathStr, "crypto.key")
   }
@@ -174,7 +176,7 @@ object DatabaseSecretStore {
   /** Default factory — uses [[defaultKeyPath]] to locate / create the
     * symmetric key. Apps that want a different policy override
     * [[sigil.Sigil.secretStore]] with a hand-built instance. */
-  def default(sigil: Sigil): DatabaseSecretStore =
+  def default(sigil: Sigil { type DB <: SigilDB & SecretsCollections }): DatabaseSecretStore =
     fromKeyFile(sigil, defaultKeyPath(sigil))
 
   private def readOrGenerateKey(path: java.nio.file.Path): String = {

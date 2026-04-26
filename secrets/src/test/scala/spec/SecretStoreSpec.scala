@@ -5,22 +5,23 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
-import sigil.secret.SecretRecord
+import sigil.secrets.SecretRecord
 
 import scala.concurrent.duration.*
 
 /**
- * Round-trip coverage of the default [[sigil.secret.DatabaseSecretStore]]:
+ * Round-trip coverage of the default [[sigil.secrets.DatabaseSecretStore]]:
  * encrypted set/get (string and structured), hashed set/verify,
  * kind-mismatch returns, TTL expiry, delete, overwrite-across-kinds.
  *
- * Local-only — uses `TestSigil`'s default secretStore (which is the
- * framework default, backed by `SigilDB.secrets`).
+ * Uses [[TestSecretsSigil]] — a Sigil that mixes `SecretsCollections`
+ * into its DB so `db.secrets` is reachable. Same shape any
+ * `sigil-secrets` consumer would assemble for production use.
  */
 class SecretStoreSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
-  TestSigil.initFor(getClass.getSimpleName)
-  private val store = TestSigil.secretStore
+  TestSecretsSigil.initFor(getClass.getSimpleName)
+  private val store = TestSecretsSigil.secretStore
 
   case class OAuthCreds(accessToken: String, refreshToken: String, expiresAt: Long) derives RW
 
@@ -50,8 +51,8 @@ class SecretStoreSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       for {
         _ <- store.setEncrypted[String](a, "same-value")
         _ <- store.setEncrypted[String](b, "same-value")
-        recA <- TestSigil.withDB(_.secrets.transaction(_.get(a)))
-        recB <- TestSigil.withDB(_.secrets.transaction(_.get(b)))
+        recA <- TestSecretsSigil.withDB(_.secrets.transaction(_.get(a)))
+        recB <- TestSecretsSigil.withDB(_.secrets.transaction(_.get(b)))
         outA <- store.get[String](a)
         outB <- store.get[String](b)
         _ <- store.delete(a); _ <- store.delete(b)

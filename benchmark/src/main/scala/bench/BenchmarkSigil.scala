@@ -35,6 +35,12 @@ case class BenchmarkSigil(override val embeddingProvider: EmbeddingProvider,
                           override val vectorIndex: VectorIndex,
                           providerFactory: Id[Model] => Task[Provider]) extends Sigil {
 
+  override type DB = sigil.db.DefaultSigilDB
+  override protected def buildDB(directory: Option[java.nio.file.Path],
+                                  storeManager: lightdb.store.CollectionManager,
+                                  appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
+    new sigil.db.DefaultSigilDB(directory, storeManager, appUpgrades)
+
   override protected def signalRegistrations: List[RW[? <: Signal]] = Nil
   override protected def participantIds: List[RW[? <: ParticipantId]] = Nil
   override protected def spaceIds: List[RW[? <: SpaceId]] = Nil

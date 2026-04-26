@@ -9,16 +9,36 @@ import rapid.Task
 import sigil.conversation.{ContextMemory, ContextSummary, Conversation, ConversationView, Topic}
 import sigil.event.Event
 import sigil.signal.{Delta, Signal}
-import sigil.secret.SecretRecord
 import sigil.spatial.GeocodingCache
 import sigil.tool.Tool
 
 import java.nio.file.Path
 import scala.concurrent.duration.*
 
-case class SigilDB(directory: Option[Path],
-                   storeManager: CollectionManager,
-                   appUpgrades: List[DatabaseUpgrade] = Nil) extends LightDB {
+/**
+ * Core lightdb wrapper carrying the framework's standard collections.
+ *
+ * `SigilDB` is open for extension via Scala 3 self-typed mix-in traits.
+ * Module sub-projects (e.g. `sigil-secrets`, future `sigil-mcp`) ship a
+ * `<X>Collections { self: SigilDB => ... }` trait that adds their own
+ * lightdb stores; apps assemble the concrete DB by mixing the traits
+ * they want into a single class:
+ *
+ * {{{
+ *   class MyAppDB(directory: Option[Path],
+ *                 storeManager: CollectionManager,
+ *                 upgrades: List[DatabaseUpgrade] = Nil)
+ *     extends SigilDB(directory, storeManager, upgrades)
+ *       with SecretsCollections
+ *       with McpCollections
+ * }}}
+ *
+ * The Sigil instance refines `type DB = MyAppDB`, satisfying every
+ * module's `Sigil { type DB <: SigilDB & XCollections }` bound at once.
+ */
+abstract class SigilDB(override val directory: Option[Path],
+                       override val storeManager: CollectionManager,
+                       appUpgrades: List[DatabaseUpgrade] = Nil) extends LightDB {
   override type SM = CollectionManager
 
   val events: S[Event, Event.type] = store(Event)()
@@ -29,7 +49,6 @@ case class SigilDB(directory: Option[Path],
   val topics: S[Topic, Topic.type] = store(Topic).withCache(CacheConfig.lru(2000))()
   val geocodingCache: S[GeocodingCache, GeocodingCache.type] = store(GeocodingCache)()
   val tools: S[Tool, Tool.type] = store(Tool).withCache(CacheConfig.lru(500))()
-  val secrets: S[SecretRecord, SecretRecord.type] = store(SecretRecord)()
 
   override def upgrades: List[DatabaseUpgrade] = appUpgrades
 
@@ -48,3 +67,13 @@ case class SigilDB(directory: Option[Path],
       }
   }
 }
+
+/**
+ * Concrete `SigilDB` with no module mix-ins. Default for apps that
+ * don't need extension collections; the framework's `Sigil` builds
+ * an instance of this when `type DB = SigilDB` (the default).
+ */
+final class DefaultSigilDB(directory: Option[Path],
+                           storeManager: CollectionManager,
+                           appUpgrades: List[DatabaseUpgrade] = Nil)
+  extends SigilDB(directory, storeManager, appUpgrades)

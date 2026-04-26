@@ -33,7 +33,7 @@ ThisBuild / scalacOptions ++= Seq(
 ThisBuild / evictionErrorLevel := Level.Info
 
 lazy val root = (project in file("."))
-  .aggregate(core, benchmark, docs)
+  .aggregate(core, secrets, benchmark, docs)
   .settings(
     name := "sigil",
     publish / skip := true
@@ -50,7 +50,6 @@ lazy val core = (project in file("core"))
       "com.outr" %% "spice-client-netty" % spiceVersion,
       "com.outr" %% "spice-server" % spiceVersion,
       "com.outr" %% "lightdb-all" % lightdbVersion,
-      "com.outr" %% "scalapass" % scalapassVersion,
       "org.scalatest" %% "scalatest" % scalatestVersion % Test,
       "com.outr" %% "rapid-test" % rapidVersion % Test,
       "com.outr" %% "spice-server-undertow" % spiceVersion % Test
@@ -62,6 +61,27 @@ lazy val core = (project in file("core"))
     // state (singletons, PolyType registrations, RocksDB locks) is exercised
     // fresh on every run. Combined with parallelExecution := false above, suites
     // run serially so they take turns acquiring the RocksDB lock.
+    Test / testGrouping := (Test / definedTests).value.map { test =>
+      Tests.Group(
+        name = test.name,
+        tests = Seq(test),
+        runPolicy = Tests.SubProcess(ForkOptions())
+      )
+    }
+  )
+
+lazy val secrets = (project in file("secrets"))
+  .dependsOn(core % "compile->compile;test->test")
+  .settings(
+    name := "sigil-secrets",
+    libraryDependencies ++= Seq(
+      "com.outr" %% "scalapass" % scalapassVersion,
+      "org.scalatest" %% "scalatest" % scalatestVersion % Test,
+      "com.outr" %% "rapid-test" % rapidVersion % Test
+    ),
+    fork := true,
+    Test / parallelExecution := false,
+    Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
     Test / testGrouping := (Test / definedTests).value.map { test =>
       Tests.Group(
         name = test.name,
