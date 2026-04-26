@@ -106,7 +106,7 @@ object BenchmarkSigil {
    *
    * `OPENAI_API_KEY` is required only when an `openai/…` model is
    * actually requested; same for `ANTHROPIC_API_KEY`. `LLAMACPP_HOST`
-   * (default `http://localhost:8081`) routes llama.cpp calls.
+   * (default `https://llama.voidcraft.ai`) routes llama.cpp calls.
    */
   def multiProvider(embeddingProvider: EmbeddingProvider,
                     vectorIndex: VectorIndex): BenchmarkSigil = {
@@ -137,7 +137,7 @@ object BenchmarkSigil {
             val host = Option(System.getenv("LLAMACPP_HOST"))
               .filter(_.nonEmpty)
               .flatMap(s => URL.get(s, tldValidation = TLDValidation.Off).toOption)
-              .getOrElse(url"http://localhost:8081")
+              .getOrElse(url"https://llama.voidcraft.ai")
             Task.pure(LlamaCppProvider(
               url = host,
               models = Nil,

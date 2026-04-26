@@ -22,8 +22,8 @@ Build-config invariants you should know before changing anything in `build.sbt`:
 
 Many specs prefer live end-to-end runs over mocks (see user memory `feedback_live_tests_preferred.md`). The convention is a local llama.cpp server:
 
-- Default host: `http://localhost:8081`
-- Override: Profig key `sigil.llamacpp.host` or env `SIGIL_LLAMACPP_HOST`
+- Default host: `https://llama.voidcraft.ai` (publicly reachable; tests and CI hit it directly)
+- Override for local dev: Profig key `sigil.llamacpp.host` or env `SIGIL_LLAMACPP_HOST` (e.g. `http://localhost:8081`)
 - Specs that need it: `LlamaCpp*Spec.scala`. They skip gracefully when the server is unreachable.
 
 HTTP wire logs are written per-suite under `target/wire-logs/<SuiteName>.jsonl` via `sigil.provider.debug.JsonLinesInterceptor`. Override the directory with `sigil.wire.log.dir` / `SIGIL_WIRE_LOG_DIR`. These are invaluable for debugging provider-stream issues.

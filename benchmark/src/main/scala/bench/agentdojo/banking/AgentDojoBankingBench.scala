@@ -41,7 +41,7 @@ import java.io.{File, PrintWriter}
  *   - `openai/...` → OPENAI_API_KEY
  *   - `anthropic/...` → ANTHROPIC_API_KEY
  *   - `deepseek/...` → DEEPSEEK_API_KEY
- *   - `llamacpp/...` → LLAMACPP_HOST (default http://localhost:8081)
+ *   - `llamacpp/...` → LLAMACPP_HOST (default https://llama.voidcraft.ai)
  */
 object AgentDojoBankingBench {
 
@@ -132,7 +132,7 @@ object AgentDojoBankingBench {
       case "llamacpp" =>
         val host = Option(System.getenv("LLAMACPP_HOST")).filter(_.nonEmpty)
           .flatMap(s => URL.get(s, tldValidation = TLDValidation.Off).toOption)
-          .getOrElse(url"http://localhost:8081")
+          .getOrElse(url"https://llama.voidcraft.ai")
         Task.pure(LlamaCppProvider(url = host, models = Nil, sigilRef = sigilRef))
       case _ =>
         Task.error(new IllegalArgumentException(s"Unknown provider prefix in model id '$modelArg'"))
