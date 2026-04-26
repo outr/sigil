@@ -1,14 +1,15 @@
 package sigil.participant
 
 import lightdb.id.Id
-import rapid.{Stream, Task}
+import rapid.Stream
 import sigil.TurnContext
+import sigil.behavior.{Behavior, GeneralistBehavior}
+import sigil.conversation.{ActiveSkillSlot, SkillSource}
 import sigil.db.Model
-import sigil.event.{Event, Message}
-import sigil.orchestrator.Orchestrator
-import sigil.provider.{ConversationRequest, GenerationSettings, Instructions, Provider}
-import sigil.signal.{AgentActivity, AgentStateDelta, Signal}
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.event.Event
+import sigil.provider.{GenerationSettings, Instructions}
+import sigil.signal.Signal
+import sigil.tool.ToolName
 
 /**
  * A participant that acts autonomously — typically LLM-backed. Pure data:
@@ -16,21 +17,26 @@ import sigil.tool.{Tool, ToolInput, ToolName}
  * through fabric RW and be persisted on [[sigil.conversation.Conversation]].
  *
  * Runtime dependencies — the live [[sigil.provider.Provider]] and the tool
- * instances to hand to it — are resolved lazily inside `defaultProcess` via
- * [[sigil.Sigil.providerFor]] and [[sigil.tool.ToolFinder.byName]]. This
- * keeps the agent itself purely descriptive ("what this agent is") and
- * leaves the "how to run it right now" to Sigil.
+ * instances to hand to it — are resolved lazily inside the framework's
+ * default per-behavior turn ([[sigil.Sigil.defaultProcess]]). The agent
+ * itself stays purely descriptive; the "how to run it right now" lives
+ * on Sigil.
  *
  * The framework dispatcher (`Sigil.publish`) owns the surrounding
  * [[sigil.event.AgentState]] lifecycle: it claims an `AgentState(Active)`
  * with `activity = Thinking` before invoking `process`, and emits the
  * terminal `AgentStateDelta(Idle, Complete)` after the agent's self-loop
- * settles. `defaultProcess` only emits the mid-turn `Typing` transition,
- * targeted at `context.currentAgentStateId`.
+ * settles.
  *
- * Apps override `process` (or the protected `defaultProcess`) for custom
- * agent behaviors (Planner, Critic, Worker patterns). Vanilla agents use
- * [[DefaultAgentParticipant]] without subclassing.
+ * Behaviors are the role-shaping primitive. An agent's
+ * [[behaviors]] list is iterated each turn; for each behavior the
+ * framework injects an [[ActiveSkillSlot]] into the agent's projection
+ * (per-turn view copy) and delegates to
+ * [[sigil.Sigil.process]] which apps override to specialize per-behavior
+ * dispatch (e.g. a Worker behavior that reacts to triggers without
+ * calling the LLM). The default behavior list is
+ * `List(GeneralistBehavior)` — agents always have a real role; an
+ * empty list is rejected.
  */
 trait AgentParticipant extends Participant {
   override def id: AgentParticipantId
@@ -57,86 +63,51 @@ trait AgentParticipant extends Participant {
   def generationSettings: GenerationSettings = GenerationSettings()
 
   /**
-   * Entry point invoked by the dispatcher. Default delegates to
-   * [[defaultProcess]]; override for fundamentally different agent shapes.
+   * Permanent role assignments for this agent. Iterated per turn —
+   * each behavior's slot is injected into the agent's projection and
+   * dispatched independently via [[sigil.Sigil.process]].
+   *
+   * Defaults to `List(GeneralistBehavior)` so vanilla agents have a
+   * real role. Must be non-empty (enforced via `require` at trait
+   * initialization); apps that override must supply at least one
+   * behavior.
    */
-  override def process(context: TurnContext, triggers: Stream[Event]): Stream[Signal] =
-    defaultProcess(context, triggers)
+  def behaviors: List[Behavior] = List(GeneralistBehavior)
+
+  require(behaviors.nonEmpty, s"AgentParticipant.behaviors must be non-empty (id=${id.value})")
 
   /**
-   * Standard one-round-trip behavior:
-   *
-   *   1. Resolve the live [[sigil.provider.Provider]] via
-   *      `sigil.providerFor(modelId, chain)` (chain carries the originating
-   *      participant so app credential resolvers can pick the right keys).
-   *   2. Resolve each name in `toolNames` to a live `Tool` via
-   *      `sigil.findTools.byName(name, chain)`. Names that don't resolve
-   *      are dropped.
-   *   3. Build a [[ProviderRequest]] and run it; translate the provider's
-   *      stream into `Signal`s via [[Orchestrator.process]].
-   *   4. The first time the orchestrator emits a [[Message]] (streaming
-   *      content has started), prepend an [[AgentStateDelta]] transitioning
-   *      `activity = Typing`. Targets `context.currentAgentStateId`.
-   *
-   * This intentionally does NOT emit the surrounding `AgentState(Thinking,
-   * Active)` event nor the terminal `AgentStateDelta(Idle, Complete)` —
-   * both are owned by the framework dispatcher.
-   *
-   * `triggers` is unused here by default; the agent acts purely on the
-   * curated context. Custom overrides can inspect triggers to tailor
-   * behavior (e.g. mention-aware responses).
+   * Final dispatch entry point. Iterates [[behaviors]] in declaration
+   * order; for each behavior, injects its [[ActiveSkillSlot]] into
+   * the agent's per-turn projection and delegates to
+   * [[sigil.Sigil.process]]. Apps customize per-behavior turn shapes
+   * by overriding `Sigil.process`, not by overriding `process` here.
    */
-  protected def defaultProcess(context: TurnContext, triggers: Stream[Event]): Stream[Signal] = {
-    val sigil = context.sigil
-    // Ensure the agent's id is `chain.last` — the chain's invariant is
-    // "actor at the end". In the dispatcher path the chain already ends
-    // with `agent.id`; in direct callers (tests, custom drivers) it might
-    // not. Normalize either way.
-    val effectiveChain = context.chain.filterNot(_ == id) :+ id
+  final override def process(context: TurnContext, triggers: Stream[Event]): Stream[Signal] =
+    Stream.emits(behaviors).flatMap { b =>
+      context.sigil.process(this, b, enrichedContextFor(context, b), triggers)
+    }
 
-    // The agent's effective tool roster for THIS turn is computed by
-    // `Sigil.effectiveToolNames` — it composes the current `Mode`'s
-    // `ModeTools` policy with the participant's baseline roster and the
-    // one-turn `suggestedTools` from `find_capability`.
-    val suggested = context.conversationView.projectionFor(id).suggestedTools
-    val effectiveNames = sigil.effectiveToolNames(this, context.conversation.currentMode, suggested).distinct
-
-    val resolved: Task[(Provider, Vector[Tool])] =
-      for {
-        p <- sigil.providerFor(modelId, effectiveChain)
-        t <- Task.sequence(effectiveNames.map(n => sigil.findTools.byName(n)))
-               .map(_.flatten.toVector)
-      } yield (p, t)
-
-    Stream.force(resolved.map { case (provider, tools) =>
-      val request = ConversationRequest(
-        conversationId = context.conversation.id,
-        modelId = modelId,
-        instructions = instructions,
-        turnInput = context.turnInput,
-        currentMode = context.conversation.currentMode,
-        currentTopic = context.conversation.currentTopic,
-        previousTopics = context.conversation.previousTopics,
-        generationSettings = generationSettings,
-        tools = tools,
-        chain = effectiveChain
-      )
-
-      val typingEmitted = new java.util.concurrent.atomic.AtomicBoolean(false)
-      Orchestrator.process(sigil, provider, request).flatMap { sig =>
-        val prefix: List[Signal] = sig match {
-          case _: Message if typingEmitted.compareAndSet(false, true) =>
-            context.currentAgentStateId.toList.map { agentStateId =>
-              AgentStateDelta(
-                target = agentStateId,
-                conversationId = context.conversation.id,
-                activity = Some(AgentActivity.Typing)
-              )
-            }
-          case _ => Nil
-        }
-        Stream.emits(prefix :+ sig)
-      }
-    })
+  private def enrichedContextFor(context: TurnContext, behavior: Behavior): TurnContext = {
+    val slot = behavior.skill.orElse {
+      if (behavior.description.nonEmpty)
+        Some(ActiveSkillSlot(name = behavior.name, content = behavior.description))
+      else None
+    }
+    slot match {
+      case None => context
+      case Some(s) =>
+        val proj = context.conversationView.projectionFor(id)
+        val updatedProj = proj.copy(
+          activeSkills = proj.activeSkills + (SkillSource.Behavior(behavior.name) -> s)
+        )
+        val updatedView = context.conversationView.copy(
+          participantProjections = context.conversationView.participantProjections + (id -> updatedProj)
+        )
+        context.copy(
+          conversationView = updatedView,
+          turnInput = context.turnInput.copy(conversationView = updatedView)
+        )
+    }
   }
 }

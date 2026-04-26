@@ -58,13 +58,25 @@ Apps extend `Sigil` and provide: `findTools`, `curate`, `getInformation`/`putInf
 1. **Inbound transforms** (`Sigil.inboundTransforms: List[InboundTransform]`) — rewrite the signal *pre-persist*. Runs on the hot path; implementations should be fast. Default: `[LocationCaptureTransform]`.
 2. *(Framework: persist → projection → view → mode-skill → stop-dispatch.)*
 3. **Broadcast** — the signal is emitted into `SignalHub`, a multicast dispatcher. `Sigil.signals: Stream[Signal]` returns a fresh subscriber per call (each with its own bounded queue; slow subscribers drop oldest with a warn, don't block peers).
-4. **Per-viewer stream** — `Sigil.signalsFor(viewer): Stream[Signal]` is `signals.map(applyViewerTransforms(_, viewer))`. `viewerTransforms: List[ViewerTransform]` runs once per (signal, viewer) pair — different viewers can see different versions. Default: `[RedactLocationTransform]` strips sender-private `Message.location`.
+4. **Per-viewer stream** — `Sigil.signalsFor(viewer): Stream[Signal]` first drops signals via `Sigil.canSee(signal, viewer)` (hard scope rule, not mutate-only — see [[MessageVisibility]] below), then folds survivors through `viewerTransforms: List[ViewerTransform]` for redaction. Different viewers can see different versions. Defaults: `canSee` reads `Event.visibility`; `viewerTransforms = [RedactLocationTransform]` strips sender-private `Message.location`. Deltas always pass `canSee`; client UIs must ignore deltas whose target event was filtered.
 5. *(Framework: fan-out to agent participants via `TriggerFilter`.)*
 6. **Settled effects** (`Sigil.settledEffects: List[SettledEffect]`) — post-persist side effects. Each returns `Task[Unit]`; effects decide internally whether to run sync (block publish) or spawn a fiber (fire-and-forget). Default: `[MessageIndexingEffect, GeocodingEnrichmentEffect]`.
 
 Apps extend by overriding the list-returning methods — add, remove, or reorder. No custom DSL: `List[T]` + `T.apply(...)` is the whole contract. See `design/signal-pipeline.md` for the full rationale and level boundaries.
 
 `SignalBroadcaster` (callback-style wire transport) has been removed. Apps that need to push to WebSocket/SSE consume `sigil.signals` or `sigil.signalsFor(viewer)` and drive the wire themselves.
+
+**MessageVisibility** is the hard scope rule on every `Event` (default `MessageVisibility.All`):
+- `All` — every viewer sees it.
+- `Agents` — only viewers whose `ParticipantId` is an `AgentParticipantId`. For internal Planner/Worker/Critic chatter that mustn't reach a user UI.
+- `Users` — only non-agent viewers.
+- `Participants(ids)` — explicit allow-list.
+
+Enforced at two points by `Sigil.canSee(signal, viewer)`:
+- **Wire delivery** — `signalsFor(viewer)` drops signals that fail the predicate.
+- **Per-agent prompt-building** — `buildContext` filters `ContextFrame`s by the running agent's id before handing the view to the curator. Frames denormalize visibility from their source event at projection time (`FrameBuilder.appendFor`), so the filter is a local check with no extra DB lookup.
+
+`SignalTransport.replay` honors the same predicate against persisted history. Apps override `Sigil.canSee` (and/or `visibilityAllows`) for custom scope rules — per-tenant, per-permission-grant, etc.
 
 ### Providers
 
@@ -139,9 +151,9 @@ A `Mode` carries:
 - `name` — stable discriminator persisted in events and used by `change_mode` tool args (the tool takes a string; framework resolves via `modeByName`).
 - `description` — rendered into the system prompt.
 - `skill: Option[ActiveSkillSlot]` — replaces the old `modeSkill` hook; framework reads `mode.skill` directly on `ModeChange` settle.
-- `tools: ModeTools` — tool-availability policy.
+- `tools: ToolPolicy` — tool-availability policy.
 
-`ModeTools` is a sum type (`sigil.provider.ModeTools`) covering six composition policies:
+`ToolPolicy` is a sum type (`sigil.provider.ToolPolicy`) covering six composition policies:
 
 | Case | Roster | Discovery catalog |
 |---|---|---|
@@ -152,11 +164,39 @@ A `Mode` carries:
 | `Exclusive(names)` | essentials + names (baseline suppressed) | names only |
 | `Scoped(names)` | baseline | names only |
 
-Framework essentials (always in the roster) are `respond`, `no_response`, `change_mode`, `stop`. `find_capability` joins them unless `ModeTools.None` is active.
+Framework essentials (always in the roster) are `respond`, `no_response`, `change_mode`, `stop`. `find_capability` joins them unless `ToolPolicy.None` is active.
 
-Composition happens in `Sigil.effectiveToolNames(agent, mode, suggested)` and `Sigil.modeAllowsDiscovery(mode, toolName): Boolean` — both are `def`s apps override for exotic rules. `AgentParticipant.defaultProcess` calls `effectiveToolNames`; `FindCapabilityTool.execute` filters its `ToolFinder` results through `modeAllowsDiscovery`.
+Composition happens in `Sigil.effectiveToolNames(agent, behavior, mode, suggested)` and `Sigil.modeAllowsDiscovery(mode, toolName): Boolean` — both are `def`s apps override for exotic rules. The behavior + mode policies are layered in order via an internal fold: each `Active(names)` / `Exclusive(names)` contributes extras, `None` / `Exclusive` strips baseline, `None` strips `find_capability`. `Sigil.process` calls `effectiveToolNames`; `FindCapabilityTool.execute` filters its `ToolFinder` results through `modeAllowsDiscovery`.
 
 The discovery path is deliberately predicate-based, not list-based — `ToolFinder` produces keyword-matched subsets (DB-backed finders may stream) and the framework applies the mode predicate per result. No "all tools" list ever materializes.
+
+### Behavior (per-agent role primitive)
+
+`Behavior` (`sigil.behavior.Behavior`) is the per-agent role assignment that lives alongside `Mode`. Mode is conversation-level and mutable (agent can swap via `change_mode`); Behavior is agent-level and immutable for the agent's lifetime — agents do not change their own behaviors.
+
+`Behavior` is a plain case class — no PolyType registration, no trait hierarchy:
+
+```scala
+case class Behavior(name: String,
+                    description: String,
+                    skill: Option[ActiveSkillSlot] = None,
+                    tools: ToolPolicy = ToolPolicy.Standard) derives RW
+```
+
+Apps define behaviors as values (`val PlannerBehavior = Behavior(name = "planner", description = "...", tools = ToolPolicy.Exclusive(...))`) and pass them on `AgentParticipant.behaviors: List[Behavior]`. The default is `List(GeneralistBehavior)` — vanilla agents have a real generalist role description, no empty-list fallback. An empty `behaviors` list throws at construction.
+
+**Per-turn dispatch.** `AgentParticipant.process` is final. It iterates `behaviors` in declaration order; for each behavior it injects an `ActiveSkillSlot(name = behavior.name, content = behavior.description)` into the agent's projection (per-turn view copy, persisted view untouched) keyed under `SkillSource.Behavior(behavior.name)`, and delegates to `Sigil.process(participant, behavior, enrichedContext, triggers)`. The slot flows through the existing `aggregatedSkills` → `renderSystem` pipeline as a normal "Active skills" entry — no separate prompt section.
+
+**App customization** lives on `Sigil.process(participant, behavior, ctx, triggers)` — apps override and dispatch on `behavior.name` to specialize per-behavior turn shapes:
+
+```scala
+override def process(participant, behavior, ctx, triggers) = behavior.name match {
+  case "worker"  => runWorker(ctx, triggers)        // skips LLM, reacts to triggers
+  case _         => super.process(participant, behavior, ctx, triggers)
+}
+```
+
+The default `Sigil.process` delegates to `defaultProcess` which runs the standard one-round-trip LLM cycle, parameterized by the active behavior (its `tools` fold into `effectiveToolNames`).
 
 ### Geospatial (`sigil.spatial`)
 

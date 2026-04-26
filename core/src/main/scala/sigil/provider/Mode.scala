@@ -33,8 +33,8 @@ trait Mode {
     * come from other sources (discovery, user overrides). */
   def skill: Option[ActiveSkillSlot] = None
 
-  /** Tool availability policy for this mode — see [[ModeTools]]. */
-  def tools: ModeTools = ModeTools.Standard
+  /** Tool availability policy for this mode — see [[ToolPolicy]]. */
+  def tools: ToolPolicy = ToolPolicy.Standard
 
   /** Stable `Id[Mode]` derived from [[name]]. Used by `Tool.modes`
     * to declare mode affinity in a persistable, query-friendly shape. */

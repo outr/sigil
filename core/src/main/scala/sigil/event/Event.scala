@@ -47,6 +47,23 @@ trait Event extends Signal with Document[Event] {
   def role: Role
 
   /**
+   * Hard scope rule for this event. Default
+   * [[MessageVisibility.All]] — every viewer sees it. Multi-agent
+   * behaviors that emit private inter-agent chatter override at
+   * emission time (`Message(..., visibility = MessageVisibility.Agents)`).
+   *
+   * Enforced by `Sigil.canSee(signal, viewer)` at two points:
+   *   - wire-level (`signalsFor(viewer)`)
+   *   - prompt-building (`buildContext` filters
+   *     [[sigil.conversation.ContextFrame]]s by the running agent's id).
+   *
+   * Trait-level default lets existing event subclasses inherit
+   * `All` without per-class boilerplate; subclasses needing scope
+   * declare `visibility` as a constructor field.
+   */
+  def visibility: MessageVisibility = MessageVisibility.All
+
+  /**
    * Returns a copy of this event with its `state` replaced. Used by
    * [[sigil.signal.StateDelta]] to drive the universal Active → Complete
    * transition. Each concrete Event implements this by delegating to its

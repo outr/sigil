@@ -25,8 +25,10 @@ import sigil.tool.consult.{ConsultTool, TopicClassifierTool}
 import sigil.provider.GenerationSettings
 import sigil.db.{DefaultSigilDB, Model, SigilDB}
 import sigil.dispatcher.{StopFlag, TriggerFilter}
-import sigil.event.{AgentState, Event, Message, ModeChange, Stop, TopicChange, TopicChangeKind}
-import sigil.provider.{ConversationMode, Mode, ModeTools}
+import sigil.event.{AgentState, Event, Message, MessageVisibility, ModeChange, Stop, TopicChange, TopicChangeKind}
+import sigil.behavior.Behavior
+import sigil.orchestrator.Orchestrator
+import sigil.provider.{ConversationMode, ConversationRequest, Mode, ToolPolicy}
 import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
 import sigil.pipeline.{GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MessageIndexingEffect, RedactLocationTransform, SettledEffect, SignalHub, ViewerTransform}
@@ -256,29 +258,144 @@ trait Sigil {
 
   /**
    * Compose the effective tool name list for an agent's turn, given
-   * the current [[Mode]]'s [[ModeTools]] policy and the participant's
-   * one-turn suggested tools from `find_capability`.
+   * the active [[sigil.behavior.Behavior]]'s policy, the current
+   * [[Mode]]'s policy, and the participant's one-turn suggested tools
+   * from `find_capability`.
    *
-   * Framework essentials (`respond`, `no_response`, `change_mode`,
-   * `stop`) are always included. `find_capability` is included unless
-   * the mode is [[ModeTools.None]].
+   * Behavior and Mode each contribute a [[ToolPolicy]]; the two are
+   * folded in order (behavior first, then mode) over an internal
+   * state. Framework essentials (`respond`, `no_response`,
+   * `change_mode`, `stop`) are always included. `find_capability` is
+   * included unless either contributor is [[ToolPolicy.None]]. The
+   * agent's own `toolNames` baseline is included unless either
+   * contributor is `None` or `Exclusive` (both strip baseline).
+   * `Active` / `Exclusive` extras are unioned across both
+   * contributors; `Discoverable` / `Scoped` don't change the roster.
    *
    * Apps override for exotic composition (e.g. per-agent tool gating).
    */
   def effectiveToolNames(agent: AgentParticipant,
+                         behavior: sigil.behavior.Behavior,
                          mode: Mode,
                          suggested: List[sigil.tool.ToolName]): List[sigil.tool.ToolName] = {
     import sigil.tool.core.{ChangeModeTool, FindCapabilityTool, NoResponseTool, RespondTool, StopTool}
     val essentials = List(RespondTool, NoResponseTool, ChangeModeTool, StopTool).map(_.schema.name)
-    val withDiscovery = essentials :+ FindCapabilityTool.schema.name
-    mode.tools match {
-      case ModeTools.Standard         => (withDiscovery ++ agent.toolNames ++ suggested).distinct
-      case ModeTools.None             => (essentials ++ suggested).distinct
-      case ModeTools.Active(names)    => (withDiscovery ++ agent.toolNames ++ names ++ suggested).distinct
-      case ModeTools.Discoverable(_)  => (withDiscovery ++ agent.toolNames ++ suggested).distinct
-      case ModeTools.Exclusive(names) => (withDiscovery ++ names ++ suggested).distinct
-      case ModeTools.Scoped(_)        => (withDiscovery ++ agent.toolNames ++ suggested).distinct
+
+    case class PolicyState(extras: List[sigil.tool.ToolName],
+                           includesFindCapability: Boolean,
+                           includesBaseline: Boolean)
+    val initial = PolicyState(Nil, includesFindCapability = true, includesBaseline = true)
+
+    def apply(s: PolicyState, p: ToolPolicy): PolicyState = p match {
+      case ToolPolicy.Standard         => s
+      case ToolPolicy.None             => s.copy(includesFindCapability = false, includesBaseline = false)
+      case ToolPolicy.Active(names)    => s.copy(extras = s.extras ++ names)
+      case ToolPolicy.Discoverable(_)  => s
+      case ToolPolicy.Exclusive(names) => s.copy(includesBaseline = false, extras = s.extras ++ names)
+      case ToolPolicy.Scoped(_)        => s
     }
+
+    val state = apply(apply(initial, behavior.tools), mode.tools)
+    val findCapability = if (state.includesFindCapability) List(FindCapabilityTool.schema.name) else Nil
+    val baseline       = if (state.includesBaseline) agent.toolNames else Nil
+    (essentials ++ findCapability ++ baseline ++ state.extras ++ suggested).distinct
+  }
+
+  /**
+   * Per-behavior dispatch hook. Invoked once per
+   * [[sigil.behavior.Behavior]] in the agent's `behaviors` list, by
+   * [[sigil.participant.AgentParticipant.process]] (which is final).
+   * The supplied `context` already carries the behavior's
+   * contributions merged into the agent's projection — apps that
+   * override only need to specialize on `behavior.name` (or behavior
+   * value equality) for per-behavior turn shapes (e.g. a Worker that
+   * skips the LLM and reacts to triggers).
+   *
+   * Default: delegates to [[defaultProcess]] which runs the standard
+   * one-round-trip LLM cycle with the behavior's `tools` folded into
+   * the effective roster.
+   */
+  def process(participant: Participant,
+              behavior: Behavior,
+              context: TurnContext,
+              triggers: Stream[Event]): Stream[Signal] =
+    defaultProcess(participant, behavior, context, triggers)
+
+  /**
+   * Standard one-round-trip LLM cycle, parameterized by the active
+   * behavior. The behavior's `tools` are folded with the current
+   * Mode's policy via [[effectiveToolNames]]; the behavior's
+   * `description` / `skill` is already injected into the agent's
+   * projection by `AgentParticipant.process` and flows through the
+   * existing `aggregatedSkills` → `renderSystem` pipeline.
+   *
+   * Steps:
+   *   1. Resolve the live [[Provider]] via `providerFor(modelId, chain)`.
+   *   2. Resolve each name in the effective tool roster to a live
+   *      [[Tool]] via `findTools.byName`. Names that don't resolve
+   *      are dropped.
+   *   3. Build a [[ConversationRequest]] and run it; translate the
+   *      provider's stream into [[Signal]]s via
+   *      [[Orchestrator.process]].
+   *   4. The first time the orchestrator emits a [[Message]],
+   *      prepend an [[AgentStateDelta]] transitioning
+   *      `activity = Typing` (targeting `context.currentAgentStateId`).
+   *
+   * Non-AgentParticipant participants emit nothing — the standard
+   * path is LLM-driven. Apps that need different behavior for custom
+   * Participant subtypes override [[process]].
+   */
+  protected def defaultProcess(participant: Participant,
+                               behavior: Behavior,
+                               context: TurnContext,
+                               triggers: Stream[Event]): Stream[Signal] = participant match {
+    case agent: AgentParticipant => runAgentTurn(agent, behavior, context)
+    case _                       => Stream.empty
+  }
+
+  private def runAgentTurn(agent: AgentParticipant,
+                           behavior: Behavior,
+                           context: TurnContext): Stream[Signal] = {
+    val effectiveChain = context.chain.filterNot(_ == agent.id) :+ agent.id
+    val suggested      = context.conversationView.projectionFor(agent.id).suggestedTools
+    val effectiveNames = effectiveToolNames(agent, behavior, context.conversation.currentMode, suggested).distinct
+
+    val resolved: Task[(Provider, Vector[Tool])] =
+      for {
+        p <- providerFor(agent.modelId, effectiveChain)
+        t <- Task.sequence(effectiveNames.map(n => findTools.byName(n))).map(_.flatten.toVector)
+      } yield (p, t)
+
+    Stream.force(resolved.map { case (provider, tools) =>
+      val request = ConversationRequest(
+        conversationId = context.conversation.id,
+        modelId = agent.modelId,
+        instructions = agent.instructions,
+        turnInput = context.turnInput,
+        currentMode = context.conversation.currentMode,
+        currentTopic = context.conversation.currentTopic,
+        previousTopics = context.conversation.previousTopics,
+        generationSettings = agent.generationSettings,
+        tools = tools,
+        chain = effectiveChain
+      )
+
+      val typingEmitted = new java.util.concurrent.atomic.AtomicBoolean(false)
+      Orchestrator.process(this, provider, request).flatMap { sig =>
+        val prefix: List[Signal] = sig match {
+          case _: Message if typingEmitted.compareAndSet(false, true) =>
+            context.currentAgentStateId.toList.map { agentStateId =>
+              AgentStateDelta(
+                target = agentStateId,
+                conversationId = context.conversation.id,
+                activity = Some(AgentActivity.Typing)
+              )
+            }
+          case _ => Nil
+        }
+        Stream.emits(prefix :+ sig)
+      }
+    })
   }
 
 
@@ -409,6 +526,43 @@ trait Sigil {
   final def applyViewerTransforms(signal: Signal, viewer: ParticipantId): Signal =
     viewerTransforms.foldLeft(signal)((s, t) => t.apply(s, viewer, this))
 
+  /**
+   * Hard scope predicate — does `viewer` get to see `signal` at all?
+   * Default consults [[Event.visibility]] when the signal is an
+   * [[Event]] (Deltas always pass through; client logic must ignore
+   * deltas whose target event was filtered). Apps override for
+   * custom scope rules (per-tenant, per-permission-grant, etc.).
+   *
+   * Resolution policy for the default `MessageVisibility` cases:
+   *   - `All` — pass.
+   *   - `Agents` — pass iff `viewer.isInstanceOf[AgentParticipantId]`.
+   *   - `Users` — pass iff viewer is NOT an `AgentParticipantId`.
+   *   - `Participants(ids)` — pass iff `ids.contains(viewer)`.
+   *
+   * Called twice per signal: once in `signalsFor(viewer)` for wire
+   * delivery, once on each [[sigil.conversation.ContextFrame]]'s
+   * source visibility in `buildContext` for prompt-building.
+   */
+  def canSee(signal: Signal, viewer: ParticipantId): Boolean = signal match {
+    case e: Event => visibilityAllows(e.visibility, viewer)
+    case _        => true
+  }
+
+  /**
+   * Same predicate, applied directly to a denormalized
+   * [[MessageVisibility]] (e.g. on a [[sigil.conversation.ContextFrame]]).
+   * Apps that override [[canSee]] should usually override this too if
+   * their custom logic depends on the signal payload — the default
+   * delegates straight to the visibility tag.
+   */
+  def visibilityAllows(visibility: MessageVisibility, viewer: ParticipantId): Boolean =
+    visibility match {
+      case MessageVisibility.All               => true
+      case MessageVisibility.Agents            => viewer.isInstanceOf[AgentParticipantId]
+      case MessageVisibility.Users             => !viewer.isInstanceOf[AgentParticipantId]
+      case MessageVisibility.Participants(ids) => ids.contains(viewer)
+    }
+
   // -- broadcast stream --
 
   /** Multicast dispatcher populated by [[publish]]. One per Sigil
@@ -433,15 +587,22 @@ trait Sigil {
   final def signals: Stream[Signal] = hub.subscribe
 
   /**
-   * Per-viewer stream derived from [[signals]] by applying
-   * [[viewerTransforms]] to each signal. Wire transports subscribe
-   * to one of these per connected client — the returned stream has
-   * `RedactLocationTransform` (and any other configured viewer
-   * transforms) already applied, so the app does not have to call
-   * `applyViewerTransforms` itself.
+   * Per-viewer stream derived from [[signals]]. Each signal is first
+   * tested against [[canSee]] (drops `MessageVisibility.Agents`
+   * messages for non-agent viewers, etc.); survivors are folded
+   * through [[viewerTransforms]] for redaction. Wire transports
+   * subscribe to one of these per connected client — the returned
+   * stream is already filtered and redacted, so the app does not
+   * have to call `canSee` / `applyViewerTransforms` itself.
+   *
+   * Deltas always pass `canSee`; client UIs must ignore deltas
+   * whose target event was filtered out by visibility.
    */
   final def signalsFor(viewer: ParticipantId): Stream[Signal] =
-    signals.map(applyViewerTransforms(_, viewer))
+    signals.flatMap { s =>
+      if (canSee(s, viewer)) Stream.emit(applyViewerTransforms(s, viewer))
+      else Stream.empty
+    }
 
   // -- embeddings & vector search --
 
@@ -1522,12 +1683,14 @@ trait Sigil {
                                  sinceTimestamp: Timestamp,
                                  claimedId: Id[Event]): Task[(TurnContext, Stream[Event])] =
     for {
-      view <- viewFor(conv._id)
+      rawView <- viewFor(conv._id)
+      view = rawView.copy(frames = rawView.frames.filter(f => visibilityAllows(f.visibility, agent.id)))
       triggerEvents <- withDB(_.events.transaction(_.list)).map { all =>
         all.view
           .filter(e => e.conversationId == conv._id
                     && e.timestamp.value > sinceTimestamp.value
-                    && TriggerFilter.isTriggerFor(agent, e))
+                    && TriggerFilter.isTriggerFor(agent, e)
+                    && visibilityAllows(e.visibility, agent.id))
           .toList
       }
       chain = buildChain(triggerEvents, agent)

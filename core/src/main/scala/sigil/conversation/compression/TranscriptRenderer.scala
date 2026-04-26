@@ -33,7 +33,7 @@ object TranscriptRenderer {
     val consumedResults = scala.collection.mutable.Set.empty[lightdb.id.Id[sigil.event.Event]]
 
     frames.foreach {
-      case ContextFrame.Text(content, participantId, _) =>
+      case ContextFrame.Text(content, participantId, _, _) =>
         sb.append(s"[${participantId.value}] ").append(content.trim).append("\n")
 
       case tc: ContextFrame.ToolCall =>
@@ -49,7 +49,7 @@ object TranscriptRenderer {
       case tr: ContextFrame.ToolResult =>
         sb.append("[tool result (orphan)] ").append(tr.content.trim).append("\n")
 
-      case ContextFrame.System(content, _) =>
+      case ContextFrame.System(content, _, _) =>
         sb.append("[system] ").append(content.trim).append("\n")
     }
     sb.toString
