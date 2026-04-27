@@ -7,7 +7,7 @@ import sigil.event.{Event, Message}
 import sigil.tool.model.ResponseContent
 
 /**
- * Replaces the `Image` content block on a target [[Message]]. Used by
+ * Replaces the `Image` content block on a target [[sigil.event.Message]]. Used by
  * the orchestrator to stream image-generation previews — each successive
  * `partial_image` from the provider becomes an `ImageDelta` carrying the
  * latest preview, and the final `image_generation.completed` event

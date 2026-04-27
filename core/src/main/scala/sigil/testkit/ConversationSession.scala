@@ -31,7 +31,7 @@ final class ConversationSession(sigil: Sigil,
                                 val convId: Id[Conversation],
                                 val received: ConversationSession.Received) {
 
-  /** Publish a user [[Message]] in this session's conversation and
+  /** Publish a user [[sigil.event.Message]] in this session's conversation and
     * wait until the agent's whole turn has settled in
     * `SigilDB.events` — i.e. an `AgentState(Complete)` exists for
     * this conversation newer than the user message, and at least one
@@ -67,7 +67,7 @@ final class ConversationSession(sigil: Sigil,
     } yield reply
   }
 
-  /** Fresh read of the persisted [[Conversation]] for this session.
+  /** Fresh read of the persisted [[sigil.conversation.Conversation]] for this session.
     * The framework keeps `currentMode`, `topics`, `participants`, etc.
     * up to date as events flow through `Sigil.publish`, so this
     * reflects post-turn state (e.g. a `change_mode` settled by the
@@ -108,7 +108,7 @@ final class ConversationSession(sigil: Sigil,
 }
 
 object ConversationSession {
-  /** Append-only recorder of every [[Event]] the wire client received
+  /** Append-only recorder of every [[sigil.event.Event]] the wire client received
     * during this session's lifetime. */
   final class Received {
     private val ref = new AtomicReference[Vector[Event]](Vector.empty)

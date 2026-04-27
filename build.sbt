@@ -32,6 +32,18 @@ ThisBuild / scalacOptions ++= Seq(
 
 ThisBuild / evictionErrorLevel := Level.Info
 
+// Scaladoc 3's `[[ ]]` link resolver doesn't follow imports the way
+// older scaladoc did — it warns on every short-name link to a type
+// that's imported but not fully qualified. Sigil has hundreds of such
+// links across signals, events, transports, etc.; fully qualifying
+// them all is a heavy edit with no real benefit (the rendered HTML
+// links still break, the warning is the only artifact). Pass scaladoc's
+// `-no-link-warnings` flag to silence them so `publishLocal` and
+// `Compile/doc` produce clean output. Real code warnings still surface.
+val docNoLinkWarnings: Seq[Setting[?]] = Seq(
+  Compile / doc / scalacOptions += "-no-link-warnings"
+)
+
 lazy val root = (project in file("."))
   .aggregate(core, secrets, script, mcp, benchmark, docs)
   .settings(
@@ -40,6 +52,7 @@ lazy val root = (project in file("."))
   )
 
 lazy val core = (project in file("core"))
+  .settings(docNoLinkWarnings*)
   .settings(
     name := "sigil-core",
     libraryDependencies ++= Seq(
@@ -72,6 +85,7 @@ lazy val core = (project in file("core"))
 
 lazy val secrets = (project in file("secrets"))
   .dependsOn(core % "compile->compile;test->test")
+  .settings(docNoLinkWarnings*)
   .settings(
     name := "sigil-secrets",
     libraryDependencies ++= Seq(
@@ -93,6 +107,7 @@ lazy val secrets = (project in file("secrets"))
 
 lazy val script = (project in file("script"))
   .dependsOn(core % "compile->compile;test->test")
+  .settings(docNoLinkWarnings*)
   .settings(
     name := "sigil-script",
     libraryDependencies ++= Seq(
@@ -116,6 +131,7 @@ lazy val script = (project in file("script"))
 
 lazy val mcp = (project in file("mcp"))
   .dependsOn(core % "compile->compile;test->test")
+  .settings(docNoLinkWarnings*)
   .settings(
     name := "sigil-mcp",
     libraryDependencies ++= Seq(

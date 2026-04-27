@@ -7,7 +7,7 @@ import sigil.Sigil
 import sigil.conversation.Conversation
 import sigil.event.Event
 import sigil.participant.{AgentParticipant, ParticipantId}
-import sigil.transport.{DurableSocketSink, SigilDbEventLog}
+import sigil.transport.SessionBridge
 import spice.http.client.HttpClient
 import spice.http.durable.{DurableSocketClient, DurableSocketConfig, DurableSocketServer, ReconnectStrategy}
 import spice.http.server.MutableHttpServer
@@ -24,8 +24,8 @@ import scala.language.implicitConversions
  *
  * Stands up a real HTTP server with a `DurableSocketServer` mounted at
  * `/ws`, bridges every accepted session into the supplied [[Sigil]]'s
- * per-viewer signal stream via [[DurableSocketSink]], and exposes a
- * [[withClient]] resource that opens a fresh [[Conversation]],
+ * per-viewer signal stream via [[sigil.transport.DurableSocketSink]], and exposes a
+ * [[withClient]] resource that opens a fresh [[sigil.conversation.Conversation]],
  * connects a wire client, and provides a [[ConversationSession]] with
  * a `send` helper that drives a full agent turn end-to-end.
  *
@@ -62,17 +62,12 @@ final class ConversationHarness(sigil: Sigil,
                                 viewer: ParticipantId,
                                 conversationFactory: Id[Conversation] => Conversation) {
 
-  /** Adapter exposing `SigilDB.events` as a spice `EventLog`. The
-    * server uses this for resume reads, so missed events stream from
-    * the same store `Sigil.publish` writes to — no separate buffer. */
-  lazy val eventLog: SigilDbEventLog = new SigilDbEventLog(sigil)
-
   /** The DurableSocket server. Public so apps can poke at sessions /
     * channels for advanced scenarios (custom resume flows, etc.). */
   lazy val durableServer: DurableSocketServer[Id[Conversation], Event, String] =
     new DurableSocketServer[Id[Conversation], Event, String](
       config = DurableSocketConfig(ackBatchDelay = 50.millis, reconnectStrategy = ReconnectStrategy.none),
-      eventLog = eventLog,
+      eventLog = sigil.eventLog,
       // `info` carries the conversationId string supplied at connect time.
       resolveChannel = (_, info) => Task.pure(Conversation.id(info))
     )
@@ -84,15 +79,13 @@ final class ConversationHarness(sigil: Sigil,
     s.config.clearListeners().addListeners(HttpServerListener(port = None))
     s.handler(List(path"/ws" / durableServer))
     s.start().sync()
-    // Bridge each new session into the viewer-scoped signal stream.
-    // `sync()` materializes the SignalHub subscription before this
-    // callback returns so the live stream is hot before any publish.
+    // Bridge each new session into Sigil via the standard helper —
+    // outbound sink (viewer-filtered + channel-scoped), inbound
+    // Events → publish, ephemeral warn-log. `sync()` materializes
+    // the subscription before this callback returns so the live
+    // stream is hot before any publish.
     durableServer.onSession.attach { session =>
-      sigil.signalTransport.attach(
-        viewer = viewer,
-        sink = new DurableSocketSink[Id[Conversation], String](session),
-        conversations = Some(Set(session.channelId))
-      ).sync()
+      SessionBridge.attach(sigil = sigil, session = session, viewer = viewer).sync()
       ()
     }
     s
@@ -144,7 +137,7 @@ final class ConversationHarness(sigil: Sigil,
       client = new DurableSocketClient[Id[Conversation], Event, String](
         createWebSocket = () => HttpClient.url(url"ws://localhost".withPort(serverPort).withPath(path"/ws")).webSocket(),
         config = DurableSocketConfig(ackBatchDelay = 50.millis, reconnectStrategy = ReconnectStrategy.none),
-        outboundLog = eventLog,
+        outboundLog = sigil.eventLog,
         initialChannelId = convId,
         info = convId.value,
         clientId = clientId

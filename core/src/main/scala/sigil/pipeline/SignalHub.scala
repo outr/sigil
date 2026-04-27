@@ -73,13 +73,30 @@ final class SignalHub(subscriberCapacity: Int = 1024) {
 
   /** New subscription: returns a [[Stream]] that emits every signal
     * published after subscription, completing naturally when the hub
-    * is closed via [[close]]. The underlying queue is registered on
-    * first pull and removed when the stream terminates (natural end,
-    * error, or consumer short-circuit). */
+    * is closed via [[close]].
+    *
+    * **Eager registration.** The underlying queue is registered with
+    * the hub *synchronously* when `subscribe` is called, BEFORE the
+    * stream value is constructed. Any [[emit]] that happens between
+    * `subscribe` returning and the consumer's first pull is queued
+    * for the consumer (rather than dropped because no subscriber
+    * existed yet). This closes the race where attach-then-publish
+    * patterns (e.g. `SignalTransport.attach` followed by
+    * `Sigil.publish`) lost early signals.
+    *
+    * **Consume-or-leak contract.** Callers MUST drain the returned
+    * stream — the queue is registered immediately and stays
+    * registered until the stream terminates (natural end via close
+    * sentinel, error, or consumer short-circuit). A `subscribe` call
+    * whose stream is constructed and then dropped without consumption
+    * leaks one queue. Every framework-internal caller (Sigil.signals,
+    * SignalTransport.attach, RecordingBroadcaster) drains; apps follow
+    * the same pattern. */
   def subscribe: Stream[Signal] = {
     val q = new LinkedBlockingQueue[Option[Signal]](subscriberCapacity)
+    subscribers.add(q) // EAGER — register before returning the stream value
     Stream
-      .using(Task { subscribers.add(q); q })(qq =>
+      .using(Task.pure(q))(qq =>
         Stream.unfoldStreamEval(qq) { queue =>
           Task(queue.take()).map {
             case Some(sig) => Some((Stream.emit(sig), queue))

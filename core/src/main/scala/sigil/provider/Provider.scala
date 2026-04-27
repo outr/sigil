@@ -67,7 +67,7 @@ trait Provider {
     Stream.force(translate(request).map(call))
 
   /**
-   * Build the underlying [[HttpRequest]] for a sigil request without
+   * Build the underlying [[spice.http.HttpRequest]] for a sigil request without
    * performing any network I/O. `apply` invokes the same translation
    * pass before calling `call`; tests can call this directly to inspect
    * the wire payload (typically by reading `httpRequest.content` and
@@ -94,7 +94,7 @@ trait Provider {
   protected def call(input: ProviderCall): Stream[ProviderEvent]
 
   /**
-   * Build the wire-level [[HttpRequest]] from a [[ProviderCall]] without
+   * Build the wire-level [[spice.http.HttpRequest]] from a [[ProviderCall]] without
    * sending it. Used by the final [[requestConverter]] for inspect-only
    * test paths.
    */

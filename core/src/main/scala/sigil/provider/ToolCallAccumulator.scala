@@ -23,7 +23,7 @@ import scala.collection.mutable
  * The accumulator is constructed with the set of tools available on the
  * originating request. On completion, each call's tool name is used to look
  * up the matching tool and deserialize the accumulated JSON args using that
- * tool's specific [[Tool.inputRW]] — dispatch by name, not by a discriminator
+ * tool's specific [[sigil.tool.Tool.inputRW]] — dispatch by name, not by a discriminator
  * injected into the args.
  *
  * Each provider's stream parser is responsible for translating upstream events

@@ -6,7 +6,7 @@ import sigil.conversation.Conversation
 import sigil.event.{AgentState, Event}
 
 /**
- * Transient update to an [[AgentState]] event. Carries whichever subset of
+ * Transient update to an [[sigil.event.AgentState]] event. Carries whichever subset of
  * mutations the emitter wants to apply — typically `activity` alone
  * (Thinking → Typing mid-turn) or `activity` + `state` together at the
  * terminal transition (Idle + Complete).
