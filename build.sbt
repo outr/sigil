@@ -14,7 +14,7 @@ val profigVersion: String = "3.7.0"
 
 val scribeVersion: String = "3.19.0"
 
-val lightdbVersion: String = "4.31.1"
+val lightdbVersion: String = "4.32.0"
 
 val scalatestVersion: String = "3.2.20"
 
