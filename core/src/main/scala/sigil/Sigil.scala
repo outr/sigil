@@ -80,14 +80,19 @@ trait Sigil {
    * beyond what sigil ships). The framework's [[CoreSignals]] are registered
    * automatically; this list extends the polymorphic discriminator with
    * additional types.
+   *
+   * Default empty — apps add subtypes only when they ship custom
+   * Signal implementations.
    */
-  protected def signalRegistrations: List[RW[? <: Signal]]
+  protected def signalRegistrations: List[RW[? <: Signal]] = Nil
 
   /**
    * App-specific ParticipantId subtypes. Apps register their own
    * `ParticipantId` implementations here for polymorphic serialization.
+   *
+   * Default empty — apps that define participants override.
    */
-  protected def participantIds: List[RW[? <: ParticipantId]]
+  protected def participantIds: List[RW[? <: ParticipantId]] = Nil
 
   /**
    * When `true`, tools that would normally cause external side effects (send
@@ -181,7 +186,8 @@ trait Sigil {
    */
   def curate(view: ConversationView,
              modelId: Id[Model],
-             chain: List[ParticipantId]): Task[TurnInput]
+             chain: List[ParticipantId]): Task[TurnInput] =
+    Task.pure(TurnInput(view))
 
   // -- information lookup --
 
@@ -190,7 +196,7 @@ trait Sigil {
    * that don't use the Information catalog return `Task.pure(None)`
    * explicitly.
    */
-  def getInformation(id: Id[Information]): Task[Option[Information]]
+  def getInformation(id: Id[Information]): Task[Option[Information]] = Task.pure(None)
 
   /**
    * Persist an [[Information]] record so it can be resolved later via
@@ -202,7 +208,7 @@ trait Sigil {
    * Apps that don't use the Information catalog return `Task.unit`
    * explicitly.
    */
-  def putInformation(information: Information): Task[Unit]
+  def putInformation(information: Information): Task[Unit] = Task.unit
 
   // -- memory --
 
@@ -212,7 +218,7 @@ trait Sigil {
    * fabric RW. Apps define concrete spaces (GlobalSpace, ProjectSpace,
    * UserSpace, etc.) and list their RWs here.
    */
-  protected def spaceIds: List[RW[? <: SpaceId]]
+  protected def spaceIds: List[RW[? <: SpaceId]] = Nil
 
   /**
    * Search memories across the given spaces. Default queries
@@ -409,7 +415,7 @@ trait Sigil {
    * Apps that do want it return a concrete space (per-conversation,
    * per-user, or a global compression-facts space).
    */
-  def compressionMemorySpace(conversationId: Id[Conversation]): Task[Option[SpaceId]]
+  def compressionMemorySpace(conversationId: Id[Conversation]): Task[Option[SpaceId]] = Task.pure(None)
 
   /**
    * Hook point for per-turn memory extraction. Invoked by the
@@ -615,7 +621,7 @@ trait Sigil {
    * [[sigil.embedding.OpenAICompatibleEmbeddingProvider]]) and must
    * pair it with a non-NoOp [[vectorIndex]].
    */
-  def embeddingProvider: EmbeddingProvider
+  def embeddingProvider: EmbeddingProvider = NoOpEmbeddingProvider
 
   /**
    * Backing vector store for semantic search. Apps that don't use
@@ -624,7 +630,7 @@ trait Sigil {
    * [[sigil.vector.QdrantVectorIndex]] in production or
    * [[sigil.vector.InMemoryVectorIndex]] in tests.
    */
-  def vectorIndex: VectorIndex
+  def vectorIndex: VectorIndex = NoOpVectorIndex
 
   /** `true` when both [[embeddingProvider]] and [[vectorIndex]] are
     * non-NoOp — the flag the framework checks before auto-embedding on
@@ -644,7 +650,7 @@ trait Sigil {
    * Apps that don't want wire logging return
    * [[spice.http.client.intercept.Interceptor.empty]] explicitly.
    */
-  def wireInterceptor: spice.http.client.intercept.Interceptor
+  def wireInterceptor: spice.http.client.intercept.Interceptor = spice.http.client.intercept.Interceptor.empty
 
   // -- participants (registration for polymorphic RW) --
 
@@ -655,7 +661,7 @@ trait Sigil {
    * ([[DefaultAgentParticipant]]) are registered automatically; this list
    * extends the poly with app-specific agent types (Planner, Critic, etc.).
    */
-  protected def participants: List[RW[? <: Participant]]
+  protected def participants: List[RW[? <: Participant]] = Nil
 
   // -- provider resolution --
 
@@ -1733,13 +1739,21 @@ trait Sigil {
     for {
       _ <- logger.info("Sigil initializing...")
       _ <- Task(Profig.initConfiguration())
-      _ = Signal.register((CoreSignals.all ++ signalRegistrations)*)
-      _ = ToolInput.register((CoreTools.inputRWs ++ findTools.toolInputRWs)*)
-      _ = ParticipantId.register(participantIds*)
-      _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
+      // Registration order matters: leaf polys (no fields referencing
+      // other polys) MUST be populated before composite polys whose
+      // case-class subtypes have fields typed against the leaves.
+      // Otherwise fabric's lazy-val Definition for those subtypes
+      // captures an empty leaf-poly snapshot when fabric's `RW.poly`
+      // walks them at register-time, and downstream callers
+      // (codegen, schema generators) see ParticipantId / SpaceId
+      // with zero subtypes.
       _ = SpaceId.register(spaceIds*)
+      _ = ParticipantId.register(participantIds*)
       _ = Mode.register((ConversationMode :: modes).distinct.map(m => RW.static(m))*)
+      _ = ToolInput.register((CoreTools.inputRWs ++ findTools.toolInputRWs)*)
+      _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
       _ = sigil.tool.Tool.register((staticTools.map(t => RW.static(t)) ++ toolRegistrations).distinct*)
+      _ = Signal.register((CoreSignals.all ++ signalRegistrations)*)
       config = Profig("sigil").as[Config]
       (directory, collectionStore) = config.postgres match {
         case Some(pg) =>
@@ -1783,11 +1797,46 @@ trait Sigil {
       def safeRefresh: Task[Unit] = OpenRouter.refreshModels(this).handleError { e =>
         Task { scribe.warn(s"Model refresh failed: ${e.getMessage}; keeping current registry"); () }
       }
-      def loop: Task[Unit] = safeRefresh.flatMap(_ => Task.sleep(interval)).flatMap(_ => loop)
+      def loop: Task[Unit] =
+        if (isShutdown) Task.unit
+        else safeRefresh.flatMap(_ => Task.sleep(interval)).flatMap(_ => loop)
       Task { loop.startUnit(); () }
   }
 
   def withDB[Return](f: DB => Task[Return]): Task[Return] = instance.flatMap(sigil => f(sigil.db))
+
+  // -- shutdown --
+
+  /**
+   * Releases shared resources so the JVM can exit cleanly. Disposes
+   * the [[sigil.db.SigilDB]] (which closes RocksDB / Lucene / Postgres
+   * connection pool depending on storage), and signals the model-
+   * refresh background fiber to stop on its next iteration.
+   *
+   * CLI / one-shot consumers should call this before returning from
+   * `main`. Long-running servers don't need to call it during normal
+   * operation — the resources live for the process lifetime.
+   *
+   * After shutdown, calls into [[withDB]] / `instance` are not
+   * supported. Idempotent — repeated calls return immediately.
+   */
+  def shutdown(): Task[Unit] = Task.defer {
+    shutdownRequested.set(true)
+    instance.flatMap { sigil =>
+      sigil.db.dispose.handleError { t =>
+        Task { scribe.warn(s"Sigil shutdown: db.dispose failed: ${t.getMessage}"); () }
+      }
+    }
+  }
+
+  /** Cancellation flag observed by background fibers (model refresh,
+    * MCP reaper, etc.). Set by [[shutdown]]. */
+  private val shutdownRequested: java.util.concurrent.atomic.AtomicBoolean =
+    new java.util.concurrent.atomic.AtomicBoolean(false)
+
+  /** Test hook for background fibers — `true` once [[shutdown]] has
+    * been called. Apps don't usually consult this directly. */
+  def isShutdown: Boolean = shutdownRequested.get()
 
   /**
    * Disk fallback location for the model registry. Default: a

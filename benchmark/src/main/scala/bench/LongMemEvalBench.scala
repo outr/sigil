@@ -93,7 +93,7 @@ object LongMemEvalBench {
     println()
 
     println("Loading dataset...")
-    val raw = Source.fromFile(new File(dataPath))(Codec.UTF8).mkString
+    val raw = Source.fromFile(new File(dataPath))(using Codec.UTF8).mkString
     val entries = JsonParser(raw).asVector
     val questionIndices = indices match {
       case Some(idxs) => idxs.filter(_ < entries.size).toList.sorted

@@ -185,7 +185,7 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   getClass.getSimpleName should {
     "emit ToolInvoke + Message + Typing transition for a streaming respond call" in {
-      orchestrate("What is 2+2? Respond with just the number.").map { signals =>
+      orchestrate("What is the chemical symbol for gold? Symbol only.").map { signals =>
         val toolInvokes = signals.collect { case t: ToolInvoke => t }
         toolInvokes should not be empty
         toolInvokes.head.toolName shouldBe sigil.tool.ToolName("respond")
@@ -216,12 +216,12 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         val streamingDeltas = signals.collect {
           case d: MessageDelta if d.content.exists(!_.complete) => d.content.get
         }
-        streamingDeltas.map(_.delta).mkString.trim shouldBe "4"
+        streamingDeltas.map(_.delta).mkString.trim shouldBe "Au"
 
         val finalContentDelta = signals.collectFirst {
           case d: MessageDelta if d.content.exists(_.complete) => d.content.get
         }
-        finalContentDelta.map(_.delta) shouldBe Some("4")
+        finalContentDelta.map(_.delta) shouldBe Some("Au")
         finalContentDelta.map(_.complete) shouldBe Some(true)
 
         val toolDelta = signals.collectFirst { case d: ToolDelta => d }
@@ -245,13 +245,13 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         participantId = TestUser,
         conversationId = conversationId,
         topicId = TestTopicId,
-        content = Vector(ResponseContent.Text("What is 2+2? Respond with just the number."))
+        content = Vector(ResponseContent.Text("What is the chemical symbol for gold? Symbol only."))
       )
       val conversation = Conversation(topics = TestTopicStack, _id = conversationId)
       val view = ConversationView(
         conversationId = conversationId,
         frames = Vector(ContextFrame.Text(
-          content = "What is 2+2? Respond with just the number.",
+          content = "What is the chemical symbol for gold? Symbol only.",
           participantId = TestUser,
           sourceEventId = userMessage._id
         )),
@@ -286,7 +286,7 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         messages.head.state shouldBe EventState.Complete
         messages.head.content should not be empty
         messages.head.content.head shouldBe a[ResponseContent.Text]
-        messages.head.content.head.asInstanceOf[ResponseContent.Text].text.trim shouldBe "4"
+        messages.head.content.head.asInstanceOf[ResponseContent.Text].text.trim shouldBe "Au"
       }
     }
 

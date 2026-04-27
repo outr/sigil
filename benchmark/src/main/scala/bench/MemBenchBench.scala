@@ -104,7 +104,7 @@ object MemBenchBench {
       if (!file.exists()) println(s"Skipping $cat — missing file: ${file.getPath}")
       else {
         println(s"\n--- $cat (${file.getName}) ---")
-        val raw = Source.fromFile(file)(Codec.UTF8).mkString
+        val raw = Source.fromFile(file)(using Codec.UTF8).mkString
         val data = JsonParser(raw)
         // The "rec" / recommendation categories (highlevel*, lowlevel_rec)
         // use a different schema (`{movie: [...]}` with `mid`/`user`

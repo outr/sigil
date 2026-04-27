@@ -7,7 +7,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.conversation.Conversation
 import sigil.event.{Event, Message}
-import sigil.signal.{ContentDelta, ContentKind, EventState, MessageDelta}
+import sigil.signal.{MessageContentDelta, ContentKind, EventState, MessageDelta}
 import sigil.tool.model.ResponseContent
 import sigil.transport.DurableSocketSink
 import fabric.rw.*
@@ -80,7 +80,7 @@ class DurableSocketSinkSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val delta = MessageDelta(
         target = ev._id,
         conversationId = convId,
-        content = Some(ContentDelta(kind = ContentKind.Text, arg = None, complete = false, delta = "tk"))
+        content = Some(MessageContentDelta(kind = ContentKind.Text, arg = None, complete = false, delta = "tk"))
       )
       for {
         _ <- sink.push(ev)    // durable

@@ -63,7 +63,7 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         _ <- TestSigil.publish(MessageDelta(
           target = msg._id,
           conversationId = convId,
-          content = Some(sigil.signal.ContentDelta(
+          content = Some(sigil.signal.MessageContentDelta(
             kind = sigil.signal.ContentKind.Text,
             arg = None,
             complete = true,

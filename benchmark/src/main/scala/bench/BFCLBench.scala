@@ -227,7 +227,7 @@ object BFCLBench {
 
 
   private def loadJsonl(file: File): List[Json] = {
-    val src = Source.fromFile(file)(Codec.UTF8)
+    val src = Source.fromFile(file)(using Codec.UTF8)
     try src.getLines().filter(_.trim.nonEmpty).map(JsonParser(_)).toList
     finally src.close()
   }

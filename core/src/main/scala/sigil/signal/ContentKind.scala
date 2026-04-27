@@ -6,7 +6,7 @@ import fabric.rw.*
  * The block type on a streaming content delta. Mirrors the variants of
  * [[sigil.tool.model.ResponseContent]] but represents only the *kind* of a
  * block in flight — not the block's data, which streams through
- * [[ContentDelta.delta]].
+ * [[MessageContentDelta.delta]].
  *
  * Subscribers use the kind to decide how to accumulate and render partial
  * content (e.g., markdown rendering for `Markdown`, syntax highlighting for

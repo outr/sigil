@@ -87,7 +87,7 @@ object LoCoMoBench {
         println(s"\n--- Category $catNum: $catDir (${files.length} files) ---")
 
         for (file <- files) {
-          val raw = Source.fromFile(file)(Codec.UTF8).mkString
+          val raw = Source.fromFile(file)(using Codec.UTF8).mkString
           val data = JsonParser(raw)
           val conversations = data("conversations").asVector
           val evidenceItems = data("evidenceItems").asVector

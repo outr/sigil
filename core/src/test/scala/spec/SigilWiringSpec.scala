@@ -8,7 +8,7 @@ import sigil.db.Model
 import sigil.event.{Message, ModeChange, TopicChange, TopicChangeKind, ToolInvoke}
 import sigil.participant.{DefaultAgentParticipant, Participant}
 import sigil.provider.{GenerationSettings, Instructions, Mode, ConversationMode, TokenUsage}
-import sigil.signal.{ContentDelta, ContentKind, EventState, MessageDelta, Signal, ToolDelta}
+import sigil.signal.{MessageContentDelta, ContentKind, EventState, MessageDelta, Signal, ToolDelta}
 import sigil.tool.{ToolInput, ToolName}
 import sigil.tool.core.CoreTools
 import sigil.tool.model.{ChangeModeInput, RespondInput, ResponseContent}
@@ -78,7 +78,7 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
       val original = MessageDelta(
         target = msgId,
         conversationId = Conversation.id("c1"),
-        content = Some(ContentDelta(ContentKind.Text, None, complete = false, "abc")),
+        content = Some(MessageContentDelta(ContentKind.Text, None, complete = false, "abc")),
         usage = Some(TokenUsage(10, 20, 30)),
         state = Some(EventState.Complete)
       )

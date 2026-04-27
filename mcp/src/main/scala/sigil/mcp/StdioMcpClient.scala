@@ -51,10 +51,15 @@ final class StdioMcpClient(override val config: McpServerConfig,
   }
 
   override def close(): Task[Unit] = Task.defer {
+    // Destroy the subprocess FIRST — closing its stdout pipe is what
+    // makes the reader thread's `readLine()` return null and exit. If
+    // we tried to close the BufferedReader here, we'd deadlock with
+    // the reader thread (both synchronize on the same intrinsic
+    // monitor while readLine is parked).
+    process.foreach(_.destroyForcibly())
+    process = None
     val closeRpc = rpc.map(_.close()).getOrElse(Task.unit)
     closeRpc.map { _ =>
-      process.foreach(_.destroyForcibly())
-      process = None
       rpc = None
     }
   }
