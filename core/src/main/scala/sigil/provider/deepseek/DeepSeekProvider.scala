@@ -92,7 +92,7 @@ case class DeepSeekProvider(apiKey: String,
           "name"        -> str(s.name.value),
           "description" -> str(renderDescription(s)),
           "strict"      -> bool(true),
-          "parameters"  -> StrictSchema(DefinitionToSchema(s.input))
+          "parameters"  -> StrictSchema.forDeepSeek(DefinitionToSchema(s.input))
         )
       )
     }

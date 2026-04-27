@@ -3,38 +3,42 @@ package sigil.provider
 import fabric.*
 
 /**
- * Rewrite a [[sigil.tool.DefinitionToSchema]] output into the dialect
- * OpenAI accepts when a tool is declared with `"strict": true`.
- * Strict mode enables grammar-constrained decoding — the model can't
- * emit JSON that doesn't match the schema, eliminating malformed-args
- * failures (unclosed strings, missing fields, degenerate token loops).
+ * Provider-specific JSON-schema rewrites for tool-call args.
  *
- * Two transforms applied recursively:
+ * Each provider's grammar-constrained decoder (or schema validator)
+ * accepts a different subset of JSON-Schema keywords. Sigil keeps the
+ * full annotations (`@pattern`, `@format`, numeric bounds, …) on the
+ * Scala types — the post-decode [[sigil.tool.ToolInputValidator]]
+ * re-checks every constraint regardless of provider — but on the wire
+ * we send each provider exactly what it accepts. Stripping more than
+ * necessary loses real generation-time enforcement (e.g., dropping
+ * `pattern` for llama.cpp lets the model emit content that violates
+ * the pattern, only caught post-decode).
  *
- *   1. Every property of every object becomes `required`. Optional
- *      fields are rewritten as a nullable union (`type: [<original>,
- *      "null"]` or `anyOf` for object types) so they remain
- *      semantically optional from the model's perspective — it can
- *      emit `null` when it has nothing to say.
- *   2. Unsupported keywords are stripped: `pattern`, `format`,
- *      `minLength`, `maxLength`, `minimum`, `maximum`,
- *      `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`,
- *      `minItems`, `maxItems`, `uniqueItems`. Strict mode rejects
- *      schemas with any of these; sigil keeps the annotations on the
- *      Scala types for non-strict providers and for post-decode
- *      validation.
+ * Use the right per-provider helper at the call site:
  *
- * `additionalProperties: false` is already emitted by
- * `DefinitionToSchema`; this layer just enforces the property-level
- * rules.
+ *   - [[forOpenAIStrict]]  — OpenAI Responses with `strict: true`
+ *                            (and DeepSeek, which mirrors OpenAI's
+ *                             strict-mode dialect via [[forDeepSeek]]).
+ *   - [[forGemini]]        — Gemini function calling (rejects
+ *                            `additionalProperties` and the
+ *                            unsupported keywords).
+ *   - [[forAnthropic]]     — Anthropic (no strict-mode equivalent;
+ *                            keep the schema clean of grammar-only
+ *                            keywords for hygiene).
+ *
+ * llama.cpp's chat-completions endpoint translates the FULL schema
+ * (including `pattern` / `format` / numeric bounds) into a GBNF
+ * grammar — pass `DefinitionToSchema(input)` directly without any
+ * helper from this object.
  */
 object StrictSchema {
 
-  /** Keywords that grammar-constrained decoders (OpenAI strict mode,
-    * Gemini function calling, etc.) reject because they constrain
-    * character-level content that doesn't compose with token-level
-    * sampling. Sigil keeps these on the Scala types for non-strict
-    * use and post-decode validation; on the wire they're stripped. */
+  /** Keywords that strict-mode decoders (OpenAI strict, DeepSeek,
+    * Gemini) reject because they constrain character-level content
+    * that doesn't compose with token-level sampling. Sigil keeps these
+    * on the Scala types for [[sigil.tool.ToolInputValidator]]'s
+    * post-decode check; on the wire they're stripped per provider. */
   val UnsupportedKeys: Set[String] = Set(
     "pattern", "format",
     "minLength", "maxLength",
@@ -45,10 +49,34 @@ object StrictSchema {
     "uniqueItems"
   )
 
+  /** OpenAI Responses with `strict: true`: every property becomes
+    * required (optionals widened to nullable), `additionalProperties:
+    * false`, and grammar-incompatible keywords stripped. Strict mode
+    * enables full grammar-constrained decoding — the model can't emit
+    * JSON that doesn't match. */
+  def forOpenAIStrict(schema: Json): Json = transform(schema)
+
+  /** DeepSeek mirrors OpenAI's strict-mode dialect — same transforms. */
+  def forDeepSeek(schema: Json): Json = forOpenAIStrict(schema)
+
+  /** Gemini natively grammar-constrains function-call args but rejects
+    * the unsupported keywords AND `additionalProperties` (any value).
+    * Required fields stay required (Gemini doesn't enforce
+    * "everything required" the way OpenAI strict does); just clean
+    * up the keys Gemini doesn't tolerate. */
+  def forGemini(schema: Json): Json =
+    stripAdditionalProperties(stripUnsupportedKeys(schema))
+
+  /** Anthropic doesn't grammar-constrain tool-call args at the schema
+    * level. The post-decode validator is the real safety net. We strip
+    * grammar-only keywords for schema hygiene (Anthropic's API tolerates
+    * unknown keys but the cleaner shape avoids confusing surface area). */
+  def forAnthropic(schema: Json): Json = stripUnsupportedKeys(schema)
+
   /** Recursively strip [[UnsupportedKeys]] from a JSON Schema without
-    * altering its required / property / object shape. Suitable for
-    * providers (Gemini) that natively grammar-constrain function-call
-    * args but reject the unsupported keywords. */
+    * altering its required / property / object shape. Building block
+    * for the per-provider helpers; exposed here so apps with custom
+    * provider implementations can compose their own rewrites. */
   def stripUnsupportedKeys(schema: Json): Json = schema match {
     case Obj(map) =>
       val cleaned = map.iterator.collect {
@@ -60,7 +88,20 @@ object StrictSchema {
     case other => other
   }
 
-  def apply(schema: Json): Json = transform(schema)
+  /** Recursively remove `additionalProperties` (any value) from a
+    * schema. Gemini's validator rejects schemas containing it. */
+  def stripAdditionalProperties(json: Json): Json = json match {
+    case Obj(map) =>
+      val kept = map.iterator.collect {
+        case (k, v) if k != "additionalProperties" => k -> stripAdditionalProperties(v)
+      }.toList
+      obj(kept*)
+    case Arr(items, _) =>
+      arr(items.map(stripAdditionalProperties)*)
+    case other => other
+  }
+
+  // -- internal: full strict-mode transform ----------------------------------
 
   private def transform(json: Json): Json = json match {
     case Obj(map) =>
@@ -122,7 +163,6 @@ object StrictSchema {
         case Some(Str(t, _)) if t != "null" =>
           obj((m + ("type" -> arr(str(t), str("null")))).toList*)
         case _ =>
-          // For oneOf/anyOf/no-explicit-type schemas, fall back to wrapping.
           obj("anyOf" -> arr(schema, obj("type" -> str("null"))))
       }
     case other => obj("anyOf" -> arr(other, obj("type" -> str("null"))))

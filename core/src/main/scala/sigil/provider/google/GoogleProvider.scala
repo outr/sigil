@@ -164,19 +164,8 @@ case class GoogleProvider(apiKey: String,
     obj(
       "name"        -> str(s.name.value),
       "description" -> str(renderDescription(s)),
-      "parameters"  -> stripAdditionalProperties(StrictSchema.stripUnsupportedKeys(DefinitionToSchema(s.input)))
+      "parameters"  -> StrictSchema.forGemini(DefinitionToSchema(s.input))
     )
-  }
-
-  /** Gemini's JSON-schema validator doesn't accept
-    * `additionalProperties: false`; strip it from generated schemas. */
-  private def stripAdditionalProperties(json: Json): Json = json match {
-    case o: Obj =>
-      Obj(o.value.flatMap {
-        case ("additionalProperties", _) => None
-        case (k, v) => Some(k -> stripAdditionalProperties(v))
-      })
-    case other => other
   }
 
   private def renderBuiltIn(tool: BuiltInTool): Option[Json] = tool match {
