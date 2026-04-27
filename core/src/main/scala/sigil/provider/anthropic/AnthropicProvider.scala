@@ -202,7 +202,7 @@ case class AnthropicProvider(apiKey: String,
       obj(
         "name"         -> str(s.name.value),
         "description"  -> str(renderDescription(s)),
-        "input_schema" -> StrictSchema.stripUnsupportedKeys(DefinitionToSchema(s.input))
+        "input_schema" -> StrictSchema.forAnthropic(DefinitionToSchema(s.input))
       )
     }
     val builtIn = input.builtInTools.iterator.flatMap(renderBuiltIn).toVector

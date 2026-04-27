@@ -230,7 +230,7 @@ case class OpenAIProvider(apiKey: String,
         // `format` / numeric-bound keywords. `StrictSchema` rewrites
         // sigil's standard schema into that shape.
         "strict"      -> bool(true),
-        "parameters"  -> StrictSchema(DefinitionToSchema(s.input))
+        "parameters"  -> StrictSchema.forOpenAIStrict(DefinitionToSchema(s.input))
       )
     }
     val builtIn = input.builtInTools.iterator.flatMap(renderBuiltIn).toVector
