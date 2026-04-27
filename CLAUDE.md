@@ -53,6 +53,8 @@ Apps extend `Sigil` and only override what they actually customize. The minimum 
 - `ConversationView` is the projection: a list of `ContextFrame`s built by `FrameBuilder` one-for-one from `Complete` events, plus per-participant `ParticipantProjection` (active skills, extra context, suggested tools). It's maintained by `Sigil.publish` idempotently and rebuildable from scratch via `Sigil.rebuildView`.
 - `curate(view, modelId, chain) => TurnInput` runs on every turn. Apps decide which memories/summaries/information to surface. There is no implicit history truncation — the curator owns policy.
 
+**Conversation management surface.** `Sigil.newConversation(...)` creates the conversation + initial Topic and (for any agent participants) fires greet-eligible behaviors via `fireGreeting`. `Sigil.addParticipant(conversationId, participant)` appends to an existing conversation's participants list, persists, and fires `fireGreeting` for newly-added agents (idempotent — re-adding an existing participant is a no-op). `Sigil.removeParticipant(conversationId, participantId)` trims the list (no farewell event today). `Sigil.deleteConversation(conversationId)` purges the conversation row plus every Event, the ConversationView, and every Topic referencing it. Both `addParticipant` and `removeParticipant` raise `ConversationNotFoundException` on a missing id. "Active conversation" stays an app concern — Sigil's `signalsFor(viewer)` emits across all conversations; apps filter to their current focus.
+
 ### Signal pipeline
 
 `publish(signal)` is the single ingress; it is a three-level pipeline plus framework-internal steps:
@@ -127,7 +129,15 @@ When vector search is wired (`embeddingProvider.dimensions > 0 && vectorIndex !=
 
 ### SpaceId (multi-tenancy)
 
-`SpaceId` (in package `sigil`) is an open `PolyType` for scoping persisted resources — memories, tools, future records. Sigil ships no concrete cases. Apps define their own (UserSpace, ProjectSpace, GlobalSpace, etc.) and register them via `spaceIds: List[RW[? <: SpaceId]]`. Used by `ContextMemory.spaceId`, `Tool.spaces`, and `Sigil.accessibleSpaces(chain)`.
+`SpaceId` (in package `sigil`) is an open `PolyType` for scoping persisted resources — memories, tools, future records.
+
+**Single-assignment rule.** A record gets exactly one `SpaceId`. Never `Option[SpaceId]`, never `Set[SpaceId]`. If a tool or memory needs to be visible under a different space, copy the record. Multi-space *queries* (`Sigil.findMemories(spaces: Set[SpaceId])`, `Sigil.searchMemories(...)`) DO take sets — the rule applies to assignment, not lookup.
+
+**Framework sentinel.** Sigil ships exactly one concrete case: `case object GlobalSpace extends SpaceId`. It exists because every framework-shipped tool (`respond`, `change_mode`, `stop`, …) needs *some* `space` and "visible to everyone" is a real concept the framework owns. Auto-registered by `Sigil.instance` — apps don't list it in their `spaceIds` overrides. Apps that want fully tenanted records simply never assign `GlobalSpace` to their own data.
+
+Apps define their own concrete spaces (UserSpace, ProjectSpace, per-conversation session spaces, etc.) and register them via `spaceIds: List[RW[? <: SpaceId]]`. Used by `ContextMemory.spaceId`, `Tool.space`, and `Sigil.accessibleSpaces(chain)`.
+
+**Discovery filter** (`DiscoveryFilter.matches`): `tool.space == GlobalSpace || callerSpaces.contains(tool.space)`. Tools whose space is `GlobalSpace` are visible to every caller; non-global tools require the caller's `accessibleSpaces` to include the exact space.
 
 ### Tool collection (DB-backed)
 
@@ -178,33 +188,45 @@ Composition happens in `Sigil.effectiveToolNames(agent, behavior, mode, suggeste
 
 The discovery path is deliberately predicate-based, not list-based — `ToolFinder` produces keyword-matched subsets (DB-backed finders may stream) and the framework applies the mode predicate per result. No "all tools" list ever materializes.
 
-### Behavior (per-agent role primitive)
+### Role (per-agent identity primitive)
 
-`Behavior` (`sigil.behavior.Behavior`) is the per-agent role assignment that lives alongside `Mode`. Mode is conversation-level and mutable (agent can swap via `change_mode`); Behavior is agent-level and immutable for the agent's lifetime — agents do not change their own behaviors.
+`Role` (`sigil.role.Role`) is the per-agent identity assignment that lives alongside `Mode`. Mode is conversation-level and mutable (agent can swap via `change_mode`); Role is agent-level and immutable for the agent's lifetime — agents do not change their own roles.
 
-`Behavior` is a plain case class — no PolyType registration, no trait hierarchy:
+`Role` is a plain atomic case class — no PolyType registration, no trait hierarchy, no merge method:
 
 ```scala
-case class Behavior(name: String,
-                    description: String,
-                    skill: Option[ActiveSkillSlot] = None,
-                    tools: ToolPolicy = ToolPolicy.Standard) derives RW
+case class Role(name: String,
+                description: String,
+                skill: Option[ActiveSkillSlot] = None) derives RW
 ```
 
-Apps define behaviors as values (`val PlannerBehavior = Behavior(name = "planner", description = "...", tools = ToolPolicy.Exclusive(...))`) and pass them on `AgentParticipant.behaviors: List[Behavior]`. The default is `List(GeneralistBehavior)` — vanilla agents have a real generalist role description, no empty-list fallback. An empty `behaviors` list throws at construction.
+Apps define roles as values (`val PlannerRole = Role(name = "planner", description = "Plan tasks...")`) and pass them on `AgentParticipant.roles: List[Role]`. The default is `List(GeneralistRole)` — vanilla agents have a real generalist identity, no empty-list fallback. An empty `roles` list throws at construction.
 
-**Per-turn dispatch.** `AgentParticipant.process` is final. It iterates `behaviors` in declaration order; for each behavior it injects an `ActiveSkillSlot(name = behavior.name, content = behavior.description)` into the agent's projection (per-turn view copy, persisted view untouched) keyed under `SkillSource.Behavior(behavior.name)`, and delegates to `Sigil.process(participant, behavior, enrichedContext, triggers)`. The slot flows through the existing `aggregatedSkills` → `renderSystem` pipeline as a normal "Active skills" entry — no separate prompt section.
+**Merged dispatch.** `AgentParticipant.process` is final and makes one `Sigil.process(participant, ctx, triggers)` call per turn — regardless of role count. Multiple roles shape *how* the agent responds (the system prompt enumerates them), not how many times it responds. A Planner+Critic agent produces ONE response per turn that weaves both perspectives, not two sequential responses.
 
-**App customization** lives on `Sigil.process(participant, behavior, ctx, triggers)` — apps override and dispatch on `behavior.name` to specialize per-behavior turn shapes:
+**Prompt rendering** branches on role-list shape:
+- One role: linear render (description appears as a paragraph in the system prompt).
+- Multiple roles: a `"You serve the following roles:"` preamble + per-role enumeration, so the model handles multi-role identity explicitly even when each role's description was written self-contained.
+
+Each role's optional `skill` slot flows into the "Active skills" section keyed by `SkillSource.Role(name)` (deduplicated across all sources by name).
+
+**Tools, greeting, and dispatch overrides are agent-level**, NOT role-level:
+- `AgentParticipant.tools: ToolPolicy = ToolPolicy.Standard` — one effective roster per agent, folded with the active Mode's policy via `Sigil.effectiveToolNames`.
+- `AgentParticipant.greetsOnJoin: Boolean = false` — one lifecycle decision per agent. When `true`, `Sigil.newConversation` and `Sigil.addParticipant` fire `Sigil.fireGreeting(agent, conv)` automatically — the agent's standard merged dispatch runs once with an empty trigger stream, and the role descriptions / skills drive the greeting wording. No-op when `false`.
+- Non-LLM "react to triggers without calling the model" shapes belong on a separate participant trait, not on `Role`.
+
+**App customization** lives on `Sigil.process(participant, ctx, triggers)` — apps override and dispatch on participant id (or pattern-match on `agent.roles`) for custom turn shapes:
 
 ```scala
-override def process(participant, behavior, ctx, triggers) = behavior.name match {
-  case "worker"  => runWorker(ctx, triggers)        // skips LLM, reacts to triggers
-  case _         => super.process(participant, behavior, ctx, triggers)
+override def process(participant, ctx, triggers) = participant match {
+  case agent: AgentParticipant if agent.roles.exists(_.name == "scripted") =>
+    runScripted(agent, ctx, triggers)
+  case _ =>
+    super.process(participant, ctx, triggers)
 }
 ```
 
-The default `Sigil.process` delegates to `defaultProcess` which runs the standard one-round-trip LLM cycle, parameterized by the active behavior (its `tools` fold into `effectiveToolNames`).
+The default `Sigil.process` delegates to `defaultProcess` which runs one merged LLM round-trip per turn (the agent's `tools` folded into `effectiveToolNames`).
 
 ### Geospatial (`sigil.spatial`)
 
@@ -268,8 +290,19 @@ Opt-in sub-project that adds REPL-backed script execution. Pulls in `scala3-repl
 - `ScalaScriptExecutor` — default impl wrapping `dotty.tools.repl.ScriptEngine`. Stateful session (REPL state persists across calls); thread-safe via per-engine synchronization. Strips ` ```scala ... ``` ` code fences before evaluation. **No sandboxing** — full JVM access. Apps running untrusted scripts MUST front this with isolation or run remotely via `ProxyTool` against a dedicated executor process.
 - `ScriptValueHolder` — thread-local hand-off used by the executor to inject host values into the REPL's scope (synthetic `val foo = ScriptValueHolder.store.asInstanceOf[FooType]` lines).
 - `ExecuteScriptTool` — `Tool` taking a `ScriptInput(code, language)`, runs through the configured executor with a `bindings: TurnContext => Map[String, Any]` provider, emits a `ScriptResult` event (`role = Role.Tool`, `visibility = MessageVisibility.Agents` by default — script chatter stays internal to the agent loop).
+- `ScriptSigil` — mixin trait apps add to their `Sigil` subclass to enable persistent script-backed tooling. Exposes `scriptExecutor: ScriptExecutor` (default `ScalaScriptExecutor`) and `scriptToolSpace(chain, requested: Option[String]): Task[SpaceId]` for the single-`SpaceId` allocation policy. Auto-registers `RW[ScriptTool]` so persisted records round-trip.
+- `ScriptTool` — persistable `Tool` record (`derives RW`) the agent creates at runtime. Carries `name`, `description`, `code`, `parameters: Definition` (the args schema), and the single required `space: SpaceId`. `execute` resolves the executor via `context.sigil match { case s: ScriptSigil => s.scriptExecutor }`; bindings expose `args: fabric.Json` and `context: TurnContext`.
+- `CreateScriptToolTool` / `UpdateScriptToolTool` / `DeleteScriptToolTool` / `ListScriptToolsTool` — agent-facing management surface. Create + Update emit a `ToolResults` suggestion cascade (the touched tool's schema + `update_script_tool` + `delete_script_tool`) so the framework's `suggestedTools` machinery surfaces them on the next turn (one-turn decay) — the natural "build → demo → tweak" rhythm. Update / Delete authz-check that the target's `space` is `GlobalSpace` or in `Sigil.accessibleSpaces(chain)`. List filters to that same predicate.
 
-Apps add the dep (`libraryDependencies += "com.outr" %% "sigil-script" % version`), construct an executor, register the tool. Voidcraft-style "scripts run on the user's machine" pattern: register `ProxyTool(executeScriptTool, durableSocketTransport)` server-side; client side runs `ScalaScriptExecutor` locally and answers the proxy's wire calls.
+**Space allocation patterns** apps wire via `scriptToolSpace`:
+
+- **Always global**: leave the default. Every created tool is `GlobalSpace`; the agent's `space` hint is ignored.
+- **User-scoped**: `(chain, _) => Task.pure(MyUserSpace(chain.head.value))` — derive from chain, ignore the agent's hint.
+- **Caller-picks-from-accessible**: resolve the agent's `requested` string against the app's known `SpaceId` catalog, validate the resolved value is in `accessibleSpaces(chain)`, fail otherwise.
+
+The framework single-assignment rule (one `SpaceId` per tool, never `Set` / `Option`) holds here: to surface the same script under another space, call `create_script_tool` again with that space; the framework copies, doesn't multi-attach.
+
+Apps add the dep (`libraryDependencies += "com.outr" %% "sigil-script" % version`), mix in `ScriptSigil`, and register the management tools they want exposed. Voidcraft-style "scripts run on the user's machine" pattern: register `ProxyTool(executeScriptTool, durableSocketTransport)` server-side; client side runs `ScalaScriptExecutor` locally and answers the proxy's wire calls.
 
 ### MCP client (`sigil-mcp` module)
 

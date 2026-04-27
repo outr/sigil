@@ -21,13 +21,13 @@ import fabric.rw.*
  *     is, `ModeChange`/`TopicChange` re-trigger any participant,
  *     and `AgentState`/`Stop` are control-plane (never triggers).
  *
- * Tool authors emit `Role.Tool` events when they want their
+ * Tool authors emit `MessageRole.Tool` events when they want their
  * structured payload to feed the agent's next iteration as a tool
  * result. Terminal tools (`respond`, `no_response`, `change_mode`,
- * `stop`) leave the default `Role.Standard` so their emissions
- * follow the assistant-text / control-event paths.
+ * `stop`) leave the default `MessageRole.Standard` so their
+ * emissions follow the assistant-text / control-event paths.
  */
-enum Role derives RW {
+enum MessageRole derives RW {
   case Tool
   case Standard
 }

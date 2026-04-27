@@ -1,0 +1,19 @@
+package sigil
+
+/**
+ * Framework sentinel [[SpaceId]] — visible to every caller regardless
+ * of `Sigil.accessibleSpaces`. The default `Tool.space` (so
+ * framework-shipped tools work in every app without extra wiring), and
+ * the default the `ScriptSigil.scriptToolSpace` hook returns when the
+ * agent doesn't specify a target.
+ *
+ * Apps that want a fully tenanted tool catalog never assign
+ * `GlobalSpace` to their own records — they use their own `SpaceId`
+ * subtypes and override `accessibleSpaces` to scope visibility.
+ *
+ * Auto-registered by `Sigil.instance` via `RW.static(GlobalSpace)` so
+ * apps don't list it in their `spaceIds` overrides.
+ */
+case object GlobalSpace extends SpaceId {
+  override val value: String = "global"
+}

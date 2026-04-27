@@ -7,11 +7,11 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Stream
 import sigil.{SpaceId, TurnContext}
-import sigil.event.{Event, Message, MessageVisibility, Role}
+import sigil.event.{Event, Message, MessageVisibility, MessageRole}
 import sigil.participant.{AgentParticipantId, ParticipantId}
 import sigil.provider.{ConversationMode, Mode}
 import sigil.signal.EventState
-import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolSchema}
+import sigil.tool.{JsonInput, JsonSchemaToDefinition, Tool, ToolExample, ToolInput, ToolName, ToolSchema}
 import sigil.tool.model.ResponseContent
 
 /**
@@ -37,7 +37,7 @@ final class McpTool(manager: McpManager,
     JsonSchemaToDefinition(definition.inputSchema)
 
   override val modes: Set[Id[Mode]] = Set(ConversationMode.id)
-  override val spaces: Set[SpaceId] = serverConfig.space.toSet
+  override val space: SpaceId = serverConfig.space
   override val keywords: Set[String] = Set("mcp", serverConfig.name)
   override val examples: List[ToolExample] = Nil
   override val createdBy: Option[ParticipantId] = None
@@ -80,7 +80,7 @@ final class McpTool(manager: McpManager,
       topicId = context.conversation.currentTopicId,
       content = content,
       state = EventState.Complete,
-      role = Role.Tool,
+      role = MessageRole.Tool,
       visibility = MessageVisibility.All
     ))
   }
@@ -102,6 +102,6 @@ final class McpTool(manager: McpManager,
       topicId = context.conversation.currentTopicId,
       content = Vector(ResponseContent.Text(s"MCP tool error: $msg")),
       state = EventState.Complete,
-      role = Role.Tool
+      role = MessageRole.Tool
     )
 }

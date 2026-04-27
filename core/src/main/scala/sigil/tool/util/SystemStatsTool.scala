@@ -4,7 +4,7 @@ import fabric.io.JsonFormatter
 import fabric.{Json, Null, num, obj, str}
 import rapid.Stream
 import sigil.TurnContext
-import sigil.event.{Event, Message, Role}
+import sigil.event.{Event, Message, MessageRole}
 import sigil.signal.EventState
 import sigil.tool.fs.FileSystemContext
 import sigil.tool.model.{ResponseContent, SystemStatsInput}
@@ -114,7 +114,7 @@ final class SystemStatsTool(context: FileSystemContext)
         topicId        = ctx.conversation.currentTopicId,
         content        = Vector(ResponseContent.Text(JsonFormatter.Compact(payload))),
         state          = EventState.Complete,
-        role           = Role.Tool
+        role           = MessageRole.Tool
       ))
     })
   }

@@ -3,7 +3,7 @@ package sigil.mcp
 import fabric.rw.*
 import rapid.{Stream, Task}
 import sigil.TurnContext
-import sigil.event.{Event, Message, MessageVisibility, Role}
+import sigil.event.{Event, Message, MessageVisibility, MessageRole}
 import sigil.signal.EventState
 import sigil.tool.{ToolInput, ToolName, TypedTool}
 import sigil.tool.model.ResponseContent
@@ -30,7 +30,7 @@ final class TestMcpServerTool(manager: McpManager) extends TypedTool[TestMcpServ
       topicId = context.conversation.currentTopicId,
       content = Vector(ResponseContent.Text(text)),
       state = EventState.Complete,
-      role = Role.Tool,
+      role = MessageRole.Tool,
       visibility = MessageVisibility.All
     )
 }

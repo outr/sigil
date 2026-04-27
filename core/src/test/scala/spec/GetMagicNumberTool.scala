@@ -2,7 +2,7 @@ package spec
 
 import fabric.rw.*
 import sigil.TurnContext
-import sigil.event.{Event, Message, Role}
+import sigil.event.{Event, Message, MessageRole}
 import sigil.signal.EventState
 import sigil.tool.{ToolInput, ToolName, TypedTool}
 import sigil.tool.model.ResponseContent
@@ -37,7 +37,7 @@ case object GetMagicNumberTool extends TypedTool[GetMagicNumberInput](
         topicId = context.conversation.currentTopicId,
         content = Vector(ResponseContent.Text("42")),
         state = EventState.Complete,
-        role = Role.Tool
+        role = MessageRole.Tool
       )
     ))
 }

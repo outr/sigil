@@ -3,7 +3,7 @@ package sigil.conversation
 import fabric.io.JsonFormatter
 import fabric.rw.*
 import fabric.{Json, Obj}
-import sigil.event.{AgentState, Event, Message, ModeChange, Role, Stop, TopicChange, TopicChangeKind, ToolInvoke, ToolResults}
+import sigil.event.{AgentState, Event, Message, ModeChange, MessageRole, Stop, TopicChange, TopicChangeKind, ToolInvoke, ToolResults}
 import sigil.signal.EventState
 import sigil.tool.ToolInput
 import sigil.tool.ToolInput.given
@@ -47,11 +47,11 @@ object FrameBuilder {
     if (event.state != EventState.Complete) return existing
 
     // Tool-result rendering takes precedence over the per-subclass match
-    // — any event whose role is Role.Tool is paired against the
+    // — any event whose role is MessageRole.Tool is paired against the
     // most-recent unresolved ToolInvoke and rendered to JSON via
     // [[stripEventBoilerplate]] (framework metadata fields removed so
     // the model sees only the typed payload).
-    if (event.role == Role.Tool) {
+    if (event.role == MessageRole.Tool) {
       val payload = stripEventBoilerplate(Event.rw.read(event))
       val content = JsonFormatter.Compact(payload)
       return pairedCallId(existing) match {

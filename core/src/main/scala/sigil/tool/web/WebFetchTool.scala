@@ -4,7 +4,7 @@ import fabric.io.JsonFormatter
 import fabric.{num, obj, str}
 import rapid.Stream
 import sigil.TurnContext
-import sigil.event.{Event, Message, Role}
+import sigil.event.{Event, Message, MessageRole}
 import sigil.signal.EventState
 import sigil.tool.model.{ResponseContent, WebFetchInput}
 import sigil.tool.{ToolExample, ToolName, TypedTool}
@@ -64,7 +64,7 @@ final class WebFetchTool(timeout: FiniteDuration = 30.seconds)
     topicId        = ctx.conversation.currentTopicId,
     content        = Vector(ResponseContent.Text(JsonFormatter.Compact(payload))),
     state          = EventState.Complete,
-    role           = Role.Tool
+    role           = MessageRole.Tool
   )
 }
 

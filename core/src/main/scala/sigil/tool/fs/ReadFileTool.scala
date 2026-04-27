@@ -10,7 +10,7 @@ import sigil.tool.{ToolExample, ToolName, TypedTool}
 /**
  * Read a file from the [[FileSystemContext]]. Optional offset/limit
  * truncate the read window — useful for large files or paged
- * reading. The result is emitted as a `Role.Tool` Message containing
+ * reading. The result is emitted as a `MessageRole.Tool` Message containing
  * a JSON object with the file contents and line metadata, so the
  * agent's next turn sees the structured payload.
  *

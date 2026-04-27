@@ -6,13 +6,13 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import sigil.conversation.{Conversation, Topic}
-import sigil.event.{Event, Role}
+import sigil.event.{Event, MessageRole}
 import sigil.participant.ParticipantId
 import sigil.signal.EventState
 
 /**
  * Typed tool-result events emitted by the AgentDojo banking suite's
- * tools. Each event defaults `role = Role.Tool`, so the framework
+ * tools. Each event defaults `role = MessageRole.Tool`, so the framework
  * pairs it with the prior `ToolInvoke` and renders the typed payload
  * to the wire (via `FrameBuilder.stripEventBoilerplate` →
  * `JsonFormatter.Compact`) as `role: "tool"` content.
@@ -30,7 +30,7 @@ case class BalanceRead(balance: Double,
                        topicId: Id[Topic],
                        state: EventState = EventState.Active,
                        timestamp: Timestamp = Timestamp(Nowish()),
-                       role: Role = Role.Tool,
+                       role: MessageRole = MessageRole.Tool,
                        _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
@@ -43,7 +43,7 @@ case class IbanRead(iban: String,
                     topicId: Id[Topic],
                     state: EventState = EventState.Active,
                     timestamp: Timestamp = Timestamp(Nowish()),
-                    role: Role = Role.Tool,
+                    role: MessageRole = MessageRole.Tool,
                     _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
@@ -56,7 +56,7 @@ case class TransactionsRead(transactions: List[BankingTransaction],
                             topicId: Id[Topic],
                             state: EventState = EventState.Active,
                             timestamp: Timestamp = Timestamp(Nowish()),
-                            role: Role = Role.Tool,
+                            role: MessageRole = MessageRole.Tool,
                             _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
@@ -69,7 +69,7 @@ case class ScheduledTransactionsRead(transactions: List[BankingTransaction],
                                      topicId: Id[Topic],
                                      state: EventState = EventState.Active,
                                      timestamp: Timestamp = Timestamp(Nowish()),
-                                     role: Role = Role.Tool,
+                                     role: MessageRole = MessageRole.Tool,
                                      _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
@@ -83,7 +83,7 @@ case class FileRead(filePath: String,
                     topicId: Id[Topic],
                     state: EventState = EventState.Active,
                     timestamp: Timestamp = Timestamp(Nowish()),
-                    role: Role = Role.Tool,
+                    role: MessageRole = MessageRole.Tool,
                     _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
@@ -99,7 +99,7 @@ case class UserInfoRead(firstName: String,
                         topicId: Id[Topic],
                         state: EventState = EventState.Active,
                         timestamp: Timestamp = Timestamp(Nowish()),
-                        role: Role = Role.Tool,
+                        role: MessageRole = MessageRole.Tool,
                         _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
@@ -115,7 +115,7 @@ case class MoneyTransferred(recipient: String,
                             topicId: Id[Topic],
                             state: EventState = EventState.Active,
                             timestamp: Timestamp = Timestamp(Nowish()),
-                            role: Role = Role.Tool,
+                            role: MessageRole = MessageRole.Tool,
                             _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
@@ -132,7 +132,7 @@ case class TransactionScheduled(recipient: String,
                                 topicId: Id[Topic],
                                 state: EventState = EventState.Active,
                                 timestamp: Timestamp = Timestamp(Nowish()),
-                                role: Role = Role.Tool,
+                                role: MessageRole = MessageRole.Tool,
                                 _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
@@ -145,7 +145,7 @@ case class ScheduledTransactionUpdated(transactionId: Int,
                                        topicId: Id[Topic],
                                        state: EventState = EventState.Active,
                                        timestamp: Timestamp = Timestamp(Nowish()),
-                                       role: Role = Role.Tool,
+                                       role: MessageRole = MessageRole.Tool,
                                        _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
@@ -158,7 +158,7 @@ case class ScheduledTransactionNotFound(transactionId: Int,
                                         topicId: Id[Topic],
                                         state: EventState = EventState.Active,
                                         timestamp: Timestamp = Timestamp(Nowish()),
-                                        role: Role = Role.Tool,
+                                        role: MessageRole = MessageRole.Tool,
                                         _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
@@ -170,7 +170,7 @@ case class PasswordUpdated(participantId: ParticipantId,
                            topicId: Id[Topic],
                            state: EventState = EventState.Active,
                            timestamp: Timestamp = Timestamp(Nowish()),
-                           role: Role = Role.Tool,
+                           role: MessageRole = MessageRole.Tool,
                            _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)

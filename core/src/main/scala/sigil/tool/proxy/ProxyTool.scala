@@ -43,7 +43,7 @@ class ProxyTool(wrapped: Tool, transport: ToolProxyTransport) extends Tool {
   override def inputRW: RW[? <: ToolInput]            = wrapped.inputRW
   override def inputDefinition: fabric.define.Definition = wrapped.inputDefinition
   override def modes: Set[Id[Mode]]                   = wrapped.modes
-  override def spaces: Set[SpaceId]                   = wrapped.spaces
+  override def space: SpaceId                         = wrapped.space
   override def keywords: Set[String]                  = wrapped.keywords
   override def examples: List[ToolExample]            = wrapped.examples
   override def createdBy: Option[ParticipantId]       = wrapped.createdBy

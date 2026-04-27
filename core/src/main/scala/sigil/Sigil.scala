@@ -26,7 +26,7 @@ import sigil.provider.GenerationSettings
 import sigil.db.{DefaultSigilDB, Model, SigilDB}
 import sigil.dispatcher.{StopFlag, TriggerFilter}
 import sigil.event.{AgentState, Event, Message, MessageVisibility, ModeChange, Stop, TopicChange, TopicChangeKind}
-import sigil.behavior.Behavior
+import sigil.role.Role
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{ConversationMode, ConversationRequest, Mode, ToolPolicy}
 import sigil.information.Information
@@ -214,9 +214,11 @@ trait Sigil {
 
   /**
    * App-specific [[SpaceId]] subtypes registered into the polymorphic
-   * discriminator so [[ContextMemory.spaceId]] values round-trip through
-   * fabric RW. Apps define concrete spaces (GlobalSpace, ProjectSpace,
-   * UserSpace, etc.) and list their RWs here.
+   * discriminator so [[ContextMemory.spaceId]] and [[Tool.space]]
+   * values round-trip through fabric RW. The framework's
+   * [[GlobalSpace]] is registered automatically; apps add their own
+   * concrete spaces (ProjectSpace, UserSpace, per-conversation
+   * sessions, etc.) here.
    */
   protected def spaceIds: List[RW[? <: SpaceId]] = Nil
 
@@ -264,11 +266,11 @@ trait Sigil {
 
   /**
    * Compose the effective tool name list for an agent's turn, given
-   * the active [[sigil.behavior.Behavior]]'s policy, the current
+   * the active [[sigil.role.Role]]'s policy, the current
    * [[Mode]]'s policy, and the participant's one-turn suggested tools
    * from `find_capability`.
    *
-   * Behavior and Mode each contribute a [[ToolPolicy]]; the two are
+   * Role and Mode each contribute a [[ToolPolicy]]; the two are
    * folded in order (behavior first, then mode) over an internal
    * state. Framework essentials (`respond`, `no_response`,
    * `change_mode`, `stop`) are always included. `find_capability` is
@@ -281,7 +283,6 @@ trait Sigil {
    * Apps override for exotic composition (e.g. per-agent tool gating).
    */
   def effectiveToolNames(agent: AgentParticipant,
-                         behavior: sigil.behavior.Behavior,
                          mode: Mode,
                          suggested: List[sigil.tool.ToolName]): List[sigil.tool.ToolName] = {
     import sigil.tool.core.{ChangeModeTool, FindCapabilityTool, NoResponseTool, RespondTool, StopTool}
@@ -301,39 +302,34 @@ trait Sigil {
       case ToolPolicy.Scoped(_)        => s
     }
 
-    val state = apply(apply(initial, behavior.tools), mode.tools)
+    val state = apply(apply(initial, agent.tools), mode.tools)
     val findCapability = if (state.includesFindCapability) List(FindCapabilityTool.schema.name) else Nil
     val baseline       = if (state.includesBaseline) agent.toolNames else Nil
     (essentials ++ findCapability ++ baseline ++ state.extras ++ suggested).distinct
   }
 
   /**
-   * Per-behavior dispatch hook. Invoked once per
-   * [[sigil.behavior.Behavior]] in the agent's `behaviors` list, by
+   * Per-turn dispatch hook. Invoked once per turn by
    * [[sigil.participant.AgentParticipant.process]] (which is final).
-   * The supplied `context` already carries the behavior's
-   * contributions merged into the agent's projection — apps that
-   * override only need to specialize on `behavior.name` (or behavior
-   * value equality) for per-behavior turn shapes (e.g. a Worker that
-   * skips the LLM and reacts to triggers).
+   * The supplied `context` already carries the agent's roles' merged
+   * projection — apps that override only need to specialize on
+   * `participant.id` (or pattern-match on the agent's role list) for
+   * custom turn shapes.
    *
    * Default: delegates to [[defaultProcess]] which runs the standard
-   * one-round-trip LLM cycle with the behavior's `tools` folded into
-   * the effective roster.
+   * one-round-trip LLM cycle with the agent's [[ToolPolicy]] folded
+   * with the current Mode's policy into the effective roster.
    */
   def process(participant: Participant,
-              behavior: Behavior,
               context: TurnContext,
               triggers: Stream[Event]): Stream[Signal] =
-    defaultProcess(participant, behavior, context, triggers)
+    defaultProcess(participant, context, triggers)
 
   /**
-   * Standard one-round-trip LLM cycle, parameterized by the active
-   * behavior. The behavior's `tools` are folded with the current
-   * Mode's policy via [[effectiveToolNames]]; the behavior's
-   * `description` / `skill` is already injected into the agent's
-   * projection by `AgentParticipant.process` and flows through the
-   * existing `aggregatedSkills` → `renderSystem` pipeline.
+   * Standard one-round-trip LLM cycle. The agent's [[ToolPolicy]] is
+   * folded with the current Mode's policy via [[effectiveToolNames]];
+   * the agent's roles flow through the existing `aggregatedSkills` →
+   * `renderSystem` pipeline as a single merged context.
    *
    * Steps:
    *   1. Resolve the live [[Provider]] via `providerFor(modelId, chain)`.
@@ -352,19 +348,17 @@ trait Sigil {
    * Participant subtypes override [[process]].
    */
   protected def defaultProcess(participant: Participant,
-                               behavior: Behavior,
                                context: TurnContext,
                                triggers: Stream[Event]): Stream[Signal] = participant match {
-    case agent: AgentParticipant => runAgentTurn(agent, behavior, context)
+    case agent: AgentParticipant => runAgentTurn(agent, context)
     case _                       => Stream.empty
   }
 
   private def runAgentTurn(agent: AgentParticipant,
-                           behavior: Behavior,
                            context: TurnContext): Stream[Signal] = {
     val effectiveChain = context.chain.filterNot(_ == agent.id) :+ agent.id
     val suggested      = context.conversationView.projectionFor(agent.id).suggestedTools
-    val effectiveNames = effectiveToolNames(agent, behavior, context.conversation.currentMode, suggested).distinct
+    val effectiveNames = effectiveToolNames(agent, context.conversation.currentMode, suggested).distinct
 
     val resolved: Task[(Provider, Vector[Tool])] =
       for {
@@ -383,7 +377,8 @@ trait Sigil {
         previousTopics = context.conversation.previousTopics,
         generationSettings = agent.generationSettings,
         tools = tools,
-        chain = effectiveChain
+        chain = effectiveChain,
+        roles = agent.roles
       )
 
       val typingEmitted = new java.util.concurrent.atomic.AtomicBoolean(false)
@@ -1470,8 +1465,14 @@ trait Sigil {
       _id = conversationId
     )
     for {
-      _ <- withDB(_.topics.transaction(_.upsert(topic)))
+      _      <- withDB(_.topics.transaction(_.upsert(topic)))
       stored <- withDB(_.conversations.transaction(_.upsert(conversation)))
+      // Fire greetings in-line per agent. fireGreeting is a no-op for agents
+      // without greet-eligible behaviors, so the cost for non-greeting setups
+      // is just the participants.collect walk.
+      _      <- Task.sequence(stored.participants.collect {
+                  case agent: AgentParticipant => fireGreeting(agent, stored)
+                })
     } yield stored
   }
 
@@ -1483,6 +1484,93 @@ trait Sigil {
    */
   def currentTopic(conversation: Conversation): Task[Option[Topic]] =
     withDB(_.topics.transaction(_.get(conversation.currentTopicId)))
+
+  /**
+   * Add a [[Participant]] to an existing conversation. Persists the
+   * appended participant list, then — if the new participant is an
+   * [[AgentParticipant]] — fires its greet-eligible behaviors via
+   * [[fireGreeting]] so a late-joining agent has the same opportunity
+   * to introduce itself as one that was present at conversation
+   * creation.
+   *
+   * Idempotent: if the participant is already in the conversation,
+   * returns the unmodified conversation and skips the greeting.
+   *
+   * Fails with [[ConversationNotFoundException]] when the conversation
+   * id doesn't resolve.
+   */
+  def addParticipant(conversationId: Id[Conversation],
+                     participant: Participant): Task[Conversation] =
+    withDB(_.conversations.transaction(_.get(conversationId))).flatMap {
+      case None =>
+        Task.error(new ConversationNotFoundException(conversationId))
+      case Some(conv) if conv.participants.exists(_.id == participant.id) =>
+        Task.pure(conv)
+      case Some(conv) =>
+        val updated = conv.copy(participants = conv.participants :+ participant)
+        for {
+          stored <- withDB(_.conversations.transaction(_.upsert(updated)))
+          _      <- participant match {
+                      case agent: AgentParticipant => fireGreeting(agent, stored)
+                      case _                       => Task.unit
+                    }
+        } yield stored
+    }
+
+  /**
+   * Remove a participant from a conversation. Persists the trimmed list;
+   * does NOT publish a "leave" event today (callers that care about
+   * lifecycle should publish their own marker).
+   *
+   * Idempotent: if the participant isn't in the conversation, returns
+   * the unchanged conversation. Fails with
+   * [[ConversationNotFoundException]] when the conversation id doesn't
+   * resolve.
+   */
+  def removeParticipant(conversationId: Id[Conversation],
+                        participantId: ParticipantId): Task[Conversation] =
+    withDB(_.conversations.transaction(_.get(conversationId))).flatMap {
+      case None =>
+        Task.error(new ConversationNotFoundException(conversationId))
+      case Some(conv) if !conv.participants.exists(_.id == participantId) =>
+        Task.pure(conv)
+      case Some(conv) =>
+        val updated = conv.copy(participants = conv.participants.filterNot(_.id == participantId))
+        withDB(_.conversations.transaction(_.upsert(updated)))
+    }
+
+  /**
+   * Hard-delete a conversation and every record that references it —
+   * the conversation row itself, every Event, the ConversationView
+   * projection, and every Topic. The deletion is best-effort and
+   * non-transactional across stores; failures partway through leave
+   * the DB in a partially-cleaned state and re-raise.
+   *
+   * After deletion, any in-flight agent loop targeting this
+   * conversation will release its claim on the next iteration's
+   * `withDB(_.conversations.get(...))` lookup (returns `None`,
+   * `runAgentLoop` releases cleanly).
+   */
+  def deleteConversation(conversationId: Id[Conversation]): Task[Unit] =
+    for {
+      _ <- withDB(_.conversations.transaction(_.delete(conversationId)))
+      _ <- withDB { db =>
+             db.events.transaction { tx =>
+               tx.list.flatMap { all =>
+                 val targets = all.filter(_.conversationId == conversationId)
+                 Task.sequence(targets.map(e => tx.delete(e._id))).unit
+               }
+             }
+           }
+      _ <- withDB(_.views.transaction(_.delete(ConversationView.idFor(conversationId))))
+      _ <- withDB { db =>
+             db.topics.transaction { tx =>
+               tx.query.filter(_.conversationId === conversationId).toList.flatMap { topics =>
+                 Task.sequence(topics.map(t => tx.delete(t._id))).unit
+               }
+             }
+           }
+    } yield ()
 
   private final def fanOut(event: Event): Task[Unit] =
     withDB(_.conversations.transaction(_.get(event.conversationId))).flatMap {
@@ -1505,7 +1593,7 @@ trait Sigil {
    * `AtomicReference` captures whether OUR `f` was the one that returned a
    * fresh `Active` (the only way to tell with `tx.modify` semantics).
    */
-  private final def tryFire(agent: AgentParticipant, conv: Conversation): Task[Unit] = {
+  private final def tryFire(agent: AgentParticipant, conv: Conversation, greeting: Boolean = false): Task[Unit] = {
     val lockId = agentStateLockId(agent.id, conv._id)
     val claimedRef = new AtomicReference[Option[AgentState]](None)
     withDB(_.events.transaction(_.modify(lockId) {
@@ -1534,13 +1622,28 @@ trait Sigil {
           // agent on its own fiber.
           Task {
             hub.emit(claim)
-            runAgent(agent, conv, claim).startUnit()
+            runAgent(agent, conv, claim, greeting = greeting).startUnit()
             ()
           }
         case None => Task.unit
       }
     }
   }
+
+  /**
+   * Fire a one-shot greeting turn for `agent` in `conv`. Runs the agent's
+   * standard merged dispatch through the lock-claim → loop machinery —
+   * but with an empty trigger stream so the agent's roles' descriptions /
+   * skills drive what the greeting says.
+   *
+   * No-op when `agent.greetsOnJoin == false`. Called automatically by
+   * [[newConversation]] (fresh conversation case) and
+   * [[addParticipant]] (late-join case); apps can also call it
+   * directly to greet on demand.
+   */
+  def fireGreeting(agent: AgentParticipant, conv: Conversation): Task[Unit] =
+    if (agent.greetsOnJoin) tryFire(agent, conv, greeting = true)
+    else Task.unit
 
   /**
    * Self-loop while holding the AgentState(Active) claim:
@@ -1560,8 +1663,9 @@ trait Sigil {
 
   private final def runAgent(agent: AgentParticipant,
                              conv: Conversation,
-                             claimed: AgentState): Task[Unit] =
-    runAgentLoop(agent, conv._id, claimed, iteration = 1, sinceTimestamp = claimed.timestamp)
+                             claimed: AgentState,
+                             greeting: Boolean = false): Task[Unit] =
+    runAgentLoop(agent, conv._id, claimed, iteration = 1, sinceTimestamp = claimed.timestamp, greeting = greeting)
 
   /**
    * `sinceTimestamp` advances per iteration — each loop hands the next one
@@ -1577,7 +1681,8 @@ trait Sigil {
                                  convId: Id[Conversation],
                                  claimed: AgentState,
                                  iteration: Int,
-                                 sinceTimestamp: Timestamp): Task[Unit] = Task.defer {
+                                 sinceTimestamp: Timestamp,
+                                 greeting: Boolean = false): Task[Unit] = Task.defer {
     // Snapshot the start of THIS iteration. The next iteration uses this as
     // its own `sinceTimestamp`, so events emitted during this iteration
     // (including self-emitted non-terminal tool results the agent acted on)
@@ -1609,7 +1714,13 @@ trait Sigil {
             case (ctx, triggers) =>
               // Wrap the agent's signal stream with a force-stop check so a
               // Stop(force=true) mid-iteration terminates the stream promptly.
-              val rawStream = agent.process(ctx, triggers)
+              // Greeting mode (only on iteration == 1): dispatch only behaviors
+              // with `greetsOnJoin = true` against an empty trigger stream;
+              // subsequent iterations (driven by the agent's own non-terminal
+              // tool calls) revert to the standard process path.
+              val rawStream =
+                if (greeting && iteration == 1) agent.processGreeting(ctx)
+                else agent.process(ctx, triggers)
               val interruptible = stopFlag match {
                 case Some(flag) => rawStream.takeWhile(_ => !flag.force.get())
                 case None       => rawStream
@@ -1747,7 +1858,7 @@ trait Sigil {
       // walks them at register-time, and downstream callers
       // (codegen, schema generators) see ParticipantId / SpaceId
       // with zero subtypes.
-      _ = SpaceId.register(spaceIds*)
+      _ = SpaceId.register((RW.static(GlobalSpace) :: spaceIds).distinct*)
       _ = ParticipantId.register(participantIds*)
       _ = Mode.register((ConversationMode :: modes).distinct.map(m => RW.static(m))*)
       _ = ToolInput.register((CoreTools.inputRWs ++ findTools.toolInputRWs)*)
@@ -1820,11 +1931,19 @@ trait Sigil {
    * After shutdown, calls into [[withDB]] / `instance` are not
    * supported. Idempotent — repeated calls return immediately.
    */
-  def shutdown(): Task[Unit] = Task.defer {
+  def shutdown: Task[Unit] = Task.defer {
     shutdownRequested.set(true)
-    instance.flatMap { sigil =>
-      sigil.db.dispose.handleError { t =>
-        Task { scribe.warn(s"Sigil shutdown: db.dispose failed: ${t.getMessage}"); () }
+    // Close the SignalHub first so every active `sigil.signals` /
+    // `sigil.signalsFor(viewer)` subscriber's stream completes
+    // naturally — their fibers exit without needing app-side
+    // running-flag bookkeeping. Then dispose the DB. Both stages are
+    // best-effort: failures are logged but don't block subsequent
+    // teardown.
+    Task { hub.close() }.flatMap { _ =>
+      instance.flatMap { sigil =>
+        sigil.db.dispose.handleError { t =>
+          Task { scribe.warn(s"Sigil shutdown: db.dispose failed: ${t.getMessage}"); () }
+        }
       }
     }
   }

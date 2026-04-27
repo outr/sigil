@@ -9,6 +9,11 @@ package sigil.tool
  * affinity, and at least one of (name / description / keywords)
  * contains a query keyword (case-insensitive substring match).
  *
+ * Space affinity: a tool whose `space` is [[sigil.GlobalSpace]] is
+ * visible to every caller; otherwise the tool's `space` must be in
+ * the caller's accessible-spaces set. Tools have exactly one space —
+ * see [[sigil.SpaceId]] for the single-assignment rule.
+ *
  * `score` ranks matched tools — same algorithm shape as the legacy
  * `InMemoryToolFinder`, with curated `keywords` boosting between
  * name-part match (6) and exact-name match (10).
@@ -17,7 +22,7 @@ object DiscoveryFilter {
 
   def matches(tool: Tool, request: DiscoveryRequest): Boolean = {
     val passesModeAffinity  = tool.modes.contains(request.mode.id)
-    val passesSpaceAffinity = tool.spaces.isEmpty || tool.spaces.intersect(request.callerSpaces).nonEmpty
+    val passesSpaceAffinity = tool.space == sigil.GlobalSpace || request.callerSpaces.contains(tool.space)
     if (!(passesModeAffinity && passesSpaceAffinity)) false
     else score(tool, request.keywords) > 0
   }

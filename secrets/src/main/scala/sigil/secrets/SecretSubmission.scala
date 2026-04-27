@@ -5,7 +5,7 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import sigil.conversation.{Conversation, Topic}
-import sigil.event.{Event, Role}
+import sigil.event.{Event, MessageRole}
 import sigil.participant.ParticipantId
 import sigil.security.SecretKind
 import sigil.signal.EventState
@@ -45,7 +45,7 @@ case class SecretSubmission(secretId: String,
                             topicId: Id[Topic],
                             state: EventState = EventState.Active,
                             timestamp: Timestamp = Timestamp(Nowish()),
-                            role: Role = Role.Standard,
+                            role: MessageRole = MessageRole.Standard,
                             _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)

@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.doc.{JsonConversion, RecordDocument, RecordDocumentModel}
 import lightdb.id.Id
 import lightdb.time.Timestamp
-import sigil.SpaceId
+import sigil.{GlobalSpace, SpaceId}
 import sigil.db.Model
 
 /**
@@ -22,10 +22,13 @@ import sigil.db.Model
  *                          multiple servers expose the same tool name
  *                          (e.g. two `read_file` tools). Empty string for
  *                          no prefix.
- * @param space             optional [[SpaceId]] scoping. `None` means
- *                          server tools are globally available; a value
- *                          confines them to a tenant / user / project
- *                          space (consistent with `Tool.spaces`).
+ * @param space             single [[SpaceId]] scoping for every tool
+ *                          this server advertises. Defaults to
+ *                          [[sigil.GlobalSpace]] for "visible to
+ *                          everyone"; pass an app-specific space to
+ *                          confine tools to a tenant / user / project.
+ *                          One server = one space; copy the config to
+ *                          surface the same server under another space.
  * @param samplingModelId   when the MCP server requests an LLM sampling
  *                          completion via `sampling/createMessage`, the
  *                          framework's [[SamplingHandler]] uses this
@@ -48,7 +51,7 @@ import sigil.db.Model
 case class McpServerConfig(name: String,
                            transport: McpTransport,
                            prefix: String = "",
-                           space: Option[SpaceId] = None,
+                           space: SpaceId = GlobalSpace,
                            samplingModelId: Option[Id[Model]] = None,
                            roots: List[String] = Nil,
                            refreshIntervalMs: Long = 30L * 60L * 1000L,

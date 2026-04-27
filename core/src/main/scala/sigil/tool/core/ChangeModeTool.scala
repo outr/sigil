@@ -1,7 +1,7 @@
 package sigil.tool.core
 
 import sigil.TurnContext
-import sigil.event.{Event, ModeChange, Role}
+import sigil.event.{Event, ModeChange, MessageRole}
 import sigil.tool.{ToolName, TypedTool}
 import sigil.tool.model.ChangeModeInput
 
@@ -37,7 +37,7 @@ case object ChangeModeTool extends TypedTool[ChangeModeInput](
             participantId = context.caller,
             conversationId = context.conversation.id,
             topicId = context.conversation.currentTopicId,
-            role = Role.Tool
+            role = MessageRole.Tool
           )
         ))
       case None =>

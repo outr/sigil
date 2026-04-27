@@ -2,7 +2,7 @@ package sigil.mcp
 
 import fabric.rw.RW
 import rapid.Task
-import sigil.tool.{DiscoveryFilter, DiscoveryRequest, Tool, ToolFinder, ToolInput, ToolName}
+import sigil.tool.{DiscoveryFilter, DiscoveryRequest, JsonInput, Tool, ToolFinder, ToolInput, ToolName}
 
 /**
  * [[ToolFinder]] surfacing every MCP-advertised tool across all

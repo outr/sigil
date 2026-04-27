@@ -10,7 +10,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, Topic}
-import sigil.event.{Event, Message, MessageVisibility, Role}
+import sigil.event.{Event, Message, MessageVisibility, MessageRole}
 import sigil.participant.ParticipantId
 import sigil.signal.EventState
 import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}

@@ -32,7 +32,7 @@ import sigil.tool.ToolName
  *     stream through unchanged.
  *   - **Failure / timeout.** If the remote fails, disconnects, or
  *     times out, the transport emits whichever event(s) the app's
- *     error model expects (a `Role.Tool` event with an error
+ *     error model expects (a `MessageRole.Tool` event with an error
  *     payload is the conventional shape).
  *
  * The framework does not interpret the events the transport emits —

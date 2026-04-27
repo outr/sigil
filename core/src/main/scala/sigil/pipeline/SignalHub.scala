@@ -3,6 +3,7 @@ package sigil.pipeline
 import rapid.{Stream, Task}
 import sigil.signal.Signal
 
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.{ConcurrentLinkedQueue, LinkedBlockingQueue}
 
 /**
@@ -20,18 +21,30 @@ import java.util.concurrent.{ConcurrentLinkedQueue, LinkedBlockingQueue}
  * room for the new one and a warn is logged. Apps that need
  * guaranteed delivery should size the capacity appropriately or
  * consume faster.
+ *
+ * **Lifecycle.** [[close]] terminates every active subscription
+ * cleanly — each subscriber's stream completes (no error, no
+ * indefinite block on `queue.take()`). `Sigil.shutdown` calls
+ * `close` so app-side fibers consuming `sigil.signals` exit
+ * naturally without needing their own running-flag state machine.
+ * After close, [[emit]] is a no-op.
  */
 final class SignalHub(subscriberCapacity: Int = 1024) {
-  private val subscribers = new ConcurrentLinkedQueue[LinkedBlockingQueue[Signal]]()
+  // Subscriber queues hold `Option[Signal]` — `None` is the close
+  // sentinel that terminates the consumer's stream.
+  private val subscribers = new ConcurrentLinkedQueue[LinkedBlockingQueue[Option[Signal]]]()
+  private val closed = new AtomicBoolean(false)
 
   /** Emit a signal to every active subscriber. Non-blocking; drops
-    * oldest + warns on per-subscriber overflow. */
+    * oldest + warns on per-subscriber overflow. No-op once [[close]]
+    * has been called. */
   def emit(signal: Signal): Unit = {
+    if (closed.get()) return
     import scala.jdk.CollectionConverters.*
     subscribers.iterator().asScala.foreach { q =>
-      if (!q.offer(signal)) {
+      if (!q.offer(Some(signal))) {
         q.poll() // drop oldest
-        q.offer(signal)
+        q.offer(Some(signal))
         scribe.warn(
           s"SignalHub subscriber queue full (capacity=$subscriberCapacity); dropping oldest"
         )
@@ -39,20 +52,46 @@ final class SignalHub(subscriberCapacity: Int = 1024) {
     }
   }
 
+  /** Close the hub: subsequent [[emit]] calls are no-ops, and every
+    * active subscriber's stream completes (the next pull returns
+    * `None`, which the stream interprets as natural end). Idempotent
+    * — calling close twice has no further effect. */
+  def close(): Unit = {
+    if (closed.compareAndSet(false, true)) {
+      import scala.jdk.CollectionConverters.*
+      subscribers.iterator().asScala.foreach { q =>
+        // Best-effort offer of the close sentinel. If the queue is
+        // already full, drop the oldest and try again — close must
+        // win against a backlog or the subscriber would never see it.
+        if (!q.offer(None)) {
+          q.poll()
+          q.offer(None)
+        }
+      }
+    }
+  }
+
   /** New subscription: returns a [[Stream]] that emits every signal
-    * published after subscription. The underlying queue is registered
-    * on first pull and removed when the stream terminates (natural
-    * end, error, or consumer short-circuit). */
+    * published after subscription, completing naturally when the hub
+    * is closed via [[close]]. The underlying queue is registered on
+    * first pull and removed when the stream terminates (natural end,
+    * error, or consumer short-circuit). */
   def subscribe: Stream[Signal] = {
-    val q = new LinkedBlockingQueue[Signal](subscriberCapacity)
-    // Register lazily on first pull (via `using`) so subscribers that are
-    // constructed but never drained don't retain queues forever.
+    val q = new LinkedBlockingQueue[Option[Signal]](subscriberCapacity)
     Stream
       .using(Task { subscribers.add(q); q })(qq =>
-        Stream.unfoldStreamEval(qq)(queue => Task(Some((Stream.emit(queue.take()), queue))))
+        Stream.unfoldStreamEval(qq) { queue =>
+          Task(queue.take()).map {
+            case Some(sig) => Some((Stream.emit(sig), queue))
+            case None      => None // close sentinel — terminate stream
+          }
+        }
       )(queue => Task { subscribers.remove(queue); () })
   }
 
   /** Current subscriber count (for diagnostics / tests). */
   def subscriberCount: Int = subscribers.size()
+
+  /** Whether [[close]] has been called. */
+  def isClosed: Boolean = closed.get()
 }

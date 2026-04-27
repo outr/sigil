@@ -4,7 +4,7 @@ import fabric.*
 import fabric.define.{DefType, Definition}
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import sigil.mcp.JsonSchemaToDefinition
+import sigil.tool.JsonSchemaToDefinition
 
 class JsonSchemaToDefinitionSpec extends AnyWordSpec with Matchers {
 

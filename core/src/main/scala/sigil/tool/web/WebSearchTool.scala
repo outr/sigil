@@ -5,7 +5,7 @@ import fabric.rw.*
 import fabric.{Arr, num, obj, str}
 import rapid.Stream
 import sigil.TurnContext
-import sigil.event.{Event, Message, Role}
+import sigil.event.{Event, Message, MessageRole}
 import sigil.signal.EventState
 import sigil.tool.model.{ResponseContent, WebSearchInput}
 import sigil.tool.{ToolExample, ToolName, TypedTool}
@@ -44,7 +44,7 @@ final class WebSearchTool(provider: SearchProvider, defaultMaxResults: Int = 10)
         topicId        = ctx.conversation.currentTopicId,
         content        = Vector(ResponseContent.Text(JsonFormatter.Compact(payload))),
         state          = EventState.Complete,
-        role           = Role.Tool
+        role           = MessageRole.Tool
       ))
     }
   )
