@@ -2,9 +2,9 @@ package sigil.participant
 
 import fabric.rw.*
 import lightdb.id.Id
-import sigil.behavior.{Behavior, GeneralistBehavior}
+import sigil.role.{GeneralistRole, Role}
 import sigil.db.Model
-import sigil.provider.{GenerationSettings, Instructions}
+import sigil.provider.{GenerationSettings, Instructions, ToolPolicy}
 import sigil.tool.ToolName
 
 /**
@@ -16,13 +16,15 @@ import sigil.tool.ToolName
  * [[AgentParticipant]] with their own case class, `derives RW`, and
  * register its RW via `Sigil.participants`. The poly discriminator
  * handles heterogeneous deserialization. App-level customization of
- * the per-behavior turn shape lives on [[sigil.Sigil.process]], not
- * on participant subclasses.
+ * the per-turn shape lives on [[sigil.Sigil.process]], not on
+ * participant subclasses.
  */
 case class DefaultAgentParticipant(override val id: AgentParticipantId,
                                    override val modelId: Id[Model],
                                    override val toolNames: List[ToolName] = Nil,
                                    override val instructions: Instructions = Instructions(),
                                    override val generationSettings: GenerationSettings = GenerationSettings(),
-                                   override val behaviors: List[Behavior] = List(GeneralistBehavior))
+                                   override val tools: ToolPolicy = ToolPolicy.Standard,
+                                   override val greetsOnJoin: Boolean = false,
+                                   override val roles: List[Role] = List(GeneralistRole))
   extends AgentParticipant derives RW

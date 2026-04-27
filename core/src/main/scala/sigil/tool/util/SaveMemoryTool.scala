@@ -5,7 +5,7 @@ import fabric.{bool, num, obj, str}
 import rapid.Stream
 import sigil.{SpaceId, TurnContext}
 import sigil.conversation.{ContextMemory, MemorySource}
-import sigil.event.{Event, Message, Role}
+import sigil.event.{Event, Message, MessageRole}
 import sigil.signal.EventState
 import sigil.tool.model.{ResponseContent, SaveMemoryInput}
 import sigil.tool.{ToolExample, ToolName, TypedTool}
@@ -63,7 +63,7 @@ final class SaveMemoryTool(space: SpaceId,
         topicId        = ctx.conversation.currentTopicId,
         content        = Vector(ResponseContent.Text(JsonFormatter.Compact(payload))),
         state          = EventState.Complete,
-        role           = Role.Tool
+        role           = MessageRole.Tool
       ))
     })
   }

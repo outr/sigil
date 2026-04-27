@@ -3,7 +3,7 @@ package sigil.mcp
 import fabric.rw.*
 import rapid.{Stream, Task}
 import sigil.TurnContext
-import sigil.event.{Event, Message, MessageVisibility, Role}
+import sigil.event.{Event, Message, MessageVisibility, MessageRole}
 import sigil.signal.EventState
 import sigil.tool.{ToolInput, ToolName, TypedTool}
 import sigil.tool.model.ResponseContent
@@ -23,7 +23,7 @@ final class RefreshMcpServerTool(manager: McpManager) extends TypedTool[RefreshM
         topicId = context.conversation.currentTopicId,
         content = Vector(ResponseContent.Text(s"Refreshed '${input.name}' — ${tools.size} tools.")),
         state = EventState.Complete,
-        role = Role.Tool,
+        role = MessageRole.Tool,
         visibility = MessageVisibility.All
       ))
     }.handleError { e =>
@@ -33,7 +33,7 @@ final class RefreshMcpServerTool(manager: McpManager) extends TypedTool[RefreshM
         topicId = context.conversation.currentTopicId,
         content = Vector(ResponseContent.Text(s"Refresh failed for '${input.name}': ${e.getMessage}")),
         state = EventState.Complete,
-        role = Role.Tool,
+        role = MessageRole.Tool,
         visibility = MessageVisibility.All
       )))
     })

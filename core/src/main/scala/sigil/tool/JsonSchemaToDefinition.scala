@@ -1,4 +1,4 @@
-package sigil.mcp
+package sigil.tool
 
 import fabric.*
 import fabric.define.{Constraints, DefType, Definition, Format}

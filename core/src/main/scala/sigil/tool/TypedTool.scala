@@ -2,7 +2,7 @@ package sigil.tool
 
 import fabric.rw.*
 import lightdb.id.Id
-import sigil.{SpaceId, TurnContext}
+import sigil.{GlobalSpace, SpaceId, TurnContext}
 import sigil.event.Event
 import sigil.participant.ParticipantId
 import sigil.provider.{ConversationMode, Mode}
@@ -22,7 +22,7 @@ abstract class TypedTool[In <: ToolInput](
   override val description: String,
   override val examples: List[ToolExample] = Nil,
   override val modes: Set[Id[Mode]] = Set(ConversationMode.id),
-  override val spaces: Set[SpaceId] = Set.empty,
+  override val space: SpaceId = GlobalSpace,
   override val keywords: Set[String] = Set.empty,
   override val createdBy: Option[ParticipantId] = None
 )(using ct: ClassTag[In], rwEv: RW[In]) extends Tool {

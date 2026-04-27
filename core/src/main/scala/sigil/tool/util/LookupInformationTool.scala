@@ -3,7 +3,7 @@ package sigil.tool.util
 import fabric.io.JsonFormatter
 import fabric.rw.*
 import sigil.TurnContext
-import sigil.event.{Event, Message, Role}
+import sigil.event.{Event, Message, MessageRole}
 import sigil.information.Information
 import sigil.information.Information.given
 import sigil.tool.{ToolName, TypedTool}
@@ -33,7 +33,7 @@ case object LookupInformationTool extends TypedTool[LookupInformationInput](
               conversationId = context.conversation.id,
               topicId = context.conversation.currentTopicId,
               content = Vector(ResponseContent.Text(body)),
-              role = Role.Tool
+              role = MessageRole.Tool
             )
           ))
         case None =>
@@ -43,7 +43,7 @@ case object LookupInformationTool extends TypedTool[LookupInformationInput](
               conversationId = context.conversation.id,
               topicId = context.conversation.currentTopicId,
               content = Vector(ResponseContent.Text(s"No Information found for id '${input.id.value}'.")),
-              role = Role.Tool
+              role = MessageRole.Tool
             )
           ))
       }

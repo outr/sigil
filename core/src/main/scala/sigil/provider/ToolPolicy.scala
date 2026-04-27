@@ -5,7 +5,7 @@ import sigil.tool.ToolName
 
 /**
  * Policy describing how a [[Mode]] (or any other tool-roster contributor,
- * such as `Behavior`) shapes an agent's effective tool list on a turn.
+ * such as `Role`) shapes an agent's effective tool list on a turn.
  *
  * Two orthogonal dimensions control tool availability:
  *   - **Roster**: which tools the agent sees in its effective tool list

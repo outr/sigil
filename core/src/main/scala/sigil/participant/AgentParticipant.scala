@@ -3,11 +3,10 @@ package sigil.participant
 import lightdb.id.Id
 import rapid.Stream
 import sigil.TurnContext
-import sigil.behavior.{Behavior, GeneralistBehavior}
-import sigil.conversation.{ActiveSkillSlot, SkillSource}
+import sigil.role.{GeneralistRole, Role}
 import sigil.db.Model
 import sigil.event.Event
-import sigil.provider.{GenerationSettings, Instructions}
+import sigil.provider.{GenerationSettings, Instructions, ToolPolicy}
 import sigil.signal.Signal
 import sigil.tool.ToolName
 
@@ -18,9 +17,8 @@ import sigil.tool.ToolName
  *
  * Runtime dependencies — the live [[sigil.provider.Provider]] and the tool
  * instances to hand to it — are resolved lazily inside the framework's
- * default per-behavior turn ([[sigil.Sigil.defaultProcess]]). The agent
- * itself stays purely descriptive; the "how to run it right now" lives
- * on Sigil.
+ * default turn ([[sigil.Sigil.defaultProcess]]). The agent itself stays
+ * purely descriptive; the "how to run it right now" lives on Sigil.
  *
  * The framework dispatcher (`Sigil.publish`) owns the surrounding
  * [[sigil.event.AgentState]] lifecycle: it claims an `AgentState(Active)`
@@ -28,15 +26,19 @@ import sigil.tool.ToolName
  * terminal `AgentStateDelta(Idle, Complete)` after the agent's self-loop
  * settles.
  *
- * Behaviors are the role-shaping primitive. An agent's
- * [[behaviors]] list is iterated each turn; for each behavior the
- * framework injects an [[ActiveSkillSlot]] into the agent's projection
- * (per-turn view copy) and delegates to
- * [[sigil.Sigil.process]] which apps override to specialize per-behavior
- * dispatch (e.g. a Worker behavior that reacts to triggers without
- * calling the LLM). The default behavior list is
- * `List(GeneralistBehavior)` — agents always have a real role; an
- * empty list is rejected.
+ * **Roles compose into a single dispatch.** An agent's [[roles]] list is
+ * fully merged into one prompt + one LLM call per turn. Multiple roles
+ * shape *how* the agent responds (the system prompt enumerates them
+ * with a "You serve the following roles:" preamble + per-role
+ * description); they do NOT cause multiple responses. Apps express
+ * "Planner+Critic"-style agents as `roles = List(PlannerRole,
+ * CriticRole)` and read back one merged response per turn.
+ *
+ * **Tools, greeting, and dispatch overrides are agent-level**, not
+ * role-level: one tool roster, one greet decision, one dispatch path
+ * per agent. Non-LLM "react to triggers without calling the model"
+ * shapes belong on a separate participant trait, not as a Role
+ * variant.
  */
 trait AgentParticipant extends Participant {
   override def id: AgentParticipantId
@@ -63,51 +65,60 @@ trait AgentParticipant extends Participant {
   def generationSettings: GenerationSettings = GenerationSettings()
 
   /**
-   * Permanent role assignments for this agent. Iterated per turn —
-   * each behavior's slot is injected into the agent's projection and
-   * dispatched independently via [[sigil.Sigil.process]].
-   *
-   * Defaults to `List(GeneralistBehavior)` so vanilla agents have a
-   * real role. Must be non-empty (enforced via `require` at trait
-   * initialization); apps that override must supply at least one
-   * behavior.
+   * Tool-availability policy folded with the current Mode's policy by
+   * [[sigil.Sigil.effectiveToolNames]] to compose the agent's effective
+   * roster for the turn. Agent-level (not per-role) — a multi-role
+   * agent has one effective tool set per turn.
    */
-  def behaviors: List[Behavior] = List(GeneralistBehavior)
-
-  require(behaviors.nonEmpty, s"AgentParticipant.behaviors must be non-empty (id=${id.value})")
+  def tools: ToolPolicy = ToolPolicy.Standard
 
   /**
-   * Final dispatch entry point. Iterates [[behaviors]] in declaration
-   * order; for each behavior, injects its [[ActiveSkillSlot]] into
-   * the agent's per-turn projection and delegates to
-   * [[sigil.Sigil.process]]. Apps customize per-behavior turn shapes
-   * by overriding `Sigil.process`, not by overriding `process` here.
+   * When `true`, the framework fires the agent's [[processGreeting]]
+   * once the moment it joins a conversation (whether the conversation
+   * was just created via [[sigil.Sigil.newConversation]] or the agent
+   * was added later via [[sigil.Sigil.addParticipant]]). The agent's
+   * roles' descriptions and skills drive the greeting wording — the
+   * framework injects no synthetic prompt; a role whose description
+   * says "On entering an empty conversation, introduce yourself"
+   * produces the greeting. Default `false`.
+   */
+  def greetsOnJoin: Boolean = false
+
+  /**
+   * Permanent role assignments for this agent. Combined into a single
+   * merged prompt per turn — multiple roles shape how the agent
+   * responds, not how many times. See the trait-level docs for the
+   * single-dispatch semantics.
+   *
+   * Defaults to `List(GeneralistRole)` so vanilla agents have a real
+   * role. Must be non-empty (enforced via `require` at trait
+   * initialization); apps that override must supply at least one
+   * role.
+   */
+  def roles: List[Role] = List(GeneralistRole)
+
+  require(roles.nonEmpty, s"AgentParticipant.roles must be non-empty (id=${id.value})")
+
+  /**
+   * Final dispatch entry point. One [[sigil.Sigil.process]] call per
+   * turn, regardless of role count — the prompt rendering folds every
+   * role into one merged context. Apps customize per-agent turn
+   * shapes by overriding `Sigil.process`, not by overriding `process`
+   * here.
    */
   final override def process(context: TurnContext, triggers: Stream[Event]): Stream[Signal] =
-    Stream.emits(behaviors).flatMap { b =>
-      context.sigil.process(this, b, enrichedContextFor(context, b), triggers)
-    }
+    context.sigil.process(this, context, triggers)
 
-  private def enrichedContextFor(context: TurnContext, behavior: Behavior): TurnContext = {
-    val slot = behavior.skill.orElse {
-      if (behavior.description.nonEmpty)
-        Some(ActiveSkillSlot(name = behavior.name, content = behavior.description))
-      else None
-    }
-    slot match {
-      case None => context
-      case Some(s) =>
-        val proj = context.conversationView.projectionFor(id)
-        val updatedProj = proj.copy(
-          activeSkills = proj.activeSkills + (SkillSource.Behavior(behavior.name) -> s)
-        )
-        val updatedView = context.conversationView.copy(
-          participantProjections = context.conversationView.participantProjections + (id -> updatedProj)
-        )
-        context.copy(
-          conversationView = updatedView,
-          turnInput = context.turnInput.copy(conversationView = updatedView)
-        )
-    }
-  }
+  /**
+   * Greet entry point — called by the framework when this agent joins
+   * a conversation (either via [[sigil.Sigil.newConversation]] or
+   * [[sigil.Sigil.addParticipant]]). Same merged dispatch as a normal
+   * turn but with an empty trigger stream; the role(s)'s skill /
+   * description text owns the greeting wording.
+   *
+   * Caller (`Sigil.fireGreeting`) only invokes this when
+   * `greetsOnJoin == true`, so this method itself doesn't gate.
+   */
+  final def processGreeting(context: TurnContext): Stream[Signal] =
+    context.sigil.process(this, context, Stream.empty)
 }

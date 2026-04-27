@@ -6,7 +6,7 @@ import lightdb.upgrade.DatabaseUpgrade
 import profig.Profig
 import rapid.Task
 import sigil.{Sigil, SpaceId}
-import sigil.behavior.Behavior
+import sigil.role.Role
 import sigil.conversation.{Conversation, ConversationView, TurnInput}
 import sigil.db.{Model, SigilDB}
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}

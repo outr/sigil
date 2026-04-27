@@ -4,7 +4,7 @@ import fabric.io.JsonFormatter
 import fabric.{Arr, Json, num, obj, str}
 import rapid.Stream
 import sigil.TurnContext
-import sigil.event.{Event, Message, Role}
+import sigil.event.{Event, Message, MessageRole}
 import sigil.signal.EventState
 import sigil.tool.model.{ResponseContent, SemanticSearchInput}
 import sigil.tool.{ToolExample, ToolName, TypedTool}
@@ -48,7 +48,7 @@ case object SemanticSearchTool extends TypedTool[SemanticSearchInput](
           topicId        = ctx.conversation.currentTopicId,
           content        = Vector(ResponseContent.Text(JsonFormatter.Compact(payload))),
           state          = EventState.Complete,
-          role           = Role.Tool
+          role           = MessageRole.Tool
         ))
       }
     }

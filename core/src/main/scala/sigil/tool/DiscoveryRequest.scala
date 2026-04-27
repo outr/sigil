@@ -11,8 +11,8 @@ import sigil.provider.Mode
  *
  * Finders use these to filter the candidate set: by keyword match
  * (name / description / keywords field), by mode affinity (current
- * `mode.id` ∈ `tool.modes`), and by space affinity (`tool.spaces`
- * empty OR intersects `callerSpaces`).
+ * `mode.id` ∈ `tool.modes`), and by space affinity (`tool.space ==
+ * GlobalSpace` OR `tool.space ∈ callerSpaces`).
  */
 case class DiscoveryRequest(keywords: String,
                             chain: List[ParticipantId],

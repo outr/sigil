@@ -43,5 +43,6 @@ case class ConversationRequest(conversationId: Id[Conversation],
                                tools: Vector[Tool] = Vector.empty,
                                builtInTools: Set[BuiltInTool] = Set.empty,
                                chain: List[ParticipantId] = Nil,
+                               roles: List[sigil.role.Role] = Nil,
                                requestId: Id[ProviderRequest] = Id())
   extends ProviderRequest

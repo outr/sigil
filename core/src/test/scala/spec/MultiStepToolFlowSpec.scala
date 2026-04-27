@@ -36,7 +36,7 @@ import scala.concurrent.duration.*
  *
  * Once-failing demonstration of the multi-step gap. Closed by the
  * `Event.role` refactor: tools that should re-trigger the agent set
- * `role = Role.Tool` on their emitted events; `TriggerFilter` and
+ * `role = MessageRole.Tool` on their emitted events; `TriggerFilter` and
  * `FrameBuilder` route on the role; the loop advances iteration by
  * iteration as required.
  */

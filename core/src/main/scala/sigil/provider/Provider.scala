@@ -216,10 +216,31 @@ trait Provider {
         sb.append(s"- ${i.id.value} [${i.informationType.name}]: ${i.summary}\n"))
     }
 
+    // Roles render the agent's identity into the system prompt. A single
+    // role is shown linearly (one description block); multiple roles get a
+    // "You serve the following roles:" preamble + per-role enumeration so
+    // the model handles multi-role identity explicitly even when each
+    // role's description was written self-contained.
+    c.roles match {
+      case Nil           => ()
+      case List(single)  =>
+        if (single.description.nonEmpty)
+          sb.append("\n").append(single.description).append("\n")
+      case multi         =>
+        sb.append("\nYou serve the following roles:\n")
+        multi.foreach { r =>
+          sb.append(s"- ${r.name}")
+          if (r.description.nonEmpty) sb.append(s" — ${r.description}")
+          sb.append("\n")
+        }
+    }
+
     val skills = view.aggregatedSkills(chain)
-    if (skills.nonEmpty) {
+    val roleSkills = c.roles.flatMap(_.skill.toList)
+    val allSkills = (skills ++ roleSkills).distinctBy(_.name)
+    if (allSkills.nonEmpty) {
       sb.append("\n== Active skills ==\n")
-      skills.foreach { s =>
+      allSkills.foreach { s =>
         sb.append(s"- ${s.name}\n")
         if (s.content.nonEmpty) sb.append(s.content).append("\n")
       }
@@ -311,7 +332,7 @@ trait Provider {
 
     // Dangling tool_call without a result — defensive fallback. Should
     // never fire under the normal flow (every non-terminal tool emits
-    // a `Role.Tool` event that produces a paired `ToolResult` frame),
+    // a `MessageRole.Tool` event that produces a paired `ToolResult` frame),
     // but providers reject bare `tool_calls` in the request, so we
     // ensure every dangling pending id has SOMETHING.
     pendingToolCallId.foreach { callId =>

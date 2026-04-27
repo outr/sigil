@@ -1,6 +1,6 @@
 package sigil.dispatcher
 
-import sigil.event.{AgentState, Event, Message, ModeChange, Role, Stop, TopicChange}
+import sigil.event.{AgentState, Event, Message, ModeChange, MessageRole, Stop, TopicChange}
 import sigil.participant.Participant
 
 /**
@@ -13,8 +13,8 @@ import sigil.participant.Participant
  *
  * Default rules:
  *
- *   - Any event whose `role` is [[sigil.event.Role.Tool]] always
- *     re-triggers — that's the whole point of `Role.Tool`. The agent
+ *   - Any event whose `role` is [[sigil.event.MessageRole.Tool]] always
+ *     re-triggers — that's the whole point of `MessageRole.Tool`. The agent
  *     just received a tool's result and needs to read it on the next
  *     iteration. From-self exclusions don't apply: the orchestrator
  *     emits tool results attributed to the calling agent, and we
@@ -37,7 +37,7 @@ import sigil.participant.Participant
  */
 object TriggerFilter {
   def isTriggerFor(p: Participant, e: Event): Boolean = e match {
-    case e if e.role == Role.Tool                                     => true
+    case e if e.role == MessageRole.Tool                                     => true
     case _: AgentState                                                => false
     case _: Stop                                                      => false
     case m: Message if m.participantId == p.id                        => false

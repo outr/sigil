@@ -4,7 +4,7 @@ import fabric.*
 import fabric.io.JsonFormatter
 import rapid.Task
 import sigil.Sigil
-import sigil.behavior.Behavior
+import sigil.role.Role
 import sigil.db.{Model, SigilDB}
 import sigil.event.MessageVisibility
 import sigil.tool.Tool

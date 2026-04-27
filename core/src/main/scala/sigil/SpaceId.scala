@@ -5,14 +5,22 @@ package sigil
  * Sigil's persisted resources — memories, tools, and any future
  * app-scoped record.
  *
- * Sigil core makes no assumption about what spaces exist — apps define
- * their own concrete subtypes (GlobalSpace, ProjectSpace, UserSpace,
- * per-conversation session spaces, whatever) and register them via
+ * **Single-assignment rule:** a record gets exactly one `SpaceId`.
+ * Never `Option[SpaceId]`, never `Set[SpaceId]`. If a tool needs to be
+ * accessible under a different space, copy the record. Multi-space
+ * *queries* (find me memories across these spaces) do still take a
+ * `Set[SpaceId]` — the rule applies to assignment, not lookup.
+ *
+ * Sigil ships exactly one concrete case — [[GlobalSpace]] — because
+ * every framework-shipped tool (`respond`, `change_mode`, `stop`, …)
+ * needs a real space and "visible to everyone" is a real concept the
+ * framework owns. Apps define their own subtypes (ProjectSpace,
+ * UserSpace, per-conversation session spaces) and register them via
  * `Sigil.spaceIds` so the polymorphic RW can round-trip them.
  *
  * Used as:
  *   - `ContextMemory.spaceId` — the space a memory lives in.
- *   - `Tool.spaces` — the spaces a tool is visible to (empty = global).
+ *   - `Tool.space` — the single space a tool is visible to.
  *   - `Sigil.findMemories(spaces: Set[SpaceId])` — which spaces to
  *     search when assembling turn-relevant memory.
  *   - `Sigil.accessibleSpaces(chain)` — the caller's authorized set,

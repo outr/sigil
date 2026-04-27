@@ -49,7 +49,7 @@ case class Message(participantId: ParticipantId,
                    state: EventState = EventState.Active,
                    timestamp: Timestamp = Timestamp(Nowish()),
                    location: Option[Place] = None,
-                   role: Role = Role.Standard,
+                   role: MessageRole = MessageRole.Standard,
                    override val visibility: MessageVisibility = MessageVisibility.All,
                    _id: Id[Event] = Event.id())
   extends Event derives RW {

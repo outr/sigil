@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
-import sigil.behavior.Behavior
+import sigil.role.Role
 import sigil.participant.DefaultAgentParticipant
 import sigil.provider.{ConversationMode, GenerationSettings, Instructions, Mode, ToolPolicy}
 import sigil.tool.ToolName
@@ -44,11 +44,6 @@ class ModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     override val tools: ToolPolicy = modeTools
   }
 
-  // No-op behavior for mode-only effectiveToolNames tests — `tools = ToolPolicy.Standard`
-  // means it contributes nothing to the policy fold, so the result is governed solely
-  // by the supplied mode policy.
-  private val noopBehavior: Behavior = Behavior(name = "test-behavior", description = "")
-
   "Mode PolyType serialization" should {
     "round-trip ConversationMode via Mode's polymorphic RW" in Task {
       val rw = summon[RW[Mode]]
@@ -82,42 +77,42 @@ class ModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     val a = agent(List(toolA, toolB))
 
     "leave baseline untouched under ToolPolicy.Standard" in Task {
-      val result = TestSigil.effectiveToolNames(a, noopBehavior, mode(ToolPolicy.Standard), suggested = Nil).toSet
+      val result = TestSigil.effectiveToolNames(a, mode(ToolPolicy.Standard), suggested = Nil).toSet
       result shouldBe (withDiscovery ++ Set(toolA, toolB))
     }
 
     "suppress baseline AND find_capability under ToolPolicy.None" in Task {
-      val result = TestSigil.effectiveToolNames(a, noopBehavior, mode(ToolPolicy.None), suggested = Nil).toSet
+      val result = TestSigil.effectiveToolNames(a, mode(ToolPolicy.None), suggested = Nil).toSet
       result shouldBe essentials
       result should not contain FindCapabilityTool.schema.name
     }
 
     "add mode tools on top of baseline under ToolPolicy.Active" in Task {
-      val result = TestSigil.effectiveToolNames(a, noopBehavior, mode(ToolPolicy.Active(List(toolC))), suggested = Nil).toSet
+      val result = TestSigil.effectiveToolNames(a, mode(ToolPolicy.Active(List(toolC))), suggested = Nil).toSet
       result shouldBe (withDiscovery ++ Set(toolA, toolB, toolC))
     }
 
     "not add mode tools to the roster under ToolPolicy.Discoverable" in Task {
-      val result = TestSigil.effectiveToolNames(a, noopBehavior, mode(ToolPolicy.Discoverable(List(toolC))), suggested = Nil).toSet
+      val result = TestSigil.effectiveToolNames(a, mode(ToolPolicy.Discoverable(List(toolC))), suggested = Nil).toSet
       result shouldBe (withDiscovery ++ Set(toolA, toolB))
     }
 
     "replace baseline with mode tools under ToolPolicy.Exclusive" in Task {
-      val result = TestSigil.effectiveToolNames(a, noopBehavior, mode(ToolPolicy.Exclusive(List(toolC))), suggested = Nil).toSet
+      val result = TestSigil.effectiveToolNames(a, mode(ToolPolicy.Exclusive(List(toolC))), suggested = Nil).toSet
       result shouldBe (withDiscovery ++ Set(toolC))
       result should not contain toolA
     }
 
     "leave baseline untouched under ToolPolicy.Scoped" in Task {
-      val result = TestSigil.effectiveToolNames(a, noopBehavior, mode(ToolPolicy.Scoped(List(toolC))), suggested = Nil).toSet
+      val result = TestSigil.effectiveToolNames(a, mode(ToolPolicy.Scoped(List(toolC))), suggested = Nil).toSet
       result shouldBe (withDiscovery ++ Set(toolA, toolB))
     }
 
     "always include suggested tools (regardless of policy)" in Task {
       val suggested = List(toolD)
-      val active = TestSigil.effectiveToolNames(a, noopBehavior, mode(ToolPolicy.Active(Nil)), suggested).toSet
-      val excl   = TestSigil.effectiveToolNames(a, noopBehavior, mode(ToolPolicy.Exclusive(Nil)), suggested).toSet
-      val none   = TestSigil.effectiveToolNames(a, noopBehavior, mode(ToolPolicy.None), suggested).toSet
+      val active = TestSigil.effectiveToolNames(a, mode(ToolPolicy.Active(Nil)), suggested).toSet
+      val excl   = TestSigil.effectiveToolNames(a, mode(ToolPolicy.Exclusive(Nil)), suggested).toSet
+      val none   = TestSigil.effectiveToolNames(a, mode(ToolPolicy.None), suggested).toSet
       active should contain(toolD)
       excl should contain(toolD)
       none should contain(toolD)
