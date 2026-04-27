@@ -7,7 +7,7 @@ import sigil.event.Event
 
 /**
  * Universal state-transition delta. Drives the Active → Complete transition
- * for any [[Event]] by delegating to its `withState` implementation. Works
+ * for any [[sigil.event.Event]] by delegating to its `withState` implementation. Works
  * for every Event type without a match expression — adding a new Event adds
  * no load-bearing code here.
  *

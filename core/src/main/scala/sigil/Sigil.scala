@@ -48,32 +48,43 @@ trait Sigil {
 
   /**
    * The concrete [[SigilDB]] type this Sigil uses. Defaults to
-   * [[SigilDB]] itself (collections only); apps that pull in
-   * extension modules (e.g. `sigil-secrets`, `sigil-mcp`) refine
-   * this to a class that mixes in the modules' collection traits:
+   * [[sigil.db.SigilDB]] (the framework's vanilla shape, satisfied by
+   * [[sigil.db.DefaultSigilDB]]). Apps that pull in extension modules
+   * (e.g. `sigil-secrets`, `sigil-mcp`) refine this to a class that
+   * mixes in the modules' collection traits:
    *
    * {{{
    *   class MyAppDB(...) extends SigilDB(...) with SecretsCollections
    *   class MyAppSigil extends SecretsSigil {
    *     type DB = MyAppDB
-   *     protected def buildDB(d, sm, u) = new MyAppDB(d, sm, u)
+   *     override protected def buildDB(d, sm, u) = new MyAppDB(d, sm, u)
    *   }
    * }}}
+   *
+   * Apps using only the framework's standard collections leave both
+   * the type and `buildDB` defaulted — zero boilerplate for the
+   * vanilla shape.
    *
    * `withDB` returns the refined type, so module helpers and tools
    * see `db.secrets`, `db.mcpServers`, etc. without casts.
    */
-  type DB <: SigilDB
+  type DB <: sigil.db.SigilDB
 
   /**
-   * Construct the concrete [[DB]]. Apps using only the standard
-   * collections set `type DB = DefaultSigilDB` and `buildDB(...) =
-   * new DefaultSigilDB(...)`. Apps using extension modules supply a
-   * subclass that mixes in the modules' collection traits.
+   * Construct the concrete [[DB]]. Defaults to
+   * [[sigil.db.DefaultSigilDB]] (vanilla collections only) cast to
+   * `DB` — works for apps whose `type DB = SigilDB` (or
+   * `DefaultSigilDB`). Apps using extension modules
+   * (`SecretsCollections`, `McpCollections`, …) override and supply
+   * a subclass that mixes in the modules' collection traits.
+   *
+   * Vanilla shape: `type DB = SigilDB` (one line) and let the default
+   * `buildDB` do the construction.
    */
   protected def buildDB(directory: Option[java.nio.file.Path],
                         storeManager: lightdb.store.CollectionManager,
-                        appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB
+                        appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
+    new sigil.db.DefaultSigilDB(directory, storeManager, appUpgrades).asInstanceOf[DB]
 
   /**
    * App-specific Signal subtypes (custom Events / Deltas the app introduces
@@ -1846,18 +1857,34 @@ trait Sigil {
 
   // -- lifecycle --
 
-  val instance: Task[SigilInstance] = Task.defer {
+  /**
+   * Phase-1 lifecycle: populate every fabric `PolyType` discriminator
+   * with the framework + app-defined subtypes. Pure JVM-level effect
+   * — does not open the LightDB / RocksDB store, does not start any
+   * background fibers. Idempotent (`.singleton`).
+   *
+   * Codegen / schema-introspection tasks (e.g. Dart generator,
+   * OpenAPI schema dumper) call `polymorphicRegistrations.sync()`
+   * instead of `instance.sync()`. That gives them the populated
+   * `summon[RW[Signal]].definition`, `summon[RW[ParticipantId]].definition`,
+   * etc. without contending with a live backend for the RocksDB
+   * lock — multiple developer terminals can run codegen against the
+   * same Sigil module while a server is running.
+   *
+   * `instance` runs this first, so runtime consumers see the same
+   * ordering as before.
+   *
+   * **Registration order matters.** Leaf polys (no fields referencing
+   * other polys) MUST be populated before composite polys whose
+   * case-class subtypes have fields typed against the leaves —
+   * otherwise fabric's lazy-val `Definition` for those subtypes
+   * captures an empty leaf-poly snapshot when `RW.poly` walks them
+   * at register-time, and downstream callers see leaf polys with
+   * zero subtypes.
+   */
+  val polymorphicRegistrations: Task[Unit] = Task.defer {
     for {
-      _ <- logger.info("Sigil initializing...")
-      _ <- Task(Profig.initConfiguration())
-      // Registration order matters: leaf polys (no fields referencing
-      // other polys) MUST be populated before composite polys whose
-      // case-class subtypes have fields typed against the leaves.
-      // Otherwise fabric's lazy-val Definition for those subtypes
-      // captures an empty leaf-poly snapshot when fabric's `RW.poly`
-      // walks them at register-time, and downstream callers
-      // (codegen, schema generators) see ParticipantId / SpaceId
-      // with zero subtypes.
+      _ <- logger.info("Sigil registering polymorphic discriminators...")
       _ = SpaceId.register((RW.static(GlobalSpace) :: spaceIds).distinct*)
       _ = ParticipantId.register(participantIds*)
       _ = Mode.register((ConversationMode :: modes).distinct.map(m => RW.static(m))*)
@@ -1865,6 +1892,22 @@ trait Sigil {
       _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
       _ = sigil.tool.Tool.register((staticTools.map(t => RW.static(t)) ++ toolRegistrations).distinct*)
       _ = Signal.register((CoreSignals.all ++ signalRegistrations)*)
+    } yield ()
+  }.singleton
+
+  /** True once [[instance]]'s task body has begun executing — used by
+    * [[shutdown]] to skip DB-dispose when no instance was ever
+    * constructed (e.g. codegen-only paths that ran
+    * `polymorphicRegistrations` without opening the store). */
+  private val instanceStarted: java.util.concurrent.atomic.AtomicBoolean =
+    new java.util.concurrent.atomic.AtomicBoolean(false)
+
+  val instance: Task[SigilInstance] = Task.defer {
+    for {
+      _ <- polymorphicRegistrations
+      _ <- logger.info("Sigil initializing...")
+      _ <- Task(Profig.initConfiguration())
+      _ = instanceStarted.set(true)
       config = Profig("sigil").as[Config]
       (directory, collectionStore) = config.postgres match {
         case Some(pg) =>
@@ -1936,11 +1979,15 @@ trait Sigil {
     // Close the SignalHub first so every active `sigil.signals` /
     // `sigil.signalsFor(viewer)` subscriber's stream completes
     // naturally — their fibers exit without needing app-side
-    // running-flag bookkeeping. Then dispose the DB. Both stages are
+    // running-flag bookkeeping. Then dispose the DB *only if* the
+    // instance was ever constructed; codegen / introspection paths
+    // that ran `polymorphicRegistrations` without opening the store
+    // shouldn't have shutdown force the DB open. Both stages are
     // best-effort: failures are logged but don't block subsequent
     // teardown.
     Task { hub.close() }.flatMap { _ =>
-      instance.flatMap { sigil =>
+      if (!instanceStarted.get()) Task.unit
+      else instance.flatMap { sigil =>
         sigil.db.dispose.handleError { t =>
           Task { scribe.warn(s"Sigil shutdown: db.dispose failed: ${t.getMessage}"); () }
         }
@@ -1970,13 +2017,14 @@ trait Sigil {
 
   /**
    * How often the in-memory model registry is refreshed from
-   * upstream (OpenRouter). Default 8 hours — the catalog rarely
-   * changes more than once or twice per week, and a single refresh
-   * is one cheap HTTP call. Override to a smaller value for
-   * fresher data, or to `None` to disable periodic refresh entirely
-   * (apps that prefer manual `OpenRouter.refreshModels` calls).
+   * upstream (OpenRouter). Default `None` — apps that don't use
+   * OpenRouter-sourced models (local llama.cpp deployments,
+   * direct-Anthropic / direct-OpenAI configurations, etc.) get no
+   * background HTTP traffic. OpenRouter consumers opt in by
+   * overriding to e.g. `Some(8.hours)` for periodic refresh, or
+   * leave `None` and call `OpenRouter.refreshModels` manually.
    */
-  def modelRefreshInterval: Option[FiniteDuration] = Some(8.hours)
+  def modelRefreshInterval: Option[FiniteDuration] = None
 
   /**
    * In-memory model registry — the canonical source of catalog
@@ -1995,6 +2043,16 @@ trait Sigil {
    * site reads as `sigil.signalTransport.attach(viewer, sink, resume)`.
    */
   final lazy val signalTransport: SignalTransport = new SignalTransport(this)
+
+  /**
+   * Spice [[spice.http.durable.EventLog]] adapter that reads from the
+   * same `SigilDB.events` store that `Sigil.publish` writes to. Apps
+   * mounting a `DurableSocketServer` pass this as the `eventLog`
+   * argument so resume reads stream from the durable history with no
+   * separate buffer.
+   */
+  final lazy val eventLog: sigil.transport.SigilDbEventLog =
+    new sigil.transport.SigilDbEventLog(this)
 
   case class SigilInstance(config: Config, db: DB)
 }

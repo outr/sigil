@@ -18,7 +18,7 @@ case class ToolDelta(target: Id[Event],
   extends Delta derives RW {
 
   /**
-   * Apply this delta to a [[ToolInvoke]]. Sets `input` (the parsed args) and
+   * Apply this delta to a [[sigil.event.ToolInvoke]]. Sets `input` (the parsed args) and
    * `state` from any present fields. Returns `target` unchanged if it isn't a
    * `ToolInvoke`.
    */

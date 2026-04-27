@@ -14,7 +14,7 @@ import sigil.conversation.ActiveSkillSlot
  *   - `description` — the role's scope/identity statement ("You plan
  *     tasks, decompose user goals, and reason about ordering"). Renders
  *     into the system prompt's role-scope section.
- *   - `skill` — optional explicit [[ActiveSkillSlot]] containing the
+ *   - `skill` — optional explicit [[sigil.conversation.ActiveSkillSlot]] containing the
  *     atomic capability text the model should keep in mind. When set,
  *     it's appended to the participant projection's "Active skills"
  *     section under [[sigil.conversation.SkillSource.Role]].

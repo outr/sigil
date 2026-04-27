@@ -46,7 +46,7 @@ case class MessageDelta(target: Id[Event],
   extends Delta derives RW {
 
   /**
-   * Apply this delta to a [[Message]]. Per Option-A semantics:
+   * Apply this delta to a [[sigil.event.Message]]. Per Option-A semantics:
    *   - `content` deltas are appended to `Message.content` only when
    *     `complete = true`. Streaming chunks (`complete = false`) are
    *     wire-only (for subscriber UX) and don't touch the persisted Message.

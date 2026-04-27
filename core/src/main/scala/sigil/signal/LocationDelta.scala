@@ -7,7 +7,7 @@ import sigil.event.{Event, Message}
 import sigil.spatial.Place
 
 /**
- * Applies an enriched [[Place]] to an already-persisted [[Message]]. Emitted
+ * Applies an enriched [[sigil.spatial.Place]] to an already-persisted [[sigil.event.Message]]. Emitted
  * by the framework's async geocoding pipeline after a user-authored Message
  * has been captured with a raw point and the configured
  * [[sigil.spatial.Geocoder]] has resolved it to a named Place.

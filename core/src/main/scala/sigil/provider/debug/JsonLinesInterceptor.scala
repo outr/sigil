@@ -12,7 +12,7 @@ import java.nio.file.{Files, OpenOption, Path, StandardOpenOption}
 import scala.util.Try
 
 /**
- * Spice [[Interceptor]] that records every HTTP round-trip as JSON
+ * Spice [[spice.http.client.intercept.Interceptor]] that records every HTTP round-trip as JSON
  * lines appended to a file — good for post-hoc diagnostic walking of
  * a full conversation (provider requests, tool round-trips, and
  * anything else that goes through `HttpClient`).

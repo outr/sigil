@@ -180,6 +180,43 @@ class SignalTransportSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
 
   "SignalTransport.attach" should {
 
+    // Regression for BUGS.md Sigil#3 — `attach` must register the live
+    // SignalHub subscription synchronously before returning, so any
+    // signal published immediately after the call lands in the
+    // subscriber's queue (rather than being dropped by the hub for
+    // having no matching subscriber).
+    //
+    // Without the fix, this test fails: every signal published in the
+    // tight loop below races against the consumer fiber's first pull
+    // (which is what registers the queue with the hub under the old
+    // lazy subscribe). With the fix (eager registration in
+    // `SignalHub.subscribe`), every signal queues the moment it's
+    // emitted and the fiber drains them deterministically.
+    "register the live subscription synchronously — no signal loss for publishes that race attach()" in {
+      val convId = freshConv("race")
+      val sink = new RecordingSink
+      val publishCount = 50
+      for {
+        handle <- transport.attach(TestUser, sink, ResumeRequest.None,
+                                   conversations = Some(Set(convId)))
+        // Synchronous publish loop with NO sleep between attach() and
+        // the first publish — exercises the race window.
+        _ <- Task.sequence((1 to publishCount).toList.map { i =>
+               TestSigil.publish(msg(convId, 1000L + i, s"race-$i"))
+             })
+        // Drain window for the consumer fiber.
+        _ <- Task.sleep(250.millis)
+        _ <- handle.detach
+      } yield {
+        val texts = sink.signals.collect {
+          case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString
+        }
+        // Every published signal must reach the sink — none lost to the race.
+        texts should have size publishCount.toLong
+        texts.toSet should be(((1 to publishCount).map(i => s"race-$i")).toSet)
+      }
+    }
+
     "forward replayed history first, then live signals after the boundary" in {
       val convId = freshConv("attach")
       val sink = new RecordingSink

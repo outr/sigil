@@ -12,7 +12,7 @@ import spice.net.*
 
 /**
  * Loads models from a llama.cpp server's OpenAI-compatible `/v1/models` endpoint
- * and maps them into sigil [[Model]] instances.
+ * and maps them into sigil [[sigil.db.Model]] instances.
  *
  * llama.cpp models are transient — tied to whatever the server currently has
  * loaded — so they're not persisted to the catalog. Callers fetch them on demand.
@@ -41,7 +41,7 @@ object LlamaCpp {
     derives RW
 
   /**
-   * Convert a llama.cpp entry into a sigil [[Model]].
+   * Convert a llama.cpp entry into a sigil [[sigil.db.Model]].
    *
    * The sigil id is `llamacpp/<model-name>` where model-name is derived from
    * the llama.cpp id (basename, `.gguf` extension stripped, lowercased).

@@ -44,7 +44,13 @@ Default is on-disk RocksDB + Lucene via `SplitStoreManager`; DB path is `sigil.d
 
 Apps extend `Sigil` and only override what they actually customize. The minimum shape is `buildDB` (concrete DB constructor) and `providerFor` (LLM provider resolver) — the only two abstract members without defaults. Most other hooks (`curate`, `getInformation`/`putInformation`, `compressionMemorySpace`, `embeddingProvider`, `vectorIndex`, `wireInterceptor`, plus the polymorphic registration lists `signalRegistrations` / `participantIds` / `spaceIds` / `participants` / `modes`) ship sensible defaults so apps that don't use the corresponding feature don't repeat the no-op. See `README.md` for the minimal shape.
 
-**Shutdown.** `Sigil.shutdown(): Task[Unit]` releases shared resources — calls `db.dispose` and signals the model-refresh background fiber to stop on its next iteration. CLI / one-shot consumers call this before returning from `main` so the JVM exits cleanly without needing `System.exit`. Long-running servers don't need to call it during normal operation.
+**Lifecycle (two-phase).**
+- `Sigil.polymorphicRegistrations: Task[Unit]` — phase-1, populates every fabric `PolyType` discriminator (Signal, ParticipantId, Mode, ToolInput, Participant, Tool, SpaceId) with framework + app-defined subtypes. Pure JVM-level effect, does NOT open the LightDB / RocksDB store. Idempotent (`.singleton`).
+- `Sigil.instance: Task[SigilInstance]` — phase-2; runs `polymorphicRegistrations` first, then opens the DB, applies upgrades, wires vector index, starts the model-refresh fiber if configured. Runtime consumers (servers, REPL) call `instance` (or `withDB`, which calls it transitively).
+
+Codegen / schema-introspection tasks (Dart generator, OpenAPI dumper) call `polymorphicRegistrations.sync()` instead of `instance.sync()` — that gives them populated `summon[RW[Signal]].definition` etc. without the RocksDB lock acquire, so codegen can run while a backend server is live.
+
+**Shutdown.** `Sigil.shutdown: Task[Unit]` releases shared resources — closes the SignalHub (every active `signals` / `signalsFor(viewer)` subscriber's stream completes naturally — no app-side running-flag bookkeeping needed) and disposes the DB if `instance` was ever started (codegen-only paths skip the DB dispose). Idempotent. CLI / one-shot consumers call this before returning from `main` so the JVM exits cleanly without needing `System.exit`. Long-running servers don't need to call it during normal operation.
 
 ### Event-sourced conversations
 
