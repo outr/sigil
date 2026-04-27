@@ -88,7 +88,7 @@ object RealTalkBench {
     val startTime = System.currentTimeMillis()
 
     for (file <- files if totalRun < maxQuestions) {
-      val raw = Source.fromFile(file)(Codec.UTF8).mkString
+      val raw = Source.fromFile(file)(using Codec.UTF8).mkString
       val data = JsonParser(raw)
 
       // Collect every utterance keyed by its stable dia_id

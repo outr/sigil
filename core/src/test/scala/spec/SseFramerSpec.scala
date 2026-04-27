@@ -7,7 +7,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.Conversation
 import sigil.event.{Event, Message}
-import sigil.signal.{ContentDelta, ContentKind, EventState, MessageDelta, Signal}
+import sigil.signal.{MessageContentDelta, ContentKind, EventState, MessageDelta, Signal}
 import sigil.tool.model.ResponseContent
 import sigil.transport.SseFramer
 
@@ -34,7 +34,7 @@ class SseFramerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   private val delta: MessageDelta = MessageDelta(
     target = event._id,
     conversationId = convId,
-    content = Some(ContentDelta(kind = ContentKind.Text, arg = None, complete = false, delta = "hi"))
+    content = Some(MessageContentDelta(kind = ContentKind.Text, arg = None, complete = false, delta = "hi"))
   )
 
   "SseFramer.formatFrame" should {

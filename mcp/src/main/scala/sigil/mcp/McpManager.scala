@@ -168,6 +168,23 @@ final class McpManager(sigil: Sigil { type DB <: SigilDB & McpCollections },
     Task.sequence(all.map(_.client.close().handleError(_ => Task.unit))).unit
   }
 
+  /**
+   * Test/debug helper: install a pre-constructed [[McpClient]] under
+   * `name`, bypassing persistence and lazy-connect. Production code
+   * persists a config via [[addConfig]] and lets [[clientFor]] manage
+   * the lifecycle.
+   */
+  def registerClientForTesting(name: String, client: McpClient): Unit = {
+    clients.put(name, ClientEntry(client, new AtomicLong(System.currentTimeMillis())))
+  }
+
+  /** Test helper: register an in-flight call against an agent without
+    * actually invoking a tool. Used by cancellation tests. */
+  def registerInFlightForTesting(agentId: ParticipantId, serverName: String, wireId: Long): Unit = {
+    val map = inFlight.computeIfAbsent(agentId, _ => new ConcurrentHashMap[(String, Long), Boolean]())
+    map.put((serverName, wireId), true)
+  }
+
   private def clientFor(name: String): Task[McpClient] = Task.defer {
     Option(clients.get(name)) match {
       case Some(entry) =>
@@ -181,9 +198,18 @@ final class McpManager(sigil: Sigil { type DB <: SigilDB & McpCollections },
   }
 
   private def connectAndRegister(cfg: McpServerConfig): Task[McpClient] = Task.defer {
+    val notificationListener: (String, fabric.Json) => Task[Unit] = (method, _) => Task {
+      // Invalidate the relevant cache slice when the server signals it.
+      method match {
+        case "notifications/tools/list_changed"     => toolCache.remove(cfg.name)
+        case "notifications/resources/list_changed" => resourceCache.remove(cfg.name)
+        case "notifications/prompts/list_changed"   => promptCache.remove(cfg.name)
+        case _                                      => ()
+      }
+    }
     val client: McpClient = cfg.transport match {
-      case _: McpTransport.Stdio   => new StdioMcpClient(cfg, samplingHandlerFor(cfg))
-      case _: McpTransport.HttpSse => new HttpSseMcpClient(cfg, samplingHandlerFor(cfg))
+      case _: McpTransport.Stdio   => new StdioMcpClient(cfg, samplingHandlerFor(cfg), notificationListener)
+      case _: McpTransport.HttpSse => new HttpSseMcpClient(cfg, samplingHandlerFor(cfg), notificationListener)
     }
     val entry = ClientEntry(client, new AtomicLong(System.currentTimeMillis()))
     clients.put(cfg.name, entry)
@@ -238,21 +264,16 @@ final class McpManager(sigil: Sigil { type DB <: SigilDB & McpCollections },
 
   private def reaperLoop(): Task[Unit] = Task.defer {
     val now = System.currentTimeMillis()
-    val staleNames = clients.entrySet().asScala.toList.flatMap { e =>
-      val name = e.getKey
-      val entry = e.getValue
-      val cfg = sigilCfgSync(name)
-      cfg match {
-        case Some(c) if now - entry.lastUsedMs.get() > c.idleTimeoutMs => Some(name)
+    val entries = clients.entrySet().asScala.toList.map(e => (e.getKey, e.getValue))
+    Task.sequence(entries.map { case (name, entry) =>
+      sigil.withDB(_.mcpServers.transaction(_.get(McpServerConfig.idFor(name)))).map {
+        case Some(cfg) if now - entry.lastUsedMs.get() > cfg.idleTimeoutMs => Some(name)
         case _ => None
       }
-    }
-    val closeTasks = staleNames.map(closeClient(_).handleError(_ => Task.unit))
-    Task.sequence(closeTasks).flatMap(_ => Task.sleep(30.seconds)).flatMap(_ => reaperLoop())
+    }).map(_.flatten).flatMap { staleNames =>
+      Task.sequence(staleNames.map(closeClient(_).handleError(_ => Task.unit)))
+    }.flatMap(_ => Task.sleep(30.seconds)).flatMap(_ => reaperLoop())
   }
-
-  private def sigilCfgSync(name: String): Option[McpServerConfig] =
-    sigil.withDB(_.mcpServers.transaction(_.get(McpServerConfig.idFor(name)))).sync()
 
   // -- helper traits / cache shapes --
   private trait Cached[+T] { def fetchedAtMs: Long }

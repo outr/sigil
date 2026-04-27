@@ -47,7 +47,7 @@ trait McpSigil extends Sigil {
   protected def samplingHandlerFor(config: McpServerConfig): SamplingHandler =
     config.samplingModelId match {
       case None => SamplingHandler.Refusing
-      case Some(modelId) => new ProviderSamplingHandler(this, config, modelId)
+      case Some(modelId) => new ProviderSamplingHandler(this, config, modelId.asInstanceOf[lightdb.id.Id[sigil.db.Model]])
     }
 
   /** The single per-Sigil MCP manager. Lazy so it only spins up when
@@ -111,31 +111,87 @@ trait McpSigil extends Sigil {
  * model fallback) override `McpSigil.samplingHandlerFor` with their
  * own implementation.
  */
-final class ProviderSamplingHandler(sigil: Sigil,
+/**
+ * Real [[SamplingHandler]] backed by [[Sigil.providerFor]] +
+ * [[OneShotRequest]]. The MCP server's `CreateMessageRequest` is
+ * translated into:
+ *
+ *   - `systemPrompt` from `params.systemPrompt` when present
+ *     (default empty)
+ *   - `userPrompt` assembled from `params.messages` — each
+ *     message is rendered as `[role] text` and joined with newlines;
+ *     non-text content blocks are dropped (we only support text
+ *     sampling for now)
+ *   - `temperature` and `maxTokens` carried through from the
+ *     request when supplied
+ *
+ * The provider's [[ProviderEvent]] stream is collapsed by
+ * accumulating every `TextDelta` and `ContentBlockDelta` until
+ * `Done` (or `Error`). The result is wrapped in MCP's
+ * `CreateMessageResult` shape.
+ */
+final class ProviderSamplingHandler(host: Sigil,
                                     config: McpServerConfig,
                                     modelId: lightdb.id.Id[Model])
   extends SamplingHandler {
+  import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent, StopReason}
+
   override def handle(serverName: String, params: Json): Task[Json] = Task.defer {
-    // Best-effort extraction of the user's text from the MCP CreateMessageRequest shape.
-    val messages = params.get("messages").map(_.asVector.toList).getOrElse(Nil)
-    val userText = messages.flatMap(_.get("content")).flatMap { content =>
-      content match {
-        case o: Obj => o.value.get("text").map(_.asString)
-        case s: Str => Some(s.value)
-        case _      => None
+    val systemPrompt = params.get("systemPrompt").map(_.asString).getOrElse("")
+    val userPrompt   = renderUserPrompt(params.get("messages").map(_.asVector.toList).getOrElse(Nil))
+    val temperature  = params.get("temperature").map(_.asDouble)
+    val maxTokensOpt = params.get("maxTokens").map(_.asInt)
+    val settings     = GenerationSettings(temperature = temperature, maxOutputTokens = maxTokensOpt)
+
+    val request = OneShotRequest(
+      modelId            = modelId,
+      systemPrompt       = systemPrompt,
+      userPrompt         = userPrompt,
+      generationSettings = settings
+    )
+
+    host.providerFor(modelId, Nil).flatMap { provider =>
+      val collected = new java.lang.StringBuilder()
+      val stopRef   = new java.util.concurrent.atomic.AtomicReference[StopReason](StopReason.Complete)
+      val errRef    = new java.util.concurrent.atomic.AtomicReference[Option[String]](None)
+
+      provider(request).evalMap {
+        case ProviderEvent.TextDelta(t)             => Task { collected.append(t); () }
+        case ProviderEvent.ContentBlockDelta(_, t)  => Task { collected.append(t); () }
+        case ProviderEvent.Done(reason)             => Task { stopRef.set(reason); () }
+        case ProviderEvent.Error(msg)               => Task { errRef.set(Some(msg)); () }
+        case _                                      => Task.unit
+      }.drain.map { _ =>
+        errRef.get() match {
+          case Some(msg) => throw new McpError(-1, s"Sampling failed: $msg")
+          case None =>
+            obj(
+              "model"      -> str(modelId.value),
+              "stopReason" -> str(stopReasonString(stopRef.get())),
+              "role"       -> str("assistant"),
+              "content"    -> obj("type" -> str("text"), "text" -> str(collected.toString))
+            )
+        }
       }
-    }.mkString("\n")
-    sigil.providerFor(modelId, Nil).flatMap { _ =>
-      // For now, the framework returns a placeholder acknowledging the request.
-      // A full implementation runs a one-shot provider call; that requires the
-      // provider's request-builder surface which is currently per-conversation.
-      // Apps that need full sampling override this handler.
-      Task.pure(obj(
-        "model"      -> str(modelId.value),
-        "stopReason" -> str("endTurn"),
-        "role"       -> str("assistant"),
-        "content"    -> obj("type" -> str("text"), "text" -> str(s"[sampling stub: server=$serverName text-len=${userText.length}]"))
-      ))
     }
+  }
+
+  private def renderUserPrompt(messages: List[Json]): String =
+    messages.flatMap { m =>
+      val role = m.get("role").map(_.asString).getOrElse("user")
+      val text = m.get("content") match {
+        case Some(o: Obj) => o.value.get("text").map(_.asString).orElse(o.value.get("type").map(_.asString))
+        case Some(s: Str) => Some(s.value)
+        case _ => None
+      }
+      text.map(t => s"[$role] $t")
+    }.mkString("\n")
+
+  private def stopReasonString(s: StopReason): String = s match {
+    case StopReason.Complete        => "endTurn"
+    case StopReason.ToolCall        => "toolUse"
+    case StopReason.MaxTokens       => "maxTokens"
+    case StopReason.ContentFiltered => "stopSequence"
+    case StopReason.Cancelled       => "endTurn"
   }
 }

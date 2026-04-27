@@ -8,7 +8,7 @@ import sigil.conversation.{ContextFrame, Conversation, Topic, TopicShiftResult}
 import sigil.event.{Event, Message, TopicChange, TopicChangeKind, ToolInvoke}
 import sigil.participant.ParticipantId
 import sigil.provider.{ConversationRequest, Provider, ProviderEvent}
-import sigil.signal.{ContentDelta, ContentKind, EventState, ImageDelta, MessageDelta, Signal, StateDelta, ToolDelta}
+import sigil.signal.{MessageContentDelta, ContentKind, EventState, ImageDelta, MessageDelta, Signal, StateDelta, ToolDelta}
 import sigil.tool.model.ResponseContent
 import sigil.tool.ToolName
 import sigil.tool.model.RespondInput
@@ -65,7 +65,7 @@ object Orchestrator {
     var currentKind: Option[ContentKind] = None
     var currentArg: Option[String] = None
     /** Accumulated text for the current open content block. Flushed as a
-      * `ContentDelta(complete = true, delta = full text)` when the block
+      * `MessageContentDelta(complete = true, delta = full text)` when the block
       * closes (next ContentBlockStart or ToolCallComplete). */
     val currentBuffer: StringBuilder = new StringBuilder
     /** Accumulates every text fragment the agent produced across the
@@ -142,7 +142,7 @@ object Orchestrator {
         val delta = MessageDelta(
           target = msgId,
           conversationId = convId,
-          content = Some(ContentDelta(kind = kind, arg = state.currentArg, complete = false, delta = text))
+          content = Some(MessageContentDelta(kind = kind, arg = state.currentArg, complete = false, delta = text))
         )
         Stream.emits(createMessageSignal.toList ::: List(delta))
 
@@ -451,7 +451,7 @@ object Orchestrator {
     scala.util.Try(ContentKind.valueOf(name)).getOrElse(ContentKind.Text)
 
   /**
-   * Emit a `MessageDelta` with `ContentDelta(complete = true, delta = full
+   * Emit a `MessageDelta` with `MessageContentDelta(complete = true, delta = full
    * block text)` if a content block is currently open and the buffer has
    * content. Resets the block buffer + kind. The full text closes the block
    * for the DB applier (which appends a fully-formed `ResponseContent`);
@@ -468,7 +468,7 @@ object Orchestrator {
       MessageDelta(
         target = msgId,
         conversationId = convId,
-        content = Some(ContentDelta(kind = kind, arg = state.currentArg, complete = true, delta = text))
+        content = Some(MessageContentDelta(kind = kind, arg = state.currentArg, complete = true, delta = text))
       )
     }
     state.currentBuffer.clear()

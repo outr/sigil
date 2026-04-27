@@ -88,7 +88,7 @@ object ConvoMemBench {
           for (batchFile <- batchFiles) {
             if (totalRun >= maxQuestions) println(s"  Reached max questions ($maxQuestions), stopping")
             else {
-              val raw = Source.fromFile(batchFile)(Codec.UTF8).mkString
+              val raw = Source.fromFile(batchFile)(using Codec.UTF8).mkString
               val testCases = JsonParser(raw).asVector
               val remaining = math.min(testCases.size, maxQuestions - totalRun)
 

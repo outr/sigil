@@ -1,27 +1,29 @@
 package sigil.mcp
 
 import fabric.*
-import fabric.io.JsonParser
+import fabric.io.{JsonFormatter, JsonParser}
 import rapid.Task
+import spice.http.HeaderKey
 import spice.http.client.HttpClient
 
-import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * [[McpClient]] backed by an HTTP+SSE transport. Each outgoing
- * request POSTs JSON to the configured URL; responses arrive inline
- * as a single JSON-RPC reply (this implementation does not consume
- * a long-lived SSE stream — apps that need server-initiated
- * notifications over HTTP should compose a separate SSE consumer
- * via spice's streaming API and dispatch through the
- * `notificationListener`/`samplingHandler` callbacks).
+ * [[McpClient]] backed by HTTP+SSE per the MCP 2024-11-05 spec.
  *
- * `Mcp-Session-Id` from the first response is reused on subsequent
- * requests, per the 2024-11-05 spec.
+ * Two channels:
+ *   - **Outgoing requests / notifications** — POST JSON to the
+ *     endpoint. The server may answer inline (Content-Type:
+ *     application/json) or via the listen channel.
+ *   - **Server-initiated messages** — a long-lived SSE GET on the
+ *     same endpoint streams `data:` events; each event is a
+ *     JSON-RPC message dispatched through the shared
+ *     [[McpDispatcher]] (server requests like `sampling/createMessage`,
+ *     notifications like `notifications/cancelled`, and asynchronous
+ *     responses to outgoing requests).
  *
- * For the full bidirectional flow (server-initiated requests over
- * SSE), most current MCP servers ship as stdio binaries — that
- * transport ([[StdioMcpClient]]) handles bidirectionality natively.
+ * The `Mcp-Session-Id` header is captured from the first response
+ * and reused on every subsequent request and on the SSE GET.
  */
 final class HttpSseMcpClient(override val config: McpServerConfig,
                              samplingHandler: SamplingHandler,
@@ -33,23 +35,37 @@ final class HttpSseMcpClient(override val config: McpServerConfig,
     case other => sys.error(s"HttpSseMcpClient given non-HttpSse transport: $other")
   }
 
-  private val nextId = new AtomicInteger(1)
   private val closed = new AtomicBoolean(false)
   @volatile private var sessionId: Option[String] = None
 
-  override def start(): Task[Unit] =
-    request("initialize", obj(
+  private val dispatcher = new McpDispatcher(
+    send                = sendOutgoing,
+    requestHandler      = (method, params) => method match {
+      case "sampling/createMessage" => samplingHandler.handle(config.name, params)
+      case "roots/list"             => Task.pure(obj("roots" -> Arr(config.roots.map(p => obj("uri" -> str(s"file://$p"))).toVector)))
+      case other                    => Task.error(new McpError(-32601, s"Unhandled server request: $other"))
+    },
+    notificationHandler = notificationListener
+  )
+
+  override def start(): Task[Unit] = Task.defer {
+    // Initialize first (gives us the session id), then open the SSE listen channel.
+    dispatcher.request("initialize", obj(
       "protocolVersion" -> str("2024-11-05"),
       "capabilities"    -> obj("sampling" -> obj()),
       "clientInfo"      -> obj("name" -> str("sigil"), "version" -> str("1.0.0"))
-    )).flatMap(_ => notify("notifications/initialized"))
+    ), _ => ()).flatMap(_ => dispatcher.notify("notifications/initialized", Obj.empty))
+      .flatMap(_ => startSseListener())
+  }
 
   override def close(): Task[Unit] = Task {
-    closed.set(true)
+    if (closed.compareAndSet(false, true)) {
+      dispatcher.failPending(new McpError(-1, "Connection closed"))
+    }
   }
 
   override def listTools(): Task[List[McpToolDefinition]] =
-    request("tools/list").map { result =>
+    dispatcher.request("tools/list", Obj.empty, _ => ()).map { result =>
       result.get("tools").map(_.asVector.toList.map { entry =>
         McpToolDefinition(
           name = entry.get("name").map(_.asString).getOrElse(""),
@@ -59,14 +75,11 @@ final class HttpSseMcpClient(override val config: McpServerConfig,
       }).getOrElse(Nil)
     }
 
-  override def callTool(name: String, arguments: Json, onWireId: Long => Unit = _ => ()): Task[Json] = {
-    val id = nextId.get().toLong
-    onWireId(id)
-    request("tools/call", obj("name" -> str(name), "arguments" -> arguments))
-  }
+  override def callTool(name: String, arguments: Json, onWireId: Long => Unit = _ => ()): Task[Json] =
+    dispatcher.request("tools/call", obj("name" -> str(name), "arguments" -> arguments), onWireId)
 
   override def listResources(): Task[List[McpResource]] =
-    request("resources/list").map { result =>
+    dispatcher.request("resources/list", Obj.empty, _ => ()).map { result =>
       result.get("resources").map(_.asVector.toList.map { entry =>
         McpResource(
           uri = entry.get("uri").map(_.asString).getOrElse(""),
@@ -78,10 +91,10 @@ final class HttpSseMcpClient(override val config: McpServerConfig,
     }
 
   override def readResource(uri: String): Task[Json] =
-    request("resources/read", obj("uri" -> str(uri)))
+    dispatcher.request("resources/read", obj("uri" -> str(uri)), _ => ())
 
   override def listPrompts(): Task[List[McpPrompt]] =
-    request("prompts/list").map { result =>
+    dispatcher.request("prompts/list", Obj.empty, _ => ()).map { result =>
       result.get("prompts").map(_.asVector.toList.map { entry =>
         val args = entry.get("arguments").map(_.asVector.toList.map { a =>
           McpPromptArgument(
@@ -100,7 +113,7 @@ final class HttpSseMcpClient(override val config: McpServerConfig,
 
   override def getPrompt(name: String, arguments: Map[String, String] = Map.empty): Task[Json] = {
     val args = Obj(arguments.map { case (k, v) => k -> str(v) })
-    request("prompts/get", obj("name" -> str(name), "arguments" -> args))
+    dispatcher.request("prompts/get", obj("name" -> str(name), "arguments" -> args), _ => ())
   }
 
   override def cancelRequest(requestId: Long, reason: Option[String] = None): Task[Unit] = {
@@ -108,36 +121,22 @@ final class HttpSseMcpClient(override val config: McpServerConfig,
       case Some(r) => obj("requestId" -> num(requestId), "reason" -> str(r))
       case None    => obj("requestId" -> num(requestId))
     }
-    notify("notifications/cancelled", params)
+    dispatcher.notify("notifications/cancelled", params)
   }
 
-  private def request(method: String, params: Json = Obj.empty): Task[Json] = Task.defer {
-    if (closed.get()) Task.error(new McpError(-1, "MCP connection closed"))
-    else {
-      val id = nextId.getAndIncrement()
-      val payload = obj(
-        "jsonrpc" -> str("2.0"),
-        "id"      -> num(id),
-        "method"  -> str(method),
-        "params"  -> params
-      )
-      sendHttp(payload).map(parseRpcResponse)
-    }
+  /** Outgoing-message hook used by the dispatcher: POST a JSON-RPC
+    * envelope to the endpoint. Inline JSON responses are dispatched
+    * back through the same [[McpDispatcher]] so request correlation
+    * and notifications dispatch identically whether the wire chose
+    * inline or SSE delivery. */
+  private def sendOutgoing(message: Json): Unit = {
+    if (closed.get()) return
+    postJson(message).map { responseOpt =>
+      responseOpt.foreach(dispatcher.dispatchIncoming)
+    }.handleError(t => Task { scribe.warn(s"MCP HTTP send failed: ${t.getMessage}") }).startUnit()
   }
 
-  private def notify(method: String, params: Json = Obj.empty): Task[Unit] = Task.defer {
-    if (closed.get()) Task.unit
-    else {
-      val payload = obj(
-        "jsonrpc" -> str("2.0"),
-        "method"  -> str(method),
-        "params"  -> params
-      )
-      sendHttp(payload).map(_ => ())
-    }
-  }
-
-  private def sendHttp(payload: Json): Task[Json] = {
+  private def postJson(payload: Json): Task[Option[Json]] = {
     val withHeaders = httpSse.headers.foldLeft(
       HttpClient.url(httpSse.url).post
         .header("Accept", "application/json, text/event-stream")
@@ -145,24 +144,44 @@ final class HttpSseMcpClient(override val config: McpServerConfig,
     ) { case (client, (k, v)) => client.header(k, v) }
     val withSession = sessionId.fold(withHeaders)(id => withHeaders.header("Mcp-Session-Id", id))
     withSession.send().flatMap { response =>
-      response.headers.first(spice.http.HeaderKey("Mcp-Session-Id")).foreach { sid => sessionId = Some(sid) }
+      response.headers.first(HeaderKey("Mcp-Session-Id")).foreach { sid => sessionId = Some(sid) }
       response.content match {
         case Some(c) => c.asString.map { s =>
-          if (s.isEmpty) Null else JsonParser(s)
+          if (s.isEmpty) None else Some(JsonParser(s))
         }
-        case None => Task.pure(Null)
+        case None => Task.pure(None)
       }
     }
   }
 
-  private def parseRpcResponse(json: Json): Json = {
-    json.get("error") match {
-      case Some(err) if err != Null =>
-        val code    = err.get("code").map(_.asInt).getOrElse(-1)
-        val message = err.get("message").map(_.asString).getOrElse("Unknown MCP error")
-        throw new McpError(code, message)
-      case _ =>
-        json.get("result").getOrElse(Null)
-    }
+  /** Open a long-lived SSE GET on the endpoint. Each `data:` event
+    * is parsed as a JSON-RPC message and pushed into the
+    * dispatcher. Stops naturally when [[close]] is called or the
+    * server closes the stream. */
+  private def startSseListener(): Task[Unit] = Task {
+    Task.defer {
+      val withHeaders = httpSse.headers.foldLeft(
+        HttpClient.url(httpSse.url).get.header("Accept", "text/event-stream")
+      ) { case (client, (k, v)) => client.header(k, v) }
+      val withSession = sessionId.fold(withHeaders)(id => withHeaders.header("Mcp-Session-Id", id))
+      withSession.streamLines().flatMap { stream =>
+        stream
+          .takeWhile(_ => !closed.get())
+          .evalMap { line =>
+            Task {
+              if (line.startsWith("data:")) {
+                val payload = line.stripPrefix("data:").trim
+                if (payload.nonEmpty) {
+                  try dispatcher.dispatchIncoming(JsonParser(payload))
+                  catch { case t: Throwable => scribe.warn(s"MCP SSE: dispatch failed: ${t.getMessage}") }
+                }
+              }
+              ()
+            }
+          }
+          .drain
+      }
+    }.handleError(t => Task { scribe.warn(s"MCP SSE listener exited: ${t.getMessage}") }).startUnit()
+    ()
   }
 }
