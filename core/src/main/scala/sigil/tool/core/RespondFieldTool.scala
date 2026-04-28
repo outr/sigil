@@ -15,22 +15,9 @@ import sigil.tool.model.{RespondFieldInput, ResponseContent}
 case object RespondFieldTool extends TypedTool[RespondFieldInput](
   name = ToolName("respond_field"),
   description =
-    """Emit a labeled field as a discrete content block. Renderers display it as a row, an icon-prefixed
-      |line, or a card field — whatever the surface does best.
-      |
-      |- `label` — the field's label.
-      |- `value` — the field's value.
-      |- `icon` — optional semantic icon hint (renderer-defined).""".stripMargin,
-  examples = List(
-    ToolExample(
-      "Status field",
-      RespondFieldInput(label = "Status", value = "Ready", icon = Some("check"))
-    ),
-    ToolExample(
-      "Source citation",
-      RespondFieldInput(label = "Source", value = "Scala Center", icon = Some("article"))
-    )
-  )
+    """Emit a labeled key/value field — for compact metadata (status, source, timestamp). NOT for
+      |free-text answers; use `respond` for those. `icon` is an optional semantic hint.""".stripMargin,
+  examples = Nil
 ) {
   override protected def executeTyped(input: RespondFieldInput, context: TurnContext): rapid.Stream[Event] = {
     val block = ResponseContent.Field(label = input.label, value = input.value, icon = input.icon)
