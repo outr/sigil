@@ -96,6 +96,7 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
       val original = TopicChange(
         kind = TopicChangeKind.Switch(previousTopicId = previous),
         newLabel = "Database Migration",
+        newSummary = "Migrating between database systems with minimal downtime.",
         participantId = TestUser,
         conversationId = Conversation.id("c1"),
         topicId = TestTopicId
@@ -104,6 +105,7 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
       restored shouldBe a[TopicChange]
       val tc = restored.asInstanceOf[TopicChange]
       tc.newLabel shouldBe "Database Migration"
+      tc.newSummary shouldBe "Migrating between database systems with minimal downtime."
       tc.kind shouldBe TopicChangeKind.Switch(previous)
     }
 
@@ -111,6 +113,7 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
       val original = TopicChange(
         kind = TopicChangeKind.Rename(previousLabel = "General"),
         newLabel = "Scala Coding Setup",
+        newSummary = "Setting up a Scala project from scratch.",
         participantId = TestUser,
         conversationId = Conversation.id("c1"),
         topicId = TestTopicId
@@ -118,6 +121,7 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
       val restored = roundTripSignal(original)
       restored shouldBe a[TopicChange]
       val tc = restored.asInstanceOf[TopicChange]
+      tc.newSummary shouldBe "Setting up a Scala project from scratch."
       tc.kind shouldBe TopicChangeKind.Rename("General")
     }
 

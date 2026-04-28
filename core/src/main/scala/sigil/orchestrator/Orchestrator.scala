@@ -355,7 +355,7 @@ object Orchestrator {
     }
     priors.find(_.label.equalsIgnoreCase(proposedLabel)) match {
       case Some(prior) =>
-        return Task.pure(emitSwitchSignals(caller, conversation._id, currentEntry.id, prior.id, prior.label))
+        return Task.pure(emitSwitchSignals(caller, conversation._id, currentEntry.id, prior.id, prior.label, prior.summary))
       case None => // fall through to classifier
     }
 
@@ -379,7 +379,7 @@ object Orchestrator {
       case TopicShiftResult.New =>
         resolveNew(sigil, proposedLabel, proposedSummary, caller, conversation, currentEntry.id)
       case TopicShiftResult.Return(prior) =>
-        Task.pure(emitSwitchSignals(caller, conversation._id, currentEntry.id, prior.id, prior.label))
+        Task.pure(emitSwitchSignals(caller, conversation._id, currentEntry.id, prior.id, prior.label, prior.summary))
     }
   }
 
@@ -398,7 +398,7 @@ object Orchestrator {
       createdBy = caller
     )
     sigil.withDB(_.topics.transaction(_.upsert(created))).map { stored =>
-      emitSwitchSignals(caller, conversation._id, previousTopicId, stored._id, stored.label)
+      emitSwitchSignals(caller, conversation._id, previousTopicId, stored._id, stored.label, stored.summary)
     }
   }
 
@@ -419,6 +419,7 @@ object Orchestrator {
           val tc = TopicChange(
             kind = TopicChangeKind.Rename(previousLabel = current.label),
             newLabel = proposedLabel,
+            newSummary = proposedSummary,
             participantId = caller,
             conversationId = conversation._id,
             topicId = current._id
@@ -435,10 +436,12 @@ object Orchestrator {
                                  convId: lightdb.id.Id[Conversation],
                                  previousTopicId: lightdb.id.Id[Topic],
                                  newTopicId: lightdb.id.Id[Topic],
-                                 newLabel: String): List[Signal] = {
+                                 newLabel: String,
+                                 newSummary: String): List[Signal] = {
     val tc = TopicChange(
       kind = TopicChangeKind.Switch(previousTopicId = previousTopicId),
       newLabel = newLabel,
+      newSummary = newSummary,
       participantId = caller,
       conversationId = convId,
       topicId = newTopicId

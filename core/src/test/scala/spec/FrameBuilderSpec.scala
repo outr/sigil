@@ -123,6 +123,7 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
       val tc = TopicChange(
         kind = TopicChangeKind.Switch(previousTopicId = prev),
         newLabel = "Database Migration",
+        newSummary = "Migrating between database systems.",
         participantId = TestAgent,
         conversationId = conversationId,
         topicId = TestTopicId,
@@ -137,6 +138,7 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
       val tc = TopicChange(
         kind = TopicChangeKind.Rename(previousLabel = "General"),
         newLabel = "Scala Coding Setup",
+        newSummary = "Setting up a Scala project from scratch.",
         participantId = TestAgent,
         conversationId = conversationId,
         topicId = TestTopicId,

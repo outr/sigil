@@ -259,6 +259,7 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       val tc = TopicChange(
         kind = TopicChangeKind.Switch(previousTopicId = initial._id),
         newLabel = "Shifted Subject",
+        newSummary = incoming.summary,
         participantId = TestAgent,
         conversationId = convId,
         topicId = incoming._id,
@@ -294,6 +295,7 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       val tc = TopicChange(
         kind = TopicChangeKind.Switch(previousTopicId = c._id),
         newLabel = "A",
+        newSummary = a.summary,
         participantId = TestAgent,
         conversationId = convId,
         topicId = a._id,
@@ -321,6 +323,7 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       val tc = TopicChange(
         kind = TopicChangeKind.Rename(previousLabel = "Old Label"),
         newLabel = "New Label",
+        newSummary = "New summary",
         participantId = TestAgent,
         conversationId = convId,
         topicId = original._id,
