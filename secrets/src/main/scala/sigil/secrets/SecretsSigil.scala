@@ -1,10 +1,12 @@
 package sigil.secrets
 
-import fabric.rw.RW
+import fabric.rw.*
+import rapid.Task
 import sigil.Sigil
 import sigil.db.SigilDB
+import sigil.participant.ParticipantId
 import sigil.pipeline.InboundTransform
-import sigil.signal.Signal
+import sigil.signal.{Notice, Signal}
 
 /**
  * Sigil refinement for apps that include the `sigil-secrets` module.
@@ -49,14 +51,24 @@ trait SecretsSigil extends Sigil {
     DatabaseSecretStore.default(this)
 
   /**
-   * The secrets module registers [[SecretSubmission]] for
-   * polymorphic Signal RW — the wire transport needs to deserialize
-   * incoming `SecretSubmission` frames from the user's UI.
+   * The secrets module registers [[SecretSubmission]] (Event) plus
+   * the Notice request/reply pairs ([[RequestSecret]] /
+   * [[SecretSnapshot]], etc.) for polymorphic Signal RW — the wire
+   * transport needs to deserialize each subtype it might encounter.
    * Subclasses adding their own custom signal types should
    * concatenate with this list.
    */
-  override protected def signalRegistrations: List[RW[? <: Signal]] =
-    List(summon[RW[SecretSubmission]])
+  override protected def signalRegistrations: List[RW[? <: Signal]] = List(
+    summon[RW[SecretSubmission]],
+    summon[RW[RequestSecret]],
+    summon[RW[SecretSnapshot]],
+    summon[RW[RequestSecretVerify]],
+    summon[RW[SecretVerifyResult]],
+    summon[RW[RequestSecretSet]],
+    summon[RW[SecretSetResult]],
+    summon[RW[RequestSecretDelete]],
+    summon[RW[SecretDeleteResult]]
+  )
 
   /**
    * Prepended [[SecretCaptureTransform]] — runs before any other
@@ -67,5 +79,35 @@ trait SecretsSigil extends Sigil {
    */
   override def inboundTransforms: List[InboundTransform] =
     new SecretCaptureTransform(secretStore) :: super.inboundTransforms
+
+  /**
+   * Dispatch the secrets module's Notice subtypes through
+   * [[secretStore]]. Apps that override should match their own
+   * subtypes first, then call `super.handleNotice(notice, fromViewer)`
+   * so the secrets-handler arms still run.
+   */
+  override def handleNotice(notice: Notice, fromViewer: ParticipantId): Task[Unit] = notice match {
+    case RequestSecret(secretId) =>
+      secretStore.get[String](secretId).flatMap { value =>
+        publishTo(fromViewer, SecretSnapshot(secretId, value))
+      }
+    case RequestSecretVerify(secretId, candidate) =>
+      secretStore.verify[String](secretId, candidate).flatMap { matched =>
+        publishTo(fromViewer, SecretVerifyResult(secretId, matched))
+      }
+    case RequestSecretSet(secretId, value, kind) =>
+      val store: Task[Unit] = kind match {
+        case sigil.security.SecretKind.Encrypted => secretStore.setEncrypted[String](secretId, value)
+        case sigil.security.SecretKind.Hashed    => secretStore.setHashed[String](secretId, value)
+      }
+      store.attempt.flatMap { result =>
+        publishTo(fromViewer, SecretSetResult(secretId, result.isSuccess))
+      }
+    case RequestSecretDelete(secretId) =>
+      secretStore.delete(secretId).attempt.flatMap { result =>
+        publishTo(fromViewer, SecretDeleteResult(secretId, result.isSuccess))
+      }
+    case _ => super.handleNotice(notice, fromViewer)
+  }
 }
 

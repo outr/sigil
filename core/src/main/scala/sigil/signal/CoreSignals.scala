@@ -6,11 +6,16 @@ import sigil.event.{AgentState, Message, ModeChange, Stop, TopicChange, ToolInvo
 /**
  * The framework's built-in Signal subtypes. Sigil registers these into the
  * `Signal` poly automatically at initialization; apps add their own custom
- * Event/Delta subtypes via `Sigil.signalRegistrations`.
+ * Event / Delta / Notice subtypes via `Sigil.signalRegistrations`.
  *
- * Includes both Events (Message, ToolInvoke, ToolResults, ModeChange,
- * TopicChange, AgentState, Stop) and Deltas (MessageDelta, ToolDelta,
- * StateDelta, AgentStateDelta, LocationDelta).
+ * Includes:
+ *   - Events: Message, ToolInvoke, ToolResults, ModeChange, TopicChange,
+ *     AgentState, Stop
+ *   - Deltas: MessageDelta, ToolDelta, StateDelta, AgentStateDelta,
+ *     LocationDelta, ImageDelta
+ *   - Notices: RequestConversationList, ConversationListSnapshot,
+ *     ConversationCreated, ConversationDeleted, SwitchConversation,
+ *     ConversationSnapshot
  */
 object CoreSignals {
 
@@ -27,6 +32,12 @@ object CoreSignals {
     summon[RW[StateDelta]],
     summon[RW[AgentStateDelta]],
     summon[RW[LocationDelta]],
-    summon[RW[ImageDelta]]
+    summon[RW[ImageDelta]],
+    summon[RW[RequestConversationList]],
+    summon[RW[ConversationListSnapshot]],
+    summon[RW[ConversationCreated]],
+    summon[RW[ConversationDeleted]],
+    summon[RW[SwitchConversation]],
+    summon[RW[ConversationSnapshot]]
   )
 }

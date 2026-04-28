@@ -8,6 +8,7 @@ import sigil.Sigil
 import sigil.conversation.Conversation
 import sigil.event.Event
 import sigil.participant.ParticipantId
+import sigil.signal.{Notice, Signal}
 import spice.http.durable.DurableSession
 
 /**
@@ -50,11 +51,26 @@ import spice.http.durable.DurableSession
  */
 object SessionBridge {
 
-  /** Default ephemeral handler: warn-log the unexpected payload. */
-  val WarnUnexpectedEphemeral: Json => Task[Unit] = json => Task {
-    scribe.warn(
-      s"SessionBridge: unexpected ephemeral payload (Sigil's wire vocabulary is Signals only): $json"
-    )
+  /** Default ephemeral handler: try to deserialize the payload as a
+    * [[Notice]] (the framework's wire vocabulary for client→server
+    * pulses). If it parses, dispatch to [[Sigil.handleNotice]]; if it
+    * doesn't, warn-log. Apps can override for non-Notice ephemeral
+    * traffic (heartbeats, ping/pong, debug telemetry). */
+  def noticeOrWarn(sigil: Sigil, viewer: ParticipantId): Json => Task[Unit] = json => Task.defer {
+    val rw = summon[RW[Signal]]
+    scala.util.Try(rw.write(json)) match {
+      case scala.util.Success(n: Notice) =>
+        sigil.handleNotice(n, viewer)
+          .handleError(t => Task {
+            scribe.warn(s"SessionBridge: handleNotice failed for $viewer: ${t.getMessage}", t)
+          })
+      case _ =>
+        Task {
+          scribe.warn(
+            s"SessionBridge: unexpected ephemeral payload (not a Notice): $json"
+          )
+        }
+    }
   }
 
   /** Default replay budget for new sessions. 50 most recent Messages
@@ -95,10 +111,11 @@ object SessionBridge {
                        session: DurableSession[Id[Conversation], Event, Info],
                        viewer: ParticipantId,
                        onSessionStart: Id[Conversation] => Task[Unit] = (_: Id[Conversation]) => Task.unit,
-                       onEphemeral: Json => Task[Unit] = WarnUnexpectedEphemeral,
+                       onEphemeral: Option[Json => Task[Unit]] = None,
                        resume: ResumeRequest = DefaultResume): Task[Unit] = {
-    val convId = session.channelId
-    val sink   = new DurableSocketSink[Id[Conversation], Info](session)
+    val convId       = session.channelId
+    val sink         = new DurableSocketSink[Id[Conversation], Info](session)
+    val ephemeralFn  = onEphemeral.getOrElse(noticeOrWarn(sigil, viewer))
 
     sigil.signalTransport.attach(
       viewer = viewer,
@@ -121,9 +138,10 @@ object SessionBridge {
             .start()
           ()
         }
-        // Ephemeral: app-supplied handler (default warn-log).
+        // Ephemeral: by default, deserialize as Notice and dispatch to
+        // sigil.handleNotice. Apps can override with their own handler.
         session.protocol.onEphemeral.attach { json =>
-          onEphemeral(json)
+          ephemeralFn(json)
             .handleError(t => Task {
               scribe.warn(s"SessionBridge: onEphemeral handler failed: ${t.getMessage}", t)
             })

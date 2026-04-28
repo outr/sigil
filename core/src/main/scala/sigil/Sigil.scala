@@ -604,6 +604,13 @@ trait Sigil {
    */
   final def signals: Stream[Signal] = hub.subscribe
 
+  /** Per-viewer broadcast subscription that ALSO receives signals
+    * emitted via [[publishTo]] targeted at this viewer. Used internally
+    * by [[signalsFor]] and by transports that want full per-viewer
+    * delivery (broadcasts + targeted Notices). */
+  private[sigil] final def signalsViewerScoped(viewer: ParticipantId): Stream[Signal] =
+    hub.subscribeFor(viewer)
+
   /**
    * Per-viewer stream derived from [[signals]]. Each signal is first
    * tested against [[canSee]] (drops `MessageVisibility.Agents`
@@ -617,7 +624,7 @@ trait Sigil {
    * whose target event was filtered out by visibility.
    */
   final def signalsFor(viewer: ParticipantId): Stream[Signal] =
-    signals.flatMap { s =>
+    signalsViewerScoped(viewer).flatMap { s =>
       if (canSee(s, viewer)) Stream.emit(applyViewerTransforms(s, viewer))
       else Stream.empty
     }
@@ -713,21 +720,85 @@ trait Sigil {
    *
    * Apps don't override this — it's the framework's pipeline.
    */
-  final def publish(signal: Signal): Task[Unit] =
+  final def publish(signal: Signal): Task[Unit] = signal match {
+    case n: sigil.signal.Notice =>
+      // Notices are transient pulses — no persist, no projection
+      // updates, no fan-out. Inbound transforms still run (apps may
+      // want to redact / annotate). Then broadcast through the hub
+      // and dispatch to handleNotice.
+      applyInboundTransforms(n).flatMap { resolved =>
+        Task { hub.emit(resolved); () }
+      }
+    case _ =>
+      applyInboundTransforms(signal).flatMap { resolved =>
+        for {
+          _ <- withDB(_.apply(resolved))
+          _ <- updateConversationProjection(resolved)
+          _ <- updateView(resolved)
+          _ <- maybeApplyModeSkill(resolved)
+          _ <- applyStop(resolved)
+          _ <- Task { hub.emit(resolved); () }
+          _ <- resolved match {
+                 case e: Event => fanOut(e)
+                 case _: sigil.signal.Delta => Task.unit
+                 case _: sigil.signal.Notice => Task.unit  // unreachable here, exhaustive
+               }
+          _ <- applySettledEffects(resolved)
+        } yield ()
+      }
+  }
+
+  /**
+   * Single-target broadcast — deliver `signal` only to subscribers
+   * registered with [[signalsFor]] at the given viewer. Used primarily
+   * for [[sigil.signal.Notice]] replies / snapshots that should reach
+   * one specific connected client (e.g. a `ConversationListSnapshot`
+   * answering that viewer's `RequestConversationList`).
+   *
+   * Like [[publish]], inbound transforms run first. The signal is NOT
+   * persisted or projected — `publishTo` is for ephemeral targeted
+   * delivery, not durable state changes. (For state changes, publish
+   * an Event; the framework's pipeline handles persist + per-viewer
+   * fan-out automatically.)
+   */
+  final def publishTo(viewer: ParticipantId, signal: Signal): Task[Unit] =
     applyInboundTransforms(signal).flatMap { resolved =>
-      for {
-        _ <- withDB(_.apply(resolved))
-        _ <- updateConversationProjection(resolved)
-        _ <- updateView(resolved)
-        _ <- maybeApplyModeSkill(resolved)
-        _ <- applyStop(resolved)
-        _ <- Task { hub.emit(resolved); () }
-        _ <- resolved match {
-               case e: Event => fanOut(e)
-               case _: sigil.signal.Delta => Task.unit
-             }
-        _ <- applySettledEffects(resolved)
-      } yield ()
+      Task { hub.emitTo(viewer, resolved); () }
+    }
+
+  /**
+   * Inbound-Notice dispatch hook. Called by [[sigil.transport.SessionBridge]]
+   * (and any other Notice-aware ingress) for each Notice that arrives
+   * from a client over the wire. Apps and modules override to handle
+   * their own Notice subtypes; the default chain handles the
+   * framework-level Notices (`RequestConversationList`,
+   * `SwitchConversation`, …) and the secrets module's request/reply
+   * Notices when loaded.
+   *
+   * The chain pattern: subclass implementations match their own
+   * Notice subtypes and call `super.handleNotice(notice, fromViewer)`
+   * for the default arm so framework-level dispatch still runs.
+   */
+  def handleNotice(notice: sigil.signal.Notice, fromViewer: ParticipantId): Task[Unit] =
+    notice match {
+      case _: sigil.signal.RequestConversationList =>
+        listConversations(fromViewer).flatMap { conversations =>
+          publishTo(fromViewer, sigil.signal.ConversationListSnapshot(conversations))
+        }
+      case sigil.signal.SwitchConversation(convId) =>
+        for {
+          view   <- withDB(_.views.transaction(_.get(ConversationView.idFor(convId))))
+          events <- withDB { db =>
+                      db.events.transaction(_.list.map(_.filter(_.conversationId == convId)))
+                    }
+          _      <- view match {
+                      case Some(v) =>
+                        publishTo(fromViewer, sigil.signal.ConversationSnapshot(convId, v, events.toVector))
+                      case None =>
+                        Task.unit
+                    }
+        } yield ()
+      case _ => Task.unit
     }
 
   /** Fold the signal through [[inboundTransforms]] in declaration order.
@@ -1489,6 +1560,9 @@ trait Sigil {
     for {
       _      <- withDB(_.topics.transaction(_.upsert(topic)))
       stored <- withDB(_.conversations.transaction(_.upsert(conversation)))
+      // Broadcast the lifecycle Notice so live viewers' UI panels can
+      // pick up the new conversation without polling.
+      _      <- publish(sigil.signal.ConversationCreated(stored._id, createdBy))
       // Fire greetings in-line per agent. fireGreeting is a no-op for agents
       // without greet-eligible behaviors, so the cost for non-greeting setups
       // is just the participants.collect walk.
@@ -1562,18 +1636,16 @@ trait Sigil {
     }
 
   /**
-   * List every persisted [[Conversation]] visible to this Sigil
-   * instance. Wraps the underlying `SigilDB.conversations.list` call so
-   * apps don't poke at the DB directly — the framework owns the
-   * abstraction and is the natural extension point if scoping
-   * (per-viewer, per-space, by-status) becomes a requirement later.
+   * Resolve the conversations a viewer can see. Currently the
+   * underlying `SigilDB.conversations` is unscoped — every
+   * conversation is visible to every viewer. Apps that need
+   * per-viewer / per-space scoping override this hook.
    *
-   * Order is whatever the underlying store yields — the lightdb /
-   * lucene split-store doesn't promise insertion order. Apps that need
-   * a particular ordering (most-recent-activity, alphabetical) sort
-   * the result on the read path.
+   * Used by the framework's default [[handleNotice]] arm for
+   * [[sigil.signal.RequestConversationList]] — the snapshot that
+   * goes back to the client is built from this list.
    */
-  def listConversations(): Task[List[Conversation]] =
+  protected def listConversations(viewer: ParticipantId): Task[List[Conversation]] =
     withDB(_.conversations.transaction(_.list))
 
   /**
@@ -1590,6 +1662,10 @@ trait Sigil {
    */
   def deleteConversation(conversationId: Id[Conversation]): Task[Unit] =
     for {
+      // Broadcast the lifecycle Notice BEFORE the cascade so live
+      // viewers see the pulse while the SignalHub is still wired
+      // (and before the conversation's records are wiped).
+      _ <- publish(sigil.signal.ConversationDeleted(conversationId))
       _ <- withDB(_.conversations.transaction(_.delete(conversationId)))
       _ <- withDB { db =>
              db.events.transaction { tx =>

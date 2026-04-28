@@ -1,6 +1,7 @@
 package sigil.pipeline
 
 import rapid.{Stream, Task}
+import sigil.participant.ParticipantId
 import sigil.signal.Signal
 
 import java.util.concurrent.atomic.AtomicBoolean
@@ -22,6 +23,12 @@ import java.util.concurrent.{ConcurrentLinkedQueue, LinkedBlockingQueue}
  * guaranteed delivery should size the capacity appropriately or
  * consume faster.
  *
+ * **Per-viewer routing.** Subscribers register an optional `viewer` at
+ * subscribe time. [[emit]] broadcasts to every subscriber regardless
+ * of viewer; [[emitTo]] delivers only to subscribers whose registered
+ * viewer matches. This is how `Sigil.publishTo(viewer, signal)` reaches
+ * a single connected client without going through `signalsFor` filtering.
+ *
  * **Lifecycle.** [[close]] terminates every active subscription
  * cleanly — each subscriber's stream completes (no error, no
  * indefinite block on `queue.take()`). `Sigil.shutdown` calls
@@ -30,9 +37,10 @@ import java.util.concurrent.{ConcurrentLinkedQueue, LinkedBlockingQueue}
  * After close, [[emit]] is a no-op.
  */
 final class SignalHub(subscriberCapacity: Int = 1024) {
-  // Subscriber queues hold `Option[Signal]` — `None` is the close
-  // sentinel that terminates the consumer's stream.
-  private val subscribers = new ConcurrentLinkedQueue[LinkedBlockingQueue[Option[Signal]]]()
+  private case class Subscriber(viewer: Option[ParticipantId],
+                                queue: LinkedBlockingQueue[Option[Signal]])
+
+  private val subscribers = new ConcurrentLinkedQueue[Subscriber]()
   private val closed = new AtomicBoolean(false)
 
   /** Emit a signal to every active subscriber. Non-blocking; drops
@@ -41,60 +49,64 @@ final class SignalHub(subscriberCapacity: Int = 1024) {
   def emit(signal: Signal): Unit = {
     if (closed.get()) return
     import scala.jdk.CollectionConverters.*
-    subscribers.iterator().asScala.foreach { q =>
-      if (!q.offer(Some(signal))) {
-        q.poll() // drop oldest
-        q.offer(Some(signal))
-        scribe.warn(
-          s"SignalHub subscriber queue full (capacity=$subscriberCapacity); dropping oldest"
-        )
-      }
+    subscribers.iterator().asScala.foreach(s => offerOrDropOldest(s.queue, signal))
+  }
+
+  /** Emit a signal only to subscribers whose registered viewer matches.
+    * Used by `Sigil.publishTo(viewer, signal)` to single-target a
+    * Notice (snapshot, reply, etc.) at one connected viewer.
+    * Subscribers that registered with `viewer = None` (e.g. internal
+    * `Sigil.signals` consumers) do NOT receive emitTo signals — they
+    * only see broadcasts. */
+  def emitTo(viewer: ParticipantId, signal: Signal): Unit = {
+    if (closed.get()) return
+    import scala.jdk.CollectionConverters.*
+    subscribers.iterator().asScala.foreach { s =>
+      if (s.viewer.contains(viewer)) offerOrDropOldest(s.queue, signal)
+    }
+  }
+
+  private def offerOrDropOldest(q: LinkedBlockingQueue[Option[Signal]], signal: Signal): Unit = {
+    if (!q.offer(Some(signal))) {
+      q.poll() // drop oldest
+      q.offer(Some(signal))
+      scribe.warn(
+        s"SignalHub subscriber queue full (capacity=$subscriberCapacity); dropping oldest"
+      )
     }
   }
 
   /** Close the hub: subsequent [[emit]] calls are no-ops, and every
     * active subscriber's stream completes (the next pull returns
-    * `None`, which the stream interprets as natural end). Idempotent
-    * — calling close twice has no further effect. */
+    * `None`, which the stream interprets as natural end). Idempotent. */
   def close(): Unit = {
     if (closed.compareAndSet(false, true)) {
       import scala.jdk.CollectionConverters.*
-      subscribers.iterator().asScala.foreach { q =>
-        // Best-effort offer of the close sentinel. If the queue is
-        // already full, drop the oldest and try again — close must
-        // win against a backlog or the subscriber would never see it.
-        if (!q.offer(None)) {
-          q.poll()
-          q.offer(None)
+      subscribers.iterator().asScala.foreach { s =>
+        if (!s.queue.offer(None)) {
+          s.queue.poll()
+          s.queue.offer(None)
         }
       }
     }
   }
 
-  /** New subscription: returns a [[Stream]] that emits every signal
-    * published after subscription, completing naturally when the hub
-    * is closed via [[close]].
-    *
-    * **Eager registration.** The underlying queue is registered with
-    * the hub *synchronously* when `subscribe` is called, BEFORE the
-    * stream value is constructed. Any [[emit]] that happens between
-    * `subscribe` returning and the consumer's first pull is queued
-    * for the consumer (rather than dropped because no subscriber
-    * existed yet). This closes the race where attach-then-publish
-    * patterns (e.g. `SignalTransport.attach` followed by
-    * `Sigil.publish`) lost early signals.
-    *
-    * **Consume-or-leak contract.** Callers MUST drain the returned
-    * stream — the queue is registered immediately and stays
-    * registered until the stream terminates (natural end via close
-    * sentinel, error, or consumer short-circuit). A `subscribe` call
-    * whose stream is constructed and then dropped without consumption
-    * leaks one queue. Every framework-internal caller (Sigil.signals,
-    * SignalTransport.attach, RecordingBroadcaster) drains; apps follow
-    * the same pattern. */
-  def subscribe: Stream[Signal] = {
+  /** New broadcast subscription — sees every Signal emitted via
+    * [[emit]]. Does NOT receive [[emitTo]] signals targeted at a
+    * specific viewer. Used by app-internal consumers (audit log,
+    * recording broadcaster) that want the full firehose. */
+  def subscribe: Stream[Signal] = subscribeInternal(viewer = None)
+
+  /** New viewer-scoped subscription — sees broadcasts AND
+    * [[emitTo]] signals targeted at this viewer. Used by per-client
+    * wire transports (DurableSocket sink via SignalTransport.attach). */
+  def subscribeFor(viewer: ParticipantId): Stream[Signal] =
+    subscribeInternal(viewer = Some(viewer))
+
+  private def subscribeInternal(viewer: Option[ParticipantId]): Stream[Signal] = {
     val q = new LinkedBlockingQueue[Option[Signal]](subscriberCapacity)
-    subscribers.add(q) // EAGER — register before returning the stream value
+    val sub = Subscriber(viewer, q)
+    subscribers.add(sub) // EAGER — register before returning the stream value
     Stream
       .using(Task.pure(q))(qq =>
         Stream.unfoldStreamEval(qq) { queue =>
@@ -103,7 +115,7 @@ final class SignalHub(subscriberCapacity: Int = 1024) {
             case None      => None // close sentinel — terminate stream
           }
         }
-      )(queue => Task { subscribers.remove(queue); () })
+      )(_ => Task { subscribers.remove(sub); () })
   }
 
   /** Current subscriber count (for diagnostics / tests). */
