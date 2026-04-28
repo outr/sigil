@@ -20,7 +20,10 @@ import sigil.signal.EventState
  * `topicId` is the topic active AFTER the change (the post-transition
  * topic). On a Switch, `kind.previousTopicId` carries the topic that was
  * active before; on a Rename, `kind.previousLabel` carries the prior label.
- * `newLabel` is the label on the active topic after the change.
+ * `newLabel` and `newSummary` carry the active topic's label + summary
+ * after the change — both are bundled on the event so clients rendering
+ * a topic header / breadcrumb don't need a follow-up `Topic.fromId`
+ * round-trip just to display the summary alongside the label.
  *
  * Born `Active` so subscribers can react (UI flashes the topic chip, search
  * index re-scopes). The framework then broadcasts a `StateDelta` transitioning
@@ -31,6 +34,7 @@ import sigil.signal.EventState
  */
 case class TopicChange(kind: TopicChangeKind,
                        newLabel: String,
+                       newSummary: String,
                        participantId: ParticipantId,
                        conversationId: Id[Conversation],
                        topicId: Id[Topic],

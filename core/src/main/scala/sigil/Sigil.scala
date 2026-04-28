@@ -1562,6 +1562,21 @@ trait Sigil {
     }
 
   /**
+   * List every persisted [[Conversation]] visible to this Sigil
+   * instance. Wraps the underlying `SigilDB.conversations.list` call so
+   * apps don't poke at the DB directly — the framework owns the
+   * abstraction and is the natural extension point if scoping
+   * (per-viewer, per-space, by-status) becomes a requirement later.
+   *
+   * Order is whatever the underlying store yields — the lightdb /
+   * lucene split-store doesn't promise insertion order. Apps that need
+   * a particular ordering (most-recent-activity, alphabetical) sort
+   * the result on the read path.
+   */
+  def listConversations(): Task[List[Conversation]] =
+    withDB(_.conversations.transaction(_.list))
+
+  /**
    * Hard-delete a conversation and every record that references it —
    * the conversation row itself, every Event, the ConversationView
    * projection, and every Topic. The deletion is best-effort and

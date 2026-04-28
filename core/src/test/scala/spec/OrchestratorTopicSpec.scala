@@ -274,6 +274,7 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val tc = TopicChange(
         kind = TopicChangeKind.Switch(previousTopicId = firstTopic._id),
         newLabel = "Second",
+        newSummary = secondTopic.summary,
         participantId = TestAgent,
         conversationId = convId,
         topicId = secondTopic._id,
