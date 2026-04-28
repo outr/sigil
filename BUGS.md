@@ -6,53 +6,58 @@ Tracking bugs found in Sigil, Spice, Fabric, and related libraries while buildin
 
 Numbering preserves history — gaps reflect entries that were filed, fixed, and pruned.
 
-## Sigil
+### 7. ❌ LlamaCpp placeholder-user injection breaks Qwen's "system message must be at beginning" rule for greet-on-join
 
-### 6. ❌ Tool descriptions inline ALL `schema.examples` unconditionally — `respond` alone is ~1300 tokens of examples
+**Where:** `~/projects/open/sigil/core/src/main/scala/sigil/provider/llamacpp/LlamaCppProvider.scala` — `buildBody` placeholder-user injection (added in bug #4 fix) interacts badly with the existing `foldMidArraySystems` pre-processor when the input has only System messages.
 
-**Where:** `~/projects/open/sigil/core/src/main/scala/sigil/provider/Provider.scala` — `renderDescription`. Affects every provider that renders tool descriptions for the LLM (LlamaCpp, OpenAI, Anthropic, Google, DeepSeek).
+**Symptom:** Fresh conversation, `agent.greetsOnJoin = true`, no prior user/assistant turns. llama.cpp returns HTTP 500:
 
-**Symptom:** Sage's greeting prompt for a fresh conversation with one `DefaultAgentParticipant` and `toolNames = CoreTools.coreToolNames` (the 5 essentials) lands at **5203 tokens**. Decomposed from the wire log:
-
-| Section | chars | ~tokens |
-|---|---|---|
-| `respond` tool description | 5350 | ~1500 |
-| `find_capability` tool description | 1954 | ~490 |
-| `stop` tool description | 1053 | ~260 |
-| `change_mode` tool description | 723 | ~180 |
-| `no_response` tool description | 341 | ~85 |
-| Tool parameter schemas (5 combined) | 1390 | ~350 |
-| System prompt body (mode + topic + roles + boilerplate) | 1036 | ~250 |
-| User/assistant messages | ~200 | ~50 |
-| Qwen chat template framing (header + IMPORTANT block + im_start/end) | — | ~400-800 |
-
-`respond` alone is ~30% of the total prompt. Breaking it down further: **658 chars of instructions + 4692 chars of 10 embedded examples**. Examples are 7× the actual description.
-
-The current rendering (`Provider.renderDescription`) unconditionally inlines every `schema.examples` entry as compact JSON:
-
-```scala
-private def renderDescription[I <: ToolInput](schema: ToolSchema): String =
-  if (schema.examples.isEmpty) schema.description
-  else {
-    val rendered = schema.examples.map { e =>
-      val json = JsonFormatter.Compact(stripPolyDiscriminator(summon[RW[ToolInput]].read(e.input)))
-      s"- ${e.description}: $json"
-    }.mkString("\n")
-    s"${schema.description}\n\nExamples:\n$rendered"
-  }
+```
+Jinja Exception: System message must be at the beginning.
 ```
 
-`RespondTool` has 10 examples (topic-label-stable, label-refines, hard-switch, multi-content variants, etc.). For Qwen3.5 each example is a full `topicLabel`+`topicSummary`+JSON-encoded `content` — sizable. Smaller models benefit from many examples (better tool-call adherence), but charging the full set every turn is wasteful: every subsequent turn re-bills ~1300 tokens for the same examples the model already has demonstrated it can follow.
+The agent's greeting turn fails, no greeting reaches the client.
 
-**Compounding factor for downstream consumers:** an agentic-coding tool like Sage that wants `find_capability`-discovered tools advertised at runtime will pay this on EVERY tool — every `find_capability` match adds another tool to the prompt with its own embedded examples, and prompt size scales linearly with discovered tool count. This is a built-in pressure against rich agent toolkits.
+**Root cause:** the wire payload arrives at Qwen's chat template as `[systemMsg, placeholderUser, System1, System2, ...]` — multiple System messages with the second one not at index 0. Qwen's template walks the messages and raises on the first non-leading System entry.
 
-**Suggested fixes (any subset, ranked roughly by effort/impact):**
+`foldMidArraySystems` was designed to fold mid-array System content into the *next* non-System message:
 
-1. **Cap example count** in `renderDescription` — render at most N (default 3?) examples, in declaration order. Tool authors order most-instructive first. Tunable via a knob on `Sigil` (e.g. `def maxToolExamples: Int = 3`).
-2. **Keep examples out of `description`; move them to a separate first-turn prompt section** that's included once when the model is shown a tool for the first time in a conversation, then dropped from subsequent turns. Significant complexity (per-conversation tracking of "which tools has the model seen") but big payoff for long conversations.
-3. **Per-tool `examples` opt-in via a `ToolPolicy` knob** — apps that trust the model can disable examples globally; small-model setups keep them. Sage with Qwen3.5-9B would happily run with examples disabled because the model is decent at structured output without them.
-4. **Compress the JSON in examples** — use multiline-pretty JSON only when verbose mode is on; default to compact, single-line, with field-name shortening. Marginal savings vs (1).
+```scala
+case ProviderMessage.System(content) if !seenNonSystem =>
+  out += ProviderMessage.System(content)
+case ProviderMessage.System(content) =>
+  pending += content
+case other =>
+  seenNonSystem = true
+  out += (if (pending.nonEmpty) prependSystem(pending.toList, other) else other)
+```
 
-(1) is the smallest patch and the highest impact. The other 4 tools (no_response/change_mode/stop/find_capability) probably have ≤3 examples already; only `respond`'s 10-example set really benefits, and capping at 3 there would shave ~900-1000 tokens off every prompt.
+For a greeting turn, `input.messages` is typically all leading System frames (topic context, role description, etc.) with **no non-System messages at all**. The `if !seenNonSystem` branch fires for every entry, all System frames pass through unchanged, `seenNonSystem` never flips, the trailing-pending fold never triggers. Then `buildBody` prepends `placeholderUser` *before* this list of leading-System frames:
 
-**Sage-side state:** No workaround. With llama.cpp now configured `-c 131072` Sage has plenty of headroom, but every turn pays the ~1500-token `respond` description tax. Long conversations or large `find_capability` tool sets will compound the cost.
+```scala
+val withUserAnchor =
+  if (rendered.exists(m => m.get("role").exists(_.asString == "user"))) rendered
+  else placeholderUserMessage +: rendered      // placeholder at index 0 of withUserAnchor
+"messages" -> arr((Vector(systemMsg) ++ withUserAnchor)*)
+```
+
+Result: `[systemMsg, placeholderUser, System1, System2, ...]`. Qwen rejects `System1` for not being at index 0.
+
+**Suggested fix (in `buildBody`):** collapse all leading System content from `input.messages` into the framework's `input.system` before building `systemMsg`, so the rendered tail is guaranteed user/assistant only:
+
+```scala
+val (extraSystem, nonSystemMessages) = input.messages.span {
+  case _: ProviderMessage.System => true
+  case _ => false
+}
+val combinedSystem = (input.system +: extraSystem.collect { case s: ProviderMessage.System => s.content }).filter(_.nonEmpty).mkString("\n\n")
+val systemMsg = obj("role" -> str("system"), "content" -> str(combinedSystem))
+val rendered = renderMessages(nonSystemMessages)  // foldMidArraySystems still handles any non-leading systems
+val withUserAnchor =
+  if (rendered.exists(m => m.get("role").exists(_.asString == "user"))) rendered
+  else placeholderUserMessage +: rendered
+```
+
+Now `withUserAnchor` contains either user-anchored messages or just `[placeholderUser]`; either way, the final array starts `[systemMsg, ...]` with a single System message in front. The existing `foldMidArraySystems` continues to handle the live-conversation case (mid-conversation `TopicChange` System frames after non-System content).
+
+**Sage-side state:** No workaround. Fresh greet-on-join turn fails on every connect against Qwen3.5; the user sees no greeting. WireSmoke happens to push a non-greeting prompt fast enough that some greetings succeed, but the browser path consistently breaks.

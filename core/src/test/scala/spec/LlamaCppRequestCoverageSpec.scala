@@ -1,8 +1,10 @@
 package spec
 
+import fabric.io.JsonParser
 import lightdb.id.Id
-import sigil.conversation.{ConversationView, TurnInput}
+import sigil.conversation.{ContextFrame, ConversationView, TurnInput}
 import sigil.db.Model
+import sigil.event.Event
 import sigil.provider.{GenerationSettings, Provider}
 import sigil.provider.llamacpp.LlamaCppProvider
 
@@ -53,6 +55,35 @@ class LlamaCppRequestCoverageSpec extends AbstractRequestCoverageSpec {
       // `"role":"user"` entry — without it, Qwen3.5's chat template
       // raises and the request returns HTTP 500.
       body should include("\"role\":\"user\"")
+    }
+
+    // Regression for BUGS.md Sigil#7 — when the conversation has only
+    // System frames (typical greet-on-join: TopicChange / ModeChange
+    // history with no user content), the wire payload must not emit
+    // multiple system-role entries. Qwen3.5's chat template walks the
+    // messages array and raises "System message must be at the beginning"
+    // on the first non-leading System entry. The provider must collapse
+    // any leading-System tail of `input.messages` into the framework's
+    // single `input.system` so the rendered tail is user/assistant only.
+    "collapse leading system messages into a single system entry (greet-on-join with system-only history)" in {
+      val systemOnlyView = emptyView.copy(frames = Vector(
+        ContextFrame.System(
+          content = "Topic switched to: Greeting",
+          sourceEventId = Id[Event]("sys-1")
+        ),
+        ContextFrame.System(
+          content = "Mode changed to conversation.",
+          sourceEventId = Id[Event]("sys-2")
+        )
+      ))
+      val body = bodyOf(TurnInput(systemOnlyView))
+      val messages: Vector[fabric.Json] = JsonParser(body).get("messages").map(_.asVector).getOrElse(Vector.empty)
+      val roles: Vector[String] = messages.flatMap(_.get("role").map(_.asString))
+      withClue(s"roles: ${roles.mkString(",")}") {
+        roles.count(_ == "system") shouldBe 1
+        roles.count(_ == "user")   shouldBe 1
+        roles.head shouldBe "system"
+      }
     }
   }
 }
