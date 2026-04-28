@@ -76,8 +76,28 @@ case class LlamaCppProvider(url: URL,
 
   private def buildBody(input: ProviderCall): Json = {
     val modelName = stripProviderPrefix(input.modelId.value)
-    val systemMsg = obj("role" -> str("system"), "content" -> str(input.system))
-    val rendered = renderMessages(input.messages)
+
+    // Collapse any leading-System tail of `input.messages` into the
+    // framework's `input.system` BEFORE rendering. Greet-on-join turns
+    // typically arrive with `input.messages` consisting only of
+    // ContextFrame.System entries (TopicChange / ModeChange history,
+    // role descriptions). Without this collapse the placeholder-user
+    // injection below ends up between the framework system and the
+    // remaining System frames, yielding `[system, user, System1,
+    // System2, ...]` which Qwen3.5's chat template rejects with
+    // "System message must be at the beginning". `foldMidArraySystems`
+    // (in `renderMessages`) still handles the other case — System
+    // frames that appear AFTER non-System content during a live
+    // conversation (mid-array TopicChange settles).
+    val (leadingSystem, nonLeading) = input.messages.span {
+      case _: ProviderMessage.System => true
+      case _ => false
+    }
+    val combinedSystem = (input.system +: leadingSystem.collect {
+      case ProviderMessage.System(c) => c
+    }).filter(_.nonEmpty).mkString("\n\n")
+    val systemMsg = obj("role" -> str("system"), "content" -> str(combinedSystem))
+    val rendered = renderMessages(nonLeading)
 
     // Some llama.cpp chat templates (notably Qwen3.5) enforce a
     // minimum-one-user-message invariant — the Jinja template raises
