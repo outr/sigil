@@ -15,11 +15,8 @@ import sigil.tool.model.NoResponseInput
 case object NoResponseTool extends TypedTool[NoResponseInput](
   name = ToolName("no_response"),
   description =
-    """Decline to respond to the current activation. Call this when the latest message isn't directed at you,
-      |is better handled by another participant, or otherwise doesn't require a response per your personality.
-      |
-      |Prefer `no_response` over calling `respond` with filler like "I don't have anything to add" — silent
-      |decline is cleaner for the user.""".stripMargin
+    """Decline to respond when the latest message isn't directed at you or doesn't warrant a reply.
+      |Prefer this over `respond` with filler like "I don't have anything to add" — silent decline is cleaner.""".stripMargin
 ) {
   override protected def executeTyped(input: NoResponseInput, context: TurnContext): rapid.Stream[Event] = rapid.Stream.empty
 }

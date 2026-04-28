@@ -107,12 +107,19 @@ object MultipartParser {
   private def parseImage(body: String, arg: Option[String]): Option[ResponseContent.Image] =
     URL.get(body.trim).toOption.map(url => ResponseContent.Image(url, arg))
 
-  private def parseOptions(body: String): Option[ResponseContent.Options] =
+  /** Parse a `▶Options` block body (or a streaming `ContentKind.Options`
+    * delta payload) into a typed [[ResponseContent.Options]]. Returns
+    * `None` if the body isn't valid `OptionsPayload` JSON — callers
+    * decide whether to drop or fall back. */
+  def parseOptions(body: String): Option[ResponseContent.Options] =
     Try(JsonParser(body).as[OptionsPayload]).toOption.map { p =>
       ResponseContent.Options(prompt = p.prompt, options = p.options, allowMultiple = p.allowMultiple)
     }
 
-  private def parseField(body: String): Option[ResponseContent.Field] =
+  /** Parse a `▶Field` block body (or a streaming `ContentKind.Field`
+    * delta payload) into a typed [[ResponseContent.Field]]. Same `None`
+    * semantics as [[parseOptions]]. */
+  def parseField(body: String): Option[ResponseContent.Field] =
     Try(JsonParser(body).as[FieldPayload]).toOption.map { p =>
       ResponseContent.Field(label = p.label, value = p.value, icon = p.icon)
     }

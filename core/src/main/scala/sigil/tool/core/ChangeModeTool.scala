@@ -19,13 +19,11 @@ case object ChangeModeTool extends TypedTool[ChangeModeInput](
       |a task whose nature belongs to a different mode — do not start the task in the wrong mode and
       |then switch.
       |
-      |Typical example: the current mode is conversational and the user asks you to write a Scala
-      |function; call change_mode to the coding-style mode first, then address the request on the
-      |next turn.
+      |Typical example: the current mode is conversational and the user asks you to write code; call
+      |change_mode to the coding mode first, then address the request on the next turn.
       |
       |The `mode` argument is the target mode's stable name as shown in the system prompt's mode
-      |listing (e.g. "conversation", "coding", "workflow" — whatever this conversation's registered
-      |mode set contains). Unknown names are rejected.""".stripMargin
+      |listing (e.g. "conversation", "coding"). Unknown names are rejected.""".stripMargin
 ) {
   override protected def executeTyped(input: ChangeModeInput, context: TurnContext): rapid.Stream[Event] =
     context.sigil.modeByName(input.mode) match {

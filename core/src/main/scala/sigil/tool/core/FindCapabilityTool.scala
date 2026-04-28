@@ -13,45 +13,20 @@ import sigil.tool.{DiscoveryRequest, ToolExample, ToolName, TypedTool}
 case object FindCapabilityTool extends TypedTool[FindCapabilityInput](
   name = ToolName("find_capability"),
   description =
-    """CALL THIS FIRST when the user asks you to DO something and the action isn't obviously covered by the
-      |tools already in your current roster. Most tools in this system are NOT in your default roster — they
-      |are discovered through this call. Before telling the user something is impossible, unavailable, or
-      |unsupported, you MUST call `find_capability`.
+    """CALL THIS FIRST when the user asks you to DO something not obviously covered by your current tool
+      |roster. Most tools live outside the default roster — discover them through this call before saying
+      |anything is impossible or unsupported.
       |
-      |Rules:
-      |- NEVER say "I can't do that" or "that's not supported" without first calling `find_capability` with
-      |  reasonable keywords derived from the user's request.
-      |- When `find_capability` returns matching tools, CALL the most appropriate one immediately on your next
-      |  turn — do not just describe what you found to the user.
-      |- If `find_capability` returns no matches, THEN you may tell the user the capability isn't available.
-      |- The only tools callable directly are those visible in your current tool roster. Everything else is
-      |  reached via `find_capability` first.
+      |- When matches are returned, CALL the most appropriate one on your next turn — don't just describe it.
+      |- Tools surfaced here are available for ONE subsequent turn; uncalled, they're cleared.
+      |- If no matches, THEN you may tell the user the capability isn't available.
       |
-      |The `keywords` field is a space-separated list of lowercase alphanumeric keywords describing the
-      |desired capability. Prefer multiple keywords — richer queries match better. Use "send slack channel
-      |message" over just "slack"; use "database users count query" over just "database".
-      |
-      |Rules for `keywords`:
-      |- lowercase letters and digits only
-      |- single spaces between words (no leading, trailing, or multiple spaces)
-      |- no punctuation, quotes, or special characters
-      |
-      |The response lists matching tools with their full schemas; you then call the right one on your next
-      |turn. Tools surfaced by `find_capability` are available for ONE subsequent turn — if you don't call
-      |them next, they're cleared.""".stripMargin,
+      |`keywords` — space-separated lowercase alphanumeric terms (no punctuation). Prefer multiple terms:
+      |"send slack channel message" over "slack"; "database users count query" over "database".""".stripMargin,
   examples = List(
-    ToolExample(
-      "User asked to send a message on some channel — not in default roster, discover it",
-      FindCapabilityInput("send slack channel message")
-    ),
-    ToolExample(
-      "User asked to wait or pause — discover timing / delay tools",
-      FindCapabilityInput("sleep wait delay pause")
-    ),
-    ToolExample(
-      "Concept search — map the user's request to relevant keywords",
-      FindCapabilityInput("billing invoice payment charge")
-    )
+    ToolExample("Send a message on some channel", FindCapabilityInput("send slack channel message")),
+    ToolExample("Wait or pause",                  FindCapabilityInput("sleep wait delay pause")),
+    ToolExample("Concept search",                 FindCapabilityInput("billing invoice payment charge"))
   )
 ) {
   override protected def executeTyped(input: FindCapabilityInput, context: TurnContext): rapid.Stream[Event] =

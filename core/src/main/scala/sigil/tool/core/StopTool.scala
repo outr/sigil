@@ -14,29 +14,16 @@ import sigil.tool.model.StopInput
 case object StopTool extends TypedTool[StopInput](
   name = ToolName("stop"),
   description =
-    """Halt the current turn for a target agent (or every agent in the conversation when no target is
-      |specified).
+    """Halt the current turn for a target agent (or every agent when no target is specified).
       |
-      |`targetParticipantId` — the agent whose turn should stop. Omit (or pass null) to request that ALL
-      |agents in the conversation stop; provide a specific participant id when you're only stopping one.
-      |
-      |`force`:
-      |  - false (default): graceful — the current iteration finishes, but no more iterations start after
-      |    it. Use when you just want the agent to yield so the user can redirect.
-      |  - true: interrupt the in-flight streaming provider call immediately. Use for the monitor-agent
-      |    pattern when you've spotted another agent about to take a destructive or clearly wrong action
-      |    and need to cut its output now.
-      |
-      |`reason` is an optional short explanation displayed in UI and logs.""".stripMargin,
+      |- `targetParticipantId` — agent to stop. Omit/null to stop ALL agents in the conversation.
+      |- `force` — false (default) lets the current iteration finish then halts; true interrupts the
+      |  in-flight provider call immediately. Use `true` for monitor-agent patterns where a peer is
+      |  about to do something destructive.
+      |- `reason` — optional short explanation shown in UI and logs.""".stripMargin,
   examples = List(
-    ToolExample(
-      "Graceful stop of everyone in the conversation",
-      StopInput()
-    ),
-    ToolExample(
-      "Force stop with a reason (monitor-agent pattern)",
-      StopInput(force = true, reason = Some("Peer is about to take a destructive action"))
-    )
+    ToolExample("Graceful stop of all agents", StopInput()),
+    ToolExample("Force stop with reason",       StopInput(force = true, reason = Some("Peer about to take destructive action")))
   )
 ) {
   override protected def executeTyped(input: StopInput, context: TurnContext): rapid.Stream[Event] =

@@ -75,6 +75,20 @@ case class LlamaCppProvider(url: URL, override val models: List[Model], sigilRef
     val systemMsg = obj("role" -> str("system"), "content" -> str(input.system))
     val rendered = renderMessages(input.messages)
 
+    // Some llama.cpp chat templates (notably Qwen3.5) enforce a
+    // minimum-one-user-message invariant — the Jinja template raises
+    // "No user query found in messages" when the messages array has
+    // only system/assistant entries. The greet-on-join turn is the
+    // legitimate case: the agent is introducing itself before any
+    // user input, so by construction there's no user content to
+    // surface. Inject a synthetic placeholder so the template's
+    // required-user-anchor is satisfied. The agent's role
+    // descriptions / skill text drive the actual greeting content;
+    // this placeholder is just appeasing Jinja.
+    val withUserAnchor =
+      if (rendered.exists(m => m.get("role").exists(_.asString == "user"))) rendered
+      else placeholderUserMessage +: rendered
+
     // llama.cpp's chat-completions endpoint translates the FULL JSON
     // Schema into a GBNF grammar — including `pattern`, `format`,
     // `minLength`/`maxLength`, numeric bounds, and array bounds. Pass
@@ -105,7 +119,7 @@ case class LlamaCppProvider(url: URL, override val models: List[Model], sigilRef
     val thinkingEnabled = input.generationSettings.effort.isDefined
     val baseFields = Vector[(String, Json)](
       "model" -> str(modelName),
-      "messages" -> arr((Vector(systemMsg) ++ rendered)*),
+      "messages" -> arr((Vector(systemMsg) ++ withUserAnchor)*),
       "stream" -> bool(true),
       // Emit a final chunk with token usage before [DONE]
       "stream_options" -> obj("include_usage" -> bool(true)),
@@ -143,6 +157,13 @@ case class LlamaCppProvider(url: URL, override val models: List[Model], sigilRef
     * into the previous assistant/user message. The framework's leading
     * system prompt (assembled in `buildBody`) is untouched.
     */
+  /** Single placeholder user-role message used to satisfy chat-template
+    * invariants (e.g. Qwen3.5's "No user query found") when a turn
+    * legitimately has no user content (greet-on-join). The text is
+    * incidental — what matters is that a user-role entry exists. */
+  private val placeholderUserMessage: Json =
+    obj("role" -> str("user"), "content" -> str("(begin conversation)"))
+
   private def renderMessages(messages: Vector[ProviderMessage]): Vector[Json] = {
     val folded = foldMidArraySystems(messages)
     folded.map {
