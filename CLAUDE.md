@@ -10,7 +10,7 @@ Scala 3.8.3 on sbt. The root project is `sigil`; sub-projects: `core` (framework
 - All tests: `sbt test`
 - One suite: `sbt "testOnly spec.OrchestratorTopicSpec"`
 - One test inside a suite: `sbt "testOnly spec.OrchestratorTopicSpec -- -z 'substring from test name'"`
-- CI-equivalent run (skip tests tagged `spec.LocalOnly`, which hit external services): `sbt 'testOnly -- -l spec.LocalOnly'`
+- Live-suite gating: there is no test tag — specs that need an external service (`LlamaCpp*Spec.scala` against `llama.voidcraft.ai`, etc.) **self-skip** when the service is unreachable. Run `sbt test` everywhere; CI just relies on the same self-skip when the test runner has no network egress to external endpoints.
 - Benchmarks: see `benchmark/README.md`; runners are `sbt "benchmark/runMain bench.LongMemEvalBench ..."` and friends. Require a reachable Qdrant and an `OPENAI_API_KEY`.
 
 Build-config invariants you should know before changing anything in `build.sbt`:

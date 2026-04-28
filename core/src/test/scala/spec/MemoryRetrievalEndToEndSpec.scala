@@ -12,7 +12,7 @@ import sigil.event.Event
 import sigil.provider.{ConversationRequest, GenerationSettings, Instructions, Mode, ConversationMode, ProviderEvent}
 import sigil.provider.llamacpp.LlamaCppProvider
 import sigil.tool.core.CoreTools
-import sigil.tool.model.RespondInput
+import sigil.tool.model.{RespondFieldInput, RespondInput}
 import sigil.vector.InMemoryVectorIndex
 
 /**
@@ -138,16 +138,20 @@ class MemoryRetrievalEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
         // Live-LLM proof: the model answers the question by referencing
         // the retrieved memory. The only source of "blue" in this turn
-        // is the stored memory — if it shows up in the response, the
-        // memory round-tripped end-to-end.
+        // is the stored memory — assert it shows up in whichever reply
+        // surface the model picked (respond's markdown content OR a
+        // structured respond_field/respond_options block).
         provider(request).toList.map { events =>
-          val respondInput = events.collectFirst {
-            case ProviderEvent.ToolCallComplete(_, r: RespondInput) => r
+          val respondText = events.collectFirst {
+            case ProviderEvent.ToolCallComplete(_, r: RespondInput) => r.content
           }
+          val fieldText = events.collectFirst {
+            case ProviderEvent.ToolCallComplete(_, f: RespondFieldInput) => s"${f.label}: ${f.value}"
+          }
+          val replyText = (respondText.toList ++ fieldText.toList).mkString(" ")
           val toolsSeen = events.collect { case s: ProviderEvent.ToolCallStart => s.toolName }.toSet
-          withClue(s"tools observed in response: ${toolsSeen.mkString(",")}; respond content: ${respondInput.map(_.content).getOrElse("(none)")}") {
-            respondInput should not be empty
-            respondInput.get.content.toLowerCase should include("blue")
+          withClue(s"tools observed: ${toolsSeen.mkString(",")}; reply text: $replyText") {
+            replyText.toLowerCase should include("blue")
           }
         }
       }

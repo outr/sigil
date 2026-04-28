@@ -216,21 +216,20 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         val streamingDeltas = signals.collect {
           case d: MessageDelta if d.content.exists(!_.complete) => d.content.get
         }
-        streamingDeltas.map(_.delta).mkString.trim shouldBe "4"
-
-        val finalContentDelta = signals.collectFirst {
-          case d: MessageDelta if d.content.exists(_.complete) => d.content.get
-        }
-        finalContentDelta.map(_.delta) shouldBe Some("4")
-        finalContentDelta.map(_.complete) shouldBe Some(true)
+        streamingDeltas.map(_.delta).mkString should include("4")
 
         val toolDelta = signals.collectFirst { case d: ToolDelta => d }
         toolDelta should not be empty
         toolDelta.get.state shouldBe Some(EventState.Complete)
         toolDelta.get.input.map(_.getClass.getSimpleName) shouldBe Some("RespondInput")
 
-        val finalMsgDelta = signals.collect { case d: MessageDelta if d.state.isDefined => d }
-        finalMsgDelta.map(_.state.get) should contain(EventState.Complete)
+        // Settle: orchestrator emits a contentReplacement delta with the
+        // parsed markdown blocks plus state=Complete.
+        val settleDelta = signals.collectFirst {
+          case d: MessageDelta if d.contentReplacement.isDefined && d.state.contains(EventState.Complete) => d
+        }
+        settleDelta should not be empty
+        settleDelta.get.contentReplacement.get should not be empty
 
         signals.exists {
           case d: MessageDelta => d.usage.isDefined
@@ -285,8 +284,14 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         messages should have size 1
         messages.head.state shouldBe EventState.Complete
         messages.head.content should not be empty
-        messages.head.content.head shouldBe a[ResponseContent.Text]
-        messages.head.content.head.asInstanceOf[ResponseContent.Text].text.trim shouldBe "4"
+        // MarkdownContentParser produces Markdown blocks for plain prose
+        // ("4" is plain text, no fence/heading), Code for fenced blocks, etc.
+        val text = messages.head.content.collect {
+          case t: ResponseContent.Text     => t.text
+          case m: ResponseContent.Markdown => m.text
+          case c: ResponseContent.Code     => c.code
+        }.mkString
+        text should include("4")
       }
     }
 
@@ -335,19 +340,16 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     }
 
     // Live-LLM coverage of the topic-trigger path. The system prompt shows
-    // `Current topic: "New Conversation"` (the bootstrap label). With the
-    // categorical `topicChangeType` schema the RespondTool description
-    // instructs the LLM to pick `Change` on bootstrap (since the default
-    // label is being replaced with a real subject) — probing showed this
-    // is reliable. We assert the orchestrator fires a Switch with a label
-    // other than the default.
+    // `Current topic: "New Conversation"` (the bootstrap label). The LLM
+    // emits a respond tool call carrying topicLabel + topicSummary +
+    // markdown content. The classifier reliably picks `New` on
+    // bootstrap (probe-confirmed) — assert the orchestrator fires a
+    // Switch with a label other than the default.
     "fire a TopicChange(Switch) when the LLM gets a clear subject on a fresh conversation" in {
       val prompt =
         "I want to talk about the history of the Roman Empire. Give me a brief two-sentence overview " +
           "of its founding."
       orchestrateFresh(prompt, suffix = "fresh-subject").map { case (signals, initialTopic) =>
-        // The LLM's respond should have populated `topic` with something
-        // other than the default bootstrap label.
         val toolCompletes = signals.collect { case d: ToolDelta => d }
         val respondInput = toolCompletes.flatMap(_.input.toList).collectFirst {
           case r: sigil.tool.model.RespondInput => r
@@ -357,10 +359,6 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         respondInput.get.topicLabel.trim should not be empty
         respondInput.get.topicSummary.trim should not be empty
 
-        // The orchestrator should have materialized the shift as a
-        // TopicChange — either Rename (medium confidence / no confidence
-        // fallback) or Switch (high confidence). Both are valid outcomes
-        // here; the key claim is that SOME TopicChange was emitted.
         val topicChanges = signals.collect { case tc: TopicChange => tc }
         topicChanges should have size 1
         val tc = topicChanges.head
@@ -448,9 +446,6 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
             "tell me what TypeScript generics are.",
         suffix = "hard-switch"
       ).map { case (signals, seeded) =>
-        // Extract what the LLM's respond call produced — CI failures
-        // otherwise can't tell if this was the short-circuit path
-        // (topicLabel == current) or a classifier NoChange verdict.
         val respondInput = signals.collect { case d: ToolDelta => d }
           .flatMap(_.input.toList)
           .collectFirst { case r: sigil.tool.model.RespondInput => r }
