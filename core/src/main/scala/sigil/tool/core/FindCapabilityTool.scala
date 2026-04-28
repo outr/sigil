@@ -13,20 +13,18 @@ import sigil.tool.{DiscoveryRequest, ToolExample, ToolName, TypedTool}
 case object FindCapabilityTool extends TypedTool[FindCapabilityInput](
   name = ToolName("find_capability"),
   description =
-    """CALL THIS FIRST when the user asks you to DO something not obviously covered by your current tool
-      |roster. Most tools live outside the default roster — discover them through this call before saying
-      |anything is impossible or unsupported.
+    """CALL THIS FIRST when the user asks you to DO something not in your current tool roster. Most
+      |tools are discovered, not preloaded. Don't say something is unsupported without calling this.
       |
-      |- When matches are returned, CALL the most appropriate one on your next turn — don't just describe it.
-      |- Tools surfaced here are available for ONE subsequent turn; uncalled, they're cleared.
-      |- If no matches, THEN you may tell the user the capability isn't available.
+      |Matches are valid for ONE next turn — call the matched tool then, or it's cleared. If no
+      |matches, you may tell the user it isn't available.
       |
-      |`keywords` — space-separated lowercase alphanumeric terms (no punctuation). Prefer multiple terms:
-      |"send slack channel message" over "slack"; "database users count query" over "database".""".stripMargin,
+      |`keywords` — space-separated lowercase terms; multi-word queries match better
+      |(e.g. "send slack channel message" not just "slack").""".stripMargin,
   examples = List(
-    ToolExample("Send a message on some channel", FindCapabilityInput("send slack channel message")),
-    ToolExample("Wait or pause",                  FindCapabilityInput("sleep wait delay pause")),
-    ToolExample("Concept search",                 FindCapabilityInput("billing invoice payment charge"))
+    ToolExample("Send a message",          FindCapabilityInput("send slack channel message")),
+    ToolExample("Pause / wait / sleep",    FindCapabilityInput("sleep wait delay pause")),
+    ToolExample("Look up by concept",      FindCapabilityInput("billing invoice payment charge"))
   )
 ) {
   override protected def executeTyped(input: FindCapabilityInput, context: TurnContext): rapid.Stream[Event] =

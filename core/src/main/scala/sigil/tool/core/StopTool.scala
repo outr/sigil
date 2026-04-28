@@ -14,17 +14,9 @@ import sigil.tool.model.StopInput
 case object StopTool extends TypedTool[StopInput](
   name = ToolName("stop"),
   description =
-    """Halt the current turn for a target agent (or every agent when no target is specified).
-      |
-      |- `targetParticipantId` — agent to stop. Omit/null to stop ALL agents in the conversation.
-      |- `force` — false (default) lets the current iteration finish then halts; true interrupts the
-      |  in-flight provider call immediately. Use `true` for monitor-agent patterns where a peer is
-      |  about to do something destructive.
-      |- `reason` — optional short explanation shown in UI and logs.""".stripMargin,
-  examples = List(
-    ToolExample("Graceful stop of all agents", StopInput()),
-    ToolExample("Force stop with reason",       StopInput(force = true, reason = Some("Peer about to take destructive action")))
-  )
+    """Halt the turn. Omit `targetParticipantId` to stop ALL agents. `force=true` interrupts an
+      |in-flight call immediately (use for monitor-agent intercepts).""".stripMargin,
+  examples = Nil
 ) {
   override protected def executeTyped(input: StopInput, context: TurnContext): rapid.Stream[Event] =
     rapid.Stream.emits(List(Stop(

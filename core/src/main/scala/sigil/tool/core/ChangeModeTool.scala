@@ -14,16 +14,9 @@ import sigil.tool.model.ChangeModeInput
 case object ChangeModeTool extends TypedTool[ChangeModeInput](
   name = ToolName("change_mode"),
   description =
-    """Switch the agent's current operating mode. The current mode is stated at the top of the system
-      |prompt along with the list of modes available in this conversation. Call this BEFORE attempting
-      |a task whose nature belongs to a different mode — do not start the task in the wrong mode and
-      |then switch.
-      |
-      |Typical example: the current mode is conversational and the user asks you to write code; call
-      |change_mode to the coding mode first, then address the request on the next turn.
-      |
-      |The `mode` argument is the target mode's stable name as shown in the system prompt's mode
-      |listing (e.g. "conversation", "coding"). Unknown names are rejected.""".stripMargin
+    """Switch operating mode. Call BEFORE starting a task that belongs to a different mode — e.g.
+      |in conversation mode and the user asks for code → call change_mode("coding") first, then
+      |code on the next turn. `mode` is the target's stable name from the system prompt's mode list.""".stripMargin
 ) {
   override protected def executeTyped(input: ChangeModeInput, context: TurnContext): rapid.Stream[Event] =
     context.sigil.modeByName(input.mode) match {

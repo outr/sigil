@@ -14,22 +14,9 @@ import sigil.tool.model.{RespondFailureInput, ResponseContent}
 case object RespondFailureTool extends TypedTool[RespondFailureInput](
   name = ToolName("respond_failure"),
   description =
-    """Signal that you can't complete the user's task. Use this instead of `respond` with prose like
-      |"I can't help with that" — the typed Failure block lets the orchestrator and UI react properly.
-      |
-      |- `reason` — short user-facing explanation.
-      |- `recoverable` — true if a retry might succeed (transient: rate limits, network); false if
-      |  the failure is permanent for this request (missing permissions, unsupported input).""".stripMargin,
-  examples = List(
-    ToolExample(
-      "Permanent failure",
-      RespondFailureInput(reason = "I don't have access to internal pricing data.", recoverable = false)
-    ),
-    ToolExample(
-      "Transient failure",
-      RespondFailureInput(reason = "Upstream API timed out — try again in a moment.", recoverable = true)
-    )
-  )
+    """Signal that you can't complete the task. `recoverable` = true if a retry might succeed
+      |(transient: rate limits, network); false if permanent (missing permissions, unsupported input).""".stripMargin,
+  examples = Nil
 ) {
   override protected def executeTyped(input: RespondFailureInput, context: TurnContext): rapid.Stream[Event] = {
     val block = ResponseContent.Failure(reason = input.reason, recoverable = input.recoverable)

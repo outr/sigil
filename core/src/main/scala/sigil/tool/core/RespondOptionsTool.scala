@@ -20,37 +20,11 @@ import sigil.tool.model.{RespondOptionsInput, ResponseContent, SelectOption}
 case object RespondOptionsTool extends TypedTool[RespondOptionsInput](
   name = ToolName("respond_options"),
   description =
-    """Offer the user a fixed set of selectable choices. Use when the user benefits from a structured
-      |question rather than a free-text reply. The user can still answer in natural language.
+    """Offer the user a fixed set of selectable choices. The user may also answer in natural language.
       |
-      |- `prompt` — the question shown above the options.
-      |- `options` — the choices, in display order.
-      |- `allowMultiple` — false (default) = exactly one choice; true = zero or more, with any
-      |  option marked exclusive=true unable to be combined with others (e.g. "None of the above").""".stripMargin,
-  examples = List(
-    ToolExample(
-      "Single-select region picker",
-      RespondOptionsInput(
-        prompt = "Region",
-        options = List(
-          SelectOption(label = "US East", value = "us-east"),
-          SelectOption(label = "EU West", value = "eu-west")
-        )
-      )
-    ),
-    ToolExample(
-      "Multi-select with exclusive 'None'",
-      RespondOptionsInput(
-        prompt = "Notification channels",
-        options = List(
-          SelectOption(label = "Email", value = "email"),
-          SelectOption(label = "SMS", value = "sms"),
-          SelectOption(label = "None", value = "none", exclusive = true)
-        ),
-        allowMultiple = true
-      )
-    )
-  )
+      |- `allowMultiple` — false = exactly one; true = zero or more.
+      |- An `exclusive` option (multi-select only) cannot be combined with others (e.g. "None").""".stripMargin,
+  examples = Nil
 ) {
   override protected def executeTyped(input: RespondOptionsInput, context: TurnContext): rapid.Stream[Event] = {
     val block = ResponseContent.Options(
