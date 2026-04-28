@@ -15,8 +15,8 @@ import sigil.tool.model.{RespondFieldInput, ResponseContent}
 case object RespondFieldTool extends TypedTool[RespondFieldInput](
   name = ToolName("respond_field"),
   description =
-    """Emit a labeled key/value field — for compact metadata (status, source, timestamp). NOT for
-      |free-text answers; use `respond` for those. `icon` is an optional semantic hint.""".stripMargin,
+    """Emit a labeled key/value field — for compact metadata (status, source, timestamp). `icon`
+      |is an optional semantic hint.""".stripMargin,
   examples = Nil
 ) {
   override protected def executeTyped(input: RespondFieldInput, context: TurnContext): rapid.Stream[Event] = {

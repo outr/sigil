@@ -121,16 +121,33 @@ object ConversationSession {
       all.collect { case m: Message if ids.contains(m.participantId) => m }
   }
 
-  /** Concatenate the textual content of a Message into a single trimmed
-    * string. Covers `Text`, `Markdown`, `Heading`, and `Code` blocks
-    * (Markdown is the default `MarkdownContentParser` produces for
-    * plain prose). Convenience for assertion sites that want to
-    * inspect the user-visible reply. */
+  /** Concatenate the user-visible textual content of a Message into a
+    * single trimmed string. Covers every [[ResponseContent]] variant
+    * via an exhaustive match — adding a new variant to the enum will
+    * surface a non-exhaustive-match warning here so the rendering rule
+    * is decided deliberately. Convenience for assertion sites that
+    * want to inspect what the user would see, regardless of which
+    * tool the agent picked. */
   def textOf(m: Message): String =
-    m.content.collect {
-      case t: ResponseContent.Text     => t.text
-      case md: ResponseContent.Markdown => md.text
-      case h: ResponseContent.Heading  => h.text
-      case c: ResponseContent.Code     => c.code
-    }.mkString("\n").trim
+    m.content.map {
+      case ResponseContent.Text(text)                => text
+      case ResponseContent.Markdown(text)            => text
+      case ResponseContent.Heading(text)             => text
+      case ResponseContent.Code(code, _)             => code
+      case ResponseContent.Diff(diff, _)             => diff
+      case ResponseContent.Citation(source, exc, _)  => exc.fold(source)(e => s"$source: $e")
+      case ResponseContent.ItemList(items, _)        => items.mkString("\n")
+      case ResponseContent.Table(headers, rows)      =>
+        (headers :: rows).map(_.mkString(" | ")).mkString("\n")
+      case ResponseContent.Link(url, label)          => s"$label ($url)"
+      case ResponseContent.Image(url, alt)           => alt.fold(url.toString)(a => s"$a ($url)")
+      case ResponseContent.Field(label, value, _)    => s"$label: $value"
+      case ResponseContent.Options(prompt, opts, _)  =>
+        s"$prompt\n" + opts.map(o => s"${o.label}: ${o.value}").mkString("\n")
+      case ResponseContent.Failure(reason, _)        => reason
+      case ResponseContent.TextInput(label, _, _, _) => label
+      case ResponseContent.SecretInput(label, _, _)  => label
+      case ResponseContent.SecretRef(_, label)       => label
+      case ResponseContent.Divider                   => ""
+    }.filter(_.nonEmpty).mkString("\n").trim
 }

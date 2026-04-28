@@ -14,6 +14,7 @@ import spice.http.client.HttpClient
 import spice.http.content.StringContent
 import spice.net.*
 
+import scala.concurrent.duration.*
 import scala.util.Success
 
 /**
@@ -32,7 +33,8 @@ import scala.util.Success
  */
 case class AnthropicProvider(apiKey: String,
                              sigilRef: Sigil,
-                             baseUrl: URL = url"https://api.anthropic.com") extends Provider {
+                             baseUrl: URL = url"https://api.anthropic.com",
+                             streamTimeout: FiniteDuration = 120.seconds) extends Provider {
   override def `type`: ProviderType = ProviderType.Anthropic
   override val providerKey: String = Anthropic.Provider
   override protected def sigil: Sigil = sigilRef
@@ -43,7 +45,7 @@ case class AnthropicProvider(apiKey: String,
       for {
         raw         <- httpRequestFor(input)
         intercepted <- sigilRef.wireInterceptor.before(raw)
-        lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.streamLines()
+        lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(streamTimeout).streamLines()
       } yield {
         val bodyBuf = new StringBuilder
         lines
