@@ -16,9 +16,13 @@ import spice.http.client.HttpClient
 import spice.http.content.StringContent
 import spice.net.*
 
+import scala.concurrent.duration.*
 import scala.util.Success
 
-case class LlamaCppProvider(url: URL, override val models: List[Model], sigilRef: Sigil) extends Provider {
+case class LlamaCppProvider(url: URL,
+                            override val models: List[Model],
+                            sigilRef: Sigil,
+                            streamTimeout: FiniteDuration = 120.seconds) extends Provider {
   override def `type`: ProviderType = ProviderType.LlamaCpp
   override val providerKey: String = LlamaCpp.Provider
 
@@ -33,7 +37,7 @@ case class LlamaCppProvider(url: URL, override val models: List[Model], sigilRef
       for {
         raw         <- httpRequestFor(input)
         intercepted <- sigilRef.wireInterceptor.before(raw)
-        lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.streamLines()
+        lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(streamTimeout).streamLines()
       } yield {
         // Tap the stream to accumulate the full SSE body; invoke
         // `.after()` at stream completion so wireInterceptor records
