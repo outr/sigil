@@ -97,7 +97,11 @@ object DefinitionToSchema {
   }
 
   private def variantBranch(name: String, definition: Definition): Json = {
-    val constProp: (String, Json) = Discriminator -> obj("const" -> str(name))
+    // Discriminator schema: `type: "string"` + `const: <name>`. The
+    // `type` key is mandatory for OpenAI strict mode (rejects schemas
+    // missing it); harmless and accurate for non-strict providers.
+    val constProp: (String, Json) =
+      Discriminator -> obj("type" -> str("string"), "const" -> str(name))
     definition.defType match {
       case DefType.Obj(map) =>
         val required = str(Discriminator) :: map.collect {

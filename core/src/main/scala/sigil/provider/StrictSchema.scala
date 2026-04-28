@@ -65,7 +65,26 @@ object StrictSchema {
     * "everything required" the way OpenAI strict does); just clean
     * up the keys Gemini doesn't tolerate. */
   def forGemini(schema: Json): Json =
-    stripAdditionalProperties(stripUnsupportedKeys(schema))
+    constToEnum(stripAdditionalProperties(stripUnsupportedKeys(schema)))
+
+  /** Recursively rewrite `const: x` to `enum: [x]`. Google's
+    * function-call schema validator doesn't support the `const`
+    * keyword (rejected with "Unknown name 'const'") even though it
+    * accepts `enum`. fabric's polymorphic encoding uses `const` on
+    * each subtype's discriminator field; this rewrite produces the
+    * single-element `enum` form Google accepts without changing the
+    * matched-shape semantics. */
+  def constToEnum(schema: Json): Json = schema match {
+    case Obj(map) =>
+      val rewritten = map.iterator.map {
+        case ("const", v) => ("enum", arr(v))
+        case (k, v)       => (k, constToEnum(v))
+      }.toList
+      obj(rewritten*)
+    case Arr(items, _) =>
+      arr(items.map(constToEnum)*)
+    case other => other
+  }
 
   /** Anthropic doesn't grammar-constrain tool-call args at the schema
     * level. The post-decode validator is the real safety net. We strip
@@ -139,14 +158,21 @@ object StrictSchema {
   }
 
   /** Recurse into arrays / oneOf / anyOf branches; strip unsupported
-    * keywords. */
+    * keywords. Convert `oneOf` → `anyOf`: OpenAI strict mode rejects
+    * `oneOf` nested under `anyOf` (which Option-wrapped polymorphic
+    * fields produce — `Option[ParticipantId]` becomes
+    * `anyOf: [{oneOf: [...subtypes...]}, {type: null}]`). For
+    * fabric's discriminated polymorphic encoding the two are
+    * semantically equivalent — every branch has a unique
+    * `type`-discriminator `const`, so at most one matches and `anyOf`
+    * accepts the same shapes as `oneOf` would. */
   private def transformOther(map: Map[String, Json]): Json = {
     val recursed = map.map {
-      case ("items", v)      => "items"      -> transform(v)
-      case ("oneOf", Arr(a, _)) => "oneOf"      -> arr(a.map(transform)*)
-      case ("anyOf", Arr(a, _)) => "anyOf"      -> arr(a.map(transform)*)
-      case ("allOf", Arr(a, _)) => "allOf"      -> arr(a.map(transform)*)
-      case kv                => kv
+      case ("items", v)         => "items" -> transform(v)
+      case ("oneOf", Arr(a, _)) => "anyOf" -> arr(a.map(transform)*)
+      case ("anyOf", Arr(a, _)) => "anyOf" -> arr(a.map(transform)*)
+      case ("allOf", Arr(a, _)) => "allOf" -> arr(a.map(transform)*)
+      case kv                   => kv
     }
     obj(stripUnsupported(recursed).toList*)
   }

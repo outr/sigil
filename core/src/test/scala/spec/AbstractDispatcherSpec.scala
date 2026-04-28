@@ -6,10 +6,10 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.Conversation
 import sigil.db.Model
-import sigil.event.{AgentState, Message, ModeChange, Stop, ToolInvoke}
+import sigil.event.{AgentState, Event, Message, ModeChange, Stop, ToolInvoke}
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant}
 import sigil.provider.{GenerationSettings, Instructions, Mode, ConversationMode, Provider}
-import sigil.signal.{AgentActivity, AgentStateDelta, EventState, MessageDelta, Signal, ToolDelta}
+import sigil.signal.{AgentActivity, AgentStateDelta, Delta, EventState, MessageDelta, Signal, ToolDelta}
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tool.core.CoreTools
 import sigil.tool.model.ResponseContent
@@ -422,7 +422,10 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         // participants registered. (The recorder may also contain bleed-over
         // from prior tests' lock-cleanup fibers; scope assertions to this
         // conversation.)
-        val myConv = signals.filter(_.conversationId == conversationId)
+        val myConv = signals.collect {
+          case e: Event if e.conversationId == conversationId => e: Signal
+          case d: Delta if d.conversationId == conversationId => d: Signal
+        }
         myConv should contain(userMessage)
         // No agent ran for this conversation, so no AgentState appears.
         myConv.collect { case a: AgentState => a } shouldBe empty

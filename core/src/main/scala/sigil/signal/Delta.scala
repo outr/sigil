@@ -1,6 +1,7 @@
 package sigil.signal
 
 import lightdb.id.Id
+import sigil.conversation.Conversation
 import sigil.event.Event
 
 /**
@@ -19,6 +20,13 @@ import sigil.event.Event
  */
 trait Delta extends Signal {
   def target: Id[? <: Event]
+
+  /** The conversation this delta lives in — typically duplicated from
+    * the target Event's `conversationId` so routing / per-viewer
+    * filtering doesn't need a DB lookup. Concrete subtypes declare
+    * the field; the trait redeclares the accessor so polymorphic
+    * `delta.conversationId` reads work. */
+  def conversationId: Id[sigil.conversation.Conversation]
 
   /**
    * Apply this delta's mutation semantics to the given target Event,

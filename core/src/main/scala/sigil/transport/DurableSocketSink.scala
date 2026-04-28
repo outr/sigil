@@ -3,15 +3,15 @@ package sigil.transport
 import fabric.rw.*
 import rapid.Task
 import sigil.event.Event
-import sigil.signal.{Delta, Signal}
+import sigil.signal.{Delta, Notice, Signal}
 import spice.http.durable.DurableSession
 
 /**
  * [[SignalSink]] backed by a single spice [[DurableSession]]. Events
  * go through the session's durable channel (`protocol.push`) so they
- * become resume-able from the eventLog; Deltas are sent as ephemeral
- * frames (`sendEphemeral`) since they describe in-flight state and
- * shouldn't be replayed on reconnect.
+ * become resume-able from the eventLog; Deltas and Notices are sent
+ * as ephemeral frames (`sendEphemeral`) since they describe in-flight
+ * state / transient pulses and shouldn't be replayed on reconnect.
  *
  * Pair with a [[SigilDbEventLog]] when constructing the
  * `DurableSocketServer` so the durable channel's `append`/`replay`
@@ -29,6 +29,8 @@ final class DurableSocketSink[Id: RW, Info: RW](
       session.protocol.push(e).unit
     case d: Delta =>
       Task { session.protocol.sendEphemeral(d.json(using summon[RW[Signal]])) }
+    case n: Notice =>
+      Task { session.protocol.sendEphemeral(n.json(using summon[RW[Signal]])) }
   }
 
   override def close: Task[Unit] = Task { session.protocol.close() }
