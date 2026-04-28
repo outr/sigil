@@ -5,7 +5,7 @@ import lightdb.id.Id
 import sigil.conversation.Conversation
 import sigil.event.{Event, Message}
 import sigil.provider.TokenUsage
-import sigil.tool.model.ResponseContent
+import sigil.tool.model.{MultipartParser, ResponseContent}
 
 /**
  * A transient update to an active [[sigil.event.Message]]. Carries whatever
@@ -73,10 +73,10 @@ case class MessageDelta(target: Id[Event],
     case ContentKind.Code => ResponseContent.Code(cd.delta, cd.arg)
     case ContentKind.Heading => ResponseContent.Heading(cd.delta)
     case ContentKind.Divider => ResponseContent.Divider
-    case ContentKind.Field | ContentKind.Options =>
-      // JSON-bodied kinds — defer parse to the multipart parser via Text fallback.
-      // Real implementation would parse the JSON body to the structured type.
-      ResponseContent.Text(cd.delta)
+    case ContentKind.Options =>
+      MultipartParser.parseOptions(cd.delta).getOrElse(ResponseContent.Text(cd.delta))
+    case ContentKind.Field =>
+      MultipartParser.parseField(cd.delta).getOrElse(ResponseContent.Text(cd.delta))
     case _ => ResponseContent.Text(cd.delta)
   }
 }

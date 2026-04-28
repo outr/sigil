@@ -47,20 +47,6 @@ case object RespondTool extends TypedTool[RespondInput](
       |  ▶Divider      — visual separator between sections (no body)
       |  ▶Options      — structured multiple-choice question; body is a JSON object
       |
-      |Card-shaped content (news items, product previews, status summaries) is expressed as a flat sequence of
-      |blocks — typically ▶Heading followed by ▶Field entries and a ▶Link. The renderer decides whether to
-      |group them as a visual card, a chat card, or plain formatted text.
-      |
-      |Example — a news item:
-      |▶Heading
-      |Scala 4.0 Released
-      |▶Field
-      |{"label":"Source","value":"Scala Center","icon":"article"}
-      |▶Field
-      |{"label":"Published","value":"2026-03-14","icon":"clock"}
-      |▶Text
-      |Scala 4.0 brings refined macros, faster compilation, and improved cross-platform tooling.
-      |
       |▶Options body is a JSON object:
       |  { "prompt": string,
       |    "allowMultiple": boolean (default false — only one option can be selected),
