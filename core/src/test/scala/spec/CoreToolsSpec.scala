@@ -15,11 +15,11 @@ import sigil.tool.util.LookupInformationTool
 import sigil.tool.model.{LookupInformationInput, RespondInput, StopInput}
 
 /**
- * Round-trip coverage for the new framework tools that close framework
- * gaps exposed by the audit:
- *   - [[RespondTool]] — every call carries a required `topic`; the Message
- *     it emits is tagged with the conversation's `currentTopicId`.
- *     Topic-change resolution itself lives in
+ * Round-trip coverage for framework tools where direct `execute` semantics
+ * are non-obvious:
+ *   - [[RespondTool]] — every call carries `topicLabel` + `topicSummary`;
+ *     the Message it emits is tagged with the conversation's
+ *     `currentTopicId`. Topic-change resolution itself lives in
  *     [[sigil.orchestrator.Orchestrator]], not this tool — so the direct
  *     `execute` path here emits only the Message, not any `TopicChange`.
  *   - [[LookupInformationTool]] — resolves an Information id via
@@ -50,7 +50,7 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val input = RespondInput(
         topicLabel = "Refactoring Notes",
         topicSummary = "Notes on refactoring strategies.",
-        content = "▶Text\nHello!"
+        content = "Hello!"
       )
       val events = RespondTool
         .execute(input, turnContextFor(convId))

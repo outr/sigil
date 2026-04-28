@@ -3,7 +3,7 @@ package sigil.provider
 import fabric.rw.*
 import fabric.io.JsonParser
 import sigil.tool.core.RespondTool
-import sigil.tool.model.{JsonStringFieldExtractor, MultipartStreamParser, ToolStreamEvent}
+import sigil.tool.model.JsonStringFieldExtractor
 import sigil.tool.{Tool, ToolInput, ToolInputValidator}
 
 import scala.collection.mutable
@@ -15,16 +15,17 @@ import scala.collection.mutable
  * arrive from the upstream stream) and emits:
  *   - [[ProviderEvent.ToolCallStart]] when [[start]] is called for a new index
  *   - [[ProviderEvent.ContentBlockStart]] / [[ProviderEvent.ContentBlockDelta]]
- *     for the respond tool, while its `content` string decodes incrementally
- *     through the multipart format
+ *     for the `respond` tool, while its `content` markdown string decodes
+ *     incrementally — subscribers render character-by-character as the
+ *     tool args stream
  *   - [[ProviderEvent.ToolCallComplete]] for each accumulated call when
  *     [[complete]] is invoked, with fully-parsed, typed inputs
  *
  * The accumulator is constructed with the set of tools available on the
  * originating request. On completion, each call's tool name is used to look
  * up the matching tool and deserialize the accumulated JSON args using that
- * tool's specific [[sigil.tool.Tool.inputRW]] — dispatch by name, not by a discriminator
- * injected into the args.
+ * tool's specific [[sigil.tool.Tool.inputRW]] — dispatch by name, not by a
+ * discriminator injected into the args.
  *
  * Each provider's stream parser is responsible for translating upstream events
  * into calls to [[start]], [[appendArgs]], and at stream end [[complete]].
@@ -80,13 +81,6 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty) {
         case Some(tool) =>
           try {
             val json = JsonParser(s.buf.toString)
-            // Validate against the schema's constraints (pattern, length,
-            // numeric bounds, ...) BEFORE writing to the typed input.
-            // OpenAI strict mode strips most of these from the wire schema
-            // because grammar-constrained decoders can't enforce them at
-            // generation time; non-strict providers also treat them as
-            // advisory. Re-checking here means the typed input handed to
-            // `tool.execute` always satisfies its declared constraints.
             val violations = ToolInputValidator.validate(json, tool.inputRW.definition)
             if (violations.nonEmpty) {
               Vector(ProviderEvent.Error(
@@ -107,23 +101,37 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty) {
     streamFlush ++ completes
   }
 
-  private case class CallState(callId: CallId, toolName: String, buf: StringBuilder, processor: Option[RespondStreamProcessor])
+  private case class CallState(callId: CallId,
+                                toolName: String,
+                                buf: StringBuilder,
+                                processor: Option[RespondStreamProcessor])
 
+  /**
+   * Streams the `respond` tool's `content` field text out of in-flight JSON
+   * args. The orchestrator interprets the resulting `ContentBlockStart` +
+   * `ContentBlockDelta` events as a single Markdown block — no multipart
+   * format decoding here; that lives in
+   * [[sigil.tool.model.MarkdownContentParser]] and runs at
+   * `ToolCallComplete` time when the full content string is available.
+   */
   final private class RespondStreamProcessor(callId: CallId) {
     private val extractor = new JsonStringFieldExtractor("content")
-    private val parser = new MultipartStreamParser
+    private var blockStarted = false
 
     def feed(fragment: String): Vector[ProviderEvent] = {
       val text = extractor.append(fragment)
-      if (text.isEmpty) Vector.empty else translate(parser.append(text))
+      if (text.isEmpty) Vector.empty
+      else {
+        val out = Vector.newBuilder[ProviderEvent]
+        if (!blockStarted) {
+          blockStarted = true
+          out += ProviderEvent.ContentBlockStart(callId, "Markdown", None)
+        }
+        out += ProviderEvent.ContentBlockDelta(callId, text)
+        out.result()
+      }
     }
 
-    def finish(): Vector[ProviderEvent] = translate(parser.finish())
-
-    private def translate(events: Vector[ToolStreamEvent]): Vector[ProviderEvent] =
-      events.map {
-        case ToolStreamEvent.BlockStart(t, a) => ProviderEvent.ContentBlockStart(callId, t, a)
-        case ToolStreamEvent.BlockDelta(t) => ProviderEvent.ContentBlockDelta(callId, t)
-      }
+    def finish(): Vector[ProviderEvent] = Vector.empty
   }
 }

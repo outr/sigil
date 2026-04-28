@@ -121,9 +121,16 @@ object ConversationSession {
       all.collect { case m: Message if ids.contains(m.participantId) => m }
   }
 
-  /** Concatenate all `ResponseContent.Text` chunks of a Message into a
-    * single trimmed string. Convenience for assertion sites that want
-    * to inspect the user-visible reply. */
+  /** Concatenate the textual content of a Message into a single trimmed
+    * string. Covers `Text`, `Markdown`, `Heading`, and `Code` blocks
+    * (Markdown is the default `MarkdownContentParser` produces for
+    * plain prose). Convenience for assertion sites that want to
+    * inspect the user-visible reply. */
   def textOf(m: Message): String =
-    m.content.collect { case t: ResponseContent.Text => t.text }.mkString.trim
+    m.content.collect {
+      case t: ResponseContent.Text     => t.text
+      case md: ResponseContent.Markdown => md.text
+      case h: ResponseContent.Heading  => h.text
+      case c: ResponseContent.Code     => c.code
+    }.mkString("\n").trim
 }

@@ -296,8 +296,14 @@ trait Sigil {
   def effectiveToolNames(agent: AgentParticipant,
                          mode: Mode,
                          suggested: List[sigil.tool.ToolName]): List[sigil.tool.ToolName] = {
-    import sigil.tool.core.{ChangeModeTool, FindCapabilityTool, NoResponseTool, RespondTool, StopTool}
-    val essentials = List(RespondTool, NoResponseTool, ChangeModeTool, StopTool).map(_.schema.name)
+    import sigil.tool.core.{
+      ChangeModeTool, FindCapabilityTool, NoResponseTool, RespondTool,
+      RespondFailureTool, RespondFieldTool, RespondOptionsTool, StopTool
+    }
+    val essentials = List(
+      RespondTool, RespondOptionsTool, RespondFieldTool, RespondFailureTool,
+      NoResponseTool, ChangeModeTool, StopTool
+    ).map(_.schema.name)
 
     case class PolicyState(extras: List[sigil.tool.ToolName],
                            includesFindCapability: Boolean,
@@ -1438,6 +1444,11 @@ trait Sigil {
           priors.find(_.label == other)
             .map(TopicShiftResult.Return(_))
             .getOrElse(TopicShiftResult.NoChange)
+      }
+    }.handleError { e =>
+      Task {
+        scribe.warn(s"classifyTopicShift failed (${e.getClass.getSimpleName}: ${e.getMessage}) — falling back to NoChange")
+        TopicShiftResult.NoChange
       }
     }
   }

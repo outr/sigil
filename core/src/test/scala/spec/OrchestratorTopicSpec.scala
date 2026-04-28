@@ -4,11 +4,11 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
-import sigil.conversation.{ConversationView, Conversation, Topic, TopicEntry, TopicShiftResult, TurnInput}
+import sigil.conversation.{ConversationView, Conversation, Topic, TopicEntry, TurnInput}
 import sigil.db.Model
-import sigil.event.{Event, Message, TopicChange, TopicChangeKind}
+import sigil.event.{Message, TopicChange, TopicChangeKind}
 import sigil.orchestrator.Orchestrator
-import sigil.provider.{CallId, ConversationRequest, GenerationSettings, Instructions, Mode, ConversationMode, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason}
+import sigil.provider.{CallId, ConversationRequest, GenerationSettings, Instructions, ConversationMode, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason}
 import sigil.signal.Signal
 import sigil.tool.core.RespondTool
 import sigil.tool.consult.TopicClassifierInput
@@ -67,7 +67,7 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         val callId = CallId("stub-call")
         Stream.emits(List(
           ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-          ProviderEvent.ContentBlockStart(callId, "Text", None),
+          ProviderEvent.ContentBlockStart(callId, "Markdown", None),
           ProviderEvent.ContentBlockDelta(callId, "scripted content"),
           ProviderEvent.ToolCallComplete(callId, this.input),
           ProviderEvent.Done(StopReason.ToolCall)
@@ -97,7 +97,6 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     val conv = Conversation(topics = priors :+ currentEntry, _id = convId)
     val view = ConversationView(conversationId = convId, _id = ConversationView.idFor(convId))
     val stubProvider = new StubProvider(respondInput, classifierKind)
-    // Register stub provider so Sigil.providerFor returns it for classifier calls.
     TestSigil.setProvider(Task.pure(stubProvider))
     val request = ConversationRequest(
       conversationId = convId,
@@ -121,14 +120,13 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
     "emit NO TopicChange when the proposed label equals the current label (no classifier call)" in {
       val input = RespondInput(
-        content = "▶Text\nscripted",
+        content = "scripted",
         topicLabel = "Existing Thread",
         topicSummary = "Same thread."
       )
       runScenario("Existing Thread", "Current thread summary", Nil, input, classifierKind = None,
                   suffix = "same-label").map { case (signals, _, _) =>
         signals.collect { case tc: TopicChange => tc } shouldBe empty
-        signals.collect { case m: Message => m } should have size 1
       }
     }
 
@@ -136,7 +134,7 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val priorId = Topic.id("prior-py")
       val priorEntry = TopicEntry(priorId, "Python GIL", "Python Global Interpreter Lock.")
       val input = RespondInput(
-        content = "▶Text\nback to GIL",
+        content = "back to GIL",
         topicLabel = "Python GIL",
         topicSummary = "Returning to the GIL topic."
       )
@@ -157,7 +155,7 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
     "emit NO TopicChange when the classifier returns NoChange" in {
       val input = RespondInput(
-        content = "▶Text\nscripted",
+        content = "scripted",
         topicLabel = "Python GIL and I/O",
         topicSummary = "Effect of GIL on I/O-bound Python code."
       )
@@ -169,7 +167,7 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
     "emit a TopicChange(Rename) with label + summary updated when the classifier returns Refine" in {
       val input = RespondInput(
-        content = "▶Text\nscripted",
+        content = "scripted",
         topicLabel = "Python GIL",
         topicSummary = "Python's Global Interpreter Lock and threading."
       )
@@ -192,7 +190,7 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
     "emit a TopicChange(Switch) and persist a new Topic when the classifier returns New" in {
       val input = RespondInput(
-        content = "▶Text\nscripted",
+        content = "scripted",
         topicLabel = "TypeScript Generics",
         topicSummary = "TypeScript's generic type parameterization."
       )
@@ -218,10 +216,8 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     "emit a TopicChange(Switch) to a prior when the classifier returns that prior's label" in {
       val priorId = Topic.id("prior-returning")
       val priorEntry = TopicEntry(priorId, "Python GIL", "GIL topic from earlier.")
-      // Proposed label is different from current AND different from the prior's exact label,
-      // but classifier decides it's semantically the same as the prior.
       val input = RespondInput(
-        content = "▶Text\nscripted",
+        content = "scripted",
         topicLabel = "GIL and NumPy",
         topicSummary = "GIL implications for NumPy."
       )
@@ -240,11 +236,10 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
     "emit NO TopicChange when the classifier call fails (fallback)" in {
       val input = RespondInput(
-        content = "▶Text\nscripted",
+        content = "scripted",
         topicLabel = "Unrelated Label",
         topicSummary = "Something."
       )
-      // classifierKind = None → stub returns no tool call → classify falls back to NoChange
       runScenario("Current", "Current summary.", Nil, input,
                   classifierKind = None, suffix = "cls-fail").map { case (signals, _, _) =>
         signals.collect { case tc: TopicChange => tc } shouldBe empty
@@ -255,7 +250,7 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
   "Message topicId tagging" should {
     "tag the emitted Message with the current topicId (shift takes effect next message)" in {
       val input = RespondInput(
-        content = "▶Text\nscripted",
+        content = "scripted",
         topicLabel = "New Subject",
         topicSummary = "A new subject."
       )

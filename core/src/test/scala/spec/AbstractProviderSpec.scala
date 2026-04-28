@@ -10,7 +10,7 @@ import sigil.event.Message
 import sigil.provider.{ConversationRequest, Effort, GenerationSettings, Instructions, Mode, ConversationMode, Provider, ProviderEvent, StopReason}
 import sigil.tool.core.{ChangeModeTool, CoreTools, FindCapabilityInput, RespondTool}
 import sigil.tool.{Tool, ToolInput}
-import sigil.tool.model.{ChangeModeInput, RespondInput, ResponseContent}
+import sigil.tool.model.{ChangeModeInput, RespondInput, RespondOptionsInput, ResponseContent}
 
 trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -62,18 +62,12 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "perform a round-trip request via the respond tool" in
       request("What is 2+2? Respond with just the number.").map { events =>
         val start = events.collectFirst { case s: ProviderEvent.ToolCallStart => s }
-        // ProviderEvent.ToolCallStart.toolName is a wire-level String
-        // (before conversion to ToolName at the Orchestrator boundary).
         start.map(_.toolName) shouldBe Some(RespondTool.schema.name.value)
 
-        val blockStart = events.collectFirst { case s: ProviderEvent.ContentBlockStart => s }
-        blockStart.map(_.blockType) shouldBe Some("Text")
-
-        val streamedText = events.collect { case ProviderEvent.ContentBlockDelta(_, t) => t }.mkString
-        streamedText.trim should be("4")
-
         val complete = events.collectFirst { case ProviderEvent.ToolCallComplete(_, i: RespondInput) => i }
-        complete.map(_.content.trim) shouldBe Some("▶Text\n4")
+        complete should not be empty
+        complete.get.content should include("4")
+        complete.get.topicLabel.trim should not be empty
 
         val usage = events.collectFirst { case u: ProviderEvent.Usage => u }
         usage should not be empty
@@ -82,30 +76,24 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         events.last shouldBe a[ProviderEvent.Done]
         events.last.asInstanceOf[ProviderEvent.Done].stopReason shouldBe StopReason.ToolCall
       }
-    "emit a single-select ▶Options block when the user asks to be presented choices" in
+    "emit a single-select Options block via respond_options when the user asks to be presented choices" in
       request(
         "I need to pick a backend language for a new web service. Ask me which of Python, Node.js, or Go I want."
       ).map { events =>
-        val complete = events.collectFirst { case ProviderEvent.ToolCallComplete(_, i: RespondInput) => i }
+        val complete = events.collectFirst { case ProviderEvent.ToolCallComplete(_, i: RespondOptionsInput) => i }
         complete should not be empty
-        val blocks = sigil.tool.model.MultipartParser.parse(complete.get.content)
-        val options = blocks.collectFirst { case o: ResponseContent.Options => o }
-        options should not be empty
-        options.get.allowMultiple should be(false)
-        options.get.options.size should be(3)
+        complete.get.allowMultiple should be(false)
+        complete.get.options.size should be(3)
       }
-    "emit a multi-select ▶Options block with an exclusive escape-hatch option" in
+    "emit a multi-select Options block with an exclusive escape-hatch option via respond_options" in
       request(
         "I want to enable notifications. Ask me which of email, SMS, or push I want — multiple selections are allowed. Also include a None option that cannot be combined with the others."
       ).map { events =>
-        val complete = events.collectFirst { case ProviderEvent.ToolCallComplete(_, i: RespondInput) => i }
+        val complete = events.collectFirst { case ProviderEvent.ToolCallComplete(_, i: RespondOptionsInput) => i }
         complete should not be empty
-        val blocks = sigil.tool.model.MultipartParser.parse(complete.get.content)
-        val options = blocks.collectFirst { case o: ResponseContent.Options => o }
-        options should not be empty
-        options.get.allowMultiple should be(true)
-        options.get.options.exists(_.exclusive) should be(true)
-        options.get.options.count(_.exclusive) should be(1)
+        complete.get.allowMultiple should be(true)
+        complete.get.options.exists(_.exclusive) should be(true)
+        complete.get.options.count(_.exclusive) should be(1)
       }
     "call find_capability when the user requests an action no core tool can perform" in
       request(
@@ -135,9 +123,6 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       }
     if (supportsThinking) {
       "still round-trip a tool call when thinking is enabled" in {
-        // Anthropic requires temperature=1.0 with thinking; keep the
-        // generation settings permissive for all three providers and
-        // give the model enough budget to think *and* emit a call.
         val gen = GenerationSettings(
           maxOutputTokens = Some(3000),
           temperature = Some(1.0),

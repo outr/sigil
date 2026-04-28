@@ -63,6 +63,7 @@ lazy val core = (project in file("core"))
       "com.outr" %% "spice-client-netty" % spiceVersion,
       "com.outr" %% "spice-server" % spiceVersion,
       "com.outr" %% "lightdb-all" % lightdbVersion,
+      "org.commonmark" % "commonmark" % "0.27.0",
       "org.scalatest" %% "scalatest" % scalatestVersion % Test,
       "com.outr" %% "rapid-test" % rapidVersion % Test,
       "com.outr" %% "spice-server-undertow" % spiceVersion % Test

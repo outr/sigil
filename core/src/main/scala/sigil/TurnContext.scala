@@ -40,6 +40,17 @@ import sigil.participant.ParticipantId
  *                            AgentState without a DB lookup. `None` when no
  *                            AgentState is active (e.g., user-typed Message
  *                            being published externally).
+ * @param currentMessageId    the id of the in-flight assistant
+ *                            [[sigil.event.Message]] for the current turn,
+ *                            when one is being assembled. Set by the
+ *                            orchestrator when content/atomic block tool
+ *                            output starts arriving so atomic content
+ *                            tools (`respond_options`, `respond_field`,
+ *                            `respond_failure`) can target their
+ *                            [[sigil.signal.MessageDelta]] at the same
+ *                            in-flight Message that the markdown content
+ *                            stream is being merged into. `None` before
+ *                            any content has been emitted on this turn.
  *
  * Chain is runtime-only — never persisted on Events. Each invocation's caller
  * supplies it fresh.
@@ -49,7 +60,8 @@ case class TurnContext(sigil: Sigil,
                        conversation: Conversation,
                        conversationView: ConversationView,
                        turnInput: TurnInput,
-                       currentAgentStateId: Option[Id[Event]] = None) {
+                       currentAgentStateId: Option[Id[Event]] = None,
+                       currentMessageId: Option[Id[Event]] = None) {
 
   /**
    * The participant currently acting — `chain.last`.

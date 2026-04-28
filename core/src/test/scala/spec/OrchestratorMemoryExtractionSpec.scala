@@ -13,6 +13,7 @@ import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopPro
 import sigil.event.Event
 import sigil.participant.ParticipantId
 import sigil.provider.{CallId, ConversationRequest, GenerationSettings, Instructions, Mode, ConversationMode, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason}
+import _root_.sigil.tool.model.RespondInput
 import sigil.orchestrator.Orchestrator
 import spice.http.HttpRequest
 
@@ -72,16 +73,21 @@ class OrchestratorMemoryExtractionSpec extends AsyncWordSpec with AsyncTaskSpec 
     override protected def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
       Task.error(new UnsupportedOperationException("StubProvider"))
     override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
-      // Emit a text-only response (no respond tool call) so the
-      // orchestrator's topic classifier path doesn't run — we just
-      // want the turn-text accumulator + Done hook to trigger the
-      // memory extractor.
+      // Streaming respond — the orchestrator's ContentBlockDelta path
+      // accumulates "Hello world" into the in-flight Message; Done
+      // fires the memory extractor with the buffered text.
       val callId = CallId("text-1")
       Stream.emits(List(
-        ProviderEvent.ContentBlockStart(callId, "Text", None),
+        ProviderEvent.ToolCallStart(callId, "respond"),
+        ProviderEvent.ContentBlockStart(callId, "Markdown", None),
         ProviderEvent.ContentBlockDelta(callId, "Hello "),
         ProviderEvent.ContentBlockDelta(callId, "world"),
-        ProviderEvent.Done(StopReason.Complete)
+        ProviderEvent.ToolCallComplete(callId, RespondInput(
+          topicLabel = "Greeting",
+          topicSummary = "A simple greeting.",
+          content = "Hello world"
+        )),
+        ProviderEvent.Done(StopReason.ToolCall)
       ))
     }
   }

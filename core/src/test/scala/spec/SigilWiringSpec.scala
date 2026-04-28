@@ -54,7 +54,7 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
         participantId = TestUser,
         conversationId = Conversation.id("c1"),
         topicId = TestTopicId,
-        input = Some(RespondInput(topicLabel = "Chat", topicSummary = "Casual chat.", content = "▶Text\nhi"))
+        input = Some(RespondInput(topicLabel = "Chat", topicSummary = "Casual chat.", content = "hi"))
       )
       val restored = roundTripSignal(original)
       restored shouldBe a[ToolInvoke]
@@ -143,14 +143,14 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
       val original: ToolInput = RespondInput(
         topicLabel = "Greetings",
         topicSummary = "A friendly greeting exchange.",
-        content = "▶Text\nhello"
+        content = "hello"
       )
       val restored = roundTripToolInput(original)
       restored shouldBe a[RespondInput]
       val r = restored.asInstanceOf[RespondInput]
-      r.topicLabel shouldBe "Greetings"
+      r.topicLabel   shouldBe "Greetings"
       r.topicSummary shouldBe "A friendly greeting exchange."
-      r.content shouldBe "▶Text\nhello"
+      r.content      shouldBe "hello"
     }
 
     "round-trip a ChangeModeInput (core tool)" in {
