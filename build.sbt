@@ -6,7 +6,7 @@ ThisBuild / scalaVersion := "3.8.3"
 ThisBuild / githubOwner := "outr"
 ThisBuild / githubRepository := "sigil"
 
-val rapidVersion: String = "2.9.2"
+val rapidVersion: String = "2.9.3"
 
 val spiceVersion: String = "1.8.0-SNAPSHOT"
 
@@ -52,7 +52,7 @@ lazy val root = (project in file("."))
   )
 
 lazy val core = (project in file("core"))
-  .settings(docNoLinkWarnings*)
+  .settings(docNoLinkWarnings *)
   .settings(
     name := "sigil-core",
     libraryDependencies ++= Seq(
@@ -85,7 +85,7 @@ lazy val core = (project in file("core"))
 
 lazy val secrets = (project in file("secrets"))
   .dependsOn(core % "compile->compile;test->test")
-  .settings(docNoLinkWarnings*)
+  .settings(docNoLinkWarnings *)
   .settings(
     name := "sigil-secrets",
     libraryDependencies ++= Seq(
@@ -107,7 +107,7 @@ lazy val secrets = (project in file("secrets"))
 
 lazy val script = (project in file("script"))
   .dependsOn(core % "compile->compile;test->test")
-  .settings(docNoLinkWarnings*)
+  .settings(docNoLinkWarnings *)
   .settings(
     name := "sigil-script",
     libraryDependencies ++= Seq(
@@ -131,7 +131,7 @@ lazy val script = (project in file("script"))
 
 lazy val mcp = (project in file("mcp"))
   .dependsOn(core % "compile->compile;test->test")
-  .settings(docNoLinkWarnings*)
+  .settings(docNoLinkWarnings *)
   .settings(
     name := "sigil-mcp",
     libraryDependencies ++= Seq(
