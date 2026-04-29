@@ -11,7 +11,7 @@ import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentPart
 import sigil.provider.{GenerationSettings, Instructions, Mode, ConversationMode, Provider}
 import sigil.signal.{AgentActivity, AgentStateDelta, Delta, EventState, MessageDelta, Signal, ToolDelta}
 import sigil.tool.{Tool, ToolInput, ToolName}
-import sigil.tool.core.CoreTools
+import sigil.tool.core.{ChangeModeTool, CoreTools}
 import sigil.tool.model.ResponseContent
 
 import scala.concurrent.duration.*
@@ -35,10 +35,16 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
   /** Tool names the test agent advertises. CoreTools' default roster
     * plus the synthetic SendSlackMessageTool (so `find_capability` has
-    * an app-contributed catalog entry to surface) and the non-core
+    * an app-contributed catalog entry to surface), the opt-in
+    * `change_mode` tool (required by the change_mode self-loop test —
+    * `change_mode` is not in `CoreTools.all`), and the non-core
     * SleepTool (required by the graceful/force stop tests). */
   protected def toolNames: List[ToolName] =
-    CoreTools.coreToolNames ++ List(SendSlackMessageTool.schema.name, sigil.tool.util.SleepTool.schema.name)
+    CoreTools.coreToolNames ++ List(
+      ChangeModeTool.schema.name,
+      SendSlackMessageTool.schema.name,
+      sigil.tool.util.SleepTool.schema.name
+    )
 
   protected def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(

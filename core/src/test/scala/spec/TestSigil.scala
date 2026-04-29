@@ -55,6 +55,7 @@ object TestSigil extends Sigil {
   // DbToolFinder resolves by name from there.
   override def staticTools: List[Tool] =
     super.staticTools ++ List(
+      sigil.tool.core.ChangeModeTool,
       SendSlackMessageTool,
       sigil.tool.util.SleepTool,
       sigil.tool.util.LookupInformationTool,

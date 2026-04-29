@@ -79,7 +79,7 @@ case class GoogleProvider(apiKey: String,
     // built-in tools get their own top-level entries in the `tools` array.
     val functionTools =
       if (input.tools.isEmpty) Vector.empty
-      else Vector(obj("functionDeclarations" -> arr(input.tools.map(toFunctionDeclaration)*)))
+      else Vector(obj("functionDeclarations" -> arr(input.tools.map(t => toFunctionDeclaration(t, input.currentMode))*)))
     val builtInTools = input.builtInTools.iterator.flatMap(renderBuiltIn).toVector
     val toolsArr = functionTools ++ builtInTools
 
@@ -161,11 +161,11 @@ case class GoogleProvider(apiKey: String,
     * token-level decoding. The latter are also stripped on OpenAI
     * strict mode — sigil preserves them on the Scala types for
     * post-decode validation. */
-  private def toFunctionDeclaration(t: Tool): Json = {
+  private def toFunctionDeclaration(t: Tool, mode: Mode): Json = {
     val s = t.schema
     obj(
       "name"        -> str(s.name.value),
-      "description" -> str(renderDescription(s)),
+      "description" -> str(renderDescription(t, mode)),
       "parameters"  -> StrictSchema.forGemini(DefinitionToSchema(s.input))
     )
   }
@@ -176,15 +176,17 @@ case class GoogleProvider(apiKey: String,
     case _ => None
   }
 
-  private def renderDescription[I <: ToolInput](schema: ToolSchema): String =
-    if (schema.examples.isEmpty) schema.description
+  private def renderDescription(tool: Tool, mode: Mode): String = {
+    val base = tool.descriptionFor(mode, sigil)
+    if (tool.examples.isEmpty) base
     else {
-      val rendered = schema.examples.map { e =>
+      val rendered = tool.examples.map { e =>
         val json = JsonFormatter.Compact(stripPolyDiscriminator(summon[fabric.rw.RW[ToolInput]].read(e.input)))
         s"- ${e.description}: $json"
       }.mkString("\n")
-      s"${schema.description}\n\nExamples:\n$rendered"
+      s"$base\n\nExamples:\n$rendered"
     }
+  }
 
   private def stripPolyDiscriminator(json: Json): Json = json match {
     case o: Obj => Obj(o.value - "type")

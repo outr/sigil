@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.doc.{JsonConversion, RecordDocument, RecordDocumentModel}
 import lightdb.id.Id
 import lightdb.time.Timestamp
-import sigil.{GlobalSpace, PolyType, SpaceId, TurnContext}
+import sigil.{GlobalSpace, PolyType, Sigil, SpaceId, TurnContext}
 import sigil.event.Event
 import sigil.participant.ParticipantId
 import sigil.provider.{ConversationMode, Mode}
@@ -55,6 +55,26 @@ trait Tool extends RecordDocument[Tool] {
     * tools that need a dynamic schema (e.g. an enum populated from
     * runtime config) override this. */
   def inputDefinition: fabric.define.Definition = inputRW.definition
+
+  /** The description the LLM sees, given runtime context (active
+    * mode + the live `Sigil`). Default returns the static
+    * [[description]]; tools whose documentation depends on runtime
+    * state override.
+    *
+    * Examples of overrides:
+    *   - `change_mode` enumerates the available modes the agent
+    *     can switch to (since they're app-registered).
+    *   - A workflow tool could enumerate the workflows visible to
+    *     the caller.
+    *   - A lookup tool could list the catalog's known records.
+    *
+    * Providers call this when building the LLM's tool list —
+    * descriptions are recomputed each turn, so apps don't need to
+    * worry about caching staleness. The static [[description]] is
+    * still used as the cached schema's description (for
+    * `find_capability` listings, etc.) so consumers that only need
+    * a bag-of-tools view still see something useful. */
+  def descriptionFor(mode: Mode, sigil: Sigil): String = description
 
   /** Render-ready schema — providers turn this into the LLM's tool list. */
   lazy val schema: ToolSchema = ToolSchema(

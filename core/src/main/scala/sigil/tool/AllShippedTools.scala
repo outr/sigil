@@ -2,6 +2,7 @@ package sigil.tool
 
 import sigil.SpaceId
 import sigil.tool.consult.{ConsultTool, ExtractMemoriesTool, ExtractMemoriesWithKeysTool, RerankTool, SummarizationTool}
+import sigil.tool.core.ChangeModeTool
 import sigil.tool.fs.{BashTool, DeleteFileTool, EditFileTool, FileSystemContext, GlobTool, GrepTool, ReadFileTool, WriteFileTool}
 import sigil.tool.memory.{ForgetTool, MemoryHistoryTool, RecallTool, RememberTool}
 import sigil.tool.util.{LookupInformationTool, SaveMemoryTool, SearchConversationTool, SemanticSearchTool, SleepTool, SystemStatsTool}
@@ -62,6 +63,9 @@ object AllShippedTools {
   def apply(fs: FileSystemContext,
             space: SpaceId,
             webFetchTimeout: FiniteDuration = 30.seconds): List[Tool] = List(
+    // Mode switching — opt-in for multi-mode apps. Single-mode apps
+    // omit this list or filter it out.
+    ChangeModeTool,
     // Consult / classifier helpers (per-turn one-shot agents).
     ConsultTool,
     ExtractMemoriesTool,

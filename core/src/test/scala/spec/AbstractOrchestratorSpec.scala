@@ -34,10 +34,16 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   TestSigil.setProvider(provider)
 
   /** Tool names the test agent advertises. CoreTools' default roster
-    * plus the synthetic SendSlackMessageTool and the non-core SleepTool
-    * so orchestrator tests exercising sleep-timing have it available. */
+    * plus the opt-in `change_mode` tool (orchestrator tests exercise it
+    * directly), the synthetic SendSlackMessageTool, and the non-core
+    * SleepTool so orchestrator tests exercising sleep-timing have it
+    * available. */
   protected def toolNames: List[sigil.tool.ToolName] =
-    CoreTools.coreToolNames ++ List(SendSlackMessageTool.schema.name, sigil.tool.util.SleepTool.schema.name)
+    CoreTools.coreToolNames ++ List(
+      sigil.tool.core.ChangeModeTool.schema.name,
+      SendSlackMessageTool.schema.name,
+      sigil.tool.util.SleepTool.schema.name
+    )
 
   protected def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(

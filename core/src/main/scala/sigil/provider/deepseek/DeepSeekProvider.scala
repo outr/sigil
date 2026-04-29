@@ -7,7 +7,7 @@ import sigil.Sigil
 import sigil.db.Model
 import sigil.provider.*
 import sigil.provider.sse.{SSELine, SSELineParser}
-import sigil.tool.{DefinitionToSchema, ToolInput, ToolSchema}
+import sigil.tool.{DefinitionToSchema, Tool, ToolInput, ToolSchema}
 import sigil.tool.ToolInput.given
 import spice.http.{HttpMethod, HttpRequest, HttpResponse, HttpStatus}
 import spice.http.client.HttpClient
@@ -92,7 +92,7 @@ case class DeepSeekProvider(apiKey: String,
         "type" -> str("function"),
         "function" -> obj(
           "name"        -> str(s.name.value),
-          "description" -> str(renderDescription(s)),
+          "description" -> str(renderDescription(t, input.currentMode)),
           "strict"      -> bool(true),
           "parameters"  -> StrictSchema.forDeepSeek(DefinitionToSchema(s.input))
         )
@@ -151,15 +151,17 @@ case class DeepSeekProvider(apiKey: String,
         obj("role" -> str("tool"), "tool_call_id" -> str(toolCallId), "content" -> str(content))
     }
 
-  private def renderDescription[I <: ToolInput](schema: ToolSchema): String =
-    if (schema.examples.isEmpty) schema.description
+  private def renderDescription(tool: Tool, mode: Mode): String = {
+    val base = tool.descriptionFor(mode, sigil)
+    if (tool.examples.isEmpty) base
     else {
-      val rendered = schema.examples.map { e =>
+      val rendered = tool.examples.map { e =>
         val json = JsonFormatter.Compact(stripPolyDiscriminator(summon[fabric.rw.RW[ToolInput]].read(e.input)))
         s"- ${e.description}: $json"
       }.mkString("\n")
-      s"${schema.description}\n\nExamples:\n$rendered"
+      s"$base\n\nExamples:\n$rendered"
     }
+  }
 
   private def stripPolyDiscriminator(json: Json): Json = json match {
     case o: Obj => Obj(o.value - "type")

@@ -119,7 +119,8 @@ trait Provider {
         tools = c.tools,
         builtInTools = c.builtInTools,
         toolChoice = toolChoice,
-        generationSettings = c.generationSettings
+        generationSettings = c.generationSettings,
+        currentMode = c.currentMode
       )
     }
 
@@ -175,17 +176,10 @@ trait Provider {
     }
 
     sb.append(s"Current mode: ${c.currentMode} — ${c.currentMode.description}\n")
-
-    // Advertise every other registered mode by its stable name so the
-    // model can pick a target for `change_mode`. Without this listing
-    // the LLM has no way to know what modes exist beyond the current
-    // one and falls back to handling tasks in the wrong mode.
-    val otherModes = sigil.availableModes.filterNot(_.name == c.currentMode.name)
-    if (otherModes.nonEmpty) {
-      sb.append("Other modes available (use `change_mode` with the stable name):\n")
-      otherModes.foreach(m => sb.append(s"  - ${m.name} — ${m.description}\n"))
-    }
-
+    // Tools that need runtime context (e.g. `change_mode` enumerating
+    // the available modes) override `Tool.descriptionFor` to fold
+    // that context into their own description. The framework
+    // prompt-builder stays free of per-tool special cases.
     sb.append(s"Current topic: \"${c.currentTopic.label}\" — ${c.currentTopic.summary}\n")
     if (c.previousTopics.nonEmpty) {
       sb.append("Previous topics in this conversation:\n")

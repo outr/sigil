@@ -200,8 +200,11 @@ trait Sigil {
    * into the polymorphic `Tool` RW via `RW.static`.
    *
    * Defaults to [[sigil.tool.core.CoreTools.all]] so the framework
-   * essentials (`respond`, `no_response`, `change_mode`, `stop`,
-   * `find_capability`) are always resolvable by name. Apps add their
+   * essentials (`respond`, `no_response`, `stop`, `find_capability`)
+   * are always resolvable by name. Apps with multiple
+   * [[sigil.provider.Mode]]s add `ChangeModeTool` themselves; it's
+   * shipped in core but not auto-registered, since single-mode apps
+   * don't need it. Apps add their
    * own static tools by overriding and concatenating:
    * {{{
    *   override def staticTools: List[Tool] = super.staticTools ++ List(MyTool, OtherTool)
@@ -629,9 +632,12 @@ trait Sigil {
    *
    * Role and Mode each contribute a [[ToolPolicy]]; the two are
    * folded in order (behavior first, then mode) over an internal
-   * state. Framework essentials (`respond`, `no_response`,
-   * `change_mode`, `stop`) are always included. `find_capability` is
-   * included unless either contributor is [[ToolPolicy.None]]. The
+   * state. Framework essentials (`respond`, `respond_*`,
+   * `no_response`, `stop`) are always included. `find_capability` is
+   * included unless either contributor is [[ToolPolicy.None]].
+   * `change_mode` is NOT auto-included — apps with multiple
+   * `Mode`s register `ChangeModeTool` via their own `staticTools`
+   * and add it to the agent's `toolNames`. The
    * agent's own `toolNames` baseline is included unless either
    * contributor is `None` or `Exclusive` (both strip baseline).
    * `Active` / `Exclusive` extras are unioned across both
@@ -643,12 +649,12 @@ trait Sigil {
                          mode: Mode,
                          suggested: List[sigil.tool.ToolName]): List[sigil.tool.ToolName] = {
     import sigil.tool.core.{
-      ChangeModeTool, FindCapabilityTool, NoResponseTool, RespondTool,
+      FindCapabilityTool, NoResponseTool, RespondTool,
       RespondFailureTool, RespondFieldTool, RespondOptionsTool, StopTool
     }
     val essentials = List(
       RespondTool, RespondOptionsTool, RespondFieldTool, RespondFailureTool,
-      NoResponseTool, ChangeModeTool, StopTool
+      NoResponseTool, StopTool
     ).map(_.schema.name)
 
     case class PolicyState(extras: List[sigil.tool.ToolName],

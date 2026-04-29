@@ -19,7 +19,11 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
   protected def modelId: Id[Model]
 
-  protected def coreTools: Vector[Tool] = CoreTools.all
+  // Tools used in these specs. `CoreTools.all` is the default roster (no
+  // `change_mode`, since it's opt-in for multi-mode apps); we add
+  // ChangeModeTool here so the multi-mode "switch modes" assertion has
+  // a real `change_mode` tool to surface to the model.
+  protected def coreTools: Vector[Tool] = CoreTools.all :+ ChangeModeTool
 
   protected def supportsThinking: Boolean = true
 
