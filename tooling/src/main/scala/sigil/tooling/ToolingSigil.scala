@@ -49,11 +49,58 @@ trait ToolingSigil extends Sigil {
     if (toolingToolsEnabled) base ++ toolingTools else base
   }
 
-  protected def toolingTools: List[Tool] = List(
+  protected def toolingTools: List[Tool] =
+    lspTools ++ bspTools
+
+  /** Every LSP-side tool the framework ships. Apps that want a
+    * subset override this and pick. */
+  protected def lspTools: List[Tool] = List(
+    // Phase 0 — base
     new LspDiagnosticsTool(lspManager),
     new LspGotoDefinitionTool(lspManager),
     new LspHoverTool(lspManager),
-    new BspCompileTool(bspManager)
+    // Phase 1 — live editing
+    new LspDidChangeTool(lspManager),
+    new LspCompletionTool(lspManager),
+    new LspSignatureHelpTool(lspManager),
+    new LspCodeActionTool(lspManager),
+    new LspApplyCodeActionTool(lspManager),
+    new LspFormatTool(lspManager),
+    new LspFormatRangeTool(lspManager),
+    new LspRenameTool(lspManager),
+    new LspPrepareRenameTool(lspManager),
+    // Phase 2 — navigation
+    new LspFindReferencesTool(lspManager),
+    new LspTypeDefinitionTool(lspManager),
+    new LspImplementationTool(lspManager),
+    new LspDocumentSymbolsTool(lspManager),
+    new LspWorkspaceSymbolsTool(lspManager),
+    new LspFoldingRangeTool(lspManager),
+    new LspSelectionRangeTool(lspManager),
+    // Phase 4 — pull diagnostics + extras
+    new LspPullDiagnosticsTool(lspManager),
+    new LspInlayHintsTool(lspManager),
+    new LspCodeLensTool(lspManager),
+    new LspDocumentLinkTool(lspManager)
+  )
+
+  /** Every BSP-side tool the framework ships. */
+  protected def bspTools: List[Tool] = List(
+    new BspListTargetsTool(bspManager),
+    new BspCompileTool(bspManager),
+    new BspTestTool(bspManager),
+    new BspRunTool(bspManager),
+    new BspCleanTool(bspManager),
+    new BspReloadTool(bspManager),
+    new BspSourcesTool(bspManager),
+    new BspInverseSourcesTool(bspManager),
+    new BspDependencySourcesTool(bspManager),
+    new BspDependencyModulesTool(bspManager),
+    new BspResourcesTool(bspManager),
+    new BspOutputPathsTool(bspManager),
+    new BspScalacOptionsTool(bspManager),
+    new BspScalaTestClassesTool(bspManager),
+    new BspScalaMainClassesTool(bspManager)
   )
 
   /** Periodic idle sweep — runs forever on a daemon fiber. */

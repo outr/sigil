@@ -3,6 +3,7 @@ package sigil.script
 import fabric.rw.*
 import rapid.Task
 import sigil.{GlobalSpace, Sigil, SpaceId}
+import sigil.event.Event
 import sigil.participant.ParticipantId
 
 /**
@@ -14,9 +15,11 @@ import sigil.participant.ParticipantId
  * [[scriptToolSpace]] that decides which single [[SpaceId]] gets
  * assigned to a freshly created or updated script tool.
  *
- * The trait also adds the polymorphic registration for [[ScriptTool]]
- * via [[Sigil.toolRegistrations]] so persisted records round-trip
- * through fabric without apps having to remember it.
+ * The trait also adds polymorphic registrations for [[ScriptTool]]
+ * (via [[Sigil.toolRegistrations]]) and [[ScriptResult]] (via
+ * [[Sigil.eventRegistrations]]) so persisted records and emitted
+ * events both round-trip through fabric without apps having to
+ * remember either.
  *
  * **Space-allocation patterns** (apps override `scriptToolSpace`):
  *
@@ -84,4 +87,15 @@ trait ScriptSigil extends Sigil {
    */
   override def toolRegistrations: List[RW[? <: sigil.tool.Tool]] =
     summon[RW[ScriptTool]] :: super.toolRegistrations
+
+  /**
+   * Auto-register [[ScriptResult]]'s RW so the events emitted by
+   * [[ExecuteScriptTool]] / persisted [[ScriptTool]]s round-trip
+   * through fabric's polymorphic Signal/Event discriminator. Without
+   * this, the first script execution fails at runtime when the
+   * framework tries to broadcast the result. Apps that override
+   * `eventRegistrations` should `super.eventRegistrations ++ ...`.
+   */
+  override protected def eventRegistrations: List[RW[? <: Event]] =
+    summon[RW[ScriptResult]] :: super.eventRegistrations
 }

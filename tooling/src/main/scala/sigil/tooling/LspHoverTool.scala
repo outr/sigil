@@ -2,15 +2,11 @@ package sigil.tooling
 
 import fabric.rw.*
 import org.eclipse.lsp4j.{Hover, MarkupContent}
-import rapid.{Stream, Task}
+import rapid.Stream
 import sigil.TurnContext
-import sigil.event.{Event, Message, MessageRole, MessageVisibility}
-import sigil.signal.EventState
+import sigil.event.Event
 import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
-import sigil.tool.model.ResponseContent
 
-import java.io.File
-import java.nio.file.{Files, Paths}
 import scala.jdk.CollectionConverters.*
 
 case class LspHoverInput(languageId: String,
@@ -27,7 +23,7 @@ case class LspHoverInput(languageId: String,
  * Servers that respond with the legacy `MarkedString` shape are
  * coalesced into the same plain-string output.
  */
-final class LspHoverTool(manager: LspManager) extends TypedTool[LspHoverInput](
+final class LspHoverTool(val manager: LspManager) extends TypedTool[LspHoverInput](
   name = ToolName("lsp_hover"),
   description =
     """Get type signature + documentation at a source position.
@@ -41,26 +37,11 @@ final class LspHoverTool(manager: LspManager) extends TypedTool[LspHoverInput](
       LspHoverInput(languageId = "scala", filePath = "/abs/path/Foo.scala", line = 10, character = 5)
     )
   )
-) {
-  override protected def executeTyped(input: LspHoverInput, context: TurnContext): Stream[Event] = {
-    val task = manager.configFor(input.languageId).flatMap {
-      case None =>
-        Task.pure(reply(context, s"No LspServerConfig persisted for '${input.languageId}'.", isError = true))
-      case Some(config) =>
-        val root = manager.resolveRoot(input.filePath, config.rootMarkers)
-        val uri = new File(input.filePath).toURI.toString
-        manager.session(input.languageId, root).flatMap { session =>
-          val text = scala.util.Try(Files.readString(Paths.get(input.filePath))).toOption.getOrElse("")
-          for {
-            _ <- session.didOpen(uri, input.languageId, text)
-            hov <- session.hover(uri, input.line, input.character)
-          } yield reply(context, render(hov), isError = false)
-        }.handleError { e =>
-          Task.pure(reply(context, s"LSP error: ${e.getMessage}", isError = true))
-        }
+) with LspToolSupport {
+  override protected def executeTyped(input: LspHoverInput, context: TurnContext): Stream[Event] =
+    withOpenDocument(input.languageId, input.filePath, context) { (session, uri) =>
+      session.hover(uri, input.line, input.character).map(render)
     }
-    Stream.force(task.map(Stream.emit))
-  }
 
   private def render(hover: Option[Hover]): String = hover match {
     case None    => "No hover information."
@@ -76,15 +57,4 @@ final class LspHoverTool(manager: LspManager) extends TypedTool[LspHoverInput](
         if (mc == null || mc.getValue == null) "No hover information." else mc.getValue
       }
   }
-
-  private def reply(context: TurnContext, text: String, isError: Boolean): Event =
-    Message(
-      participantId = context.caller,
-      conversationId = context.conversation.id,
-      topicId = context.conversation.currentTopicId,
-      content = Vector(ResponseContent.Text(text)),
-      state = EventState.Complete,
-      role = MessageRole.Tool,
-      visibility = MessageVisibility.All
-    )
 }

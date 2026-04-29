@@ -186,7 +186,16 @@ trait Provider {
       c.previousTopics.foreach(t => sb.append(s"  - \"${t.label}\" — ${t.summary}\n"))
     }
 
-    val instr = c.instructions.render
+    // Instructions' TOOLS discovery block tells the model to call
+    // `find_capability` first for actions outside its tool roster. If
+    // that tool isn't actually available (e.g. the active mode uses
+    // `ToolPolicy.None` or `Exclusive`), pointing the model at it
+    // creates a dead loop — strip the block in that case.
+    val findCapabilityAvailable =
+      c.tools.exists(_.schema.name.value == "find_capability")
+    val instr =
+      if (findCapabilityAvailable) c.instructions.render
+      else c.instructions.renderWithoutTools
     if (instr.nonEmpty) sb.append("\n").append(instr).append("\n")
 
     if (resolved.criticalMemories.nonEmpty) {
