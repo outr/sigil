@@ -4,13 +4,8 @@ import fabric.rw.*
 import org.eclipse.lsp4j.{Diagnostic, DiagnosticSeverity}
 import rapid.{Stream, Task}
 import sigil.TurnContext
-import sigil.event.{Event, Message, MessageRole, MessageVisibility}
-import sigil.signal.EventState
+import sigil.event.Event
 import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
-import sigil.tool.model.ResponseContent
-
-import java.io.File
-import java.nio.file.{Files, Paths}
 
 case class LspDiagnosticsInput(languageId: String,
                                filePath: String,
@@ -28,7 +23,7 @@ case class LspDiagnosticsInput(languageId: String,
  * is sub-second after warm-up. Tools that already opened the file
  * earlier in the turn pass `0` to read the latest snapshot directly.
  */
-final class LspDiagnosticsTool(manager: LspManager) extends TypedTool[LspDiagnosticsInput](
+final class LspDiagnosticsTool(val manager: LspManager) extends TypedTool[LspDiagnosticsInput](
   name = ToolName("lsp_diagnostics"),
   description =
     """Fetch the language server's diagnostics for a file (errors, warnings, hints).
@@ -44,33 +39,14 @@ final class LspDiagnosticsTool(manager: LspManager) extends TypedTool[LspDiagnos
       LspDiagnosticsInput(languageId = "scala", filePath = "/abs/path/to/Foo.scala")
     )
   )
-) {
-  override protected def executeTyped(input: LspDiagnosticsInput, context: TurnContext): Stream[Event] = {
-    val task = Task.defer {
-      manager.configFor(input.languageId).flatMap {
-        case None =>
-          Task.pure(reply(context, s"No LspServerConfig persisted for '${input.languageId}'.", isError = true))
-        case Some(config) =>
-          val root = manager.resolveRoot(input.filePath, config.rootMarkers)
-          val uri = new File(input.filePath).toURI.toString
-          manager.session(input.languageId, root).flatMap { session =>
-            val text = scala.util.Try(Files.readString(Paths.get(input.filePath))).toOption.getOrElse("")
-            for {
-              _ <- session.didOpen(uri, input.languageId, text)
-              _ <- if (input.waitMs > 0) session.waitForDiagnostics(input.waitMs) else Task.unit
-            } yield {
-              val diags = session.diagnosticsFor(uri)
-              reply(context, renderDiagnostics(input.filePath, diags), isError = false)
-            }
-          }.handleError { e =>
-            Task.pure(reply(context, s"LSP error: ${e.getMessage}", isError = true))
-          }
-      }
+) with LspToolSupport {
+  override protected def executeTyped(input: LspDiagnosticsInput, context: TurnContext): Stream[Event] =
+    withOpenDocument(input.languageId, input.filePath, context) { (session, uri) =>
+      val wait = if (input.waitMs > 0) session.waitForDiagnostics(input.waitMs) else Task.unit
+      wait.map(_ => render(input.filePath, session.diagnosticsFor(uri)))
     }
-    Stream.force(task.map(Stream.emit))
-  }
 
-  private def renderDiagnostics(filePath: String, diags: List[Diagnostic]): String =
+  private def render(filePath: String, diags: List[Diagnostic]): String =
     if (diags.isEmpty) s"$filePath: 0 diagnostics."
     else {
       val rendered = diags.map { d =>
@@ -87,15 +63,4 @@ final class LspDiagnosticsTool(manager: LspManager) extends TypedTool[LspDiagnos
       }.mkString("\n")
       s"$filePath: ${diags.size} diagnostic(s).\n$rendered"
     }
-
-  private def reply(context: TurnContext, text: String, isError: Boolean): Event =
-    Message(
-      participantId = context.caller,
-      conversationId = context.conversation.id,
-      topicId = context.conversation.currentTopicId,
-      content = Vector(ResponseContent.Text(text)),
-      state = EventState.Complete,
-      role = MessageRole.Tool,
-      visibility = MessageVisibility.All
-    )
 }

@@ -20,7 +20,9 @@ import sigil.tool.model.{MarkdownContentParser, RespondInput}
 case object RespondTool extends TypedTool[RespondInput](
   name = ToolName("respond"),
   description =
-    """Reply to the user. ALWAYS use this tool — plain text output is dropped.
+    """Send a user-facing reply. Plain text output is dropped — every textual response must route
+      |through this tool. (This is about HOW you reply, not WHEN — for action requests, prefer
+      |`find_capability` first.)
       |
       |- `topicLabel` — 3-6 words. Fresh label when the user starts a new subject; keep the current
       |  label when following up; use a prior label exactly when the user returns to a previous topic.

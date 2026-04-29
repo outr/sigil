@@ -37,21 +37,7 @@ trait WorkType {
   def value: String
 }
 
-object WorkType extends PolyType[WorkType] {
-
-  /** Look up a registered subtype by its `value`. Returns `None`
-    * for unregistered values. */
-  def byValue(v: String): Option[WorkType] =
-    name.registered.find(_.name.equalsIgnoreCase(v)).flatMap { _ =>
-      // PolyType's `name.registered` returns `PolyName` strings; we don't
-      // have a way to materialize the actual instance from the registry
-      // alone. Apps wanting registry-driven lookup keep their own
-      // `Map[String, WorkType]` of declared work types. The `value` →
-      // instance resolution always lives at the app layer because
-      // PolyName isn't a value carrier.
-      None
-    }
-}
+object WorkType extends PolyType[WorkType]
 
 /** General chat / Q&A — the default work type for all agent turns
   * unless an app overrides per-agent or per-mode. */

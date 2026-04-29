@@ -1,6 +1,6 @@
 package sigil.tooling
 
-import lightdb.id.Id
+import org.eclipse.lsp4j.{FileChangeType, FileEvent}
 import rapid.Task
 import sigil.Sigil
 import sigil.db.SigilDB
@@ -21,24 +21,20 @@ import scala.jdk.CollectionConverters.*
  * Metals across all Scala projects override [[resolveRoot]] to
  * collapse all Scala files to one canonical root.
  *
- * Shutdown is fire-and-forget on a daemon scheduler; an agent that
- * touches a server, walks away, and comes back within the timeout
- * pays no warm-up cost on the second visit.
+ * The [[applier]] is shared across every session this manager
+ * spawns; it determines what happens when a server requests
+ * `workspace/applyEdit` (rename, code-action, etc.). The default
+ * is permissive — apps that want to sandbox the agent's edit
+ * footprint pass [[WorkspaceEditApplier.Sandboxed]] or a custom impl.
  */
-final class LspManager(sigil: Sigil { type DB <: SigilDB & ToolingCollections }) {
+final class LspManager(sigil: Sigil { type DB <: SigilDB & ToolingCollections },
+                       applier: WorkspaceEditApplier = PermissiveWorkspaceEditApplier) {
 
   private val sessions: ConcurrentHashMap[(String, String), LspSession] = new ConcurrentHashMap()
 
-  /** Resolve a config record for the given language id, or None if
-    * the app hasn't persisted one. Tools surface a clear error to
-    * the agent when this is None — auto-discovery is intentionally
-    * not in scope here. Apps wire MetalsAutoConfig (etc.) themselves. */
   def configFor(languageId: String): Task[Option[LspServerConfig]] =
     sigil.withDB(_.lspServers.transaction(_.get(LspServerConfig.idFor(languageId))))
 
-  /** Walk up from `filePath` looking for any of `rootMarkers`. The
-    * first directory containing one of them is the project root.
-    * Falls back to the file's parent directory if no marker hits. */
   def resolveRoot(filePath: String, rootMarkers: List[String]): String = {
     val start = Paths.get(filePath).toAbsolutePath
     val initial = if (Files.isDirectory(start)) start else start.getParent
@@ -53,9 +49,6 @@ final class LspManager(sigil: Sigil { type DB <: SigilDB & ToolingCollections })
     }
   }
 
-  /** Get-or-create a session. The first call spawns the subprocess
-    * and waits for `initialize` to complete; subsequent calls touch
-    * the existing session and return immediately. */
   def session(languageId: String, projectRoot: String): Task[LspSession] = Task.defer {
     val key = (languageId, projectRoot)
     Option(sessions.get(key)) match {
@@ -70,10 +63,9 @@ final class LspManager(sigil: Sigil { type DB <: SigilDB & ToolingCollections })
                 s"Save one via Sigil.withDB(_.lspServers.transaction(_.upsert(LspServerConfig(...)))) first."
             ))
           case Some(config) =>
-            LspSession.spawn(config, projectRoot).map { session =>
+            LspSession.spawn(config, projectRoot, applier).map { session =>
               val prior = sessions.putIfAbsent(key, session)
               if (prior != null) {
-                // Race — another caller spawned first; tear ours down.
                 session.shutdown().sync()
                 prior.touch()
                 prior
@@ -83,29 +75,53 @@ final class LspManager(sigil: Sigil { type DB <: SigilDB & ToolingCollections })
     }
   }
 
-  /** Convenience — `session` + the call, with `lastUseAt` bumped
-    * implicitly by every method on `LspSession`. */
   def withSession[T](languageId: String, projectRoot: String)(f: LspSession => Task[T]): Task[T] =
     session(languageId, projectRoot).flatMap(f)
 
-  /** Tear down a single session. Idempotent. */
+  /** Fan-out a file-change notification to every session whose
+    * project root is an ancestor of the given path. Apps wire this
+    * from their `EditFileTool` / `WriteFileTool` so language servers
+    * pick up framework-side writes the same way they would pick up
+    * an editor save. */
+  def notifyFileChanged(absolutePath: String, kind: FileChangeType = FileChangeType.Changed): Task[Unit] = Task.defer {
+    val abs = Paths.get(absolutePath).toAbsolutePath.normalize()
+    val uri = abs.toUri.toString
+    val event = new FileEvent(uri, kind)
+    val targets = sessions.entrySet().asScala.toList.collect {
+      case e if abs.startsWith(Paths.get(e.getKey._2).toAbsolutePath.normalize()) => e.getValue
+    }
+    Task.sequence(targets.map(_.didChangeWatchedFiles(List(event)).handleError(_ => Task.unit))).unit
+  }
+
+  /** Same as [[notifyFileChanged]] but for a batch — preferred when
+    * a single agent action touches many files (e.g. an apply-edit
+    * fan-out). */
+  def notifyFilesChanged(events: Map[String, FileChangeType]): Task[Unit] = Task.defer {
+    val byRoot = sessions.entrySet().asScala.toList.flatMap { e =>
+      val rootPath = Paths.get(e.getKey._2).toAbsolutePath.normalize()
+      val matched = events.toList.collect {
+        case (path, kind) if Paths.get(path).toAbsolutePath.normalize().startsWith(rootPath) =>
+          new FileEvent(Paths.get(path).toAbsolutePath.normalize().toUri.toString, kind)
+      }
+      if (matched.isEmpty) Nil else List(e.getValue -> matched)
+    }
+    Task.sequence(byRoot.map { case (sess, ev) =>
+      sess.didChangeWatchedFiles(ev).handleError(_ => Task.unit)
+    }).unit
+  }
+
   def shutdown(languageId: String, projectRoot: String): Task[Unit] =
     Option(sessions.remove((languageId, projectRoot))) match {
       case Some(s) => s.shutdown()
       case None    => Task.unit
     }
 
-  /** Tear down every cached session. Called by [[ToolingSigil]] from
-    * `Sigil.shutdown`. */
   def shutdownAll(): Task[Unit] = Task.defer {
     val all = sessions.values.asScala.toList
     sessions.clear()
     Task.sequence(all.map(_.shutdown())).unit
   }
 
-  /** Sweep idle sessions — called from a periodic fiber by
-    * [[ToolingSigil]]. Sessions whose `idleSince` exceeds their
-    * config's `idleTimeoutMs` are shut down. */
   def sweepIdle(): Task[Unit] = Task.defer {
     val now = System.currentTimeMillis()
     val expired = sessions.entrySet().asScala.filter { e =>
