@@ -6,7 +6,8 @@ import sigil.Sigil
 import sigil.db.SigilDB
 import sigil.participant.ParticipantId
 import sigil.pipeline.InboundTransform
-import sigil.signal.{Notice, Signal}
+import sigil.event.Event
+import sigil.signal.Notice
 
 /**
  * Sigil refinement for apps that include the `sigil-secrets` module.
@@ -50,16 +51,17 @@ trait SecretsSigil extends Sigil {
   private final lazy val defaultSecretStore: SecretStore =
     DatabaseSecretStore.default(this)
 
+  /** [[SecretSubmission]] is the secrets module's only durable Event. */
+  override protected def eventRegistrations: List[RW[? <: Event]] =
+    List(summon[RW[SecretSubmission]])
+
   /**
-   * The secrets module registers [[SecretSubmission]] (Event) plus
-   * the Notice request/reply pairs ([[RequestSecret]] /
-   * [[SecretSnapshot]], etc.) for polymorphic Signal RW — the wire
-   * transport needs to deserialize each subtype it might encounter.
-   * Subclasses adding their own custom signal types should
-   * concatenate with this list.
+   * The secrets module's Notice request/reply pairs — registered into
+   * the `Notice` slice so wire-transport routers, Dart codegen, and
+   * spice's `durableSubtypes` knob can correctly classify them as
+   * transient (ephemeral, never replayed) rather than durable Events.
    */
-  override protected def signalRegistrations: List[RW[? <: Signal]] = List(
-    summon[RW[SecretSubmission]],
+  override protected def noticeRegistrations: List[RW[? <: Notice]] = List(
     summon[RW[RequestSecret]],
     summon[RW[SecretSnapshot]],
     summon[RW[RequestSecretVerify]],

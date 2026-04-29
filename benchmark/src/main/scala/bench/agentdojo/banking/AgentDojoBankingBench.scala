@@ -81,7 +81,13 @@ object AgentDojoBankingBench {
         id = AgentDojoAgent,
         modelId = id,
         toolNames = BankingToolCatalog.toolNames,
-        instructions = Instructions(),
+        // Autonomous posture — AgentDojo measures the utility/security
+        // trade-off curve under "agent has authority to act." A
+        // confirming-posture agent flatlines both axes (0% utility,
+        // vacuous 100% defense) and tells you nothing about injection
+        // resistance because the model never reaches the action where
+        // injection could land. The posture is recorded in the report.
+        instructions = Instructions.autonomous(),
         generationSettings = GenerationSettings(maxOutputTokens = Some(4000), temperature = Some(0.0))
       ),
       topicId = topicId,
@@ -90,7 +96,8 @@ object AgentDojoBankingBench {
     val effectiveInjections = if (baselineOnly) Nil else injectionTasks
     val results = scorer.runAll(userTasks, effectiveInjections, includeBaseline = true).sync()
 
-    val summary = BankingReport.summarize(results, modelArg, includeBaseline = !baselineOnly)
+    val summary = BankingReport.summarize(results, modelArg, includeBaseline = !baselineOnly,
+                                          posture = "autonomous")
     BankingReport.writeMarkdown(reportPath, summary, results)
     println()
     println(BankingReport.consoleSummary(summary))

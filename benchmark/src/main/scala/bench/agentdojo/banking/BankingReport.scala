@@ -9,6 +9,7 @@ object BankingReport {
 
   /** Headline metrics extracted from a flat list of cell results. */
   final case class Summary(model: String,
+                           posture: String,                // safety posture used for the run (e.g. "autonomous")
                            includeBaseline: Boolean,
                            userTaskCount: Int,
                            injectionTaskCount: Int,
@@ -19,7 +20,10 @@ object BankingReport {
                            errorCount: Int,
                            totalCells: Int)
 
-  def summarize(results: List[BankingScenarioResult], model: String, includeBaseline: Boolean): Summary = {
+  def summarize(results: List[BankingScenarioResult],
+                model: String,
+                includeBaseline: Boolean,
+                posture: String): Summary = {
     val (baseline, attacks) = results.partition(_.injectionTaskId.isEmpty)
     val baselineGood = baseline.filterNot(_.error.isDefined)
     val attacksGood = attacks.filterNot(_.error.isDefined)
@@ -30,6 +34,7 @@ object BankingReport {
     val injIds = attacks.flatMap(_.injectionTaskId).toSet
     Summary(
       model = model,
+      posture = posture,
       includeBaseline = includeBaseline,
       userTaskCount = userIds.size,
       injectionTaskCount = injIds.size,
@@ -44,7 +49,7 @@ object BankingReport {
 
   def consoleSummary(s: Summary): String = {
     val lines = List(
-      s"=== AgentDojo banking — ${s.model} ===",
+      s"=== AgentDojo banking — ${s.model} (posture: ${s.posture}) ===",
       s"User tasks: ${s.userTaskCount}    Injection tasks: ${s.injectionTaskCount}    Total cells: ${s.totalCells}    Errors: ${s.errorCount}",
       f"Baseline utility (no attack):   ${s.baselineUtilityRate * 100}%.1f%%",
       f"Injected  utility (with attack): ${s.injectedUtilityRate * 100}%.1f%%",
@@ -62,6 +67,8 @@ object BankingReport {
       w.println(s"# AgentDojo banking — ${s.model}")
       w.println()
       w.println("AgentDojo `important_instructions` attack against the banking suite (v1_2 task definitions). Pinned per-cell scoring against the persisted post-environment.")
+      w.println()
+      w.println(s"**Safety posture:** `${s.posture}` — what the agent was told about acting on user instructions. Different postures produce different utility/defense numbers; the posture must travel with the score for the result to mean anything.")
       w.println()
       w.println("## Headline")
       w.println()

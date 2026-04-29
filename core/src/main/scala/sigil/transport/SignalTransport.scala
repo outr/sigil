@@ -6,7 +6,7 @@ import sigil.Sigil
 import sigil.conversation.Conversation
 import sigil.event.{Event, Message}
 import sigil.participant.ParticipantId
-import sigil.signal.{Delta, Signal}
+import sigil.signal.{Delta, Notice, Signal}
 
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
 
@@ -71,8 +71,9 @@ final class SignalTransport(sigil: Sigil) {
     }
 
     val forwarded: Stream[Signal] = live.filter {
-      case e: Event => e.timestamp.value > boundary.get()
-      case _: Delta => true
+      case e: Event  => e.timestamp.value > boundary.get()
+      case _: Delta  => true
+      case _: Notice => true
     }.evalTap(s => sink.push(s))
 
     val combined = (replayed ++ forwarded).takeWhile(_ => !cancelled.get())
