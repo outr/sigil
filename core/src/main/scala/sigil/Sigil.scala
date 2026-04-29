@@ -133,8 +133,14 @@ trait Sigil {
    * [[sigil.provider.CreativeWork]], [[sigil.provider.SummarizationWork]])
    * registered automatically; apps add their own subtypes here so
    * [[sigil.provider.ProviderStrategy]] routes recognize them.
+   *
+   * Returned values — the framework prepends the baseline and folds
+   * each through `RW.static(...)` for registration. Same shape as
+   * [[modes]]; staying inference-friendly keeps the Spice Dart codegen
+   * happy (it skips `RW.static[T](...)` calls with explicit type
+   * ascriptions when traversing the polymorphic registry).
    */
-  protected def workTypeRegistrations: List[RW[? <: sigil.provider.WorkType]] = Nil
+  protected def workTypeRegistrations: List[sigil.provider.WorkType] = Nil
 
   /** Every Event RW the framework knows about — `CoreSignals.events ++ eventRegistrations`. */
   final def allEventRWs: List[RW[? <: Event]] = CoreSignals.events ++ eventRegistrations
@@ -2497,14 +2503,16 @@ trait Sigil {
       _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
       _ = sigil.tool.Tool.register((staticTools.map(t => RW.static(t)) ++ toolRegistrations).distinct*)
       _ = Signal.register((allEventRWs ++ allDeltaRWs ++ allNoticeRWs ++ signalRegistrations)*)
-      _ = sigil.provider.WorkType.register((List(
-            RW.static[sigil.provider.WorkType](sigil.provider.ConversationWork),
-            RW.static[sigil.provider.WorkType](sigil.provider.CodingWork),
-            RW.static[sigil.provider.WorkType](sigil.provider.AnalysisWork),
-            RW.static[sigil.provider.WorkType](sigil.provider.ClassificationWork),
-            RW.static[sigil.provider.WorkType](sigil.provider.CreativeWork),
-            RW.static[sigil.provider.WorkType](sigil.provider.SummarizationWork)
-          ) ++ workTypeRegistrations)*)
+      _ = sigil.provider.WorkType.register(
+            (List[sigil.provider.WorkType](
+              sigil.provider.ConversationWork,
+              sigil.provider.CodingWork,
+              sigil.provider.AnalysisWork,
+              sigil.provider.ClassificationWork,
+              sigil.provider.CreativeWork,
+              sigil.provider.SummarizationWork
+            ) ++ workTypeRegistrations).distinct.map(w => RW.static(w))*
+          )
     } yield ()
   }.singleton
 
