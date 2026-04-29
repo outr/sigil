@@ -18,7 +18,7 @@ val lightdbVersion: String = "4.33.1"
 
 val scalatestVersion: String = "3.2.20"
 
-val scalapassVersion: String = "1.4.0"
+val scalapassVersion: String = "1.4.1"
 
 ThisBuild / versionScheme := Some("early-semver")
 ThisBuild / licenses := Seq("MIT" -> url("https://github.com/outr/sigil/blob/master/LICENSE"))
@@ -52,7 +52,7 @@ lazy val root = (project in file("."))
   )
 
 lazy val core = (project in file("core"))
-  .settings(docNoLinkWarnings*)
+  .settings(docNoLinkWarnings *)
   .settings(
     name := "sigil-core",
     libraryDependencies ++= Seq(
@@ -86,7 +86,7 @@ lazy val core = (project in file("core"))
 
 lazy val secrets = (project in file("secrets"))
   .dependsOn(core % "compile->compile;test->test")
-  .settings(docNoLinkWarnings*)
+  .settings(docNoLinkWarnings *)
   .settings(
     name := "sigil-secrets",
     libraryDependencies ++= Seq(
@@ -108,7 +108,7 @@ lazy val secrets = (project in file("secrets"))
 
 lazy val script = (project in file("script"))
   .dependsOn(core % "compile->compile;test->test")
-  .settings(docNoLinkWarnings*)
+  .settings(docNoLinkWarnings *)
   .settings(
     name := "sigil-script",
     libraryDependencies ++= Seq(
@@ -132,7 +132,7 @@ lazy val script = (project in file("script"))
 
 lazy val mcp = (project in file("mcp"))
   .dependsOn(core % "compile->compile;test->test")
-  .settings(docNoLinkWarnings*)
+  .settings(docNoLinkWarnings *)
   .settings(
     name := "sigil-mcp",
     libraryDependencies ++= Seq(
