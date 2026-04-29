@@ -89,6 +89,37 @@ class TimeTriggerCronSpec extends AnyWordSpec with Matchers {
     }
   }
 
+  "CronExpression — Vixie DOM/DOW OR semantics" should {
+    "OR day-of-month and day-of-week when BOTH are restricted" in {
+      // `0 9 1,15 * 1-5` — 9am on the 1st, 15th, OR any weekday
+      val mondayApr8     = atCalendar(2025, 4, 8, 9, 0)   // weekday only
+      val saturdayApr12  = atCalendar(2025, 4, 12, 9, 0)  // neither
+      val firstApr1      = atCalendar(2025, 4, 1, 9, 0)   // 1st AND a weekday
+      val saturdayMar15  = atCalendar(2025, 3, 15, 9, 0)  // 15th, weekend
+      val expr = "0 9 1,15 * 1-5"
+      CronExpression.matches(expr, mondayApr8)    shouldBe true   // weekday match
+      CronExpression.matches(expr, saturdayApr12) shouldBe false  // neither
+      CronExpression.matches(expr, firstApr1)     shouldBe true   // both
+      CronExpression.matches(expr, saturdayMar15) shouldBe true   // 15th of month
+    }
+
+    "AND day-of-month and day-of-week when day-of-week is `*`" in {
+      // `0 9 1 * *` — only the 1st of any month
+      val firstApr1 = atCalendar(2025, 4, 1, 9, 0)
+      val mondayApr8 = atCalendar(2025, 4, 8, 9, 0)
+      CronExpression.matches("0 9 1 * *", firstApr1)  shouldBe true
+      CronExpression.matches("0 9 1 * *", mondayApr8) shouldBe false
+    }
+
+    "AND day-of-month and day-of-week when day-of-month is `*`" in {
+      // `0 9 * * 1-5` — weekdays only
+      val mondayApr8     = atCalendar(2025, 4, 8, 9, 0)
+      val saturdayApr12  = atCalendar(2025, 4, 12, 9, 0)
+      CronExpression.matches("0 9 * * 1-5", mondayApr8)    shouldBe true
+      CronExpression.matches("0 9 * * 1-5", saturdayApr12) shouldBe false
+    }
+  }
+
   "CronExpression — defensive against malformed input" should {
     "reject the wrong number of fields" in {
       CronExpression.matches("* * * *", at(0))      shouldBe false
