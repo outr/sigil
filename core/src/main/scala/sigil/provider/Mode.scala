@@ -36,6 +36,16 @@ trait Mode {
   /** Tool availability policy for this mode — see [[ToolPolicy]]. */
   def tools: ToolPolicy = ToolPolicy.Standard
 
+  /** Provider-managed tools active in this mode — see [[BuiltInTool]].
+    * Apps that want a "web research" mode flip on `BuiltInTool.WebSearch`;
+    * a "creative" mode might enable `ImageGeneration`. The orchestrator
+    * unions this set with `AgentParticipant.builtInTools` and passes the
+    * result through `ConversationRequest.builtInTools`, so models with
+    * native server-side support (Anthropic web search, OpenAI Responses
+    * web search, Google Gemini grounding) exercise it directly. Models
+    * without support silently drop the opt-in. Default empty. */
+  def builtInTools: Set[BuiltInTool] = Set.empty
+
   /** Stable `Id[Mode]` derived from [[name]]. Used by `Tool.modes`
     * to declare mode affinity in a persistable, query-friendly shape. */
   final lazy val id: Id[Mode] = Id(name)

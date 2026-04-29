@@ -33,7 +33,7 @@ import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
 import sigil.pipeline.{GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MessageIndexingEffect, RedactLocationTransform, SettledEffect, SignalHub, ViewerTransform}
 import sigil.provider.Provider
-import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, EventState, LocationDelta, Signal}
+import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, Signal}
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
 import sigil.tool.Tool
 import sigil.tool.core.{CoreTools, FindCapabilityTool}
@@ -87,15 +87,80 @@ trait Sigil {
     new sigil.db.DefaultSigilDB(directory, storeManager, appUpgrades).asInstanceOf[DB]
 
   /**
-   * App-specific Signal subtypes (custom Events / Deltas the app introduces
-   * beyond what sigil ships). The framework's [[CoreSignals]] are registered
-   * automatically; this list extends the polymorphic discriminator with
+   * App-specific [[sigil.event.Event]] subtypes — durable, persisted to
+   * [[sigil.db.SigilDB.events]]. The framework's [[CoreSignals.events]] are
+   * registered automatically; this list extends the discriminator with
    * additional types.
    *
-   * Default empty — apps add subtypes only when they ship custom
-   * Signal implementations.
+   * Default empty — apps add subtypes only when they ship custom Events.
+   */
+  protected def eventRegistrations: List[RW[? <: Event]] = Nil
+
+  /**
+   * App-specific [[sigil.signal.Delta]] subtypes — transient updates that
+   * mutate an existing target Event. The framework's [[CoreSignals.deltas]]
+   * are registered automatically; this list extends the discriminator.
+   *
+   * Default empty — apps add subtypes only when they ship custom Deltas.
+   */
+  protected def deltaRegistrations: List[RW[? <: Delta]] = Nil
+
+  /**
+   * App-specific [[sigil.signal.Notice]] subtypes — transient one-shot pulses
+   * for client/server messaging that don't fit Event or Delta semantics. The
+   * framework's [[CoreSignals.notices]] are registered automatically; this
+   * list extends the discriminator.
+   *
+   * Default empty — apps add subtypes only when they ship custom Notices.
+   */
+  protected def noticeRegistrations: List[RW[? <: Notice]] = Nil
+
+  /**
+   * Catch-all hook for custom [[Signal]] subtypes that aren't Events,
+   * Deltas, or Notices. Almost always you want one of the typed hooks
+   * above; this exists for the rare case of a fourth Signal kind that
+   * doesn't belong to any of those categories.
+   *
+   * Default empty.
    */
   protected def signalRegistrations: List[RW[? <: Signal]] = Nil
+
+  /** Every Event RW the framework knows about — `CoreSignals.events ++ eventRegistrations`. */
+  final def allEventRWs: List[RW[? <: Event]] = CoreSignals.events ++ eventRegistrations
+
+  /** Every Delta RW the framework knows about — `CoreSignals.deltas ++ deltaRegistrations`. */
+  final def allDeltaRWs: List[RW[? <: Delta]] = CoreSignals.deltas ++ deltaRegistrations
+
+  /** Every Notice RW the framework knows about — `CoreSignals.notices ++ noticeRegistrations`. */
+  final def allNoticeRWs: List[RW[? <: Notice]] = CoreSignals.notices ++ noticeRegistrations
+
+  /**
+   * Simple-class-name set of every registered Event subtype — what wire
+   * routers / Dart codegen / spice's `durableSubtypes` knob need to
+   * distinguish "persist + replay this subtype" from "transient pulse".
+   *
+   * Names match the wire discriminator that fabric writes for each subtype
+   * (`Product.productPrefix` — i.e. the simple class name). Apps that add
+   * custom Events via `eventRegistrations` see them surface here
+   * automatically.
+   */
+  final def eventSubtypeNames: Set[String] =
+    allEventRWs.flatMap(_.definition.className).map(simpleClassName).toSet
+
+  /** Simple-class-name set of every registered Delta subtype. */
+  final def deltaSubtypeNames: Set[String] =
+    allDeltaRWs.flatMap(_.definition.className).map(simpleClassName).toSet
+
+  /** Simple-class-name set of every registered Notice subtype. */
+  final def noticeSubtypeNames: Set[String] =
+    allNoticeRWs.flatMap(_.definition.className).map(simpleClassName).toSet
+
+  private def simpleClassName(fullName: String): String = {
+    val lastDot = fullName.lastIndexOf('.')
+    val lastDollar = fullName.lastIndexOf('$')
+    val start = math.max(lastDot, lastDollar) + 1
+    fullName.substring(start)
+  }
 
   /**
    * App-specific ParticipantId subtypes. Apps register their own
@@ -394,6 +459,7 @@ trait Sigil {
         previousTopics = context.conversation.previousTopics,
         generationSettings = agent.generationSettings,
         tools = tools,
+        builtInTools = agent.builtInTools ++ context.conversation.currentMode.builtInTools,
         chain = effectiveChain,
         roles = agent.roles
       )
@@ -1993,7 +2059,7 @@ trait Sigil {
       _ = ToolInput.register((CoreTools.inputRWs ++ findTools.toolInputRWs)*)
       _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
       _ = sigil.tool.Tool.register((staticTools.map(t => RW.static(t)) ++ toolRegistrations).distinct*)
-      _ = Signal.register((CoreSignals.all ++ signalRegistrations)*)
+      _ = Signal.register((allEventRWs ++ allDeltaRWs ++ allNoticeRWs ++ signalRegistrations)*)
     } yield ()
   }.singleton
 

@@ -5,5 +5,3 @@ Tracking bugs found in Sigil, Spice, Fabric, and related libraries while buildin
 **Status legend:** ⚠️ workaround in place · ❌ open · ✅ fixed.
 
 Numbering preserves history — gaps reflect entries that were filed, fixed, and pruned.
-
-_No open bugs._

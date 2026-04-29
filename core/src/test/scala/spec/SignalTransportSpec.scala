@@ -7,7 +7,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.Conversation
 import sigil.event.{Event, Message, ToolInvoke}
-import sigil.signal.{EventState, Signal}
+import sigil.signal.{ConversationCreated, EventState, Signal}
 import sigil.spatial.Place
 import lightdb.spatial.Point
 import sigil.tool.{ToolName, model}
@@ -214,6 +214,33 @@ class SignalTransportSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         // Every published signal must reach the sink — none lost to the race.
         texts should have size publishCount.toLong
         texts.toSet should be(((1 to publishCount).map(i => s"race-$i")).toSet)
+      }
+    }
+
+    // Regression for BUGS.md Sigil#15 — `forwarded`'s filter handled
+    // only Event and Delta. The first Notice arriving on the live stream
+    // raised a MatchError that killed the drain fiber silently, so every
+    // subsequent Event/Delta queued in the hub but was never pushed to
+    // the sink.
+    "keep draining after a Notice — Notice arms the filter, drain fiber survives" in {
+      val convId = freshConv("notice")
+      val sink = new RecordingSink
+      for {
+        handle <- transport.attach(TestUser, sink, ResumeRequest.None,
+                                   conversations = Some(Set(convId)))
+        // Notice first — pre-fix this would kill the drain fiber.
+        _ <- TestSigil.publish(ConversationCreated(convId, TestUser))
+        // Now publish ordinary Events; with the fix they must still flow.
+        _ <- TestSigil.publish(msg(convId, 1000L, "after-notice-1"))
+        _ <- TestSigil.publish(msg(convId, 2000L, "after-notice-2"))
+        _ <- Task.sleep(200.millis)
+        _ <- handle.detach
+      } yield {
+        sink.signals.exists(_.isInstanceOf[ConversationCreated]) shouldBe true
+        val texts = sink.signals.collect {
+          case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString
+        }
+        texts shouldBe Vector("after-notice-1", "after-notice-2")
       }
     }
 

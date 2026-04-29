@@ -6,7 +6,7 @@ import sigil.TurnContext
 import sigil.role.{GeneralistRole, Role}
 import sigil.db.Model
 import sigil.event.Event
-import sigil.provider.{GenerationSettings, Instructions, ToolPolicy}
+import sigil.provider.{BuiltInTool, GenerationSettings, Instructions, ToolPolicy}
 import sigil.signal.Signal
 import sigil.tool.ToolName
 
@@ -71,6 +71,17 @@ trait AgentParticipant extends Participant {
    * agent has one effective tool set per turn.
    */
   def tools: ToolPolicy = ToolPolicy.Standard
+
+  /**
+   * Provider-managed tools the agent has unconditional access to —
+   * unioned with the current Mode's [[sigil.provider.Mode.builtInTools]]
+   * by [[sigil.Sigil.defaultProcess]] before the request hits the
+   * provider. Agents that should always have native web search
+   * (regardless of mode) declare `builtInTools = Set(BuiltInTool.WebSearch)`
+   * here; mode-scoped opt-ins live on the Mode. Models without
+   * server-side support silently drop the opt-in. Default empty.
+   */
+  def builtInTools: Set[BuiltInTool] = Set.empty
 
   /**
    * When `true`, the framework fires the agent's [[processGreeting]]

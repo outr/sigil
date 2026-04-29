@@ -81,7 +81,7 @@ object TestSigil extends Sigil {
   /** Registers the test-only `TestCodingMode` and `TestSkilledMode` for
     * both polymorphic Mode RW and `modeByName` resolution. */
   override protected def modes: List[Mode] =
-    List(TestCodingMode, TestSkilledMode)
+    List(TestCodingMode, TestSkilledMode, WebResearchMode)
 
   // ---- default values for mutable hooks ----
 

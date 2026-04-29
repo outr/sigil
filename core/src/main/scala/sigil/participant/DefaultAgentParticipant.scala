@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import sigil.role.{GeneralistRole, Role}
 import sigil.db.Model
-import sigil.provider.{GenerationSettings, Instructions, ToolPolicy}
+import sigil.provider.{BuiltInTool, GenerationSettings, Instructions, ToolPolicy}
 import sigil.tool.ToolName
 
 /**
@@ -25,6 +25,7 @@ case class DefaultAgentParticipant(override val id: AgentParticipantId,
                                    override val instructions: Instructions = Instructions(),
                                    override val generationSettings: GenerationSettings = GenerationSettings(),
                                    override val tools: ToolPolicy = ToolPolicy.Standard,
+                                   override val builtInTools: Set[BuiltInTool] = Set.empty,
                                    override val greetsOnJoin: Boolean = false,
                                    override val roles: List[Role] = List(GeneralistRole))
   extends AgentParticipant derives RW
