@@ -5,6 +5,7 @@ import lightdb.doc.{JsonConversion, RecordDocument, RecordDocumentModel}
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Unique
+import sigil.{GlobalSpace, SpaceId}
 import sigil.participant.Participant
 import sigil.provider.{ConversationMode, Mode}
 
@@ -49,6 +50,7 @@ import sigil.provider.{ConversationMode, Mode}
 case class Conversation(topics: List[TopicEntry],
                         participants: List[Participant] = Nil,
                         currentMode: Mode = ConversationMode,
+                        space: SpaceId = GlobalSpace,
                         created: Timestamp = Timestamp(),
                         modified: Timestamp = Timestamp(),
                         _id: Id[Conversation] = Conversation.id())

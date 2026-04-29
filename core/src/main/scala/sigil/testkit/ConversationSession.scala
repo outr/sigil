@@ -148,6 +148,7 @@ object ConversationSession {
       case ResponseContent.TextInput(label, _, _, _) => label
       case ResponseContent.SecretInput(label, _, _)  => label
       case ResponseContent.SecretRef(_, label)       => label
+      case ResponseContent.StoredFileReference(_, title, _, _, _) => title
       case ResponseContent.Divider                   => ""
     }.filter(_.nonEmpty).mkString("\n").trim
 }

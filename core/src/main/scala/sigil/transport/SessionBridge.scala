@@ -117,7 +117,7 @@ object SessionBridge {
     val sink         = new DurableSocketSink[Id[Conversation], Info](session)
     val ephemeralFn  = onEphemeral.getOrElse(noticeOrWarn(sigil, viewer))
 
-    sigil.signalTransport.attach(
+    val attached: Task[Unit] = sigil.signalTransport.attach(
       viewer = viewer,
       sink = sink,
       resume = resume,
@@ -148,6 +148,24 @@ object SessionBridge {
             .start()
           ()
         }
+      }
+    }
+
+    // BUGS.md #16 — never let attach failures vanish. Without this guard,
+    // a failure in `onSessionStart` (typical: a fabric `RWException` on a
+    // schema-drifted record) leaves the session in "active but inert"
+    // state — WebSocket open, no inbound handlers — and produces zero
+    // logging because the typical caller invokes `.start()` on the
+    // returned Task and discards both result and error. We log at ERROR
+    // and best-effort close the session so the client transitions to
+    // Disconnected and the user sees a real failure state.
+    attached.handleError { t =>
+      Task {
+        scribe.error(
+          s"SessionBridge: attach failed for conversation=${convId.value} viewer=${viewer.value}: ${t.getMessage}",
+          t
+        )
+        try session.protocol.close() catch { case _: Throwable => () }
       }
     }
   }

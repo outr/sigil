@@ -46,6 +46,17 @@ trait Mode {
     * without support silently drop the opt-in. Default empty. */
   def builtInTools: Set[BuiltInTool] = Set.empty
 
+  /** Optional [[ProviderStrategyRecord]] pinned to this mode —
+    * when the conversation enters this mode, agent dispatch loads
+    * + materializes that strategy regardless of the conversation's
+    * space-level assignment. `None` means "use whatever strategy
+    * the conversation's space resolves to" (typical case).
+    *
+    * Apps configure mode-pinned strategies for situations where
+    * the work shape itself dictates the model — e.g. a `CodingMode`
+    * that always wants Claude, regardless of who's logged in. */
+  def strategyId: Option[Id[ProviderStrategyRecord]] = None
+
   /** Stable `Id[Mode]` derived from [[name]]. Used by `Tool.modes`
     * to declare mode affinity in a persistable, query-friendly shape. */
   final lazy val id: Id[Mode] = Id(name)

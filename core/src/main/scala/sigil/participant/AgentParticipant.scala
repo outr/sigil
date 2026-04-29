@@ -6,7 +6,7 @@ import sigil.TurnContext
 import sigil.role.{GeneralistRole, Role}
 import sigil.db.Model
 import sigil.event.Event
-import sigil.provider.{BuiltInTool, GenerationSettings, Instructions, ToolPolicy}
+import sigil.provider.{BuiltInTool, ConversationWork, GenerationSettings, Instructions, ToolPolicy, WorkType}
 import sigil.signal.Signal
 import sigil.tool.ToolName
 
@@ -82,6 +82,18 @@ trait AgentParticipant extends Participant {
    * server-side support silently drop the opt-in. Default empty.
    */
   def builtInTools: Set[BuiltInTool] = Set.empty
+
+  /**
+   * Category of work the agent's calls represent — fed to the
+   * conversation's [[sigil.provider.ProviderStrategy]] (when one is
+   * resolved) so per-work-type model chains pick the right model.
+   *
+   * Default [[ConversationWork]] suits chat-shaped agents. Apps with
+   * specialized agent surfaces — a coding assistant, a classifier,
+   * a summarization agent — set the agent's work type to match.
+   * Strategy resolution is `Mode.strategyId.orElse(space-assigned)`,
+   * so a mode override beats a space-level default. */
+  def workType: WorkType = ConversationWork
 
   /**
    * When `true`, the framework fires the agent's [[processGreeting]]
