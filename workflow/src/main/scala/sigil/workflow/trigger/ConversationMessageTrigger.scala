@@ -12,6 +12,7 @@ import sigil.workflow.{WorkflowHost, WorkflowTrigger}
 import strider.Workflow
 import strider.step.{Step, Trigger, TriggerMode}
 
+import java.util.concurrent.atomic.AtomicBoolean
 import scala.compiletime.uninitialized
 
 /**
@@ -61,8 +62,12 @@ final case class ConversationMessageTriggerImpl(spec: ConversationMessageTrigger
 
   // Per-instance subscription handle and matched-message queue.
   // Stored at the lifecycle of the running workflow — re-registered
-  // if the workflow is resumed after a crash.
+  // if the workflow is resumed after a crash. `running` flips false
+  // on `unregister` so the upstream `takeWhile` terminates the
+  // stream and the SignalHub subscription is released — independent
+  // of `rapid.Fiber.cancel` (which is a stub today).
   @transient @volatile private var fiber: rapid.Fiber[Unit] = uninitialized
+  @transient private val running = new AtomicBoolean(false)
   @transient private val matched = new java.util.concurrent.ConcurrentLinkedQueue[Message]()
 
   private def messageText(m: Message): String =
@@ -71,7 +76,9 @@ final case class ConversationMessageTriggerImpl(spec: ConversationMessageTrigger
   override def register(workflow: Workflow): Task[Json] = Task {
     val sigil = WorkflowHost.get
     val convId = Id[Conversation](spec.conversationId)
+    running.set(true)
     fiber = sigil.signals
+      .takeWhile(_ => running.get())
       .collect { case m: Message if m.conversationId == convId => m }
       .filter(m => spec.participantId.forall(p => m.participantId.value == p))
       .filter(m => spec.containsText.forall(needle => messageText(m).contains(needle)))
@@ -92,11 +99,12 @@ final case class ConversationMessageTriggerImpl(spec: ConversationMessageTrigger
   }
 
   override def unregister(workflow: Workflow): Task[Unit] = Task {
-    // rapid's Fiber.cancel is a stub today; we drop the reference
-    // and clear the queue so further matches accumulate harmlessly
-    // until the JVM tears down the subscription with the host
-    // SignalHub. Apps that need stricter cleanup override this
-    // trigger and run their own subscription policy.
+    // Flip the gate so the upstream `takeWhile` terminates on the
+    // next signal — that releases the SignalHub subscription
+    // through the stream's own teardown, no Fiber.cancel needed.
+    // We also drop the fiber ref and drain residual matches so a
+    // re-register starts cleanly.
+    running.set(false)
     fiber = null
     matched.clear()
   }
