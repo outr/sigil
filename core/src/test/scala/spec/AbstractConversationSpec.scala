@@ -42,8 +42,11 @@ trait AbstractConversationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   protected def modelId: Id[Model]
 
   /** Tools the agent advertises. Defaults to `CoreTools.coreToolNames`
-    * — apps can override to add app-specific tools to the roster. */
-  protected def toolNames: List[ToolName] = CoreTools.coreToolNames
+    * plus the opt-in `change_mode` tool (the mode-switch test relies
+    * on it being callable). Apps can override to add app-specific
+    * tools to the roster. */
+  protected def toolNames: List[ToolName] =
+    CoreTools.coreToolNames :+ sigil.tool.core.ChangeModeTool.schema.name
 
   /** Generation settings for the agent. 4000 max tokens leaves room for
     * the respond tool's `topicLabel` + `topicSummary` + content without

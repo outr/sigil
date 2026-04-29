@@ -8,8 +8,9 @@ import sigil.tool.model.{
 }
 
 /**
- * The canonical set of framework-level tools every sigil agent should
- * have access to.
+ * The canonical set of framework-level tools every sigil agent
+ * should have access to — the universal-essential subset, free of
+ * any feature that isn't relevant to single-mode apps.
  *
  * The default reply path is `respond` — every user-facing message goes
  * through here. Its `content` field is plain markdown (code fences,
@@ -24,8 +25,14 @@ import sigil.tool.model.{
  * `respond_failure`) that emit a single `Message` carrying the
  * structured block.
  *
- * Plus the framework essentials: `no_response`, `change_mode`,
- * `find_capability`, `stop`.
+ * Plus essentials: `no_response`, `find_capability`, `stop`.
+ *
+ * **NOT in `all` by default** (each is shipped in core but apps opt
+ * in by adding to their own `staticTools` / `toolNames`):
+ *
+ *   - `change_mode` — only useful when an app registers more than
+ *     one [[sigil.provider.Mode]]. Single-mode apps would surface it
+ *     as a no-op tool the model could waste tokens trying to call.
  *
  * Tools that exist in the framework but are NOT in the default roster
  * (`sleep`, `lookup_information`, etc.) live in [[sigil.tool.util]].
@@ -41,14 +48,18 @@ object CoreTools {
       RespondOptionsTool,
       RespondFieldTool,
       RespondFailureTool,
-      ChangeModeTool,
       NoResponseTool,
       FindCapabilityTool,
       StopTool
     )
 
   /** The ToolInput RWs for polymorphic registration. Sigil registers these
-    * automatically during `instance.sync()`; apps don't need to touch this. */
+    * automatically during `instance.sync()`; apps don't need to touch this.
+    *
+    * Includes `ChangeModeInput` so apps that opt into [[ChangeModeTool]]
+    * via their own `staticTools` round-trip without further wiring —
+    * the input RW is cheap to register and harmless when the tool
+    * itself isn't in the roster. */
   val inputRWs: List[RW[? <: ToolInput]] =
     List(
       summon[RW[RespondInput]],

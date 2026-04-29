@@ -9,7 +9,7 @@ import sigil.participant.DefaultAgentParticipant
 import sigil.provider.{ConversationMode, GenerationSettings, Instructions, Mode, ToolPolicy}
 import sigil.tool.ToolName
 import sigil.tool.core.{
-  ChangeModeTool, CoreTools, FindCapabilityTool, NoResponseTool, RespondTool,
+  CoreTools, FindCapabilityTool, NoResponseTool, RespondTool,
   RespondFailureTool, RespondFieldTool, RespondOptionsTool, StopTool
 }
 
@@ -25,7 +25,7 @@ class ModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   private val essentials: Set[ToolName] =
     List(
       RespondTool, RespondOptionsTool, RespondFieldTool, RespondFailureTool,
-      NoResponseTool, ChangeModeTool, StopTool
+      NoResponseTool, StopTool
     ).map(_.schema.name).toSet
   private val withDiscovery: Set[ToolName] =
     essentials + FindCapabilityTool.schema.name

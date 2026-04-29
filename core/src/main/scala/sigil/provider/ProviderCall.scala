@@ -37,4 +37,5 @@ case class ProviderCall(modelId: Id[Model],
                         tools: Vector[Tool],
                         builtInTools: Set[BuiltInTool],
                         toolChoice: ToolChoice,
-                        generationSettings: GenerationSettings)
+                        generationSettings: GenerationSettings,
+                        currentMode: Mode = ConversationMode)
