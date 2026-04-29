@@ -65,7 +65,7 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
           case Some(result) =>
             val kept = result.memories.filter(m => m.key.nonEmpty && m.content.nonEmpty)
             Task.sequence(kept.map { m =>
-              sigil.upsertMemoryByKey(ContextMemory(
+              sigil.upsertMemoryByKeyFor(ContextMemory(
                 fact = m.content,
                 source = MemorySource.Compression,
                 spaceId = space,
@@ -76,7 +76,7 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
                 memoryType = defaultType,
                 status = defaultStatus,
                 conversationId = Some(conversationId)
-              )).map(_.memory)
+              ), chain, conversationId).map(_.memory)
             })
         }.handleError { e =>
           Task(scribe.warn(s"StandardMemoryExtractor: extraction failed for conversation ${conversationId.value}: ${e.getMessage}"))

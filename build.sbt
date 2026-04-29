@@ -28,6 +28,8 @@ val lsp4jVersion: String = "0.24.0"
 
 val bsp4jVersion: String = "2.2.0-M2"
 
+val lsp4jDebugVersion: String = "0.24.0"
+
 ThisBuild / versionScheme := Some("early-semver")
 ThisBuild / licenses := Seq("MIT" -> url("https://github.com/outr/sigil/blob/master/LICENSE"))
 ThisBuild / scalacOptions ++= Seq(
@@ -53,7 +55,7 @@ val docNoLinkWarnings: Seq[Setting[?]] = Seq(
 )
 
 lazy val root = (project in file("."))
-  .aggregate(core, secrets, script, mcp, tooling, browser, benchmark, docs)
+  .aggregate(core, secrets, script, mcp, tooling, debug, browser, benchmark, docs)
   .settings(
     name := "sigil",
     publish / skip := true
@@ -175,6 +177,33 @@ lazy val tooling = (project in file("tooling"))
       // Build Server Protocol — Java types for sbt / Bloop / Mill build queries.
       // Same JSON-RPC machinery as LSP under the hood.
       "ch.epfl.scala" % "bsp4j" % bsp4jVersion,
+      "org.scalatest" %% "scalatest" % scalatestVersion % Test,
+      "com.outr" %% "rapid-test" % rapidVersion % Test
+    ),
+    fork := true,
+    Test / parallelExecution := false,
+    Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
+    Test / testGrouping := (Test / definedTests).value.map { test =>
+      Tests.Group(
+        name = test.name,
+        tests = Seq(test),
+        runPolicy = Tests.SubProcess(ForkOptions())
+      )
+    }
+  )
+
+lazy val debug = (project in file("debug"))
+  .dependsOn(core % "compile->compile;test->test", tooling % "compile->compile")
+  .settings(docNoLinkWarnings*)
+  .settings(
+    name := "sigil-debug",
+    libraryDependencies ++= Seq(
+      // Eclipse LSP4J Debug — Debug Adapter Protocol types + JSON-RPC
+      // wiring. Same JSON-RPC infrastructure as lsp4j core, used by
+      // VS Code / Eclipse / nvim debug clients. Pairs with the
+      // language adapter the agent spawns (sbt's debug adapter,
+      // delve for Go, debugpy for Python, etc.).
+      "org.eclipse.lsp4j" % "org.eclipse.lsp4j.debug" % lsp4jDebugVersion,
       "org.scalatest" %% "scalatest" % scalatestVersion % Test,
       "com.outr" %% "rapid-test" % rapidVersion % Test
     ),

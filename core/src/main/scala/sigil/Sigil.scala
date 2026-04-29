@@ -142,6 +142,21 @@ trait Sigil {
    */
   protected def workTypeRegistrations: List[sigil.provider.WorkType] = Nil
 
+  /**
+   * App-defined [[sigil.viewer.ViewerStatePayload]] subtypes — the
+   * concrete UI-state shapes apps want persisted per-viewer. Same
+   * registration shape as [[modes]] / [[workTypeRegistrations]]:
+   * return a list of values; the framework folds each through
+   * `RW.static(...)` so the polymorphic dispatcher sees them at the
+   * wire layer.
+   *
+   * Apps that don't use [[sigil.signal.RequestViewerState]] /
+   * [[sigil.signal.UpdateViewerState]] leave the default `Nil` —
+   * the primitive is opt-in. The framework ships no concrete
+   * subtype; "what state to persist" is a 100% app decision.
+   */
+  protected def viewerStatePayloadRegistrations: List[sigil.viewer.ViewerStatePayload] = Nil
+
   /** Every Event RW the framework knows about — `CoreSignals.events ++ eventRegistrations`. */
   final def allEventRWs: List[RW[? <: Event]] = CoreSignals.events ++ eventRegistrations
 
@@ -875,6 +890,35 @@ trait Sigil {
                   conversationId: Id[Conversation]): Task[Option[Place]] =
     Task.pure(None)
 
+  /**
+   * Resolve a `Place` from a participant chain — the location
+   * relevant to a memory that was authored mid-turn. Walks `chain`
+   * looking for the first non-`AgentParticipantId`, then consults
+   * [[locationFor]] on it.
+   *
+   * Rationale: an agent often authors a memory (`save_memory` etc.),
+   * but agents have no physical location. The user whose request
+   * triggered the chain is the one whose location should be recorded.
+   * `chain.head` is the originating participant — typically that
+   * user — so the default walk picks them naturally; if the chain
+   * has only agent participants (cron-like flows), the result is
+   * `None`.
+   *
+   * Apps with custom chain shapes (multiple humans, nested
+   * delegation) override.
+   */
+  def locationForChain(chain: List[sigil.participant.ParticipantId],
+                       conversationId: Id[Conversation]): Task[Option[Place]] = {
+    val user = chain.find {
+      case _: sigil.participant.AgentParticipantId => false
+      case _                                       => true
+    }
+    user match {
+      case Some(p) => locationFor(p, conversationId)
+      case None    => Task.pure(None)
+    }
+  }
+
   // -- inbound pipeline --
 
   /**
@@ -1204,18 +1248,73 @@ trait Sigil {
         listConversations(fromViewer).flatMap { conversations =>
           publishTo(fromViewer, sigil.signal.ConversationListSnapshot(conversations))
         }
-      case sigil.signal.SwitchConversation(convId) =>
+      case sigil.signal.SwitchConversation(convId, limit) =>
         for {
           view   <- withDB(_.views.transaction(_.get(ConversationView.idFor(convId))))
-          events <- withDB { db =>
+          all    <- withDB { db =>
                       db.events.transaction(_.list.map(_.filter(_.conversationId == convId)))
                     }
           _      <- view match {
                       case Some(v) =>
-                        publishTo(fromViewer, sigil.signal.ConversationSnapshot(convId, v, events.toVector))
+                        // Sort ascending by timestamp, then take the trailing
+                        // `limit`. `hasMore` is true when the underlying set
+                        // had older events past the window.
+                        val sorted = all.sortBy(_.timestamp.value)
+                        val cap = math.max(0, limit)
+                        val window = if (sorted.length <= cap) sorted else sorted.drop(sorted.length - cap)
+                        val hasMore = sorted.length > cap
+                        publishTo(fromViewer, sigil.signal.ConversationSnapshot(convId, v, window.toVector, hasMore))
                       case None =>
                         Task.unit
                     }
+        } yield ()
+
+      case sigil.signal.RequestConversationHistory(convId, beforeMs, limit) =>
+        withDB { db =>
+          db.events.transaction(_.list.map(_.filter(e =>
+            e.conversationId == convId && e.timestamp.value < beforeMs
+          )))
+        }.flatMap { older =>
+          val sorted = older.sortBy(_.timestamp.value)
+          val cap = math.max(0, limit)
+          // Take the trailing `cap` events of everything older than the
+          // cursor — that's the page closest to the cursor. `hasMore` =
+          // true when even older events exist past the page.
+          val window = if (sorted.length <= cap) sorted else sorted.drop(sorted.length - cap)
+          val hasMore = sorted.length > cap
+          publishTo(fromViewer, sigil.signal.ConversationHistorySnapshot(convId, window.toVector, hasMore))
+        }
+
+      // -- viewer-state vocabulary --
+
+      case sigil.signal.RequestViewerState(scope) =>
+        val recordId = sigil.viewer.ViewerState.idFor(fromViewer, scope)
+        withDB(_.viewerStates.transaction(_.get(recordId))).flatMap { existing =>
+          publishTo(fromViewer, sigil.signal.ViewerStateSnapshot(scope, existing.map(_.payload)))
+        }
+
+      case sigil.signal.UpdateViewerState(scope, payload) =>
+        val record = sigil.viewer.ViewerState(
+          participantId = fromViewer,
+          scope = scope,
+          payload = payload,
+          modified = lightdb.time.Timestamp(),
+          _id = sigil.viewer.ViewerState.idFor(fromViewer, scope)
+        )
+        for {
+          _ <- withDB(_.viewerStates.transaction(_.upsert(record)))
+          // Broadcast to every live session for this viewer so other
+          // tabs / devices converge. `publishTo` fans out via the
+          // hub's per-viewer queue.
+          _ <- publishTo(fromViewer, sigil.signal.ViewerStateSnapshot(scope, Some(payload)))
+        } yield ()
+
+      case sigil.signal.DeleteViewerState(scope) =>
+        val recordId = sigil.viewer.ViewerState.idFor(fromViewer, scope)
+        for {
+          _ <- withDB(_.viewerStates.transaction(_.delete(recordId).map(_ => ())))
+                  .handleError(_ => Task.unit)
+          _ <- publishTo(fromViewer, sigil.signal.ViewerStateSnapshot(scope, None))
         } yield ()
 
       // -- stored-file vocabulary (BUGS.md #19 part 4) --
@@ -1618,6 +1717,51 @@ trait Sigil {
       }
     }.flatMap { result =>
       indexMemory(result.memory).map(_ => result)
+    }
+  }
+
+  /**
+   * Convenience overload: persist a memory and auto-fill `createdBy`
+   * + `location` from the active chain. `createdBy` resolves to the
+   * immediate caller (`chain.last` — typically the agent that
+   * authored the memory); `location` resolves via [[locationForChain]]
+   * (walks chain for the user, consults [[locationFor]]). Either
+   * field is preserved when the caller already set it.
+   *
+   * Apps that have a `TurnContext` should prefer this over the bare
+   * [[persistMemory]] — every memory created from inside an agent
+   * turn benefits from auto-attribution + auto-location.
+   */
+  def persistMemoryFor(memory: ContextMemory,
+                       chain: List[sigil.participant.ParticipantId],
+                       conversationId: Id[Conversation]): Task[ContextMemory] =
+    enrich(memory, chain, conversationId).flatMap(persistMemory)
+
+  /** Convenience overload of [[upsertMemoryByKey]] with the same
+    * `createdBy` + `location` auto-fill behavior as [[persistMemoryFor]]. */
+  def upsertMemoryByKeyFor(memory: ContextMemory,
+                           chain: List[sigil.participant.ParticipantId],
+                           conversationId: Id[Conversation]): Task[UpsertMemoryResult] =
+    enrich(memory, chain, conversationId).flatMap(upsertMemoryByKey)
+
+  /** Internal helper — fold chain-derived `createdBy` + `location`
+    * onto a memory without overwriting fields the caller already set. */
+  private def enrich(memory: ContextMemory,
+                     chain: List[sigil.participant.ParticipantId],
+                     conversationId: Id[Conversation]): Task[ContextMemory] = {
+    val withCreator =
+      if (memory.createdBy.isDefined) memory
+      else chain.lastOption match {
+        case Some(p) => memory.copy(createdBy = Some(p))
+        case None    => memory
+      }
+    val withConv =
+      if (withCreator.conversationId.isDefined) withCreator
+      else withCreator.copy(conversationId = Some(conversationId))
+    if (withConv.location.isDefined) Task.pure(withConv)
+    else locationForChain(chain, conversationId).map {
+      case Some(place) => withConv.copy(location = Some(place))
+      case None        => withConv
     }
   }
 
@@ -2519,6 +2663,9 @@ trait Sigil {
             ) ++ workTypeRegistrations).distinct.map(w => RW.static(w))*
           )
       _ = ToolInput.register((CoreTools.inputRWs ++ findTools.toolInputRWs)*)
+      _ = sigil.viewer.ViewerStatePayload.register(
+            viewerStatePayloadRegistrations.distinct.map(p => RW.static(p))*
+          )
       // Aggregates after leaves.
       _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
       _ = sigil.tool.Tool.register((staticTools.map(t => RW.static(t)) ++ toolRegistrations).distinct*)

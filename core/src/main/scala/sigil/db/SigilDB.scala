@@ -13,6 +13,7 @@ import sigil.provider.{ProviderConfig, ProviderStrategyRecord, SpaceProviderAssi
 import sigil.spatial.GeocodingCache
 import sigil.storage.StoredFile
 import sigil.tool.Tool
+import sigil.viewer.ViewerState
 
 import java.nio.file.Path
 import scala.concurrent.duration.*
@@ -55,6 +56,7 @@ abstract class SigilDB(override val directory: Option[Path],
   val providerConfigs: S[ProviderConfig, ProviderConfig.type] = store(ProviderConfig)()
   val providerStrategies: S[ProviderStrategyRecord, ProviderStrategyRecord.type] = store(ProviderStrategyRecord)()
   val providerAssignments: S[SpaceProviderAssignment, SpaceProviderAssignment.type] = store(SpaceProviderAssignment)()
+  val viewerStates: S[ViewerState, ViewerState.type] = store(ViewerState).withCache(CacheConfig.lru(500))()
 
   override def upgrades: List[DatabaseUpgrade] = appUpgrades
 

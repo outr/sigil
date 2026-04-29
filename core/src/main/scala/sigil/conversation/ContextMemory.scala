@@ -8,6 +8,9 @@ import rapid.Unique
 import sigil.SpaceId
 import sigil.SpaceId.given
 import sigil.conversation.MemoryType.given
+import sigil.participant.ParticipantId
+import sigil.participant.ParticipantId.given
+import sigil.spatial.Place
 
 /**
  * A persisted fact the LLM should know about during a conversation.
@@ -27,6 +30,22 @@ import sigil.conversation.MemoryType.given
  * is populated by `Sigil.upsertMemoryByKey` — compression-extracted
  * facts and critical directives bypass it and use `persistMemory` for
  * single-shot inserts where versioning is meaningless.
+ *
+ * `createdBy` records the participant who authored the memory —
+ * typically the agent that called `save_memory`, the user who
+ * dictated a note, etc. Independent of `location`: an agent
+ * authors the record but the location belongs to the user whose
+ * device produced it. The framework's `persistMemoryFor` /
+ * `upsertMemoryByKeyFor` overloads use the active chain to resolve
+ * both fields in one shot.
+ *
+ * `location` records where the memory was formed. The framework's
+ * `locationForChain` helper walks the conversation's chain looking
+ * for the user (first non-agent participant) and consults
+ * `Sigil.locationFor` on them — the same hook
+ * `LocationCaptureTransform` uses for messages, so memories see
+ * the same coordinate the user's messages do. Defaults to `None`
+ * for memories captured without geolocation.
  */
 case class ContextMemory(fact: String,
                          source: MemorySource,
@@ -46,6 +65,8 @@ case class ContextMemory(fact: String,
                          accessCount: Int = 0,
                          lastAccessedAt: Timestamp = Timestamp(),
                          conversationId: Option[Id[Conversation]] = None,
+                         createdBy: Option[ParticipantId] = None,
+                         location: Option[Place] = None,
                          extraContext: Map[ContextKey, String] = Map.empty,
                          created: Timestamp = Timestamp(),
                          modified: Timestamp = Timestamp(),

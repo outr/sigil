@@ -25,7 +25,8 @@ A Scala 3 framework for building multi-agent LLM conversations with tool use, ca
 ## Optional modules
 
 - **`sigil-mcp`** — MCP client with stdio + HTTP+SSE transports, persisted server registry, sampling handler, automatic cancellation wiring
-- **`sigil-tooling`** — LSP / BSP clients (lsp4j + bsp4j) for IDE-grade structural integration; long-lived language-server and build-server sessions, with `lsp_diagnostics`, `lsp_goto_definition`, `lsp_hover`, and `bsp_compile` tools
+- **`sigil-tooling`** — LSP / BSP clients (lsp4j + bsp4j) for IDE-grade structural integration; long-lived language-server and build-server sessions, with exhaustive coverage of edit, navigation, and build-system RPCs
+- **`sigil-debug`** — DAP (Debug Adapter Protocol) client for interactive debugging — launch / attach, breakpoints, step / continue / pause, stack trace, scope / variable inspection, REPL evaluation; per-language adapter configs (debugpy, lldb-dap, delve, sbt-debug-bridge, …)
 - **`sigil-script`** — REPL-backed `ScalaScriptExecutor` + DB-persisted `ScriptTool`s for runtime-defined capabilities
 - **`sigil-browser`** — headless browser automation via RoboBrowser
 - **`sigil-secrets`** — encrypted secret store (scalapass-backed); referenced by provider configs
@@ -39,6 +40,7 @@ libraryDependencies += "com.outr" %% "sigil-core" % "1.0.0-SNAPSHOT"
 libraryDependencies ++= Seq(
   "com.outr" %% "sigil-mcp"     % "1.0.0-SNAPSHOT",
   "com.outr" %% "sigil-tooling" % "1.0.0-SNAPSHOT",
+  "com.outr" %% "sigil-debug"   % "1.0.0-SNAPSHOT",
   "com.outr" %% "sigil-script"  % "1.0.0-SNAPSHOT",
   "com.outr" %% "sigil-browser" % "1.0.0-SNAPSHOT",
   "com.outr" %% "sigil-secrets" % "1.0.0-SNAPSHOT"
