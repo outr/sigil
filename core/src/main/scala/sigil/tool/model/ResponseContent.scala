@@ -1,7 +1,9 @@
 package sigil.tool.model
 
 import fabric.rw.*
+import lightdb.id.Id
 import sigil.security.SecretKind
+import sigil.storage.StoredFile
 import spice.net.URL
 
 /**
@@ -167,4 +169,38 @@ enum ResponseContent derives RW {
    *   - `label` — human-readable label for the UI.
    */
   case SecretRef(secretId: String, label: String)
+
+  /**
+   * Reference to bytes living in [[sigil.storage.StoredFile]] —
+   * what gets persisted in `SigilDB.events` instead of an oversized
+   * inline `Code` / `Diff` / `Image` block.
+   *
+   * The framework's [[sigil.pipeline.ContentExternalizationTransform]]
+   * rewrites blocks larger than [[sigil.Sigil.inlineContentThreshold]]
+   * to this variant before persist. Renderers (UI, agent context,
+   * search indexer) dispatch on it the same way they dispatch on
+   * any other variant — UIs render a chip with `title` + `size`,
+   * the agent's prompt-builder calls
+   * [[ResponseContent.dereference]] to materialize the original
+   * bytes, and the search indexer does the same before reading the
+   * content for index entries.
+   *
+   *   - `fileId` — id of the persisted bytes in `SigilDB.storedFiles`.
+   *   - `title` — short human-readable label the UI displays
+   *     (e.g. "PaymentService.scala" or "tool-output.json").
+   *   - `language` — optional language hint, copied from the original
+   *     `Code.language` when externalizing a `Code` block.
+   *   - `contentType` — MIME type of the bytes; renderers use it to
+   *     choose icons / preview affordances.
+   *   - `size` — bytes count; UIs render as "12.4 KB" without
+   *     fetching the file.
+   *
+   * The reference is safe to include in agent context, conversation
+   * snapshots, and replays; it never carries the bytes themselves.
+   */
+  case StoredFileReference(fileId: Id[StoredFile],
+                           title: String,
+                           language: Option[String] = None,
+                           contentType: String = "application/octet-stream",
+                           size: Long = 0L)
 }

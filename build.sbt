@@ -20,6 +20,10 @@ val scalatestVersion: String = "3.2.20"
 
 val scalapassVersion: String = "1.4.0"
 
+val awsS3Version: String = "2.42.18"
+
+val robobrowserVersion: String = "2.3.2-SNAPSHOT"
+
 ThisBuild / versionScheme := Some("early-semver")
 ThisBuild / licenses := Seq("MIT" -> url("https://github.com/outr/sigil/blob/master/LICENSE"))
 ThisBuild / scalacOptions ++= Seq(
@@ -45,7 +49,7 @@ val docNoLinkWarnings: Seq[Setting[?]] = Seq(
 )
 
 lazy val root = (project in file("."))
-  .aggregate(core, secrets, script, mcp, benchmark, docs)
+  .aggregate(core, secrets, script, mcp, browser, benchmark, docs)
   .settings(
     name := "sigil",
     publish / skip := true
@@ -62,8 +66,10 @@ lazy val core = (project in file("core"))
       "com.outr" %% "spice-api" % spiceVersion,
       "com.outr" %% "spice-client-netty" % spiceVersion,
       "com.outr" %% "spice-server" % spiceVersion,
+      "com.outr" %% "spice-openapi" % spiceVersion,
       "com.outr" %% "lightdb-all" % lightdbVersion,
       "org.commonmark" % "commonmark" % "0.27.0",
+      "software.amazon.awssdk" % "s3" % awsS3Version exclude("software.amazon.awssdk", "netty-nio-client"),
       "org.scalatest" %% "scalatest" % scalatestVersion % Test,
       "com.outr" %% "rapid-test" % rapidVersion % Test,
       "com.outr" %% "spice-server-undertow" % spiceVersion % Test
@@ -138,6 +144,33 @@ lazy val mcp = (project in file("mcp"))
     libraryDependencies ++= Seq(
       "org.scalatest" %% "scalatest" % scalatestVersion % Test,
       "com.outr" %% "rapid-test" % rapidVersion % Test
+    ),
+    fork := true,
+    Test / parallelExecution := false,
+    Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
+    Test / testGrouping := (Test / definedTests).value.map { test =>
+      Tests.Group(
+        name = test.name,
+        tests = Seq(test),
+        runPolicy = Tests.SubProcess(ForkOptions())
+      )
+    }
+  )
+
+lazy val browser = (project in file("browser"))
+  .dependsOn(core % "compile->compile;test->test", secrets % "compile->compile;test->test")
+  .settings(docNoLinkWarnings*)
+  .settings(
+    name := "sigil-browser",
+    libraryDependencies ++= Seq(
+      ("com.outr" %% "robobrowser-cdp" % robobrowserVersion)
+        .exclude("com.outr", "spice-client_3")
+        .exclude("com.outr", "spice-client-netty_3")
+        .exclude("com.outr", "spice-server-undertow_3")
+        .exclude("com.outr", "rapid-core_3"),
+      "org.scalatest" %% "scalatest" % scalatestVersion % Test,
+      "com.outr" %% "rapid-test" % rapidVersion % Test,
+      "com.outr" %% "spice-server-undertow" % spiceVersion % Test
     ),
     fork := true,
     Test / parallelExecution := false,

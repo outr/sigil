@@ -52,8 +52,20 @@ object FrameBuilder {
     // [[stripEventBoilerplate]] (framework metadata fields removed so
     // the model sees only the typed payload).
     if (event.role == MessageRole.Tool) {
-      val payload = stripEventBoilerplate(Event.rw.read(event))
-      val content = JsonFormatter.Compact(payload)
+      // Tool-result rendering: for typed Events (ChangeMode, ToolResults,
+      // etc.) strip framework boilerplate and render the JSON of the
+      // remaining typed fields. For `Message`, the typed fields are the
+      // wrapper itself (`content: Vector[ResponseContent]` etc.) — the
+      // agent wants just the text the tool wrote, not the Message
+      // record. Extract the text directly so models see a clean tool
+      // result instead of doubly-wrapped JSON.
+      val content = event match {
+        case m: Message =>
+          m.content.collect { case ResponseContent.Text(t) => t }.mkString("\n")
+        case other =>
+          val payload = stripEventBoilerplate(Event.rw.read(other))
+          JsonFormatter.Compact(payload)
+      }
       return pairedCallId(existing) match {
         case Some(callId) =>
           existing :+ ContextFrame.ToolResult(

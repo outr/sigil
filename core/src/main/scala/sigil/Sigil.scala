@@ -28,10 +28,10 @@ import sigil.dispatcher.{StopFlag, TriggerFilter}
 import sigil.event.{AgentState, Event, Message, MessageVisibility, ModeChange, Stop, TopicChange, TopicChangeKind}
 import sigil.role.Role
 import sigil.orchestrator.Orchestrator
-import sigil.provider.{ConversationMode, ConversationRequest, Mode, ToolPolicy}
+import sigil.provider.{ConversationMode, ConversationRequest, Mode, ProviderStrategy, ToolPolicy}
 import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
-import sigil.pipeline.{GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MessageIndexingEffect, RedactLocationTransform, SettledEffect, SignalHub, ViewerTransform}
+import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MessageIndexingEffect, RedactLocationTransform, SettledEffect, SignalHub, ViewerTransform}
 import sigil.provider.Provider
 import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, Signal}
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
@@ -124,6 +124,17 @@ trait Sigil {
    * Default empty.
    */
   protected def signalRegistrations: List[RW[? <: Signal]] = Nil
+
+  /**
+   * App-specific [[sigil.provider.WorkType]] subtypes. The framework
+   * ships six baseline categories
+   * ([[sigil.provider.ConversationWork]], [[sigil.provider.CodingWork]],
+   * [[sigil.provider.AnalysisWork]], [[sigil.provider.ClassificationWork]],
+   * [[sigil.provider.CreativeWork]], [[sigil.provider.SummarizationWork]])
+   * registered automatically; apps add their own subtypes here so
+   * [[sigil.provider.ProviderStrategy]] routes recognize them.
+   */
+  protected def workTypeRegistrations: List[RW[? <: sigil.provider.WorkType]] = Nil
 
   /** Every Event RW the framework knows about — `CoreSignals.events ++ eventRegistrations`. */
   final def allEventRWs: List[RW[? <: Event]] = CoreSignals.events ++ eventRegistrations
@@ -235,6 +246,276 @@ trait Sigil {
     * stored tool. */
   def createTool(tool: sigil.tool.Tool): Task[sigil.tool.Tool] =
     withDB(_.tools.transaction(_.upsert(tool)))
+
+  // -- storage --
+
+  /** Backend for binary content (screenshots, generated images,
+    * uploaded files). Default: [[sigil.storage.LocalFileStorageProvider]]
+    * rooted under `<sigil.storagePath ?? dbPath/storage>`. Apps
+    * override for S3 / multi-backend by returning their own
+    * [[sigil.storage.StorageProvider]] (typically
+    * [[sigil.storage.S3StorageProvider]]).
+    *
+    * The framework always proxies bytes through its HTTP layer
+    * ([[sigil.storage.http.StorageRouteFilter]]); the backend's
+    * native URL is never exposed to consumers, regardless of which
+    * provider is wired. */
+  def storageProvider: sigil.storage.StorageProvider = defaultStorageProvider
+
+  private final lazy val defaultStorageProvider: sigil.storage.StorageProvider = {
+    val configured = Profig("sigil.storagePath").asOr[String]("")
+    val base =
+      if (configured.nonEmpty) java.nio.file.Path.of(configured)
+      else java.nio.file.Path.of(Profig("sigil.dbPath").asOr[String]("db/sigil"), "storage")
+    new sigil.storage.LocalFileStorageProvider(base)
+  }
+
+  /** Persist bytes under the given [[SpaceId]]. Records a
+    * [[sigil.storage.StoredFile]] in `SigilDB.storedFiles` and writes
+    * the bytes via [[storageProvider]]. Returns the persisted record
+    * — call [[storageUrl]] to get a URL the UI can fetch.
+    *
+    * The provider's `path` is derived as `<space.value>/<id>` so
+    * backends that support hierarchical listing keep tenant
+    * directories separated. */
+  def storeBytes(space: SpaceId,
+                 data: Array[Byte],
+                 contentType: String,
+                 metadata: Map[String, String] = Map.empty): Task[sigil.storage.StoredFile] = {
+    val record = sigil.storage.StoredFile(
+      space = space,
+      path = "",
+      contentType = contentType,
+      size = data.length.toLong,
+      metadata = metadata
+    )
+    val derivedPath = s"${space.value}/${record._id.value}"
+    val populated = record.copy(path = derivedPath)
+    storageProvider.upload(derivedPath, data, contentType).flatMap { _ =>
+      withDB(_.storedFiles.transaction(_.insert(populated))).map(_ => populated)
+    }
+  }
+
+  /** Read bytes by id with authz. Returns `None` if the file doesn't
+    * exist OR the caller's `accessibleSpaces` doesn't include the
+    * file's space. Mirroring `find_capability`'s fail-closed
+    * default — if the app hasn't authorized the chain, lookups
+    * silently miss. */
+  def fetchStoredFile(id: Id[sigil.storage.StoredFile],
+                      chain: List[ParticipantId]): Task[Option[(sigil.storage.StoredFile, Array[Byte])]] =
+    withDB(_.storedFiles.transaction(_.get(id))).flatMap {
+      case None => Task.pure(None)
+      case Some(file) =>
+        accessibleSpaces(chain).flatMap { spaces =>
+          if (!spaces.contains(file.space)) Task.pure(None)
+          else storageProvider.download(file.path).map(_.map(bytes => (file, bytes)))
+        }
+    }
+
+  /** Eagerly delete: remove the record from `SigilDB.storedFiles` and
+    * the bytes from the backend in the same task. Authz: caller's
+    * `accessibleSpaces` must include the file's space. Apps that
+    * want soft-delete override [[afterDelete]]. */
+  def deleteStoredFile(id: Id[sigil.storage.StoredFile],
+                       chain: List[ParticipantId]): Task[Unit] =
+    withDB(_.storedFiles.transaction(_.get(id))).flatMap {
+      case None => Task.unit
+      case Some(file) =>
+        accessibleSpaces(chain).flatMap { spaces =>
+          if (!spaces.contains(file.space)) Task.unit
+          else for {
+            _ <- storageProvider.delete(file.path)
+            _ <- withDB(_.storedFiles.transaction(_.delete(id))).unit
+            _ <- afterDelete(file)
+          } yield ()
+        }
+    }
+
+  /** Hook invoked after a [[StoredFile]] record + its bytes have been
+    * deleted. Default: no-op. Apps override for soft-delete bookkeeping
+    * (move to a tombstone collection) or audit logging. */
+  protected def afterDelete(file: sigil.storage.StoredFile): Task[Unit] = Task.unit
+
+  /** The URL a UI fetches a stored file from. Default returns
+    * `sigil://storage/<id>` — the framework's
+    * [[sigil.storage.http.StorageRouteFilter]] resolves that scheme
+    * back through `storageProvider.download`. Apps that want fully
+    * qualified URLs (CDN edge, signed URLs) override this hook. */
+  def storageUrl(file: sigil.storage.StoredFile): spice.net.URL =
+    spice.net.URL.get(s"sigil://storage/${file._id.value}",
+      tldValidation = spice.net.TLDValidation.Off).getOrElse(
+      throw new RuntimeException(s"Failed to construct storage URL for ${file._id.value}"))
+
+  // -- providers (configs + strategies + assignments) --
+
+  /**
+   * Resolve a provider API key for storage, encryption, or external
+   * call. Default returns `None` — apps mixing in
+   * [[sigil.secrets.SecretsSigil]] override to consult the
+   * `secretStore` (the secret-id is whatever
+   * [[sigil.provider.ProviderConfig.apiKeySecretId]] holds).
+   *
+   * The framework does not store plaintext keys anywhere — apps
+   * choose their own resolution path (env var, secret store, KMS).
+   */
+  def resolveApiKey(secretId: String): Task[Option[String]] = Task.pure(None)
+
+  /** Persist or update a [[sigil.provider.ProviderConfig]] record. */
+  def saveProviderConfig(config: sigil.provider.ProviderConfig): Task[sigil.provider.ProviderConfig] =
+    withDB(_.providerConfigs.transaction(_.upsert(
+      config.copy(modified = lightdb.time.Timestamp())
+    )))
+
+  /** Read a [[sigil.provider.ProviderConfig]] by id. Authz: caller's
+    * `accessibleSpaces` must include the record's space. */
+  def getProviderConfig(id: Id[sigil.provider.ProviderConfig],
+                        chain: List[ParticipantId]): Task[Option[sigil.provider.ProviderConfig]] =
+    withDB(_.providerConfigs.transaction(_.get(id))).flatMap {
+      case None => Task.pure(None)
+      case Some(c) =>
+        accessibleSpaces(chain).map { spaces =>
+          if (spaces.contains(c.space)) Some(c) else None
+        }
+    }
+
+  /** List every [[sigil.provider.ProviderConfig]] in `space` that
+    * the caller's chain authorizes. */
+  def listProviderConfigs(space: SpaceId,
+                          chain: List[ParticipantId]): Task[List[sigil.provider.ProviderConfig]] =
+    accessibleSpaces(chain).flatMap { spaces =>
+      if (!spaces.contains(space)) Task.pure(Nil)
+      else withDB(_.providerConfigs.transaction(_.list)).map(_.toList.filter(_.space == space))
+    }
+
+  /** Delete a [[sigil.provider.ProviderConfig]] by id. Authz check
+    * mirrors `getProviderConfig`. */
+  def deleteProviderConfig(id: Id[sigil.provider.ProviderConfig],
+                           chain: List[ParticipantId]): Task[Unit] =
+    getProviderConfig(id, chain).flatMap {
+      case None    => Task.unit
+      case Some(_) => withDB(_.providerConfigs.transaction(_.delete(id))).unit
+    }
+
+  /** Persist or update a [[sigil.provider.ProviderStrategyRecord]]. */
+  def saveProviderStrategy(record: sigil.provider.ProviderStrategyRecord): Task[sigil.provider.ProviderStrategyRecord] =
+    withDB(_.providerStrategies.transaction(_.upsert(
+      record.copy(modified = lightdb.time.Timestamp())
+    )))
+
+  /** Read a [[sigil.provider.ProviderStrategyRecord]] by id with
+    * `accessibleSpaces` authz. */
+  def getProviderStrategy(id: Id[sigil.provider.ProviderStrategyRecord],
+                          chain: List[ParticipantId]): Task[Option[sigil.provider.ProviderStrategyRecord]] =
+    withDB(_.providerStrategies.transaction(_.get(id))).flatMap {
+      case None => Task.pure(None)
+      case Some(r) =>
+        accessibleSpaces(chain).map { spaces =>
+          if (spaces.contains(r.space)) Some(r) else None
+        }
+    }
+
+  /** List every [[sigil.provider.ProviderStrategyRecord]] visible
+    * to the caller in `space`. The "visibility scope" — independent
+    * from which one is currently `assigned` to the space. */
+  def listProviderStrategies(space: SpaceId,
+                             chain: List[ParticipantId]): Task[List[sigil.provider.ProviderStrategyRecord]] =
+    accessibleSpaces(chain).flatMap { spaces =>
+      if (!spaces.contains(space)) Task.pure(Nil)
+      else withDB(_.providerStrategies.transaction(_.list)).map(_.toList.filter(_.space == space))
+    }
+
+  /** Delete a [[sigil.provider.ProviderStrategyRecord]] by id with
+    * authz. Also unassigns it from any space currently using it
+    * (cascading cleanup). */
+  def deleteProviderStrategy(id: Id[sigil.provider.ProviderStrategyRecord],
+                             chain: List[ParticipantId]): Task[Unit] =
+    getProviderStrategy(id, chain).flatMap {
+      case None    => Task.unit
+      case Some(_) =>
+        for {
+          // Cascade: any space whose assignment points at this record loses its assignment.
+          assigns <- withDB(_.providerAssignments.transaction(_.list))
+          orphans  = assigns.toList.filter(_.strategyId == id)
+          _       <- Task.sequence(orphans.map(o =>
+                       withDB(_.providerAssignments.transaction(_.delete(o._id))).unit))
+          _       <- withDB(_.providerStrategies.transaction(_.delete(id))).unit
+        } yield ()
+    }
+
+  /** Assign a strategy to a space — replaces any existing
+    * assignment. Caller's chain must authorize the space. */
+  def assignProviderStrategy(space: SpaceId,
+                             strategyId: Id[sigil.provider.ProviderStrategyRecord],
+                             chain: List[ParticipantId]): Task[Unit] =
+    accessibleSpaces(chain).flatMap { spaces =>
+      if (!spaces.contains(space)) Task.unit
+      else withDB(_.providerAssignments.transaction(_.upsert(
+        sigil.provider.SpaceProviderAssignment(space, strategyId)
+      ))).unit
+    }
+
+  /** Remove a space's strategy assignment. The strategy record itself
+    * is unaffected. Caller's chain must authorize the space. */
+  def unassignProviderStrategy(space: SpaceId,
+                               chain: List[ParticipantId]): Task[Unit] =
+    accessibleSpaces(chain).flatMap { spaces =>
+      if (!spaces.contains(space)) Task.unit
+      else withDB(_.providerAssignments.transaction(_.delete(
+        sigil.provider.SpaceProviderAssignment.idFor(space)
+      ))).unit
+    }
+
+  /** Read the assignment record for a space (or `None` when no
+    * strategy is currently assigned). No authz check — the
+    * presence/absence of an assignment is benign metadata. */
+  def assignedProviderStrategy(space: SpaceId): Task[Option[Id[sigil.provider.ProviderStrategyRecord]]] =
+    withDB(_.providerAssignments.transaction(_.get(
+      sigil.provider.SpaceProviderAssignment.idFor(space)
+    ))).map(_.map(_.strategyId))
+
+  /** Materialize the strategy currently assigned to `space` into a
+    * live [[sigil.provider.ProviderStrategy]] instance. Returns
+    * `None` if no assignment exists or the assigned record can't
+    * be loaded — agent dispatch falls back to the agent's pinned
+    * `modelId` in that case.
+    *
+    * The materialization is straightforward today (defaults +
+    * routes → `ProviderStrategy.routed`); apps with custom strategy
+    * semantics override to return their own `ProviderStrategy`
+    * implementation regardless of the persisted record. */
+  def resolveProviderStrategy(space: SpaceId): Task[Option[sigil.provider.ProviderStrategy]] =
+    assignedProviderStrategy(space).flatMap {
+      case None => Task.pure(None)
+      case Some(strategyId) =>
+        withDB(_.providerStrategies.transaction(_.get(strategyId))).map(_.map(materializeStrategy))
+    }
+
+  /** Default record → strategy materializer. Override to swap in a
+    * custom [[sigil.provider.ProviderStrategy]] (round-robin,
+    * cost-aware routing, etc.) using the persisted record as a
+    * config knob. */
+  protected def materializeStrategy(record: sigil.provider.ProviderStrategyRecord): sigil.provider.ProviderStrategy = {
+    // routeCandidates is keyed by `WorkType.value` strings; resolve
+    // each through the registered WorkType polytype names. Unregistered
+    // values fall through to a synthetic `WorkType` with that string.
+    val routes: Map[sigil.provider.WorkType, List[sigil.provider.ModelCandidate]] =
+      record.routeCandidates.flatMap { case (key, list) =>
+        // Try framework-shipped subtypes first; fall back to a one-off
+        // anonymous WorkType so dispatch can still match if the app's
+        // strategy uses values the framework doesn't know about.
+        val wt: sigil.provider.WorkType = key.toLowerCase match {
+          case "conversation"   => sigil.provider.ConversationWork
+          case "coding"         => sigil.provider.CodingWork
+          case "analysis"       => sigil.provider.AnalysisWork
+          case "classification" => sigil.provider.ClassificationWork
+          case "creative"       => sigil.provider.CreativeWork
+          case "summarization"  => sigil.provider.SummarizationWork
+          case other            => new sigil.provider.WorkType { override val value: String = other }
+        }
+        Map(wt -> list)
+      }
+    sigil.provider.ProviderStrategy.routed(record.defaultCandidates, routes)
+  }
 
   private final lazy val defaultFindTools: sigil.tool.ToolFinder = {
     val staticInputs = staticTools.map(_.inputRW).distinctBy(_.definition.className)
@@ -442,22 +723,51 @@ trait Sigil {
     val suggested      = context.conversationView.projectionFor(agent.id).suggestedTools
     val effectiveNames = effectiveToolNames(agent, context.conversation.currentMode, suggested).distinct
 
-    val resolved: Task[(Provider, Vector[Tool])] =
-      for {
-        p <- providerFor(agent.modelId, effectiveChain)
-        t <- Task.sequence(effectiveNames.map(n => findTools.byName(n))).map(_.flatten.toVector)
-      } yield (p, t)
+    // Strategy resolution: Mode override beats space-level
+    // assignment beats agent's pinned modelId. The strategy returns
+    // ordered candidates for the agent's `workType`; the first
+    // available candidate's `modelId` is what this turn calls. Apps
+    // wanting cooldown-aware fallback across multiple turns can
+    // override `runAgentTurn` (or override `resolveProviderStrategy`
+    // to return a custom strategy that itself encapsulates retry).
+    val strategyTask: Task[Option[ProviderStrategy]] =
+      context.conversation.currentMode.strategyId match {
+        case Some(modeStrategyId) =>
+          withDB(_.providerStrategies.transaction(_.get(modeStrategyId)))
+            .map(_.map(materializeStrategy))
+        case None =>
+          resolveProviderStrategy(context.conversation.space)
+      }
 
-    Stream.force(resolved.map { case (provider, tools) =>
+    val resolved: Task[(Provider, Vector[Tool], Id[Model], GenerationSettings)] =
+      for {
+        strategyOpt <- strategyTask
+        // Pick the first available candidate for the agent's work
+        // type. Empty candidate list (e.g. record had no defaults)
+        // falls through to `agent.modelId`.
+        chosen       = strategyOpt
+                         .flatMap(_.availableCandidates(agent.workType).headOption)
+        modelId      = chosen.map(_.modelId).getOrElse(agent.modelId)
+        // Per-candidate `settings` overlays the agent's
+        // generationSettings. The framework keeps the agent's settings
+        // as the base — the candidate's settings take precedence on
+        // any field they specify (currently a wholesale replace; if
+        // we want field-by-field merge later that lives here).
+        genSettings  = chosen.map(_.settings).getOrElse(agent.generationSettings)
+        p           <- providerFor(modelId, effectiveChain)
+        t           <- Task.sequence(effectiveNames.map(n => findTools.byName(n))).map(_.flatten.toVector)
+      } yield (p, t, modelId, genSettings)
+
+    Stream.force(resolved.map { case (provider, tools, modelId, genSettings) =>
       val request = ConversationRequest(
         conversationId = context.conversation.id,
-        modelId = agent.modelId,
+        modelId = modelId,
         instructions = agent.instructions,
         turnInput = context.turnInput,
         currentMode = context.conversation.currentMode,
         currentTopic = context.conversation.currentTopic,
         previousTopics = context.conversation.previousTopics,
-        generationSettings = agent.generationSettings,
+        generationSettings = genSettings,
         tools = tools,
         builtInTools = agent.builtInTools ++ context.conversation.currentMode.builtInTools,
         chain = effectiveChain,
@@ -558,10 +868,41 @@ trait Sigil {
   /**
    * Pre-persist transforms applied in order by [[publish]] before a
    * signal hits [[SigilDB.apply]]. Defaults to
-   * `[LocationCaptureTransform]`. Apps override to add, remove, or
-   * reorder — see `sigil.pipeline.InboundTransform`.
+   * `[LocationCaptureTransform, ContentExternalizationTransform]`.
+   * Apps override to add, remove, or reorder — see
+   * `sigil.pipeline.InboundTransform`.
+   *
+   * `ContentExternalizationTransform` rewrites oversized
+   * [[sigil.tool.model.ResponseContent]] blocks into
+   * `StoredFileReference` pointers before persist (see
+   * [[inlineContentThreshold]] / [[externalizationSpace]]) — keeps
+   * the event store lean on long agent responses. Apps that don't
+   * want it drop it from this list or set
+   * `inlineContentThreshold = Long.MaxValue`.
    */
-  def inboundTransforms: List[InboundTransform] = List(LocationCaptureTransform)
+  def inboundTransforms: List[InboundTransform] =
+    List(LocationCaptureTransform, ContentExternalizationTransform)
+
+  /**
+   * Bytes — content blocks larger than this get pushed to the
+   * configured [[storageProvider]] and replaced with a
+   * [[sigil.tool.model.ResponseContent.StoredFileReference]] before
+   * the Message persists. Default 8 KB. Set to `Long.MaxValue` to
+   * disable externalization entirely.
+   */
+  def inlineContentThreshold: Long = 8L * 1024L
+
+  /**
+   * Resolve the [[SpaceId]] under which an externalized content
+   * block lands. Default [[GlobalSpace]] — apps that scope storage
+   * per-conversation / per-tenant override (e.g.
+   * `Task.pure(MyConversationSpace(message.conversationId.value))`).
+   *
+   * The resolver receives the source [[sigil.event.Message]] so
+   * apps can derive scope from `participantId` (per-user),
+   * `conversationId` (per-conversation), or message metadata. */
+  def externalizationSpace(message: sigil.event.Message): Task[SpaceId] =
+    Task.pure(GlobalSpace)
 
   /**
    * Post-persist side effects triggered by every signal that reaches
@@ -864,7 +1205,62 @@ trait Sigil {
                         Task.unit
                     }
         } yield ()
+
+      // -- stored-file vocabulary (BUGS.md #19 part 4) --
+
+      case sigil.signal.RequestStoredFileList(spaces) =>
+        listStoredFiles(fromViewer, spaces).flatMap { summaries =>
+          publishTo(fromViewer, sigil.signal.StoredFileListSnapshot(summaries))
+        }
+
+      case sigil.signal.RequestStoredFile(fileId) =>
+        fetchStoredFile(fileId, List(fromViewer)).flatMap {
+          case None => Task.unit
+          case Some((file, bytes)) =>
+            val payload = sigil.signal.StoredFileContent(
+              file = sigil.signal.StoredFileSummary.fromStoredFile(file),
+              base64Data = java.util.Base64.getEncoder.encodeToString(bytes)
+            )
+            publishTo(fromViewer, payload)
+        }
+
+      case sigil.signal.SaveStoredFile(_, contentType, base64Data, _, _) =>
+        // Default: the framework can't pick a SpaceId on the agent's
+        // behalf without app context, so we resolve through
+        // `externalizationSpaceForViewer(fromViewer)` (defaults to
+        // GlobalSpace). Apps that want per-conversation tenancy
+        // override that hook OR override `handleNotice` to take the
+        // conversationId on the SaveStoredFile into account.
+        externalizationSpaceForViewer(fromViewer).flatMap { space =>
+          val bytes = java.util.Base64.getDecoder.decode(base64Data)
+          storeBytes(space, bytes, contentType).flatMap { stored =>
+            publishTo(fromViewer, sigil.signal.StoredFileCreated(
+              sigil.signal.StoredFileSummary.fromStoredFile(stored)
+            ))
+          }
+        }
+
       case _ => Task.unit
+    }
+
+  /** Resolve the [[SpaceId]] used when a viewer pushes a
+    * [[sigil.signal.SaveStoredFile]] without conversation scope.
+    * Default [[GlobalSpace]] — apps tune for per-user / per-tenant. */
+  def externalizationSpaceForViewer(viewer: ParticipantId): Task[SpaceId] =
+    Task.pure(GlobalSpace)
+
+  /** Resolve the list of [[sigil.signal.StoredFileSummary]] visible
+    * to a viewer, optionally filtered to a subset of spaces. Default
+    * walks `SigilDB.storedFiles` and filters by
+    * `accessibleSpaces(List(viewer))`. */
+  def listStoredFiles(viewer: ParticipantId,
+                      spaces: Option[Set[SpaceId]] = None): Task[List[sigil.signal.StoredFileSummary]] =
+    accessibleSpaces(List(viewer)).flatMap { authorized =>
+      val effective = spaces.fold(authorized)(_.intersect(authorized))
+      withDB(_.storedFiles.transaction(_.list)).map(_.toList.collect {
+        case file if effective.contains(file.space) =>
+          sigil.signal.StoredFileSummary.fromStoredFile(file)
+      })
     }
 
   /** Fold the signal through [[inboundTransforms]] in declaration order.
@@ -1639,6 +2035,41 @@ trait Sigil {
   }
 
   /**
+   * Resolve the [[Conversation]] for `conversationId`, creating it (via
+   * [[newConversation]]) with the supplied defaults if no row exists.
+   * Returns the resulting Conversation either way.
+   *
+   * Idempotent — calling this on every wire-connect is the canonical
+   * pattern for chat-shaped consumers that want lazy-create-on-first-
+   * contact semantics. The participant list, label, summary, and mode
+   * are only used on the create path; pre-existing conversations are
+   * returned unchanged regardless of what is passed.
+   *
+   * Greet-on-join behavior matches [[newConversation]] — when the row
+   * is being created, agent participants flagged with `greetsOnJoin`
+   * fire their greeting; on the get path no greeting fires (the agent
+   * already greeted on the original create).
+   */
+  def getOrCreateConversation(conversationId: Id[Conversation],
+                              createdBy: ParticipantId,
+                              label: String = Topic.DefaultLabel,
+                              summary: String = Topic.DefaultSummary,
+                              participants: List[Participant] = Nil,
+                              currentMode: Mode = ConversationMode): Task[Conversation] =
+    withDB(_.conversations.transaction(_.get(conversationId))).flatMap {
+      case Some(c) => Task.pure(c)
+      case None =>
+        newConversation(
+          createdBy = createdBy,
+          label = label,
+          summary = summary,
+          participants = participants,
+          currentMode = currentMode,
+          conversationId = conversationId
+        )
+    }
+
+  /**
    * Resolve the current [[Topic]] record for a conversation. Returns
    * `None` only if the conversation's `currentTopicId` refers to a
    * missing Topic record (a data-integrity failure — the invariant is
@@ -2060,6 +2491,14 @@ trait Sigil {
       _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
       _ = sigil.tool.Tool.register((staticTools.map(t => RW.static(t)) ++ toolRegistrations).distinct*)
       _ = Signal.register((allEventRWs ++ allDeltaRWs ++ allNoticeRWs ++ signalRegistrations)*)
+      _ = sigil.provider.WorkType.register((List(
+            RW.static[sigil.provider.WorkType](sigil.provider.ConversationWork),
+            RW.static[sigil.provider.WorkType](sigil.provider.CodingWork),
+            RW.static[sigil.provider.WorkType](sigil.provider.AnalysisWork),
+            RW.static[sigil.provider.WorkType](sigil.provider.ClassificationWork),
+            RW.static[sigil.provider.WorkType](sigil.provider.CreativeWork),
+            RW.static[sigil.provider.WorkType](sigil.provider.SummarizationWork)
+          ) ++ workTypeRegistrations)*)
     } yield ()
   }.singleton
 

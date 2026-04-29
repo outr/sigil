@@ -9,7 +9,9 @@ import rapid.Task
 import sigil.conversation.{ContextMemory, ContextSummary, Conversation, ConversationView, Topic}
 import sigil.event.Event
 import sigil.signal.{Delta, Signal}
+import sigil.provider.{ProviderConfig, ProviderStrategyRecord, SpaceProviderAssignment}
 import sigil.spatial.GeocodingCache
+import sigil.storage.StoredFile
 import sigil.tool.Tool
 
 import java.nio.file.Path
@@ -49,6 +51,10 @@ abstract class SigilDB(override val directory: Option[Path],
   val topics: S[Topic, Topic.type] = store(Topic).withCache(CacheConfig.lru(2000))()
   val geocodingCache: S[GeocodingCache, GeocodingCache.type] = store(GeocodingCache)()
   val tools: S[Tool, Tool.type] = store(Tool).withCache(CacheConfig.lru(500))()
+  val storedFiles: S[StoredFile, StoredFile.type] = store(StoredFile)()
+  val providerConfigs: S[ProviderConfig, ProviderConfig.type] = store(ProviderConfig)()
+  val providerStrategies: S[ProviderStrategyRecord, ProviderStrategyRecord.type] = store(ProviderStrategyRecord)()
+  val providerAssignments: S[SpaceProviderAssignment, SpaceProviderAssignment.type] = store(SpaceProviderAssignment)()
 
   override def upgrades: List[DatabaseUpgrade] = appUpgrades
 

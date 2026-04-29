@@ -113,6 +113,9 @@ object TestSigil extends Sigil {
   private val memoryExtractorRef = new AtomicReference[MemoryExtractor](defaultMemoryExtractor)
   private val locationForRef = new AtomicReference[(ParticipantId, Id[Conversation]) => Task[Option[Place]]](defaultLocationFor)
   private val geocoderRef = new AtomicReference[Geocoder](defaultGeocoder)
+  private val accessibleSpacesRef = new AtomicReference[List[ParticipantId] => Task[Set[SpaceId]]](
+    (_: List[ParticipantId]) => Task.pure(Set.empty[SpaceId])
+  )
 
   // ---- hook overrides delegate to refs ----
 
@@ -146,6 +149,9 @@ object TestSigil extends Sigil {
     locationForRef.get().apply(participantId, conversationId)
 
   override def geocoder: Geocoder = geocoderRef.get()
+
+  override def accessibleSpaces(chain: List[ParticipantId]): Task[Set[SpaceId]] =
+    accessibleSpacesRef.get().apply(chain)
 
   // ---- setters (per-test overrides) ----
 
@@ -181,6 +187,12 @@ object TestSigil extends Sigil {
   /** Install a [[Geocoder]] — specs exercising async enrichment wire
     * an [[sigil.spatial.InMemoryGeocoder]] or custom impl here. */
   def setGeocoder(g: Geocoder): Unit = geocoderRef.set(g)
+
+  /** Install an `accessibleSpaces` resolver — specs exercising space
+    * authz (storage, tool discovery) wire whatever they need. Default
+    * is `Set.empty` (fail-closed, matches Sigil's framework default). */
+  def setAccessibleSpaces(f: List[ParticipantId] => Task[Set[SpaceId]]): Unit =
+    accessibleSpacesRef.set(f)
 
   /** Reset every mutable hook to its default. Call from `beforeEach`
     * (or inline at the start of a test) to guarantee isolation from

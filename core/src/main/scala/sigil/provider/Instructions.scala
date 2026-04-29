@@ -24,10 +24,10 @@ import fabric.rw.*
  * [[Instructions.AutonomousSafety]] via the [[Instructions.autonomous]]
  * factory or `Instructions(safety = AutonomousSafety, ...)`.
  */
-case class Instructions private (safety: String,
-                                 behavior: String,
-                                 personality: String,
-                                 guidelines: List[String]) derives RW {
+case class Instructions private (safety: String = Instructions.ConfirmingSafety,
+                                 behavior: String = Instructions.DefaultBehavior,
+                                 personality: String = Instructions.DefaultPersonality,
+                                 guidelines: List[String] = Nil) derives RW {
   assert(personality.nonEmpty, "Personality must not be empty!")
 
   def withPersonality(personality: String): Instructions = copy(personality = personality)
