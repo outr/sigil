@@ -9,21 +9,40 @@ A Scala 3 framework for building multi-agent LLM conversations with tool use, ca
 
 ## Features
 
-- **Provider-agnostic** — pluggable `Provider` abstraction over Anthropic, OpenAI, and local llama.cpp; add your own with a single trait
-- **Event-sourced conversations** — `Event`s are the source of truth, persisted through LightDB; `ConversationView` is a derived projection produced by a user-supplied curator
-- **Strongly-typed tools** — `Tool[Input]` with JSON schema auto-derived from case classes via fabric `derives RW`
-- **Capability discovery** — agents invoke `find_capability` to search tools, skills, MCP servers, and other agents at runtime
-- **Multi-agent fan-out** — `Participant`s live on `Conversation`, dispatched statelessly via DB-atomic `AgentState` locks; self-loop and @-mention delegation fall out naturally
-- **Streaming signals** — `Event` + `Delta` flow as `Stream[Signal]`; consume `sigil.signals` or `sigil.signalsFor(viewer)` to drive any wire transport (Slack, WebSocket, SSE, logs…)
-- **Scoped memory** — `ContextMemory` persisted with a `MemorySpaceId` discriminator, so apps can layer whatever memory spaces they need (global, per-user, per-project, etc.)
-- **Mode system** — conversations carry a `Mode` (Conversation, Coding, …) that tool calls can switch mid-turn to re-select skills and instructions
-- **Pluggable storage** — ships with on-disk RocksDB + Lucene by default; opt into PostgreSQL via `SIGIL_POSTGRES_JDBC_URL` for production deployments
-- **Built-in caching** — per-store LRU/unbounded caches on hot reads (models, conversations, memories)
+- **Provider-agnostic** — Anthropic, OpenAI (chat-completions + Responses), DeepSeek, Google Gemini, local llama.cpp, plus app-defined; routed `ProviderStrategy` chains with per-mode pinning, per-space assignment, and cooldown-aware fallback
+- **Event-sourced conversations** — `Event`s persisted via LightDB; `ConversationView` is a derived projection produced by a user-supplied curator with no implicit truncation
+- **Strongly-typed tools** — `Tool[Input]` with JSON schema auto-derived via fabric `derives RW`; grammar-constrained tool args per provider plus post-decode `ToolInputValidator` re-checking every constraint
+- **Capability discovery** — `find_capability` searches a persisted tool collection (queryable by mode / space / keyword) at runtime; static + user-created tools share one store
+- **Multi-agent fan-out** — `Participant`s on `Conversation`, dispatched statelessly via DB-atomic `AgentState` locks; `Role` (per-agent identity) + `Mode` (per-conversation tool policy) shape behavior
+- **Streaming signals** — `Event` + `Delta` as `Stream[Signal]` with per-viewer redaction (`viewerTransforms`) and visibility scopes (`MessageVisibility`) on every event
+- **Database-driven transport** — `SignalTransport` bridges `signalsFor(viewer)` to SSE / DurableSocket sinks with replay from `SigilDB.events`; no in-memory buffer, `RecentMessages(n)` resume preserves tool / mode events between messages
+- **Three-tier memory** — critical (app-driven), compression-time (curator pressure), and per-turn extraction; auto-embedded into a vector index when wired
+- **Multi-tenancy via `SpaceId`** — open `PolyType` scoping memories / tools / future records; one space per record, multi-space queries, per-call authz via `accessibleSpaces`
+- **Spatial primitives** — `Place` on messages, pluggable `Geocoder`, sender-private redaction
+- **Generic tool families** — filesystem (read / write / edit / glob / grep / bash), web (fetch + injectable search), util (system stats, save memory, semantic search), `ProxyTool` for remote dispatch
+- **Pluggable storage** — RocksDB + Lucene by default; opt into PostgreSQL for production via `sigil.postgres.jdbcUrl`
+
+## Optional modules
+
+- **`sigil-mcp`** — MCP client with stdio + HTTP+SSE transports, persisted server registry, sampling handler, automatic cancellation wiring
+- **`sigil-tooling`** — LSP / BSP clients (lsp4j + bsp4j) for IDE-grade structural integration; long-lived language-server and build-server sessions, with `lsp_diagnostics`, `lsp_goto_definition`, `lsp_hover`, and `bsp_compile` tools
+- **`sigil-script`** — REPL-backed `ScalaScriptExecutor` + DB-persisted `ScriptTool`s for runtime-defined capabilities
+- **`sigil-browser`** — headless browser automation via RoboBrowser
+- **`sigil-secrets`** — encrypted secret store (scalapass-backed); referenced by provider configs
 
 ## SBT Configuration
 
 ```scala
-libraryDependencies += "com.outr" %% "sigil" % "1.0.0-SNAPSHOT"
+libraryDependencies += "com.outr" %% "sigil-core" % "1.0.0-SNAPSHOT"
+
+// Optional modules — add only what you need:
+libraryDependencies ++= Seq(
+  "com.outr" %% "sigil-mcp"     % "1.0.0-SNAPSHOT",
+  "com.outr" %% "sigil-tooling" % "1.0.0-SNAPSHOT",
+  "com.outr" %% "sigil-script"  % "1.0.0-SNAPSHOT",
+  "com.outr" %% "sigil-browser" % "1.0.0-SNAPSHOT",
+  "com.outr" %% "sigil-secrets" % "1.0.0-SNAPSHOT"
+)
 ```
 
 ## Getting Started

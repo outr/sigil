@@ -2496,13 +2496,18 @@ trait Sigil {
   val polymorphicRegistrations: Task[Unit] = Task.defer {
     for {
       _ <- logger.info("Sigil registering polymorphic discriminators...")
+      // Leaf polys (no fields referencing other polys) first — `RW.poly`
+      // reads each subtype's `definition` eagerly at register-time
+      // (fabric/rw/RW.scala:207) and case-class definitions are
+      // `lazy val` (fabric/rw/CompileRW.scala:996), so the first read
+      // freezes the leaf-poly state in. Any aggregate registration
+      // (Participant, Tool, Signal) whose subtypes have fields typed
+      // against a leaf must run after that leaf, otherwise downstream
+      // consumers (notably the Spice Dart codegen) see empty
+      // dispatchers despite the leaf register call succeeding.
       _ = SpaceId.register((RW.static(GlobalSpace) :: spaceIds).distinct*)
       _ = ParticipantId.register(participantIds*)
       _ = Mode.register((ConversationMode :: modes).distinct.map(m => RW.static(m))*)
-      _ = ToolInput.register((CoreTools.inputRWs ++ findTools.toolInputRWs)*)
-      _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
-      _ = sigil.tool.Tool.register((staticTools.map(t => RW.static(t)) ++ toolRegistrations).distinct*)
-      _ = Signal.register((allEventRWs ++ allDeltaRWs ++ allNoticeRWs ++ signalRegistrations)*)
       _ = sigil.provider.WorkType.register(
             (List[sigil.provider.WorkType](
               sigil.provider.ConversationWork,
@@ -2513,6 +2518,11 @@ trait Sigil {
               sigil.provider.SummarizationWork
             ) ++ workTypeRegistrations).distinct.map(w => RW.static(w))*
           )
+      _ = ToolInput.register((CoreTools.inputRWs ++ findTools.toolInputRWs)*)
+      // Aggregates after leaves.
+      _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
+      _ = sigil.tool.Tool.register((staticTools.map(t => RW.static(t)) ++ toolRegistrations).distinct*)
+      _ = Signal.register((allEventRWs ++ allDeltaRWs ++ allNoticeRWs ++ signalRegistrations)*)
     } yield ()
   }.singleton
 

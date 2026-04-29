@@ -24,6 +24,10 @@ val awsS3Version: String = "2.42.18"
 
 val robobrowserVersion: String = "2.3.2-SNAPSHOT"
 
+val lsp4jVersion: String = "0.24.0"
+
+val bsp4jVersion: String = "2.2.0-M2"
+
 ThisBuild / versionScheme := Some("early-semver")
 ThisBuild / licenses := Seq("MIT" -> url("https://github.com/outr/sigil/blob/master/LICENSE"))
 ThisBuild / scalacOptions ++= Seq(
@@ -49,7 +53,7 @@ val docNoLinkWarnings: Seq[Setting[?]] = Seq(
 )
 
 lazy val root = (project in file("."))
-  .aggregate(core, secrets, script, mcp, browser, benchmark, docs)
+  .aggregate(core, secrets, script, mcp, tooling, browser, benchmark, docs)
   .settings(
     name := "sigil",
     publish / skip := true
@@ -142,6 +146,35 @@ lazy val mcp = (project in file("mcp"))
   .settings(
     name := "sigil-mcp",
     libraryDependencies ++= Seq(
+      "org.scalatest" %% "scalatest" % scalatestVersion % Test,
+      "com.outr" %% "rapid-test" % rapidVersion % Test
+    ),
+    fork := true,
+    Test / parallelExecution := false,
+    Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
+    Test / testGrouping := (Test / definedTests).value.map { test =>
+      Tests.Group(
+        name = test.name,
+        tests = Seq(test),
+        runPolicy = Tests.SubProcess(ForkOptions())
+      )
+    }
+  )
+
+lazy val tooling = (project in file("tooling"))
+  .dependsOn(core % "compile->compile;test->test")
+  .settings(docNoLinkWarnings*)
+  .settings(
+    name := "sigil-tooling",
+    libraryDependencies ++= Seq(
+      // Eclipse LSP4J — LSP protocol types + JSON-RPC subprocess wiring.
+      // Mature (used by Metals, JetBrains, etc.); CompletableFuture-based,
+      // adapted to rapid Tasks at the session boundary.
+      "org.eclipse.lsp4j" % "org.eclipse.lsp4j" % lsp4jVersion,
+      "org.eclipse.lsp4j" % "org.eclipse.lsp4j.jsonrpc" % lsp4jVersion,
+      // Build Server Protocol — Java types for sbt / Bloop / Mill build queries.
+      // Same JSON-RPC machinery as LSP under the hood.
+      "ch.epfl.scala" % "bsp4j" % bsp4jVersion,
       "org.scalatest" %% "scalatest" % scalatestVersion % Test,
       "com.outr" %% "rapid-test" % rapidVersion % Test
     ),
