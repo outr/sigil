@@ -87,11 +87,12 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
       case Some(result) =>
         val kept = result.facts.map(_.trim).filter(_.length >= minFactChars)
         Task.sequence(kept.map { fact =>
-          sigil.persistMemory(ContextMemory(
+          sigil.persistMemoryFor(ContextMemory(
             fact = fact,
             source = MemorySource.Compression,
-            spaceId = space
-          ))
+            spaceId = space,
+            conversationId = Some(conversationId)
+          ), chain, conversationId)
         }).unit
       case None => Task.unit
     }.handleError { e =>

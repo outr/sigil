@@ -48,13 +48,19 @@ object CoreSignals {
     summon[RW[ConversationDeleted]],
     summon[RW[SwitchConversation]],
     summon[RW[ConversationSnapshot]],
+    summon[RW[RequestConversationHistory]],
+    summon[RW[ConversationHistorySnapshot]],
     summon[RW[RequestStoredFileList]],
     summon[RW[StoredFileListSnapshot]],
     summon[RW[StoredFileCreated]],
     summon[RW[StoredFileDeleted]],
     summon[RW[RequestStoredFile]],
     summon[RW[StoredFileContent]],
-    summon[RW[SaveStoredFile]]
+    summon[RW[SaveStoredFile]],
+    summon[RW[RequestViewerState]],
+    summon[RW[ViewerStateSnapshot]],
+    summon[RW[UpdateViewerState]],
+    summon[RW[DeleteViewerState]]
   )
 
   val all: List[RW[? <: Signal]] = events ++ deltas ++ notices

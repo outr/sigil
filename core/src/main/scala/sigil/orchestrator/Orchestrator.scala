@@ -268,13 +268,43 @@ object Orchestrator {
         }
 
       case ProviderEvent.Done(_)                          =>
+        // Settle any in-flight tool call before terminating. If the
+        // provider stream ends between `ToolCallStart` and
+        // `ToolCallComplete` (token-budget cutoff, network drop, mid-args
+        // 5xx), the unsettled `ToolInvoke` would otherwise stay
+        // `state=Active` in the events store forever, and clients reading
+        // that state believe the agent is still working.
+        val closeOrphan = settleOrphanToolInvoke(state, convId)
         if (!state.extractorFired) {
           state.extractorFired = true
           fireMemoryExtractor(sigil, request, state).startUnit()
         }
-        Stream.empty
-      case ProviderEvent.Error(_)                         => Stream.empty
+        Stream.emits(closeOrphan)
+      case ProviderEvent.Error(_)                         =>
+        Stream.emits(settleOrphanToolInvoke(state, convId))
     }
+  }
+
+  /**
+   * Emit a synthetic terminal `ToolDelta` for any in-flight
+   * `ToolInvoke` so it lands at `state=Complete` instead of getting
+   * stuck at `Active`. Idempotent — if no tool call is open the
+   * returned list is empty. Clears `state.activeToolInvokeId` /
+   * `state.activeToolName` either way.
+   */
+  private def settleOrphanToolInvoke(state: State,
+                                     convId: lightdb.id.Id[Conversation]): List[Signal] = {
+    val closes = state.activeToolInvokeId.toList.map { invokeId =>
+      ToolDelta(
+        target = invokeId,
+        conversationId = convId,
+        input = None,
+        state = Some(EventState.Complete)
+      ): Signal
+    }
+    state.activeToolInvokeId = None
+    state.activeToolName = None
+    closes
   }
 
   /**

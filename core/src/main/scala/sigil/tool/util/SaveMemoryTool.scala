@@ -1,10 +1,8 @@
 package sigil.tool.util
 
-import fabric.io.JsonFormatter
-import fabric.{bool, num, obj, str}
 import rapid.Stream
 import sigil.{SpaceId, TurnContext}
-import sigil.conversation.{ContextMemory, MemorySource}
+import sigil.conversation.{ContextMemory, MemorySource, UpsertMemoryResult}
 import sigil.event.{Event, Message, MessageRole}
 import sigil.signal.EventState
 import sigil.tool.model.{ResponseContent, SaveMemoryInput}
@@ -45,23 +43,24 @@ final class SaveMemoryTool(space: SpaceId,
     )
     val saved = input.key match {
       case Some(_) =>
-        ctx.sigil.upsertMemoryByKey(mem).map { r =>
+        ctx.sigil.upsertMemoryByKeyFor(mem, ctx.chain, ctx.conversation.id).map { r =>
           val outcome = r match {
-            case _: sigil.conversation.UpsertMemoryResult.Stored     => "stored"
-            case _: sigil.conversation.UpsertMemoryResult.Refreshed  => "refreshed"
-            case _: sigil.conversation.UpsertMemoryResult.Versioned  => "versioned"
+            case _: UpsertMemoryResult.Stored    => "Stored"
+            case _: UpsertMemoryResult.Refreshed => "Refreshed"
+            case _: UpsertMemoryResult.Versioned => "Versioned (prior archived)"
           }
-          obj("outcome" -> str(outcome), "memoryId" -> str(r.memory._id.value))
+          s"$outcome memory ${r.memory._id.value}."
         }
       case None =>
-        ctx.sigil.persistMemory(mem).map(saved => obj("outcome" -> str("stored"), "memoryId" -> str(saved._id.value)))
+        ctx.sigil.persistMemoryFor(mem, ctx.chain, ctx.conversation.id)
+          .map(stored => s"Stored memory ${stored._id.value}.")
     }
-    Stream.force(saved.map { payload =>
+    Stream.force(saved.map { text =>
       Stream.emit[Event](Message(
         participantId  = ctx.caller,
         conversationId = ctx.conversation.id,
         topicId        = ctx.conversation.currentTopicId,
-        content        = Vector(ResponseContent.Text(JsonFormatter.Compact(payload))),
+        content        = Vector(ResponseContent.Text(text)),
         state          = EventState.Complete,
         role           = MessageRole.Tool
       ))
