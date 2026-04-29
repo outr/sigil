@@ -144,18 +144,25 @@ trait Sigil {
 
   /**
    * App-defined [[sigil.viewer.ViewerStatePayload]] subtypes — the
-   * concrete UI-state shapes apps want persisted per-viewer. Same
-   * registration shape as [[modes]] / [[workTypeRegistrations]]:
-   * return a list of values; the framework folds each through
-   * `RW.static(...)` so the polymorphic dispatcher sees them at the
-   * wire layer.
+   * concrete UI-state shapes apps want persisted per-viewer.
+   *
+   * Returns a list of fabric `RW[? <: ViewerStatePayload]`. Use
+   * `summon[RW[MyPayload]]` for case-class payloads — the
+   * macro-derived RW carries each field's schema so the Spice Dart
+   * codegen can emit a real Dart class with all fields wired up.
+   * For case-object singletons, `RW.static(MySingleton)` is fine.
+   *
+   * Same shape as [[eventRegistrations]] / [[noticeRegistrations]] —
+   * a registration shape that returns values + folds through
+   * `RW.static` (the prior shape) silently drops case-class field
+   * schema, because `RW.static(instance)` is a singleton-shaped RW.
    *
    * Apps that don't use [[sigil.signal.RequestViewerState]] /
    * [[sigil.signal.UpdateViewerState]] leave the default `Nil` —
    * the primitive is opt-in. The framework ships no concrete
    * subtype; "what state to persist" is a 100% app decision.
    */
-  protected def viewerStatePayloadRegistrations: List[sigil.viewer.ViewerStatePayload] = Nil
+  protected def viewerStatePayloadRegistrations: List[RW[? <: sigil.viewer.ViewerStatePayload]] = Nil
 
   /** Every Event RW the framework knows about — `CoreSignals.events ++ eventRegistrations`. */
   final def allEventRWs: List[RW[? <: Event]] = CoreSignals.events ++ eventRegistrations
@@ -2663,9 +2670,7 @@ trait Sigil {
             ) ++ workTypeRegistrations).distinct.map(w => RW.static(w))*
           )
       _ = ToolInput.register((CoreTools.inputRWs ++ findTools.toolInputRWs)*)
-      _ = sigil.viewer.ViewerStatePayload.register(
-            viewerStatePayloadRegistrations.distinct.map(p => RW.static(p))*
-          )
+      _ = sigil.viewer.ViewerStatePayload.register(viewerStatePayloadRegistrations.distinct*)
       // Aggregates after leaves.
       _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
       _ = sigil.tool.Tool.register((staticTools.map(t => RW.static(t)) ++ toolRegistrations).distinct*)

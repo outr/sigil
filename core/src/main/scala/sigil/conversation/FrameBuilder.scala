@@ -126,13 +126,19 @@ object FrameBuilder {
       case _: AgentState | _: Stop =>
         existing
 
+      case _: sigil.event.ControlPlaneEvent =>
+        // Status / lifecycle / wire-only signals (workflow run events,
+        // etc.) — flow through `publish` for broadcast + persistence
+        // but stay out of the conversation projection.
+        existing
+
       case other =>
         // Unknown Event type — fail loud so gaps are caught. Adding a new
         // Event requires making a deliberate decision here: emit a frame,
-        // or mark it as a control-plane event that stays out of the view.
+        // or extend `ControlPlaneEvent` to opt out of the view.
         throw new RuntimeException(
           s"FrameBuilder: Event ${other.getClass.getSimpleName} has no frame rule. " +
-            s"Add a case here to either emit a frame or mark it control-plane (no frame)."
+            s"Add a case here to either emit a frame or extend ControlPlaneEvent."
         )
     }
   }

@@ -1,5 +1,6 @@
 package spec
 
+import fabric.define.DefType
 import fabric.rw.*
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
@@ -24,10 +25,11 @@ class ViewerStateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   // Register the test payload subtype with the framework's poly RW.
   // Apps in production register via `Sigil.viewerStatePayloadRegistrations`;
-  // doing it manually here keeps the test self-contained.
-  ViewerStatePayload.register(
-    RW.static[ViewerStatePayload](TestViewerState(activeTab = "chat", panelOpen = false))
-  )
+  // doing it manually here keeps the test self-contained. Critically:
+  // we register the macro-derived `RW[TestViewerState]` (NOT
+  // `RW.static(instance)`) so the field schema survives — that's the
+  // shape `viewerStatePayloadRegistrations` expects per #36's fix.
+  ViewerStatePayload.register(summon[RW[TestViewerState]])
 
   /** Subscribe `viewer` to its signal stream, capture into a queue. */
   private def subscribe(viewer: sigil.participant.ParticipantId): (ConcurrentLinkedQueue[Signal], () => Unit) = {
@@ -45,6 +47,30 @@ class ViewerStateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     import scala.jdk.CollectionConverters.*
     q.iterator().asScala.toList.collect {
       case s: ViewerStateSnapshot if s.scope == scope => s
+    }
+  }
+
+  "ViewerStatePayload polymorphic registration (regression for bug #36)" should {
+    "preserve case-class field schema in the polymorphic Definition" in Task {
+      // The bug: registering via `RW.static(instance)` produced a
+      // singleton-shaped RW whose `.definition` had no fields. The
+      // fix: register `summon[RW[TestViewerState]]` directly so the
+      // macro-derived field schema lands in the poly registry.
+      // Spice's Dart codegen walks this exact path; if it sees
+      // empty fields here the generated Dart class has empty fields.
+      val polyDef = summon[RW[ViewerStatePayload]].definition
+      val poly = polyDef.defType match {
+        case p: DefType.Poly => p
+        case other           => fail(s"Expected Poly; saw $other")
+      }
+      val testEntry = poly.values.getOrElse("TestViewerState", fail(
+        s"Expected `TestViewerState` registered in the polymorphic Definition; saw ${poly.values.keySet}"
+      ))
+      val obj = testEntry.defType match {
+        case o: DefType.Obj => o
+        case other          => fail(s"Expected Obj; saw $other")
+      }
+      obj.map.keySet should contain allOf ("activeTab", "panelOpen")
     }
   }
 
