@@ -7,6 +7,7 @@ import sigil.Sigil
 import sigil.db.SigilDB
 import sigil.event.Event
 import sigil.provider.Mode
+import sigil.signal.Notice
 import sigil.tool.Tool
 
 import java.nio.file.Path
@@ -61,6 +62,12 @@ trait WorkflowSigil extends Sigil {
       summon[RW[sigil.workflow.event.WorkflowRunCompleted]] ::
       summon[RW[sigil.workflow.event.WorkflowRunFailed]] ::
       super.eventRegistrations
+
+  /** Auto-register the workflow Notices (approval prompts, etc.) so
+    * the `Signal` poly RW round-trips them on the wire. */
+  override protected def noticeRegistrations: List[RW[? <: Notice]] =
+    summon[RW[sigil.workflow.signal.WorkflowApprovalRequested]] ::
+      super.noticeRegistrations
 
   /** Set the process-wide [[WorkflowHost]] reference at trait init —
     * compiled jobs / triggers reach back to this Sigil through

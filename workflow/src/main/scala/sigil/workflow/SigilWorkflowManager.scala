@@ -88,28 +88,21 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
   private def publishLifecycle(workflow: Workflow)
                               (build: (ParticipantId, Id[Conversation], Id[Topic]) => Event): Task[Unit] =
     workflow.conversationId match {
-      case None =>
-        scribe.warn(s"publishLifecycle: workflow ${workflow._id.value} has no conversationId — no Event published")
-        Task.unit
+      case None => Task.unit
       case Some(convIdStr) =>
         val convId = Id[Conversation](convIdStr)
         host.withDB(_.conversations.transaction(_.get(convId))).flatMap {
-          case None =>
-            scribe.warn(s"publishLifecycle: conversation $convIdStr not found — no Event published")
-            Task.unit
+          case None => Task.unit
           case Some(conv) =>
             val createdByValue = workflow.createdBy.getOrElse("")
             val matched = conv.participants.find(_.id.value == createdByValue).map(_.id)
             val caller = matched.orElse(conv.participants.headOption.map(_.id))
             caller match {
-              case None      =>
-                scribe.warn(s"publishLifecycle: conversation $convIdStr has no participants — no Event published")
-                Task.unit
+              case None      => Task.unit
               case Some(pid) =>
                 val event = build(pid, convId, conv.currentTopicId)
-                scribe.info(s"publishLifecycle: emitting ${event.getClass.getSimpleName} for run ${workflow._id.value}")
                 host.publish(event).handleError(t =>
-                  Task(scribe.warn(s"publishLifecycle: publish failed: ${t.getMessage}"))
+                  Task(scribe.warn(s"publishLifecycle: publish failed for run ${workflow._id.value}: ${t.getMessage}"))
                 )
             }
         }

@@ -80,26 +80,11 @@ final case class TimeTriggerImpl(spec: TimeTrigger,
 
   override def unregister(workflow: Workflow): Task[Unit] = Task.unit
 
-  /** Minimal cron evaluator — matches the current minute against
-    * the pattern, suppressing duplicate fires within the same
-    * minute. Supports `*` and comma-separated lists per field;
-    * ranges and steps fall through to "no match" for now. Apps
-    * needing richer cron semantics override the trigger. */
+  /** Per-minute fire gate — delegates field matching to
+    * [[CronExpression]] and suppresses duplicate fires within the
+    * same wall-clock minute. */
   private def cronMatches(expr: String, nowMs: Long, lastMs: Long): Boolean = {
     if ((nowMs / 60_000L) == (lastMs / 60_000L)) return false
-    val cal = java.util.Calendar.getInstance()
-    cal.setTimeInMillis(nowMs)
-    val parts = expr.trim.split("\\s+")
-    if (parts.length != 5) return false
-    def matchField(f: String, v: Int): Boolean =
-      f == "*" || f.split(",").map(_.trim).contains(v.toString)
-    matchField(parts(0), cal.get(java.util.Calendar.MINUTE)) &&
-      matchField(parts(1), cal.get(java.util.Calendar.HOUR_OF_DAY)) &&
-      matchField(parts(2), cal.get(java.util.Calendar.DAY_OF_MONTH)) &&
-      matchField(parts(3), cal.get(java.util.Calendar.MONTH) + 1) &&
-      matchField(parts(4), {
-        val dow = cal.get(java.util.Calendar.DAY_OF_WEEK)
-        if (dow == java.util.Calendar.SUNDAY) 0 else dow - 1
-      })
+    CronExpression.matches(expr, nowMs)
   }
 }

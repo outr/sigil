@@ -3,22 +3,22 @@ package sigil.workflow
 import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
+import sigil.conversation.Conversation
+import sigil.workflow.signal.WorkflowApprovalRequested
 import strider.Workflow
 import strider.step.{Approval, Step, TimeoutAction}
 
 /**
  * Strider [[Approval]] subclass that surfaces the approval prompt
  * into the workflow's originating conversation as a Sigil
- * [[sigil.signal.Notice]] and waits for the user's selection.
+ * [[WorkflowApprovalRequested]] Notice and waits for the user's
+ * selection.
  *
  * The wait is mediated by `resume_workflow` — the user (or an
  * agent acting as the user's proxy) calls that tool with the
- * chosen option to resolve the pause.
- *
- * `onWaiting` is currently a no-op stub — surfacing the prompt
- * into the conversation as an `Approval` Notice is the next
- * follow-up. The execution path otherwise works: timeout fires
- * the configured `TimeoutAction`.
+ * chosen option to resolve the pause. Cron-fired runs without a
+ * conversation context skip the Notice (no audience to surface
+ * to); the timeout still fires the configured `TimeoutAction`.
  */
 final case class SigilApproval(input: ApprovalStepInput,
                                id: Id[Step] = Step.id()) extends Approval derives RW {
@@ -29,5 +29,19 @@ final case class SigilApproval(input: ApprovalStepInput,
   override def timeoutMs: Option[Long] = input.timeoutMs
   override def timeoutAction: TimeoutAction = TimeoutAction.Fail
 
-  override def onWaiting(workflow: Workflow): Task[Unit] = Task.unit
+  override def onWaiting(workflow: Workflow): Task[Unit] =
+    workflow.conversationId match {
+      case None => Task.unit
+      case Some(convIdStr) =>
+        val notice = WorkflowApprovalRequested(
+          conversationId = Id[Conversation](convIdStr),
+          runId          = workflow._id.value,
+          stepId         = id.value,
+          stepName       = name,
+          prompt         = prompt,
+          options        = options,
+          timeoutMs      = timeoutMs
+        )
+        WorkflowHost.get.publish(notice)
+    }
 }
