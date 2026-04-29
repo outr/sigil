@@ -30,6 +30,8 @@ val bsp4jVersion: String = "2.2.0-M2"
 
 val lsp4jDebugVersion: String = "0.24.0"
 
+val striderVersion: String = "1.0.1"
+
 ThisBuild / versionScheme := Some("early-semver")
 ThisBuild / licenses := Seq("MIT" -> url("https://github.com/outr/sigil/blob/master/LICENSE"))
 ThisBuild / scalacOptions ++= Seq(
@@ -55,7 +57,7 @@ val docNoLinkWarnings: Seq[Setting[?]] = Seq(
 )
 
 lazy val root = (project in file("."))
-  .aggregate(core, secrets, script, mcp, tooling, debug, browser, benchmark, docs)
+  .aggregate(core, secrets, script, mcp, tooling, debug, workflow, browser, benchmark, docs)
   .settings(
     name := "sigil",
     publish / skip := true
@@ -204,6 +206,31 @@ lazy val debug = (project in file("debug"))
       // language adapter the agent spawns (sbt's debug adapter,
       // delve for Go, debugpy for Python, etc.).
       "org.eclipse.lsp4j" % "org.eclipse.lsp4j.debug" % lsp4jDebugVersion,
+      "org.scalatest" %% "scalatest" % scalatestVersion % Test,
+      "com.outr" %% "rapid-test" % rapidVersion % Test
+    ),
+    fork := true,
+    Test / parallelExecution := false,
+    Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
+    Test / testGrouping := (Test / definedTests).value.map { test =>
+      Tests.Group(
+        name = test.name,
+        tests = Seq(test),
+        runPolicy = Tests.SubProcess(ForkOptions())
+      )
+    }
+  )
+
+lazy val workflow = (project in file("workflow"))
+  .dependsOn(core % "compile->compile;test->test")
+  .settings(docNoLinkWarnings*)
+  .settings(
+    name := "sigil-workflow",
+    libraryDependencies ++= Seq(
+      // Strider — typed embedded workflow engine. Sigil wraps the
+      // existing manager and exposes workflow management as an
+      // agent-callable tool family on top.
+      "com.outr" %% "strider" % striderVersion,
       "org.scalatest" %% "scalatest" % scalatestVersion % Test,
       "com.outr" %% "rapid-test" % rapidVersion % Test
     ),
