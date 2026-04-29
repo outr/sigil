@@ -19,6 +19,9 @@ import sigil.PolyType
  *   case object NewsExtractionWork extends WorkType {
  *     override val value: String = "news-extraction"
  *   }
+ *
+ *   override protected def workTypeRegistrations: List[WorkType] =
+ *     List(NewsExtractionWork)
  * }}}
  *
  * Open `PolyType` rather than a closed enum because different
