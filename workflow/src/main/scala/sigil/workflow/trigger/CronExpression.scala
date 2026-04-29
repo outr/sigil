@@ -20,6 +20,14 @@ package sigil.workflow.trigger
  *   - month: 1-12
  *   - day-of-week: 0-6 (Sunday = 0)
  *
+ * Day-of-month and day-of-week follow Vixie cron's OR semantics:
+ * when **both** fields are restricted (neither is `*`), a timestamp
+ * matches if **either** the day-of-month or day-of-week field
+ * matches. This makes `0 9 1,15 * 1-5` mean "9am on the 1st, the
+ * 15th, OR any weekday" rather than the impossible "9am on the 1st
+ * AND a weekday AND the 15th." When at least one of the two is
+ * `*`, normal AND semantics apply (the `*` field is trivially true).
+ *
  * Returns false on parse failure (malformed expression) — defensive
  * against silently firing on misconfigured workflows. Apps can call
  * [[matches]] directly to check whether an arbitrary timestamp would
@@ -44,11 +52,20 @@ object CronExpression {
       val raw = cal.get(java.util.Calendar.DAY_OF_WEEK)
       if (raw == java.util.Calendar.SUNDAY) 0 else raw - 1
     }
+    val domField = parts(2).trim
+    val dowField = parts(4).trim
+    val domStar = domField == "*"
+    val dowStar = dowField == "*"
+    val domMatch = matchField(domField, dom, 1, 31)
+    val dowMatch = matchField(dowField, dow, 0, 6)
+    val dayMatch =
+      if (domStar || dowStar) domMatch && dowMatch  // standard AND when at least one is `*`
+      else domMatch || dowMatch                     // Vixie OR when both restricted
+
     matchField(parts(0), minute, 0, 59) &&
       matchField(parts(1), hour, 0, 23) &&
-      matchField(parts(2), dom, 1, 31) &&
       matchField(parts(3), month, 1, 12) &&
-      matchField(parts(4), dow, 0, 6)
+      dayMatch
   }
 
   private def matchField(field: String, value: Int, min: Int, max: Int): Boolean =
