@@ -18,7 +18,7 @@ val lightdbVersion: String = "4.33.1"
 
 val scalatestVersion: String = "3.2.20"
 
-val scalapassVersion: String = "1.4.0"
+val scalapassVersion: String = "1.4.1"
 
 val awsS3Version: String = "2.42.41"
 
