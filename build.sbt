@@ -26,7 +26,7 @@ val robobrowserVersion: String = "2.3.2"
 
 val lsp4jVersion: String = "1.0.0"
 
-val bsp4jVersion: String = "2.2.0-M2"
+val bsp4jVersion: String = "2.2.0-M4.TEST"
 
 val lsp4jDebugVersion: String = "1.0.0"
 
