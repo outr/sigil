@@ -52,7 +52,17 @@ case class StandardContextCurator(sigil: Sigil,
   override def curate(view: ConversationView,
                       modelId: Id[Model],
                       chain: List[ParticipantId]): Task[TurnInput] = {
-    val optimizedFrames = optimizer.optimize(view.frames)
+    // Build the elide-set from each shipped Tool's `resultTtl`. The
+    // standard policy is: any tool declaring `Some(0)` is ephemeral —
+    // its ToolResults frame is redundant after the turn settles
+    // (because the meaningful effect lives on a projection / System
+    // frame / system prompt section). Tools with positive TTLs are
+    // treated like `None` here (kept) — turn-count-aware elision is
+    // future work and apps can extend this curator for it.
+    val elide: Set[String] = sigil.staticTools.iterator
+      .collect { case t if t.resultTtl.contains(0) => t.name.value }
+      .toSet
+    val optimizedFrames = optimizer.optimize(view.frames, elide)
 
     for {
       blockResult <- blockExtractor.extract(sigil, optimizedFrames)
@@ -64,8 +74,20 @@ case class StandardContextCurator(sigil: Sigil,
         memories = memoryResult.memories,
         information = blockResult.information
       )
-      model <- modelFor(modelId)
-      result <- budgetResolve(model, postBlockView, blockResult.frames, tentative, modelId, chain, memoryResult, blockResult.information)
+      modelOpt <- modelFor(modelId)
+      result <- modelOpt match {
+        case Some(model) =>
+          budgetResolve(model, postBlockView, blockResult.frames, tentative, modelId, chain, memoryResult, blockResult.information)
+        case None =>
+          // No catalog record for this modelId. Either the provider
+          // forgot to seed [[sigil.cache.ModelRegistry]] (a custom
+          // provider's bug — framework-shipped providers seed at
+          // construction) or the registry was wiped. Skip budget
+          // compression and surface the optimized frames as-is.
+          // Better to miss compression than to crash the agent loop
+          // on the first turn.
+          Task.pure(tentative)
+      }
     } yield result
   }
 
@@ -98,9 +120,12 @@ case class StandardContextCurator(sigil: Sigil,
     }
   }
 
-  private def modelFor(modelId: Id[Model]): Task[Model] = Task.pure(
-    sigil.cache.find(modelId).getOrElse(
-      throw new NoSuchElementException(s"Model ${modelId.value} not found in cache — cannot run curator")
-    )
-  )
+  /** Look up the target model in [[sigil.cache.ModelRegistry]].
+    * Returns `None` when no record exists — the curator's caller
+    * then short-circuits to the unbudgeted [[TurnInput]] rather than
+    * crashing the agent loop. Apps that want a stricter posture
+    * (fail-loud when a provider forgot to seed) extend this curator
+    * and override [[curate]] directly. */
+  private def modelFor(modelId: Id[Model]): Task[Option[Model]] =
+    Task.pure(sigil.cache.find(modelId))
 }

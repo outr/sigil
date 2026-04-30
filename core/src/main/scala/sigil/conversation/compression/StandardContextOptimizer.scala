@@ -19,42 +19,29 @@ import sigil.conversation.ContextFrame
  *     the same participant with identical content (UI retries,
  *     duplicate streaming flushes).
  *
- *   - [[stripStaleFindCapabilityPairs]]: drop `find_capability`
- *     tool-call / tool-result pairs. The result's effect (new
- *     `suggestedTools` on the caller's [[sigil.conversation.ParticipantProjection]])
- *     is already rendered into the provider's system prompt as the
- *     "Suggested tools" section, so the pair is noise.
+ *   - Tool-pair stripping is data-driven via [[sigil.tool.Tool.resultTtl]]:
+ *     [[StandardContextCurator]] resolves the elide-set per turn and
+ *     passes it to `optimize`. Tools that declare `resultTtl = Some(0)`
+ *     (e.g. `find_capability`, `change_mode`) get their call/result
+ *     pairs dropped because the meaningful effect lives on a
+ *     projection or `System` frame, not in the verbose ToolResults
+ *     payload.
  *
- *   - [[stripStaleChangeModePairs]]: drop `change_mode` tool-call /
- *     tool-result pairs. The mode transition is rendered independently
- *     as a `System` frame (from the paired `ModeChange` event) and on
- *     the system prompt's "Current mode" line, so the pair is noise.
- *
- *   - [[stripStaleTools]]: additional tool names (by
- *     [[sigil.tool.ToolName]] value) whose call/result pairs should be
- *     collapsed — same mechanism as the built-in rules, exposed as an
- *     app-configurable set. Useful for app tools whose effect lands on
- *     a projection or other durable record.
- *
- * The order of rules is fixed (pair-collapsing first, then dedup/prune)
- * and doesn't depend on which are enabled.
+ *   - [[stripStaleTools]]: explicit additional tool names whose
+ *     call/result pairs should be collapsed regardless of their
+ *     `resultTtl`. Useful for app code that wants to elide a tool
+ *     it doesn't own (e.g. an experimental built-in whose author
+ *     hasn't declared a TTL yet).
  */
 case class StandardContextOptimizer(dropWhitespaceFrames: Boolean = true,
                                     dedupConsecutiveText: Boolean = true,
-                                    stripStaleFindCapabilityPairs: Boolean = true,
-                                    stripStaleChangeModePairs: Boolean = true,
                                     stripStaleTools: Set[String] = Set.empty) extends ContextOptimizer {
 
-  private val trimToolNames: Set[String] = {
-    val base = Set.newBuilder[String]
-    if (stripStaleFindCapabilityPairs) base += "find_capability"
-    if (stripStaleChangeModePairs) base += "change_mode"
-    (base.result() ++ stripStaleTools)
-  }
-
-  override def optimize(frames: Vector[ContextFrame]): Vector[ContextFrame] = {
+  override def optimize(frames: Vector[ContextFrame],
+                        elideToolNames: Set[String] = Set.empty): Vector[ContextFrame] = {
+    val trim = elideToolNames ++ stripStaleTools
     var out = frames
-    if (trimToolNames.nonEmpty) out = collapseToolPairs(out, trimToolNames)
+    if (trim.nonEmpty) out = collapseToolPairs(out, trim)
     if (dropWhitespaceFrames) out = pruneWhitespace(out)
     if (dedupConsecutiveText) out = dedupRun(out)
     out

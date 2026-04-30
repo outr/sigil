@@ -27,6 +27,15 @@ case object FindCapabilityTool extends TypedTool[FindCapabilityInput](
     ToolExample("Look up by concept",      FindCapabilityInput("billing invoice payment charge"))
   )
 ) {
+  // The discovery results are delivered into the caller's
+  // ParticipantProjection.suggestedTools and rendered into the
+  // system prompt's "Suggested tools" section — the verbose
+  // ToolResults frame is redundant after the turn settles. Mark
+  // it ephemeral so StandardContextCurator elides the pair from
+  // future turns instead of letting it accumulate to a few
+  // thousand tokens of stale schemas.
+  override def resultTtl: Option[Int] = Some(0)
+
   override protected def executeTyped(input: FindCapabilityInput, context: TurnContext): rapid.Stream[Event] =
     rapid.Stream.force(
       context.sigil.accessibleSpaces(context.chain).flatMap { spaces =>

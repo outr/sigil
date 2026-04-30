@@ -52,7 +52,7 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
       } shouldBe 2
     }
 
-    "drop find_capability tool-call/result pairs by default" in {
+    "drop find_capability tool-call/result pairs when the curator marks it ephemeral" in {
       val callId = Id[Event]("fc-1")
       val frames = Vector[ContextFrame](
         textFrame("looking up tools"),
@@ -60,7 +60,10 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
         ContextFrame.ToolResult(callId, "- send_slack_message: send", Id[Event]("fc-1-r")),
         textFrame("got it")
       )
-      val out = opt.optimize(frames)
+      // The curator resolves Tool.resultTtl=Some(0) tools to this set
+      // and passes it to the optimizer. find_capability declares
+      // resultTtl=Some(0), so it's elided in the standard pipeline.
+      val out = opt.optimize(frames, Set("find_capability"))
       out.count {
         case _: ContextFrame.ToolCall   => true
         case _: ContextFrame.ToolResult => true
@@ -69,7 +72,7 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
       out.collect { case t: ContextFrame.Text => t.content } shouldBe Vector("looking up tools", "got it")
     }
 
-    "drop change_mode tool-call/result pairs by default (System frame still conveys the transition)" in {
+    "drop change_mode tool-call/result pairs when ephemeral (System frame still conveys the transition)" in {
       val callId = Id[Event]("cm-1")
       val sysId = Id[Event]("cm-sys")
       val frames = Vector[ContextFrame](
@@ -77,10 +80,21 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
         ContextFrame.ToolResult(callId, "Mode changed to Coding.", Id[Event]("cm-1-r")),
         ContextFrame.System("Mode: Coding", sysId)
       )
-      val out = opt.optimize(frames)
+      val out = opt.optimize(frames, Set("change_mode"))
       out.collect { case tc: ContextFrame.ToolCall => tc } shouldBe empty
       out.collect { case tr: ContextFrame.ToolResult => tr } shouldBe empty
       out.collect { case s: ContextFrame.System => s.content } shouldBe Vector("Mode: Coding")
+    }
+
+    "leave tool pairs alone when no elide-set is passed (default behavior is no stripping)" in {
+      val callId = Id[Event]("noop-1")
+      val frames = Vector[ContextFrame](
+        ContextFrame.ToolCall(ToolName("find_capability"), "{}", callId, TestUser, callId),
+        ContextFrame.ToolResult(callId, "results", Id[Event]("noop-1-r"))
+      )
+      val out = opt.optimize(frames)
+      out.collect { case tc: ContextFrame.ToolCall => tc } should have size 1
+      out.collect { case tr: ContextFrame.ToolResult => tr } should have size 1
     }
 
     "collapse pairs for additional tool names via stripStaleTools" in {

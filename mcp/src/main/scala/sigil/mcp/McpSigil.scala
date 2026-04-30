@@ -67,6 +67,12 @@ trait McpSigil extends Sigil {
     if (mcpManagementToolsEnabled) base ++ mcpManagementTools else base
   }
 
+  /** Register [[McpKind]] so [[McpTool]] records' `kind` field
+    * round-trips through fabric's polymorphic [[sigil.tool.ToolKind]]
+    * discriminator. */
+  override protected def toolKindRegistrations: List[fabric.rw.RW[? <: sigil.tool.ToolKind]] =
+    fabric.rw.RW.static[sigil.tool.ToolKind](McpKind) :: super.toolKindRegistrations
+
   protected def mcpManagementTools: List[Tool] = List(
     new AddMcpServerTool(mcpManager),
     new ListMcpServersTool(mcpManager),

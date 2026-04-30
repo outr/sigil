@@ -60,7 +60,9 @@ object CoreSignals {
     summon[RW[RequestViewerState]],
     summon[RW[ViewerStateSnapshot]],
     summon[RW[UpdateViewerState]],
-    summon[RW[DeleteViewerState]]
+    summon[RW[DeleteViewerState]],
+    summon[RW[RequestToolList]],
+    summon[RW[ToolListSnapshot]]
   )
 
   val all: List[RW[? <: Signal]] = events ++ deltas ++ notices

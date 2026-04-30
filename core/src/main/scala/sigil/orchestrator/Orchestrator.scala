@@ -53,8 +53,29 @@ object Orchestrator {
     // names via the raw JSON wire).
     val toolsByName: Map[String, Tool] = request.tools.map(t => t.schema.name.value -> t).toMap
     val state = new State()
+    val convId = request.conversationId
 
-    provider(request).flatMap(pe => translate(pe, sigil, request, conversation, toolsByName, state))
+    provider(request)
+      .flatMap(pe => translate(pe, sigil, request, conversation, toolsByName, state))
+      .onErrorFinalize { _ =>
+        // The `Done`/`Error` ProviderEvent arms emit orphan-settle
+        // ToolDeltas via `Stream.emits` so they reach the consumer
+        // through the normal `evalTap(publish)` path. Those arms only
+        // fire when the provider stream actually reached completion —
+        // a mid-stream Task error (HTTP read fails, context-overflow
+        // 400 thrown by the wire layer, fiber cancellation) skips
+        // them, leaving any in-flight ToolInvoke at state=Active
+        // forever and clients believing the agent is still working.
+        // We can't emit signals into a stream that's already errored,
+        // so we publish the orphan settle directly through the host
+        // Sigil's signal hub before re-raising. Failures during the
+        // settle publish are swallowed — we already have the original
+        // error to surface, and a corrupt settle shouldn't mask it.
+        val orphans = settleOrphanToolInvoke(state, convId)
+        orphans.foldLeft(Task.unit) { (acc, sig) =>
+          acc.flatMap(_ => sigil.publish(sig).handleError(_ => Task.unit))
+        }
+      }
   }
 
   private final class State {

@@ -569,13 +569,18 @@ trait Sigil {
    * [[sigil.tool.consult.ConsultTool.invoke]] with the same provider
    * credentials and chain the turn itself runs under.
    *
-   * Apps that want no curation return `Task.pure(TurnInput(view))`
-   * explicitly.
+   * Default: [[sigil.conversation.compression.StandardContextCurator]]
+   * with all-NoOp components plus the optimizer's pair-stripping
+   * (driven by [[sigil.tool.Tool.resultTtl]]) — runs the cheap
+   * cleanup pass and the budget guard so a single conversation can't
+   * blow the model's context window with accumulated `find_capability`
+   * / `change_mode` results. Apps that want no curation override to
+   * `Task.pure(TurnInput(view))` explicitly.
    */
   def curate(view: ConversationView,
              modelId: Id[Model],
              chain: List[ParticipantId]): Task[TurnInput] =
-    Task.pure(TurnInput(view))
+    sigil.conversation.compression.StandardContextCurator(this).curate(view, modelId, chain)
 
   // -- information lookup --
 
@@ -609,6 +614,17 @@ trait Sigil {
    * sessions, etc.) here.
    */
   protected def spaceIds: List[RW[? <: SpaceId]] = Nil
+
+  /**
+   * App-defined [[sigil.tool.ToolKind]] subtypes. The framework
+   * auto-registers [[sigil.tool.BuiltinKind]]; opt-in modules ship
+   * their own (`ScriptKind` in `sigil-script`, `McpKind` in
+   * `sigil-mcp`); apps that introduce custom tool families
+   * (`BrowserScriptKind`, etc.) register them here so the wire shape
+   * for [[sigil.signal.RequestToolList]] / [[sigil.signal.ToolListSnapshot]]
+   * round-trips correctly.
+   */
+  protected def toolKindRegistrations: List[RW[? <: sigil.tool.ToolKind]] = Nil
 
   /**
    * Search memories across the given spaces. Default queries
@@ -843,14 +859,22 @@ trait Sigil {
    * Hook point for per-turn memory extraction. Invoked by the
    * [[sigil.orchestrator.Orchestrator]] after each agent turn's
    * `Done` event on a background fiber — failures are logged but do
-   * not affect the response stream. Default is
-   * [[sigil.conversation.compression.extract.NoOpMemoryExtractor]];
-   * apps that want per-turn memory capture override this with
+   * not affect the response stream.
+   *
+   * Default:
    * [[sigil.conversation.compression.extract.StandardMemoryExtractor]]
-   * (or a custom implementation).
+   * wired to [[compressionMemorySpace]] for the target write-space.
+   * The framework's default `compressionMemorySpace` returns `None`,
+   * which makes `StandardMemoryExtractor` a no-op — apps opt in to
+   * per-turn extraction by overriding `compressionMemorySpace` to
+   * return a concrete [[SpaceId]]. Apps that want a different
+   * extractor entirely (or no extraction even when the space is
+   * set) override this.
    */
   def memoryExtractor: sigil.conversation.compression.extract.MemoryExtractor =
-    sigil.conversation.compression.extract.NoOpMemoryExtractor
+    sigil.conversation.compression.extract.StandardMemoryExtractor(
+      spaceIdFor = compressionMemorySpace
+    )
 
   /**
    * The default [[SpaceId]] for agent-written memories (e.g.
@@ -1358,6 +1382,13 @@ trait Sigil {
           }
         }
 
+      // -- tool listing vocabulary (BUGS.md #38) --
+
+      case sigil.signal.RequestToolList(spaces, kinds) =>
+        listTools(fromViewer, spaces, kinds).flatMap { summaries =>
+          publishTo(fromViewer, sigil.signal.ToolListSnapshot(summaries))
+        }
+
       case _ => Task.unit
     }
 
@@ -1378,6 +1409,30 @@ trait Sigil {
       withDB(_.storedFiles.transaction(_.list)).map(_.toList.collect {
         case file if effective.contains(file.space) =>
           sigil.signal.StoredFileSummary.fromStoredFile(file)
+      })
+    }
+
+  /** Resolve the list of [[sigil.signal.ToolSummary]] visible to a
+    * viewer, optionally narrowed to a subset of spaces and/or
+    * [[sigil.tool.ToolKind]] values. Default walks `SigilDB.tools`,
+    * filters by `accessibleSpaces(List(viewer))` (a tool's
+    * `space` must be in the intersection of the viewer's authorized
+    * spaces with the request's `spaces` filter), and applies the
+    * `kinds` filter if supplied.
+    *
+    * Apps with massive tool catalogs override for indexed lookup or
+    * partition-aware paging — the wire shape stays
+    * [[sigil.signal.ToolListSnapshot]] either way. */
+  def listTools(viewer: ParticipantId,
+                spaces: Option[Set[SpaceId]] = None,
+                kinds: Option[Set[sigil.tool.ToolKind]] = None): Task[List[sigil.signal.ToolSummary]] =
+    accessibleSpaces(List(viewer)).flatMap { authorized =>
+      val effective = spaces.fold(authorized)(_.intersect(authorized))
+      val kindFilter: sigil.tool.Tool => Boolean =
+        kinds.fold((_: sigil.tool.Tool) => true)(set => t => set.contains(t.kind))
+      withDB(_.tools.transaction(_.list)).map(_.toList.collect {
+        case tool if effective.contains(tool.space) && kindFilter(tool) =>
+          sigil.signal.ToolSummary.fromTool(tool)
       })
     }
 
@@ -2657,6 +2712,9 @@ trait Sigil {
       // consumers (notably the Spice Dart codegen) see empty
       // dispatchers despite the leaf register call succeeding.
       _ = SpaceId.register((RW.static(GlobalSpace) :: spaceIds).distinct*)
+      _ = sigil.tool.ToolKind.register(
+            (RW.static(sigil.tool.BuiltinKind) :: toolKindRegistrations).distinct*
+          )
       _ = ParticipantId.register(participantIds*)
       _ = Mode.register((ConversationMode :: modes).distinct.map(m => RW.static(m))*)
       _ = sigil.provider.WorkType.register(

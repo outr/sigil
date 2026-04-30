@@ -126,6 +126,61 @@ class StandardContextCuratorSpec extends AsyncWordSpec with AsyncTaskSpec with M
       }
     }
 
+    "fall back to the optimized TurnInput without crashing when the model isn't in the cache (bug #40)" in {
+      // A model id the cache has never seen — simulates a provider
+      // that forgot to seed the registry on construction. The
+      // curator must NOT throw; budget compression is skipped and
+      // the optimized view flows through unchanged.
+      val phantomId: Id[Model] = Model.id("phantom-provider", "phantom-model")
+      val curator = StandardContextCurator(
+        sigil = TestSigil,
+        compressor = NoOpContextCompressor,
+        budget = Fixed(10_000),
+        optimizer = new StandardContextOptimizer
+      )
+      val frames = Vector(textFrame("user said hi", "u-1"), textFrame("agent replied", "a-1"))
+      curator.curate(viewWith(frames), phantomId, chain = Nil).map { out =>
+        // No NoSuchElementException — the body short-circuited to
+        // the tentative TurnInput. Frames flow through unchanged
+        // (no budget compression).
+        out.conversationView.frames shouldBe frames
+        out.summaries shouldBe empty
+      }
+    }
+
+    "elide tool-call/result pairs whose Tool declares resultTtl = Some(0)" in {
+      // The framework's `find_capability` and `change_mode` tools
+      // both declare `resultTtl = Some(0)` — the curator pulls them
+      // from `staticTools` and passes their names to the optimizer
+      // as the elide-set. Verify both pairs are dropped from the
+      // curated view.
+      val curator = StandardContextCurator(
+        sigil = TestSigil,
+        compressor = NoOpContextCompressor,
+        budget = Fixed(10_000),
+        optimizer = new StandardContextOptimizer
+      )
+      val fcCallId = Id[Event]("fc-elide")
+      val cmCallId = Id[Event]("cm-elide")
+      val keep1 = Id[Event]("keep-1")
+      val keep2 = Id[Event]("keep-2")
+      val frames = Vector[ContextFrame](
+        textFrame("user message", keep1.value),
+        ContextFrame.ToolCall(sigil.tool.ToolName("find_capability"), "{\"keywords\":[\"x\"]}", fcCallId, TestUser, fcCallId),
+        ContextFrame.ToolResult(fcCallId, "verbose schema dump", Id[Event]("fc-elide-r")),
+        ContextFrame.ToolCall(sigil.tool.ToolName("change_mode"), "{\"mode\":\"X\"}", cmCallId, TestUser, cmCallId),
+        ContextFrame.ToolResult(cmCallId, "Mode changed.", Id[Event]("cm-elide-r")),
+        textFrame("agent reply", keep2.value)
+      )
+      curator.curate(viewWith(frames), modelId, chain = Nil).map { out =>
+        // Only the two text frames survive; both ephemeral tool pairs are gone.
+        out.conversationView.frames.collect { case t: ContextFrame.Text => t.content } shouldBe
+          Vector("user message", "agent reply")
+        out.conversationView.frames.collect { case _: ContextFrame.ToolCall => true }   shouldBe empty
+        out.conversationView.frames.collect { case _: ContextFrame.ToolResult => true } shouldBe empty
+      }
+    }
+
     "run the BlockExtractor and merge extracted InformationSummary into TurnInput" in {
       import sigil.conversation.compression.StandardBlockExtractor
       import sigil.information.Information

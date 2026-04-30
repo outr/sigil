@@ -388,8 +388,17 @@ case class LlamaCppProvider(url: URL,
 }
 
 object LlamaCppProvider {
+
+  /** Construct a [[LlamaCppProvider]] and seed its model catalog
+    * into [[sigil.cache.ModelRegistry]]. The cache merge is the
+    * registry's contract for every provider that carries its own
+    * model list at construction (vs. relying on
+    * [[sigil.controller.OpenRouter.refreshModels]] for the catalog) —
+    * the curator and other consumers query the cache by id, so any
+    * model the provider can serve must be visible there before a
+    * turn runs against it. */
   def apply(sigil: Sigil, url: URL): Task[LlamaCppProvider] =
-    LlamaCpp
-      .loadModels(url)
-      .map(models => LlamaCppProvider(url, models, sigil))
+    LlamaCpp.loadModels(url).flatMap { models =>
+      sigil.cache.merge(models).map(_ => LlamaCppProvider(url, models, sigil))
+    }
 }

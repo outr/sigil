@@ -28,28 +28,68 @@ import sigil.signal.Notice
  *   }
  * }}}
  *
- * The `secretStore` hook resolves to a [[DatabaseSecretStore]] using
- * the standard `<dbPath>/crypto.key` symmetric-key location. Apps
- * that need a managed-secrets backend (Vault, KMS, GCP Secret
- * Manager) override [[secretStore]] with their own implementation.
+ * Apps must supply the symmetric encryption key via
+ * [[secretStoreKey]] — losing it invalidates every encrypted record
+ * in the database, so the framework refuses to silently generate one.
+ * Apps that need a managed-secrets backend (Vault, KMS, GCP Secret
+ * Manager) override [[secretStore]] with their own implementation
+ * and ignore [[secretStoreKey]].
  */
 trait SecretsSigil extends Sigil {
   type DB <: SigilDB & SecretsCollections
+
+  /**
+   * Symmetric AES key the framework's standard
+   * [[DatabaseSecretStore]] uses to encrypt + decrypt secret records.
+   * Apps source this from typed Profig config, an env var, KMS /
+   * Vault, a mounted secret file, or wherever the deployment's
+   * key-management story lives.
+   *
+   * No default — losing this key invalidates every encrypted record
+   * in `db.secrets`, so the framework refuses to silently generate
+   * one. Apps make a deliberate decision about key source.
+   *
+   * Patterns:
+   *
+   * {{{
+   *   // From typed Profig config:
+   *   override def secretStoreKey: String = App.config.crypto.key
+   *
+   *   // Direct Profig lookup:
+   *   override def secretStoreKey: String =
+   *     profig.Profig("myapp.crypto.key").as[String]
+   *
+   *   // Mounted secret file (Kubernetes secret, Docker secret, ...):
+   *   override def secretStoreKey: String =
+   *     java.nio.file.Files.readString(java.nio.file.Path.of("/run/secrets/sigil-crypto-key")).trim
+   *
+   *   // Opt-in to file-on-disk material with explicit generation
+   *   // at deploy time:
+   *   override def secretStoreKey: String = {
+   *     val p = java.nio.file.Path.of(System.getenv("SIGIL_CRYPTO_KEY_PATH"))
+   *     if (!java.nio.file.Files.exists(p)) sigil.secrets.DatabaseSecretStore.generateKeyFile(p)
+   *     else java.nio.file.Files.readString(p).trim
+   *   }
+   * }}}
+   *
+   * Apps with rotation, per-tenant keys, or fancier policies
+   * override [[secretStore]] directly with their own
+   * [[SecretStore]] implementation.
+   */
+  def secretStoreKey: String
 
   /**
    * Server-side store for secrets — encrypted (retrievable) tokens
    * and hashed (verify-only) passwords. See [[SecretStore]] for the
    * contract.
    *
-   * Default: [[DatabaseSecretStore.default]] — Argon2 hashing +
-   * AES/CBC/PKCS5 encryption (via `com.outr.scalapass`), persisted
-   * via lightdb to `db.secrets`, with a symmetric key read from (or
-   * auto-generated at) `<dbPath>/crypto.key`.
+   * Default: a [[DatabaseSecretStore]] using [[secretStoreKey]] as
+   * its symmetric AES material.
    */
   def secretStore: SecretStore = defaultSecretStore
 
   private final lazy val defaultSecretStore: SecretStore =
-    DatabaseSecretStore.default(this)
+    new DatabaseSecretStore(this, secretStoreKey)
 
   /** [[SecretSubmission]] is the secrets module's only durable Event. */
   override protected def eventRegistrations: List[RW[? <: Event]] =

@@ -29,6 +29,12 @@ case object ChangeModeTool extends TypedTool[ChangeModeInput](
       |in conversation mode and the user asks for code → call change_mode("coding") first, then
       |code on the next turn. `mode` is the target's stable name from the available-modes list below.""".stripMargin
 ) {
+  // ModeChange Events update Conversation.currentMode and the system
+  // prompt's "Current mode" line. The verbose ToolResults pair is
+  // redundant after settling — mark ephemeral so the curator elides
+  // it from future turns.
+  override def resultTtl: Option[Int] = Some(0)
+
   override protected def executeTyped(input: ChangeModeInput, context: TurnContext): rapid.Stream[Event] =
     context.sigil.modeByName(input.mode) match {
       case Some(mode) =>

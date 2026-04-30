@@ -20,9 +20,11 @@ val scalatestVersion: String = "3.2.20"
 
 val scalapassVersion: String = "1.4.1"
 
-val awsS3Version: String = "2.42.41"
+val awsS3Version: String = "2.43.0"
 
 val robobrowserVersion: String = "2.3.2"
+
+val commonmarkVersion: String = "0.28.0"
 
 val lsp4jVersion: String = "1.0.0"
 
@@ -76,7 +78,7 @@ lazy val core = (project in file("core"))
       "com.outr" %% "spice-server" % spiceVersion,
       "com.outr" %% "spice-openapi" % spiceVersion,
       "com.outr" %% "lightdb-all" % lightdbVersion,
-      "org.commonmark" % "commonmark" % "0.27.1",
+      "org.commonmark" % "commonmark" % commonmarkVersion,
       "software.amazon.awssdk" % "s3" % awsS3Version exclude ("software.amazon.awssdk", "netty-nio-client"),
       "org.scalatest" %% "scalatest" % scalatestVersion % Test,
       "com.outr" %% "rapid-test" % rapidVersion % Test,

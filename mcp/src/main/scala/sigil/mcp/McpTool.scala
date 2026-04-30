@@ -36,6 +36,7 @@ final class McpTool(manager: McpManager,
   override def inputDefinition: Definition =
     JsonSchemaToDefinition(definition.inputSchema)
 
+  override def kind: sigil.tool.ToolKind = McpKind
   override val modes: Set[Id[Mode]] = Set(ConversationMode.id)
   override val space: SpaceId = serverConfig.space
   override val keywords: Set[String] = Set("mcp", serverConfig.name)

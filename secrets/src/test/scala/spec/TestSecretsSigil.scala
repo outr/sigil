@@ -47,6 +47,12 @@ object TestSecretsSigil extends Sigil with SecretsSigil {
 
   override def testMode: Boolean = true
 
+  /** Fixed test-only crypto key. Real apps source this from config,
+    * env, KMS, Vault, etc. — see [[SecretsSigil.secretStoreKey]]
+    * for the patterns. The literal here is fine for tests because
+    * the per-suite DB is wiped in [[initFor]]. */
+  override def secretStoreKey: String = "test-crypto-key-do-not-use-in-production"
+
   override protected def signalRegistrations: List[RW[? <: Signal]] = Nil
   override protected def participantIds: List[RW[? <: ParticipantId]] =
     List(RW.static(SubmittingUser))
