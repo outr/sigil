@@ -76,7 +76,7 @@ lazy val core = (project in file("core"))
       "com.outr" %% "spice-server" % spiceVersion,
       "com.outr" %% "spice-openapi" % spiceVersion,
       "com.outr" %% "lightdb-all" % lightdbVersion,
-      "org.commonmark" % "commonmark" % "0.27.0",
+      "org.commonmark" % "commonmark" % "0.27.1",
       "software.amazon.awssdk" % "s3" % awsS3Version exclude ("software.amazon.awssdk", "netty-nio-client"),
       "org.scalatest" %% "scalatest" % scalatestVersion % Test,
       "com.outr" %% "rapid-test" % rapidVersion % Test,
