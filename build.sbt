@@ -64,7 +64,7 @@ lazy val root = (project in file("."))
   )
 
 lazy val core = (project in file("core"))
-  .settings(docNoLinkWarnings*)
+  .settings(docNoLinkWarnings *)
   .settings(
     name := "sigil-core",
     libraryDependencies ++= Seq(
@@ -76,8 +76,8 @@ lazy val core = (project in file("core"))
       "com.outr" %% "spice-server" % spiceVersion,
       "com.outr" %% "spice-openapi" % spiceVersion,
       "com.outr" %% "lightdb-all" % lightdbVersion,
-      "org.commonmark" % "commonmark" % "0.27.0",
-      "software.amazon.awssdk" % "s3" % awsS3Version exclude("software.amazon.awssdk", "netty-nio-client"),
+      "org.commonmark" % "commonmark" % "0.27.1",
+      "software.amazon.awssdk" % "s3" % awsS3Version exclude ("software.amazon.awssdk", "netty-nio-client"),
       "org.scalatest" %% "scalatest" % scalatestVersion % Test,
       "com.outr" %% "rapid-test" % rapidVersion % Test,
       "com.outr" %% "spice-server-undertow" % spiceVersion % Test
@@ -100,7 +100,7 @@ lazy val core = (project in file("core"))
 
 lazy val secrets = (project in file("secrets"))
   .dependsOn(core % "compile->compile;test->test")
-  .settings(docNoLinkWarnings*)
+  .settings(docNoLinkWarnings *)
   .settings(
     name := "sigil-secrets",
     libraryDependencies ++= Seq(
@@ -122,7 +122,7 @@ lazy val secrets = (project in file("secrets"))
 
 lazy val script = (project in file("script"))
   .dependsOn(core % "compile->compile;test->test")
-  .settings(docNoLinkWarnings*)
+  .settings(docNoLinkWarnings *)
   .settings(
     name := "sigil-script",
     libraryDependencies ++= Seq(
@@ -146,7 +146,7 @@ lazy val script = (project in file("script"))
 
 lazy val mcp = (project in file("mcp"))
   .dependsOn(core % "compile->compile;test->test")
-  .settings(docNoLinkWarnings*)
+  .settings(docNoLinkWarnings *)
   .settings(
     name := "sigil-mcp",
     libraryDependencies ++= Seq(
@@ -167,7 +167,7 @@ lazy val mcp = (project in file("mcp"))
 
 lazy val tooling = (project in file("tooling"))
   .dependsOn(core % "compile->compile;test->test")
-  .settings(docNoLinkWarnings*)
+  .settings(docNoLinkWarnings *)
   .settings(
     name := "sigil-tooling",
     libraryDependencies ++= Seq(
@@ -196,7 +196,7 @@ lazy val tooling = (project in file("tooling"))
 
 lazy val debug = (project in file("debug"))
   .dependsOn(core % "compile->compile;test->test", tooling % "compile->compile")
-  .settings(docNoLinkWarnings*)
+  .settings(docNoLinkWarnings *)
   .settings(
     name := "sigil-debug",
     libraryDependencies ++= Seq(
@@ -223,7 +223,7 @@ lazy val debug = (project in file("debug"))
 
 lazy val workflow = (project in file("workflow"))
   .dependsOn(core % "compile->compile;test->test")
-  .settings(docNoLinkWarnings*)
+  .settings(docNoLinkWarnings *)
   .settings(
     name := "sigil-workflow",
     libraryDependencies ++= Seq(
@@ -248,7 +248,7 @@ lazy val workflow = (project in file("workflow"))
 
 lazy val browser = (project in file("browser"))
   .dependsOn(core % "compile->compile;test->test", secrets % "compile->compile;test->test")
-  .settings(docNoLinkWarnings*)
+  .settings(docNoLinkWarnings *)
   .settings(
     name := "sigil-browser",
     libraryDependencies ++= Seq(
