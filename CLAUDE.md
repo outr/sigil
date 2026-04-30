@@ -338,6 +338,24 @@ Opt-in sub-project that connects Sigil agents to MCP (Model Context Protocol) se
 
 **Runtime management tools** (toggleable via `McpSigil.mcpManagementToolsEnabled`, default true): `add_mcp_server`, `list_mcp_servers`, `remove_mcp_server`, `test_mcp_server`, `refresh_mcp_server`, `read_mcp_resource`, `list_mcp_prompts`, `get_mcp_prompt`. Apps that don't want runtime mutability set the flag false.
 
+### Metals (`sigil-metals` module)
+
+Opt-in sub-project that owns Metals' (Scala LSP) lifecycle and surfaces Metals' MCP-exposed tools (`find-symbol`, `find-usages`, `get-docs`, `compile`, `test`, …) into the agent roster automatically. Built on top of `sigil-mcp` — Metals' MCP server is just another `McpServerConfig` once registered, so the agent discovers its tools through the standard `find_capability` flow, no Metals-specific integration code on the agent side.
+
+Apps mix in `MetalsSigil` and override `metalsWorkspace(conversationId)` to map a conversation to the workspace path Metals should index. Everything else has sensible defaults — three lines plus the workspace mapping.
+
+**`MetalsManager` responsibilities** (one per Sigil; lazy):
+- **Spawn.** `ensureRunning(workspace)` launches Metals (via `MetalsSigil.metalsLauncher`, default `["metals"]`) under the workspace as cwd, polls `.metals/mcp.json` for the chosen MCP endpoint (`{"port": <int>}` or `{"url": "<full url>"}`), then upserts an `McpServerConfig(name = "metals-<hash-of-workspace-path>", transport = HttpSse(...), roots = [workspace])` into `db.mcpServers`. `McpManager` picks the connection up through its existing flow.
+- **Port-churn handling.** A poll loop re-reads `.metals/mcp.json` on every tick; on endpoint drift (Metals restarted with a new port) the manager updates the `McpServerConfig` and calls `mcpManager.closeClient(name)` so the next tool use forces a reconnect against the fresh URL. The agent is shielded from the churn — it just sees an MCP server that re-established itself.
+- **Idle reaping.** Subprocesses idle past `MetalsSigil.metalsIdleTimeoutMs` (default 15 minutes) get torn down; lazy respawn on the next `ensureRunning` call. Metals is heavyweight (~700MB-1GB RAM) so reaping idle sessions matters when an app has many conversations.
+- **Shutdown.** `Sigil.onShutdown` (new hook on `Sigil`, runs before SignalHub close + DB dispose) tears down every spawned subprocess and removes the `McpServerConfig` rows. A JVM shutdown hook covers the catastrophic case (process killed without `Sigil.shutdown` running).
+
+**Lifecycle tools** (toggleable via `MetalsSigil.metalsToolsEnabled`, default true): `start_metals`, `stop_metals`, `metals_status`. These are lifecycle controls only — Metals' own MCP tools flow through `McpManager` automatically once the `McpServerConfig` is registered.
+
+**Why not bake into `sigil-tooling`:** considered, rejected. `sigil-tooling` is protocol-direct LSP/BSP integration (the agent talks LSP4J / bsp4j directly, no MCP indirection). Folding in would mix two distinct concerns — low-latency raw LSP wrapping vs. spawn-and-proxy of an MCP-exposed tool. Separate module keeps both clean.
+
+**Why not put it in the consumer (Sage) directly:** centralising in Sigil means every Sigil consumer with Scala work gets it for free. The Metals lifecycle / `.metals/mcp.json` discovery / `mcpManager.closeClient` integration is generic — there's nothing app-specific. Consumers diverge only on `metalsWorkspace`, which is exactly what the hook is for.
+
 ## Conventions
 
 - **One top-level class per file.** Enums/traits too. Companion objects may co-locate. (User memory: `feedback_one_class_per_file.md`.)

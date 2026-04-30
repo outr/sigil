@@ -2837,16 +2837,25 @@ trait Sigil {
    */
   def shutdown: Task[Unit] = Task.defer {
     shutdownRequested.set(true)
-    // Close the SignalHub first so every active `sigil.signals` /
+    // Run user-overridable [[onShutdown]] first so module-owned
+    // resources (Metals subprocesses, browser sessions, MCP
+    // connections) get a clean teardown signal BEFORE the hub
+    // closes — those resources may publish a final Notice / Event
+    // on the way out and need the hub to deliver it. Then close
+    // the SignalHub so every active `sigil.signals` /
     // `sigil.signalsFor(viewer)` subscriber's stream completes
     // naturally — their fibers exit without needing app-side
-    // running-flag bookkeeping. Then dispose the DB *only if* the
-    // instance was ever constructed; codegen / introspection paths
-    // that ran `polymorphicRegistrations` without opening the store
-    // shouldn't have shutdown force the DB open. Both stages are
-    // best-effort: failures are logged but don't block subsequent
-    // teardown.
-    Task { hub.close() }.flatMap { _ =>
+    // running-flag bookkeeping. Finally dispose the DB *only if*
+    // the instance was ever constructed; codegen / introspection
+    // paths that ran `polymorphicRegistrations` without opening
+    // the store shouldn't have shutdown force the DB open. All
+    // stages are best-effort: failures are logged but don't block
+    // subsequent teardown.
+    onShutdown.handleError { t =>
+      Task { scribe.warn(s"Sigil shutdown: onShutdown failed: ${t.getMessage}"); () }
+    }.flatMap { _ =>
+      Task { hub.close() }
+    }.flatMap { _ =>
       if (!instanceStarted.get()) Task.unit
       else instance.flatMap { sigil =>
         sigil.db.dispose.handleError { t =>
@@ -2855,6 +2864,23 @@ trait Sigil {
       }
     }
   }
+
+  /**
+   * Hook for module-mixed traits and apps to release subprocess /
+   * connection / fiber resources during [[shutdown]]. Runs BEFORE
+   * the SignalHub closes and BEFORE DB dispose, so implementations
+   * can still publish a final Notice / Event on the way out.
+   *
+   * Module traits (e.g. `MetalsSigil` killing spawned Metals
+   * subprocesses) override this and chain `super.onShutdown` so a
+   * Sigil mixing in N modules tears each down in declaration
+   * order. Default is a no-op.
+   *
+   * Failures are logged but don't abort the rest of the shutdown
+   * pipeline — half-released resources are better than a hung
+   * teardown.
+   */
+  protected def onShutdown: Task[Unit] = Task.unit
 
   /** Cancellation flag observed by background fibers (model refresh,
     * MCP reaper, etc.). Set by [[shutdown]]. */
