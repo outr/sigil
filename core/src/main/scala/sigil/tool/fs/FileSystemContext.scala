@@ -1,6 +1,7 @@
 package sigil.tool.fs
 
 import rapid.Task
+import sigil.storage.{FileVersion, StorageContents, WriteResult}
 
 /**
  * Abstract filesystem / shell operations consumed by the
@@ -53,4 +54,31 @@ trait FileSystemContext {
   /** Delete a single file. Returns true if the file existed and was
     * deleted; false if it did not exist. */
   def deleteFile(filePath: String): Task[Boolean]
+
+  /** Read the file's bytes plus a [[FileVersion]] verification
+    * token. The token is suitable to pass back to [[writeIfMatch]]
+    * for a compare-and-set commit. Returns `None` when no file
+    * exists at `filePath`.
+    *
+    * Implementations rooted at the local filesystem hash the bytes
+    * with SHA-256; remote-backed implementations may use the
+    * backend's native version stamp (S3 ETag, etc.) so the
+    * comparison happens server-side. */
+  def readContents(filePath: String): Task[Option[StorageContents]]
+
+  /** Conditional write — replace the file's contents iff its current
+    * version still matches `expected`. Returns one of:
+    *
+    *   - [[WriteResult.Written]] — the write committed; carries the
+    *     fresh verification token.
+    *   - [[WriteResult.Stale]] — another writer modified the file
+    *     since `expected` was issued; carries the freshest snapshot
+    *     so the caller can re-evaluate without a separate read.
+    *   - [[WriteResult.NotFound]] — there's no file to compare against.
+    *
+    * The lock window covers only the verify-and-write steps;
+    * preparation (reads, computing the new content) runs unlocked
+    * so multiple agents can plan edits concurrently and only
+    * serialize at commit time. */
+  def writeIfMatch(filePath: String, content: String, expected: FileVersion): Task[WriteResult]
 }

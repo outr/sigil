@@ -109,6 +109,67 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         extractJson(edited).get("error").map(_.asString.contains("not unique")).getOrElse(false) shouldBe true
       }
     }
+
+    "commit safe-edit when expectedHash matches and surface fresh hash" in withTempDir { (ctx, _) =>
+      val tc = turnContext()
+      for {
+        _      <- new WriteFileTool(ctx).execute(WriteFileInput("safe.toml", "x = 1\ny = 2"), tc).toList
+        readJ  <- new ReadFileTool(ctx).execute(ReadFileInput("safe.toml"), tc).toList
+        hash    = extractJson(readJ).get("hash").map(_.asString).get
+        edited <- new EditFileTool(ctx).execute(
+                    EditFileInput("safe.toml", "y = 2", "y = 99", expectedHash = Some(hash)),
+                    tc
+                  ).toList
+        re     <- new ReadFileTool(ctx).execute(ReadFileInput("safe.toml"), tc).toList
+      } yield {
+        val payload = extractJson(edited)
+        payload.get("result").map(_.asString) shouldBe Some("written")
+        payload.get("hash").map(_.asString).isDefined shouldBe true
+        payload.get("replacements").map(_.asInt) shouldBe Some(1)
+        extractJson(re).get("content").map(_.asString) shouldBe Some("x = 1\ny = 99")
+      }
+    }
+
+    "surface stale on safe-edit when expectedHash is wrong, leaving file unchanged" in withTempDir { (ctx, _) =>
+      val tc = turnContext()
+      for {
+        _      <- new WriteFileTool(ctx).execute(WriteFileInput("conflict.toml", "x = 1"), tc).toList
+        edited <- new EditFileTool(ctx).execute(
+                    EditFileInput("conflict.toml", "x = 1", "x = 2", expectedHash = Some("not-the-real-hash")),
+                    tc
+                  ).toList
+        re     <- new ReadFileTool(ctx).execute(ReadFileInput("conflict.toml"), tc).toList
+      } yield {
+        val payload = extractJson(edited)
+        payload.get("result").map(_.asString) shouldBe Some("stale")
+        payload.get("currentHash").map(_.asString).isDefined shouldBe true
+        payload.get("currentContent").map(_.asString) shouldBe Some("x = 1")
+        // File unchanged
+        extractJson(re).get("content").map(_.asString) shouldBe Some("x = 1")
+      }
+    }
+
+    "WriteFileTool surfaces written/stale results when expectedHash is supplied" in withTempDir { (ctx, _) =>
+      val tc = turnContext()
+      for {
+        _      <- new WriteFileTool(ctx).execute(WriteFileInput("ow.txt", "v1"), tc).toList
+        readJ  <- new ReadFileTool(ctx).execute(ReadFileInput("ow.txt"), tc).toList
+        hash    = extractJson(readJ).get("hash").map(_.asString).get
+        ok     <- new WriteFileTool(ctx).execute(
+                    WriteFileInput("ow.txt", "v2", expectedHash = Some(hash)),
+                    tc
+                  ).toList
+        // Now hash is stale — try writing again with the OLD hash.
+        stale  <- new WriteFileTool(ctx).execute(
+                    WriteFileInput("ow.txt", "v3", expectedHash = Some(hash)),
+                    tc
+                  ).toList
+      } yield {
+        extractJson(ok).get("result").map(_.asString) shouldBe Some("written")
+        extractJson(stale).get("result").map(_.asString) shouldBe Some("stale")
+        extractJson(stale).get("currentContent").map(_.asString) shouldBe Some("v2")
+      }
+    }
   }
 
   "DeleteFileTool" should {

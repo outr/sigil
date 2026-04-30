@@ -4,6 +4,7 @@ import fabric.{Json, num, obj, str}
 import rapid.Stream
 import sigil.TurnContext
 import sigil.event.Event
+import sigil.storage.FileVersion
 import sigil.tool.model.ReadFileInput
 import sigil.tool.{ToolExample, ToolName, TypedTool}
 
@@ -38,11 +39,19 @@ final class ReadFileTool(context: FileSystemContext)
     case (None, None) =>
       context.readFile(input.filePath).map { content =>
         val lines = content.split('\n').length
-        obj("content" -> str(content), "totalLines" -> num(lines), "linesRead" -> num(lines))
+        obj(
+          "content" -> str(content),
+          "totalLines" -> num(lines),
+          "linesRead" -> num(lines),
+          "hash" -> str(FileVersion.hashOf(content))
+        )
       }
     case (off, lim) =>
       context.readFileLines(input.filePath, off.getOrElse(0), lim.getOrElse(Int.MaxValue)).map {
         case (lines, total) =>
+          // No `hash` on partial reads — the hash represents the
+          // full file's bytes; passing it as `expectedHash` after a
+          // windowed read would silently mismatch on commit.
           obj("content" -> str(lines.mkString("\n")), "totalLines" -> num(total), "linesRead" -> num(lines.size))
       }
   }

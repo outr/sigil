@@ -1,10 +1,15 @@
 package sigil.tool.fs
 
+import lightdb.time.Timestamp
 import rapid.Task
+import sigil.storage.{FileVersion, StorageContents, WriteResult}
 
 import java.io.{BufferedReader, InputStreamReader}
 import java.nio.charset.StandardCharsets
+import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.{FileSystems, Files, Path, Paths}
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.locks.ReentrantLock
 import java.util.regex.Pattern
 import scala.jdk.CollectionConverters.*
 
@@ -19,7 +24,7 @@ import scala.jdk.CollectionConverters.*
  * its tail is silently dropped (the captured prefix still appears
  * in the result).
  */
-final class LocalFileSystemContext(basePath: Option[Path] = None) extends FileSystemContext {
+class LocalFileSystemContext(basePath: Option[Path] = None) extends FileSystemContext {
   import LocalFileSystemContext.OutputTruncationBytes
 
   override def executeCommand(command: String,
@@ -121,6 +126,57 @@ final class LocalFileSystemContext(basePath: Option[Path] = None) extends FileSy
 
   override def deleteFile(filePath: String): Task[Boolean] = Task {
     Files.deleteIfExists(resolvePath(filePath))
+  }
+
+  override def readContents(filePath: String): Task[Option[StorageContents]] = Task {
+    val target = resolvePath(filePath)
+    if (!Files.exists(target)) None
+    else {
+      val bytes = Files.readAllBytes(target)
+      Some(StorageContents(bytes, versionOf(target, bytes)))
+    }
+  }
+
+  override def writeIfMatch(filePath: String, content: String, expected: FileVersion): Task[WriteResult] = Task {
+    val target = resolvePath(filePath)
+    val key = target.toString
+    val lock = locks.computeIfAbsent(key, _ => new ReentrantLock())
+    lock.lock()
+    try {
+      if (!Files.exists(target)) WriteResult.NotFound
+      else {
+        val currentBytes = Files.readAllBytes(target)
+        val currentVersion = versionOf(target, currentBytes)
+        if (currentVersion.hash != expected.hash) {
+          WriteResult.Stale(StorageContents(currentBytes, currentVersion))
+        } else {
+          val data = content.getBytes(StandardCharsets.UTF_8)
+          Option(target.getParent).foreach(Files.createDirectories(_))
+          Files.write(target, data)
+          WriteResult.Written(versionOf(target, data))
+        }
+      }
+    } finally lock.unlock()
+  }
+
+  /** Per-canonical-path locks for safe-edit. Process-local — see
+    * [[sigil.storage.LocalFileStorageProvider]] for the same pattern
+    * applied to opaque storage paths. */
+  private val locks: ConcurrentHashMap[String, ReentrantLock] = new ConcurrentHashMap()
+
+  /** Diagnostic — number of distinct paths currently holding a lock
+    * record. Used by tests asserting per-path lock independence;
+    * ops dashboards can also surface it as a memory-cost signal. */
+  def lockCount: Int = locks.size()
+
+  protected def versionOf(target: Path, bytes: Array[Byte]): FileVersion = {
+    val mtime = try {
+      val attrs = Files.readAttributes(target, classOf[BasicFileAttributes])
+      Timestamp(attrs.lastModifiedTime().toMillis)
+    } catch {
+      case _: Throwable => Timestamp()
+    }
+    FileVersion(FileVersion.hashOf(bytes), mtime)
   }
 
   private def resolvePath(path: String): Path = basePath match {

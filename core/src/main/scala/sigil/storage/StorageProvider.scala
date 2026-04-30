@@ -18,6 +18,18 @@ import rapid.Task
  * `<spaceTag>/<id>` so listings stay tenant-scoped on backends that
  * support hierarchical listing, but providers MUST treat it as an
  * opaque key.
+ *
+ * **Safe-edit (compare-and-set) contract.** [[read]] returns a
+ * [[StorageContents]] carrying the bytes plus a [[FileVersion]]
+ * verification token. [[writeIfMatch]] commits only if the storage's
+ * current version still matches the supplied `expected` — otherwise
+ * it returns [[WriteResult.Stale]] with the freshest snapshot. The
+ * default trait implementations are correct in intent but NOT
+ * lock-safe (two concurrent callers can both observe a matching
+ * version then both write). Concrete providers SHOULD override
+ * `writeIfMatch` to use their backend's native conditional-write
+ * (S3 If-Match) or an in-process lock keyed on the path. Apps that
+ * don't care about staleness keep using the unconditional [[upload]].
  */
 trait StorageProvider {
 
@@ -32,4 +44,28 @@ trait StorageProvider {
   def delete(path: String): Task[Unit]
 
   def exists(path: String): Task[Boolean]
+
+  /** Read the current contents and verification token. Default
+    * implementation hashes the downloaded bytes; backends with
+    * native version stamps (S3 ETag) override to use the backend
+    * value directly. */
+  def read(path: String): Task[Option[StorageContents]] =
+    download(path).map(_.map(bytes => StorageContents(bytes, FileVersion.of(bytes))))
+
+  /** Conditional write — commit `data` iff the storage's current
+    * version still matches `expected`. Default implementation does
+    * a read-then-write that is NOT race-safe across concurrent
+    * callers; concrete providers should override using a backend
+    * lock or native CAS. */
+  def writeIfMatch(path: String,
+                   data: Array[Byte],
+                   contentType: String,
+                   expected: FileVersion): Task[WriteResult] =
+    read(path).flatMap {
+      case None => Task.pure(WriteResult.NotFound)
+      case Some(current) if current.version.hash != expected.hash =>
+        Task.pure(WriteResult.Stale(current))
+      case Some(_) =>
+        upload(path, data, contentType).map(_ => WriteResult.Written(FileVersion.of(data)))
+    }
 }
