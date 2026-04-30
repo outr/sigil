@@ -151,52 +151,68 @@ final class DatabaseSecretStore(sigil: Sigil { type DB <: SigilDB & SecretsColle
 object DatabaseSecretStore {
 
   /**
-   * Read or auto-generate a symmetric key at `path` and build a
-   * [[DatabaseSecretStore]] backed by it. On first run the file is
-   * created with a fresh random key (combined `Unique`-derived strings
-   * — high entropy, stable across restarts because it's persisted to
-   * disk).
+   * Build a [[DatabaseSecretStore]] from a symmetric key already
+   * persisted at `keyPath`. The file MUST exist — there is no
+   * auto-generation path because losing the key invalidates every
+   * encrypted secret in the database, so the framework refuses to
+   * silently materialize one. Apps that want a generated key
+   * persisted to disk make that decision deliberately and call
+   * [[generateKeyFile]] before constructing the store.
    *
-   * Apps that want a different key-management strategy (HSM, KMS,
-   * env-var-injected) construct [[DatabaseSecretStore]] directly with
-   * the key string they obtain however they like.
+   * Most apps don't go through this constructor at all — they
+   * supply the key via [[SecretsSigil.secretStoreKey]] sourced from
+   * typed config / env / KMS / Vault / mounted secret. This factory
+   * is the explicit "I really do want a file on disk" opt-in.
+   *
+   * Throws `java.nio.file.NoSuchFileException` if `keyPath` is
+   * missing.
    */
-  def fromKeyFile(sigil: Sigil { type DB <: SigilDB & SecretsCollections }, keyPath: java.nio.file.Path): DatabaseSecretStore = {
-    val key = readOrGenerateKey(keyPath)
+  def fromKeyFile(sigil: Sigil { type DB <: SigilDB & SecretsCollections },
+                  keyPath: java.nio.file.Path): DatabaseSecretStore = {
+    if (!java.nio.file.Files.exists(keyPath)) {
+      throw new java.nio.file.NoSuchFileException(
+        s"DatabaseSecretStore.fromKeyFile: no key file at $keyPath. " +
+          "Generate one via DatabaseSecretStore.generateKeyFile(path) before constructing the store, " +
+          "or supply the key string directly via the DatabaseSecretStore constructor / SecretsSigil.secretStoreKey."
+      )
+    }
+    val key = java.nio.file.Files.readString(keyPath).trim
     new DatabaseSecretStore(sigil, key)
   }
 
-  /** Default key path — `<dbPath>/crypto.key` if `dbPath` is set,
-    * otherwise `data/sigil/crypto.key` relative to the working dir. */
-  def defaultKeyPath(sigil: Sigil { type DB <: SigilDB & SecretsCollections }): java.nio.file.Path = {
-    val dbPathStr = profig.Profig("sigil.dbPath").opt[String](using fabric.rw.stringRW).getOrElse("data/sigil")
-    java.nio.file.Path.of(dbPathStr, "crypto.key")
-  }
-
-  /** Default factory — uses [[defaultKeyPath]] to locate / create the
-    * symmetric key. Apps that want a different policy override
-    * [[sigil.Sigil.secretStore]] with a hand-built instance. */
-  def default(sigil: Sigil { type DB <: SigilDB & SecretsCollections }): DatabaseSecretStore =
-    fromKeyFile(sigil, defaultKeyPath(sigil))
-
-  private def readOrGenerateKey(path: java.nio.file.Path): String = {
+  /**
+   * Generate a fresh symmetric key, persist it to `path` (mode
+   * `0600` on POSIX), and return the generated value. Idempotent
+   * with [[fromKeyFile]] — call this once at deploy time, then
+   * [[fromKeyFile]] (or read the file yourself for
+   * [[SecretsSigil.secretStoreKey]]) on every subsequent boot.
+   *
+   * Throws `java.nio.file.FileAlreadyExistsException` if `path`
+   * already contains a key — overwriting would silently rotate the
+   * material out from under existing encrypted records, so the
+   * framework refuses. Callers that need rotation delete the file
+   * (or move it aside) deliberately first.
+   */
+  def generateKeyFile(path: java.nio.file.Path): String = {
     if (java.nio.file.Files.exists(path)) {
-      java.nio.file.Files.readString(path).trim
-    } else {
-      Option(path.getParent).foreach(java.nio.file.Files.createDirectories(_))
-      val generated = rapid.Unique.sync() + "-" + rapid.Unique.sync()
-      java.nio.file.Files.writeString(path, generated)
-      try {
-        java.nio.file.Files.setPosixFilePermissions(
-          path,
-          java.util.Set.of(
-            java.nio.file.attribute.PosixFilePermission.OWNER_READ,
-            java.nio.file.attribute.PosixFilePermission.OWNER_WRITE
-          )
-        )
-      } catch { case _: UnsupportedOperationException => () } // non-POSIX FS — best-effort
-      scribe.info(s"DatabaseSecretStore: generated new symmetric key at $path")
-      generated
+      throw new java.nio.file.FileAlreadyExistsException(
+        s"DatabaseSecretStore.generateKeyFile: $path already exists. " +
+          "Overwriting would invalidate every secret encrypted with the old key."
+      )
     }
+    Option(path.getParent).foreach(java.nio.file.Files.createDirectories(_))
+    val generated = rapid.Unique.sync() + "-" + rapid.Unique.sync()
+    java.nio.file.Files.writeString(path, generated)
+    try {
+      java.nio.file.Files.setPosixFilePermissions(
+        path,
+        java.util.Set.of(
+          java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+          java.nio.file.attribute.PosixFilePermission.OWNER_WRITE
+        )
+      )
+    } catch { case _: UnsupportedOperationException => () } // non-POSIX FS — best-effort
+    scribe.info(s"DatabaseSecretStore.generateKeyFile: wrote new symmetric key to $path")
+    generated
   }
 }

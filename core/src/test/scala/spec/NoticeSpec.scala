@@ -8,8 +8,9 @@ import sigil.conversation.Conversation
 import sigil.pipeline.SignalHub
 import sigil.signal.{
   ConversationCreated, ConversationDeleted, ConversationListSnapshot, ConversationSnapshot,
-  RequestConversationList, Signal, SwitchConversation
+  RequestConversationList, RequestToolList, Signal, SwitchConversation, ToolListSnapshot
 }
+import sigil.tool.BuiltinKind
 
 /**
  * Unit coverage for the [[sigil.signal.Notice]] subsystem:
@@ -43,6 +44,21 @@ class NoticeSpec extends AnyWordSpec with Matchers {
     "round-trip SwitchConversation" in {
       val original = SwitchConversation(Conversation.id("c1"))
       roundTrip(original).asInstanceOf[SwitchConversation].conversationId shouldBe Conversation.id("c1")
+    }
+    "round-trip RequestToolList without filters" in {
+      val original = RequestToolList()
+      val r = roundTrip(original).asInstanceOf[RequestToolList]
+      r.spaces shouldBe None
+      r.kinds shouldBe None
+    }
+    "round-trip RequestToolList with kind filter" in {
+      val original = RequestToolList(kinds = Some(Set(BuiltinKind)))
+      val r = roundTrip(original).asInstanceOf[RequestToolList]
+      r.kinds.map(_.contains(BuiltinKind)) shouldBe Some(true)
+    }
+    "round-trip ToolListSnapshot (empty)" in {
+      val original = ToolListSnapshot(Nil)
+      roundTrip(original).asInstanceOf[ToolListSnapshot].tools shouldBe Nil
     }
   }
 

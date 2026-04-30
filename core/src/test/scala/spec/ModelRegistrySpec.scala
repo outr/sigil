@@ -76,6 +76,40 @@ class ModelRegistrySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         succeed
       }
     }
+
+    "merge preserves existing entries from other providers (per-provider seeding pattern)" in {
+      val reg = new ModelRegistry()
+      val openaiA = fakeModel("openai", "gpt-x")
+      val openaiB = fakeModel("openai", "gpt-y")
+      val llamaA  = fakeModel("llamacpp", "gemma-9b")
+      val llamaB  = fakeModel("llamacpp", "qwen-7b")
+      for {
+        // OpenRouter-style: seed the registry with the OpenAI catalog.
+        _ <- reg.replace(List(openaiA, openaiB))
+        // LlamaCppProvider construction adds its own catalog without
+        // wiping the OpenAI entries — this is the bug #40 fix shape.
+        _ <- reg.merge(List(llamaA, llamaB))
+      } yield {
+        reg.all.map(_._id.value).toSet shouldBe Set(
+          openaiA._id.value, openaiB._id.value, llamaA._id.value, llamaB._id.value
+        )
+        succeed
+      }
+    }
+
+    "merge overwrites existing entries with the same id" in {
+      val reg = new ModelRegistry()
+      val original = fakeModel("llamacpp", "gemma").copy(name = "Gemma v1")
+      val updated  = fakeModel("llamacpp", "gemma").copy(name = "Gemma v2")
+      for {
+        _ <- reg.merge(List(original))
+        _ <- reg.merge(List(updated))
+      } yield {
+        reg.find(updated._id).map(_.name) shouldBe Some("Gemma v2")
+        reg.all should have size 1
+        succeed
+      }
+    }
   }
 
   "ModelRegistry (disk fallback)" should {

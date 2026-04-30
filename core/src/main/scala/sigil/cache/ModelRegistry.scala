@@ -54,10 +54,27 @@ final class ModelRegistry(cachePath: Option[Path] = None) {
 
   /** Atomically replace the registry with `models` and (when a cache
     * path is configured) persist them to disk. Used by
-    * `OpenRouter.refreshModels` after a successful upstream fetch. */
+    * `OpenRouter.refreshModels` after a successful upstream fetch
+    * — the OpenRouter catalog is the single aggregate source for
+    * that path, so a wholesale replace is correct semantics. */
   def replace(models: List[Model]): Task[Unit] = Task {
     ref.set(models.iterator.map(m => m._id -> m).toMap)
-  }.flatMap(_ => writeToDisk(models))
+  }.flatMap(_ => writeToDisk(ref.get.values.toList))
+
+  /** Additively merge `models` into the registry. Existing entries
+    * with the same id are overwritten; unrelated entries are
+    * preserved. Used by per-provider seeding where each provider
+    * (LlamaCpp, Anthropic, OpenAI, …) brings its own catalog and
+    * coexists with others in the same Sigil instance.
+    *
+    * Persists the post-merge state to disk when [[cachePath]] is
+    * set — same atomic-rename guarantee as [[replace]]. */
+  def merge(models: List[Model]): Task[Unit] = Task {
+    val updated = ref.updateAndGet { current =>
+      models.foldLeft(current)((acc, m) => acc + (m._id -> m))
+    }
+    updated.values.toList
+  }.flatMap(writeToDisk)
 
   /** Restore the registry from disk if a cache file exists. Used at
     * Sigil init so the first run after a network outage still has

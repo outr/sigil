@@ -21,8 +21,23 @@ object PermissiveWorkspaceEditApplier extends WorkspaceEditApplier {
       docChanges match {
         case Some(list) =>
           list.asScala.foreach { either =>
-            if (either.isLeft) applyTextDocumentEdit(either.getLeft.getTextDocument.getUri,
-                                                     either.getLeft.getEdits.asScala.toList)
+            if (either.isLeft) applyTextDocumentEdit(
+              either.getLeft.getTextDocument.getUri,
+              // Recent lsp4j widens TextDocumentEdit.getEdits to
+              // List[Either[TextEdit, SnippetTextEdit]]. Both sides
+              // are TextEdit subtypes; flatten by picking whichever
+              // side is set so downstream `applyTextEdits` keeps
+              // operating on a homogeneous TextEdit list.
+              either.getLeft.getEdits.asScala.toList.collect {
+                // SnippetTextEdit isn't a TextEdit subclass — skip
+                // it. Servers that emit snippets are signalling
+                // tabstops we don't carry through to disk; the
+                // edit's `newText` would still be applied, but the
+                // tabstop information is irrelevant once we hit
+                // bytes. Most servers emit plain TextEdits anyway.
+                case e if e.isLeft => e.getLeft
+              }
+            )
             else applyResourceOperation(either.getRight)
           }
         case None =>

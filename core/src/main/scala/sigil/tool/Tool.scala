@@ -36,6 +36,14 @@ trait Tool extends RecordDocument[Tool] {
 
   // ---- defaults ----
 
+  /** Categorical discriminator for client-side filtering — see
+    * [[ToolKind]]. Defaults to [[BuiltinKind]]; subtypes from opt-in
+    * modules override (e.g. `ScriptTool.kind = ScriptKind`,
+    * `McpTool.kind = McpKind`). Apps building "manage your tools"
+    * UIs use [[sigil.signal.RequestToolList]] with a `kinds` filter
+    * to scope which records the user sees. */
+  def kind: ToolKind = BuiltinKind
+
   def modes: Set[Id[Mode]] = Set(ConversationMode.id)
 
   /** The single [[SpaceId]] this tool is visible under. Defaults to
@@ -55,6 +63,28 @@ trait Tool extends RecordDocument[Tool] {
     * tools that need a dynamic schema (e.g. an enum populated from
     * runtime config) override this. */
   def inputDefinition: fabric.define.Definition = inputRW.definition
+
+  /** How long this tool's `ToolResults` frames should remain in the
+    * curated turn input.
+    *
+    *   - `None` (default) — keep forever; the result is durable and
+    *     stays in the model's context as the conversation evolves.
+    *   - `Some(0)` — the result is ephemeral; the curator may elide
+    *     the call/result pair from the next turn's prompt because
+    *     the result has been folded into a more compact representation
+    *     (a participant projection, a `System` frame, the system
+    *     prompt's "Suggested tools" / "Current mode" sections, etc.).
+    *     Used by `find_capability` and `change_mode` so their
+    *     verbose results don't accumulate in context.
+    *   - `Some(n)` for `n > 0` — reserved for future "keep for n more
+    *     agent turns" semantics. The standard curator currently
+    *     treats any positive value the same as `None`; apps wanting
+    *     turn-count-aware TTL extend the curator.
+    *
+    * The TTL is a declaration of intent — the curator's policy
+    * decides exactly when to elide. [[StandardContextCurator]] honors
+    * `Some(0)` by default. */
+  def resultTtl: Option[Int] = None
 
   /** The description the LLM sees, given runtime context (active
     * mode + the live `Sigil`). Default returns the static

@@ -88,6 +88,12 @@ trait ScriptSigil extends Sigil {
   override def toolRegistrations: List[RW[? <: sigil.tool.Tool]] =
     summon[RW[ScriptTool]] :: super.toolRegistrations
 
+  /** Register [[ScriptKind]] so [[ScriptTool]] records' `kind` field
+    * round-trips through fabric's polymorphic [[sigil.tool.ToolKind]]
+    * discriminator. */
+  override protected def toolKindRegistrations: List[RW[? <: sigil.tool.ToolKind]] =
+    RW.static[sigil.tool.ToolKind](ScriptKind) :: super.toolKindRegistrations
+
   /**
    * Auto-register [[ScriptResult]]'s RW so the events emitted by
    * [[ExecuteScriptTool]] / persisted [[ScriptTool]]s round-trip
