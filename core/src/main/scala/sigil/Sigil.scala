@@ -789,7 +789,7 @@ trait Sigil {
           resolveProviderStrategy(context.conversation.space)
       }
 
-    val resolved: Task[(Provider, Vector[Tool], Id[Model], GenerationSettings)] =
+    val resolved: Task[(Provider, Vector[Tool], Id[Model], GenerationSettings, List[sigil.role.Role])] =
       for {
         strategyOpt <- strategyTask
         // Pick the first available candidate for the agent's work
@@ -806,9 +806,18 @@ trait Sigil {
         genSettings  = chosen.map(_.settings).getOrElse(agent.generationSettings)
         p           <- providerFor(modelId, effectiveChain)
         t           <- Task.sequence(effectiveNames.map(n => findTools.byName(n))).map(_.flatten.toVector)
-      } yield (p, t, modelId, genSettings)
+        // Resolve the agent's roles for this turn. Static agents return
+        // their declared `roles` field; DB-backed agents (e.g. Voidcraft
+        // personas) consult persistence here. Empty result is treated as
+        // a programmer error.
+        rolesResolved <- agent.resolveRoles(context).map { rs =>
+          require(rs.nonEmpty,
+            s"AgentParticipant.resolveRoles must return a non-empty list (id=${agent.id.value})")
+          rs
+        }
+      } yield (p, t, modelId, genSettings, rolesResolved)
 
-    Stream.force(resolved.map { case (provider, tools, modelId, genSettings) =>
+    Stream.force(resolved.map { case (provider, tools, modelId, genSettings, rolesResolved) =>
       val request = ConversationRequest(
         conversationId = context.conversation.id,
         modelId = modelId,
@@ -821,7 +830,7 @@ trait Sigil {
         tools = tools,
         builtInTools = agent.builtInTools ++ context.conversation.currentMode.builtInTools,
         chain = effectiveChain,
-        roles = agent.roles
+        roles = rolesResolved
       )
 
       val typingEmitted = new java.util.concurrent.atomic.AtomicBoolean(false)
@@ -1150,6 +1159,17 @@ trait Sigil {
     * persist or attempting vector-backed search. */
   protected final def vectorWired: Boolean =
     embeddingProvider.dimensions > 0 && (vectorIndex ne NoOpVectorIndex)
+
+  /**
+   * Pluggable text-to-speech / speech-to-text / image-generation
+   * provider. Default [[sigil.media.NoOpMediaProvider]] raises
+   * `UnsupportedMediaOperation` from every method; apps that need
+   * media wire a concrete implementation (e.g. Sage's
+   * `sage.media.ElevenLabsTts` for voice, `sage.media.OpenAIImageGen`
+   * for image gen). Voidcraft's `SpeechService` and `ImageGenService`
+   * become thin call-throughs to whatever this provides.
+   */
+  def mediaProvider: sigil.media.MediaProvider = sigil.media.NoOpMediaProvider
 
   // -- broadcasting --
 
