@@ -1,7 +1,7 @@
 package sigil.participant
 
 import lightdb.id.Id
-import rapid.Stream
+import rapid.{Stream, Task}
 import sigil.TurnContext
 import sigil.role.{GeneralistRole, Role}
 import sigil.db.Model
@@ -121,6 +121,23 @@ trait AgentParticipant extends Participant {
   def roles: List[Role] = List(GeneralistRole)
 
   require(roles.nonEmpty, s"AgentParticipant.roles must be non-empty (id=${id.value})")
+
+  /**
+   * Resolve this agent's roles for a particular turn. Default returns
+   * the static `roles` field synchronously; apps storing roles in a DB
+   * (Voidcraft personas, Sage `PersonaCollection`) override to consult
+   * persistence each turn.
+   *
+   * The framework calls this in [[sigil.Sigil.runAgentTurn]] before
+   * building the [[sigil.provider.ConversationRequest]]; the resolved
+   * list (or the static `roles` field as fallback) becomes
+   * `request.roles`.
+   *
+   * Returning an empty list is treated as a programmer error and
+   * raises at the call site — express "no special role" by returning
+   * `List(GeneralistRole)`.
+   */
+  def resolveRoles(context: TurnContext): Task[List[Role]] = Task.pure(roles)
 
   /**
    * Final dispatch entry point. One [[sigil.Sigil.process]] call per
