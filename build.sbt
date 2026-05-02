@@ -8,7 +8,7 @@ ThisBuild / githubRepository := "sigil"
 
 val rapidVersion: String = "2.9.3"
 
-val spiceVersion: String = "1.8.3-SNAPSHOT"
+val spiceVersion: String = "1.8.3"
 
 val profigVersion: String = "3.7.0"
 
