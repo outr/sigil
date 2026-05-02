@@ -110,7 +110,7 @@ class OrchestratorOrphanToolCallSpec extends AsyncWordSpec with AsyncTaskSpec wi
     )
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-      signals <- Orchestrator.process(TestSigil, provider, request).toList
+      signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
     } yield signals
   }
 
@@ -177,7 +177,7 @@ class OrchestratorOrphanToolCallSpec extends AsyncWordSpec with AsyncTaskSpec wi
         // Drain the stream. The mid-stream throw will surface as a
         // failed Task; we attempt it and assert the failure
         // propagates AND the orphan settle was published.
-        attempted <- Orchestrator.process(TestSigil, new OrphanedThrowingProvider, request).toList.attempt
+        attempted <- Orchestrator.process(TestSigil, new OrphanedThrowingProvider, request, conv).toList.attempt
         _          = Thread.sleep(150)
         _          = running = false
       } yield {

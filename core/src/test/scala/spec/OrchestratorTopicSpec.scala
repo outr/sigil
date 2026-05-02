@@ -112,7 +112,7 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.withDB(_.topics.transaction(_.upsert(current)))
-      signals <- Orchestrator.process(TestSigil, stubProvider, request).toList
+      signals <- Orchestrator.process(TestSigil, stubProvider, request, conv).toList
     } yield (signals, current, convId)
   }
 

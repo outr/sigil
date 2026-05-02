@@ -63,9 +63,35 @@ class NewsArticleDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     response.status.code == 200
   } catch { case _: Throwable => false }
 
+  /** Provider preference for this test:
+    *
+    *   - If `OPENAI_API_KEY` is set, use OpenAI — its context window
+    *     is plenty for the agent's HTML + 8 browser-tool schemas +
+    *     chat history (~5 K tokens).
+    *   - Otherwise fall back to local llama.cpp, which historically
+    *     ran the test fine but can fail with `MissingCoreLibrary`-
+    *     style "exceeds the available context size" errors when the
+    *     locally-loaded model has tighter effective context (gemma's
+    *     sliding-window attention, parallel-slot bucketing).
+    *
+    * Returns the model id + Provider task to install. */
+  private val providerSelection: Option[(Id[Model], Task[Provider])] = {
+    sys.env.get("OPENAI_API_KEY").filter(_.nonEmpty) match {
+      case Some(apiKey) =>
+        val mid: Id[Model] = Model.id(sys.env.getOrElse("OPENAI_TEST_MODEL", "openai/gpt-5.4-mini"))
+        Some(mid -> sigil.provider.openai.OpenAIProvider.create(TestBrowserSigil, apiKey).singleton)
+      case None if llamaCppReachable =>
+        val mid: Id[Model] = Model.id("gemma-4-26b")
+        Some(mid -> LlamaCppProvider(TestBrowserSigil, TestBrowserSigil.llamaCppHost).singleton)
+      case None => None
+    }
+  }
+
   private val skipReason: Option[String] =
-    if (!chromeAvailable) Some("Chrome / chromedriver not installed")
-    else if (!llamaCppReachable) Some(s"llama.cpp at ${TestBrowserSigil.llamaCppHost} not reachable")
+    if (!chromeAvailable)         Some("Chrome / chromedriver not installed")
+    else if (providerSelection.isEmpty) Some(
+      s"no provider available — set OPENAI_API_KEY for OpenAI, or run llama.cpp at ${TestBrowserSigil.llamaCppHost}"
+    )
     else None
 
   // -- fixture + provider --
@@ -76,9 +102,9 @@ class NewsArticleDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     super.beforeAll()
     skipReason.foreach(_ => return)  // skip setup
     fixture.start().sync()
-    val provider: Task[Provider] =
-      LlamaCppProvider(TestBrowserSigil, TestBrowserSigil.llamaCppHost).singleton
-    TestBrowserSigil.setProvider(provider)
+    providerSelection.foreach { case (_, providerTask) =>
+      TestBrowserSigil.setProvider(providerTask)
+    }
   }
 
   override protected def afterAll(): Unit = {
@@ -90,7 +116,8 @@ class NewsArticleDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     super.afterAll()
   }
 
-  private val modelId: Id[Model] = Model.id("gemma-4-26b")
+  private val modelId: Id[Model] =
+    providerSelection.map(_._1).getOrElse(Model.id("gemma-4-26b"))
 
   private def agent(): AgentParticipant =
     DefaultAgentParticipant(
@@ -108,7 +135,7 @@ class NewsArticleDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   s"NewsArticleDetectionSpec" should {
 
-    "classify the news-index page's links via the browser tools and a local LLM" in {
+    "classify the news-index page's links via the browser tools and an LLM" in {
       if (skipReason.isDefined) {
         cancel(s"Skipping: ${skipReason.get}")
       }
@@ -143,7 +170,11 @@ class NewsArticleDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         // Wait for the agent loop to settle — poll the events store
         // until we see a non-Tool Message from the agent (the final
         // respond) or hit the deadline.
-        finalText <- awaitFinalAgentText(convId, deadline = System.currentTimeMillis() + 90.seconds.toMillis)
+        // 5 minutes — the multi-tool agent loop on a local LLM
+        // (gemma-4-26b) running through headless Chrome takes
+        // several iterations of large-context calls; the original
+        // 90-second budget was too tight on slow workstations.
+        finalText <- awaitFinalAgentText(convId, deadline = System.currentTimeMillis() + 5.minutes.toMillis)
         // Dispose the browser controller so its Chrome process closes.
         _    <- TestBrowserSigil.disposeBrowserController(convId)
       } yield {

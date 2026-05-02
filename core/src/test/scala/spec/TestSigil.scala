@@ -48,7 +48,27 @@ object TestSigil extends Sigil {
 
   override def testMode: Boolean = true
 
-  lazy val llamaCppHost: URL = Profig("sigil.llamacpp.host").asOr[URL](url"https://llama.voidcraft.ai")
+  lazy val llamaCppHost: URL = sys.env.get("SIGIL_LLAMACPP_HOST").flatMap(URL.get(_).toOption).getOrElse(
+    Profig("sigil.llamacpp.host").asOr[URL](url"https://llama.voidcraft.ai")
+  )
+
+  /** Per-conversation workspace overrides for tests that exercise
+    * `workspaceFor`-aware code paths (filesystem tools, Metals
+    * routing, etc.). Tests call [[setWorkspace]] before exercising
+    * the code path; the framework default returns `None`. */
+  private val workspaceOverrides: java.util.concurrent.ConcurrentHashMap[
+    lightdb.id.Id[sigil.conversation.Conversation], java.nio.file.Path
+  ] = new java.util.concurrent.ConcurrentHashMap()
+
+  def setWorkspace(conversationId: lightdb.id.Id[sigil.conversation.Conversation],
+                   path: Option[java.nio.file.Path]): Unit = path match {
+    case Some(p) => workspaceOverrides.put(conversationId, p); ()
+    case None    => workspaceOverrides.remove(conversationId); ()
+  }
+
+  override def workspaceFor(conversationId: lightdb.id.Id[sigil.conversation.Conversation])
+      : rapid.Task[Option[java.nio.file.Path]] =
+    rapid.Task(Option(workspaceOverrides.get(conversationId)))
 
   // Core tools + a few app tools. The framework's StaticToolSyncUpgrade
   // writes all of these into SigilDB.tools at startup; the default

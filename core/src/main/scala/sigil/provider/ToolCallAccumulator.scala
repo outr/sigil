@@ -92,7 +92,42 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty) {
             }
           } catch {
             case t: Throwable =>
-              Vector(ProviderEvent.Error(s"Failed to parse args for tool ${s.toolName}: ${t.getMessage}"))
+              // Bug #72 — fabric's `RW.write` can throw with a JVM-
+              // internal anonymous-class name as `getMessage` (e.g.
+              // `sigil/script/UpdateScriptToolInput$$anon$3`) rather
+              // than a structured "field X expected Y" diagnostic.
+              // Pre-fix that opaque message was passed verbatim to
+              // the agent, which then had nothing actionable to do.
+              //
+              // Post-fix produces a three-part diagnostic:
+              //   1. exception class + message — categorizes the
+              //      failure even when the message itself is JVM-
+              //      internal.
+              //   2. schema shape summary — `required: [name, count]`
+              //      / `optional: [description]` so the agent can
+              //      compare its emitted JSON against the actual
+              //      expected shape. Especially useful for "agent
+              //      forgot a required field" (the most common
+              //      cause), which [[ToolInputValidator]] doesn't
+              //      catch by design (line 39: "missing-required is
+              //      the parser's job").
+              //   3. constraint-violation hint — when the validator
+              //      DOES find pattern/length/numeric issues that
+              //      fired alongside the fabric throw.
+              val errorClass = t.getClass.getSimpleName
+              val errorMessage = Option(t.getMessage).filter(_.nonEmpty).getOrElse("(no message)")
+              val schemaSummary = ToolCallAccumulator.summarizeSchema(tool.inputRW.definition)
+              val structuralHint =
+                try {
+                  val violations = ToolInputValidator.validate(JsonParser(s.buf.toString), tool.inputRW.definition)
+                  if (violations.isEmpty) ""
+                  else s". Constraint violations: ${violations.mkString("; ")}"
+                } catch { case _: Throwable => "" }
+              Vector(ProviderEvent.Error(
+                s"Failed to parse args for tool ${s.toolName}: " +
+                  s"$errorClass: $errorMessage$structuralHint. " +
+                  s"Expected shape: $schemaSummary"
+              ))
           }
         case None =>
           Vector(ProviderEvent.Error(s"Unknown tool: ${s.toolName}"))
@@ -133,5 +168,63 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty) {
     }
 
     def finish(): Vector[ProviderEvent] = Vector.empty
+  }
+}
+
+object ToolCallAccumulator {
+
+  /** Compact human-readable summary of a fabric [[Definition]] —
+    * field names + types — for use in tool-arg error diagnostics
+    * (bug #72). Optional and required fields are listed separately
+    * so the agent can quickly cross-check its emitted JSON against
+    * the expected shape. Falls back to a minimal description for
+    * non-object root definitions.
+    *
+    * Examples:
+    *   `{ required: [name: string, count: integer], optional: [description: string] }`
+    *   `(any JSON value)` — for `DefType.Json` roots
+    *   `<string>` — for primitive-typed roots
+    *
+    * Intentionally lossy — the agent already has the full schema in
+    * the tool definition that came down on the wire. The summary's
+    * job is to remind, not duplicate. */
+  private[provider] def summarizeSchema(definition: fabric.define.Definition): String = {
+    import fabric.define.DefType
+    definition.defType match {
+      case DefType.Obj(fields) =>
+        val required = fields.iterator.collect {
+          case (k, d) if !d.isOpt => s"$k: ${typeName(d.defType)}"
+        }.toList
+        val optional = fields.iterator.collect {
+          case (k, d) if d.isOpt => s"$k: ${typeName(d.defType)}"
+        }.toList
+        val parts = List(
+          if (required.nonEmpty) Some(s"required: [${required.mkString(", ")}]") else None,
+          if (optional.nonEmpty) Some(s"optional: [${optional.mkString(", ")}]") else None
+        ).flatten
+        if (parts.isEmpty) "{}" else parts.mkString("{ ", "; ", " }")
+      case DefType.Json => "(any JSON value)"
+      case other         => s"<${typeName(other)}>"
+    }
+  }
+
+  /** One-word type name for the schema summary. Recurses into
+    * `Opt` and `Arr`; abbreviates `Obj` / `Poly` to `object` /
+    * `oneOf` since spelling out nested shapes inside a one-line
+    * summary defeats the purpose. */
+  private def typeName(defType: fabric.define.DefType): String = {
+    import fabric.define.DefType
+    defType match {
+      case DefType.Str         => "string"
+      case DefType.Int         => "integer"
+      case DefType.Dec         => "number"
+      case DefType.Bool        => "boolean"
+      case DefType.Null        => "null"
+      case DefType.Json        => "any"
+      case DefType.Arr(t)      => s"array<${typeName(t.defType)}>"
+      case DefType.Opt(t)      => typeName(t.defType)
+      case DefType.Obj(_)      => "object"
+      case DefType.Poly(_, _)  => "oneOf"
+    }
   }
 }

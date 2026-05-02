@@ -25,7 +25,7 @@ import sigil.tool.consult.{ConsultTool, TopicClassifierTool}
 import sigil.provider.GenerationSettings
 import sigil.db.{DefaultSigilDB, Model, SigilDB}
 import sigil.dispatcher.{StopFlag, TriggerFilter}
-import sigil.event.{AgentState, Event, Message, MessageVisibility, ModeChange, Stop, TopicChange, TopicChangeKind}
+import sigil.event.{AgentState, Event, Message, MessageVisibility, ModeChange, Stop, ToolInvoke, TopicChange, TopicChangeKind}
 import sigil.role.Role
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{ConversationMode, ConversationRequest, Mode, ProviderStrategy, ToolPolicy}
@@ -33,7 +33,7 @@ import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
 import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MessageIndexingEffect, RedactLocationTransform, SettledEffect, SignalHub, ViewerTransform}
 import sigil.provider.Provider
-import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, Signal}
+import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, Signal, ToolDelta}
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
 import sigil.tool.Tool
 import sigil.tool.core.{CoreTools, FindCapabilityTool}
@@ -264,6 +264,97 @@ trait Sigil {
    * etc.).
    */
   def findTools: sigil.tool.ToolFinder = defaultFindTools
+
+  /**
+   * Unified discovery across every category of capability the
+   * framework surfaces (tools, modes, skills). Bug #66.
+   *
+   * Default composition:
+   *   - Calls [[findTools]] to gather matching tools, wraps each as a
+   *     `CapabilityMatch(_, _, Tool, _, Ready)`.
+   *   - Calls [[findModes]] to gather matching modes (excluding the
+   *     currently-active mode — switching to the mode you're already
+   *     in is a no-op), wraps each with a `RequiresSetup(change_mode("…"))`
+   *     hint so the agent has the actionable next call inline.
+   *   - Sorts the combined list by `score` descending and returns it.
+   *
+   * Mode-gated tools (per `ScriptAuthoringMode`'s pattern) are
+   * correctly hidden from `findTools` because their `modes` set
+   * doesn't include the current mode, but the matching mode itself
+   * surfaces here — giving the agent the entry point. This is the
+   * fix for #66's "discover modes alongside tools" gap.
+   *
+   * Apps override either by providing custom finder implementations
+   * or by overriding this method directly to merge additional
+   * sources (marketplace catalog, MCP registry, agent roster, …).
+   */
+  def findCapabilities(request: sigil.tool.DiscoveryRequest): rapid.Task[List[sigil.tool.discovery.CapabilityMatch]] = {
+    import sigil.tool.discovery.{CapabilityMatch, CapabilityStatus, CapabilityType}
+    for {
+      tools <- findTools(request)
+      modes <- findModes(request)
+    } yield {
+      val toolMatches = tools.zipWithIndex.map { case (t, i) =>
+        // Tool ranking comes from the finder; we approximate a score
+        // from the order it returned (highest first, decreasing).
+        CapabilityMatch(
+          name = t.name.value,
+          description = t.description,
+          capabilityType = CapabilityType.Tool,
+          score = (tools.size - i).toDouble,
+          status = CapabilityStatus.Ready
+        )
+      }
+      val modeMatches = modes.map { case (m, score) =>
+        CapabilityMatch(
+          name = m.name,
+          description = m.description,
+          capabilityType = CapabilityType.Mode,
+          score = score,
+          status = CapabilityStatus.RequiresSetup(s"""change_mode("${m.name}")""")
+        )
+      }
+      (toolMatches ++ modeMatches).sortBy(-_.score)
+    }
+  }
+
+  /**
+   * Score-and-filter the registered modes against the
+   * [[sigil.tool.DiscoveryRequest]]'s keyword query. Default: lexical
+   * match against `name + description + skill.content` (case-
+   * insensitive); excludes the currently-active mode (no-op switch);
+   * returns each match paired with a relevance score.
+   *
+   * Apps override for app-specific gating (e.g. tenant-scoped modes,
+   * per-chain mode policies) or smarter scoring (embedding-backed,
+   * weighted by recency, etc.). The framework default is the
+   * cheapest correct shape.
+   */
+  def findModes(request: sigil.tool.DiscoveryRequest): rapid.Task[List[(sigil.provider.Mode, Double)]] = rapid.Task {
+    val needles = request.keywords.toLowerCase.split("\\s+").filter(_.nonEmpty).toList
+    if (needles.isEmpty) Nil
+    else availableModes.iterator
+      .filter(m => m.name != request.mode.name)
+      .map { m =>
+        val haystack = (
+          m.name + " " +
+          m.description + " " +
+          m.skill.map(_.content).getOrElse("")
+        ).toLowerCase
+        // Score: 5 per exact-word match, 2 per substring match.
+        // Cheap; mirrors the spirit of `DbToolFinder`'s lexical scoring.
+        val score = needles.foldLeft(0.0) { (acc, kw) =>
+          val words = haystack.split("\\W+").toSet
+          val exact = if (words.contains(kw)) 5.0 else 0.0
+          val sub   = if (haystack.contains(kw)) 2.0 else 0.0
+          acc + math.max(exact, sub)
+        }
+        m -> score
+      }
+      .filter(_._2 > 0.0)
+      .toList
+      .sortBy(-_._2)
+  }
 
   /** The set of [[SpaceId]]s the caller chain is authorized to see —
     * used to filter `find_capability` results. Default empty
@@ -677,11 +768,13 @@ trait Sigil {
    * Role and Mode each contribute a [[ToolPolicy]]; the two are
    * folded in order (behavior first, then mode) over an internal
    * state. Framework essentials (`respond`, `respond_*`,
-   * `no_response`, `stop`) are always included. `find_capability` is
-   * included unless either contributor is [[ToolPolicy.None]].
-   * `change_mode` is NOT auto-included — apps with multiple
-   * `Mode`s register `ChangeModeTool` via their own `staticTools`
-   * and add it to the agent's `toolNames`. The
+   * `no_response`, `stop`) are included by default. `find_capability`
+   * is included unless either contributor is [[ToolPolicy.None]].
+   * [[ToolPolicy.PureDiscovery]] strips the respond family +
+   * `no_response` — `stop` plus `find_capability` plus the agent's
+   * baseline remain. `change_mode` is NOT auto-included — apps with
+   * multiple `Mode`s register `ChangeModeTool` via their own
+   * `staticTools` and add it to the agent's `toolNames`. The
    * agent's own `toolNames` baseline is included unless either
    * contributor is `None` or `Exclusive` (both strip baseline).
    * `Active` / `Exclusive` extras are unioned across both
@@ -693,22 +786,25 @@ trait Sigil {
                          mode: Mode,
                          suggested: List[sigil.tool.ToolName]): List[sigil.tool.ToolName] = {
     import sigil.tool.core.{
-      FindCapabilityTool, NoResponseTool, RespondTool,
+      ChangeModeTool, FindCapabilityTool, NoResponseTool, RespondTool,
       RespondFailureTool, RespondFieldTool, RespondOptionsTool, StopTool
     }
-    val essentials = List(
+    val fullEssentials = List(
       RespondTool, RespondOptionsTool, RespondFieldTool, RespondFailureTool,
       NoResponseTool, StopTool
     ).map(_.schema.name)
+    val pureDiscoveryEssentials = List(StopTool.schema.name)
 
     case class PolicyState(extras: List[sigil.tool.ToolName],
                            includesFindCapability: Boolean,
-                           includesBaseline: Boolean)
-    val initial = PolicyState(Nil, includesFindCapability = true, includesBaseline = true)
+                           includesBaseline: Boolean,
+                           pureDiscovery: Boolean)
+    val initial = PolicyState(Nil, includesFindCapability = true, includesBaseline = true, pureDiscovery = false)
 
     def apply(s: PolicyState, p: ToolPolicy): PolicyState = p match {
       case ToolPolicy.Standard         => s
       case ToolPolicy.None             => s.copy(includesFindCapability = false, includesBaseline = false)
+      case ToolPolicy.PureDiscovery    => s.copy(pureDiscovery = true)
       case ToolPolicy.Active(names)    => s.copy(extras = s.extras ++ names)
       case ToolPolicy.Discoverable(_)  => s
       case ToolPolicy.Exclusive(names) => s.copy(includesBaseline = false, extras = s.extras ++ names)
@@ -716,9 +812,34 @@ trait Sigil {
     }
 
     val state = apply(apply(initial, agent.tools), mode.tools)
+    val essentials     = if (state.pureDiscovery) pureDiscoveryEssentials else fullEssentials
     val findCapability = if (state.includesFindCapability) List(FindCapabilityTool.schema.name) else Nil
     val baseline       = if (state.includesBaseline) agent.toolNames else Nil
-    (essentials ++ findCapability ++ baseline ++ state.extras ++ suggested).distinct
+    val merged         = (essentials ++ findCapability ++ baseline ++ state.extras ++ suggested).distinct
+    val deduped =
+      if (state.pureDiscovery) {
+        val stripped = Set(
+          RespondTool, RespondOptionsTool, RespondFieldTool, RespondFailureTool, NoResponseTool
+        ).map(_.schema.name)
+        merged.filterNot(stripped.contains)
+      } else merged
+    // Tool position bias is real for smaller models — they tend to pick the
+    // first appropriate-looking tool. Put discovery + action tools first so
+    // a "do X" request can land on `find_capability` / `change_mode` instead
+    // of being captured by the always-applicable `respond` family. Response
+    // tools render last so they're available for chat without dominating
+    // when an action tool is the right call.
+    val priority: Map[sigil.tool.ToolName, Int] = Map(
+      ChangeModeTool.schema.name        -> 0,
+      FindCapabilityTool.schema.name    -> 1,
+      StopTool.schema.name              -> 100,
+      RespondTool.schema.name           -> 101,
+      RespondOptionsTool.schema.name    -> 102,
+      RespondFieldTool.schema.name      -> 103,
+      RespondFailureTool.schema.name    -> 104,
+      NoResponseTool.schema.name        -> 105
+    ).withDefaultValue(50)
+    deduped.zipWithIndex.sortBy { case (name, idx) => (priority(name), idx) }.map(_._1)
   }
 
   /**
@@ -834,7 +955,7 @@ trait Sigil {
       )
 
       val typingEmitted = new java.util.concurrent.atomic.AtomicBoolean(false)
-      Orchestrator.process(this, provider, request).flatMap { sig =>
+      Orchestrator.process(this, provider, request, context.conversation).flatMap { sig =>
         val prefix: List[Signal] = sig match {
           case _: Message if typingEmitted.compareAndSet(false, true) =>
             context.currentAgentStateId.toList.map { agentStateId =>
@@ -1368,6 +1489,48 @@ trait Sigil {
           _ <- publishTo(fromViewer, sigil.signal.ViewerStateSnapshot(scope, None))
         } yield ()
 
+      case sigil.signal.UpdateViewerStateDelta(scope, patch) =>
+        val recordId = sigil.viewer.ViewerState.idFor(fromViewer, scope)
+        val payloadRW = summon[fabric.rw.RW[sigil.viewer.ViewerStatePayload]]
+        withDB(_.viewerStates.transaction(_.get(recordId))).flatMap { existing =>
+          val mergedPayload: sigil.viewer.ViewerStatePayload = existing match {
+            case None =>
+              // First delta for this scope acts like a full upsert
+              // — the patch IS the initial state.
+              patch
+            case Some(prior) =>
+              // Deep-merge the patch's non-null JSON fields onto
+              // the current payload's JSON via fabric's object
+              // merge, then decode back through the polytype RW.
+              // Stripping nulls FIRST is what makes Option-typed
+              // patches express "untouched fields stay" — fabric's
+              // case-class RW emits `None` as JSON `null`, and the
+              // default merge would otherwise overlay those nulls
+              // onto the prior. Apps that need to clear a field to
+              // None pass the full state via [[UpdateViewerState]]
+              // instead.
+              val priorJson = payloadRW.read(prior.payload)
+              val patchJson = stripNulls(payloadRW.read(patch))
+              val merged    = priorJson.merge(patchJson)
+              payloadRW.write(merged)
+          }
+          val record = sigil.viewer.ViewerState(
+            participantId = fromViewer,
+            scope         = scope,
+            payload       = mergedPayload,
+            modified      = lightdb.time.Timestamp(),
+            _id           = recordId
+          )
+          for {
+            _ <- withDB(_.viewerStates.transaction(_.upsert(record)))
+            // Broadcast the delta — peers apply the same patch onto
+            // their existing local state. The originating session
+            // already has its merged copy; the delta is for the
+            // viewer's other tabs / devices.
+            _ <- publishTo(fromViewer, sigil.signal.ViewerStateDelta(scope, patch))
+          } yield ()
+        }
+
       // -- stored-file vocabulary (BUGS.md #19 part 4) --
 
       case sigil.signal.RequestStoredFileList(spaces) =>
@@ -1568,28 +1731,39 @@ trait Sigil {
   /** Append `event`'s frame(s) and participant-projection updates to the
     * conversation's view, creating the view if it doesn't yet exist.
     * Idempotent — if a frame for `event._id` already exists in the view
-    * the modify returns unchanged. */
+    * the modify returns unchanged.
+    *
+    * Honors `Conversation.clearedAt`: events whose timestamp is at or
+    * before the most-recent clear watermark don't append to the view
+    * (they live in `db.events` for audit but stay out of the
+    * UI-facing projection). New events emitted after the clear flow
+    * through normally — their timestamps are strictly greater than
+    * the watermark by construction. */
   private final def appendToViewIfNew(event: Event): Task[Unit] =
-    withDB(_.views.transaction(_.modify(ConversationView.idFor(event.conversationId)) {
-      case Some(view) if view.frames.exists(_.sourceEventId == event._id) =>
-        Task.pure(Some(view))
-      case Some(view) =>
-        val nextFrames = FrameBuilder.appendFor(view.frames, event)
-        val nextProjections = FrameBuilder.updateProjections(view.participantProjections, event)
-        Task.pure(Some(view.copy(
-          frames = nextFrames,
-          participantProjections = nextProjections,
-          modified = Timestamp(Nowish())
-        )))
-      case None =>
-        val seeded = ConversationView(
-          conversationId = event.conversationId,
-          frames = FrameBuilder.appendFor(Vector.empty, event),
-          participantProjections = FrameBuilder.updateProjections(Map.empty, event),
-          _id = ConversationView.idFor(event.conversationId)
-        )
-        Task.pure(Some(seeded))
-    })).unit
+    withDB(_.conversations.transaction(_.get(event.conversationId))).flatMap { convOpt =>
+      val watermark = convOpt.flatMap(_.clearedAt).map(_.value).getOrElse(0L)
+      if (event.timestamp.value <= watermark) Task.unit
+      else withDB(_.views.transaction(_.modify(ConversationView.idFor(event.conversationId)) {
+        case Some(view) if view.frames.exists(_.sourceEventId == event._id) =>
+          Task.pure(Some(view))
+        case Some(view) =>
+          val nextFrames = FrameBuilder.appendFor(view.frames, event)
+          val nextProjections = FrameBuilder.updateProjections(view.participantProjections, event)
+          Task.pure(Some(view.copy(
+            frames = nextFrames,
+            participantProjections = nextProjections,
+            modified = Timestamp(Nowish())
+          )))
+        case None =>
+          val seeded = ConversationView(
+            conversationId = event.conversationId,
+            frames = FrameBuilder.appendFor(Vector.empty, event),
+            participantProjections = FrameBuilder.updateProjections(Map.empty, event),
+            _id = ConversationView.idFor(event.conversationId)
+          )
+          Task.pure(Some(seeded))
+      })).unit
+    }
 
   // -- view / summary helpers --
 
@@ -1612,31 +1786,42 @@ trait Sigil {
     *
     * Returns the newly-materialized view. */
   def rebuildView(conversationId: Id[Conversation]): Task[ConversationView] =
-    withDB(_.events.transaction(_.list)).flatMap { all =>
-      val events = all
-        .filter(_.conversationId == conversationId)
-        .sortBy(_.timestamp.value)
-        .toVector
-      val complete = events.filter(_.state == EventState.Complete)
-      val frames = FrameBuilder.build(complete)
-      val projections = complete
-        .foldLeft(Map.empty[ParticipantId, ParticipantProjection])(FrameBuilder.updateProjections)
-      val rebuilt = ConversationView(
-        conversationId = conversationId,
-        frames = frames,
-        participantProjections = projections,
-        _id = ConversationView.idFor(conversationId)
-      )
-      for {
-        _ <- withDB(_.views.transaction(_.upsert(rebuilt)))
-        // Re-apply Mode-source skill for the most recent Complete ModeChange.
-        withSkill <- {
-          val latestMode = complete.reverseIterator.collectFirst { case mc: ModeChange => mc }
-          latestMode.fold(Task.pure(rebuilt)) { mc =>
-            applyModeSkill(mc).flatMap(_ => viewFor(conversationId))
+    withDB(_.conversations.transaction(_.get(conversationId))).flatMap { convOpt =>
+      val clearedAt = convOpt.flatMap(_.clearedAt).map(_.value).getOrElse(0L)
+      withDB(_.events.transaction(_.list)).flatMap { all =>
+        val events = all
+          .filter(_.conversationId == conversationId)
+          // Watermark filter — events emitted at-or-before the
+          // last `clearConversation` call don't appear in the
+          // projection. The events themselves remain in
+          // `db.events` for audit / recovery; the watermark just
+          // hides them from the UI-facing view. New events
+          // (timestamps strictly greater than `clearedAt`) flow
+          // through unchanged.
+          .filter(_.timestamp.value > clearedAt)
+          .sortBy(_.timestamp.value)
+          .toVector
+        val complete = events.filter(_.state == EventState.Complete)
+        val frames = FrameBuilder.build(complete)
+        val projections = complete
+          .foldLeft(Map.empty[ParticipantId, ParticipantProjection])(FrameBuilder.updateProjections)
+        val rebuilt = ConversationView(
+          conversationId = conversationId,
+          frames = frames,
+          participantProjections = projections,
+          _id = ConversationView.idFor(conversationId)
+        )
+        for {
+          _ <- withDB(_.views.transaction(_.upsert(rebuilt)))
+          // Re-apply Mode-source skill for the most recent Complete ModeChange.
+          withSkill <- {
+            val latestMode = complete.reverseIterator.collectFirst { case mc: ModeChange => mc }
+            latestMode.fold(Task.pure(rebuilt)) { mc =>
+              applyModeSkill(mc).flatMap(_ => viewFor(conversationId))
+            }
           }
-        }
-      } yield withSkill
+        } yield withSkill
+      }
     }
 
   /** Update a participant's [[ParticipantProjection]] on the conversation's
@@ -2197,6 +2382,18 @@ trait Sigil {
          |
          |Pick exactly one value from the enum.""".stripMargin
     val tool = new TopicClassifierTool(priors.map(_.label))
+    // Sampling settings are baseline `temperature = 0.0` (deterministic
+    // classification) — but only when the model supports it. GPT-5 +
+    // reasoning-only families (o1, o3, …) hard-reject `temperature`,
+    // so consult [[supportsParameter]] before including it. The
+    // provider layer also filters as a safety net; gating here too
+    // means the framework doesn't emit a parameter it knows the
+    // model will reject.
+    val classifierSettings = {
+      val base = GenerationSettings(maxOutputTokens = Some(50))
+      if (supportsParameter(modelId, "temperature")) base.copy(temperature = Some(0.0))
+      else base
+    }
     ConsultTool.invoke[sigil.tool.consult.TopicClassifierInput](
       sigil = this,
       modelId = modelId,
@@ -2204,7 +2401,7 @@ trait Sigil {
       systemPrompt = systemPrompt,
       userPrompt = userPrompt,
       tool = tool,
-      generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
+      generationSettings = classifierSettings
     ).map {
       case None => TopicShiftResult.NoChange
       case Some(input) => input.kind match {
@@ -2341,6 +2538,7 @@ trait Sigil {
         val updated = conv.copy(participants = conv.participants :+ participant)
         for {
           stored <- withDB(_.conversations.transaction(_.upsert(updated)))
+          _      <- publish(sigil.signal.ParticipantAdded(conversationId, participant))
           _      <- participant match {
                       case agent: AgentParticipant => fireGreeting(agent, stored)
                       case _                       => Task.unit
@@ -2349,12 +2547,13 @@ trait Sigil {
     }
 
   /**
-   * Remove a participant from a conversation. Persists the trimmed list;
-   * does NOT publish a "leave" event today (callers that care about
-   * lifecycle should publish their own marker).
+   * Remove a participant from a conversation. Persists the trimmed list
+   * and broadcasts a [[sigil.signal.ParticipantRemoved]] Notice so
+   * live viewers can drop the participant from member lists / sidebar
+   * UI.
    *
    * Idempotent: if the participant isn't in the conversation, returns
-   * the unchanged conversation. Fails with
+   * the unchanged conversation and emits no Notice. Fails with
    * [[ConversationNotFoundException]] when the conversation id doesn't
    * resolve.
    */
@@ -2367,7 +2566,42 @@ trait Sigil {
         Task.pure(conv)
       case Some(conv) =>
         val updated = conv.copy(participants = conv.participants.filterNot(_.id == participantId))
-        withDB(_.conversations.transaction(_.upsert(updated)))
+        for {
+          stored <- withDB(_.conversations.transaction(_.upsert(updated)))
+          _      <- publish(sigil.signal.ParticipantRemoved(conversationId, participantId))
+        } yield stored
+    }
+
+  /**
+   * Replace a participant's record in a conversation — used to push
+   * display-info changes (`displayName`, `avatarUrl`, app-specific
+   * fields on a [[Participant]] subtype) out to live viewers without
+   * requiring a remove + re-add.
+   *
+   * The replacement is keyed on `participant.id`; if no current
+   * participant matches the id, this is a no-op and emits no Notice.
+   * Otherwise the new record replaces the old in the conversation's
+   * `participants` list and a [[sigil.signal.ParticipantUpdated]]
+   * Notice is broadcast.
+   *
+   * Fails with [[ConversationNotFoundException]] when the conversation
+   * id doesn't resolve.
+   */
+  def updateParticipant(conversationId: Id[Conversation],
+                        participant: Participant): Task[Conversation] =
+    withDB(_.conversations.transaction(_.get(conversationId))).flatMap {
+      case None =>
+        Task.error(new ConversationNotFoundException(conversationId))
+      case Some(conv) if !conv.participants.exists(_.id == participant.id) =>
+        Task.pure(conv)
+      case Some(conv) =>
+        val updated = conv.copy(participants = conv.participants.map { p =>
+          if (p.id == participant.id) participant else p
+        })
+        for {
+          stored <- withDB(_.conversations.transaction(_.upsert(updated)))
+          _      <- publish(sigil.signal.ParticipantUpdated(conversationId, participant))
+        } yield stored
     }
 
   /**
@@ -2382,6 +2616,29 @@ trait Sigil {
    */
   protected def listConversations(viewer: ParticipantId): Task[List[Conversation]] =
     withDB(_.conversations.transaction(_.list))
+
+  /**
+   * Filesystem path the conversation is working against — the
+   * "project root" / "workspace." Returns `None` when no workspace
+   * is configured for the conversation; tools that consult this
+   * (filesystem tools rooting relative paths, `MetalsSigil`'s
+   * subprocess routing, future BSP / build-server integrations)
+   * fall back to their default behavior.
+   *
+   * Default: `Task.pure(None)`. Apps with a workspace concept
+   * (Sage's per-conversation project, Voidcraft's project record)
+   * override this once and every framework feature that wants to
+   * know "where is this conversation working?" gets a consistent
+   * answer.
+   *
+   * Module traits that need workspace info default their own hook
+   * onto this one — e.g. `MetalsSigil.metalsWorkspace` returns
+   * `workspaceFor(conversationId)` by default. Apps overriding
+   * `workspaceFor` automatically light up Metals routing, FS
+   * rooting, and any future workspace-aware feature.
+   */
+  def workspaceFor(conversationId: Id[Conversation]): Task[Option[java.nio.file.Path]] =
+    Task.pure(None)
 
   /**
    * Hard-delete a conversation and every record that references it —
@@ -2419,6 +2676,101 @@ trait Sigil {
              }
            }
     } yield ()
+
+  /**
+   * Clear a conversation's visible history without deleting the
+   * conversation. Sets a `clearedAt` watermark on the
+   * [[Conversation]] record; subsequent view rebuilds and
+   * frame-append paths filter out events emitted at-or-before that
+   * watermark. The events themselves stay in [[sigil.db.SigilDB.events]]
+   * for audit — this is a soft clear, not a hard delete.
+   *
+   * After clearing:
+   *   - [[ConversationView.frames]] is empty.
+   *   - Per-participant projections (suggested tools, recent tools)
+   *     reset to defaults.
+   *   - New events added after the clear flow through normally.
+   *   - The agent's curator sees only post-clear events; no
+   *     pre-clear context leaks into the model's prompt.
+   *
+   * Broadcasts a [[sigil.signal.ConversationCleared]] Notice so
+   * live viewers can reset their UI. Apps that need a hard purge
+   * (events removed from `db.events`) implement that on top of this
+   * — typically by tailing the Notice stream and running a delete
+   * pass against the events store.
+   */
+  def clearConversation(conversationId: Id[Conversation],
+                        clearedBy: ParticipantId): Task[Unit] = {
+    val now = Timestamp(Nowish())
+    withDB(_.conversations.transaction(_.modify(conversationId) {
+      case Some(conv) => Task.pure(Some(conv.copy(clearedAt = Some(now), modified = now)))
+      case None       => Task.pure(None)
+    })).flatMap {
+      case None => Task.unit  // no conversation to clear — silent no-op
+      case Some(_) =>
+        for {
+          // Reset the projection to empty; new events appended
+          // after this point flow through `appendToViewIfNew`,
+          // which will see the watermark and treat them as
+          // post-clear.
+          _ <- withDB(_.views.transaction(_.upsert(ConversationView(
+                 conversationId = conversationId,
+                 frames = Vector.empty,
+                 participantProjections = Map.empty,
+                 _id = ConversationView.idFor(conversationId)
+               ))))
+          _ <- publish(sigil.signal.ConversationCleared(
+                 conversationId = conversationId,
+                 clearedAt      = now,
+                 clearedBy      = clearedBy
+               ))
+        } yield ()
+    }
+  }
+
+  /** Recursively drop fields whose value is JSON `null`. Used to
+    * pre-process [[sigil.signal.UpdateViewerStateDelta]] patches —
+    * fabric's case-class RW emits `None` as `null`, and the default
+    * merge would otherwise overlay those nulls onto the prior
+    * payload, defeating the "untouched fields stay" intent.
+    * Non-object JSON values pass through unchanged. */
+  private final def stripNulls(json: fabric.Json): fabric.Json = json match {
+    case obj: fabric.Obj =>
+      val kept = obj.value.iterator.collect {
+        case (k, v) if v != fabric.Null => (k, stripNulls(v))
+      }.toMap
+      fabric.Obj(kept)
+    case other => other
+  }
+
+  /**
+   * Push a [[sigil.signal.ViewerStateSnapshot]] for every persisted
+   * scope the viewer owns. Used by apps from their connection /
+   * authentication-completion handler to give a freshly-connected
+   * (or freshly-authenticated) session its full state up front,
+   * without the client having to know which scopes exist or send
+   * one [[sigil.signal.RequestViewerState]] per scope.
+   *
+   * Targeted at the viewer's connected sessions via
+   * [[publishTo]] — broadcast subscribers (audit, debug taps) don't
+   * receive the snapshots. Each snapshot is a separate Notice;
+   * order matches whatever `db.viewerStates.list` returns (no
+   * ordering guarantee, but consumers don't depend on order
+   * because each snapshot is keyed by scope).
+   *
+   * Safe to call multiple times — emits a fresh snapshot per call.
+   * Apps wiring this from a "viewer became authenticated" handler
+   * call it at the moment the viewer transitions to its
+   * authenticated id; pre-auth viewers see only their own (System)
+   * state.
+   */
+  def publishViewerStatesTo(viewer: ParticipantId): Task[Unit] =
+    withDB(_.viewerStates.transaction(_.list)).flatMap { all =>
+      val mine = all.filter(_.participantId == viewer)
+      Task.sequence(mine.toList.map { record =>
+        publishTo(viewer, sigil.signal.ViewerStateSnapshot(record.scope, Some(record.payload)))
+      }).unit
+    }
 
   private final def fanOut(event: Event): Task[Unit] =
     withDB(_.conversations.transaction(_.get(event.conversationId))).flatMap {
@@ -2513,7 +2865,21 @@ trait Sigil {
                              conv: Conversation,
                              claimed: AgentState,
                              greeting: Boolean = false): Task[Unit] =
-    runAgentLoop(agent, conv._id, claimed, iteration = 1, sinceTimestamp = claimed.timestamp, greeting = greeting)
+    runAgentLoop(
+      agent,
+      conv._id,
+      claimed,
+      iteration = 1,
+      sinceTimestamp = claimed.timestamp,
+      greeting = greeting,
+      // Tracks "did the agent ever produce a user-visible terminal
+      // signal across this loop's iterations?" The synthesized
+      // placeholder Message in the no-more-triggers branch only fires
+      // when this stays false. Bug #46 — without it, an agent that
+      // chains tool calls without ever calling `respond` /
+      // `no_response` / etc. ends the conversation in silence.
+      userVisibleSeen = new java.util.concurrent.atomic.AtomicBoolean(false)
+    )
 
   /**
    * `sinceTimestamp` advances per iteration — each loop hands the next one
@@ -2530,7 +2896,8 @@ trait Sigil {
                                  claimed: AgentState,
                                  iteration: Int,
                                  sinceTimestamp: Timestamp,
-                                 greeting: Boolean = false): Task[Unit] = Task.defer {
+                                 greeting: Boolean = false,
+                                 userVisibleSeen: java.util.concurrent.atomic.AtomicBoolean): Task[Unit] = Task.defer {
     // Snapshot the start of THIS iteration. The next iteration uses this as
     // its own `sinceTimestamp`, so events emitted during this iteration
     // (including self-emitted non-terminal tool results the agent acted on)
@@ -2573,27 +2940,48 @@ trait Sigil {
                 case Some(flag) => rawStream.takeWhile(_ => !flag.force.get())
                 case None       => rawStream
               }
-              interruptible.evalTap(publish).drain
+              // Tap the stream for user-visible terminal signals. A
+              // settled `ToolDelta` whose target ToolInvoke names a
+              // user-visible terminal tool (`respond` / `no_response`
+              // / etc.) flips the loop-wide flag — so the no-more-
+              // triggers branch knows whether to synthesize a
+              // placeholder Message. We watch the ToolInvoke (which
+              // carries `toolName`) and remember matching invoke ids,
+              // then flip the flag on their settle delta.
+              val activeUserVisibleInvokes = new java.util.concurrent.ConcurrentHashMap[Id[Event], Boolean]()
+              interruptible
+                .evalTap {
+                  case ti: ToolInvoke if Orchestrator.UserVisibleTerminalTools.contains(ti.toolName.value) =>
+                    Task { activeUserVisibleInvokes.put(ti._id, true); () }
+                  case td: ToolDelta if td.state.contains(EventState.Complete)
+                                     && activeUserVisibleInvokes.containsKey(td.target) =>
+                    Task { userVisibleSeen.set(true); () }
+                  case _ => Task.unit
+                }
+                .evalTap(publish)
+                .drain
           }.flatMap(_ => decaySuggestedTools(convId, agent.id, suggestedSnapshot))
         }.flatMap { _ =>
           // After the iteration drains, check stop flags before anything
           // else — a Stop that fired mid-stream means exit now, don't
           // continue looping even if there are new triggers.
-          if (stopFlag.exists(_.requested)) releaseClaim(claimed)
+          if (stopFlag.exists(_.requested))
+            ensureSilentTurnReply(agent, convId, userVisibleSeen).flatMap(_ => releaseClaim(claimed))
           else newTriggersExist(agent, conv, sinceTimestamp = thisIterationStart).flatMap {
             case true if iteration < maxAgentIterations =>
-              runAgentLoop(agent, convId, claimed, iteration + 1, thisIterationStart)
+              runAgentLoop(agent, convId, claimed, iteration + 1, thisIterationStart, userVisibleSeen = userVisibleSeen)
             case true =>
               // Cap hit — release the lock, then propagate as an error so the
               // calling fiber's failure handler sees it. A runaway loop is a
               // real failure (broken LLM behavior, bad instructions, etc.) and
               // shouldn't masquerade as a successful exit.
-              releaseClaim(claimed).flatMap(_ =>
-                Task.error(new AgentRunawayException(
-                  s"Agent ${agent.id.value} hit maxAgentIterations ($maxAgentIterations) " +
-                    s"in conversation ${conv._id.value}; check LLM behavior or raise the cap.")))
+              ensureSilentTurnReply(agent, convId, userVisibleSeen).flatMap(_ =>
+                releaseClaim(claimed).flatMap(_ =>
+                  Task.error(new AgentRunawayException(
+                    s"Agent ${agent.id.value} hit maxAgentIterations ($maxAgentIterations) " +
+                      s"in conversation ${conv._id.value}; check LLM behavior or raise the cap."))))
             case false =>
-              releaseClaim(claimed)
+              ensureSilentTurnReply(agent, convId, userVisibleSeen).flatMap(_ => releaseClaim(claimed))
           }
         }
     }.handleError { t =>
@@ -2605,6 +2993,39 @@ trait Sigil {
       releaseClaim(claimed).handleError(_ => Task.unit).flatMap(_ => Task.error(t))
     }
   }
+
+  /** Synthesize a placeholder Message when the agent loop terminates
+    * without ever calling a user-visible terminal tool (`respond`,
+    * `respond_options`, `respond_field`, `respond_failure`,
+    * `no_response`). Otherwise the chat goes silent after a chain of
+    * tool calls and the user is stuck — bug #46.
+    *
+    * Idempotent — caller can invoke from any terminal branch
+    * (no-more-triggers, max-iterations, stop-requested) without
+    * worrying about double-emission, because the `userVisibleSeen`
+    * flag is loop-scoped and not mutated after this. */
+  private final def ensureSilentTurnReply(agent: AgentParticipant,
+                                          convId: Id[Conversation],
+                                          userVisibleSeen: java.util.concurrent.atomic.AtomicBoolean): Task[Unit] =
+    if (userVisibleSeen.get()) Task.unit
+    else withDB(_.conversations.transaction(_.get(convId))).flatMap {
+      case None => Task.unit
+      case Some(conv) =>
+        // No-topic conversations are a degenerate state — skip rather
+        // than fabricate a topic id. Caller's release path handles
+        // the rest of the cleanup.
+        conv.topics.headOption match {
+          case None        => Task.unit
+          case Some(topic) =>
+            publish(Message(
+              participantId  = agent.id,
+              conversationId = convId,
+              topicId        = topic.id,
+              content        = Vector(sigil.tool.model.ResponseContent.Text("(agent completed without a reply)")),
+              state          = EventState.Complete
+            )).map(_ => ())
+        }
+    }
 
   /** One-turn decay for `suggestedTools` on the acting participant's
     * projection. If the current list equals the snapshot we took before
@@ -2747,7 +3168,14 @@ trait Sigil {
               sigil.provider.SummarizationWork
             ) ++ workTypeRegistrations).distinct.map(w => RW.static(w))*
           )
-      _ = ToolInput.register((CoreTools.inputRWs ++ findTools.toolInputRWs)*)
+      // Bug #53 — `toolInputRegistrations` is the mixin extension
+      // point for non-static tools whose `inputRW` isn't reachable
+      // through the static-roster scan (notably `JsonInput`, used by
+      // `ScriptTool` and `McpTool`). Without including it here,
+      // `ScriptSigil` / `McpSigil` apps would crash at the first
+      // runtime tool's `ToolInvoke` persistence with `Type not found
+      // [JsonInput]`.
+      _ = ToolInput.register((CoreTools.inputRWs ++ findTools.toolInputRWs ++ toolInputRegistrations).distinctBy(_.definition.className)*)
       _ = sigil.viewer.ViewerStatePayload.register(viewerStatePayloadRegistrations.distinct*)
       // Aggregates after leaves.
       _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
@@ -2921,6 +3349,30 @@ trait Sigil {
    * background per [[modelRefreshInterval]].
    */
   final lazy val cache: ModelRegistry = new ModelRegistry(modelCachePath)
+
+  /**
+   * Does the registered [[sigil.db.Model]] declare support for the
+   * given request parameter (e.g. `"temperature"`, `"top_p"`,
+   * `"tools"`)?
+   *
+   * Returns `true` when the model isn't in [[cache]] OR the model's
+   * `supportedParameters` set is empty — both signal "we don't have
+   * authoritative capability info, so don't filter." This is the
+   * fail-open posture the framework wants on cold cache so cataloged
+   * features (`temperature = 0.0` in the topic classifier, etc.) keep
+   * working until the registry refreshes. Provider impls should still
+   * apply per-API safety nets (e.g. dropping `temperature` for
+   * fixed-sampling model families) for the cold-cache window.
+   *
+   * Apps that want a stricter posture (fail-closed, "if we don't know
+   * the model don't send the param") override this hook.
+   */
+  def supportsParameter(modelId: Id[Model], parameterName: String): Boolean =
+    cache.find(modelId) match {
+      case Some(model) if model.supportedParameters.nonEmpty =>
+        model.supportedParameters.contains(parameterName)
+      case _ => true
+    }
 
   /**
    * Convenience accessor for [[sigil.transport.SignalTransport]] — the

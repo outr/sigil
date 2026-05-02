@@ -1,8 +1,7 @@
 package sigil.information
 
-import fabric.rw.serialized
+import fabric.rw.{PolyName, PolyType, serialized}
 import lightdb.id.Id
-import sigil.{PolyName, PolyType}
 
 /**
  * The fully-resolved content record referenced by an
@@ -31,4 +30,4 @@ trait Information {
   def informationType: PolyName[Information] = Information.name.of(this)
 }
 
-object Information extends PolyType[Information]
+object Information extends PolyType[Information]()(using scala.reflect.ClassTag(classOf[Information]))

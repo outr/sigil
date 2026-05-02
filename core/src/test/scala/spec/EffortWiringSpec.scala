@@ -178,21 +178,46 @@ class EffortWiringSpec extends AnyWordSpec with Matchers {
 
   "OpenAIProvider reasoning" should {
     val provider = OpenAIProvider(apiKey = "sk-test", sigilRef = TestSigil)
-    val modelId = Model.id("openai", "gpt-5")
+    val reasoningModelId = Model.id("openai", "gpt-5")
+    val plainModelId     = Model.id("openai", "gpt-4o-mini")
 
-    "omit reasoning when effort is None" in {
-      val body = bodyOf(provider, modelId, GenerationSettings(maxOutputTokens = Some(100)))
-      body should not include "\"reasoning\""
+    // Bug #62 — for reasoning-family models, the request always opts
+    // into `reasoning.summary = "auto"` (and `include =
+    // ["reasoning.encrypted_content"]` via the body builder) so the
+    // returned reasoning items carry replayable content. With effort
+    // unset, only `summary` is emitted; with effort set, both
+    // `effort` and `summary` are emitted together.
+    "emit reasoning.summary='auto' on a reasoning-family model with no effort set" in {
+      val body = bodyOf(provider, reasoningModelId, GenerationSettings(maxOutputTokens = Some(100)))
+      body should include("\"reasoning\":")
+      body should include("\"summary\":\"auto\"")
+      body shouldNot include("\"effort\":")
     }
 
-    "emit reasoning.effort=low when effort=Low" in {
-      val body = bodyOf(provider, modelId, GenerationSettings(maxOutputTokens = Some(100), effort = Some(Effort.Low)))
+    "omit reasoning entirely on a non-reasoning model with no effort set" in {
+      val body = bodyOf(provider, plainModelId, GenerationSettings(maxOutputTokens = Some(100)))
+      body shouldNot include("\"reasoning\":")
+    }
+
+    "emit reasoning.effort=low + summary=auto when effort=Low on a reasoning-family model" in {
+      val body = bodyOf(provider, reasoningModelId, GenerationSettings(maxOutputTokens = Some(100), effort = Some(Effort.Low)))
       body should include("\"reasoning\":")
       body should include("\"effort\":\"low\"")
+      body should include("\"summary\":\"auto\"")
+    }
+
+    "emit reasoning.effort=low alone (no summary) on a non-reasoning model when effort is set" in {
+      // Non-reasoning models accept `effort` but won't emit reasoning
+      // items, so the `summary` opt-in is omitted to keep the request
+      // body minimal.
+      val body = bodyOf(provider, plainModelId, GenerationSettings(maxOutputTokens = Some(100), effort = Some(Effort.Low)))
+      body should include("\"reasoning\":")
+      body should include("\"effort\":\"low\"")
+      body shouldNot include("\"summary\":\"auto\"")
     }
 
     "map Effort.Max to reasoning.effort=high" in {
-      val body = bodyOf(provider, modelId, GenerationSettings(maxOutputTokens = Some(100), effort = Some(Effort.Max)))
+      val body = bodyOf(provider, reasoningModelId, GenerationSettings(maxOutputTokens = Some(100), effort = Some(Effort.Max)))
       body should include("\"effort\":\"high\"")
     }
   }

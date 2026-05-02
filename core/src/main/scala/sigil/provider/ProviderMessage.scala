@@ -36,4 +36,15 @@ object ProviderMessage {
   /** A tool's result, paired to a prior assistant tool call by
     * `toolCallId`. Renders as `role: "tool"`. */
   case class ToolResult(toolCallId: String, content: String) extends ProviderMessage
+
+  /** Provider-internal reasoning state from a prior turn (bug #61 —
+    * OpenAI Responses API `reasoning` output items). The originating
+    * provider re-serializes this onto the wire to preserve its
+    * round-trip state; non-originating providers silently drop the
+    * entry. `providerItemId` is the wire-level id (`rs_…`).
+    * `encryptedContent` is the opaque CoT blob (o1 / o3); `summary`
+    * may be empty. */
+  case class Reasoning(providerItemId: String,
+                       summary: List[String],
+                       encryptedContent: Option[String]) extends ProviderMessage
 }

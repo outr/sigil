@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.doc.{JsonConversion, RecordDocument, RecordDocumentModel}
 import lightdb.id.Id
 import lightdb.time.Timestamp
-import sigil.{GlobalSpace, PolyType, Sigil, SpaceId, TurnContext}
+import sigil.{GlobalSpace, Sigil, SpaceId, TurnContext}
 import sigil.event.Event
 import sigil.participant.ParticipantId
 import sigil.provider.{ConversationMode, Mode}
@@ -116,7 +116,7 @@ trait Tool extends RecordDocument[Tool] {
   )
 }
 
-object Tool extends RecordDocumentModel[Tool] with JsonConversion[Tool] with PolyType[Tool] {
+object Tool extends PolyType[Tool]()(using scala.reflect.ClassTag(classOf[Tool])) with RecordDocumentModel[Tool] with JsonConversion[Tool] {
   /** Sentinel epoch for static tool timestamps. Dynamic tools set their own. */
   val Epoch: Timestamp = Timestamp(0L)
 

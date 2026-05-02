@@ -1,7 +1,7 @@
 package sigil.signal
 
 import fabric.rw.*
-import sigil.event.{AgentState, Event, Message, ModeChange, Stop, TopicChange, ToolInvoke, ToolResults}
+import sigil.event.{AgentState, CapabilityResults, Event, Message, ModeChange, Reasoning, Stop, TopicChange, ToolInvoke, ToolResults}
 
 /**
  * The framework's built-in Signal subtypes, split into typed sublists so
@@ -29,7 +29,9 @@ object CoreSignals {
     summon[RW[ModeChange]],
     summon[RW[TopicChange]],
     summon[RW[AgentState]],
-    summon[RW[Stop]]
+    summon[RW[Stop]],
+    summon[RW[Reasoning]],
+    summon[RW[CapabilityResults]]
   )
 
   val deltas: List[RW[? <: Delta]] = List(
@@ -46,6 +48,7 @@ object CoreSignals {
     summon[RW[ConversationListSnapshot]],
     summon[RW[ConversationCreated]],
     summon[RW[ConversationDeleted]],
+    summon[RW[ConversationCleared]],
     summon[RW[SwitchConversation]],
     summon[RW[ConversationSnapshot]],
     summon[RW[RequestConversationHistory]],
@@ -61,8 +64,13 @@ object CoreSignals {
     summon[RW[ViewerStateSnapshot]],
     summon[RW[UpdateViewerState]],
     summon[RW[DeleteViewerState]],
+    summon[RW[UpdateViewerStateDelta]],
+    summon[RW[ViewerStateDelta]],
     summon[RW[RequestToolList]],
-    summon[RW[ToolListSnapshot]]
+    summon[RW[ToolListSnapshot]],
+    summon[RW[ParticipantAdded]],
+    summon[RW[ParticipantRemoved]],
+    summon[RW[ParticipantUpdated]]
   )
 
   val all: List[RW[? <: Signal]] = events ++ deltas ++ notices

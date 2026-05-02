@@ -19,6 +19,7 @@ case object DeleteScriptToolTool extends TypedTool[DeleteScriptToolInput](
   description =
     """Remove a previously created script-backed tool. Identified by `name`. Permission is
       |denied if the caller doesn't have access to the tool's space.""".stripMargin,
+  modes = Set(ScriptAuthoringMode.id),
   keywords = Set("delete", "remove", "tool", "script", "drop")
 ) {
   override protected def executeTyped(input: DeleteScriptToolInput,

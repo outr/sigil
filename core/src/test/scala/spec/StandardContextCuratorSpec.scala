@@ -148,36 +148,42 @@ class StandardContextCuratorSpec extends AsyncWordSpec with AsyncTaskSpec with M
       }
     }
 
-    "elide tool-call/result pairs whose Tool declares resultTtl = Some(0)" in {
+    "elide earlier resultTtl=Some(0) pairs but preserve the most-recent (bug #44)" in {
       // The framework's `find_capability` and `change_mode` tools
-      // both declare `resultTtl = Some(0)` — the curator pulls them
+      // both declare `resultTtl = Some(0)`. The curator pulls them
       // from `staticTools` and passes their names to the optimizer
-      // as the elide-set. Verify both pairs are dropped from the
-      // curated view.
+      // as the elide-set. With three find_capability calls in a
+      // row (the agent's typical "search → search again" pattern),
+      // the optimizer must elide the earlier two and keep the
+      // latest so the agent has its one-turn window to act on the
+      // freshly-discovered tools.
       val curator = StandardContextCurator(
         sigil = TestSigil,
         compressor = NoOpContextCompressor,
         budget = Fixed(10_000),
         optimizer = new StandardContextOptimizer
       )
-      val fcCallId = Id[Event]("fc-elide")
-      val cmCallId = Id[Event]("cm-elide")
-      val keep1 = Id[Event]("keep-1")
-      val keep2 = Id[Event]("keep-2")
+      val fc1 = Id[Event]("fc-old-1")
+      val fc2 = Id[Event]("fc-old-2")
+      val fc3 = Id[Event]("fc-latest")
+      val cm1 = Id[Event]("cm-elide")
       val frames = Vector[ContextFrame](
-        textFrame("user message", keep1.value),
-        ContextFrame.ToolCall(sigil.tool.ToolName("find_capability"), "{\"keywords\":[\"x\"]}", fcCallId, TestUser, fcCallId),
-        ContextFrame.ToolResult(fcCallId, "verbose schema dump", Id[Event]("fc-elide-r")),
-        ContextFrame.ToolCall(sigil.tool.ToolName("change_mode"), "{\"mode\":\"X\"}", cmCallId, TestUser, cmCallId),
-        ContextFrame.ToolResult(cmCallId, "Mode changed.", Id[Event]("cm-elide-r")),
-        textFrame("agent reply", keep2.value)
+        textFrame("user", "u-1"),
+        ContextFrame.ToolCall(sigil.tool.ToolName("find_capability"), "{}", fc1, TestUser, fc1),
+        ContextFrame.ToolResult(fc1, "old result 1", Id[Event]("fc-old-1-r")),
+        ContextFrame.ToolCall(sigil.tool.ToolName("change_mode"),     "{}", cm1, TestUser, cm1),
+        ContextFrame.ToolResult(cm1, "Mode changed.", Id[Event]("cm-elide-r")),
+        ContextFrame.ToolCall(sigil.tool.ToolName("find_capability"), "{}", fc2, TestUser, fc2),
+        ContextFrame.ToolResult(fc2, "old result 2", Id[Event]("fc-old-2-r")),
+        ContextFrame.ToolCall(sigil.tool.ToolName("find_capability"), "{}", fc3, TestUser, fc3),
+        ContextFrame.ToolResult(fc3, "latest", Id[Event]("fc-latest-r")),
+        textFrame("agent", "a-1")
       )
       curator.curate(viewWith(frames), modelId, chain = Nil).map { out =>
-        // Only the two text frames survive; both ephemeral tool pairs are gone.
-        out.conversationView.frames.collect { case t: ContextFrame.Text => t.content } shouldBe
-          Vector("user message", "agent reply")
-        out.conversationView.frames.collect { case _: ContextFrame.ToolCall => true }   shouldBe empty
-        out.conversationView.frames.collect { case _: ContextFrame.ToolResult => true } shouldBe empty
+        val callIds = out.conversationView.frames.collect { case tc: ContextFrame.ToolCall => tc.callId }.toSet
+        // Latest find_capability AND latest change_mode survive;
+        // earlier find_capability pairs are elided.
+        callIds shouldBe Set(fc3, cm1)
       }
     }
 

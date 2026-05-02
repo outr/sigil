@@ -250,5 +250,39 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
       body should include("PART_EXTRA_KEY_42")
       body should include("PART_EXTRA_VAL_42")
     }
+
+    // Bug #61 — Reasoning frames carry provider-internal state from a
+    // prior turn (currently only OpenAI's Responses API uses this).
+    // Non-originating providers MUST drop the entry. The OpenAI
+    // coverage spec overrides this expectation (see
+    // [[OpenAIRequestCoverageSpec.expectsReasoningSerialized]]).
+    "drop Reasoning frames from the wire body by default (non-originating provider)" in {
+      val view = emptyView.copy(frames = Vector(
+        baselineFrame,
+        ContextFrame.Reasoning(
+          providerItemId = "rs_REASONING_ID_42",
+          summary = List("REASONING_SUMMARY_42"),
+          encryptedContent = Some("REASONING_ENCRYPTED_42"),
+          participantId = TestAgent,
+          sourceEventId = syntheticEventId,
+          visibility = sigil.event.MessageVisibility.All
+        )
+      ))
+      val body = bodyOf(TurnInput(view))
+      if (expectsReasoningSerialized) {
+        body should include("rs_REASONING_ID_42")
+        body should include("REASONING_SUMMARY_42")
+        body should include("REASONING_ENCRYPTED_42")
+        body should include("\"type\":\"reasoning\"")
+      } else {
+        body shouldNot include("rs_REASONING_ID_42")
+        body shouldNot include("REASONING_SUMMARY_42")
+        body shouldNot include("REASONING_ENCRYPTED_42")
+      }
+    }
   }
+
+  /** Override-hook for providers that DO serialize Reasoning frames.
+    * Default `false` (every framework provider except OpenAI). */
+  protected def expectsReasoningSerialized: Boolean = false
 }

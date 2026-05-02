@@ -187,6 +187,12 @@ case class AnthropicProvider(apiKey: String,
             "content" -> str(content)
           ))
         ))
+
+      case _: ProviderMessage.Reasoning =>
+        // Provider-specific reasoning state from another provider's turn
+        // (bug #61 — currently OpenAI-only). Anthropic's request format
+        // has no slot for it; drop silently.
+        Vector.empty
     }
 
   private def renderTools(input: ProviderCall): Vector[Json] = {

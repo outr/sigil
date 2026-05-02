@@ -83,4 +83,24 @@ enum ContextFrame derives RW {
   case System(content: String,
               sourceEventId: Id[Event],
               visibility: MessageVisibility = MessageVisibility.All)
+
+  /**
+   * Provider-internal reasoning state from the originating agent's
+   * prior LLM call (bug #61 — OpenAI Responses API reasoning items).
+   * Renders to a [[sigil.provider.ProviderMessage.Reasoning]] entry
+   * in the message vector; the originating provider serializes it
+   * back onto the wire and other providers drop it.
+   *
+   * Visibility is denormalized from the source [[sigil.event.Reasoning]]
+   * event — typically `Participants(Set(originatingAgentId))` — so
+   * only the agent that produced the reasoning sees it during its
+   * own prompt-building. Other agents and human-user UIs filter it
+   * out at `Sigil.canSee`.
+   */
+  case Reasoning(providerItemId: String,
+                 summary: List[String],
+                 encryptedContent: Option[String],
+                 participantId: ParticipantId,
+                 sourceEventId: Id[Event],
+                 visibility: MessageVisibility)
 }

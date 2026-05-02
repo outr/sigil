@@ -27,9 +27,16 @@ final class BashTool(context: FileSystemContext)
     keywords = Set("bash", "shell", "command", "exec", "run", "sh")
   ) {
   override protected def executeTyped(input: BashInput, ctx: TurnContext): Stream[Event] = Stream.force(
-    context.executeCommand(input.command, input.workingDir, input.timeoutMs.getOrElse(120000L)).map { r =>
-      val payload = obj("stdout" -> str(r.stdout), "stderr" -> str(r.stderr), "exitCode" -> num(r.exitCode))
-      Stream.emit[Event](FsToolEmit(payload, ctx))
+    // `workingDir` resolves against the conversation's workspace
+    // when supplied; when omitted, the workspace itself becomes
+    // the cwd so commands like `bash "ls"` operate on the right
+    // project. Apps without a workspace fall through to JVM cwd
+    // (existing behavior).
+    WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
+      context.executeCommand(input.command, dir, input.timeoutMs.getOrElse(120000L)).map { r =>
+        val payload = obj("stdout" -> str(r.stdout), "stderr" -> str(r.stderr), "exitCode" -> num(r.exitCode))
+        Stream.emit[Event](FsToolEmit(payload, ctx))
+      }
     }
   )
 }

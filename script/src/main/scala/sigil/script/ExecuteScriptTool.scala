@@ -1,6 +1,6 @@
 package sigil.script
 
-import rapid.Stream
+import rapid.{Stream, Task}
 import sigil.TurnContext
 import sigil.event.Event
 import sigil.tool.{ToolExample, ToolName, TypedTool}
@@ -50,37 +50,78 @@ class ExecuteScriptTool(executor: ScriptExecutor,
     )
   ) {
 
+  /** Append the executor's advertised surface (Bug #54) so the LLM
+    * knows which library identifiers are pre-imported. Without this
+    * the model writes Scala-2 idioms that don't exist in the Scala 3
+    * REPL classpath. */
+  override def descriptionFor(mode: _root_.sigil.provider.Mode,
+                              sigilInstance: _root_.sigil.Sigil): String =
+    executor.advertisedSurface match {
+      case Some(surface) => s"${description}\n\n$surface"
+      case None          => description
+    }
+
   override protected def executeTyped(input: ScriptInput, context: TurnContext): Stream[Event] = {
     val started = System.currentTimeMillis()
+    // Bug #67 — wrap the whole construction in an outer `Task.defer`
+    // and `.handleError` it so synchronous throws during evaluation
+    // of `bindings(context)` (or anywhere in the executor's call-site
+    // arg path) become a Task error and surface as a populated
+    // `ScriptResult.error`. Without this wrap, a sync throw escapes
+    // the inner `.handleError`, the orchestrator sees no
+    // `MessageRole.Tool` event for the call_id, and `Provider`'s
+    // dangling-tool-call fallback delivers the unhelpful
+    // `"(no result recorded)"` placeholder to the agent's next turn.
     Stream.force(
-      executor.execute(input.code, bindings(context))
-        .map { output =>
-          val ev = ScriptResult(
-            participantId = context.caller,
-            conversationId = context.conversation.id,
-            topicId = context.conversation.currentTopicId,
-            output = Some(output),
-            durationMs = System.currentTimeMillis() - started
-          )
-          Stream.emit[Event](ev)
-        }
-        .handleError { t =>
-          rapid.Task {
+      Task.defer {
+        executor.execute(input.code, bindings(context))
+          .map { output =>
             val ev = ScriptResult(
               participantId = context.caller,
               conversationId = context.conversation.id,
               topicId = context.conversation.currentTopicId,
-              error = Some(s"${t.getClass.getSimpleName}: ${t.getMessage}"),
+              output = Some(output),
               durationMs = System.currentTimeMillis() - started
             )
             Stream.emit[Event](ev)
           }
-        }
+          .handleError { t =>
+            Task.pure(Stream.emit[Event](errorResult(context, started, t)))
+          }
+      }.handleError { t =>
+        Task.pure(Stream.emit[Event](errorResult(context, started, t)))
+      }
     )
   }
+
+  private def errorResult(context: TurnContext, started: Long, t: Throwable): ScriptResult =
+    ScriptResult(
+      participantId = context.caller,
+      conversationId = context.conversation.id,
+      topicId = context.conversation.currentTopicId,
+      // Bug #67 — include the abbreviated stack trace so wrapped
+      // exceptions (`RuntimeException` carrying an
+      // `InvocationTargetException` carrying a `NoSuchMethodError`,
+      // common with reflective script execution) carry their root
+      // cause through to the agent. Trim to the first 8 lines —
+      // enough framing for the model to reason about; not the full
+      // ~80-line JVM stack.
+      error = Some(ExecuteScriptTool.formatThrowable(t)),
+      durationMs = System.currentTimeMillis() - started
+    )
 }
 
 object ExecuteScriptTool {
+  /** Format a throwable as a short stack-trace string suitable for a
+    * `ScriptResult.error` field. Trims to the first 8 lines so the
+    * model has the framing + the script-relevant frames without the
+    * ~80-line JVM stack. Bug #67. */
+  private[script] def formatThrowable(t: Throwable): String = {
+    val sw = new java.io.StringWriter
+    t.printStackTrace(new java.io.PrintWriter(sw))
+    sw.toString.linesIterator.take(8).mkString("\n")
+  }
+
   val DefaultDescription: String =
     """Execute the supplied source code in a host runtime and return the result.
       |

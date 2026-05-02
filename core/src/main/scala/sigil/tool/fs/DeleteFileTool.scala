@@ -22,7 +22,9 @@ final class DeleteFileTool(context: FileSystemContext)
     keywords = Set("file", "delete", "remove", "rm", "unlink")
   ) {
   override protected def executeTyped(input: DeleteFileInput, ctx: TurnContext): Stream[Event] =
-    Stream.force(context.deleteFile(input.filePath).map { existed =>
-      Stream.emit[Event](FsToolEmit(obj("deleted" -> bool(existed)), ctx))
+    Stream.force(WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>
+      context.deleteFile(resolved).map { existed =>
+        Stream.emit[Event](FsToolEmit(obj("deleted" -> bool(existed)), ctx))
+      }
     })
 }

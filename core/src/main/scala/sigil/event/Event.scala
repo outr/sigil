@@ -70,6 +70,37 @@ trait Event extends Signal with Document[Event] {
    * own `copy(state = state)`.
    */
   def withState(state: EventState): Event
+
+  /**
+   * The Event that caused this one, when known — forms a parent chain
+   * back to a conversational root (typically a user [[Message]]). The
+   * orchestrator stamps this for tool-emitted events; agent flows
+   * stamp it for events emitted in response to a trigger; user-driven
+   * paths (slash commands, workflows) set it at the dispatch site.
+   *
+   * Bug #69 — Tool-role events MUST carry an `origin` pointing to
+   * their originating [[ToolInvoke]]. [[sigil.conversation.FrameBuilder]]
+   * uses this to pair the event with its call_id directly, replacing
+   * the older "most-recent unresolved" scan. Multiple Tool events
+   * from one `executeTyped` therefore all pair to the same call;
+   * `Provider.renderFrames` merges them into a single wire-level
+   * `function_call_output`.
+   *
+   * `None` is allowed only for genuinely root events (the user's
+   * first message, a scheduled job kicked off cold, etc.). A
+   * `MessageRole.Tool` event with `origin = None` is a programmer
+   * error — the framework throws when it sees one rather than
+   * rendering a degraded "orphan" placeholder.
+   */
+  def origin: Option[Id[Event]] = None
+
+  /**
+   * Returns a copy of this event with its `origin` replaced. The
+   * orchestrator uses this to stamp parent ids onto tool-emitted
+   * events that didn't set one explicitly. Each concrete Event
+   * implements via its own `copy(origin = origin)`.
+   */
+  def withOrigin(origin: Option[Id[Event]]): Event
 }
 
 object Event extends JsonConversion[Event] {

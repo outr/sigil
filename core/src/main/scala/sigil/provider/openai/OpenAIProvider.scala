@@ -150,17 +150,53 @@ case class OpenAIProvider(apiKey: String,
         Vector("tools" -> arr(toolsArr*), "tool_choice" -> str("required"))
     }
     val gen = input.generationSettings
-    val reasoningField: Vector[(String, Json)] = gen.effort match {
-      case None    => Vector.empty
-      case Some(e) => Vector("reasoning" -> obj("effort" -> str(Effort.openAIEffortLevel(e))))
+    val isReasoningModel = OpenAI.reasoningModelPrefixes.exists(modelName.startsWith)
+    // Bug #62 — for reasoning-family models (gpt-5.x, o1, o3, o4),
+    // ask OpenAI to populate the reasoning items it returns:
+    //   - `reasoning.summary = "auto"` so the response carries a
+    //     human-readable summary (which the framework persists +
+    //     replays via [[ProviderMessage.Reasoning]] on subsequent
+    //     turns).
+    //   - `include = ["reasoning.encrypted_content"]` (added below)
+    //     so o1/o3-style opaque CoT blobs come back populated and
+    //     can be round-tripped verbatim.
+    // Without these, the API returns `{id, type: "reasoning", summary: []}`
+    // with no `encrypted_content`. Replaying a hollow item gives the
+    // model no state to resume from and the next response is empty.
+    val reasoningField: Vector[(String, Json)] = (gen.effort, isReasoningModel) match {
+      case (Some(e), true) =>
+        Vector("reasoning" -> obj(
+          "effort"  -> str(Effort.openAIEffortLevel(e)),
+          "summary" -> str("auto")
+        ))
+      case (Some(e), false) =>
+        Vector("reasoning" -> obj("effort" -> str(Effort.openAIEffortLevel(e))))
+      case (None, true) =>
+        Vector("reasoning" -> obj("summary" -> str("auto")))
+      case (None, false) =>
+        Vector.empty
     }
+    val includeField: Vector[(String, Json)] =
+      if (isReasoningModel) Vector("include" -> arr(str("reasoning.encrypted_content")))
+      else Vector.empty
+    // The GPT-5 family + reasoning-only models (o1, o3, …) hard-reject
+    // `temperature` / `top_p` (sampling locked to 1.0) and return
+    // HTTP 400 when those fields are sent. Drive the filter from the
+    // model's `supportedParameters` first — that's the upstream-
+    // catalog-of-truth — and fall back to a known-prefix list when
+    // the registry is cold (first boot before
+    // `OpenRouter.refreshModels`, an offline session, etc.). Apps
+    // can override [[sigil.Sigil.supportsParameter]] for stricter
+    // policies.
+    def supports(param: String): Boolean =
+      sigilRef.supportsParameter(input.modelId, param) && !OpenAI.fixedSamplingPrefixes.exists(modelName.startsWith)
     val genFields: Vector[(String, Json)] =
-      gen.temperature.toVector.map("temperature" -> num(_)) ++
+      (if (supports("temperature")) gen.temperature.toVector.map("temperature" -> num(_)) else Vector.empty) ++
         gen.maxOutputTokens.toVector.map("max_output_tokens" -> num(_)) ++
-        gen.topP.toVector.map("top_p" -> num(_)) ++
+        (if (supports("top_p")) gen.topP.toVector.map("top_p" -> num(_)) else Vector.empty) ++
         (if (gen.stopSequences.nonEmpty) Vector("stop" -> arr(gen.stopSequences.map(str)*)) else Vector.empty)
 
-    obj((baseFields ++ instructionsField ++ toolFields ++ reasoningField ++ genFields)*)
+    obj((baseFields ++ instructionsField ++ toolFields ++ reasoningField ++ includeField ++ genFields)*)
   }
 
   /** Render framework-neutral [[ProviderMessage]]s into Responses API
@@ -213,6 +249,27 @@ case class OpenAIProvider(apiKey: String,
           "call_id" -> str(toolCallId),
           "output" -> str(content)
         ))
+
+      case ProviderMessage.Reasoning(providerItemId, summary, encryptedContent) =>
+        // Bug #61 — replay reasoning items captured from prior turns
+        // back into the Responses API's `input` array. The API expects
+        // each item in its original position relative to the
+        // function_call(s) it generated; the framework's frame
+        // ordering (chronological by event timestamp) preserves that.
+        // For gpt-5 / 5.x, `summary` carries the textual summary; for
+        // o1 / o3, `encryptedContent` is the opaque CoT blob the API
+        // requires verbatim.
+        val summaryArr = arr(summary.map(t => obj(
+          "type" -> str("summary_text"),
+          "text" -> str(t)
+        ))*)
+        val baseFields = Vector[(String, Json)](
+          "type"    -> str("reasoning"),
+          "id"      -> str(providerItemId),
+          "summary" -> summaryArr
+        )
+        val encryptedField = encryptedContent.toVector.map("encrypted_content" -> str(_))
+        Vector(obj((baseFields ++ encryptedField)*))
     }
 
   /** Render custom functions + built-in tools into the Responses
@@ -221,6 +278,22 @@ case class OpenAIProvider(apiKey: String,
   private def renderTools(input: ProviderCall): Vector[Json] = {
     val functionTools = input.tools.map { t =>
       val s = t.schema
+      // Bug #64 — opt out of strict mode per-tool when the input
+      // schema contains a `DefType.Json` anywhere in its tree. Strict
+      // mode demands every "object"-typed branch declare its own
+      // closed `properties` + `additionalProperties: false`, which is
+      // mutually exclusive with "any JSON value" (`type` union
+      // including `"object"` per #63). The non-strict path renders
+      // the schema unchanged — `Json` fields ship as the typed
+      // permissive union from #63, accepted by the validator.
+      // Strict-mode-incompatible tools lose grammar-constrained
+      // decoding; `ToolInputValidator` still re-checks args
+      // post-decode for safety.
+      val canBeStrict = !DefinitionToSchema.containsJson(s.input)
+      val baseSchema = DefinitionToSchema(s.input)
+      val parameters =
+        if (canBeStrict) StrictSchema.forOpenAIStrict(baseSchema)
+        else StrictSchema.stripUnsupportedKeys(baseSchema)
       obj(
         "type"        -> str("function"),
         "name"        -> str(s.name.value),
@@ -231,8 +304,8 @@ case class OpenAIProvider(apiKey: String,
         // `additionalProperties: false` everywhere, and no `pattern` /
         // `format` / numeric-bound keywords. `StrictSchema` rewrites
         // sigil's standard schema into that shape.
-        "strict"      -> bool(true),
-        "parameters"  -> StrictSchema.forOpenAIStrict(DefinitionToSchema(s.input))
+        "strict"      -> bool(canBeStrict),
+        "parameters"  -> parameters
       )
     }
     val builtIn = input.builtInTools.iterator.flatMap(renderBuiltIn).toVector
@@ -268,7 +341,7 @@ case class OpenAIProvider(apiKey: String,
 
   // ---- streaming response parsing ----
 
-  private def parseLine(line: String, state: StreamState): Vector[ProviderEvent] =
+  private[openai] def parseLine(line: String, state: StreamState): Vector[ProviderEvent] =
     SSELineParser.parse(line) match {
       case SSELine.Data(json)                  => parseEvent(json, state)
       case SSELine.Done                        => state.flushDone()
@@ -287,9 +360,31 @@ case class OpenAIProvider(apiKey: String,
 
       case "response.output_text.delta" =>
         val callId = state.activeItemCallId.getOrElse(CallId("responses-text"))
-        val delta = json.get("delta").map(_.asString).getOrElse("")
+        val rawDelta = json.get("delta").map(_.asString).getOrElse("")
+        // Bug #50 — strip OpenAI Responses' inline citation markers
+        // (`【cite_turn0view0】` etc., U+3010 / U+3011 lenticular
+        // brackets). The actual URL/title pairs ride on
+        // `response.output_text.annotation.added` events; the
+        // markers themselves are placeholders the client is
+        // expected to swap. Without stripping, downstream UIs
+        // render literal `【cite_…】` strings (boxes in most fonts).
+        val delta = OpenAIProvider.CitationMarker.replaceAllIn(rawDelta, "")
         if (delta.isEmpty) Vector.empty
         else Vector(ProviderEvent.ContentBlockDelta(callId, delta))
+
+      case "response.output_text.annotation.added" =>
+        // Bug #50 — buffer URL citations so we can emit them as a
+        // trailing markdown footer at `response.completed`. The
+        // annotation is the structured counterpart to the
+        // `【cite_…】` marker we just stripped from the text.
+        val ann = json.get("annotation").getOrElse(json)
+        val annType = ann.get("type").map(_.asString).getOrElse("")
+        if (annType == "url_citation") {
+          val url = ann.get("url").map(_.asString).getOrElse("")
+          val title = ann.get("title").map(_.asString).filter(_.nonEmpty).getOrElse(url)
+          if (url.nonEmpty) state.pendingCitations.append(title -> url)
+        }
+        Vector.empty
 
       case "response.function_call_arguments.delta" =>
         val idx = state.itemIndex
@@ -298,6 +393,15 @@ case class OpenAIProvider(apiKey: String,
 
       case "response.reasoning_summary_text.delta" | "response.reasoning.delta" =>
         val delta = json.get("delta").map(_.asString).getOrElse("")
+        // Bug #61 — accumulate the summary fragments per active
+        // reasoning item so the final ReasoningItem we emit at
+        // `output_item.done` carries the full text. Also surface the
+        // delta as a `ThinkingDelta` for UIs that visualize CoT
+        // streams in real time.
+        if (delta.nonEmpty) state.activeItemCallId.foreach { cid =>
+          val buf = state.reasoningSummaryBuffers.getOrElseUpdate(cid.value, new StringBuilder)
+          buf.append(delta)
+        }
         if (delta.isEmpty) Vector.empty
         else Vector(ProviderEvent.ThinkingDelta(delta))
 
@@ -340,6 +444,26 @@ case class OpenAIProvider(apiKey: String,
             )
           case "web_search_call" =>
             Vector(ProviderEvent.ServerToolComplete(callId, BuiltInTool.WebSearch))
+          case "reasoning" =>
+            // Bug #61 — emit the settled ReasoningItem with the
+            // accumulated summary text + encrypted_content (if any).
+            // Final summary entries on `item.summary` win over the
+            // delta-accumulated buffer when both exist (the wire's
+            // settled view is authoritative).
+            val pid = item.get("id").map(_.asString)
+              .orElse(state.reasoningProviderIds.get(callId.value))
+              .getOrElse(callId.value)
+            val finalSummary = item.get("summary").toList.flatMap { s =>
+              s.asArr.value.toList.flatMap(_.get("text").map(_.asString))
+            }
+            val accumulated = state.reasoningSummaryBuffers.get(callId.value).map(_.toString).filter(_.nonEmpty).toList
+            val summary = if (finalSummary.nonEmpty) finalSummary else accumulated
+            val encrypted = item.get("encrypted_content").map(_.asString)
+              .orElse(state.reasoningEncryptedContents.get(callId.value))
+            state.reasoningProviderIds.remove(callId.value)
+            state.reasoningSummaryBuffers.remove(callId.value)
+            state.reasoningEncryptedContents.remove(callId.value)
+            Vector(ProviderEvent.ReasoningItem(pid, summary, encrypted))
           case _ => Vector.empty
         }
 
@@ -359,6 +483,23 @@ case class OpenAIProvider(apiKey: String,
         val usage = json.get("response").flatMap(_.get("usage")).map(parseUsage)
         val completes = state.acc.complete()
         val usageEv = usage.toVector.map(ProviderEvent.Usage(_))
+        // Bug #50 — flush buffered web-search citations as a markdown
+        // footer appended to the active text block. Renders as a real
+        // "Sources" list in any markdown-capable consumer; passes
+        // through as readable plaintext otherwise. Deduplicated by
+        // URL so the same source cited multiple times appears once.
+        val citationFooter: Vector[ProviderEvent] =
+          if (state.pendingCitations.isEmpty) Vector.empty
+          else {
+            val callId = state.activeItemCallId.getOrElse(CallId("responses-text"))
+            val seen = scala.collection.mutable.LinkedHashMap.empty[String, String]
+            state.pendingCitations.foreach { case (title, url) =>
+              if (!seen.contains(url)) seen += (url -> title)
+            }
+            val lines = seen.iterator.map { case (url, title) => s"- [$title]($url)" }.mkString("\n")
+            state.pendingCitations.clear()
+            Vector(ProviderEvent.ContentBlockDelta(callId, s"\n\n**Sources:**\n$lines\n"))
+          }
         val apiStatus = json.get("response").flatMap(_.get("status")).map(_.asString)
         val stopReason =
           if (state.sawFunctionCall) StopReason.ToolCall
@@ -366,7 +507,7 @@ case class OpenAIProvider(apiKey: String,
             case Some("incomplete") => StopReason.MaxTokens
             case _                  => StopReason.Complete
           }
-        completes ++ usageEv :+ ProviderEvent.Done(stopReason)
+        completes ++ citationFooter ++ usageEv :+ ProviderEvent.Done(stopReason)
 
       case "response.error" | "error" =>
         val msg = json.get("error").flatMap(_.get("message")).map(_.asString)
@@ -436,6 +577,24 @@ case class OpenAIProvider(apiKey: String,
         Vector(ProviderEvent.ServerToolStart(callId, BuiltInTool.CodeInterpreter, None))
 
       case "reasoning" =>
+        // Bug #61 — capture the wire-level reasoning item id so
+        // `response.reasoning_summary_text.delta` can accumulate
+        // against it and `output_item.done` can emit the settled
+        // ReasoningItem. The id (`rs_…`) and any inline summary or
+        // encrypted_content are stashed on the StreamState; we don't
+        // emit a ProviderEvent here — the settled record arrives at
+        // `output_item.done`.
+        val pid = item.get("id").map(_.asString).getOrElse(callId.value)
+        val initialSummary = item.get("summary").toList.flatMap { s =>
+          s.asArr.value.toList.flatMap(_.get("text").map(_.asString))
+        }
+        val encrypted = item.get("encrypted_content").map(_.asString)
+        state.reasoningProviderIds(callId.value) = pid
+        if (initialSummary.nonEmpty) {
+          val buf = state.reasoningSummaryBuffers.getOrElseUpdate(callId.value, new StringBuilder)
+          initialSummary.foreach(buf.append)
+        }
+        encrypted.foreach(state.reasoningEncryptedContents(callId.value) = _)
         Vector.empty
 
       case _ =>
@@ -454,12 +613,31 @@ case class OpenAIProvider(apiKey: String,
     * pair with the right call_id), plus a shared tool-call
     * accumulator for function-call args. Mutable — confined to a
     * single stream. */
-  final private class StreamState(val acc: ToolCallAccumulator) {
+  final private[openai] class StreamState(val acc: ToolCallAccumulator) {
     var activeItemCallId: Option[CallId] = None
     var itemIndex: Int = 0
     var nextIndex: Int = 0
     var pendingDone: Option[StopReason] = None
     var sawFunctionCall: Boolean = false
+    /** Annotations gathered from `response.output_text.annotation.added`
+      * events (web-search citations). Emitted at `response.completed`
+      * as a trailing markdown footer so the URLs reach the user
+      * instead of being dropped along with the inline `【cite_…】`
+      * markers. Bug #50. */
+    val pendingCitations: scala.collection.mutable.ArrayBuffer[(String, String)] =
+      scala.collection.mutable.ArrayBuffer.empty
+
+    /** Bug #61 — per-active-reasoning-item state. Keys are the
+      * stream-local callId.value (since `output_item.added` always
+      * carries one); values are the wire-level provider id (`rs_…`),
+      * accumulated summary text fragments, and the optional encrypted
+      * CoT blob respectively. Cleared on `output_item.done`. */
+    val reasoningProviderIds: scala.collection.mutable.Map[String, String] =
+      scala.collection.mutable.Map.empty
+    val reasoningSummaryBuffers: scala.collection.mutable.Map[String, StringBuilder] =
+      scala.collection.mutable.Map.empty
+    val reasoningEncryptedContents: scala.collection.mutable.Map[String, String] =
+      scala.collection.mutable.Map.empty
 
     def flushDone(): Vector[ProviderEvent] = pendingDone match {
       case Some(sr) => pendingDone = None; Vector(ProviderEvent.Done(sr))
@@ -469,6 +647,22 @@ case class OpenAIProvider(apiKey: String,
 }
 
 object OpenAIProvider {
+  /** OpenAI Responses API web-search citation markers. Two shapes
+    * observed on the wire:
+    *   - Bracketed: `【cite_turn1view0】` (U+3010 + `cite` + separator
+    *     + `turn<N>view<M>` group(s) + U+3011). The separator has
+    *     varied — underscore, PUA characters, RTL marks — so we
+    *     match liberally on "any non-alphanumeric chars between
+    *     `cite` and `turn`."
+    *   - Bare: `citeturn1view0turn1view2` — no brackets at all,
+    *     concatenated directly to surrounding prose. Same `turn<N>(view|search|navlist|news)<M>`
+    *     repeating block, prefixed with `cite`. We drop both
+    *     forms; the structured URL/title pair rides on
+    *     `response.output_text.annotation.added` and is rendered
+    *     as a Sources footer at `response.completed`. Bug #50 / #51. */
+  private val CitationMarker: scala.util.matching.Regex =
+    """(?:【\s*cite[^a-zA-Z0-9]*(?:turn\d+(?:view|search|navlist|news)\d+[^a-zA-Z0-9]*)+】|cite(?:turn\d+(?:view|search|navlist|news)\d+)+)""".r
+
   /** Construct an OpenAIProvider. Models are read from
     * [[sigil.cache.ModelRegistry]] at access time, so the DB just needs
     * to be populated (typically via

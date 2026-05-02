@@ -52,6 +52,11 @@ object TestBrowserSigil extends Sigil with BrowserSigil {
 
   override def testMode: Boolean = true
 
+  /** Static test-only key — `BrowserSigil` mixes in `SecretsSigil`,
+    * which requires this. Production apps source it from a real
+    * secret manager; tests get a deterministic literal. */
+  override def secretStoreKey: String = "test-crypto-key-do-not-use-in-production"
+
   override protected def participantIds: List[RW[? <: ParticipantId]] = Nil
   override protected def spaceIds: List[RW[? <: SpaceId]] = Nil
   override protected def participants: List[RW[? <: Participant]] = Nil

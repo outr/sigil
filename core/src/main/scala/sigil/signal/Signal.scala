@@ -1,6 +1,6 @@
 package sigil.signal
 
-import sigil.PolyType
+import fabric.rw.PolyType
 
 /**
  * Root of sigil's external wire vocabulary. Every value that crosses the
@@ -26,4 +26,4 @@ import sigil.PolyType
  */
 trait Signal
 
-object Signal extends PolyType[Signal]
+object Signal extends PolyType[Signal]()(using scala.reflect.ClassTag(classOf[Signal]))

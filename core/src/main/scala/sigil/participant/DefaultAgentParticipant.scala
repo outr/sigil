@@ -18,6 +18,14 @@ import sigil.tool.ToolName
  * handles heterogeneous deserialization. App-level customization of
  * the per-turn shape lives on [[sigil.Sigil.process]], not on
  * participant subclasses.
+ *
+ * `displayName` / `avatarUrl` are derived (computed accessors marked
+ * `@serialized` so they surface in the RW). The defaults come straight
+ * from `id` — the persisted JSON includes them, but they recompute on
+ * deserialize from `id`. Apps that need to set a custom display name
+ * subclass and override these as constructor params (the standard
+ * [[Participant]] pattern); the RW round-trips through the poly so the
+ * concrete shape is preserved.
  */
 case class DefaultAgentParticipant(override val id: AgentParticipantId,
                                    override val modelId: Id[Model],
@@ -29,4 +37,7 @@ case class DefaultAgentParticipant(override val id: AgentParticipantId,
                                    override val workType: WorkType = ConversationWork,
                                    override val greetsOnJoin: Boolean = false,
                                    override val roles: List[Role] = List(GeneralistRole))
-  extends AgentParticipant derives RW
+  extends AgentParticipant derives RW {
+  @serialized override def displayName: String = id.value
+  @serialized override def avatarUrl: Option[String] = None
+}

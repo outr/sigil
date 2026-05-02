@@ -12,10 +12,11 @@ import sigil.tool.ToolName
  *     on the turn.
  *   - **Discovery**: the pool `find_capability` can search through.
  *
- * The six cases cover the useful combinations. Framework essentials
- * (`respond`, `no_response`, `change_mode`, `stop`) are always in the
- * roster; `find_capability` is in the roster unless the contributor is
- * [[None]].
+ * The seven cases cover the useful combinations. Framework essentials
+ * (`respond`, `no_response`, `change_mode`, `stop`) are in the roster
+ * by default; `find_capability` is in the roster unless the contributor
+ * is [[None]]. [[PureDiscovery]] strips the respond family + no_response
+ * from the roster so every reply path goes through `find_capability`.
  */
 enum ToolPolicy derives RW {
   /** Contributor has no opinion on tools. Baseline participant roster
@@ -25,6 +26,17 @@ enum ToolPolicy derives RW {
   /** No tools beyond framework essentials — `find_capability` is also
     * suppressed. Agent is locked to its training for this contributor. */
   case None
+
+  /** Roster = `find_capability` + `stop` + the agent's baseline tools
+    * (and any `Active` extras from other contributors). The respond
+    * family (`respond`, `respond_options`, `respond_field`,
+    * `respond_failure`) and `no_response` are stripped, forcing every
+    * reply to flow through `find_capability` first.
+    *
+    * Right for small / quantised models that lock onto the `respond`
+    * tool when it sits in the immediate roster. Adds one round-trip
+    * per chat turn; large models don't need it. */
+  case PureDiscovery
 
   /** `names` are added to the roster while this contributor is active. */
   case Active(names: List[ToolName])
@@ -43,12 +55,13 @@ enum ToolPolicy derives RW {
     * contributor-relevant new ones." */
   case Scoped(names: List[ToolName])
 
-  /** The tools listed on this policy. `Standard` and `None` have none. */
+  /** The tools listed on this policy. `Standard`, `None`, and `PureDiscovery`
+    * have none. */
   def listed: List[ToolName] = this match {
-    case Standard | None => Nil
-    case Active(n)       => n
-    case Discoverable(n) => n
-    case Exclusive(n)    => n
-    case Scoped(n)       => n
+    case Standard | None | PureDiscovery => Nil
+    case Active(n)                       => n
+    case Discoverable(n)                 => n
+    case Exclusive(n)                    => n
+    case Scoped(n)                       => n
   }
 }

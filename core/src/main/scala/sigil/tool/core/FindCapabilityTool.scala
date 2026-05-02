@@ -1,23 +1,34 @@
 package sigil.tool.core
 
 import sigil.TurnContext
-import sigil.event.{Event, ToolResults}
+import sigil.event.{CapabilityResults, Event}
 import sigil.tool.{DiscoveryRequest, ToolExample, ToolName, TypedTool}
 
 /**
- * Discovery tool. The agent calls `find_capability` when it needs to check
- * what tools exist to satisfy the current request. Emits a [[ToolResults]]
- * event carrying the matching tools' schemas directly so the LLM has
- * everything it needs to call one of them on its next turn.
+ * Discovery tool. The agent calls `find_capability` when it needs to
+ * check what capabilities exist to satisfy the current request.
+ * Emits a [[CapabilityResults]] event carrying matches across every
+ * category the framework surfaces (tools, modes, skills) so the LLM
+ * has both the discovery (what exists) and the actionable next call
+ * (`change_mode("…")` for a Mode, the tool name for a Tool) on its
+ * next turn. Bug #66.
  */
 case object FindCapabilityTool extends TypedTool[FindCapabilityInput](
   name = ToolName("find_capability"),
   description =
     """CALL THIS FIRST when the user asks you to DO something not in your current tool roster. Most
-      |tools are discovered, not preloaded. Don't say something is unsupported without calling this.
+      |capabilities are discovered, not preloaded. Don't say something is unsupported without calling this.
       |
-      |Matches are valid for ONE next turn — call the matched tool then, or it's cleared. If no
-      |matches, you may tell the user it isn't available.
+      |Returns matches across every kind of capability:
+      |  - Tools — call the matched name directly on your next turn.
+      |  - Modes — bundle a focused skill + scoped tool roster. The match carries a hint
+      |    (`change_mode("name")`) — call THAT to enter the mode, then the mode's tools and
+      |    skill become active. When a Mode appears in your matches and fits the user's task,
+      |    prefer the mode-entry path; modes are designed end-to-end for their work shape.
+      |
+      |Matches are valid for ONE next turn — act on a match (call the tool, or call
+      |change_mode for a Mode) then, or they're cleared. If no matches, you may tell the user
+      |it isn't available.
       |
       |`keywords` — space-separated lowercase terms; multi-word queries match better
       |(e.g. "send slack channel message" not just "slack").""".stripMargin,
@@ -40,14 +51,22 @@ case object FindCapabilityTool extends TypedTool[FindCapabilityInput](
     rapid.Stream.force(
       context.sigil.accessibleSpaces(context.chain).flatMap { spaces =>
         val request = DiscoveryRequest(
-          keywords = input.keywords,
+          // Bug #52 — normalise explicitly: lowercase, replace any
+          // non-alphanumeric run with a single space, trim. The
+          // schema used to enforce this via `@pattern`, but
+          // grammar-constrained decoders don't compile pattern
+          // regexes, and the validator-rejection loop on
+          // snake_case identifiers (`get_random_dog_image` etc.)
+          // had no recovery. Doing the normalisation at the tool
+          // boundary lets the model emit any natural form.
+          keywords = FindCapabilityTool.normaliseKeywords(input.keywords),
           chain = context.chain,
           mode = context.conversation.currentMode,
           callerSpaces = spaces
         )
-        context.sigil.findTools(request).map { tools =>
-          val results = ToolResults(
-            schemas = tools.map(_.schema),
+        context.sigil.findCapabilities(request).map { matches =>
+          val results = CapabilityResults(
+            matches = matches,
             participantId = context.caller,
             conversationId = context.conversation.id,
             topicId = context.conversation.currentTopicId
@@ -56,4 +75,17 @@ case object FindCapabilityTool extends TypedTool[FindCapabilityInput](
         }
       }
     )
+
+  /** Normalise a keywords string into the lowercase, space-separated
+    * form `findTools` expects: drop punctuation, split snake_case /
+    * camelCase / kebab-case, collapse runs to single spaces. */
+  private[core] def normaliseKeywords(raw: String): String = {
+    // Insert a space at every camelCase boundary BEFORE lowercasing,
+    // so `getRandomDogImage` → `get Random Dog Image` → `get random dog image`.
+    val withCamelSplit = raw.replaceAll("([a-z0-9])([A-Z])", "$1 $2")
+    withCamelSplit
+      .toLowerCase
+      .replaceAll("[^a-z0-9]+", " ")
+      .trim
+  }
 }

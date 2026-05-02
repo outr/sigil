@@ -2,7 +2,6 @@ package sigil.information
 
 import fabric.rw.*
 import lightdb.id.Id
-import sigil.PolyName
 
 /**
  * A lightweight reference to content the LLM can look up by id. Entries

@@ -3,10 +3,12 @@ package sigil.conversation
 import fabric.io.JsonFormatter
 import fabric.rw.*
 import fabric.{Json, Obj}
-import sigil.event.{AgentState, Event, Message, ModeChange, MessageRole, Stop, TopicChange, TopicChangeKind, ToolInvoke, ToolResults}
+import sigil.event.{AgentState, CapabilityResults, Event, Message, ModeChange, MessageRole, Reasoning, Stop, TopicChange, TopicChangeKind, ToolInvoke, ToolResults}
 import sigil.signal.EventState
 import sigil.tool.ToolInput
 import sigil.tool.ToolInput.given
+import sigil.tool.ToolName
+import sigil.tool.discovery.CapabilityType
 import sigil.tool.model.ResponseContent
 
 /**
@@ -61,26 +63,56 @@ object FrameBuilder {
       // result instead of doubly-wrapped JSON.
       val content = event match {
         case m: Message =>
-          m.content.collect { case ResponseContent.Text(t) => t }.mkString("\n")
+          // Bug #68 — collect every text-bearing content block, not
+          // just `Text`. Tools that emit `Markdown(...)` (like
+          // `list_script_tools`) used to render as the empty string
+          // here because the previous filter dropped Markdown
+          // entirely. Other shapes (`Code`, `Heading`, `ItemList`,
+          // `Link`) fall back to `toString` so the agent sees
+          // *something* — a doubly-formatted blob beats silently
+          // empty content.
+          m.content.collect {
+            case ResponseContent.Text(t)            => t
+            case ResponseContent.Markdown(t)        => t
+            case ResponseContent.Heading(t)         => t
+            case ResponseContent.Code(c, lang)      => s"```${lang.getOrElse("")}\n$c\n```"
+            case ResponseContent.ItemList(items, _) => items.mkString("\n")
+            case ResponseContent.Link(url, label)   => s"$label $url"
+            case other                              => other.toString
+          }.mkString("\n")
         case other =>
           val payload = stripEventBoilerplate(Event.rw.read(other))
           JsonFormatter.Compact(payload)
       }
-      return pairedCallId(existing) match {
-        case Some(callId) =>
-          existing :+ ContextFrame.ToolResult(
-            callId = callId,
-            content = content,
-            sourceEventId = event._id,
-            visibility = event.visibility
-          )
-        case None =>
-          existing :+ ContextFrame.System(
-            content = s"Tool result (orphan): $content",
-            sourceEventId = event._id,
-            visibility = event.visibility
-          )
+      // Bug #69 — pair via the explicit `origin` parent pointer the
+      // orchestrator stamps onto every tool-emitted event. Multiple
+      // Tool events from one `executeTyped` therefore all carry the
+      // same origin and all pair to the same call_id; no orphan-
+      // frame fall-through, no ambiguity from "most-recent
+      // unresolved" scanning, no temporal heuristics that break under
+      // out-of-order delivery or replay.
+      //
+      // A `MessageRole.Tool` event with `origin = None` is a
+      // programmer error — the framework throws rather than rendering
+      // a degraded "additional tool output" placeholder. Tool authors
+      // emit Tool-role events from `executeTyped` (where the
+      // orchestrator stamps origin automatically); slash-command /
+      // workflow / programmatic dispatch sites set `origin` at the
+      // emission point. Anything else is a category error caught at
+      // publish time.
+      val callId = event.origin.getOrElse {
+        throw new IllegalStateException(
+          s"FrameBuilder: ${event.getClass.getSimpleName} has role=MessageRole.Tool but no `origin` " +
+            s"set. Every Tool-role event MUST carry `origin` pointing to its parent ToolInvoke. " +
+            s"Event id=${event._id.value}; participantId=${event.participantId.value}."
+        )
       }
+      return existing :+ ContextFrame.ToolResult(
+        callId = callId,
+        content = content,
+        sourceEventId = event._id,
+        visibility = event.visibility
+      )
     }
 
     event match {
@@ -121,6 +153,22 @@ object FrameBuilder {
           content = content,
           sourceEventId = tc._id,
           visibility = tc.visibility
+        )
+
+      case r: Reasoning =>
+        // Provider-internal reasoning items — surfaced as a frame so
+        // the originating agent's prompt-build picks them up and the
+        // OpenAIProvider can replay them in the next request's input
+        // array. Visibility carries through from the event; other
+        // viewers (other agents, human user UIs) filter the frame
+        // out via `Sigil.canSee` / `visibilityAllows`. Bug #61.
+        existing :+ ContextFrame.Reasoning(
+          providerItemId = r.providerItemId,
+          summary = r.summary,
+          encryptedContent = r.encryptedContent,
+          participantId = r.participantId,
+          sourceEventId = r._id,
+          visibility = r.visibility
         )
 
       case _: AgentState | _: Stop =>
@@ -176,6 +224,21 @@ object FrameBuilder {
         val updated = proj.copy(suggestedTools = tr.schemas.map(_.name).toList)
         existing + (pid -> updated)
 
+      case cr: CapabilityResults =>
+        // Bug #66 — only Tool-typed matches feed `suggestedTools` (the
+        // system prompt's "Suggested tools" section). Mode and Skill
+        // matches reach the agent through the tool-result content
+        // (the rendered `matches` JSON the early-return path emits)
+        // — they're not "tools to call directly" and shouldn't
+        // pollute the suggestedTools roster.
+        val pid = cr.participantId
+        val proj = existing.getOrElse(pid, ParticipantProjection())
+        val toolNames = cr.matches.collect {
+          case m if m.capabilityType == CapabilityType.Tool => ToolName(m.name)
+        }
+        val updated = proj.copy(suggestedTools = toolNames)
+        existing + (pid -> updated)
+
       case _ => existing
     }
   }
@@ -222,15 +285,8 @@ object FrameBuilder {
     case other => other
   }
 
-  /**
-   * Find the most-recently-added `ToolCall` frame that hasn't yet been
-   * paired with a `ToolResult`. A pending call is one that has no
-   * corresponding `ToolResult(callId = _)` later in the vector.
-   */
-  private def pairedCallId(frames: Vector[ContextFrame]): Option[lightdb.id.Id[Event]] = {
-    val resolved = frames.collect { case ContextFrame.ToolResult(id, _, _, _) => id }.toSet
-    frames.reverseIterator.collectFirst {
-      case ContextFrame.ToolCall(_, _, callId, _, _, _) if !resolved.contains(callId) => callId
-    }
-  }
+  // `pairedCallId` was retired in bug #69 — Tool-role pairing now
+  // uses the explicit `Event.origin` parent pointer the orchestrator
+  // stamps at publish time. The scan-based heuristic is no longer
+  // load-bearing.
 }

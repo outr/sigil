@@ -99,6 +99,7 @@ class OrchestratorMemoryExtractionSpec extends AsyncWordSpec with AsyncTaskSpec 
       TestSigil.setMemoryExtractor(recorder)
 
       val convId = Conversation.id(s"orchex-${rapid.Unique()}")
+      val conv = Conversation(topics = List(TestTopicEntry), _id = convId)
       val userText = "I bought a new electric guitar yesterday at the Guitar Center downtown."
       val view = ConversationView(
         conversationId = convId,
@@ -120,7 +121,7 @@ class OrchestratorMemoryExtractionSpec extends AsyncWordSpec with AsyncTaskSpec 
         tools = Vector(sigil.tool.core.RespondTool),
         chain = List(TestUser, TestAgent)
       )
-      Orchestrator.process(TestSigil, new StubProvider, request).toList.map { _ =>
+      Orchestrator.process(TestSigil, new StubProvider, request, conv).toList.map { _ =>
         // Give the fire-and-forget fiber a moment to land.
         Thread.sleep(250)
         val captured = recorder.captured.get()

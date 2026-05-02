@@ -1,8 +1,8 @@
 package sigil.participant
 
+import fabric.rw.PolyType
 import lightdb.id.Id
-import sigil.PolyType
 
 trait ParticipantId extends Id[Participant]
 
-object ParticipantId extends PolyType[ParticipantId]
+object ParticipantId extends PolyType[ParticipantId]()(using scala.reflect.ClassTag(classOf[ParticipantId]))
