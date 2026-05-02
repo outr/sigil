@@ -10,7 +10,7 @@ val rapidVersion: String = "2.9.3"
 
 val spiceVersion: String = "1.8.3-SNAPSHOT"
 
-val profigVersion: String = "3.7.0"
+val profigVersion: String = "3.7.1"
 
 val scribeVersion: String = "3.19.0"
 
