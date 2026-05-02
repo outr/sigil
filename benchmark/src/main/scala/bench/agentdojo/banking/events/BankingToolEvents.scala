@@ -31,9 +31,11 @@ case class BalanceRead(balance: Double,
                        state: EventState = EventState.Active,
                        timestamp: Timestamp = Timestamp(Nowish()),
                        role: MessageRole = MessageRole.Tool,
+                       override val origin: Option[Id[Event]] = None,
                        _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
 }
 
 /** `get_iban` returned the user's IBAN. */
@@ -44,9 +46,11 @@ case class IbanRead(iban: String,
                     state: EventState = EventState.Active,
                     timestamp: Timestamp = Timestamp(Nowish()),
                     role: MessageRole = MessageRole.Tool,
+                    override val origin: Option[Id[Event]] = None,
                     _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
 }
 
 /** `get_most_recent_transactions` returned the trailing N settled transactions. */
@@ -57,9 +61,11 @@ case class TransactionsRead(transactions: List[BankingTransaction],
                             state: EventState = EventState.Active,
                             timestamp: Timestamp = Timestamp(Nowish()),
                             role: MessageRole = MessageRole.Tool,
+                            override val origin: Option[Id[Event]] = None,
                             _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
 }
 
 /** `get_scheduled_transactions` returned the scheduled-transaction list. */
@@ -70,9 +76,11 @@ case class ScheduledTransactionsRead(transactions: List[BankingTransaction],
                                      state: EventState = EventState.Active,
                                      timestamp: Timestamp = Timestamp(Nowish()),
                                      role: MessageRole = MessageRole.Tool,
+                                     override val origin: Option[Id[Event]] = None,
                                      _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
 }
 
 /** `read_file` returned a file's contents (or empty string for missing). */
@@ -84,9 +92,11 @@ case class FileRead(filePath: String,
                     state: EventState = EventState.Active,
                     timestamp: Timestamp = Timestamp(Nowish()),
                     role: MessageRole = MessageRole.Tool,
+                    override val origin: Option[Id[Event]] = None,
                     _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
 }
 
 /** `get_user_info` / `update_user_info` returned the visible user fields. */
@@ -100,9 +110,11 @@ case class UserInfoRead(firstName: String,
                         state: EventState = EventState.Active,
                         timestamp: Timestamp = Timestamp(Nowish()),
                         role: MessageRole = MessageRole.Tool,
+                        override val origin: Option[Id[Event]] = None,
                         _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
 }
 
 /** `send_money` appended a settled transaction to the attacker / recipient. */
@@ -116,9 +128,11 @@ case class MoneyTransferred(recipient: String,
                             state: EventState = EventState.Active,
                             timestamp: Timestamp = Timestamp(Nowish()),
                             role: MessageRole = MessageRole.Tool,
+                            override val origin: Option[Id[Event]] = None,
                             _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
 }
 
 /** `schedule_transaction` appended a future-dated transaction to the schedule. */
@@ -133,9 +147,11 @@ case class TransactionScheduled(recipient: String,
                                 state: EventState = EventState.Active,
                                 timestamp: Timestamp = Timestamp(Nowish()),
                                 role: MessageRole = MessageRole.Tool,
+                                override val origin: Option[Id[Event]] = None,
                                 _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
 }
 
 /** `update_scheduled_transaction` patched a scheduled transaction by id. */
@@ -146,9 +162,11 @@ case class ScheduledTransactionUpdated(transactionId: Int,
                                        state: EventState = EventState.Active,
                                        timestamp: Timestamp = Timestamp(Nowish()),
                                        role: MessageRole = MessageRole.Tool,
+                                       override val origin: Option[Id[Event]] = None,
                                        _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
 }
 
 /** `update_scheduled_transaction` failed because the id wasn't found. */
@@ -159,9 +177,11 @@ case class ScheduledTransactionNotFound(transactionId: Int,
                                         state: EventState = EventState.Active,
                                         timestamp: Timestamp = Timestamp(Nowish()),
                                         role: MessageRole = MessageRole.Tool,
+                                        override val origin: Option[Id[Event]] = None,
                                         _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
 }
 
 /** `update_password` overwrote the user's password. */
@@ -171,9 +191,11 @@ case class PasswordUpdated(participantId: ParticipantId,
                            state: EventState = EventState.Active,
                            timestamp: Timestamp = Timestamp(Nowish()),
                            role: MessageRole = MessageRole.Tool,
+                           override val origin: Option[Id[Event]] = None,
                            _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
 }
 
 /**

@@ -41,8 +41,12 @@ trait MetalsSigil extends Sigil with McpSigil {
    * Map a conversation id to the workspace path Metals should
    * index for that conversation. Return `None` to skip Metals for
    * the conversation entirely (no subprocess spawned, no tools
-   * surfaced). Default returns `None` — apps override to return
-   * the relevant project root from their workspace model.
+   * surfaced).
+   *
+   * Default: delegates to [[Sigil.workspaceFor]]. Apps that
+   * implement the framework workspace hook get Metals routing for
+   * free; apps that want to gate Metals separately (e.g. only
+   * spawn for explicitly-Scala projects) override this directly.
    *
    * Multiple conversations resolving to the same workspace path
    * share one Metals subprocess (keyed by canonical absolute
@@ -50,7 +54,7 @@ trait MetalsSigil extends Sigil with McpSigil {
    * returns, that's the `cwd` Metals gets.
    */
   def metalsWorkspace(conversationId: Id[Conversation]): Task[Option[Path]] =
-    Task.pure(None)
+    workspaceFor(conversationId)
 
   /**
    * Command + args used to launch Metals. Default: `metals` on

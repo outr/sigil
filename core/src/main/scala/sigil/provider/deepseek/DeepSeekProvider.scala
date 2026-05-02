@@ -129,26 +129,33 @@ case class DeepSeekProvider(apiKey: String,
   }
 
   private def renderMessages(messages: Vector[ProviderMessage]): Vector[Json] =
-    messages.map {
+    messages.flatMap {
       case ProviderMessage.System(content) =>
-        obj("role" -> str("system"), "content" -> str(content))
+        Vector(obj("role" -> str("system"), "content" -> str(content)))
       case ProviderMessage.User(blocks) =>
         val text = blocks.iterator.collect { case MessageContent.Text(t) => t }.mkString("\n")
-        obj("role" -> str("user"), "content" -> str(text))
+        Vector(obj("role" -> str("user"), "content" -> str(text)))
       case ProviderMessage.Assistant(content, toolCalls) =>
-        if (toolCalls.isEmpty) obj("role" -> str("assistant"), "content" -> str(content))
-        else obj(
-          "role" -> str("assistant"),
-          "tool_calls" -> arr(toolCalls.map { tc =>
-            obj(
-              "id" -> str(tc.id),
-              "type" -> str("function"),
-              "function" -> obj("name" -> str(tc.name), "arguments" -> str(tc.argsJson))
-            )
-          }*)
+        Vector(
+          if (toolCalls.isEmpty) obj("role" -> str("assistant"), "content" -> str(content))
+          else obj(
+            "role" -> str("assistant"),
+            "tool_calls" -> arr(toolCalls.map { tc =>
+              obj(
+                "id" -> str(tc.id),
+                "type" -> str("function"),
+                "function" -> obj("name" -> str(tc.name), "arguments" -> str(tc.argsJson))
+              )
+            }*)
+          )
         )
       case ProviderMessage.ToolResult(toolCallId, content) =>
-        obj("role" -> str("tool"), "tool_call_id" -> str(toolCallId), "content" -> str(content))
+        Vector(obj("role" -> str("tool"), "tool_call_id" -> str(toolCallId), "content" -> str(content)))
+      case _: ProviderMessage.Reasoning =>
+        // Provider-specific reasoning state from another provider's turn
+        // (bug #61 — currently OpenAI-only). DeepSeek's chat-completions
+        // surface has no slot for it; drop silently.
+        Vector.empty
     }
 
   private def renderDescription(tool: Tool, mode: Mode): String = {

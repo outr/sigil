@@ -1,5 +1,7 @@
 package sigil
 
+import fabric.rw.PolyType
+
 /**
  * A general-purpose scope identifier used for multi-tenancy across
  * Sigil's persisted resources — memories, tools, and any future
@@ -30,4 +32,4 @@ trait SpaceId {
   def value: String
 }
 
-object SpaceId extends PolyType[SpaceId]
+object SpaceId extends PolyType[SpaceId]()(using scala.reflect.ClassTag(classOf[SpaceId]))

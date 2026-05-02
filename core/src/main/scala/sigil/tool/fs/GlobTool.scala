@@ -22,9 +22,11 @@ final class GlobTool(context: FileSystemContext)
     keywords = Set("glob", "find", "list", "files", "pattern")
   ) {
   override protected def executeTyped(input: GlobInput, ctx: TurnContext): Stream[Event] = Stream.force(
-    context.listFiles(input.basePath, input.pattern, input.maxResults).map { paths =>
-      val payload = obj("paths" -> Arr(paths.map(str(_)).toVector), "count" -> num(paths.size))
-      Stream.emit[Event](FsToolEmit(payload, ctx))
+    WorkspacePathResolver.resolve(ctx, input.basePath).flatMap { base =>
+      context.listFiles(base, input.pattern, input.maxResults).map { paths =>
+        val payload = obj("paths" -> Arr(paths.map(str(_)).toVector), "count" -> num(paths.size))
+        Stream.emit[Event](FsToolEmit(payload, ctx))
+      }
     }
   )
 }

@@ -62,7 +62,14 @@ case class StandardContextCurator(sigil: Sigil,
     val elide: Set[String] = sigil.staticTools.iterator
       .collect { case t if t.resultTtl.contains(0) => t.name.value }
       .toSet
-    val optimizedFrames = optimizer.optimize(view.frames, elide)
+    // Bug #73 — pass `chain.head` (the trigger originator, typically
+    // the user) as the current-turn source so the optimizer preserves
+    // within-turn iterations of ephemeral tools. Without this, mid-
+    // turn agent loops on `find_capability` had their prior calls
+    // elided across iterations, making each one look like a fresh
+    // start to the model and producing identical-call retry loops
+    // until `maxAgentIterations` fired.
+    val optimizedFrames = optimizer.optimize(view.frames, elide, chain.headOption)
 
     for {
       blockResult <- blockExtractor.extract(sigil, optimizedFrames)

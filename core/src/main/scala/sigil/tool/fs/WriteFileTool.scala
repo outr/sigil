@@ -47,16 +47,18 @@ final class WriteFileTool(context: FileSystemContext)
     keywords = Set("file", "write", "save", "create", "output")
   ) {
   override protected def executeTyped(input: WriteFileInput, ctx: TurnContext): Stream[Event] = Stream.force(
-    input.expectedHash match {
-      case None =>
-        context.writeFile(input.filePath, input.content).map { bytes =>
-          Stream.emit[Event](FsToolEmit(obj("success" -> bool(true), "bytesWritten" -> num(bytes)), ctx))
-        }
-      case Some(hash) =>
-        val expected = FileVersion(hash, Timestamp())
-        context.writeIfMatch(input.filePath, input.content, expected).map { result =>
-          Stream.emit[Event](FsToolEmit(WriteResultRender(result, input.content), ctx))
-        }
+    WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>
+      input.expectedHash match {
+        case None =>
+          context.writeFile(resolved, input.content).map { bytes =>
+            Stream.emit[Event](FsToolEmit(obj("success" -> bool(true), "bytesWritten" -> num(bytes)), ctx))
+          }
+        case Some(hash) =>
+          val expected = FileVersion(hash, Timestamp())
+          context.writeIfMatch(resolved, input.content, expected).map { result =>
+            Stream.emit[Event](FsToolEmit(WriteResultRender(result, input.content), ctx))
+          }
+      }
     }
   )
 }

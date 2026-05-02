@@ -1,9 +1,9 @@
 package sigil.workflow
 
-import sigil.PolyType
+import fabric.rw.PolyType
 
 /**
- * Open [[sigil.PolyType]] for the *typed* step shapes agents author.
+ * Open [[fabric.rw.PolyType]] for the *typed* step shapes agents author.
  * Each subtype maps to one of Strider's primitive `strider.step.Step`
  * variants — `Job`, `Trigger`, `Condition`, `Approval`, `Parallel`,
  * `Loop`, `SubWorkflow` — but with the LLM-facing fields the agent
@@ -32,4 +32,4 @@ trait WorkflowStepInput {
   def name: String
 }
 
-object WorkflowStepInput extends PolyType[WorkflowStepInput]
+object WorkflowStepInput extends PolyType[WorkflowStepInput]()(using scala.reflect.ClassTag(classOf[WorkflowStepInput]))

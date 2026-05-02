@@ -6,6 +6,7 @@ import sigil.conversation.{ContextFrame, TurnInput}
 import sigil.db.Model
 import sigil.participant.ParticipantId
 import sigil.tool.core.RespondTool
+import sigil.tool.model.ResponseContent
 import spice.http.HttpRequest
 
 /**
@@ -127,16 +128,37 @@ trait Provider {
   private def translateOneShot(s: OneShotRequest): ProviderCall = {
     val toolChoice =
       if (s.tools.isEmpty) ToolChoice.None else ToolChoice.Required
+    val userMessage =
+      if (s.userContent.nonEmpty) ProviderMessage.User(toMessageContent(s.userContent))
+      else ProviderMessage.User(s.userPrompt)
     ProviderCall(
       modelId = s.modelId,
       system = s.systemPrompt,
-      messages = Vector(ProviderMessage.User(s.userPrompt)),
+      messages = Vector(userMessage),
       tools = s.tools,
       builtInTools = s.builtInTools,
       toolChoice = toolChoice,
       generationSettings = s.generationSettings
     )
   }
+
+  /** Project the public [[ResponseContent]] vocabulary onto the
+    * narrower wire-level [[MessageContent]] used in
+    * [[ProviderMessage.User]]. `Text` and `Image` map directly;
+    * structured variants (Code, Diff, Table, Heading, …) render to
+    * a `Text` block via `toString` so the model still sees the
+    * content even on text-only providers. Image blocks survive into
+    * the wire layer; per-provider serialization there decides
+    * whether to send or drop based on the target API's multimodal
+    * support. */
+  private def toMessageContent(content: Vector[ResponseContent]): Vector[MessageContent] =
+    content.map {
+      case ResponseContent.Text(t)             => MessageContent.Text(t)
+      case ResponseContent.Image(url, alt)     => MessageContent.Image(url, alt)
+      case ResponseContent.Markdown(t)         => MessageContent.Text(t)
+      case ResponseContent.Code(c, lang)       => MessageContent.Text(s"```${lang.getOrElse("")}\n$c\n```")
+      case other                                => MessageContent.Text(other.toString)
+    }
 
   /** Resolve the ids on `TurnInput.criticalMemories` / `.memories` /
     * `.summaries` to full records via the DB. Ids that don't resolve are
@@ -171,7 +193,7 @@ trait Provider {
     if (c.tools.nonEmpty) {
       sb.append(
         "You communicate exclusively through tool calls. Plain text output is never delivered to the user — " +
-          "every user-facing reply MUST go through the `respond` tool. Always pick a tool.\n\n"
+          "always pick a tool.\n\n"
       )
     }
 
@@ -190,12 +212,18 @@ trait Provider {
     // `find_capability` first for actions outside its tool roster. If
     // that tool isn't actually available (e.g. the active mode uses
     // `ToolPolicy.None` or `Exclusive`), pointing the model at it
-    // creates a dead loop — strip the block in that case.
+    // creates a dead loop — strip the block in that case. When
+    // `find_capability` IS available but `respond` ISN'T (PureDiscovery
+    // active), swap to the pure-discovery variant so the prompt
+    // doesn't describe `respond` as immediately callable.
     val findCapabilityAvailable =
       c.tools.exists(_.schema.name.value == "find_capability")
+    val respondAvailable =
+      c.tools.exists(_.schema.name.value == "respond")
     val instr =
-      if (findCapabilityAvailable) c.instructions.render
-      else c.instructions.renderWithoutTools
+      if (!findCapabilityAvailable) c.instructions.renderWithoutTools
+      else if (!respondAvailable) c.instructions.forPureDiscovery.render
+      else c.instructions.render
     if (instr.nonEmpty) sb.append("\n").append(instr).append("\n")
 
     if (resolved.criticalMemories.nonEmpty) {
@@ -302,7 +330,15 @@ trait Provider {
     val out = Vector.newBuilder[ProviderMessage]
     var pendingToolCallId: Option[String] = None
 
-    frames.foreach {
+    // Bug #69 — merge consecutive `ContextFrame.ToolResult` entries
+    // sharing the same `callId` into a single frame whose content is
+    // the concatenation in emission order. The wire stays 1:1
+    // (`function_call` ↔ `function_call_output`) which is what every
+    // provider expects; tool authors who emit multiple Tool-role
+    // events for one call get them folded into one wire-level result.
+    val merged = mergeAdjacentToolResults(frames)
+
+    merged.foreach {
       case ContextFrame.Text(content, participantId, _, _) =>
         if (agentId.contains(participantId)) out += ProviderMessage.Assistant(content)
         else out += ProviderMessage.User(content)
@@ -331,6 +367,13 @@ trait Provider {
 
       case ContextFrame.System(content, _, _) =>
         out += ProviderMessage.System(content)
+
+      case ContextFrame.Reasoning(providerItemId, summary, encryptedContent, _, _, _) =>
+        // Provider-internal reasoning state from a prior turn (bug #61).
+        // Surfaced uniformly as a `ProviderMessage.Reasoning` entry; the
+        // originating provider serializes it back onto the wire and other
+        // providers drop it in their `renderInput`.
+        out += ProviderMessage.Reasoning(providerItemId, summary, encryptedContent)
     }
 
     // Dangling tool_call without a result — defensive fallback. Should
@@ -338,10 +381,71 @@ trait Provider {
     // a `MessageRole.Tool` event that produces a paired `ToolResult` frame),
     // but providers reject bare `tool_calls` in the request, so we
     // ensure every dangling pending id has SOMETHING.
+    //
+    // Bug #67 — the placeholder text is intentionally diagnostic
+    // rather than blandly true ("no result recorded" tells the agent
+    // nothing about why). When this fallback fires it means the
+    // tool's `executeTyped` returned a stream that didn't include any
+    // `MessageRole.Tool`-shaped event for this call_id — typically a
+    // sync throw escaping the tool's `handleError` (the bug shape
+    // #67 fixes for the script tools). The text frames it as a
+    // framework-level miss so the agent doesn't blame its own input.
     pendingToolCallId.foreach { callId =>
-      out += ProviderMessage.ToolResult(toolCallId = callId, content = "(no result recorded)")
+      out += ProviderMessage.ToolResult(
+        toolCallId = callId,
+        content =
+          "(framework error: tool emitted no MessageRole.Tool event for this call_id; " +
+            "this is a bug in the tool's executeTyped — usually a sync throw escaping " +
+            "its handleError. Please report it.)"
+      )
     }
 
+    out.result()
+  }
+
+  /** Walk the frame vector and merge runs of [[ContextFrame.ToolResult]]
+    * frames sharing the same `callId` into a single frame whose
+    * content is the run's contents joined with `\n\n`. Bug #69 — tool
+    * authors who emit multiple Tool-role events for one call (the
+    * old [[sigil.event.ToolResults]] suggestion-cascade pattern, the
+    * primary-result-plus-followup shape, etc.) get a single wire
+    * `function_call_output` instead of one paired result + N orphan
+    * frames.
+    *
+    * Only **adjacent** ToolResult frames merge — interleaved frames
+    * (a Text frame between two ToolResults sharing a callId) are kept
+    * separate since the textual ordering is meaningful. In practice
+    * orchestrator-stamped events from a single `executeTyped` arrive
+    * contiguously, so adjacency tracks the actual "all from one tool
+    * call" boundary. */
+  private def mergeAdjacentToolResults(frames: Vector[ContextFrame]): Vector[ContextFrame] = {
+    val out = Vector.newBuilder[ContextFrame]
+    var pending: Option[ContextFrame.ToolResult] = None
+    val joiner = "\n\n"
+
+    def flush(): Unit = {
+      pending.foreach(out += _)
+      pending = None
+    }
+
+    frames.foreach {
+      case curr @ ContextFrame.ToolResult(callId, content, _, _) =>
+        pending match {
+          case Some(prev) if prev.callId == callId =>
+            // Same call_id — merge into the pending accumulator.
+            // Keep the earliest sourceEventId / visibility (caller can
+            // override via dedicated joiner if needed; default is
+            // newline-separated concat).
+            pending = Some(prev.copy(content = prev.content + joiner + content))
+          case _ =>
+            flush()
+            pending = Some(curr)
+        }
+      case other =>
+        flush()
+        out += other
+    }
+    flush()
     out.result()
   }
 }

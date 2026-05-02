@@ -33,11 +33,14 @@ final class ReadFileTool(context: FileSystemContext)
     keywords = Set("file", "read", "open", "cat", "view")
   ) {
   override protected def executeTyped(input: ReadFileInput, ctx: TurnContext): Stream[Event] =
-    Stream.force(operate(input).map(json => Stream.emit[Event](FsToolEmit(json, ctx))))
+    Stream.force(
+      WorkspacePathResolver.resolve(ctx, input.filePath).flatMap(operate(input, _))
+        .map(json => Stream.emit[Event](FsToolEmit(json, ctx)))
+    )
 
-  private def operate(input: ReadFileInput): rapid.Task[Json] = (input.offset, input.limit) match {
+  private def operate(input: ReadFileInput, resolved: String): rapid.Task[Json] = (input.offset, input.limit) match {
     case (None, None) =>
-      context.readFile(input.filePath).map { content =>
+      context.readFile(resolved).map { content =>
         val lines = content.split('\n').length
         obj(
           "content" -> str(content),
@@ -47,7 +50,7 @@ final class ReadFileTool(context: FileSystemContext)
         )
       }
     case (off, lim) =>
-      context.readFileLines(input.filePath, off.getOrElse(0), lim.getOrElse(Int.MaxValue)).map {
+      context.readFileLines(resolved, off.getOrElse(0), lim.getOrElse(Int.MaxValue)).map {
         case (lines, total) =>
           // No `hash` on partial reads — the hash represents the
           // full file's bytes; passing it as `expectedHash` after a

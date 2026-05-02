@@ -20,6 +20,7 @@ case object ListScriptToolsTool extends TypedTool[ListScriptToolsInput](
     """Enumerate the script-backed tools the caller can currently see (their own scoped tools
       |plus globally available ones). Optional `nameContains` narrows the listing to tools
       |whose name contains the given substring.""".stripMargin,
+  modes = Set(ScriptAuthoringMode.id),
   keywords = Set("list", "tools", "script", "enumerate", "available")
 ) {
   override protected def executeTyped(input: ListScriptToolsInput,

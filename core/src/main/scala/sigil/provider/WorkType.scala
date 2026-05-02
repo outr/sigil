@@ -1,6 +1,6 @@
 package sigil.provider
 
-import sigil.PolyType
+import fabric.rw.PolyType
 
 /**
  * Open category of work the LLM is being asked to do — used by
@@ -37,7 +37,7 @@ trait WorkType {
   def value: String
 }
 
-object WorkType extends PolyType[WorkType]
+object WorkType extends PolyType[WorkType]()(using scala.reflect.ClassTag(classOf[WorkType]))
 
 /** General chat / Q&A — the default work type for all agent turns
   * unless an app overrides per-agent or per-mode. */

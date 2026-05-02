@@ -41,6 +41,8 @@ case class Stop(participantId: ParticipantId,
                 state: EventState = EventState.Active,
                 timestamp: Timestamp = Timestamp(Nowish()),
                 role: MessageRole = MessageRole.Standard,
+                override val origin: Option[Id[Event]] = None,
                 _id: Id[Event] = Event.id()) extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
+  override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
 }

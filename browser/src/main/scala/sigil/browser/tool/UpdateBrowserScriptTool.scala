@@ -1,14 +1,15 @@
 package sigil.browser.tool
 
+import fabric.io.JsonFormatter
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import rapid.{Stream, Task}
 import sigil.{GlobalSpace, TurnContext}
 import sigil.browser.{BrowserScript, CookieJar}
-import sigil.event.{Event, Message, MessageRole, MessageVisibility, ToolResults}
+import sigil.event.{Event, Message, MessageRole, MessageVisibility}
 import sigil.signal.EventState
-import sigil.tool.{JsonSchemaToDefinition, ToolName, TypedTool}
+import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, ToolName, TypedTool}
 import sigil.tool.model.ResponseContent
 
 /**
@@ -46,23 +47,25 @@ case object UpdateBrowserScriptTool extends TypedTool[UpdateBrowserScriptInput](
                 modified    = Timestamp(Nowish())
               )
               tx.upsert(updated).map { stored =>
+                // Bug #69 — single Message(Tool) carrying the
+                // confirmation + (possibly-updated) schema.
+                val schemaJson = JsonFormatter.Default(DefinitionToSchema(stored.schema.input))
+                val text = new StringBuilder
+                text.append(s"Updated browser script '${stored.name.value}'.\n\n")
+                text.append("Current invocation shape:\n")
+                text.append(s"  name: ${stored.name.value}\n")
+                text.append(s"  arguments matching this schema:\n")
+                text.append(schemaJson).append("\n")
                 val ack = Message(
                   participantId  = ctx.caller,
                   conversationId = ctx.conversation.id,
                   topicId        = ctx.conversation.currentTopicId,
-                  content        = Vector(ResponseContent.Text(s"Updated browser script '${stored.name.value}'.")),
+                  content        = Vector(ResponseContent.Text(text.toString)),
                   state          = EventState.Complete,
                   role           = MessageRole.Tool,
                   visibility     = MessageVisibility.Agents
                 )
-                val suggestion = ToolResults(
-                  schemas        = List(stored.schema, UpdateBrowserScriptTool.schema, DeleteBrowserScriptTool.schema),
-                  participantId  = ctx.caller,
-                  conversationId = ctx.conversation.id,
-                  topicId        = ctx.conversation.currentTopicId,
-                  state          = EventState.Complete
-                )
-                Stream.emits[Event](List(ack, suggestion))
+                Stream.emit[Event](ack)
               }
             }
           case Some(_) =>

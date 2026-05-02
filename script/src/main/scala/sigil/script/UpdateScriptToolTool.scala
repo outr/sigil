@@ -1,12 +1,13 @@
 package sigil.script
 
+import fabric.io.JsonFormatter
 import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import rapid.{Stream, Task}
 import sigil.TurnContext
-import sigil.event.{Event, Message, MessageVisibility, MessageRole, ToolResults}
+import sigil.event.{Event, Message, MessageRole, MessageVisibility}
 import sigil.signal.EventState
-import sigil.tool.{JsonSchemaToDefinition, ToolName, TypedTool}
+import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, ToolName, TypedTool}
 import sigil.tool.model.ResponseContent
 
 /**
@@ -29,6 +30,7 @@ case object UpdateScriptToolTool extends TypedTool[UpdateScriptToolInput](
     """Update the body, description, parameters schema, or keywords of an existing script-backed
       |tool. Identified by `name`; any omitted field keeps its stored value. The tool's space is
       |fixed at creation — copy the tool to surface it under a different space.""".stripMargin,
+  modes = Set(ScriptAuthoringMode.id),
   keywords = Set("update", "edit", "modify", "tool", "script", "change")
 ) {
   override protected def executeTyped(input: UpdateScriptToolInput,
@@ -54,27 +56,30 @@ case object UpdateScriptToolTool extends TypedTool[UpdateScriptToolInput](
                 modified    = Timestamp(Nowish())
               )
               tx.upsert(updated).map { stored =>
+                // Bug #69 — single Message(Tool) carrying the
+                // confirmation + the (possibly-updated) schema +
+                // invocation hint. Replaces the previous
+                // [ack, ToolResults] cascade whose ToolResults event
+                // landed orphan-framed because two MessageRole.Tool
+                // events from one executeTyped can't both pair with
+                // the same call_id.
+                val schemaJson = JsonFormatter.Default(DefinitionToSchema(stored.schema.input))
+                val text = new StringBuilder
+                text.append(s"Updated tool '${stored.name.value}'.\n\n")
+                text.append("Current invocation shape:\n")
+                text.append(s"  name: ${stored.name.value}\n")
+                text.append(s"  arguments matching this schema:\n")
+                text.append(schemaJson).append("\n")
                 val ack = Message(
                   participantId  = context.caller,
                   conversationId = context.conversation.id,
                   topicId        = context.conversation.currentTopicId,
-                  content        = Vector(ResponseContent.Text(s"Updated tool '${stored.name.value}'.")),
+                  content        = Vector(ResponseContent.Text(text.toString)),
                   state          = EventState.Complete,
                   role           = MessageRole.Tool,
                   visibility     = MessageVisibility.Agents
                 )
-                val suggestion = ToolResults(
-                  schemas        = List(
-                    stored.schema,
-                    UpdateScriptToolTool.schema,
-                    DeleteScriptToolTool.schema
-                  ),
-                  participantId  = context.caller,
-                  conversationId = context.conversation.id,
-                  topicId        = context.conversation.currentTopicId,
-                  state          = EventState.Complete
-                )
-                Stream.emits[Event](List(ack, suggestion))
+                Stream.emit[Event](ack)
               }
             }
           case Some(_) =>

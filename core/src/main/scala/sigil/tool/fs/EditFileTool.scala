@@ -45,45 +45,47 @@ final class EditFileTool(context: FileSystemContext)
     keywords = Set("file", "edit", "modify", "replace", "rewrite", "patch")
   ) {
   override protected def executeTyped(input: EditFileInput, ctx: TurnContext): Stream[Event] = Stream.force(
-    context.readFile(input.filePath).flatMap { content =>
-      val pattern = Pattern.quote(input.oldString)
-      val occurrences = pattern.r.findAllIn(content).size
-      if (occurrences == 0) {
-        Task.pure(Stream.emit[Event](FsToolEmit(
-          obj("success" -> bool(false), "error" -> str("oldString not found")),
-          ctx
-        )))
-      } else if (!input.replaceAll && occurrences > 1) {
-        Task.pure(Stream.emit[Event](FsToolEmit(
-          obj("success" -> bool(false), "error" -> str("oldString not unique; pass replaceAll = true to replace all occurrences")),
-          ctx
-        )))
-      } else {
-        val replacement = java.util.regex.Matcher.quoteReplacement(input.newString)
-        val (next, replaced) = if (input.replaceAll)
-          (pattern.r.replaceAllIn(content, replacement), occurrences)
-        else
-          (pattern.r.replaceFirstIn(content, replacement), 1)
+    WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>
+      context.readFile(resolved).flatMap { content =>
+        val pattern = Pattern.quote(input.oldString)
+        val occurrences = pattern.r.findAllIn(content).size
+        if (occurrences == 0) {
+          Task.pure(Stream.emit[Event](FsToolEmit(
+            obj("success" -> bool(false), "error" -> str("oldString not found")),
+            ctx
+          )))
+        } else if (!input.replaceAll && occurrences > 1) {
+          Task.pure(Stream.emit[Event](FsToolEmit(
+            obj("success" -> bool(false), "error" -> str("oldString not unique; pass replaceAll = true to replace all occurrences")),
+            ctx
+          )))
+        } else {
+          val replacement = java.util.regex.Matcher.quoteReplacement(input.newString)
+          val (next, replaced) = if (input.replaceAll)
+            (pattern.r.replaceAllIn(content, replacement), occurrences)
+          else
+            (pattern.r.replaceFirstIn(content, replacement), 1)
 
-        input.expectedHash match {
-          case None =>
-            context.writeFile(input.filePath, next).map { _ =>
-              Stream.emit[Event](FsToolEmit(obj("success" -> bool(true), "replacements" -> num(replaced)), ctx))
-            }
-          case Some(hash) =>
-            val expected = FileVersion(hash, Timestamp())
-            context.writeIfMatch(input.filePath, next, expected).map { result =>
-              val payload = result match {
-                case WriteResult.Written(version) =>
-                  obj(
-                    "result" -> str("written"),
-                    "hash" -> str(version.hash),
-                    "replacements" -> num(replaced)
-                  )
-                case other => WriteResultRender(other, next)
+          input.expectedHash match {
+            case None =>
+              context.writeFile(resolved, next).map { _ =>
+                Stream.emit[Event](FsToolEmit(obj("success" -> bool(true), "replacements" -> num(replaced)), ctx))
               }
-              Stream.emit[Event](FsToolEmit(payload, ctx))
-            }
+            case Some(hash) =>
+              val expected = FileVersion(hash, Timestamp())
+              context.writeIfMatch(resolved, next, expected).map { result =>
+                val payload = result match {
+                  case WriteResult.Written(version) =>
+                    obj(
+                      "result" -> str("written"),
+                      "hash" -> str(version.hash),
+                      "replacements" -> num(replaced)
+                    )
+                  case other => WriteResultRender(other, next)
+                }
+                Stream.emit[Event](FsToolEmit(payload, ctx))
+              }
+          }
         }
       }
     }

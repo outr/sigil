@@ -49,6 +49,18 @@ enum ProviderEvent derives RW {
   case Done(stopReason: StopReason)
   case Error(message: String)
 
+  /** Provider-internal reasoning state (bug #61 — OpenAI Responses
+    * API `reasoning` output items). The orchestrator translates this
+    * into a persisted [[sigil.event.Reasoning]] event so subsequent
+    * turns can replay it onto the wire. `providerItemId` is the wire-
+    * level id (e.g. `rs_…`); `summary` may be empty when the
+    * provider omits text summaries (o1 / o3 typically do);
+    * `encryptedContent` is the opaque CoT blob the provider expects
+    * back verbatim. */
+  case ReasoningItem(providerItemId: String,
+                     summary: List[String],
+                     encryptedContent: Option[String])
+
   def asString: String =
     this match {
       case TextDelta(text) => s"TextDelta($text)"
@@ -64,5 +76,6 @@ enum ProviderEvent derives RW {
       case Usage(_) => "Usage"
       case Done(stopReason) => s"Done(${stopReason.toString})"
       case Error(message) => s"Error($message)"
+      case ReasoningItem(id, summary, _) => s"ReasoningItem($id, summaryLines=${summary.size})"
     }
 }

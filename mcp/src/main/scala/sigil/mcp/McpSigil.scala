@@ -73,6 +73,18 @@ trait McpSigil extends Sigil {
   override protected def toolKindRegistrations: List[fabric.rw.RW[? <: sigil.tool.ToolKind]] =
     fabric.rw.RW.static[sigil.tool.ToolKind](McpKind) :: super.toolKindRegistrations
 
+  /** Auto-register [[sigil.tool.JsonInput]] so [[ToolInvoke]] events
+    * for MCP-server tool calls (whose `inputRW` is `RW[JsonInput]`)
+    * round-trip through fabric's polymorphic `RW[ToolInput]`
+    * discriminator. Mirrors [[sigil.script.ScriptSigil]]'s registration
+    * — the `McpToolFinder` does its own `toolInputRWs` advertisement
+    * for the discovery path, but the polytype dispatcher used during
+    * persistence is built once at init from `toolInputRegistrations`,
+    * so registering at the mixin level keeps both paths covered.
+    * Bug #53. */
+  override def toolInputRegistrations: List[fabric.rw.RW[? <: sigil.tool.ToolInput]] =
+    summon[fabric.rw.RW[sigil.tool.JsonInput]] :: super.toolInputRegistrations
+
   protected def mcpManagementTools: List[Tool] = List(
     new AddMcpServerTool(mcpManager),
     new ListMcpServersTool(mcpManager),

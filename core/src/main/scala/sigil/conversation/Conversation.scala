@@ -51,6 +51,7 @@ case class Conversation(topics: List[TopicEntry],
                         participants: List[Participant] = Nil,
                         currentMode: Mode = ConversationMode,
                         space: SpaceId = GlobalSpace,
+                        clearedAt: Option[Timestamp] = None,
                         created: Timestamp = Timestamp(),
                         modified: Timestamp = Timestamp(),
                         _id: Id[Conversation] = Conversation.id())

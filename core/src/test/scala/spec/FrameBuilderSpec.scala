@@ -82,7 +82,12 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
       call.argsJson should not include "\"type\""
     }
 
-    "pair a Complete ToolResults with the most-recent pending ToolCall" in {
+    "pair a Complete ToolResults with its `origin` ToolCall (bug #69)" in {
+      // Bug #69 — pairing is now via the explicit `origin` parent
+      // pointer the orchestrator stamps at publish time, not via
+      // FrameBuilder's old "most-recent unresolved" scan. The test
+      // sets origin = invoke._id to mirror what the orchestrator
+      // would do for a real tool emission.
       val invoke = ToolInvoke(
         toolName = ToolName("find_capability"),
         participantId = TestAgent,
@@ -96,7 +101,8 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
         participantId = TestAgent,
         conversationId = conversationId,
         topicId = TestTopicId,
-        state = EventState.Complete
+        state = EventState.Complete,
+        origin = Some(invoke._id)
       )
       val folded = FrameBuilder.build(List(invoke, results))
       folded should have size 2
@@ -209,6 +215,87 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
         state = EventState.Active
       )
       FrameBuilder.updateProjections(Map.empty, invoke) shouldBe Map.empty
+    }
+  }
+
+  "FrameBuilder Message tool-result extraction (bug #68 Concern B)" should {
+    // Pre-fix the tool-result content extraction for `Message` events
+    // only collected `ResponseContent.Text` blocks. Tools that emit
+    // `Markdown(...)` (e.g. `list_script_tools`) rendered to the
+    // empty string — the agent saw no content. Post-fix every
+    // text-bearing block contributes.
+    "extract Markdown content from a tool-role Message into the paired ToolResult frame" in {
+      val invoke = ToolInvoke(
+        toolName = ToolName("list_script_tools"),
+        participantId = TestAgent,
+        conversationId = conversationId,
+        topicId = TestTopicId,
+        state = EventState.Complete
+      )
+      val markdownReply = Message(
+        participantId = TestAgent,
+        conversationId = conversationId,
+        topicId = TestTopicId,
+        content = Vector(ResponseContent.Markdown("- **tool-a** — does thing A\n- **tool-b** — does thing B")),
+        state = EventState.Complete,
+        role = sigil.event.MessageRole.Tool,
+        origin = Some(invoke._id)
+      )
+      val frames = FrameBuilder.appendFor(FrameBuilder.appendFor(Vector.empty, invoke), markdownReply)
+      // Two frames: the ToolCall + the paired ToolResult carrying
+      // the markdown body.
+      frames should have size 2
+      frames.last shouldBe a[ContextFrame.ToolResult]
+      val tr = frames.last.asInstanceOf[ContextFrame.ToolResult]
+      tr.callId shouldBe invoke._id
+      // The markdown string itself reaches the agent, not the empty
+      // string the bug used to deliver.
+      tr.content should include ("**tool-a**")
+      tr.content should include ("does thing B")
+    }
+
+    "extract Code content from a tool-role Message" in {
+      val invoke = ToolInvoke(
+        toolName = ToolName("show_snippet"),
+        participantId = TestAgent,
+        conversationId = conversationId,
+        topicId = TestTopicId,
+        state = EventState.Complete
+      )
+      val reply = Message(
+        participantId = TestAgent,
+        conversationId = conversationId,
+        topicId = TestTopicId,
+        content = Vector(ResponseContent.Code("println(42)", Some("scala"))),
+        state = EventState.Complete,
+        role = sigil.event.MessageRole.Tool,
+        origin = Some(invoke._id)
+      )
+      val frames = FrameBuilder.appendFor(FrameBuilder.appendFor(Vector.empty, invoke), reply)
+      val tr = frames.last.asInstanceOf[ContextFrame.ToolResult]
+      tr.content should include ("println(42)")
+      tr.content should include ("```scala")
+    }
+
+    "still extract Text content (the existing happy path)" in {
+      val invoke = ToolInvoke(
+        toolName = ToolName("plain_tool"),
+        participantId = TestAgent,
+        conversationId = conversationId,
+        topicId = TestTopicId,
+        state = EventState.Complete
+      )
+      val reply = Message(
+        participantId = TestAgent,
+        conversationId = conversationId,
+        topicId = TestTopicId,
+        content = Vector(ResponseContent.Text("plain text")),
+        state = EventState.Complete,
+        role = sigil.event.MessageRole.Tool,
+        origin = Some(invoke._id)
+      )
+      val frames = FrameBuilder.appendFor(FrameBuilder.appendFor(Vector.empty, invoke), reply)
+      frames.last.asInstanceOf[ContextFrame.ToolResult].content shouldBe "plain text"
     }
   }
 }

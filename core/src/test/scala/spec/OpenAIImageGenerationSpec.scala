@@ -36,6 +36,7 @@ class OpenAIImageGenerationSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       TestSigil.setProvider(rapid.Task.pure(provider))
 
       val convId = Conversation.id(s"img-${rapid.Unique()}")
+      val conv = Conversation(topics = List(TestTopicEntry), _id = convId)
       val userText = "Generate a simple image of a small blue circle on a white background."
       val view = ConversationView(
         conversationId = convId,
@@ -59,7 +60,7 @@ class OpenAIImageGenerationSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         chain = List(TestUser, TestAgent)
       )
 
-      Orchestrator.process(TestSigil, provider, request).toList.map { signals =>
+      Orchestrator.process(TestSigil, provider, request, conv).toList.map { signals =>
         val messages = signals.collect { case m: Message => m }
         val imageMessage = messages.find(_.content.exists {
           case _: ResponseContent.Image => true

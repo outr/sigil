@@ -5,6 +5,8 @@ import rapid.Task
 import sigil.{GlobalSpace, Sigil, SpaceId}
 import sigil.event.Event
 import sigil.participant.ParticipantId
+import sigil.provider.Mode
+import sigil.tool.{JsonInput, Tool}
 
 /**
  * Mixin trait apps stir into their [[Sigil]] subclass to enable
@@ -104,4 +106,41 @@ trait ScriptSigil extends Sigil {
    */
   override protected def eventRegistrations: List[RW[? <: Event]] =
     summon[RW[ScriptResult]] :: super.eventRegistrations
+
+  /**
+   * Auto-register [[JsonInput]]'s RW so [[ToolInvoke]] events for
+   * runtime-created [[ScriptTool]] calls (whose `inputRW` is
+   * `RW[JsonInput]`) round-trip through fabric's polymorphic
+   * `RW[ToolInput]` discriminator. Without this, the first
+   * script-tool invocation crashes the agent loop at persistence
+   * with `Type not found [JsonInput]` — the in-flight `ToolInvoke`
+   * lands on the wire but the persistence step throws before any
+   * settling delta can be emitted, so client chips render
+   * "(input pending)" forever and the agent loop dies. Bug #53.
+   */
+  override def toolInputRegistrations: List[RW[? <: sigil.tool.ToolInput]] =
+    summon[RW[JsonInput]] :: super.toolInputRegistrations
+
+  /** Register [[ScriptAuthoringMode]] alongside any modes the app
+    * defines. Without this the framework can't resolve `change_mode`
+    * calls targeting `script-authoring`, and the script-authoring
+    * tool family becomes unreachable. Apps that override `modes`
+    * should `super.modes ++ ...`. */
+  override protected def modes: List[Mode] = ScriptAuthoringMode :: super.modes
+
+  /** Auto-register the script-authoring tools (introspection plus the
+    * management surface) so `ToolPolicy.Active` references in
+    * [[ScriptAuthoringMode]] resolve to live tool records on every
+    * boot. The static-tool sync upgrade picks them up via the
+    * `StaticToolSyncUpgrade` defined in [[Sigil.instance]]. Apps that
+    * override `staticTools` should `super.staticTools ++ ...`. */
+  override def staticTools: List[Tool] = super.staticTools ++ List(
+    LibraryLookupTool,
+    ClassSignaturesTool,
+    ReadSourceTool,
+    CreateScriptToolTool,
+    UpdateScriptToolTool,
+    DeleteScriptToolTool,
+    ListScriptToolsTool
+  )
 }

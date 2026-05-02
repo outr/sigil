@@ -190,20 +190,19 @@ case class LlamaCppProvider(url: URL,
 
   private def renderMessages(messages: Vector[ProviderMessage]): Vector[Json] = {
     val folded = foldMidArraySystems(messages)
-    folded.map {
+    folded.flatMap {
       case ProviderMessage.System(content) =>
-        obj("role" -> str("system"), "content" -> str(content))
+        Vector(obj("role" -> str("system"), "content" -> str(content)))
       case ProviderMessage.User(blocks) =>
         // LlamaCpp is text-only; collapse multipart content to a plain
         // string, dropping any image blocks. Vision-capable providers
         // will render each block as the API expects.
         val text = blocks.iterator.collect { case MessageContent.Text(t) => t }.mkString("\n")
-        obj("role" -> str("user"), "content" -> str(text))
+        Vector(obj("role" -> str("user"), "content" -> str(text)))
       case ProviderMessage.Assistant(content, toolCalls) =>
-        if (toolCalls.isEmpty) {
-          obj("role" -> str("assistant"), "content" -> str(content))
-        } else {
-          obj(
+        Vector(
+          if (toolCalls.isEmpty) obj("role" -> str("assistant"), "content" -> str(content))
+          else obj(
             "role" -> str("assistant"),
             "tool_calls" -> arr(toolCalls.map { tc =>
               obj(
@@ -216,13 +215,18 @@ case class LlamaCppProvider(url: URL,
               )
             }*)
           )
-        }
+        )
       case ProviderMessage.ToolResult(toolCallId, content) =>
-        obj(
+        Vector(obj(
           "role" -> str("tool"),
           "tool_call_id" -> str(toolCallId),
           "content" -> str(content)
-        )
+        ))
+      case _: ProviderMessage.Reasoning =>
+        // Provider-specific reasoning state from another provider's turn
+        // (bug #61 — currently OpenAI-only). llama.cpp's chat-completions
+        // surface has no slot for it; drop silently.
+        Vector.empty
     }
   }
 
@@ -241,6 +245,12 @@ case class LlamaCppProvider(url: URL,
         out += ProviderMessage.System(content)
       case ProviderMessage.System(content) =>
         pending += content
+      case r: ProviderMessage.Reasoning =>
+        // Reasoning state is foreign to llama.cpp; pass it through
+        // untouched so `renderMessages` drops it. Don't treat it as a
+        // textual carrier for pending system content — it has no text
+        // surface to prepend to.
+        out += r
       case other =>
         seenNonSystem = true
         out += (if (pending.nonEmpty) prependSystem(pending.toList, other) else other)
@@ -268,6 +278,7 @@ case class LlamaCppProvider(url: URL,
       case ProviderMessage.ToolResult(id, content) =>
         ProviderMessage.ToolResult(id, prefix + content)
       case s: ProviderMessage.System => s  // shouldn't happen — caller filters
+      case r: ProviderMessage.Reasoning => r  // shouldn't happen — caller filters
     }
   }
 
@@ -302,7 +313,7 @@ case class LlamaCppProvider(url: URL,
       delta.get("tool_calls").foreach { toolCallsJson =>
         toolCallsJson.asVector.foreach { tc =>
           val index = tc.get("index").map(_.asInt).getOrElse(0)
-          val callId = tc.get("id").flatMap(optString)
+          val callId = tc.get("id").flatMap(optString).map(LlamaCppProvider.normalizeWireId)
           val name = tc.get("function").flatMap(_.get("name")).flatMap(optString)
           (callId, name) match {
             case (Some(id), Some(nm)) => events ++= state.acc.start(index, CallId(id), nm)
@@ -400,5 +411,19 @@ object LlamaCppProvider {
   def apply(sigil: Sigil, url: URL): Task[LlamaCppProvider] =
     LlamaCpp.loadModels(url).flatMap { models =>
       sigil.cache.merge(models).map(_ => LlamaCppProvider(url, models, sigil))
+    }
+
+  /** Map any tool-call id from the wire to a 9-char alphanumeric, applied
+    * at parse time so the framework stores the canonical form throughout.
+    * Some local-model chat templates (e.g. Mistral NeMo) hard-validate
+    * this length on subsequent turns; coercing at parse means later
+    * write-time emits the same form the chat template expects, and
+    * ContextFrame projections / replays carry consistent ids. Already-
+    * conformant ids (9 alphanumeric chars) pass through unchanged. */
+  def normalizeWireId(id: String): String =
+    if (id.length == 9 && id.forall(_.isLetterOrDigit)) id
+    else {
+      val hash = java.util.UUID.nameUUIDFromBytes(id.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+      hash.toString.replace("-", "").take(9)
     }
 }

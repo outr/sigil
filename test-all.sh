@@ -4,4 +4,4 @@
 
 set -euo pipefail
 cd "$(dirname "$0")"
-exec env SIGIL_LIVE=1 sbt test
+exec env SIGIL_LIVE=1 sbt 'clean; test'

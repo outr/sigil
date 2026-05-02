@@ -1,6 +1,6 @@
 package sigil.viewer
 
-import sigil.PolyType
+import fabric.rw.PolyType
 
 /**
  * Marker trait for app-defined per-viewer UI state payloads.
@@ -31,4 +31,4 @@ import sigil.PolyType
  */
 trait ViewerStatePayload
 
-object ViewerStatePayload extends PolyType[ViewerStatePayload]
+object ViewerStatePayload extends PolyType[ViewerStatePayload]()(using scala.reflect.ClassTag(classOf[ViewerStatePayload]))

@@ -1,7 +1,6 @@
 package sigil.conversation
 
 import fabric.rw.*
-import sigil.PolyType
 
 /**
  * Taxonomy of a [[ContextMemory]]. Same polymorphic pattern as
@@ -18,7 +17,7 @@ trait MemoryType {
   def value: String
 }
 
-object MemoryType extends PolyType[MemoryType] {
+object MemoryType extends PolyType[MemoryType]()(using scala.reflect.ClassTag(classOf[MemoryType])) {
   case object Fact extends MemoryType       { override val value: String = "fact" }
   case object Decision extends MemoryType   { override val value: String = "decision" }
   case object Preference extends MemoryType { override val value: String = "preference" }

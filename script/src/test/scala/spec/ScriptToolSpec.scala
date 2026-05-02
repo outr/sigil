@@ -7,7 +7,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.{GlobalSpace, SpaceId, TurnContext}
 import sigil.conversation.{Conversation, ConversationView, Topic, TopicEntry, TurnInput}
-import sigil.event.{Message, ToolResults}
+import sigil.event.Message
 import sigil.participant.{AgentParticipantId, ParticipantId}
 import sigil.script.{
   CreateScriptToolInput,
@@ -54,6 +54,61 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     events.collect { case m: Message => m }
       .flatMap(_.content.collect { case ResponseContent.Text(t) => t; case ResponseContent.Markdown(t) => t })
 
+  "ScriptSigil polymorphic registrations (bug #53)" should {
+    "register JsonInput so ToolInvoke events for ScriptTool calls round-trip via the ToolInput poly RW" in Task {
+      // Concretely — once `ScriptSigil` is mixed in, `RW[ToolInput]`
+      // must resolve `JsonInput` to the JsonInput subtype rather than
+      // throwing `Type not found [JsonInput]` at persistence. The
+      // failing call shape used to be:
+      //   - agent calls ScriptTool with `input = JsonInput(args)`
+      //   - orchestrator emits `ToolInvoke(input = Some(JsonInput(...)))`
+      //   - lightdb persists via fabric `RW[ToolInput]`
+      //   - poly dispatch can't find JsonInput → throw → agent loop dies
+      // Round-trip via the poly RW directly is the cheapest, deterministic
+      // proof that the registration covers it.
+      import fabric.rw.RW
+      import sigil.tool.{JsonInput, ToolInput}
+      val original: ToolInput = JsonInput(fabric.obj("k" -> fabric.str("v")))
+      val rw                  = summon[RW[ToolInput]]
+      val json                = rw.read(original)
+      val roundTripped        = rw.write(json)
+      // Pre-fix: the line above threw `Type not found [JsonInput]`.
+      // Post-fix: dispatch resolves and we get a JsonInput back. We
+      // don't pin the inner json shape exactly — `JsonWrapper`
+      // round-trip preserves the type discriminator alongside the
+      // original keys — but the original key IS in the result.
+      roundTripped shouldBe a[JsonInput]
+      roundTripped.asInstanceOf[JsonInput].json("k").asString shouldBe "v"
+      succeed
+    }
+  }
+
+  "ScalaScriptExecutor advertised surface (bug #54)" should {
+    "expose a non-empty preludeImports list" in Task {
+      import sigil.script.ScalaScriptExecutor
+      val exec = new ScalaScriptExecutor
+      exec.preludeImports should not be empty
+      // Specific identifiers the framework ships and that LLMs need
+      // to know are pre-imported (avoids them reaching for the Scala
+      // 2 stdlib equivalents).
+      exec.preludeImports.mkString("|") should include("fabric")
+      exec.preludeImports.mkString("|") should include("spice.http.client.HttpClient")
+      exec.preludeImports.mkString("|") should include("rapid.Task")
+      succeed
+    }
+
+    "advertise the surface in CreateScriptToolTool's descriptionFor" in Task {
+      val rendered = sigil.script.CreateScriptToolTool.descriptionFor(
+        mode          = sigil.provider.ConversationMode,
+        sigilInstance = TestScriptSigil
+      )
+      rendered should include("Pre-imported")
+      rendered should include("HttpClient")
+      rendered should include("scala.util.parsing.json")  // the "avoid" callout
+      succeed
+    }
+  }
+
   "ScriptTool round-trip" should {
     "persist via Sigil.createTool and read back as a ScriptTool" in {
       val tool = ScriptTool(
@@ -80,12 +135,69 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     }
   }
 
+  "ScriptTool id (bug #48)" should {
+    "overwrite in place when an agent re-creates a tool with the same name + space" in {
+      TestScriptSigil.resetSpaceResolver()
+      val context = ctx("collide-overwrite")
+      val first = CreateScriptToolInput(
+        name        = "collision-target",
+        description = "v1",
+        code        = "\"v1\""
+      )
+      val second = first.copy(description = "v2", code = "\"v2\"")
+      for {
+        _      <- CreateScriptToolTool.execute(first, context).toList
+        _      <- CreateScriptToolTool.execute(second, context).toList
+        stored <- TestScriptSigil.withDB(_.tools.transaction { tx =>
+                    tx.query.filter(_.toolName === "collision-target").toList
+                  })
+      } yield {
+        // Single row — second create overwrote the first via the
+        // (name, space)-derived `_id`.
+        stored should have size 1
+        val s = stored.head.asInstanceOf[ScriptTool]
+        s.code shouldBe "\"v2\""
+        s.description shouldBe "v2"
+      }
+    }
+
+    "keep separate rows when the same name lands in different spaces" in {
+      // Same tool name, two different spaces, two rows survive.
+      TestScriptSigil.resetSpaceResolver()
+      val globalContext = ctx("collide-global")
+      val projContext   = ctx("collide-proj")
+      for {
+        _ <- CreateScriptToolTool.execute(
+               CreateScriptToolInput(name = "across-spaces", description = "global", code = "\"g\""),
+               globalContext
+             ).toList
+        _ = TestScriptSigil.setSpaceResolver((_, _) => Task.pure(TestProjectSpace))
+        _ <- CreateScriptToolTool.execute(
+               CreateScriptToolInput(name = "across-spaces", description = "project", code = "\"p\""),
+               projContext
+             ).toList
+        _ = TestScriptSigil.resetSpaceResolver()
+        rows <- TestScriptSigil.withDB(_.tools.transaction { tx =>
+                  tx.query.filter(_.toolName === "across-spaces").toList
+                })
+      } yield {
+        rows should have size 2
+        rows.collect { case s: ScriptTool => s.space }.toSet shouldBe Set[SpaceId](GlobalSpace, TestProjectSpace)
+      }
+    }
+  }
+
   "CreateScriptToolTool" should {
-    "persist a new tool, emit an ack Message and a ToolResults suggestion cascade" in {
+    "persist a new tool, emit a single Message(Tool) carrying confirmation + schema, and auto-pop to ConversationMode" in {
+      // Bugs #68 / #69 — replaces the previous [ack, ToolResults] two-event
+      // cascade. Now: ONE Message(Tool) with the full info inline + a
+      // ModeChange(Standard) that auto-pops the agent back to
+      // ConversationMode so the tool's `modes = Set(ConversationMode.id)`
+      // matches the next find_capability's mode-affinity filter.
       TestScriptSigil.resetSpaceResolver()
       val context = ctx("create")
       val input = CreateScriptToolInput(
-        name        = "create-emit-cascade",
+        name        = "create-single-result",
         description = "Compute the sum of values.",
         code        = "args(\"values\").asVector.map(_.asDouble).sum.toString",
         parameters  = obj(
@@ -94,19 +206,24 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         )
       )
       CreateScriptToolTool.execute(input, context).toList.flatMap { events =>
-        val messages = events.collect { case m: Message => m }
-        val results  = events.collect { case t: ToolResults => t }
+        val toolMessages = events.collect { case m: Message if m.role == sigil.event.MessageRole.Tool => m }
+        val modeChanges  = events.collect { case mc: sigil.event.ModeChange => mc }
         TestScriptSigil.withDB(_.tools.transaction { tx =>
-          tx.query.filter(_.toolName === "create-emit-cascade").toList.map(_.headOption)
+          tx.query.filter(_.toolName === "create-single-result").toList.map(_.headOption)
         }).map { stored =>
-          messages should have size 1
-          textOf(events).head should include("Persisted tool 'create-emit-cascade'")
-
-          results should have size 1
-          val schemas = results.head.schemas.map(_.name.value).toSet
-          schemas should contain("create-emit-cascade")
-          schemas should contain("update_script_tool")
-          schemas should contain("delete_script_tool")
+          // Exactly one MessageRole.Tool event — pairs cleanly with the
+          // create_script_tool call_id; no orphan-frame fall-through.
+          toolMessages should have size 1
+          val text = textOf(toolMessages).head
+          text should include ("Persisted tool 'create-single-result'")
+          // Schema + invocation hint inline.
+          text should include ("To invoke")
+          text should include ("create-single-result")
+          // ModeChange auto-pop to ConversationMode (Standard role —
+          // doesn't compete with the ack for the tool-result frame).
+          modeChanges should have size 1
+          modeChanges.head.mode shouldBe sigil.provider.ConversationMode
+          modeChanges.head.role shouldBe sigil.event.MessageRole.Standard
 
           stored shouldBe defined
           stored.get shouldBe a[ScriptTool]
@@ -157,14 +274,15 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           tx.query.filter(_.toolName === "update-target").toList.map(_.headOption)
         })
       } yield {
-        textOf(events).head should include("Updated tool")
+        // Bug #69 — exactly one Message(Tool) carrying the
+        // confirmation + the (possibly-updated) schema.
+        val toolMessages = events.collect { case m: Message if m.role == sigil.event.MessageRole.Tool => m }
+        toolMessages should have size 1
+        val text = textOf(toolMessages).head
+        text should include ("Updated tool 'update-target'")
+        text should include ("Current invocation shape")
         stored.get.asInstanceOf[ScriptTool].description shouldBe "v2"
         stored.get.asInstanceOf[ScriptTool].code shouldBe "\"v2\""
-        // Cascade: schemas include update + delete + the touched tool's schema.
-        val results = events.collect { case t: ToolResults => t }
-        results should have size 1
-        val names = results.head.schemas.map(_.name.value).toSet
-        names should contain allOf ("update-target", "update_script_tool", "delete_script_tool")
       }
     }
 

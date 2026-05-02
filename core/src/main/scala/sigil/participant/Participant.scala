@@ -1,7 +1,8 @@
 package sigil.participant
 
+import fabric.rw.PolyType
 import rapid.Stream
-import sigil.{PolyType, TurnContext}
+import sigil.TurnContext
 import sigil.event.Event
 import sigil.signal.Signal
 
@@ -14,6 +15,27 @@ import sigil.signal.Signal
  */
 trait Participant {
   def id: ParticipantId
+
+  /**
+   * Human-readable name surfaced in UI chips, member lists, and any
+   * "who said this" attribution. Concrete subtypes provide via either
+   * a constructor parameter (a user profile carrying a real name) or
+   * an `@serialized override def` deriving from another field
+   * ([[DefaultAgentParticipant]] derives from `id`). The trait
+   * declares it abstract so every subtype has to pick a strategy —
+   * it must surface in the subtype's [[fabric.rw.RW]] for
+   * [[fabric.define.DefType.Poly.commonFields]] to advertise it on
+   * the abstract parent in cross-language codegen.
+   */
+  def displayName: String
+
+  /**
+   * Optional avatar URL surfaced alongside [[displayName]]. Same
+   * abstract / `@serialized override` contract as [[displayName]] —
+   * subtypes pick their strategy. Returning `None` is fine, but the
+   * member must surface in the subtype's RW.
+   */
+  def avatarUrl: Option[String]
 
   /**
    * Reactive behavior — invoked by the framework dispatcher when one or
@@ -43,4 +65,4 @@ trait Participant {
   def process(context: TurnContext, triggers: Stream[Event]): Stream[Signal] = Stream.empty
 }
 
-object Participant extends PolyType[Participant]
+object Participant extends PolyType[Participant]()(using scala.reflect.ClassTag(classOf[Participant]))

@@ -23,6 +23,25 @@ object DefinitionToSchema {
 
   def apply(definition: Definition): Json = convert(definition)
 
+  /**
+   * Bug #64 — true if the schema tree rooted at `definition` contains a
+   * `DefType.Json` anywhere. Walks through `Opt`, `Arr`, `Obj`, and
+   * `Poly` recursively. Used by `OpenAIProvider` to decide whether a
+   * tool can ship with `strict: true`: OpenAI's strict mode demands
+   * every "object" branch carry closed `properties` +
+   * `additionalProperties: false`, which is mutually exclusive with
+   * "any JSON value" — strict and `Json` can't coexist, so any tool
+   * whose input contains a `Json` field opts out of strict per-tool.
+   */
+  def containsJson(definition: Definition): Boolean = definition.defType match {
+    case DefType.Json            => true
+    case DefType.Opt(t)          => containsJson(t)
+    case DefType.Arr(t)          => containsJson(t)
+    case DefType.Obj(map)        => map.values.exists(containsJson)
+    case DefType.Poly(values, _) => values.values.exists(containsJson)
+    case _                       => false
+  }
+
   private def convert(definition: Definition): Json = {
     val base = convertDefType(definition.defType)
     val withDesc = definition.description.fold(base)(d => base.merge(obj("description" -> str(d))))
@@ -58,13 +77,30 @@ object DefinitionToSchema {
       case DefType.Dec => obj("type" -> str("number"))
       case DefType.Bool => obj("type" -> str("boolean"))
       case DefType.Null => obj("type" -> str("null"))
-      case DefType.Json => obj()
+      case DefType.Json =>
+        // Empty schema = "any JSON value" — the canonical JSON-Schema
+        // shape for an unconstrained value, accepted by every
+        // provider Sigil targets.
+        //
+        // History (bug #65 reverts #63): the original concern was
+        // that OpenAI's strict-mode validator rejects `{}` inside an
+        // `anyOf` (which `Option[Json]` produces). #63 tried to fix
+        // that by emitting a typed permissive union
+        // (`type: ["string","number","integer","boolean","object","array","null"]`).
+        // That shape turned out to be rejected by OpenAI in both
+        // modes — non-strict still demands structural details for
+        // the `array` and `object` branches that "any JSON" can't
+        // supply. #64 solved the underlying issue properly by
+        // disabling strict mode for tools whose input contains
+        // `DefType.Json`; once strict is off, `{}` is accepted again.
+        // Empty stays.
+        obj()
       case DefType.Arr(t) =>
         obj("type" -> str("array"), "items" -> convert(t))
       case DefType.Opt(t) => convert(t)
       case DefType.Obj(map) =>
         objectSchema(map)
-      case DefType.Poly(values) =>
+      case DefType.Poly(values, _) =>
         polySchema(values)
     }
 

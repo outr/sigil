@@ -1,9 +1,9 @@
 package sigil.workflow
 
-import sigil.PolyType
+import fabric.rw.PolyType
 
 /**
- * Open [[sigil.PolyType]] for app-defined workflow triggers — the
+ * Open [[fabric.rw.PolyType]] for app-defined workflow triggers — the
  * external events that pause a workflow and resume it on firing.
  * Mirrors the extensibility pattern of `Mode` / `Tool` / `WorkType`:
  * apps register concrete subtypes via
@@ -47,4 +47,4 @@ trait WorkflowTrigger {
   def compile(host: _root_.sigil.Sigil): strider.step.Trigger
 }
 
-object WorkflowTrigger extends PolyType[WorkflowTrigger]
+object WorkflowTrigger extends PolyType[WorkflowTrigger]()(using scala.reflect.ClassTag(classOf[WorkflowTrigger]))

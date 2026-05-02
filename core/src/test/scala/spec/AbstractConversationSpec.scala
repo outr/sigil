@@ -8,7 +8,7 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.Conversation
 import sigil.db.Model
 import sigil.participant.{AgentParticipant, DefaultAgentParticipant}
-import sigil.provider.{GenerationSettings, Instructions, Provider}
+import sigil.provider.{GenerationSettings, Instructions, Provider, ToolPolicy}
 import sigil.testkit.{ConversationHarness, ConversationSession}
 import sigil.tool.ToolName
 import sigil.tool.core.CoreTools
@@ -54,13 +54,20 @@ trait AbstractConversationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   protected def generationSettings: GenerationSettings =
     GenerationSettings(maxOutputTokens = Some(4000), temperature = Some(0.0))
 
+  /** Tool-discovery policy. Default keeps the respond family in the immediate
+    * roster (`Standard`); local / quantised models override to
+    * [[ToolPolicy.PureDiscovery]] so every reply path goes through
+    * `find_capability` and the model can't lock onto `respond`. */
+  protected def toolPolicy: ToolPolicy = ToolPolicy.Standard
+
   protected def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
       id = TestAgent,
       modelId = modelId,
       toolNames = toolNames,
       instructions = Instructions(),
-      generationSettings = generationSettings
+      generationSettings = generationSettings,
+      tools = toolPolicy
     )
 
   protected lazy val harness: ConversationHarness =

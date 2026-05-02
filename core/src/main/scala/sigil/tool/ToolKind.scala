@@ -1,6 +1,6 @@
 package sigil.tool
 
-import sigil.PolyType
+import fabric.rw.PolyType
 
 /**
  * Open PolyType discriminating tool subtypes for client-side
@@ -23,7 +23,7 @@ trait ToolKind {
   def value: String
 }
 
-object ToolKind extends PolyType[ToolKind]
+object ToolKind extends PolyType[ToolKind]()(using scala.reflect.ClassTag(classOf[ToolKind]))
 
 /** Default kind for framework-shipped tools (respond, change_mode,
   * find_capability, etc.). Apps' static catalog tools that don't

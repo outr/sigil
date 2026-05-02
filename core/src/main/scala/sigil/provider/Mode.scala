@@ -2,7 +2,6 @@ package sigil.provider
 
 import fabric.rw.*
 import lightdb.id.Id
-import sigil.PolyType
 import sigil.conversation.ActiveSkillSlot
 
 /**
@@ -62,4 +61,4 @@ trait Mode {
   final lazy val id: Id[Mode] = Id(name)
 }
 
-object Mode extends PolyType[Mode]
+object Mode extends PolyType[Mode]()(using scala.reflect.ClassTag(classOf[Mode]))

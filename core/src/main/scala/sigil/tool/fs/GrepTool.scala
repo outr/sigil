@@ -27,18 +27,20 @@ final class GrepTool(context: FileSystemContext)
     keywords = Set("grep", "search", "regex", "find", "match", "lines")
   ) {
   override protected def executeTyped(input: GrepInput, ctx: TurnContext): Stream[Event] = Stream.force(
-    context.searchFiles(input.path, input.pattern, input.glob, input.maxMatches, input.contextLines).map { matches =>
-      val items: Vector[Json] = matches.toVector.map { m =>
-        obj(
-          "filePath"      -> str(m.filePath),
-          "lineNumber"    -> num(m.lineNumber),
-          "content"       -> str(m.content),
-          "contextBefore" -> Arr(m.contextBefore.map(str(_)).toVector),
-          "contextAfter"  -> Arr(m.contextAfter.map(str(_)).toVector)
-        )
+    WorkspacePathResolver.resolve(ctx, input.path).flatMap { base =>
+      context.searchFiles(base, input.pattern, input.glob, input.maxMatches, input.contextLines).map { matches =>
+        val items: Vector[Json] = matches.toVector.map { m =>
+          obj(
+            "filePath"      -> str(m.filePath),
+            "lineNumber"    -> num(m.lineNumber),
+            "content"       -> str(m.content),
+            "contextBefore" -> Arr(m.contextBefore.map(str(_)).toVector),
+            "contextAfter"  -> Arr(m.contextAfter.map(str(_)).toVector)
+          )
+        }
+        val payload = obj("matches" -> Arr(items), "count" -> num(matches.size))
+        Stream.emit[Event](FsToolEmit(payload, ctx))
       }
-      val payload = obj("matches" -> Arr(items), "count" -> num(matches.size))
-      Stream.emit[Event](FsToolEmit(payload, ctx))
     }
   )
 }

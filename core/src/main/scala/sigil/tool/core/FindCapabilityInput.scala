@@ -4,18 +4,20 @@ import fabric.rw.*
 import sigil.tool.ToolInput
 
 /**
- * Input for [[FindCapabilityTool]]. `keywords` is a space-separated list of
- * lowercase alphanumeric keywords describing the desired capability. The
- * app's [[sigil.Sigil.findTools]] decides how to match them against the
- * tool catalog.
+ * Input for [[FindCapabilityTool]]. `keywords` is a free-form string
+ * describing the desired capability. The tool normalises it
+ * (lowercase, drop punctuation, collapse whitespace) before handing
+ * it to the app's [[sigil.Sigil.findTools]], so the model can pass
+ * snake_case identifiers, camelCase phrases, or mixed-case prose
+ * without rejection.
  *
- * The `@pattern` constraint enforces the normalized form at generation
- * time (grammar-constrained decoders like llama.cpp honor it), so
- * downstream code can match on `keywords` directly without case folding
- * or punctuation stripping.
+ * No `@pattern` annotation here — bug #52. JSON-Schema `pattern`
+ * regexes aren't enforced by grammar-constrained decoders (llama.cpp
+ * gates JSON shape, not string contents); we used to reject
+ * snake_case input post-decode and the model would loop on the same
+ * disallowed identifier. The tool normalises explicitly instead.
  */
 case class FindCapabilityInput(
-  @description("Space-separated lowercase keywords describing the desired capability. Prefer multiple keywords for better match quality — 'send slack channel message' rather than just 'slack'. Only lowercase letters, digits, and single spaces are allowed (no punctuation).")
-  @pattern("""^[a-z0-9]+( [a-z0-9]+)*$""")
+  @description("Words describing the desired capability. Prefer multiple terms for better match quality — 'send slack channel message' rather than just 'slack'. Snake_case / camelCase identifiers are accepted; the tool lowercases and splits on non-alphanumeric runs before matching.")
   keywords: String
 ) extends ToolInput derives RW

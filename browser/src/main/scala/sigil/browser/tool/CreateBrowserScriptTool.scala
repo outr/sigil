@@ -1,12 +1,13 @@
 package sigil.browser.tool
 
+import fabric.io.JsonFormatter
 import lightdb.id.Id
 import rapid.{Stream, Task}
 import sigil.TurnContext
 import sigil.browser.{BrowserScript, BrowserSigil, CookieJar}
-import sigil.event.{Event, Message, MessageRole, MessageVisibility, ToolResults}
+import sigil.event.{Event, Message, MessageRole, MessageVisibility}
 import sigil.signal.EventState
-import sigil.tool.{JsonSchemaToDefinition, ToolExample, ToolName, TypedTool}
+import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, ToolExample, ToolName, TypedTool}
 import sigil.tool.model.ResponseContent
 
 /**
@@ -56,25 +57,29 @@ case object CreateBrowserScriptTool extends TypedTool[CreateBrowserScriptInput](
             createdBy   = Some(ctx.caller)
           )
           ctx.sigil.createTool(script).map { stored =>
+            // Bug #69 — single Message(Tool) carrying the
+            // confirmation, schema, and invocation hint. Replaces the
+            // [ack, ToolResults] cascade whose ToolResults event
+            // landed orphan-framed.
+            val schemaJson = JsonFormatter.Default(DefinitionToSchema(stored.schema.input))
+            val text = new StringBuilder
+            text.append(s"Persisted browser script '${stored.name.value}' under space '${resolvedSpace.value}' ")
+            text.append(s"(${input.steps.size} steps).\n\n")
+            text.append("To invoke on a subsequent turn, emit a tool_call with:\n")
+            text.append(s"  name: ${stored.name.value}\n")
+            text.append(s"  arguments matching this schema:\n")
+            text.append(schemaJson).append("\n\n")
+            text.append("Authoring follow-ups: update_browser_script, delete_browser_script.\n")
             val ack = Message(
               participantId  = ctx.caller,
               conversationId = ctx.conversation.id,
               topicId        = ctx.conversation.currentTopicId,
-              content        = Vector(ResponseContent.Text(
-                s"Persisted browser script '${stored.name.value}' under space '${resolvedSpace.value}' (${input.steps.size} steps)."
-              )),
+              content        = Vector(ResponseContent.Text(text.toString)),
               state          = EventState.Complete,
               role           = MessageRole.Tool,
               visibility     = MessageVisibility.Agents
             )
-            val suggestion = ToolResults(
-              schemas        = List(stored.schema, UpdateBrowserScriptTool.schema, DeleteBrowserScriptTool.schema),
-              participantId  = ctx.caller,
-              conversationId = ctx.conversation.id,
-              topicId        = ctx.conversation.currentTopicId,
-              state          = EventState.Complete
-            )
-            Stream.emits[Event](List(ack, suggestion))
+            Stream.emit[Event](ack)
           }
         }.handleError(t => Task.pure(Stream.emit[Event](errorReply(ctx,
           s"Failed to create browser script: ${t.getMessage}"))))

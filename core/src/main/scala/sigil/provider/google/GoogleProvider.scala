@@ -117,10 +117,10 @@ case class GoogleProvider(apiKey: String,
   }
 
   private def renderContents(messages: Vector[ProviderMessage]): Vector[Json] =
-    messages.map {
+    messages.flatMap {
       case ProviderMessage.System(content) =>
         // Mid-conversation system frames — fold into a user message with a marker.
-        obj("role" -> str("user"), "parts" -> arr(obj("text" -> str(s"[system] $content"))))
+        Vector(obj("role" -> str("user"), "parts" -> arr(obj("text" -> str(s"[system] $content")))))
 
       case ProviderMessage.User(blocks) =>
         val parts = blocks.map {
@@ -130,7 +130,7 @@ case class GoogleProvider(apiKey: String,
             // Gemini accepts `fileData` references; for URL inputs the shape is:
             obj("fileData" -> obj("fileUri" -> str(u.toString), "mimeType" -> str("image/png")))
         }
-        obj("role" -> str("user"), "parts" -> arr(parts*))
+        Vector(obj("role" -> str("user"), "parts" -> arr(parts*)))
 
       case ProviderMessage.Assistant(content, toolCalls) =>
         val parts = Vector.newBuilder[Json]
@@ -139,16 +139,22 @@ case class GoogleProvider(apiKey: String,
           val args = scala.util.Try(fabric.io.JsonParser(tc.argsJson)).toOption.getOrElse(obj())
           parts += obj("functionCall" -> obj("name" -> str(tc.name), "args" -> args))
         }
-        obj("role" -> str("model"), "parts" -> arr(parts.result()*))
+        Vector(obj("role" -> str("model"), "parts" -> arr(parts.result()*)))
 
       case ProviderMessage.ToolResult(toolCallId, content) =>
-        obj(
+        Vector(obj(
           "role" -> str("user"),
           "parts" -> arr(obj("functionResponse" -> obj(
             "name" -> str(toolCallId), // Gemini keys responses by name, not id
             "response" -> obj("output" -> str(content))
           )))
-        )
+        ))
+
+      case _: ProviderMessage.Reasoning =>
+        // Provider-specific reasoning state from another provider's turn
+        // (bug #61 — currently OpenAI-only). Gemini has no analogous slot;
+        // drop silently.
+        Vector.empty
     }
 
   /** Gemini's function-calling path is natively grammar-constrained —
