@@ -81,6 +81,19 @@ trait Tool extends RecordDocument[Tool] {
     * names via `suggestedFix` so the agent has an explicit next call. */
   def preconditions: List[ToolPrecondition] = Nil
 
+  /** Whether this tool requires the caller's chain to have at least
+    * one accessible memory [[sigil.SpaceId]] to be useful. When `true`,
+    * the framework filters the tool out of the agent's roster (and out
+    * of `find_capability` results) for chains where
+    * [[sigil.Sigil.accessibleSpaces]] returns empty — the tool would
+    * have no place to write to / read from anyway, and surfacing it
+    * would just waste tokens.
+    *
+    * Memory-related tools set this true (`save_memory`,
+    * `unpin_memory`, `list_pinned_memories`, etc.). Tools whose
+    * usefulness doesn't depend on space wiring leave this false. */
+  def requiresAccessibleSpaces: Boolean = false
+
   /** How long this tool's `ToolResults` frames should remain in the
     * curated turn input.
     *

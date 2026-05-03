@@ -237,26 +237,33 @@ trait Sigil {
   def profileWireRequests: Boolean = true
 
   /**
-   * Cap on the inviolable "core context" — Critical memories +
-   * static system-prompt overhead — as a fraction of the model's
-   * context window. Enforced at write time by [[persistMemory]] /
-   * [[upsertMemoryByKey]]: if persisting / upserting a Critical
-   * memory would push the core total past this share, the operation
-   * fails with [[sigil.provider.CoreContextOverflowException]]
-   * carrying diagnostics for the caller.
+   * Cap on the inviolable "core context" — pinned memories + static
+   * system-prompt overhead — as a fraction of the model's context
+   * window, enforced per-space at write time. If persisting /
+   * upserting a pinned memory would push that space's total past the
+   * cap, the operation fails with
+   * [[sigil.provider.CoreContextOverflowException]] carrying
+   * diagnostics for the caller.
    *
    * Why this exists: the framework's auto-shedding machinery (curator
    * stages + provider pre-flight gate) only works when the sheddable
    * sections (frames + retrieved memories + Information catalog +
-   * tool roster) have room. By capping the inviolable share at 50%,
-   * we guarantee at least 50% of every model's window stays available
-   * for sheddable content — making `RequestOverBudgetException`
-   * effectively unreachable in normal operation.
+   * tool roster) have room. Capping the inviolable share at 25%
+   * guarantees at least 75% of every model's window stays available
+   * for sheddable content. With the topical-retrieval mechanism
+   * shipped, most app preferences and project facts go in the
+   * sheddable bucket; only the truly atopical "always-loaded" rules
+   * pin — and they should be deliberately small.
    *
-   * Apps with thinner pinned sets can tighten (`0.35`); apps with
-   * rich personas / many compliance directives can loosen (`0.65`).
+   * Apps with rich compliance / persona pin sets (regulated industries)
+   * loosen (`0.40`+); apps with sparse pinning can tighten (`0.15`).
    */
-  def coreContextShareLimit: Double = 0.5
+  def pinnedShareLimit: Double = 0.25
+
+  /** Backwards-compatible alias for [[pinnedShareLimit]]. New code
+    * should override `pinnedShareLimit`; this exists so the
+    * exception's existing field name stays meaningful. */
+  final def coreContextShareLimit: Double = pinnedShareLimit
 
   /** Validate that a proposed pinned memory persist / upsert would not
     * push the inviolable core-context past [[coreContextShareLimit]].
@@ -423,7 +430,9 @@ trait Sigil {
     import sigil.tool.discovery.{CapabilityMatch, CapabilityStatus, CapabilityType}
     for {
       rawTools <- findTools(request)
-      tools    = rawTools.filter(t => sigil.tool.DiscoveryFilter.passesPolicy(t, request.mode.tools))
+      tools    = rawTools
+        .filter(t => sigil.tool.DiscoveryFilter.passesPolicy(t, request.mode.tools))
+        .filter(t => !t.requiresAccessibleSpaces || request.callerSpaces.nonEmpty)
       modes    <- findModes(request)
       skills   <- findSkills(request)
       memories <- findCapabilitiesMemories(request)
@@ -1100,7 +1109,15 @@ trait Sigil {
         // we want field-by-field merge later that lives here).
         genSettings  = chosen.map(_.settings).getOrElse(agent.generationSettings)
         p           <- providerFor(modelId, effectiveChain)
-        t           <- Task.sequence(effectiveNames.map(n => findTools.byName(n))).map(_.flatten.toVector)
+        rawTools    <- Task.sequence(effectiveNames.map(n => findTools.byName(n))).map(_.flatten.toVector)
+        // Filter out memory tools when the chain has no accessible
+        // spaces — surfacing `save_memory` / `unpin_memory` /
+        // `list_pinned_memories` to an agent that has nowhere to write
+        // would just waste tokens on tool descriptions the agent
+        // would fail to use.
+        accessible  <- accessibleSpaces(effectiveChain)
+        t            = if (accessible.isEmpty) rawTools.filterNot(_.requiresAccessibleSpaces)
+                        else rawTools
         // Resolve the agent's roles for this turn. Static agents return
         // their declared `roles` field; DB-backed agents (e.g. Voidcraft
         // personas) consult persistence here. Empty result is treated as

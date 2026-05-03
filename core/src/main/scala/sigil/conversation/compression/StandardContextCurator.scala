@@ -50,7 +50,7 @@ case class StandardContextCurator(sigil: Sigil,
                                   budget: ContextBudget = Percentage(0.8),
                                   keepMinimum: Int = 4,
                                   tokenizer: Tokenizer = HeuristicTokenizer,
-                                  criticalShareWarningThreshold: Double = 0.30) extends ContextCurator {
+                                  pinnedShareWarningThreshold: Double = 0.20) extends ContextCurator {
 
   override def curate(view: ConversationView,
                       modelId: Id[Model],
@@ -99,7 +99,7 @@ case class StandardContextCurator(sigil: Sigil,
           Task.pure(tentative)
       }
       result <- modelOpt match {
-        case Some(model) => attachBudgetWarning(shed, model, memoryResult)
+        case Some(model) => attachBudgetWarning(shed, model, memoryResult, modelId, chain, postBlockView.conversationId)
         case None        => Task.pure(shed)
       }
     } yield result
@@ -217,39 +217,61 @@ case class StandardContextCurator(sigil: Sigil,
     }
   }
 
-  /** Inject a "Conversation budget" entry into [[TurnInput.extraContext]]
-    * when this turn's resolved Critical memories occupy more than
-    * [[criticalShareWarningThreshold]] of the model's context. The
-    * agent reads this on its next turn alongside the rest of the system
-    * prompt; if the user asks "what's filling my context?" or the
-    * agent decides to mention proactively, the breakdown is right
-    * there. Single entry, replaced each turn — no accumulation, no
-    * throttling needed. */
+  /** When this turn's resolved pinned memories occupy more than
+    * [[pinnedShareWarningThreshold]] of the model's context, do two
+    * things:
+    *   1. Inject a `_budgetWarning` entry into [[TurnInput.extraContext]]
+    *      so the agent reads the breakdown on its next turn (drives the
+    *      "list_pinned_memories → respond_options" flow when the user
+    *      asks).
+    *   2. Publish a [[_root_.sigil.signal.PinnedMemoryBudgetWarning]] Notice
+    *      so apps subscribing to `signals` can surface a UI banner
+    *      ("Pinned memories exceed N%") without waiting for the agent
+    *      to mention it.
+    *
+    * Single check per turn, no throttling state — re-emits whenever
+    * the threshold is exceeded. Apps that want throttling apply it on
+    * the subscriber side. */
   private def attachBudgetWarning(turnInput: TurnInput,
                                   model: Model,
-                                  memResult: MemoryRetrievalResult): Task[TurnInput] =
+                                  memResult: MemoryRetrievalResult,
+                                  modelId: Id[Model],
+                                  chain: List[ParticipantId],
+                                  conversationId: Id[_root_.sigil.conversation.Conversation]): Task[TurnInput] =
     if (memResult.criticalMemories.isEmpty) Task.pure(turnInput)
-    else resolveCriticalForWarning(memResult).map { criticals =>
-      val criticalTokens = TokenEstimator.estimateMemories(criticals, tokenizer)
+    else resolveCriticalForWarning(memResult).flatMap { pinnedMemories =>
+      val pinnedTokens = TokenEstimator.estimateMemories(pinnedMemories, tokenizer)
       val ctxLen = model.contextLength.toInt
-      if (ctxLen <= 0 || criticalTokens.toDouble / ctxLen <= criticalShareWarningThreshold) turnInput
+      if (ctxLen <= 0 || pinnedTokens.toDouble / ctxLen <= pinnedShareWarningThreshold) Task.pure(turnInput)
       else {
-        val pct = (criticalTokens.toDouble / ctxLen * 100).toInt
-        val top = criticals
+        val pct = (pinnedTokens.toDouble / ctxLen * 100).toInt
+        val sharePct = pinnedTokens.toDouble / ctxLen
+        val ranked = pinnedMemories
           .map { m =>
             val rendered = if (m.summary.trim.nonEmpty) m.summary else m.fact
             val key = if (m.key.nonEmpty) m.key else m._id.value
             (key, tokenizer.count(rendered))
           }
           .sortBy(-_._2)
-          .take(3)
-          .map { case (k, n) => s"$k @${n} tok" }
-          .mkString(", ")
+        val top3 = ranked.take(3)
+        val topRender = top3.map { case (k, n) => s"$k @${n} tok" }.mkString(", ")
         val message =
-          s"Your critical directives use ~$pct% of this model's context window ($criticalTokens / $ctxLen tok; top: $top). " +
+          s"Your pinned directives use ~$pct% of this model's context window ($pinnedTokens / $ctxLen tok; top: $topRender). " +
             s"If the user wants to review pinned items, call `list_pinned_memories` and offer them via `respond_options`. " +
-            s"Use `unpin_memory(key)` to demote ones the user no longer wants."
-        turnInput.copy(extraContext = turnInput.extraContext + (ContextKey("_budgetWarning") -> message))
+            s"Use `unpin_memory(key)` to remove ones the user no longer wants."
+        val notice = _root_.sigil.signal.PinnedMemoryBudgetWarning(
+          conversationId = conversationId,
+          modelId = modelId,
+          participantId = chain.lastOption.getOrElse(chain.headOption.orNull),
+          totalTokens = pinnedTokens,
+          contextLength = ctxLen,
+          sharePct = sharePct,
+          largestContributors = top3.map { case (k, n) => _root_.sigil.signal.PinnedMemoryShare(k, n) }.toList,
+          insights = Nil
+        )
+        sigil.publish(notice).map { _ =>
+          turnInput.copy(extraContext = turnInput.extraContext + (ContextKey("_budgetWarning") -> message))
+        }
       }
     }
 

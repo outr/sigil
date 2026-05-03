@@ -37,6 +37,7 @@ case object ListPinnedMemoriesTool extends TypedTool[ListPinnedMemoriesInput](
   keywords = Set("list", "pinned", "memories", "directives", "context", "review")
 ) {
   override def resultTtl: Option[Int] = Some(0)
+  override val requiresAccessibleSpaces: Boolean = true
 
   override protected def executeTyped(input: ListPinnedMemoriesInput, context: TurnContext): Stream[Event] =
     Stream.force(collect(input, context).map { body =>
