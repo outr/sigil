@@ -108,7 +108,7 @@ class StandardMemoryExtractorSpec extends AsyncWordSpec with AsyncTaskSpec with 
         userMessage = "dummy user message (filter bypassed)",
         agentResponse = "dummy agent response"
       ).map { produced =>
-        produced.map(_.key) should contain allOf ("user.ui.theme", "user.time_zone")
+        produced.flatMap(_.key) should contain allOf ("user.ui.theme", "user.time_zone")
         produced.foreach { m =>
           m.status shouldBe sigil.conversation.MemoryStatus.Pending
           m.conversationId shouldBe Some(convId)
@@ -128,7 +128,7 @@ class StandardMemoryExtractorSpec extends AsyncWordSpec with AsyncTaskSpec with 
         TestSigil, convId, modelId, List(TestUser, TestAgent),
         userMessage = "dummy", agentResponse = "dummy"
       ).map { produced =>
-        produced.map(_.key) shouldBe List("valid.key")
+        produced.flatMap(_.key) shouldBe List("valid.key")
       }
     }
   }
