@@ -10,7 +10,7 @@ import sigil.conversation.compression.MemoryContextCompressor
 import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
 import sigil.event.Event
 import sigil.provider.{CallId, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason}
-import sigil.tool.consult.{ExtractMemoriesWithKeysInput, ExtractedMemory, SummarizationInput}
+import sigil.tool.consult.{ExtractMemoriesInput, ExtractedMemory, SummarizationInput}
 import sigil.vector.InMemoryVectorIndex
 import spice.http.HttpRequest
 
@@ -65,12 +65,12 @@ class MemoryContextCompressorSpec extends AsyncWordSpec with AsyncTaskSpec with 
     override def call(input: ProviderCall): Stream[ProviderEvent] = {
       val toolName = input.tools.headOption.map(_.schema.name.value).getOrElse("")
       toolName match {
-        case "extract_memories_with_keys" =>
+        case "extract_memories" =>
           val callId = CallId("extract")
           val memories = facts.map(f => ExtractedMemory(content = f, label = ""))
           Stream.emits(List(
             ProviderEvent.ToolCallStart(callId, toolName),
-            ProviderEvent.ToolCallComplete(callId, ExtractMemoriesWithKeysInput(memories)),
+            ProviderEvent.ToolCallComplete(callId, ExtractMemoriesInput(memories)),
             ProviderEvent.Done(StopReason.ToolCall)
           ))
         case "summarize_conversation" =>

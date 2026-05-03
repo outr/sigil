@@ -21,4 +21,4 @@ case class ExtractedMemory(content: String,
                            key: Option[String] = None,
                            tags: List[String] = Nil) derives RW
 
-case class ExtractMemoriesWithKeysInput(memories: List[ExtractedMemory]) extends ToolInput derives RW
+case class ExtractMemoriesInput(memories: List[ExtractedMemory]) extends ToolInput derives RW

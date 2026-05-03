@@ -72,5 +72,28 @@ class RrfFuseSpec extends AnyWordSpec with Matchers {
       fusedSmall shouldBe ranking
       fusedLarge shouldBe ranking
     }
+
+    "respect a per-document weight — low-confidence docs lose ties to high-confidence peers" in {
+      // Two docs with identical RRF positions; weight pushes one ahead
+      // and the other to the back. This locks the new confidence-aware
+      // path so a future regression that drops the multiplier is caught.
+      val rank1 = List("a", "b", "c")
+      val rank2 = List("a", "b", "c")
+      val weight: String => Double = {
+        case "a" => 0.2
+        case "b" => 1.0
+        case "c" => 0.5
+      }
+      val fused = StandardMemoryRetriever.rrfFuse(List(rank1, rank2), k, weight)
+      // Without weights, the order would be a, b, c (a wins both ranks).
+      // With weights at k=60 the contributions are roughly:
+      //   b: 2.0/62 ≈ 0.0323
+      //   c: 1.0/63 ≈ 0.0159
+      //   a: 0.4/61 ≈ 0.00656
+      // So "b" should leapfrog "a", and "a" sinks to last because its
+      // heavy weight discount overwhelms its rank-1 boost.
+      fused.indexOf("b") should be < fused.indexOf("a")
+      fused.last shouldBe "a"
+    }
   }
 }

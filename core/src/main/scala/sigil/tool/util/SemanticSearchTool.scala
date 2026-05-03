@@ -64,14 +64,20 @@ case object SemanticSearchTool extends TypedTool[SemanticSearchInput](
         case Some(k) => str(k)
         case None    => fabric.Null
       }
+      val justificationJson: Json = m.justification match {
+        case Some(j) => str(j)
+        case None    => fabric.Null
+      }
       obj(
-        "memoryId"  -> str(m._id.value),
-        "key"       -> keyJson,
-        "label"     -> str(m.label),
-        "summary"   -> str(m.summary),
-        "fact"      -> str(m.fact),
-        "pinned"    -> (if (m.pinned) fabric.bool(true) else fabric.bool(false)),
-        "archived"  -> (if (m.validUntil.isDefined) fabric.bool(true) else fabric.bool(false))
+        "memoryId"      -> str(m._id.value),
+        "key"           -> keyJson,
+        "label"         -> str(m.label),
+        "summary"       -> str(m.summary),
+        "fact"          -> str(m.fact),
+        "pinned"        -> (if (m.pinned) fabric.bool(true) else fabric.bool(false)),
+        "archived"      -> (if (m.validUntil.isDefined) fabric.bool(true) else fabric.bool(false)),
+        "confidence"    -> num(m.confidence),
+        "justification" -> justificationJson
       )
     }
     JsonFormatter.Compact(obj("query" -> str(query), "memories" -> Arr(items), "count" -> num(hits.size)))

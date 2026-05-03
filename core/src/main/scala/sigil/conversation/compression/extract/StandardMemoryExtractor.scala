@@ -7,7 +7,7 @@ import sigil.conversation.{ContextMemory, Conversation, MemorySource, MemoryStat
 import sigil.SpaceId
 import sigil.db.Model
 import sigil.participant.ParticipantId
-import sigil.tool.consult.{ConsultTool, ExtractMemoriesWithKeysInput, ExtractMemoriesWithKeysTool}
+import sigil.tool.consult.{ConsultTool, ExtractMemoriesInput, ExtractMemoriesTool}
 
 /**
  * Per-turn memory extractor:
@@ -15,7 +15,7 @@ import sigil.tool.consult.{ConsultTool, ExtractMemoriesWithKeysInput, ExtractMem
  *   1. Runs [[filter.isHighSignal]] on the user message; short-
  *      circuits with `Nil` on low-signal turns (no LLM call).
  *   2. Consults the configured model with
- *      [[ExtractMemoriesWithKeysTool]] wrapping the user message +
+ *      [[ExtractMemoriesTool]] wrapping the user message +
  *      agent response.
  *   3. For each extracted memory, resolves the target
  *      [[SpaceId]] via `spaceIdFor`, then calls
@@ -48,18 +48,18 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
       case Some(space) =>
         val userPrompt =
           s"""Extract durable memories from the following exchange. Output via the
-             |`extract_memories_with_keys` tool.
+             |`extract_memories` tool.
              |
              |USER: $userMessage
              |
              |AGENT: $agentResponse""".stripMargin
-        ConsultTool.invoke[ExtractMemoriesWithKeysInput](
+        ConsultTool.invoke[ExtractMemoriesInput](
           sigil = sigil,
           modelId = modelId,
           chain = chain,
           systemPrompt = systemPrompt,
           userPrompt = userPrompt,
-          tool = ExtractMemoriesWithKeysTool
+          tool = ExtractMemoriesTool
         ).flatMap {
           case None => Task.pure(Nil)
           case Some(result) =>

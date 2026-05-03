@@ -9,7 +9,7 @@ import sigil.conversation.Conversation
 import sigil.conversation.compression.extract.{HighSignalFilter, StandardMemoryExtractor}
 import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
 import sigil.provider.{CallId, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason}
-import sigil.tool.consult.{ExtractedMemory, ExtractMemoriesWithKeysInput}
+import sigil.tool.consult.{ExtractedMemory, ExtractMemoriesInput}
 import spice.http.HttpRequest
 
 /**
@@ -58,11 +58,11 @@ class StandardMemoryExtractorSpec extends AsyncWordSpec with AsyncTaskSpec with 
     override def call(input: ProviderCall): Stream[ProviderEvent] = {
       val toolName = input.tools.headOption.map(_.schema.name.value).getOrElse("")
       toolName match {
-        case "extract_memories_with_keys" =>
+        case "extract_memories" =>
           val callId = CallId("extract-keys")
           Stream.emits(List(
             ProviderEvent.ToolCallStart(callId, toolName),
-            ProviderEvent.ToolCallComplete(callId, ExtractMemoriesWithKeysInput(memories)),
+            ProviderEvent.ToolCallComplete(callId, ExtractMemoriesInput(memories)),
             ProviderEvent.Done(StopReason.ToolCall)
           ))
         case other =>

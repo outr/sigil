@@ -28,13 +28,13 @@ Triggered by the curator when the rolling context exceeds its budget. Target spa
 `StandardMemoryExtractor` runs after every agent `Done` event on a background fiber. It:
 
 1. Runs `HighSignalFilter.isHighSignal(userMessage)` to skip low-value turns cheaply (no LLM call on small-talk).
-2. Consults the model with `ExtractMemoriesWithKeysTool` — yields structured `(key, label, content, tags)` entries.
+2. Consults the model with `ExtractMemoriesTool` — yields structured `(key, label, content, tags)` entries.
 3. Persists each via `Sigil.upsertMemoryByKey` so the framework automatically versions repeat facts across turns (same `key`, different `content` → supersedes the prior).
 
 Wired via `Sigil.memoryExtractor` (default `NoOpMemoryExtractor`); apps that want this override the hook with `StandardMemoryExtractor` (or a custom implementation).
 
 **When:** after every agent turn, fire-and-forget.
-**Extracted by:** `ExtractMemoriesWithKeysTool` (keyed, supports versioning).
+**Extracted by:** `ExtractMemoriesTool` (keyed, supports versioning).
 **Storage:** `ContextMemory` with a semantic `key`, `status = Pending` by default (apps with an approval UX transition to `Approved` via `Sigil.approveMemory`).
 
 ## When to wire which

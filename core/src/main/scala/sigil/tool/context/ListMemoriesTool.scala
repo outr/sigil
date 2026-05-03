@@ -128,13 +128,19 @@ case object ListMemoriesTool extends TypedTool[ListMemoriesInput](
     val tokenizer = HeuristicTokenizer
     val items = page.map { m =>
       val rendered = if (m.summary.trim.nonEmpty) m.summary else m.fact
+      val justificationJson: fabric.Json = m.justification match {
+        case Some(j) => str(j)
+        case None    => fabric.Null
+      }
       obj(
-        "key" -> str(m.key.getOrElse(m._id.value)),
-        "label" -> str(m.label),
-        "summary" -> str(m.summary),
-        "tokens" -> num(tokenizer.count(rendered)),
-        "spaceId" -> str(m.spaceId.value),
-        "pinned" -> bool(m.pinned)
+        "key"           -> str(m.key.getOrElse(m._id.value)),
+        "label"         -> str(m.label),
+        "summary"       -> str(m.summary),
+        "tokens"        -> num(tokenizer.count(rendered)),
+        "spaceId"       -> str(m.spaceId.value),
+        "pinned"        -> bool(m.pinned),
+        "confidence"    -> num(m.confidence),
+        "justification" -> justificationJson
       )
     }
     val pageInfo = obj(

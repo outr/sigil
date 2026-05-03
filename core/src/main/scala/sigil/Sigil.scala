@@ -3679,6 +3679,7 @@ trait Sigil {
       _ <- cache.loadFromDisk
       _ <- validateModeSkillSizes()
       _ <- startModelRefresh()
+      _ <- startExpiredMemorySweep()
     } yield SigilInstance(
       config = config,
       db = db
@@ -3738,6 +3739,71 @@ trait Sigil {
         else safeRefresh.flatMap(_ => Task.sleep(interval)).flatMap(_ => loop)
       Task { loop.startUnit(); () }
   }
+
+  /**
+   * Kick off the periodic expired-memory sweep. First sweep runs
+   * immediately; subsequent ones every [[expiredMemorySweepInterval]].
+   * Hard-deletes every [[ContextMemory]] whose `expiresAt` is set and
+   * not in the future — the durable record AND the vector-index point
+   * are removed (the data was already invisible to retrieval since
+   * `StandardMemoryRetriever.isExpired` filters at every turn; the
+   * sweep just reclaims the storage). Failures are logged and
+   * swallowed.
+   */
+  private def startExpiredMemorySweep(): Task[Unit] = expiredMemorySweepInterval match {
+    case None => Task.unit
+    case Some(interval) =>
+      def safeSweep: Task[Unit] = sweepExpiredMemories(Timestamp()).map { count =>
+        if (count > 0) scribe.info(s"Expired-memory sweep removed $count record(s)")
+      }.handleError { e =>
+        Task { scribe.warn(s"Expired-memory sweep failed: ${e.getMessage}"); () }
+      }
+      def loop: Task[Unit] =
+        if (isShutdown) Task.unit
+        else safeSweep.flatMap(_ => Task.sleep(interval)).flatMap(_ => loop)
+      Task { loop.startUnit(); () }
+  }
+
+  /**
+   * One-shot sweep — deletes every memory with `expiresAt` set and
+   * not in the future. Returns the count removed. Apps with retention
+   * policies that need a different cadence override
+   * [[expiredMemorySweepInterval]]; apps that need a custom sweep
+   * shape (e.g. preserve archived versions) override this method.
+   */
+  def sweepExpiredMemories(now: Timestamp): Task[Int] =
+    withDB(_.memories.transaction { tx =>
+      // RangeLong on an Option[Long]-projected field naturally
+      // excludes None values (only rows whose projected `Some(value)`
+      // lands in the range match). `from = None` means "no lower
+      // bound" so any expiresAt up to `now` is in scope.
+      tx.query
+        .filter(_ => lightdb.filter.Filter.RangeLong[ContextMemory](
+          fieldName = ContextMemory.expiresAtValue.name,
+          from = None,
+          to = Some(now.value)
+        ))
+        .toList
+        .flatMap { expired =>
+          Task.sequence(expired.map(m => forgetMemoryById(m._id))).map(_ => expired.size)
+        }
+    })
+
+  /** Hard-delete a memory by id. Removes the row from the store AND
+    * the corresponding vector-index point (when wired). Used by the
+    * expired-memory sweep; apps can call directly for ad-hoc deletes. */
+  def forgetMemoryById(id: Id[ContextMemory]): Task[Boolean] =
+    withDB(_.memories.transaction { tx =>
+      tx.get(id).flatMap {
+        case None    => Task.pure(false)
+        case Some(_) => tx.delete(id).map(_ => true)
+      }
+    }).flatMap { removed =>
+      if (!removed || !vectorWired) Task.pure(removed)
+      else vectorIndex.delete(VectorPointId(id.value)).map(_ => removed).handleError { e =>
+        Task { scribe.warn(s"Vector delete failed during forgetMemoryById(${id.value}): ${e.getMessage}"); removed }
+      }
+    }
 
   def withDB[Return](f: DB => Task[Return]): Task[Return] = instance.flatMap(sigil => f(sigil.db))
 
@@ -3833,6 +3899,18 @@ trait Sigil {
    * leave `None` and call `OpenRouter.refreshModels` manually.
    */
   def modelRefreshInterval: Option[FiniteDuration] = None
+
+  /**
+   * How often the framework hard-deletes expired memories
+   * (`expiresAt` set and not in the future). Default `None` —
+   * expired records simply stay invisible to retrieval (filtered
+   * per turn by [[StandardMemoryRetriever.isExpired]]) but the rows
+   * persist forever. Apps that want hard eviction (DB rows + vector
+   * index points) opt in by overriding to e.g. `Some(1.day)`. Apps
+   * that want a different cadence override; apps that want a custom
+   * sweep shape override [[sweepExpiredMemories]] directly.
+   */
+  def expiredMemorySweepInterval: Option[FiniteDuration] = None
 
   /**
    * In-memory model registry — the canonical source of catalog
