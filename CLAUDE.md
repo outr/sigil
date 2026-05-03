@@ -67,7 +67,7 @@ Codegen / schema-introspection tasks (Dart generator, OpenAPI dumper) call `poly
 
 `publish(signal)` is the single ingress; it is a three-level pipeline plus framework-internal steps:
 
-1. **Inbound transforms** (`Sigil.inboundTransforms: List[InboundTransform]`) — rewrite the signal *pre-persist*. Runs on the hot path; implementations should be fast. Default: `[LocationCaptureTransform]`.
+1. **Inbound transforms** (`Sigil.inboundTransforms: List[InboundTransform]`) — rewrite the signal *pre-persist*. Runs on the hot path; implementations should be fast. Default: `[LocationCaptureTransform, ContentExternalizationTransform]` (the second pushes oversized `ResponseContent` blocks into `storageProvider` so the event store stays lean).
 2. *(Framework: persist → projection → view → mode-skill → stop-dispatch.)*
 3. **Broadcast** — the signal is emitted into `SignalHub`, a multicast dispatcher. `Sigil.signals: Stream[Signal]` returns a fresh subscriber per call (each with its own bounded queue; slow subscribers drop oldest with a warn, don't block peers).
 4. **Per-viewer stream** — `Sigil.signalsFor(viewer): Stream[Signal]` first drops signals via `Sigil.canSee(signal, viewer)` (hard scope rule, not mutate-only — see [[MessageVisibility]] below), then folds survivors through `viewerTransforms: List[ViewerTransform]` for redaction. Different viewers can see different versions. Defaults: `canSee` reads `Event.visibility`; `viewerTransforms = [RedactLocationTransform]` strips sender-private `Message.location`. Deltas always pass `canSee`; client UIs must ignore deltas whose target event was filtered.
