@@ -428,6 +428,18 @@ The framework guarantees no `HTTP 400 — context too long` from the model reach
 
 **Phase 0 instrumentation**: `RequestProfiler` + the bench scenarios under `benchmark/src/main/scala/bench/contextprofile/` produce per-section reports in `benchmark/profiles/`. Run when iterating on shed policy or evaluating downstream apps' context shape.
 
+### Observability + cost tracking
+
+Sigil ships the data; apps wire the surfaces. The framework stays policy-neutral on metric backends (Prometheus / OTEL / Datadog), pricing schedules, and aggregation granularity (per-conversation vs per-user vs per-day) — each of those is an app decision. The primitives Sigil exposes:
+
+- **Per-call token usage** — `ProviderEvent.Usage(TokenUsage(promptTokens, completionTokens, totalTokens))` flows for every settled provider call. The orchestrator folds it into the in-flight `MessageDelta(usage = Some(...))`, so settled `Message.usage` carries the per-turn count. Every provider (OpenAI / Anthropic / Google / DeepSeek / llama.cpp) parses this from its native shape.
+- **Per-call cost computation** — `Model.pricing` carries `prompt: BigDecimal` and `completion: BigDecimal` per million tokens. Apps multiply `Message.usage * Model.pricing` for dollar cost per turn.
+- **Cumulative aggregation** — apps register a `SettledEffect` on `Sigil.settledEffects` that pattern-matches `Message` events with `usage`, accumulates into their preferred store (Postgres counter, Prometheus gauge, OTEL Histogram), and renders dashboards / enforces caps.
+- **Wire-section breakdown** — `WireRequestProfile` Notice (auto-emitted when `Sigil.profileWireRequests = true`, default ON) carries per-section token contribution + `ContextManagementInsight`s. Apps subscribe via `signals` filtered to `WireRequestProfile`.
+- **Correlation IDs** — `TurnContext.correlationId` (default fresh) ties together the wire call + tool execution + settled effects within one turn. Apps fronting Sigil with their own ingress (HTTP server, message bus) construct the `TurnContext` with a `correlationId` derived from the inbound request id so logs / traces share one id across the entire flow.
+
+Sigil does NOT ship Prometheus / OTEL exporters, distributed tracing span propagation, scribe MDC integration, or pre-built cost dashboards. Those are app-side wiring on top of the primitives above.
+
 ## Conventions
 
 - **One top-level class per file.** Enums/traits too. Companion objects may co-locate. (User memory: `feedback_one_class_per_file.md`.)
