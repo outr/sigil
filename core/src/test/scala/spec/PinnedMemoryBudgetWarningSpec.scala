@@ -101,7 +101,7 @@ class PinnedMemoryBudgetWarningSpec extends AsyncWordSpec with AsyncTaskSpec wit
         turnInput.extraContext should contain key (key)
         val msg = turnInput.extraContext(key)
         msg should include("pinned directives")
-        msg should include("list_pinned_memories")
+        msg should include("list_memories(pinned=true)")
       }
     }
 

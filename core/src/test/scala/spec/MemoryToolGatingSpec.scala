@@ -10,7 +10,7 @@ import sigil.tool.discovery.CapabilityType
 
 /**
  * Memory-related tools (`save_memory`, `unpin_memory`,
- * `list_pinned_memories`, …) declare `requiresAccessibleSpaces = true`
+ * `list_memories`, …) declare `requiresAccessibleSpaces = true`
  * because they need a place to write to / read from. The framework's
  * roster computation (`runAgentTurn`) and discovery path
  * (`findCapabilities`) filter them out for chains where
@@ -65,7 +65,7 @@ class MemoryToolGatingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   "Tool.requiresAccessibleSpaces" should {
     "be true for the framework memory tools" in Task {
       sigil.tool.util.SaveMemoryTool(GlobalSpace).requiresAccessibleSpaces shouldBe true
-      sigil.tool.context.ListPinnedMemoriesTool.requiresAccessibleSpaces shouldBe true
+      sigil.tool.context.ListMemoriesTool.requiresAccessibleSpaces shouldBe true
       sigil.tool.context.UnpinMemoryTool.requiresAccessibleSpaces shouldBe true
     }
 

@@ -6,10 +6,11 @@ import sigil.SpaceId.given
 import sigil.tool.ToolInput
 
 /**
- * Input for the `list_memories` tool. Generalisation of
- * [[ListPinnedMemoriesInput]] — surfaces every memory the caller can
- * see, with optional filters for space subset, pinned status, and a
- * substring query. Paginated via `offset` + `limit`.
+ * Input for the `list_memories` tool — surfaces every memory the
+ * caller can see, with optional filters for space subset, pinned
+ * status, and a substring query. Paginated via `offset` + `limit`.
+ * Pass `pinned = Some(true)` for the "review my pinned directives"
+ * flow.
  *
  * @param spaces optional space filter; empty = every space the chain
  *               can access.

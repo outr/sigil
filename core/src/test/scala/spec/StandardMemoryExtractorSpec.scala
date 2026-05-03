@@ -89,7 +89,10 @@ class StandardMemoryExtractorSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   "StandardMemoryExtractor" should {
     "short-circuit with Nil when the filter rejects the message" in {
-      val extractor = extractorFor(List(ExtractedMemory("k", "l", "c")), filter = RejectAll)
+      val extractor = extractorFor(
+        List(ExtractedMemory(content = "c", label = "l", key = Some("k"))),
+        filter = RejectAll
+      )
       extractor.extract(
         TestSigil, convId, modelId, List(TestUser, TestAgent),
         userMessage = "hi",
@@ -99,8 +102,10 @@ class StandardMemoryExtractorSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
     "persist one memory per extracted entry with pending status" in {
       val memories = List(
-        ExtractedMemory("user.ui.theme", "UI theme", "User prefers dark mode.", List("preference")),
-        ExtractedMemory("user.time_zone", "Time zone", "User lives in US/Pacific.")
+        ExtractedMemory(content = "User prefers dark mode.", label = "UI theme",
+          key = Some("user.ui.theme"), tags = List("preference")),
+        ExtractedMemory(content = "User lives in US/Pacific.", label = "Time zone",
+          key = Some("user.time_zone"))
       )
       val extractor = extractorFor(memories)
       extractor.extract(
@@ -117,17 +122,19 @@ class StandardMemoryExtractorSpec extends AsyncWordSpec with AsyncTaskSpec with 
       }
     }
 
-    "skip entries with empty key or content" in {
+    "skip entries with empty content; persist keyless entries as new records" in {
       val memories = List(
-        ExtractedMemory("valid.key", "Label", "Good content"),
-        ExtractedMemory("", "no key", "bad"),
-        ExtractedMemory("empty.content", "empty", "")
+        ExtractedMemory(content = "Good content", label = "Label", key = Some("valid.key")),
+        ExtractedMemory(content = "Keyless but valid content", label = "Note", key = None),
+        ExtractedMemory(content = "", label = "empty", key = Some("empty.content"))
       )
       val extractor = extractorFor(memories)
       extractor.extract(
         TestSigil, convId, modelId, List(TestUser, TestAgent),
         userMessage = "dummy", agentResponse = "dummy"
       ).map { produced =>
+        produced.map(_.fact) should contain allOf ("Good content", "Keyless but valid content")
+        produced.map(_.fact) should not contain ""
         produced.flatMap(_.key) shouldBe List("valid.key")
       }
     }

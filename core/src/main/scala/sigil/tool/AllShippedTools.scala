@@ -1,10 +1,10 @@
 package sigil.tool
 
 import sigil.SpaceId
-import sigil.tool.consult.{ConsultTool, ExtractMemoriesTool, ExtractMemoriesWithKeysTool, RerankTool, SummarizationTool}
+import sigil.tool.consult.{ConsultTool, ExtractMemoriesWithKeysTool, RerankTool, SummarizationTool}
 import sigil.tool.core.ChangeModeTool
 import sigil.tool.fs.{BashTool, DeleteFileTool, EditFileTool, FileSystemContext, GlobTool, GrepTool, ReadFileTool, WriteFileTool}
-import sigil.tool.memory.{ForgetTool, MemoryHistoryTool, RecallTool, RememberTool}
+import sigil.tool.memory.{ForgetMemoryTool, MemoryHistoryTool}
 import sigil.tool.util.{LookupTool, SaveMemoryTool, SearchConversationTool, SemanticSearchTool, SleepTool, SystemStatsTool}
 import sigil.tool.web.WebFetchTool
 
@@ -68,15 +68,12 @@ object AllShippedTools {
     ChangeModeTool,
     // Consult / classifier helpers (per-turn one-shot agents).
     ConsultTool,
-    ExtractMemoriesTool,
     ExtractMemoriesWithKeysTool,
     RerankTool,
     SummarizationTool,
     // Memory-store CRUD.
-    ForgetTool,
+    ForgetMemoryTool,
     MemoryHistoryTool,
-    RecallTool,
-    RememberTool,
     // Lookup / search / housekeeping.
     LookupTool,
     new SaveMemoryTool(space),

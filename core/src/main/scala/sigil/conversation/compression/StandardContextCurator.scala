@@ -222,8 +222,8 @@ case class StandardContextCurator(sigil: Sigil,
     * things:
     *   1. Inject a `_budgetWarning` entry into [[TurnInput.extraContext]]
     *      so the agent reads the breakdown on its next turn (drives the
-    *      "list_pinned_memories → respond_options" flow when the user
-    *      asks).
+    *      "list_memories(pinned=true) → respond_options" flow when the
+    *      user asks).
     *   2. Publish a [[_root_.sigil.signal.PinnedMemoryBudgetWarning]] Notice
     *      so apps subscribing to `signals` can surface a UI banner
     *      ("Pinned memories exceed N%") without waiting for the agent
@@ -257,7 +257,7 @@ case class StandardContextCurator(sigil: Sigil,
         val topRender = top3.map { case (k, n) => s"$k @${n} tok" }.mkString(", ")
         val message =
           s"Your pinned directives use ~$pct% of this model's context window ($pinnedTokens / $ctxLen tok; top: $topRender). " +
-            s"If the user wants to review pinned items, call `list_pinned_memories` and offer them via `respond_options`. " +
+            s"If the user wants to review pinned items, call `list_memories(pinned=true)` and offer them via `respond_options`. " +
             s"Use `unpin_memory(key)` to remove ones the user no longer wants."
         val notice = _root_.sigil.signal.PinnedMemoryBudgetWarning(
           conversationId = conversationId,

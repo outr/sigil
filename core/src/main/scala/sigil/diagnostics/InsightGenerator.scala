@@ -60,7 +60,7 @@ object InsightGenerator {
         level = InsightLevel.Recommendation,
         category = InsightCategory.Memory,
         message = f"Critical directives are ${criticalTokens.toDouble / total * 100}%.0f%% of your context (top: $topStr)",
-        suggestedAction = Some("list_pinned_memories")
+        suggestedAction = Some("list_memories(pinned=true)")
       )
     }
 

@@ -28,5 +28,5 @@ final class RequestOverBudgetException(val estimatedTokens: Int,
   extends RuntimeException(
     s"Provider request estimated at $estimatedTokens tokens exceeds context window of $contextLength " +
       s"for model ${modelId.value} after all auto-shedding. Critical memories are inviolable; review pinned " +
-      s"directives via `list_pinned_memories` and unpin those no longer needed via `unpin_memory(key)`."
+      s"directives via `list_memories(pinned=true)` and unpin those no longer needed via `unpin_memory(key)`."
   )

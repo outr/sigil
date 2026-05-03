@@ -1,15 +1,16 @@
 package sigil.tool.model
 
 import fabric.rw.*
-import sigil.conversation.Permanence
+import sigil.conversation.{MemoryType, Permanence}
+import sigil.conversation.MemoryType.given
 import sigil.tool.ToolInput
 
 /**
  * Input for `save_memory`. The agent persists a fact for later
  * retrieval. `key` (optional) identifies a memory slot — passing
  * the same key again upserts the prior memory; omitting it appends
- * a new memory record. `summary` and `label` (optional) populate
- * the surfaced metadata on the persisted record.
+ * a new memory record. `summary` and `label` populate the surfaced
+ * metadata on the persisted record.
  *
  * `permanence` (optional, [[Permanence.Once]] | [[Permanence.Always]]):
  * the agent's hint about whether the memory should pin (load every
@@ -25,10 +26,20 @@ import sigil.tool.ToolInput
  * the classifier's space decision is ignored. When omitted, the
  * classifier picks the most-specific applicable space (or signals
  * ambiguity via the agent's tool result).
+ *
+ * `keywords` (optional): agent-supplied retrieval tokens. The
+ * classifier appends its own keywords; agent-supplied ones are
+ * preserved.
+ *
+ * `memoryType` (optional, [[MemoryType.Fact]] by default): the
+ * taxonomy bucket for downstream filtering / UI grouping. The
+ * framework itself makes no behavioural decisions based on the type.
  */
 case class SaveMemoryInput(fact: String,
                            label: String,
                            summary: String,
                            key: Option[String] = None,
                            permanence: Option[Permanence] = None,
-                           space: Option[String] = None) extends ToolInput derives RW
+                           space: Option[String] = None,
+                           keywords: Vector[String] = Vector.empty,
+                           memoryType: MemoryType = MemoryType.Fact) extends ToolInput derives RW

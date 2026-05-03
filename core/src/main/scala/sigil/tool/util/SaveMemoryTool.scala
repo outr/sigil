@@ -53,13 +53,15 @@ final class SaveMemoryTool(space: SpaceId,
   override protected def executeTyped(input: SaveMemoryInput, ctx: TurnContext): Stream[Event] = Stream.force {
     resolveSpace(input.space, ctx).flatMap { resolvedSpace =>
       val mem = ContextMemory(
-        fact    = input.fact,
-        label   = input.label,
-        summary = input.summary,
-        source  = source,
-        spaceId = resolvedSpace,
-        key     = input.key,
-        pinned  = input.permanence.contains(sigil.conversation.Permanence.Always)
+        fact       = input.fact,
+        label      = input.label,
+        summary    = input.summary,
+        source     = source,
+        spaceId    = resolvedSpace,
+        key        = input.key,
+        pinned     = input.permanence.contains(sigil.conversation.Permanence.Always),
+        keywords   = input.keywords,
+        memoryType = input.memoryType
       )
       val saved = input.key match {
         case Some(_) =>
