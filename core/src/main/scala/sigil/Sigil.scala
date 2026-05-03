@@ -2434,10 +2434,9 @@ trait Sigil {
     val cleanedKeywords = input.keywords.iterator.map(_.trim.toLowerCase).filter(_.nonEmpty).toVector.distinct
     val withKeywords = if (cleanedKeywords.isEmpty) memory else memory.copy(keywords = cleanedKeywords)
 
-    val withPinned = input.permanence.trim.toLowerCase match {
-      case "always"      => withKeywords.copy(pinned = true)
-      case "once"        => withKeywords  // keep caller's pinned value (default false)
-      case _             => withKeywords
+    val withPinned = input.permanence match {
+      case sigil.conversation.Permanence.Always => withKeywords.copy(pinned = true)
+      case sigil.conversation.Permanence.Once   => withKeywords  // keep caller's pinned value (default false)
     }
 
     val classifierSpace = input.space.trim

@@ -72,11 +72,7 @@ object WorkflowStepInputCompiler {
 
       case p: ParallelStepInput =>
         val branches: List[List[Id[Step]]] = p.branches.map(_.map(compileOne))
-        val joinMode = p.joinMode.toLowerCase match {
-          case "any" => JoinMode.Any
-          case _     => JoinMode.All
-        }
-        val step = Parallel(branches, joinMode)
+        val step = Parallel(branches, p.joinMode)
         register(p.id, step)
         step.id
 

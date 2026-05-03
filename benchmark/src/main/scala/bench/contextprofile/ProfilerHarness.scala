@@ -88,9 +88,10 @@ object ProfilerHarness {
   def critical(key: String, fact: String): ContextMemory =
     ContextMemory(
       fact = fact,
-      source = MemorySource.Critical,
+      source = MemorySource.Explicit,
+      pinned = true,
       spaceId = GlobalSpace,
-      key = key,
+      key = Some(key),
       label = key,
       summary = fact.take(80)
     )
@@ -100,7 +101,7 @@ object ProfilerHarness {
       fact = fact,
       source = MemorySource.Compression,
       spaceId = GlobalSpace,
-      key = key,
+      key = Some(key),
       label = key,
       summary = fact.take(80)
     )

@@ -1,6 +1,7 @@
 package sigil.tool.consult
 
 import fabric.rw.*
+import sigil.conversation.Permanence
 import sigil.tool.ToolInput
 
 /**
@@ -12,10 +13,10 @@ import sigil.tool.ToolInput
  *                        [[sigil.conversation.ContextMemory.keywords]]
  *                        and indexed via `searchText` for the lexical
  *                        leg of [[sigil.conversation.compression.StandardMemoryRetriever]].
- *   - `permanence`     — `"Once"` (topical retrieval surfaces when
- *                        relevant) | `"Always"` (pinned every turn).
- *                        Driven by imperative cues in the user
- *                        message that triggered the save.
+ *   - `permanence`     — [[Permanence.Once]] (topical retrieval
+ *                        surfaces when relevant) | [[Permanence.Always]]
+ *                        (pinned every turn). Driven by imperative cues
+ *                        in the user message that triggered the save.
  *   - `space`          — the `value` of the accessible [[sigil.SpaceId]]
  *                        the memory belongs in, OR the literal
  *                        `"ambiguous"` if the classifier can't pick
@@ -23,12 +24,11 @@ import sigil.tool.ToolInput
  *   - `ambiguityReason`— explanation when `space == "ambiguous"`;
  *                        the agent uses this to ask the user.
  *
- * Unknown values fall back to safe defaults at the call site:
- * unrecognised `permanence` → `Once`; unrecognised `space` →
- * treated as ambiguous and the caller asks. Keep the prompt tight
- * — the model that powers this is typically small / fast.
+ * Unrecognised `space` is treated as ambiguous and the caller asks.
+ * Keep the prompt tight — the model that powers this is typically
+ * small / fast.
  */
 case class ClassifyMemoryInput(keywords: List[String],
-                               permanence: String,
+                               permanence: Permanence,
                                space: String,
                                ambiguityReason: Option[String] = None) extends ToolInput derives RW

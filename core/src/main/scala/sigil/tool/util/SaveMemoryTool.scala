@@ -59,7 +59,7 @@ final class SaveMemoryTool(space: SpaceId,
         source  = source,
         spaceId = resolvedSpace,
         key     = input.key,
-        pinned  = parsePermanence(input.permanence)
+        pinned  = input.permanence.contains(sigil.conversation.Permanence.Always)
       )
       val saved = input.key match {
         case Some(_) =>
@@ -100,11 +100,4 @@ final class SaveMemoryTool(space: SpaceId,
       }
   }
 
-  /** Parse the agent's permanence hint. `"Always"` pins; `"Once"` or
-    * unrecognised stays unpinned (and the framework's classifier may
-    * upgrade to pinned when it detects imperative cues). */
-  private def parsePermanence(hint: Option[String]): Boolean = hint match {
-    case Some(s) if s.trim.equalsIgnoreCase("Always") => true
-    case _                                            => false
-  }
 }

@@ -1,6 +1,7 @@
 package sigil.tool.model
 
 import fabric.rw.*
+import sigil.conversation.Permanence
 import sigil.tool.ToolInput
 
 /**
@@ -10,11 +11,11 @@ import sigil.tool.ToolInput
  * a new memory record. `summary` and `label` (optional) populate
  * the surfaced metadata on the persisted record.
  *
- * `permanence` (optional, `"Once"` | `"Always"`): the agent's hint
- * about whether the memory should pin (load every turn) or stay
- * topical. The framework's classifier still runs and may upgrade
- * a `Once` hint to pinned when it detects imperative phrasing in
- * the user's recent message ("always do X", "never delete files");
+ * `permanence` (optional, [[Permanence.Once]] | [[Permanence.Always]]):
+ * the agent's hint about whether the memory should pin (load every
+ * turn) or stay topical. The framework's classifier still runs and
+ * may upgrade `Once` to pinned when it detects imperative phrasing
+ * in the user's recent message ("always do X", "never delete files");
  * `Always` is preserved unconditionally. Omit to let the classifier
  * decide entirely.
  *
@@ -29,5 +30,5 @@ case class SaveMemoryInput(fact: String,
                            label: String,
                            summary: String,
                            key: Option[String] = None,
-                           permanence: Option[String] = None,
+                           permanence: Option[Permanence] = None,
                            space: Option[String] = None) extends ToolInput derives RW
