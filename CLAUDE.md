@@ -280,7 +280,7 @@ The default `Sigil.process` delegates to `defaultProcess` which runs one merged 
 
 Privacy: `location` is sender-private. The default `RedactLocationTransform` in `Sigil.viewerTransforms` strips `Message.location` for any viewer who isn't the sender — wire transports that consume `sigil.signalsFor(viewer)` get redaction for free. Projections (`ContextFrame`) never carry geo by construction.
 
-- `locationFor` runs synchronously inside `publish` — implementations should be fast (opt-in lookup + cached GPS, not a remote call per invocation).
+- `locationFor` (a `Task[Option[Place]]`) is awaited inline inside `publish` — `publish` blocks on the inbound transform chain, so implementations should be fast (opt-in lookup + cached GPS, not a remote call per invocation). Slow lookups stall every signal that goes through `publish`.
 
 The Google Places HTTP client (or any concrete geocoder) lives in apps, not Sigil. The framework ships the abstractions + spatial-containment cache only.
 
