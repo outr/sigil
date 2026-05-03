@@ -187,11 +187,20 @@ case class LlamaCppProvider(url: URL,
       case ProviderMessage.System(content) =>
         Vector(obj("role" -> str("system"), "content" -> str(content)))
       case ProviderMessage.User(blocks) =>
-        // LlamaCpp is text-only; collapse multipart content to a plain
-        // string, dropping any image blocks. Vision-capable providers
-        // will render each block as the API expects.
-        val text = blocks.iterator.collect { case MessageContent.Text(t) => t }.mkString("\n")
-        Vector(obj("role" -> str("user"), "content" -> str(text)))
+        // LlamaCpp is text-only via this client; collapse multipart content
+        // to a plain string, dropping any image blocks. Multimodal llama
+        // builds (LLaVA, etc.) live behind a different upstream surface and
+        // would need their own provider. Surface a WARN per drop so apps
+        // using vision-capable Sigil features notice the gap.
+        val (texts, images) = blocks.foldRight((List.empty[String], 0)) {
+          case (MessageContent.Text(t), (ts, n))     => (t :: ts, n)
+          case (MessageContent.Image(_, _), (ts, n)) => (ts, n + 1)
+        }
+        if (images > 0) scribe.warn(
+          s"LlamaCppProvider: dropped $images image block(s) — this client speaks only the " +
+            s"text-only OpenAI-compatible surface. Wire a multimodal-aware provider for vision."
+        )
+        Vector(obj("role" -> str("user"), "content" -> str(texts.mkString("\n"))))
       case ProviderMessage.Assistant(content, toolCalls) =>
         Vector(
           if (toolCalls.isEmpty) obj("role" -> str("assistant"), "content" -> str(content))

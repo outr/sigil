@@ -174,5 +174,90 @@ class CuratorBudgetStagesSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         turnInput.conversationView.frames.size should be < 20
       }
     }
+
+    "leave critical memories untouched even when budget is impossibly tight" in {
+      // Critical-only memories. Budget so tight that ANY content overflows.
+      // Stage 1 has nothing to shed (no non-critical); Stage 3 hits frames
+      // (none here). Critical memory MUST survive — the framework's
+      // "criticals are inviolable" invariant.
+      val convId = Conversation.id(s"crit-survives-${rapid.Unique()}")
+      val critical = ContextMemory(
+        fact = "must always be present",
+        source = MemorySource.Critical,
+        spaceId = GlobalSpace,
+        key = s"crit-survives-${rapid.Unique()}"
+      )
+
+      for {
+        _ <- TestSigil.persistMemory(critical)
+        retriever = new FixedMemoryRetriever(Vector(critical._id), Vector.empty)
+        compressor = new RecordingCompressor
+        curator = StandardContextCurator(
+          sigil = TestSigil,
+          memoryRetriever = retriever,
+          compressor = compressor,
+          budget = Fixed(10) // smaller than the critical memory itself
+        )
+        view = ConversationView(
+          conversationId = convId,
+          frames = Vector.empty,
+          _id = ConversationView.idFor(convId)
+        )
+        turnInput <- curator.curate(view, modelId, List(TestUser, TestAgent))
+      } yield {
+        // Critical memory still in TurnInput — never shed regardless of budget.
+        turnInput.criticalMemories should contain (critical._id)
+      }
+    }
+
+    "succeed when the conversation has no frames (empty conversation edge case)" in {
+      // Curator should produce a sensible TurnInput even when the
+      // conversation has zero frames (first-turn scenario where the
+      // user hasn't sent anything yet — agent greeting flow). No
+      // shedding fires; nothing to drop.
+      val convId = Conversation.id(s"empty-conv-${rapid.Unique()}")
+      val retriever = new FixedMemoryRetriever(Vector.empty, Vector.empty)
+      val compressor = new RecordingCompressor
+      val curator = StandardContextCurator(
+        sigil = TestSigil,
+        memoryRetriever = retriever,
+        compressor = compressor,
+        budget = Fixed(2000)
+      )
+      val view = ConversationView(
+        conversationId = convId,
+        frames = Vector.empty,
+        _id = ConversationView.idFor(convId)
+      )
+      curator.curate(view, modelId, List(TestUser, TestAgent)).map { turnInput =>
+        turnInput.conversationView.frames shouldBe empty
+        turnInput.memories shouldBe empty
+        turnInput.criticalMemories shouldBe empty
+        compressor.lastFramesCount shouldBe -1  // compressor never invoked
+      }
+    }
+
+    "fit-as-is when budget is comfortably above estimated cost (no shedding)" in {
+      // Generous budget; small content. No shedding stage should fire.
+      val convId = Conversation.id(s"no-shed-${rapid.Unique()}")
+      val retriever = new FixedMemoryRetriever(Vector.empty, Vector.empty)
+      val compressor = new RecordingCompressor
+      val curator = StandardContextCurator(
+        sigil = TestSigil,
+        memoryRetriever = retriever,
+        compressor = compressor,
+        budget = Fixed(100_000)  // huge budget — nothing to shed
+      )
+      val view = ConversationView(
+        conversationId = convId,
+        frames = makeFrames(3),
+        _id = ConversationView.idFor(convId)
+      )
+      curator.curate(view, modelId, List(TestUser, TestAgent)).map { turnInput =>
+        turnInput.conversationView.frames.size shouldBe 3
+        compressor.lastFramesCount shouldBe -1  // compressor never invoked
+        turnInput.summaries shouldBe empty       // no compression summary
+      }
+    }
   }
 }

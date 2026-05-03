@@ -126,8 +126,22 @@ case class DeepSeekProvider(apiKey: String,
       case ProviderMessage.System(content) =>
         Vector(obj("role" -> str("system"), "content" -> str(content)))
       case ProviderMessage.User(blocks) =>
-        val text = blocks.iterator.collect { case MessageContent.Text(t) => t }.mkString("\n")
-        Vector(obj("role" -> str("user"), "content" -> str(text)))
+        // DeepSeek's chat-completions wire shape (the one this client
+        // targets) is text-only — DeepSeek-VL exists but uses a
+        // separate API surface this provider doesn't speak. Image
+        // blocks are silently collapsed to text; surface a one-line
+        // WARN per drop so apps using vision-capable Sigil features
+        // notice the gap. Apps wanting vision against DeepSeek wire
+        // their own DeepSeekVisionProvider.
+        val (texts, images) = blocks.foldRight((List.empty[String], 0)) {
+          case (MessageContent.Text(t), (ts, n))     => (t :: ts, n)
+          case (MessageContent.Image(_, _), (ts, n)) => (ts, n + 1)
+        }
+        if (images > 0) scribe.warn(
+          s"DeepSeekProvider: dropped $images image block(s) — DeepSeek's chat-completions API is text-only. " +
+            s"Use DeepSeek-VL via a separate provider if vision is needed."
+        )
+        Vector(obj("role" -> str("user"), "content" -> str(texts.mkString("\n"))))
       case ProviderMessage.Assistant(content, toolCalls) =>
         Vector(
           if (toolCalls.isEmpty) obj("role" -> str("assistant"), "content" -> str(content))
