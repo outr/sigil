@@ -5,7 +5,7 @@ import lightdb.filter.*
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Task
-import sigil.{Sigil, SpaceId}
+import sigil.{GlobalSpace, Sigil, SpaceId}
 import sigil.conversation.{ContextFrame, ContextMemory, ConversationView}
 import sigil.participant.ParticipantId
 
@@ -13,11 +13,12 @@ import sigil.participant.ParticipantId
  * Default [[MemoryRetriever]]. Produces two buckets for every turn:
  *
  *   - `criticalMemories`: every pinned [[ContextMemory]] in the
- *     configured spaces. Surfaces unconditionally every turn — the
- *     provider renders them in a distinct "Pinned directives" section,
- *     so always-applies rules don't depend on the LLM's query phrasing.
+ *     spaces the chain can access. Surfaces unconditionally every turn —
+ *     the provider renders them in a distinct "Pinned directives"
+ *     section, so always-applies rules don't depend on the LLM's query
+ *     phrasing.
  *
- *   - `memories`: top-K most relevant non-critical memories, ranked by
+ *   - `memories`: top-K most relevant non-pinned memories, ranked by
  *     a hybrid Lucene + vector retrieval. The query signal is built
  *     from the active topic's `label` + `summary` + the conversation's
  *     `currentKeywords` (set by the agent's last `respond` call) plus
@@ -29,27 +30,29 @@ import sigil.participant.ParticipantId
  *     Fusion so a memory that's strong on either signal surfaces, with
  *     memories strong on both ranking highest.
  *
- * Critical ids are excluded from `memories` to avoid double-rendering
- * (Critical already renders in its own prompt section).
+ * Pinned memories are excluded from `memories` so they never double-
+ * render — they already appear in the Pinned section.
+ *
+ * **Spaces are resolved per turn** from
+ * [[Sigil.accessibleSpaces(chain)]] plus [[GlobalSpace]] (universally
+ * accessible). Apps that need a different scope override
+ * `accessibleSpaces` (where the authz lives anyway).
  *
  * Knobs:
- *   - [[spaces]]: which [[SpaceId]]s to search.
- *   - [[limit]]: cap on retrieved-bucket returns per turn (Critical
+ *   - [[limit]]: cap on retrieved-bucket returns per turn (pinned
  *     bucket is NOT subject to this cap).
  *   - [[queryFrom]]: optional override of the per-turn query text.
  *     The default builds from `topic.label + topic.summary +
  *     conversation.currentKeywords + lastNonAgentMessage`. Override
- *     for app-specific signal composition (last N user messages,
- *     mode-prefixed, etc.).
- *   - [[includeCritical]]: kill switch for the always-on pass.
+ *     for app-specific signal composition.
+ *   - [[includePinned]]: kill switch for the always-on pass.
  *   - [[rrfK]]: RRF smoothing constant (default 60, the standard).
  *     Higher means rankings further down still contribute meaningfully;
  *     lower emphasises top-of-list.
  */
-case class StandardMemoryRetriever(spaces: Set[SpaceId],
-                                   limit: Int = 5,
+case class StandardMemoryRetriever(limit: Int = 5,
                                    queryFrom: Option[StandardMemoryRetriever.QueryBuilder] = None,
-                                   includeCritical: Boolean = true,
+                                   includePinned: Boolean = true,
                                    rrfK: Int = 60) extends MemoryRetriever {
 
   override def retrieve(sigil: Sigil,
@@ -63,17 +66,21 @@ case class StandardMemoryRetriever(spaces: Set[SpaceId],
                            view: ConversationView,
                            chain: List[ParticipantId]): Task[MemoryRetrievalResult] = {
     val now = Timestamp()
-    val criticalsTask: Task[Vector[Id[ContextMemory]]] =
-      if (includeCritical) loadCriticals(sigil, now) else Task.pure(Vector.empty)
-
     for {
-      criticals <- criticalsTask
+      spaces    <- resolveSpaces(sigil, chain)
+      criticals <- if (includePinned) loadPinned(sigil, spaces, now) else Task.pure(Vector.empty)
       regular   <- buildQuery(sigil, view, chain).flatMap {
         case None        => Task.pure(Vector.empty)
-        case Some(query) => hybridSearch(sigil, query, now).map(_.filterNot(criticals.toSet.contains))
+        case Some(query) => hybridSearch(sigil, query, spaces, now).map(_.filterNot(criticals.toSet.contains))
       }
     } yield MemoryRetrievalResult(memories = regular, criticalMemories = criticals)
   }
+
+  /** Resolve the per-turn space set: caller's accessible spaces plus
+    * [[GlobalSpace]] (universally accessible — pinned memories in
+    * Global render across every conversation that can see them). */
+  private def resolveSpaces(sigil: Sigil, chain: List[ParticipantId]): Task[Set[SpaceId]] =
+    sigil.accessibleSpaces(chain).map(_ + GlobalSpace)
 
   /** Compose the per-turn retrieval query. Caller-supplied
     * [[queryFrom]] takes precedence; otherwise read the topic state
@@ -101,18 +108,19 @@ case class StandardMemoryRetriever(spaces: Set[SpaceId],
     }
 
   /** Run vector + Lucene retrieval in parallel, fuse via RRF. Drops
-    * memories outside [[spaces]], expired records, and pinned memories
+    * memories outside `spaces`, expired records, and pinned memories
     * (those render in the Pinned section already; topical retrieval
     * mustn't double-render). The Lucene leg pushes the `pinned ==
     * false` filter into the index; the vector leg filters post-fetch
     * since the vector payload doesn't carry pinned status. */
   private def hybridSearch(sigil: Sigil,
                            query: String,
+                           spaces: Set[SpaceId],
                            now: Timestamp): Task[Vector[Id[ContextMemory]]] = {
     val candidatePool = math.max(limit * 4, 10)
     for {
       vectorHits <- sigil.searchMemories(query, spaces, candidatePool)
-      lexicalHits <- luceneHits(sigil, query, candidatePool)
+      lexicalHits <- luceneHits(sigil, query, spaces, candidatePool)
     } yield {
       val vectorIds  = vectorHits.iterator
         .filterNot(_.pinned)
@@ -127,11 +135,11 @@ case class StandardMemoryRetriever(spaces: Set[SpaceId],
 
   /** Lucene BM25 query over `ContextMemory.searchText`. Splits `query`
     * into whitespace tokens and OR-matches; result order is BM25
-    * relevance (lightdb's `Sort.BestMatch`). Filters to configured
-    * spaces and excludes pinned memories (those render in the
-    * Pinned section already; topical retrieval mustn't double-render). */
+    * relevance. Filters to the supplied spaces and excludes pinned
+    * memories (those render in the Pinned section already). */
   private def luceneHits(sigil: Sigil,
                          query: String,
+                         spaces: Set[SpaceId],
                          candidatePool: Int): Task[List[ContextMemory]] = {
     val tokens = query.toLowerCase.split("\\s+").iterator.map(_.trim).filter(_.nonEmpty).toList
     if (tokens.isEmpty || spaces.isEmpty) Task.pure(Nil)
@@ -151,13 +159,13 @@ case class StandardMemoryRetriever(spaces: Set[SpaceId],
     }).map(_.filter(m => spaces.contains(m.spaceId)))
   }
 
-  /** Load every pinned memory in the configured spaces. Pushes the
+  /** Load every pinned memory in the supplied spaces. Pushes the
     * filter into Lucene via the indexed `pinned` boolean and the
     * `spaceIdValue` string projection: `pinned == true AND spaceIdValue
     * IN spaces`. Expiry is filtered in-memory on the (small) result.
     * O(N_pinned_in_accessible_spaces) per turn instead of
     * O(N_total_memories). */
-  private def loadCriticals(sigil: Sigil, now: Timestamp): Task[Vector[Id[ContextMemory]]] =
+  private def loadPinned(sigil: Sigil, spaces: Set[SpaceId], now: Timestamp): Task[Vector[Id[ContextMemory]]] =
     if (spaces.isEmpty) Task.pure(Vector.empty)
     else sigil.withDB(_.memories.transaction { tx =>
       val spaceClauses = spaces.toList.map { space =>

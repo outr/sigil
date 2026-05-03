@@ -75,6 +75,7 @@ class MemoryRetrievalEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with 
       TestSigil.reset()
       TestSigil.setEmbeddingProvider(TestHashEmbeddingProvider)
       TestSigil.setVectorIndex(new InMemoryVectorIndex)
+      TestSigil.setAccessibleSpaces(_ => rapid.Task.pure(Set(MemoryTestSpace)))
 
       val convId = Conversation.id(s"mret-${rapid.Unique()}")
       val fact = "My favorite color is blue."
@@ -103,7 +104,7 @@ class MemoryRetrievalEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with 
         sigil = TestSigil,
         optimizer = StandardContextOptimizer(),
         blockExtractor = NoOpBlockExtractor,
-        memoryRetriever = StandardMemoryRetriever(spaces = Set(MemoryTestSpace), limit = 5),
+        memoryRetriever = StandardMemoryRetriever(limit = 5),
         compressor = NoOpContextCompressor,
         budget = Percentage(0.8)
       )
