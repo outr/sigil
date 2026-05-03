@@ -4,6 +4,7 @@ import fabric.rw.*
 import sigil.tool.{Tool, ToolInput}
 import sigil.tool.context.{
   ContextBreakdownInput, ContextBreakdownTool,
+  ListMemoriesInput, ListMemoriesTool,
   ListPinnedMemoriesInput, ListPinnedMemoriesTool,
   MoveMemoryInput, MoveMemoryTool,
   PinMemoryInput, PinMemoryTool,
@@ -104,6 +105,7 @@ object CoreTools {
       summon[RW[FindCapabilityInput]],
       summon[RW[StopInput]],
       summon[RW[ActivateSkillInput]],
+      summon[RW[ListMemoriesInput]],
       summon[RW[ListPinnedMemoriesInput]],
       summon[RW[PinMemoryInput]],
       summon[RW[UnpinMemoryInput]],
