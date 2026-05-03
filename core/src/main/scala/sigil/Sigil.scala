@@ -2426,8 +2426,10 @@ trait Sigil {
 
   /** Apply classifier output to the memory record, respecting caller-set
     * fields. Unrecognised permanence falls back to keeping the caller's
-    * value; unrecognised / "ambiguous" space leaves the caller's space
-    * intact (the agent flow handles "ask the user" at a higher layer). */
+    * value; ambiguous space leaves the caller's space intact and emits
+    * a scribe warning (apps that want to surface ambiguity to the user
+    * subscribe to the warning via their log infra, or pre-classify
+    * explicitly via [[sigil.Sigil.classifyMemoryDecision]]). */
   private def applyClassifierOutput(memory: ContextMemory,
                                      input: sigil.tool.consult.ClassifyMemoryInput,
                                      accessibleSpaces: Set[SpaceId]): ContextMemory = {
@@ -2442,7 +2444,15 @@ trait Sigil {
 
     val classifierSpace = input.space.trim
     val withSpace =
-      if (classifierSpace.equalsIgnoreCase("ambiguous")) withPinned
+      if (classifierSpace.equalsIgnoreCase("ambiguous")) {
+        val reason = input.ambiguityReason.getOrElse("(no reason supplied by classifier)")
+        val keyOrId = if (memory.key.nonEmpty) memory.key else memory._id.value
+        scribe.warn(
+          s"memory classifier returned 'ambiguous' for memory key='$keyOrId' " +
+            s"(fallback space='${memory.spaceId.value}'); reason: $reason"
+        )
+        withPinned
+      }
       else if (memory.spaceId != GlobalSpace) withPinned  // caller picked explicitly
       else accessibleSpaces.find(_.value == classifierSpace) match {
         case Some(picked) => withPinned.copy(spaceId = picked)
