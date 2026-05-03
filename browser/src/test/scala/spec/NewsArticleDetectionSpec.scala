@@ -148,7 +148,7 @@ class NewsArticleDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   s"NewsArticleDetectionSpec" should {
 
-    "classify the news-index page's links via the browser tools and an LLM" in {
+    "classify the news-index page's links via the browser tools and an LLM" taggedAs(LocalOnly) in {
       if (skipReason.isDefined) {
         cancel(s"Skipping: ${skipReason.get}")
       }
