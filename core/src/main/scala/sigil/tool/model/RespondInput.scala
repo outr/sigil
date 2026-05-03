@@ -33,7 +33,17 @@ import sigil.tool.ToolInput
  * failure signals — markdown can't express those — call the dedicated
  * atomic tools (`respond_options`, `respond_field`, `respond_failure`)
  * instead of (or alongside) `respond`.
+ *
+ * `keywords` — OPTIONAL. The agent's keyword tagging of the active
+ * subject for memory retrieval. The framework stores them on the
+ * conversation's active [[sigil.conversation.TopicEntry]] and uses
+ * `topicLabel + topicSummary + keywords` as the query signal that drives
+ * non-critical memory retrieval on the next turn. Be specific — name
+ * the framework, language, file, identifier, concept — generic keywords
+ * (`"task"`, `"help"`, `"code"`) match nothing usefully. Aim for 5–10
+ * keywords. Empty list is fine when no relevant memories are expected.
  */
 case class RespondInput(topicLabel: String,
                         topicSummary: String,
-                        content: String) extends ToolInput derives RW
+                        content: String,
+                        keywords: List[String] = Nil) extends ToolInput derives RW
