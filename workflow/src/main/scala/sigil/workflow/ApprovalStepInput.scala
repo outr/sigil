@@ -1,6 +1,7 @@
 package sigil.workflow
 
 import fabric.rw.*
+import strider.step.TimeoutAction
 
 /**
  * Step that pauses the workflow and waits for a human decision.
@@ -15,15 +16,14 @@ import fabric.rw.*
  * the configured `timeoutAction` fires. `None` means wait forever.
  *
  * `timeoutAction` controls what happens when the timeout fires —
- * matches Strider's [[strider.step.TimeoutAction]] cases, parsed
- * case-insensitively:
- *   - `"Fail"` (default) — the run terminates with a failure event.
- *   - `"Proceed"` — the run continues with no recorded answer; downstream
- *     steps see the approval's `output` variable as empty.
- *   - `"Skip"` — the approval step is skipped; downstream steps run.
- *
- * Unknown values fall back to `Fail` (fail-closed — silently proceeding
- * past an approval the user couldn't ack would betray the gate's intent).
+ * see [[strider.step.TimeoutAction]]:
+ *   - [[TimeoutAction.Fail]] (default) — the run terminates with a
+ *     failure event.
+ *   - [[TimeoutAction.Proceed]] — the run continues with no recorded
+ *     answer; downstream steps see the approval's `output` variable
+ *     as empty.
+ *   - [[TimeoutAction.Skip]] — the approval step is skipped;
+ *     downstream steps run.
  */
 case class ApprovalStepInput(id: String,
                              prompt: String,
@@ -31,4 +31,4 @@ case class ApprovalStepInput(id: String,
                              options: List[String] = List("approve", "reject"),
                              output: Option[String] = None,
                              timeoutMs: Option[Long] = None,
-                             timeoutAction: String = "Fail") extends WorkflowStepInput derives RW
+                             timeoutAction: TimeoutAction = TimeoutAction.Fail) extends WorkflowStepInput derives RW

@@ -117,23 +117,12 @@ class ApprovalNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       approval.timeoutAction shouldBe TimeoutAction.Fail
     }
 
-    "parse Proceed / Skip / Fail case-insensitively" in Task {
-      def parse(raw: String): TimeoutAction =
-        SigilApproval(ApprovalStepInput(id = "x", prompt = "?", timeoutAction = raw)).timeoutAction
-      parse("Proceed") shouldBe TimeoutAction.Proceed
-      parse("proceed") shouldBe TimeoutAction.Proceed
-      parse("PROCEED") shouldBe TimeoutAction.Proceed
-      parse("Skip")    shouldBe TimeoutAction.Skip
-      parse("Fail")    shouldBe TimeoutAction.Fail
-      parse(" skip ")  shouldBe TimeoutAction.Skip
-    }
-
-    "fall back to Fail on any unknown value (fail-closed)" in Task {
-      def parse(raw: String): TimeoutAction =
-        SigilApproval(ApprovalStepInput(id = "x", prompt = "?", timeoutAction = raw)).timeoutAction
-      parse("")          shouldBe TimeoutAction.Fail
-      parse("nonsense")  shouldBe TimeoutAction.Fail
-      parse("retry")     shouldBe TimeoutAction.Fail
+    "propagate Proceed / Skip / Fail through to the compiled step" in Task {
+      def step(action: TimeoutAction): TimeoutAction =
+        SigilApproval(ApprovalStepInput(id = "x", prompt = "?", timeoutAction = action)).timeoutAction
+      step(TimeoutAction.Proceed) shouldBe TimeoutAction.Proceed
+      step(TimeoutAction.Skip)    shouldBe TimeoutAction.Skip
+      step(TimeoutAction.Fail)    shouldBe TimeoutAction.Fail
     }
   }
 }

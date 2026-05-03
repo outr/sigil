@@ -101,13 +101,14 @@ class WorkflowScaffoldSpec extends AnyWordSpec with Matchers {
       ))
     }
     "round-trip ParallelStepInput with nested branches" in {
+      import strider.step.JoinMode
       roundTrip[WorkflowStepInput](ParallelStepInput(
         id = "parallel",
         branches = List(
           List(JobStepInput(id = "a", prompt = Some("A"), modelId = Some("m"))),
           List(JobStepInput(id = "b", prompt = Some("B"), modelId = Some("m")))
         ),
-        joinMode = "all"
+        joinMode = JoinMode.All
       ))
     }
     "round-trip LoopStepInput with a body" in {
@@ -128,8 +129,7 @@ class WorkflowScaffoldSpec extends AnyWordSpec with Matchers {
     "round-trip TriggerStepInput carrying a typed trigger" in {
       roundTrip[WorkflowStepInput](TriggerStepInput(
         id = "wait",
-        trigger = TimeTrigger(intervalMs = Some(30000L)),
-        mode = "branch"
+        trigger = TimeTrigger(intervalMs = Some(30000L))
       ))
     }
   }

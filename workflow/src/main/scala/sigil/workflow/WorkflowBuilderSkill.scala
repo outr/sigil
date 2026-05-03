@@ -19,11 +19,11 @@ object WorkflowBuilderSkill {
       |
       |  - JobStepInput — runs an LLM prompt or a tool call. `prompt` (with `{{var}}` substitutions from earlier outputs) plus `modelId` runs the prompt and stores the model reply at `output`. Set `tool` instead to invoke a tool with `arguments` parsed as JSON.
       |  - ConditionStepInput — branches execution. `expression` is a small DSL: `{{var}} == "literal"`, `{{count}} > 0`, etc. `onTrue` / `onFalse` reference other step ids.
-      |  - ApprovalStepInput — pauses for a human decision. `prompt` is the question; `options` is the list of acceptable answers (defaults to ["approve", "reject"]). The user resolves with `resume_workflow`. `timeoutMs` (optional) bounds the wait; `timeoutAction` (default `"Fail"`, also accepts `"Proceed"` or `"Skip"`) controls what happens when the timeout fires.
-      |  - ParallelStepInput — forks into N branches and joins. `branches` is a list of step lists; `joinMode = "all"` waits for everyone, `"any"` returns the first finisher.
+      |  - ApprovalStepInput — pauses for a human decision. `prompt` is the question; `options` is the list of acceptable answers (defaults to ["approve", "reject"]). The user resolves with `resume_workflow`. `timeoutMs` (optional) bounds the wait; `timeoutAction` (default `Fail`, also `Proceed` or `Skip`) controls what happens when the timeout fires.
+      |  - ParallelStepInput — forks into N branches and joins. `branches` is a list of step lists; `joinMode = All` waits for everyone, `Any` returns the first finisher.
       |  - LoopStepInput — iterates `body` over a workflow variable. `over` names a list-typed variable; `itemVariable` (default `"item"`) binds each element inside `body`. `output` (optional) collects iteration outputs into a new list.
       |  - SubWorkflowStepInput — invokes another persisted workflow inline. `workflowId` is the target template id; `variables` (optional) overrides its inputs with `{{var}}` substitution from the parent.
-      |  - TriggerStepInput — waits for an external event. Wraps a typed `WorkflowTrigger` (see below). `mode = "continue"` resumes the same workflow; `mode = "branch"` clones the workflow at the trigger point on every fire (recurring schedules).
+      |  - TriggerStepInput — waits for an external event. Wraps a typed `WorkflowTrigger` (see below). The wrapped trigger owns its own continue / branch behaviour and timeout policy (see each trigger's docs).
       |
       |VARIABLE SUBSTITUTION
       |
@@ -36,7 +36,7 @@ object WorkflowBuilderSkill {
       |Triggers are how workflows wait for external events. The framework ships four:
       |
       |  - ConversationMessageTrigger — fires on a new Message in a target conversation. `participantId` (optional) restricts to a specific sender; `containsText` (optional) substring-matches the message body.
-      |  - TimeTrigger — fires on a recurring schedule. `intervalMs` for fixed-interval, `cron` for a 5-field cron expression. Pair with `mode = "branch"` for "run a clone of this workflow at every tick."
+      |  - TimeTrigger — fires on a recurring schedule. `intervalMs` for fixed-interval, `cron` for a 5-field cron expression. Recurring schedules clone the workflow at the trigger point on every fire (each tick is independent).
       |  - WebhookTrigger — fires on inbound HTTP POSTs to a path. `path` is the route; `secret` validates the `X-Webhook-Secret` header.
       |  - WorkflowEventTrigger — fires on cross-workflow named events (workflow A finishes, calls `WorkflowEventTrigger.publishEvent("foo", payload)`, workflow B paused on `WorkflowEventTrigger("foo")` resumes).
       |

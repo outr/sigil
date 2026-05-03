@@ -27,7 +27,7 @@ final case class SigilApproval(input: ApprovalStepInput,
   override def prompt: String = input.prompt
   override def options: List[String] = input.options
   override def timeoutMs: Option[Long] = input.timeoutMs
-  override def timeoutAction: TimeoutAction = SigilApproval.parseTimeoutAction(input.timeoutAction)
+  override def timeoutAction: TimeoutAction = input.timeoutAction
 
   override def onWaiting(workflow: Workflow): Task[Unit] =
     workflow.conversationId match {
@@ -44,16 +44,4 @@ final case class SigilApproval(input: ApprovalStepInput,
         )
         WorkflowHost.get.publish(notice)
     }
-}
-
-object SigilApproval {
-  /** Parse the string-typed [[ApprovalStepInput.timeoutAction]] into a
-    * Strider [[TimeoutAction]] case. Comparison is case-insensitive;
-    * unknown values fail-closed to [[TimeoutAction.Fail]] so a
-    * misconfigured input can't silently advance past an approval gate. */
-  def parseTimeoutAction(raw: String): TimeoutAction = raw.trim.toLowerCase match {
-    case "proceed" => TimeoutAction.Proceed
-    case "skip"    => TimeoutAction.Skip
-    case _         => TimeoutAction.Fail
-  }
 }

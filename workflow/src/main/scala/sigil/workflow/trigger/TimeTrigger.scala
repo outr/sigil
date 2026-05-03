@@ -21,10 +21,9 @@ import strider.step.{Step, Trigger, TriggerMode}
  * Exactly one of the two must be set. If both or neither are set,
  * registration fails with a clear error.
  *
- * Pair with `mode = "branch"` on the enclosing
- * [[sigil.workflow.TriggerStepInput]] for the typical "run a clone
- * of this workflow at every tick" shape — the workflow's earlier
- * steps don't re-run.
+ * The trigger's own `mode` is [[strider.step.TriggerMode.Branch]]
+ * when an interval / cron is supplied — every tick clones the
+ * workflow at the trigger point so earlier steps don't re-run.
  */
 final case class TimeTrigger(intervalMs: Option[Long] = None,
                              cron: Option[String] = None)

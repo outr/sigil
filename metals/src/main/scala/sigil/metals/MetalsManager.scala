@@ -217,7 +217,7 @@ final class MetalsManager(host: MetalsSigil) {
     McpServerConfig(
       name      = name,
       transport = McpTransport.HttpSse(url, headers = Map.empty),
-      prefix    = "",
+      prefix    = None,
       // The roots advertised to the server during MCP `initialize`
       // include the workspace path so Metals knows which project
       // to index. (Metals usually picks this up from cwd, but
