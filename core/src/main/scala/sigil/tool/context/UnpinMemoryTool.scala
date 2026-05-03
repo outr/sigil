@@ -35,6 +35,7 @@ case object UnpinMemoryTool extends TypedTool[UnpinMemoryInput](
   keywords = Set("unpin", "remove", "demote", "memory", "directive", "trim")
 ) {
   override def resultTtl: Option[Int] = Some(0)
+  override val requiresAccessibleSpaces: Boolean = true
 
   override protected def executeTyped(input: UnpinMemoryInput, context: TurnContext): Stream[Event] =
     Stream.force(unpin(input, context).map { messageText =>

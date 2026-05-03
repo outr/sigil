@@ -32,6 +32,9 @@ final class SaveMemoryTool(space: SpaceId,
     ),
     keywords = Set("memory", "save", "remember", "store", "persist", "fact")
   ) {
+
+  override val requiresAccessibleSpaces: Boolean = true
+
   override protected def executeTyped(input: SaveMemoryInput, ctx: TurnContext): Stream[Event] = Stream.force {
     resolveSpace(input.space, ctx).flatMap { resolvedSpace =>
       val mem = ContextMemory(

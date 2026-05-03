@@ -27,7 +27,7 @@ import sigil.participant.ParticipantId
  * prompt and can mention to the user / call the introspection
  * tools.
  */
-class CriticalMemoryBudgetWarningSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers with BeforeAndAfterAll {
+class PinnedMemoryBudgetWarningSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers with BeforeAndAfterAll {
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Id[Model]("test/warning-spec")
@@ -96,7 +96,7 @@ class CriticalMemoryBudgetWarningSpec extends AsyncWordSpec with AsyncTaskSpec w
         val key = ContextKey("_budgetWarning")
         turnInput.extraContext should contain key (key)
         val msg = turnInput.extraContext(key)
-        msg should include("critical directives")
+        msg should include("pinned directives")
         msg should include("list_pinned_memories")
       }
     }

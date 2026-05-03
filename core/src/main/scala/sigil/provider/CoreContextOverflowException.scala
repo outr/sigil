@@ -2,7 +2,7 @@ package sigil.provider
 
 import lightdb.id.Id
 import sigil.db.Model
-import sigil.signal.CriticalMemoryShare
+import sigil.signal.PinnedMemoryShare
 
 /**
  * Thrown by `Sigil.persistMemory` / `upsertMemoryByKey` when adding /
@@ -23,7 +23,7 @@ import sigil.signal.CriticalMemoryShare
 final class CoreContextOverflowException(val wouldBeTotal: Int,
                                          val limit: Int,
                                          val modelId: Id[Model],
-                                         val largestExistingContributors: List[CriticalMemoryShare])
+                                         val largestExistingContributors: List[PinnedMemoryShare])
   extends RuntimeException({
     val top = largestExistingContributors.take(3).map(s => s"${s.key} @${s.tokens} tok").mkString(", ")
     s"Persisting this Critical memory would push core-context to $wouldBeTotal tokens, exceeding the cap of $limit " +

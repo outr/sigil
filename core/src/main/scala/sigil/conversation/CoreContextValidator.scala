@@ -4,7 +4,7 @@ import lightdb.id.Id
 import rapid.Task
 import sigil.{Sigil, SpaceId}
 import sigil.db.Model
-import sigil.signal.CriticalMemoryShare
+import sigil.signal.PinnedMemoryShare
 import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
 
 /**
@@ -31,7 +31,7 @@ object CoreContextValidator {
 
   case class CoreContextEstimate(criticalTokens: Int,
                                  systemOverheadTokens: Int,
-                                 contributors: List[CriticalMemoryShare]) {
+                                 contributors: List[PinnedMemoryShare]) {
     def total: Int = criticalTokens + systemOverheadTokens
   }
 
@@ -46,7 +46,7 @@ object CoreContextValidator {
       val contributors = memories.map { m =>
         val rendered = if (m.summary.trim.nonEmpty) m.summary else m.fact
         val key = if (m.key.nonEmpty) m.key else m._id.value
-        CriticalMemoryShare(key, tokenizer.count(rendered))
+        PinnedMemoryShare(key, tokenizer.count(rendered))
       }
       CoreContextEstimate(
         criticalTokens = contributors.iterator.map(_.tokens).sum,
