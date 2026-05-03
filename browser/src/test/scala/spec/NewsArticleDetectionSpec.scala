@@ -87,8 +87,21 @@ class NewsArticleDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     }
   }
 
+  /** Marquee live-integration specs are gated on `SIGIL_LIVE=1` to keep
+    * CI's default `sbt test` deterministic — the multi-turn agent loop
+    * through headless Chrome + a public LLM service is too sensitive
+    * to upstream latency to pass reliably in a shared runner. Local
+    * `test-all.sh` sets the env var, so devs running the full suite
+    * still exercise it. The remaining `chromeAvailable` /
+    * `providerSelection` gates run only after the live opt-in
+    * succeeds — they catch the case where a contributor sets
+    * `SIGIL_LIVE=1` but doesn't have Chrome / a reachable LLM
+    * configured. */
+  private val sigilLive: Boolean = sys.env.get("SIGIL_LIVE").exists(_.nonEmpty)
+
   private val skipReason: Option[String] =
-    if (!chromeAvailable)         Some("Chrome / chromedriver not installed")
+    if (!sigilLive)               Some("SIGIL_LIVE not set — live-integration test")
+    else if (!chromeAvailable)    Some("Chrome / chromedriver not installed")
     else if (providerSelection.isEmpty) Some(
       s"no provider available — set OPENAI_API_KEY for OpenAI, or run llama.cpp at ${TestBrowserSigil.llamaCppHost}"
     )
@@ -148,7 +161,7 @@ class NewsArticleDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   s"NewsArticleDetectionSpec" should {
 
-    "classify the news-index page's links via the browser tools and an LLM" taggedAs(LocalOnly) in {
+    "classify the news-index page's links via the browser tools and an LLM" in {
       if (skipReason.isDefined) {
         cancel(s"Skipping: ${skipReason.get}")
       }
