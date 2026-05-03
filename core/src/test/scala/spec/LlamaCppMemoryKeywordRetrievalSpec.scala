@@ -170,7 +170,7 @@ class LlamaCppMemoryKeywordRetrievalSpec extends AsyncWordSpec with AsyncTaskSpe
           frames = Vector.empty,
           participantProjections = Map.empty
         )
-        retriever = StandardMemoryRetriever(spaces = Set(MemoryTestSpace), limit = 3)
+        retriever = StandardMemoryRetriever(limit = 3)
         result <- retriever.retrieve(TestSigil, view, chain = List(TestUser, TestAgent))
         rendered <- TestSigil.withDB(_.memories.transaction { tx =>
           Task.sequence(result.memories.map(id => tx.get(id))).map(_.flatten)
@@ -200,7 +200,7 @@ class LlamaCppMemoryKeywordRetrievalSpec extends AsyncWordSpec with AsyncTaskSpe
           frames = Vector.empty,
           participantProjections = Map.empty
         )
-        retriever = StandardMemoryRetriever(spaces = Set(MemoryTestSpace), limit = 3)
+        retriever = StandardMemoryRetriever(limit = 3)
         first  <- retriever.retrieve(TestSigil, view, chain = List(TestUser, TestAgent))
         second <- retriever.retrieve(TestSigil, view, chain = List(TestUser, TestAgent))
       } yield {
@@ -226,7 +226,7 @@ class LlamaCppMemoryKeywordRetrievalSpec extends AsyncWordSpec with AsyncTaskSpe
           frames = Vector.empty,
           participantProjections = Map.empty
         )
-        retriever = StandardMemoryRetriever(spaces = Set(MemoryTestSpace), limit = 3)
+        retriever = StandardMemoryRetriever(limit = 3)
         _ <- retriever.retrieve(TestSigil, view, chain = List(TestUser, TestAgent))
         cachedBefore = TestSigil.memoryRetrievalCache.peek(convId)
         // User publishes a Message — settled effect should invalidate.
@@ -260,7 +260,7 @@ class LlamaCppMemoryKeywordRetrievalSpec extends AsyncWordSpec with AsyncTaskSpe
           frames = Vector.empty,
           participantProjections = Map.empty
         )
-        retriever = StandardMemoryRetriever(spaces = Set(MemoryTestSpace), limit = 3)
+        retriever = StandardMemoryRetriever(limit = 3)
         _ <- retriever.retrieve(TestSigil, view, chain = List(TestUser, TestAgent))
         cachedAfterFirst = TestSigil.memoryRetrievalCache.peek(convId)
 

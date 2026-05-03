@@ -30,6 +30,7 @@ class StandardMemoryRetrieverSpec extends AsyncWordSpec with AsyncTaskSpec with 
       TestSigil.reset()
       TestSigil.setEmbeddingProvider(TestHashEmbeddingProvider)
       TestSigil.setVectorIndex(new InMemoryVectorIndex)
+      TestSigil.setAccessibleSpaces(_ => rapid.Task.pure(Set(MemoryTestSpace)))
 
       val critical = TestSigil.persistMemory(ContextMemory(
         fact = "The user must never be given financial advice.",
@@ -47,7 +48,7 @@ class StandardMemoryRetrieverSpec extends AsyncWordSpec with AsyncTaskSpec with 
         spaceId = MemoryTestSpace
       )).sync()
 
-      val retriever = StandardMemoryRetriever(spaces = Set(MemoryTestSpace), limit = 3)
+      val retriever = StandardMemoryRetriever(limit = 3)
       retriever.retrieve(
         sigil = TestSigil,
         view = viewWithQuestion("What is my favorite color?"),

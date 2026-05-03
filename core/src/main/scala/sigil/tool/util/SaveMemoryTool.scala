@@ -32,38 +32,61 @@ final class SaveMemoryTool(space: SpaceId,
     ),
     keywords = Set("memory", "save", "remember", "store", "persist", "fact")
   ) {
-  override protected def executeTyped(input: SaveMemoryInput, ctx: TurnContext): Stream[Event] = {
-    val mem = ContextMemory(
-      fact    = input.fact,
-      source  = source,
-      spaceId = space,
-      key     = input.key.getOrElse(""),
-      label   = input.label.getOrElse(""),
-      summary = input.summary.getOrElse("")
-    )
-    val saved = input.key match {
-      case Some(_) =>
-        ctx.sigil.upsertMemoryByKeyFor(mem, ctx.chain, ctx.conversation.id).map { r =>
-          val outcome = r match {
-            case _: UpsertMemoryResult.Stored    => "Stored"
-            case _: UpsertMemoryResult.Refreshed => "Refreshed"
-            case _: UpsertMemoryResult.Versioned => "Versioned (prior archived)"
+  override protected def executeTyped(input: SaveMemoryInput, ctx: TurnContext): Stream[Event] = Stream.force {
+    resolveSpace(input.space, ctx).flatMap { resolvedSpace =>
+      val mem = ContextMemory(
+        fact    = input.fact,
+        source  = source,
+        spaceId = resolvedSpace,
+        key     = input.key.getOrElse(""),
+        label   = input.label.getOrElse(""),
+        summary = input.summary.getOrElse(""),
+        pinned  = parsePermanence(input.permanence)
+      )
+      val saved = input.key match {
+        case Some(_) =>
+          ctx.sigil.upsertMemoryByKeyFor(mem, ctx.chain, ctx.conversation.id).map { r =>
+            val outcome = r match {
+              case _: UpsertMemoryResult.Stored    => "Stored"
+              case _: UpsertMemoryResult.Refreshed => "Refreshed"
+              case _: UpsertMemoryResult.Versioned => "Versioned (prior archived)"
+            }
+            s"$outcome memory ${r.memory._id.value}."
           }
-          s"$outcome memory ${r.memory._id.value}."
-        }
-      case None =>
-        ctx.sigil.persistMemoryFor(mem, ctx.chain, ctx.conversation.id)
-          .map(stored => s"Stored memory ${stored._id.value}.")
+        case None =>
+          ctx.sigil.persistMemoryFor(mem, ctx.chain, ctx.conversation.id)
+            .map(stored => s"Stored memory ${stored._id.value}.")
+      }
+      saved.map { text =>
+        Stream.emit[Event](Message(
+          participantId  = ctx.caller,
+          conversationId = ctx.conversation.id,
+          topicId        = ctx.conversation.currentTopicId,
+          content        = Vector(ResponseContent.Text(text)),
+          state          = EventState.Complete,
+          role           = MessageRole.Tool
+        ))
+      }
     }
-    Stream.force(saved.map { text =>
-      Stream.emit[Event](Message(
-        participantId  = ctx.caller,
-        conversationId = ctx.conversation.id,
-        topicId        = ctx.conversation.currentTopicId,
-        content        = Vector(ResponseContent.Text(text)),
-        state          = EventState.Complete,
-        role           = MessageRole.Tool
-      ))
-    })
+  }
+
+  /** Resolve the agent's space hint to a concrete [[SpaceId]]. When
+    * the hint is omitted or doesn't match an accessible space, fall
+    * back to the tool's default `space` and let the framework's
+    * classifier decide if the caller left it at GlobalSpace. */
+  private def resolveSpace(hint: Option[String], ctx: TurnContext): rapid.Task[SpaceId] = hint match {
+    case None => rapid.Task.pure(space)
+    case Some(value) =>
+      ctx.sigil.accessibleSpaces(ctx.chain).map { accessible =>
+        accessible.find(_.value == value.trim).getOrElse(space)
+      }
+  }
+
+  /** Parse the agent's permanence hint. `"Always"` pins; `"Once"` or
+    * unrecognised stays unpinned (and the framework's classifier may
+    * upgrade to pinned when it detects imperative cues). */
+  private def parsePermanence(hint: Option[String]): Boolean = hint match {
+    case Some(s) if s.trim.equalsIgnoreCase("Always") => true
+    case _                                            => false
   }
 }
