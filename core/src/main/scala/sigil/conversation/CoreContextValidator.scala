@@ -8,17 +8,17 @@ import sigil.signal.PinnedMemoryShare
 import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
 
 /**
- * Pure helper that estimates the inviolable "core context" tokens
- * (Critical memories + a static system-prompt overhead allowance)
- * and validates them against [[Sigil.coreContextShareLimit]] for a
- * given target model.
+ * Pure helper that estimates the "core context" tokens (pinned
+ * memories + a static system-prompt overhead allowance) for a given
+ * target model.
  *
- * Used at write time by `Sigil.persistMemory` / `upsertMemoryByKey`
- * to reject Critical-memory operations that would push the inviolable
- * share over the cap. The cap default (50%) leaves the auto-shedding
- * machinery enough room to fit any reasonable conversation; apps with
- * thinner pinned sets can tighten it, apps with rich personas can
- * loosen.
+ * Used by the curator to drive the [[sigil.signal.PinnedMemoryBudgetWarning]]
+ * Notice when the share crosses
+ * [[sigil.conversation.compression.StandardContextCurator.pinnedShareWarningThreshold]],
+ * by [[sigil.Sigil.validateModeSkillSizes]] at startup to reject
+ * over-budget mode skills, and by apps that override
+ * [[sigil.Sigil.validateCoreContextCap]] for hard write-time
+ * rejection (the framework default is a no-op).
  */
 object CoreContextValidator {
 

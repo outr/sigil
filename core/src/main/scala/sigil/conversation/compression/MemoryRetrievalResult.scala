@@ -12,9 +12,12 @@ import sigil.conversation.ContextMemory
  *   - [[memories]]: retrieval-scored ids, typically top-K semantically
  *     similar to the current turn's query. May be empty (no query, no
  *     matches).
- *   - [[criticalMemories]]: always-on ids ([[sigil.conversation.MemorySource.Critical]]
- *     records in the configured spaces). Render in a distinct
- *     "Critical directives" section in the provider system prompt.
+ *   - [[criticalMemories]]: always-on ids — pinned
+ *     ([[sigil.conversation.ContextMemory.pinned]] = `true`) records
+ *     in the spaces the chain can access. Render in a distinct
+ *     "Pinned directives" section in the provider system prompt. The
+ *     field name retains "critical" for wire / persistence
+ *     compatibility with [[sigil.conversation.TurnInput]].
  *
  * Implementations MUST ensure the two vectors don't duplicate — an id
  * in `criticalMemories` should not also appear in `memories`, since

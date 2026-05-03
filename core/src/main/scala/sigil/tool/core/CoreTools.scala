@@ -5,6 +5,7 @@ import sigil.tool.{Tool, ToolInput}
 import sigil.tool.context.{
   ContextBreakdownInput, ContextBreakdownTool,
   ListPinnedMemoriesInput, ListPinnedMemoriesTool,
+  PinMemoryInput, PinMemoryTool,
   UnpinMemoryInput, UnpinMemoryTool
 }
 import sigil.tool.model.{
@@ -103,6 +104,7 @@ object CoreTools {
       summon[RW[StopInput]],
       summon[RW[ActivateSkillInput]],
       summon[RW[ListPinnedMemoriesInput]],
+      summon[RW[PinMemoryInput]],
       summon[RW[UnpinMemoryInput]],
       summon[RW[ContextBreakdownInput]]
     )

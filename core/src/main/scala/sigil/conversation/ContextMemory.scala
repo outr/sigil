@@ -28,7 +28,7 @@ import sigil.spatial.Place
  *
  * Versioning (`validFrom` / `validUntil` / `supersedes` / `supersededBy`)
  * is populated by `Sigil.upsertMemoryByKey` — compression-extracted
- * facts and critical directives bypass it and use `persistMemory` for
+ * facts and pinned directives bypass it and use `persistMemory` for
  * single-shot inserts where versioning is meaningless.
  *
  * `createdBy` records the participant who authored the memory —

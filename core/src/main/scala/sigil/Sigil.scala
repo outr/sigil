@@ -237,55 +237,38 @@ trait Sigil {
   def profileWireRequests: Boolean = true
 
   /**
-   * Cap on the inviolable "core context" — pinned memories + static
-   * system-prompt overhead — as a fraction of the model's context
-   * window, enforced per-space at write time. If persisting /
-   * upserting a pinned memory would push that space's total past the
-   * cap, the operation fails with
-   * [[sigil.provider.CoreContextOverflowException]] carrying
-   * diagnostics for the caller.
+   * Threshold at which the curator emits
+   * [[sigil.signal.PinnedMemoryBudgetWarning]] — pinned memories +
+   * static system-prompt overhead occupying more than this fraction of
+   * the model's context window trips the warning. Apps subscribed to
+   * `signals` filtered to `PinnedMemoryBudgetWarning` render a UI
+   * banner; the curator also injects a `_budgetWarning` entry into
+   * `TurnInput.extraContext` so the agent reads it on the next turn.
    *
-   * Why this exists: the framework's auto-shedding machinery (curator
-   * stages + provider pre-flight gate) only works when the sheddable
-   * sections (frames + retrieved memories + Information catalog +
-   * tool roster) have room. Capping the inviolable share at 25%
-   * guarantees at least 75% of every model's window stays available
-   * for sheddable content. With the topical-retrieval mechanism
-   * shipped, most app preferences and project facts go in the
-   * sheddable bucket; only the truly atopical "always-loaded" rules
-   * pin — and they should be deliberately small.
+   * Soft signal — write operations never fail because of this. Apps
+   * that want hard rejection wire their own pre-write check using
+   * [[sigil.conversation.CoreContextValidator]] and reject in their
+   * own flow.
    *
    * Apps with rich compliance / persona pin sets (regulated industries)
-   * loosen (`0.40`+); apps with sparse pinning can tighten (`0.15`).
+   * loosen (`0.40`+); apps with sparse pinning tighten (`0.15`).
    */
   def pinnedShareLimit: Double = 0.25
 
   /** Backwards-compatible alias for [[pinnedShareLimit]]. New code
-    * should override `pinnedShareLimit`; this exists so the
-    * exception's existing field name stays meaningful. */
+    * uses `pinnedShareLimit`; this remains so existing callers
+    * compile. */
   final def coreContextShareLimit: Double = pinnedShareLimit
 
-  /** Validate that a proposed pinned memory persist / upsert would not
-    * push the inviolable core-context past [[coreContextShareLimit]].
-    * No-op for non-pinned memories. Fails the task with
-    * [[sigil.provider.CoreContextOverflowException]] when over the cap. */
+  /** Soft check on a proposed pinned-memory write — never fails the
+    * task. Apps that want hard rejection (e.g. regulated industries
+    * where blowing the inviolable share is a real problem) override
+    * this hook to fail with their own exception based on the same
+    * [[sigil.conversation.CoreContextValidator]] estimates the
+    * framework uses for warnings. Default: no-op for any memory,
+    * pinned or not. */
   protected def validateCoreContextCap(proposed: ContextMemory): Task[Unit] =
-    if (!proposed.pinned) Task.unit
-    else sigil.conversation.CoreContextValidator.smallestModelContext(this) match {
-      case None => Task.unit  // no models registered; nothing to validate against
-      case Some(model) =>
-        sigil.conversation.CoreContextValidator.estimate(this, Set(proposed.spaceId)).flatMap { current =>
-          val projected = sigil.conversation.CoreContextValidator.projectedTotal(current, proposed)
-          val limit = sigil.conversation.CoreContextValidator.limitFor(model, coreContextShareLimit)
-          if (projected <= limit) Task.unit
-          else Task.error(new sigil.provider.CoreContextOverflowException(
-            wouldBeTotal = projected,
-            limit = limit,
-            modelId = model._id,
-            largestExistingContributors = current.contributors.take(5)
-          ))
-        }
-    }
+    Task.unit
 
   // -- tool catalog --
 
@@ -2180,16 +2163,18 @@ trait Sigil {
     * upserts into [[vectorIndex]] with payload
     * `kind=memory, spaceId=…`.
     *
-    * Pinned memories (`memory.pinned == true`) pass through
-    * [[validateCoreContextCap]] first — if persisting would push the
-    * inviolable core-context past [[coreContextShareLimit]], the task
-    * fails with [[sigil.provider.CoreContextOverflowException]].
+    * Pinned memories (`memory.pinned == true`) pass through the soft
+    * [[validateCoreContextCap]] hook (default no-op — apps that want
+    * hard rejection override and throw their own exception).
     *
-    * If [[memoryKeywordModel]] is set and the supplied `memory.keywords`
-    * is empty, the framework runs a one-shot LLM extraction (sync) to
-    * populate keywords before the write. Used by the lexical leg of the
-    * non-critical memory retriever. Apps that want to bypass extraction
-    * supply their own non-empty keywords on the input. */
+    * If [[memoryClassifierModel]] is set and the supplied
+    * `memory.keywords` is empty, the framework runs a one-shot LLM
+    * classification (sync) to populate keywords + permanence + space
+    * before the write. The classifier respects caller-set fields:
+    * non-empty keywords skip the call entirely, explicit
+    * `pinned = true` is preserved, and a non-Global caller-set space
+    * is preserved. Apps that want fully manual control supply
+    * non-empty keywords. */
   def persistMemory(memory: ContextMemory): Task[ContextMemory] =
     validateCoreContextCap(memory).flatMap { _ =>
       enrichMemoryClassification(memory, memory.createdBy.toList).flatMap { enriched =>
@@ -3696,9 +3681,11 @@ trait Sigil {
   /** Per-mode share of the smallest registered model's context window
     * a Mode's bundled skill content is allowed to consume. Default
     * 10% — a mode skill that exceeds this at startup fails the
-    * `Sigil.instance` task with [[sigil.provider.CoreContextOverflowException]]
-    * so the app can't ship a configuration that pre-emptively
-    * crowds the budget. Override to relax for richly-skilled modes. */
+    * `Sigil.instance` task with `IllegalStateException` so the app
+    * can't ship a configuration that pre-emptively crowds the budget.
+    * Distinct from [[pinnedShareLimit]]: mode skills are app-shipped
+    * config (a config bug should fail-loud at startup); pinned
+    * memories are runtime-authored (a soft warning fits better there). */
   def modeSkillShareLimit: Double = 0.10
 
   /** Validate that every registered Mode's bundled skill content (if

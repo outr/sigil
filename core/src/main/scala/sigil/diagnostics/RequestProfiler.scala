@@ -191,7 +191,7 @@ object RequestProfiler {
 
   /** Mirrors `Provider.renderSystem`'s memory-render policy: prefer
     * `summary` when set, fall back to `fact`. Apps writing concise
-    * critical directives via the `summary` field shrink per-turn
+    * pinned directives via the `summary` field shrink per-turn
     * rendered cost; the full `fact` remains recoverable via `lookup`. */
   private def memoryRenderText(m: ContextMemory): String =
     if (m.summary.trim.nonEmpty) m.summary else m.fact
