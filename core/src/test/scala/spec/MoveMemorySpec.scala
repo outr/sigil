@@ -50,7 +50,9 @@ class MoveMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   private def seed(key: String, fact: String, in: SpaceId): Task[ContextMemory] =
     TestSigil.persistMemory(ContextMemory(
       fact = fact,
-      key = key,
+      label = key,
+      summary = fact,
+      key = Some(key),
       source = MemorySource.Explicit,
       spaceId = in
     ))
@@ -117,7 +119,9 @@ class MoveMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       for {
         m      <- TestSigil.persistMemory(ContextMemory(
           fact = "Pinned memory to move.",
-          key = "k.pinned-move",
+          label = "Pinned move target",
+          summary = "Pinned memory to move.",
+          key = Some("k.pinned-move"),
           source = MemorySource.Explicit,
           spaceId = GlobalSpace,
           pinned = true
@@ -126,7 +130,7 @@ class MoveMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         after  <- reload(m._id)
       } yield {
         after.map(_._id) shouldBe Some(m._id)
-        after.map(_.key) shouldBe Some("k.pinned-move")
+        after.flatMap(_.key) shouldBe Some("k.pinned-move")
         after.map(_.pinned) shouldBe Some(true)
         after.map(_.spaceId) shouldBe Some(TestSpace)
       }

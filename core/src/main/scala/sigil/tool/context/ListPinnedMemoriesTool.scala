@@ -60,9 +60,9 @@ case object ListPinnedMemoriesTool extends TypedTool[ListPinnedMemoriesInput](
           val items = memories.map { m =>
             val rendered = if (m.summary.trim.nonEmpty) m.summary else m.fact
             obj(
-              "key" -> str(if (m.key.nonEmpty) m.key else m._id.value),
+              "key" -> str(m.key.getOrElse(m._id.value)),
               "label" -> str(m.label),
-              "summary" -> str(if (m.summary.nonEmpty) m.summary else m.fact.take(140)),
+              "summary" -> str(m.summary),
               "tokens" -> num(tokenizer.count(rendered)),
               "spaceId" -> str(m.spaceId.value)
             )

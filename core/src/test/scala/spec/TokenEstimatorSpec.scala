@@ -34,12 +34,18 @@ class TokenEstimatorSpec extends AnyWordSpec with Matchers {
     "use summary when set, fact when not" in {
       val withSummary = ContextMemory(
         fact = "x" * 400,                    // 100 heuristic tokens
+        label = "Test directive",
+        summary = "y" * 40,                  // 10 heuristic tokens
         source = MemorySource.Explicit, pinned = true,
-        spaceId = GlobalSpace,
-        summary = "y" * 40                   // 10 heuristic tokens
+        spaceId = GlobalSpace
       )
+      // Summary is required by type but the renderer falls back to
+      // `fact` when it's blank — apps that don't want the cost of a
+      // tight summary pass empty here and accept the fallback.
       val withoutSummary = ContextMemory(
         fact = "x" * 400,
+        label = "Test directive",
+        summary = "",
         source = MemorySource.Explicit, pinned = true,
         spaceId = GlobalSpace
       )

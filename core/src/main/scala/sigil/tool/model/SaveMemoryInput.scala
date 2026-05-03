@@ -26,8 +26,8 @@ import sigil.tool.ToolInput
  * ambiguity via the agent's tool result).
  */
 case class SaveMemoryInput(fact: String,
+                           label: String,
+                           summary: String,
                            key: Option[String] = None,
-                           label: Option[String] = None,
-                           summary: Option[String] = None,
                            permanence: Option[String] = None,
                            space: Option[String] = None) extends ToolInput derives RW

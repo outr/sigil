@@ -81,6 +81,11 @@ class MemoryRetrievalEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val fact = "My favorite color is blue."
       val persistedMemory = TestSigil.persistMemory(ContextMemory(
         fact = fact,
+        label = "Favorite color",
+        // Match the fact verbatim so the spec's wire-body assertion
+        // (which looks for the fact text) hits regardless of the
+        // renderer's `summary || fact` choice.
+        summary = fact,
         source = MemorySource.Explicit,
         spaceId = MemoryTestSpace
       )).sync()

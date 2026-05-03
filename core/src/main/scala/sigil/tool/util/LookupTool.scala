@@ -71,7 +71,7 @@ case object LookupTool extends TypedTool[LookupInput](
   private def resolveMemory(name: String, context: TurnContext): Task[String] =
     context.sigil.withDB { db =>
       db.memories.transaction { tx =>
-        tx.query.filter(_.key === name).toList.flatMap { byKey =>
+        tx.query.filter(_.key === Some(name)).toList.flatMap { byKey =>
           byKey.headOption match {
             case Some(memory) => Task.pure(formatMemory(memory))
             case None         =>

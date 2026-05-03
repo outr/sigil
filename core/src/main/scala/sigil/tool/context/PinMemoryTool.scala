@@ -76,7 +76,7 @@ case object PinMemoryTool extends TypedTool[PinMemoryInput](
                          spaces: Set[sigil.SpaceId],
                          context: TurnContext): Task[Option[ContextMemory]] =
     context.sigil.findMemories(spaces).flatMap { memories =>
-      memories.find(m => m.key == key) match {
+      memories.find(m => m.key.contains(key)) match {
         case some @ Some(_) => Task.pure(some)
         case None =>
           context.sigil.withDB(_.memories.transaction(_.get(Id[ContextMemory](key)))).map {
@@ -87,5 +87,5 @@ case object PinMemoryTool extends TypedTool[PinMemoryInput](
     }
 
   private def displayKey(m: ContextMemory): String =
-    if (m.key.nonEmpty) m.key else if (m.label.nonEmpty) m.label else m._id.value
+    m.key.getOrElse(m.label)
 }

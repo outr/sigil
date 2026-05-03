@@ -89,6 +89,13 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
         Task.sequence(kept.map { fact =>
           sigil.persistMemoryFor(ContextMemory(
             fact = fact,
+            // Compressor-extracted facts arrive as terse one-liners
+            // already; synthesise a short label from the first clause
+            // and use the fact itself as the summary. Apps that want
+            // richer metadata for compressor output run their own
+            // post-processing pass.
+            label = MemoryContextCompressor.synthesizeLabel(fact),
+            summary = fact,
             source = MemorySource.Compression,
             spaceId = space,
             conversationId = Some(conversationId)
@@ -156,4 +163,16 @@ object MemoryContextCompressor {
       |
       |Call the `extract_memories` tool with the list. Return an empty list if the excerpt carries no
       |durable facts.""".stripMargin
+
+  /** Synthesise a short human-readable label from a compressor-
+    * extracted fact. Takes the first sentence (or first ~60 chars,
+    * whichever ends earlier) and trims trailing punctuation. */
+  def synthesizeLabel(fact: String): String = {
+    val firstClause = {
+      val idx = fact.indexWhere(c => c == '.' || c == '!' || c == '?')
+      if (idx > 0) fact.substring(0, idx) else fact
+    }
+    val truncated = if (firstClause.length > 60) firstClause.take(60).trim else firstClause.trim
+    if (truncated.nonEmpty) truncated else fact.take(60).trim
+  }
 }

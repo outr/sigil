@@ -249,7 +249,7 @@ case class StandardContextCurator(sigil: Sigil,
         val ranked = pinnedMemories
           .map { m =>
             val rendered = if (m.summary.trim.nonEmpty) m.summary else m.fact
-            val key = if (m.key.nonEmpty) m.key else m._id.value
+            val key = m.key.getOrElse(m._id.value)
             (key, tokenizer.count(rendered))
           }
           .sortBy(-_._2)

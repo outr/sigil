@@ -66,9 +66,11 @@ class RequestProfilerSpec extends AnyWordSpec with Matchers {
     "include CriticalMemories section when resolved.criticalMemories is non-empty" in {
       val mem = ContextMemory(
         fact = "Be concise.",
+        label = "Terse",
+        summary = "Be concise.",
         source = MemorySource.Explicit, pinned = true,
         spaceId = GlobalSpace,
-        key = "directive.terse"
+        key = Some("directive.terse")
       )
       val request = buildRequest(Vector.empty)
       val resolved = ResolvedReferences(Vector(mem), Vector.empty, Vector.empty)
@@ -80,10 +82,11 @@ class RequestProfilerSpec extends AnyWordSpec with Matchers {
     "respect `summary || fact` policy in CriticalMemories cost" in {
       val mem = ContextMemory(
         fact = "x" * 400,           // 100 heuristic tokens
+        label = "Short directive",
+        summary = "y" * 40,         // 10 heuristic tokens
         source = MemorySource.Explicit, pinned = true,
         spaceId = GlobalSpace,
-        summary = "y" * 40,         // 10 heuristic tokens
-        key = "directive.short"
+        key = Some("directive.short")
       )
       val request = buildRequest(Vector.empty)
       val resolved = ResolvedReferences(Vector(mem), Vector.empty, Vector.empty)

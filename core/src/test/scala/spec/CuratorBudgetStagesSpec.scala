@@ -108,16 +108,20 @@ class CuratorBudgetStagesSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val convId = Conversation.id(s"stage1-${rapid.Unique()}")
       val critical = ContextMemory(
         fact = "be concise",
+        label = "Be concise",
+        summary = "Always be concise.",
         source = MemorySource.Explicit, pinned = true,
         spaceId = GlobalSpace,
-        key = s"crit-${rapid.Unique()}"
+        key = Some(s"crit-${rapid.Unique()}")
       )
       val retrieved = (1 to 5).map { i =>
         ContextMemory(
           fact = "x" * 320,  // ~80 tokens
+          label = s"retrieved-$i",
+          summary = "x" * 320,
           source = MemorySource.Compression,
           spaceId = GlobalSpace,
-          key = s"ret-$i-${rapid.Unique()}"
+          key = Some(s"ret-$i-${rapid.Unique()}")
         )
       }.toVector
 
@@ -183,9 +187,11 @@ class CuratorBudgetStagesSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val convId = Conversation.id(s"crit-survives-${rapid.Unique()}")
       val critical = ContextMemory(
         fact = "must always be present",
+        label = "Must always be present",
+        summary = "Pinned must-survive directive.",
         source = MemorySource.Explicit, pinned = true,
         spaceId = GlobalSpace,
-        key = s"crit-survives-${rapid.Unique()}"
+        key = Some(s"crit-survives-${rapid.Unique()}")
       )
 
       for {

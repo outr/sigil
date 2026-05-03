@@ -105,7 +105,8 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
   private def upsertMemory(fact: String,
                            source: MemorySource,
                            pinned: Boolean = false): Id[ContextMemory] = {
-    val memory = ContextMemory(fact = fact, source = source, pinned = pinned, spaceId = TestSpace)
+    val memory = ContextMemory(fact = fact, label = fact.take(40), summary = fact,
+      source = source, pinned = pinned, spaceId = TestSpace)
     TestSigil.withDB(_.memories.transaction(_.upsert(memory))).sync()
     memory._id
   }

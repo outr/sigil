@@ -23,12 +23,27 @@ final class SaveMemoryTool(space: SpaceId,
   extends TypedTool[SaveMemoryInput](
     name = ToolName("save_memory"),
     description =
-      """Persist a fact for later retrieval. Pass `key` to overwrite a previously-saved memory under that
-        |key (versioned upsert); omit `key` to append a new memory. `label` (short title) and `summary`
-        |(one-line gist) populate surfaced metadata.""".stripMargin,
+      """Persist a fact for later retrieval. Required: `fact` + `label` (short title) + `summary`
+        |(one-line gist). Pass `key` to overwrite a previously-saved memory under that key (versioned
+        |upsert); omit `key` to append a new memory.""".stripMargin,
     examples = List(
-      ToolExample("Save a user preference", SaveMemoryInput(fact = "User prefers metric units", key = Some("user.units"))),
-      ToolExample("Append a new fact", SaveMemoryInput(fact = "Project deadline is 2026-05-15."))
+      ToolExample(
+        "Save a user preference",
+        SaveMemoryInput(
+          fact = "User prefers metric units across all generated documents.",
+          label = "Unit preference",
+          summary = "User prefers metric units.",
+          key = Some("user.units")
+        )
+      ),
+      ToolExample(
+        "Append a new fact",
+        SaveMemoryInput(
+          fact = "Project deadline is 2026-05-15.",
+          label = "Project deadline",
+          summary = "Deadline 2026-05-15."
+        )
+      )
     ),
     keywords = Set("memory", "save", "remember", "store", "persist", "fact")
   ) {
@@ -39,11 +54,11 @@ final class SaveMemoryTool(space: SpaceId,
     resolveSpace(input.space, ctx).flatMap { resolvedSpace =>
       val mem = ContextMemory(
         fact    = input.fact,
+        label   = input.label,
+        summary = input.summary,
         source  = source,
         spaceId = resolvedSpace,
-        key     = input.key.getOrElse(""),
-        label   = input.label.getOrElse(""),
-        summary = input.summary.getOrElse(""),
+        key     = input.key,
         pinned  = parsePermanence(input.permanence)
       )
       val saved = input.key match {

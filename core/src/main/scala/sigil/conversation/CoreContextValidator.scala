@@ -45,7 +45,7 @@ object CoreContextValidator {
     sigil.findCriticalMemories(spaces).map { memories =>
       val contributors = memories.map { m =>
         val rendered = if (m.summary.trim.nonEmpty) m.summary else m.fact
-        val key = if (m.key.nonEmpty) m.key else m._id.value
+        val key = m.key.getOrElse(m._id.value)
         PinnedMemoryShare(key, tokenizer.count(rendered))
       }
       CoreContextEstimate(
@@ -62,7 +62,7 @@ object CoreContextValidator {
                      tokenizer: Tokenizer = HeuristicTokenizer): Int = {
     val proposedRendered = if (proposed.summary.trim.nonEmpty) proposed.summary else proposed.fact
     val proposedTokens = tokenizer.count(proposedRendered)
-    val proposedKey = if (proposed.key.nonEmpty) proposed.key else proposed._id.value
+    val proposedKey = proposed.key.getOrElse(proposed._id.value)
     val replacingExisting = current.contributors.find(_.key == proposedKey).map(_.tokens).getOrElse(0)
     current.total - replacingExisting + proposedTokens
   }

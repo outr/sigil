@@ -129,5 +129,5 @@ object InsightGenerator {
       .take(n)
 
   private def displayKey(m: ContextMemory): String =
-    if (m.key.nonEmpty) m.key else if (m.label.nonEmpty) m.label else m._id.value
+    m.key.getOrElse(if (m.label.nonEmpty) m.label else m._id.value)
 }
