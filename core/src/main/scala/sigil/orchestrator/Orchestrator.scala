@@ -266,9 +266,10 @@ object Orchestrator {
                   state = Some(EventState.Complete)
                 )
                 Stream.force(
-                  resolveTopicPrelude(sigil, r.topicLabel, r.topicSummary, caller, conversation, request).map { prelude =>
-                    Stream.emits(prelude ::: closeBlock ::: toolDeltaPrefix ::: List[Signal](settle))
-                  }
+                  for {
+                    prelude <- resolveTopicPrelude(sigil, r.topicLabel, r.topicSummary, caller, conversation, request)
+                    _       <- updateConversationKeywords(sigil, convId, r.keywords)
+                  } yield Stream.emits(prelude ::: closeBlock ::: toolDeltaPrefix ::: List[Signal](settle))
                 )
               case _ =>
                 val settle = MessageDelta(
@@ -800,6 +801,24 @@ object Orchestrator {
       tc,
       StateDelta(target = tc._id, conversationId = convId, state = EventState.Complete)
     )
+  }
+
+  /** Persist the agent's per-turn keyword push (from `RespondInput.keywords`)
+    * onto the conversation as `currentKeywords`. The non-critical memory
+    * retriever reads this on the next turn — no event is emitted because
+    * the keywords are turn-state, not durable history (the durable record
+    * is the Message itself, parseable for keywords if a future reader
+    * needs them). Empty input is a no-op so the agent isn't forced to
+    * push a list it doesn't have. */
+  private def updateConversationKeywords(sigil: Sigil,
+                                         conversationId: lightdb.id.Id[Conversation],
+                                         keywords: List[String]): Task[Unit] = {
+    val cleaned = keywords.iterator.map(_.trim).filter(_.nonEmpty).toVector.distinct
+    if (cleaned.isEmpty) Task.unit
+    else sigil.withDB(_.conversations.transaction(_.modify(conversationId) {
+      case Some(c) => Task.pure(Some(c.copy(currentKeywords = cleaned, modified = Timestamp())))
+      case None    => Task.pure(None)
+    })).unit
   }
 
   private def kindOf(name: String): ContentKind =

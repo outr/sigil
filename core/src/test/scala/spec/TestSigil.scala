@@ -137,6 +137,7 @@ object TestSigil extends Sigil {
   private val accessibleSpacesRef = new AtomicReference[List[ParticipantId] => Task[Set[SpaceId]]](
     (_: List[ParticipantId]) => Task.pure(Set.empty[SpaceId])
   )
+  private val memoryKeywordModelRef = new AtomicReference[Option[Id[Model]]](None)
 
   // ---- hook overrides delegate to refs ----
 
@@ -173,6 +174,8 @@ object TestSigil extends Sigil {
 
   override def accessibleSpaces(chain: List[ParticipantId]): Task[Set[SpaceId]] =
     accessibleSpacesRef.get().apply(chain)
+
+  override def memoryKeywordModel: Option[Id[Model]] = memoryKeywordModelRef.get()
 
   // ---- setters (per-test overrides) ----
 
@@ -215,6 +218,12 @@ object TestSigil extends Sigil {
   def setAccessibleSpaces(f: List[ParticipantId] => Task[Set[SpaceId]]): Unit =
     accessibleSpacesRef.set(f)
 
+  /** Install a `memoryKeywordModel` — specs exercising save-side
+    * keyword extraction wire the model id used for the one-shot
+    * extraction call. Default is `None` (extraction skipped). */
+  def setMemoryKeywordModel(modelId: Option[Id[Model]]): Unit =
+    memoryKeywordModelRef.set(modelId)
+
   /** Reset every mutable hook to its default. Call from `beforeEach`
     * (or inline at the start of a test) to guarantee isolation from
     * prior tests within the same suite. */
@@ -230,6 +239,7 @@ object TestSigil extends Sigil {
     memoryExtractorRef.set(defaultMemoryExtractor)
     locationForRef.set(defaultLocationFor)
     geocoderRef.set(defaultGeocoder)
+    memoryKeywordModelRef.set(None)
   }
 
   /** Expose the in-memory information store that backs `getInformation`

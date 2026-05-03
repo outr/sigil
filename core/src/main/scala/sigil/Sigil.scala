@@ -31,7 +31,7 @@ import sigil.orchestrator.Orchestrator
 import sigil.provider.{ConversationMode, ConversationRequest, Mode, ProviderStrategy, ToolPolicy}
 import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
-import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MessageIndexingEffect, RedactLocationTransform, SettledEffect, SignalHub, ViewerTransform}
+import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect, MessageIndexingEffect, RedactLocationTransform, SettledEffect, SignalHub, ViewerTransform}
 import sigil.render.{ContentRenderer, HtmlRenderer, MarkdownRenderer, PlainTextRenderer, SlackMrkdwnRenderer}
 import sigil.provider.Provider
 import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, Signal, ToolDelta}
@@ -1314,7 +1314,7 @@ trait Sigil {
    * `Task[Unit]`; the framework awaits each in declaration order.
    */
   def settledEffects: List[SettledEffect] =
-    List(MessageIndexingEffect, GeocodingEnrichmentEffect)
+    List(MessageIndexingEffect, GeocodingEnrichmentEffect, MemoryCacheInvalidationEffect)
 
   /**
    * Reverse-geocoding service used to enrich user-authored Messages
@@ -2167,11 +2167,19 @@ trait Sigil {
     * pass through [[validateCoreContextCap]] first — if persisting
     * would push the inviolable core-context past
     * [[coreContextShareLimit]], the task fails with
-    * [[sigil.provider.CoreContextOverflowException]]. */
+    * [[sigil.provider.CoreContextOverflowException]].
+    *
+    * If [[memoryKeywordModel]] is set and the supplied `memory.keywords`
+    * is empty, the framework runs a one-shot LLM extraction (sync) to
+    * populate keywords before the write. Used by the lexical leg of the
+    * non-critical memory retriever. Apps that want to bypass extraction
+    * supply their own non-empty keywords on the input. */
   def persistMemory(memory: ContextMemory): Task[ContextMemory] =
     validateCoreContextCap(memory).flatMap { _ =>
-      withDB(_.memories.transaction(_.upsert(memory))).flatMap { stored =>
-        indexMemory(stored).map(_ => stored)
+      enrichMemoryKeywords(memory, memory.createdBy.toList).flatMap { enriched =>
+        withDB(_.memories.transaction(_.upsert(enriched))).flatMap { stored =>
+          indexMemory(stored).map(_ => stored)
+        }
       }
     }
 
@@ -2194,7 +2202,7 @@ trait Sigil {
     if (memory.key.isEmpty)
       Task.error(new IllegalArgumentException("upsertMemoryByKey requires a non-empty key; use persistMemory for un-keyed inserts"))
     else validateCoreContextCap(memory).flatMap { _ =>
-      upsertMemoryByKeyImpl(memory)
+      enrichMemoryKeywords(memory, memory.createdBy.toList).flatMap(upsertMemoryByKeyImpl)
     }
   }
 
@@ -2285,6 +2293,104 @@ trait Sigil {
       case Some(place) => withConv.copy(location = Some(place))
       case None        => withConv
     }
+  }
+
+  /** Model used by [[persistMemory]] / [[upsertMemoryByKey]] to extract
+    * retrieval keywords for the memory's content (sync — blocks the
+    * write on a one-shot LLM call). When `None` the framework skips
+    * extraction and the memory persists with whatever keywords the
+    * caller supplied (often empty); the lexical retriever then matches
+    * only on label / summary / fact / tags via the existing tokenized
+    * `searchText` field, which works less well for memories whose
+    * surface vocabulary doesn't share tokens with future queries.
+    *
+    * Apps wanting topical retrieval to actually work over their memory
+    * collection set this to a small / fast model — the extraction is
+    * a single short-list response per memory, not a reasoning task. */
+  def memoryKeywordModel: Option[Id[Model]] = None
+
+  /** Per-conversation cache for non-critical memory retrieval results.
+    * Inter-message-stable — populated lazily on first curate-time
+    * read for a conversation, invalidated by
+    * [[sigil.pipeline.MemoryCacheInvalidationEffect]] on (a) a
+    * non-agent message settling and (b) a topic-change `Switch`
+    * settling. See [[sigil.conversation.compression.MemoryRetrievalCache]]
+    * for the caching contract.
+    *
+    * Apps don't typically interact with this directly — the
+    * [[sigil.conversation.compression.StandardMemoryRetriever]] consults
+    * it transparently via [[cachedMemoryRetrieve]]. Public for
+    * observability (specs / app debug tools peek without mutating). */
+  final val memoryRetrievalCache: sigil.conversation.compression.MemoryRetrievalCache =
+    new sigil.conversation.compression.MemoryRetrievalCache
+
+  /** Read or compute a [[sigil.conversation.compression.MemoryRetrievalResult]]
+    * for `conversationId`. The compute thunk runs at most once per
+    * (conversation, cache lifetime). */
+  def cachedMemoryRetrieve(conversationId: Id[Conversation],
+                           compute: => Task[sigil.conversation.compression.MemoryRetrievalResult]
+                          ): Task[sigil.conversation.compression.MemoryRetrievalResult] =
+    memoryRetrievalCache.getOrCompute(conversationId, compute)
+
+  /** Invalidate the cached retrieval for a conversation — called by
+    * [[sigil.pipeline.MemoryCacheInvalidationEffect]] on appropriate
+    * settled events. Idempotent. */
+  def invalidateMemoryRetrievalCache(conversationId: Id[Conversation]): Unit =
+    memoryRetrievalCache.invalidate(conversationId)
+
+  /** Run [[ExtractMemoryKeywordsTool]] against the memory's content
+    * when [[memoryKeywordModel]] is set and the caller didn't already
+    * supply keywords. Returns the input memory enriched with the
+    * extracted keywords (or unchanged on opt-out / extraction failure
+    * — never blocks the persist path on an LLM hiccup). */
+  private def enrichMemoryKeywords(memory: ContextMemory,
+                                   chain: List[sigil.participant.ParticipantId]): Task[ContextMemory] =
+    if (memory.keywords.nonEmpty) Task.pure(memory)
+    else memoryKeywordModel match {
+      case None => Task.pure(memory)
+      case Some(modelId) =>
+        val systemPrompt =
+          """You extract retrieval keywords for a memory record. Output 5-10 keywords that a future
+            |query would plausibly mention to surface this memory. Lowercase, single-word tokens
+            |where possible. Skip generic words ("user", "task", "memory"), articles, and stop words.""".stripMargin
+        val rendered = renderMemoryForKeywordExtraction(memory)
+        val userPrompt = s"Memory:\n$rendered\n\nReturn the keywords."
+        val settings = {
+          val base = sigil.provider.GenerationSettings(maxOutputTokens = Some(120))
+          if (supportsParameter(modelId, "temperature")) base.copy(temperature = Some(0.0))
+          else base
+        }
+        sigil.tool.consult.ConsultTool.invoke[sigil.tool.consult.ExtractMemoryKeywordsInput](
+          sigil = this,
+          modelId = modelId,
+          chain = chain,
+          systemPrompt = systemPrompt,
+          userPrompt = userPrompt,
+          tool = sigil.tool.consult.ExtractMemoryKeywordsTool,
+          generationSettings = settings
+        ).map {
+          case None => memory
+          case Some(input) =>
+            val cleaned = input.keywords.iterator.map(_.trim.toLowerCase).filter(_.nonEmpty).toVector.distinct
+            if (cleaned.isEmpty) memory else memory.copy(keywords = cleaned)
+        }.handleError { e =>
+          Task {
+            scribe.warn(s"memoryKeyword extraction failed (${e.getClass.getSimpleName}: ${e.getMessage}) — persisting without keywords")
+            memory
+          }
+        }
+    }
+
+  /** Render a memory in a compact form for keyword extraction — covers
+    * the fields a future query is likely to mention. */
+  private def renderMemoryForKeywordExtraction(memory: ContextMemory): String = {
+    val sb = new StringBuilder
+    if (memory.label.nonEmpty)   sb.append(s"Label: ${memory.label}\n")
+    if (memory.key.nonEmpty)     sb.append(s"Key: ${memory.key}\n")
+    if (memory.summary.nonEmpty) sb.append(s"Summary: ${memory.summary}\n")
+    sb.append(s"Fact: ${memory.fact}")
+    if (memory.tags.nonEmpty) sb.append(s"\nManual tags: ${memory.tags.mkString(", ")}")
+    sb.toString
   }
 
   /** All versions of a keyed memory in `spaceId`, chronologically
@@ -3575,7 +3681,7 @@ trait Sigil {
     onShutdown.handleError { t =>
       Task { scribe.warn(s"Sigil shutdown: onShutdown failed: ${t.getMessage}"); () }
     }.flatMap { _ =>
-      Task { hub.close() }
+      Task { memoryRetrievalCache.clear(); hub.close() }
     }.flatMap { _ =>
       if (!instanceStarted.get()) Task.unit
       else instance.flatMap { sigil =>

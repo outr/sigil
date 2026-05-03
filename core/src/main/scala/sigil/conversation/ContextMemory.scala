@@ -54,6 +54,7 @@ case class ContextMemory(fact: String,
                          label: String = "",
                          summary: String = "",
                          tags: Vector[String] = Vector.empty,
+                         keywords: Vector[String] = Vector.empty,
                          memoryType: MemoryType = MemoryType.Fact,
                          status: MemoryStatus = MemoryStatus.Approved,
                          confidence: Double = 1.0,
@@ -88,15 +89,18 @@ object ContextMemory extends RecordDocumentModel[ContextMemory] with JsonConvers
   val pinned: I[Boolean] = field.index(_.pinned)
   val conversationId: I[Option[Id[Conversation]]] = field.index(_.conversationId)
 
-  /** Tokenized full-text index over key + label + summary + fact + tags.
-    * Backs `find_capability`'s BM25-scored memory search (same shape
-    * as [[sigil.tool.Tool.searchText]] / [[sigil.skill.Skill.searchText]]).
-    * Memory matches in `find_capability` carry only the key + summary
-    * — the agent calls `lookup(capabilityType=Memory, name=key)` to
-    * pull the full fact when it judges the memory worth the tokens. */
+  /** Tokenized full-text index over key + label + summary + fact + tags
+    * + keywords. Backs `find_capability`'s BM25-scored memory search
+    * AND the lexical leg of [[StandardMemoryRetriever]]'s hybrid
+    * retrieval. `keywords` are LLM-extracted at save time (cheap one-
+    * shot) so semantically-relevant queries that don't share lexical
+    * tokens with `fact` / `summary` still hit. Memory matches in
+    * `find_capability` carry only the key + summary — the agent calls
+    * `lookup(capabilityType=Memory, name=key)` to pull the full fact
+    * when it judges the memory worth the tokens. */
   val searchText: lightdb.field.Field.Tokenized[ContextMemory] =
     field.tokenized("searchText", (m: ContextMemory) =>
-      s"${m.key} ${m.label} ${m.summary} ${m.fact} ${m.tags.mkString(" ")}"
+      s"${m.key} ${m.label} ${m.summary} ${m.fact} ${m.tags.mkString(" ")} ${m.keywords.mkString(" ")}"
     )
 
   override def id(value: String = Unique()): Id[ContextMemory] = Id(value)
