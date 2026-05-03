@@ -58,13 +58,13 @@ class CoreContextCapSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
   private def critical(key: String, fact: String, summary: String = ""): ContextMemory =
     ContextMemory(
       fact = fact,
-      source = MemorySource.Critical,
+      source = MemorySource.Explicit, pinned = true,
       spaceId = TestSpace,
       key = key,
       summary = summary
     )
 
-  "Sigil.persistMemory with MemorySource.Critical" should {
+  "Sigil.persistMemory with pinned = true" should {
 
     "succeed when the memory fits under the cap" in {
       val small = critical(s"cap-fit-${rapid.Unique()}", "Brief directive that fits easily.")

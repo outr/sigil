@@ -11,12 +11,11 @@ import sigil.tool.{ToolName, TypedTool}
 import sigil.tool.model.ResponseContent
 
 /**
- * Returns every [[MemorySource.Critical]] memory the caller's chain
- * can access — keyed by `key` + `summary` + per-record token cost
- * (using the active provider's tokenizer when available, char/4
- * heuristic otherwise). Output is JSON the agent reads on its next
- * turn and typically renders to the user via `respond_options` or a
- * Markdown table.
+ * Returns every pinned memory the caller's chain can access — keyed
+ * by `key` + `summary` + per-record token cost (using the active
+ * provider's tokenizer when available, char/4 heuristic otherwise).
+ * Output is JSON the agent reads on its next turn and typically
+ * renders to the user via `respond_options` or a Markdown table.
  *
  * Pairs with `unpin_memory(key)`: agent calls list → user picks → agent
  * calls unpin per selection. The conversation never leaves the user's
@@ -25,17 +24,17 @@ import sigil.tool.model.ResponseContent
 case object ListPinnedMemoriesTool extends TypedTool[ListPinnedMemoriesInput](
   name = ToolName("list_pinned_memories"),
   description =
-    """List every Critical memory pinned to your context — the directives, persona invariants,
-      |and persistent facts the framework renders every turn. Returns each memory's `key`,
-      |`summary`, and token cost. Use this when the user asks "what's in your context?" /
-      |"what memories are pinned?" / "why is my context full?".
+    """List every pinned memory in your context — the directives and persistent facts the
+      |framework renders every turn. Returns each memory's `key`, `summary`, and token cost.
+      |Use this when the user asks "what's in your context?" / "what memories are pinned?" /
+      |"why is my context full?".
       |
       |Pair with `unpin_memory(key)` to remove a directive that's no longer applicable.
       |Pair with `lookup(capabilityType="Memory", name=key)` to fetch the full fact text
       |when the summary alone isn't enough to decide.
       |
       |- `spaces` — optional filter; empty = every space your chain can access.""".stripMargin,
-  keywords = Set("list", "pinned", "memories", "critical", "directives", "context", "review")
+  keywords = Set("list", "pinned", "memories", "directives", "context", "review")
 ) {
   override def resultTtl: Option[Int] = Some(0)
 

@@ -258,13 +258,12 @@ trait Sigil {
    */
   def coreContextShareLimit: Double = 0.5
 
-  /** Validate that a proposed Critical-source memory persist /
-    * upsert would not push the inviolable core-context past
-    * [[coreContextShareLimit]]. No-op for non-Critical memories.
-    * Fails the task with [[sigil.provider.CoreContextOverflowException]]
-    * when over the cap. */
+  /** Validate that a proposed pinned memory persist / upsert would not
+    * push the inviolable core-context past [[coreContextShareLimit]].
+    * No-op for non-pinned memories. Fails the task with
+    * [[sigil.provider.CoreContextOverflowException]] when over the cap. */
   protected def validateCoreContextCap(proposed: ContextMemory): Task[Unit] =
-    if (proposed.source != sigil.conversation.MemorySource.Critical) Task.unit
+    if (!proposed.pinned) Task.unit
     else sigil.conversation.CoreContextValidator.smallestModelContext(this) match {
       case None => Task.unit  // no models registered; nothing to validate against
       case Some(model) =>
@@ -1209,14 +1208,15 @@ trait Sigil {
         .toList
     })
 
-  /** All [[MemorySource.Critical]] memories scoped to the supplied
-    * spaces — the inviolable subset the framework renders every turn.
-    * Used by `list_pinned_memories` and the core-context cap
-    * validator. Filters in-memory after a Lucene-side space query
-    * since `source` isn't indexed; tool catalogues are typically
-    * small enough that this is fine. */
+  /** All pinned memories scoped to the supplied spaces — the
+    * inviolable subset the framework renders every turn. Used by
+    * `list_pinned_memories` and the core-context cap validator. Pushes
+    * the `pinned == true` filter into Lucene; the result is filtered
+    * to the requested spaces in-memory (since `SpaceId` is polymorphic
+    * the equality side uses the indexed `spaceIdValue` projection
+    * downstream of [[findMemories]]). */
   def findCriticalMemories(spaces: Set[SpaceId]): Task[List[ContextMemory]] =
-    findMemories(spaces).map(_.filter(_.source == sigil.conversation.MemorySource.Critical))
+    findMemories(spaces).map(_.filter(_.pinned))
 
   // -- geospatial capture & enrichment --
 
@@ -2163,11 +2163,10 @@ trait Sigil {
     * upserts into [[vectorIndex]] with payload
     * `kind=memory, spaceId=…`.
     *
-    * Critical-source memories (`memory.source == MemorySource.Critical`)
-    * pass through [[validateCoreContextCap]] first — if persisting
-    * would push the inviolable core-context past
-    * [[coreContextShareLimit]], the task fails with
-    * [[sigil.provider.CoreContextOverflowException]].
+    * Pinned memories (`memory.pinned == true`) pass through
+    * [[validateCoreContextCap]] first — if persisting would push the
+    * inviolable core-context past [[coreContextShareLimit]], the task
+    * fails with [[sigil.provider.CoreContextOverflowException]].
     *
     * If [[memoryKeywordModel]] is set and the supplied `memory.keywords`
     * is empty, the framework runs a one-shot LLM extraction (sync) to
@@ -2176,7 +2175,7 @@ trait Sigil {
     * supply their own non-empty keywords on the input. */
   def persistMemory(memory: ContextMemory): Task[ContextMemory] =
     validateCoreContextCap(memory).flatMap { _ =>
-      enrichMemoryKeywords(memory, memory.createdBy.toList).flatMap { enriched =>
+      enrichMemoryClassification(memory, memory.createdBy.toList).flatMap { enriched =>
         withDB(_.memories.transaction(_.upsert(enriched))).flatMap { stored =>
           indexMemory(stored).map(_ => stored)
         }
@@ -2202,7 +2201,7 @@ trait Sigil {
     if (memory.key.isEmpty)
       Task.error(new IllegalArgumentException("upsertMemoryByKey requires a non-empty key; use persistMemory for un-keyed inserts"))
     else validateCoreContextCap(memory).flatMap { _ =>
-      enrichMemoryKeywords(memory, memory.createdBy.toList).flatMap(upsertMemoryByKeyImpl)
+      enrichMemoryClassification(memory, memory.createdBy.toList).flatMap(upsertMemoryByKeyImpl)
     }
   }
 
@@ -2305,9 +2304,9 @@ trait Sigil {
     * surface vocabulary doesn't share tokens with future queries.
     *
     * Apps wanting topical retrieval to actually work over their memory
-    * collection set this to a small / fast model — the extraction is
-    * a single short-list response per memory, not a reasoning task. */
-  def memoryKeywordModel: Option[Id[Model]] = None
+    * collection set this to a small / fast model — the classification
+    * is a single short-list response per memory, not a reasoning task. */
+  def memoryClassifierModel: Option[Id[Model]] = None
 
   /** Per-conversation cache for non-critical memory retrieval results.
     * Inter-message-stable — populated lazily on first curate-time
@@ -2338,52 +2337,136 @@ trait Sigil {
   def invalidateMemoryRetrievalCache(conversationId: Id[Conversation]): Unit =
     memoryRetrievalCache.invalidate(conversationId)
 
-  /** Run [[ExtractMemoryKeywordsTool]] against the memory's content
-    * when [[memoryKeywordModel]] is set and the caller didn't already
-    * supply keywords. Returns the input memory enriched with the
-    * extracted keywords (or unchanged on opt-out / extraction failure
-    * — never blocks the persist path on an LLM hiccup). */
-  private def enrichMemoryKeywords(memory: ContextMemory,
-                                   chain: List[sigil.participant.ParticipantId]): Task[ContextMemory] =
+  /** Run [[sigil.tool.consult.ClassifyMemoryTool]] against the memory's
+    * content when [[memoryClassifierModel]] is set and the caller didn't
+    * already supply keywords. Returns the input memory enriched with
+    * keywords + permanence (`pinned`) + space (or unchanged on opt-out
+    * / classification failure — never blocks persist on an LLM hiccup).
+    *
+    * Caller-set fields are respected:
+    *   - `memory.keywords` non-empty → skip the classifier entirely
+    *     (caller has explicit keywords; nothing to enrich).
+    *   - `memory.pinned == true` → keep pinned even if classifier says
+    *     `Once` (caller deliberately pinned).
+    *   - `memory.spaceId` other than [[sigil.GlobalSpace]] → keep the
+    *     caller's explicit space (the classifier's choice only fills
+    *     in when the caller defaulted to global). */
+  private def enrichMemoryClassification(memory: ContextMemory,
+                                          chain: List[sigil.participant.ParticipantId]
+                                         ): Task[ContextMemory] =
     if (memory.keywords.nonEmpty) Task.pure(memory)
-    else memoryKeywordModel match {
+    else memoryClassifierModel match {
       case None => Task.pure(memory)
       case Some(modelId) =>
-        val systemPrompt =
-          """You extract retrieval keywords for a memory record. Output 5-10 keywords that a future
-            |query would plausibly mention to surface this memory. Lowercase, single-word tokens
-            |where possible. Skip generic words ("user", "task", "memory"), articles, and stop words.""".stripMargin
-        val rendered = renderMemoryForKeywordExtraction(memory)
-        val userPrompt = s"Memory:\n$rendered\n\nReturn the keywords."
-        val settings = {
-          val base = sigil.provider.GenerationSettings(maxOutputTokens = Some(120))
-          if (supportsParameter(modelId, "temperature")) base.copy(temperature = Some(0.0))
-          else base
-        }
-        sigil.tool.consult.ConsultTool.invoke[sigil.tool.consult.ExtractMemoryKeywordsInput](
-          sigil = this,
-          modelId = modelId,
-          chain = chain,
-          systemPrompt = systemPrompt,
-          userPrompt = userPrompt,
-          tool = sigil.tool.consult.ExtractMemoryKeywordsTool,
-          generationSettings = settings
-        ).map {
-          case None => memory
-          case Some(input) =>
-            val cleaned = input.keywords.iterator.map(_.trim.toLowerCase).filter(_.nonEmpty).toVector.distinct
-            if (cleaned.isEmpty) memory else memory.copy(keywords = cleaned)
-        }.handleError { e =>
-          Task {
-            scribe.warn(s"memoryKeyword extraction failed (${e.getClass.getSimpleName}: ${e.getMessage}) — persisting without keywords")
-            memory
+        for {
+          accessible <- accessibleSpaces(chain).map(_ + GlobalSpace)
+          recentMsg  <- recentUserMessageText(memory.conversationId)
+          enriched   <- runMemoryClassifier(memory, chain, modelId, accessible, recentMsg)
+        } yield enriched
+    }
+
+  private def runMemoryClassifier(memory: ContextMemory,
+                                   chain: List[sigil.participant.ParticipantId],
+                                   modelId: Id[Model],
+                                   accessibleSpaces: Set[SpaceId],
+                                   recentUserMessage: Option[String]): Task[ContextMemory] = {
+    val spaceCatalog =
+      if (accessibleSpaces.isEmpty) "  (none — only global available)"
+      else accessibleSpaces.toList.sortBy(_.value).map { s =>
+        val desc = if (s.description.nonEmpty) s" — ${s.description}" else ""
+        s"  - value=\"${s.value}\" displayName=\"${s.displayName}\"$desc"
+      }.mkString("\n")
+    val rendered = renderMemoryForClassification(memory)
+    val userMsgBlock = recentUserMessage match {
+      case Some(text) => s"\n\nUser's recent message (the trigger for this save):\n$text"
+      case None       => ""
+    }
+    val systemPrompt =
+      """You classify a memory the framework is about to persist. Decide three things in one call:
+        |
+        |1. keywords (5-10 retrieval-shaped tokens)
+        |2. permanence ("Once" or "Always") — based on imperative cues in the user's recent message
+        |3. space (one accessible space `value` or "ambiguous") — most-specific applicable
+        |
+        |See the tool description for the rules. When unsure on permanence, default to "Once".
+        |When unsure on space, output "ambiguous" and supply ambiguityReason.""".stripMargin
+    val userPrompt =
+      s"""Memory to classify:
+         |$rendered
+         |
+         |Accessible spaces:
+         |$spaceCatalog$userMsgBlock
+         |
+         |Return the classification.""".stripMargin
+    val settings = {
+      val base = sigil.provider.GenerationSettings(maxOutputTokens = Some(220))
+      if (supportsParameter(modelId, "temperature")) base.copy(temperature = Some(0.0))
+      else base
+    }
+    sigil.tool.consult.ConsultTool.invoke[sigil.tool.consult.ClassifyMemoryInput](
+      sigil = this,
+      modelId = modelId,
+      chain = chain,
+      systemPrompt = systemPrompt,
+      userPrompt = userPrompt,
+      tool = sigil.tool.consult.ClassifyMemoryTool,
+      generationSettings = settings
+    ).map {
+      case None => memory
+      case Some(input) => applyClassifierOutput(memory, input, accessibleSpaces)
+    }.handleError { e =>
+      Task {
+        scribe.warn(s"memory classification failed (${e.getClass.getSimpleName}: ${e.getMessage}) — persisting unclassified")
+        memory
+      }
+    }
+  }
+
+  /** Apply classifier output to the memory record, respecting caller-set
+    * fields. Unrecognised permanence falls back to keeping the caller's
+    * value; unrecognised / "ambiguous" space leaves the caller's space
+    * intact (the agent flow handles "ask the user" at a higher layer). */
+  private def applyClassifierOutput(memory: ContextMemory,
+                                     input: sigil.tool.consult.ClassifyMemoryInput,
+                                     accessibleSpaces: Set[SpaceId]): ContextMemory = {
+    val cleanedKeywords = input.keywords.iterator.map(_.trim.toLowerCase).filter(_.nonEmpty).toVector.distinct
+    val withKeywords = if (cleanedKeywords.isEmpty) memory else memory.copy(keywords = cleanedKeywords)
+
+    val withPinned = input.permanence.trim.toLowerCase match {
+      case "always"      => withKeywords.copy(pinned = true)
+      case "once"        => withKeywords  // keep caller's pinned value (default false)
+      case _             => withKeywords
+    }
+
+    val classifierSpace = input.space.trim
+    val withSpace =
+      if (classifierSpace.equalsIgnoreCase("ambiguous")) withPinned
+      else if (memory.spaceId != GlobalSpace) withPinned  // caller picked explicitly
+      else accessibleSpaces.find(_.value == classifierSpace) match {
+        case Some(picked) => withPinned.copy(spaceId = picked)
+        case None         => withPinned
+      }
+
+    withSpace
+  }
+
+  /** Look up the most recent non-agent message text in a conversation —
+    * the LLM uses this to detect imperative cues. Returns None when no
+    * conversation context is available. */
+  private def recentUserMessageText(conversationId: Option[Id[Conversation]]): Task[Option[String]] =
+    conversationId match {
+      case None => Task.pure(None)
+      case Some(convId) =>
+        viewFor(convId).map { view =>
+          view.frames.reverseIterator.collectFirst {
+            case t: sigil.conversation.ContextFrame.Text
+              if !t.participantId.isInstanceOf[sigil.participant.AgentParticipantId] => t.content
           }
         }
     }
 
-  /** Render a memory in a compact form for keyword extraction — covers
-    * the fields a future query is likely to mention. */
-  private def renderMemoryForKeywordExtraction(memory: ContextMemory): String = {
+  /** Render a memory in a compact form for the classifier. */
+  private def renderMemoryForClassification(memory: ContextMemory): String = {
     val sb = new StringBuilder
     if (memory.label.nonEmpty)   sb.append(s"Label: ${memory.label}\n")
     if (memory.key.nonEmpty)     sb.append(s"Key: ${memory.key}\n")

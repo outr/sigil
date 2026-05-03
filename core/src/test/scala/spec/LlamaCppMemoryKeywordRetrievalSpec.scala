@@ -18,7 +18,7 @@ import sigil.vector.InMemoryVectorIndex
  * End-to-end live coverage for non-critical memory retrieval:
  *
  *   1. **Save-side keyword extraction** (live LLM): persist a memory
- *      via `Sigil.persistMemory` with `memoryKeywordModel` wired to a
+ *      via `Sigil.persistMemory` with `memoryClassifierModel` wired to a
  *      live model; assert the persisted record has non-empty keywords
  *      and that they overlap the memory's content vocabulary.
  *
@@ -109,7 +109,7 @@ class LlamaCppMemoryKeywordRetrievalSpec extends AsyncWordSpec with AsyncTaskSpe
     TestSigil.setProvider(Task.pure(LlamaCppProvider(TestSigil.llamaCppHost, Nil, TestSigil)))
     TestSigil.setEmbeddingProvider(TestHashEmbeddingProvider)
     TestSigil.setVectorIndex(new InMemoryVectorIndex)
-    TestSigil.setMemoryKeywordModel(Some(modelId))
+    TestSigil.setMemoryClassifierModel(Some(modelId))
     TestSigil.setAccessibleSpaces(_ => Task.pure(Set(MemoryTestSpace)))
     // Wipe leftover memories from previous tests.
     TestSigil.withDB(_.memories.transaction { tx =>
@@ -117,7 +117,7 @@ class LlamaCppMemoryKeywordRetrievalSpec extends AsyncWordSpec with AsyncTaskSpe
     }).sync()
   }
 
-  "Sigil.persistMemory with memoryKeywordModel set" should {
+  "Sigil.persistMemory with memoryClassifierModel set" should {
     "extract keywords from the memory content via a live LLM call" in {
       reseedTestSigil()
       seedMemory(
@@ -150,9 +150,12 @@ class LlamaCppMemoryKeywordRetrievalSpec extends AsyncWordSpec with AsyncTaskSpe
           summary = "Bob hikes on weekends."
         )
         scalaMem <- seedMemory(
-          fact = "When writing Scala, always prefer rapid Streams over java.util.concurrent for backend services.",
+          // Non-imperative phrasing — the unified classifier should
+          // keep this `Once` (topical), not pin it. We're exercising
+          // topical retrieval here.
+          fact = "The team's Scala backend codebase uses the rapid Streams library for concurrency.",
           label = "scala-style",
-          summary = "Scala backend style: prefer rapid streams."
+          summary = "Scala backend uses rapid streams."
         )
         _ <- seedMemory(
           fact = "Carol's favorite color is blue.",

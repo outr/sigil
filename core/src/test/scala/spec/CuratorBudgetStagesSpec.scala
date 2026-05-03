@@ -108,7 +108,7 @@ class CuratorBudgetStagesSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val convId = Conversation.id(s"stage1-${rapid.Unique()}")
       val critical = ContextMemory(
         fact = "be concise",
-        source = MemorySource.Critical,
+        source = MemorySource.Explicit, pinned = true,
         spaceId = GlobalSpace,
         key = s"crit-${rapid.Unique()}"
       )
@@ -183,7 +183,7 @@ class CuratorBudgetStagesSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val convId = Conversation.id(s"crit-survives-${rapid.Unique()}")
       val critical = ContextMemory(
         fact = "must always be present",
-        source = MemorySource.Critical,
+        source = MemorySource.Explicit, pinned = true,
         spaceId = GlobalSpace,
         key = s"crit-survives-${rapid.Unique()}"
       )

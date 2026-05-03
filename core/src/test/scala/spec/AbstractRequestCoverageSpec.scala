@@ -102,8 +102,10 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
       case _ => ""
     }
 
-  private def upsertMemory(fact: String, source: MemorySource): Id[ContextMemory] = {
-    val memory = ContextMemory(fact = fact, source = source, spaceId = TestSpace)
+  private def upsertMemory(fact: String,
+                           source: MemorySource,
+                           pinned: Boolean = false): Id[ContextMemory] = {
+    val memory = ContextMemory(fact = fact, source = source, pinned = pinned, spaceId = TestSpace)
     TestSigil.withDB(_.memories.transaction(_.upsert(memory))).sync()
     memory._id
   }
@@ -179,7 +181,7 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
     }
 
     "include criticalMemories in the wire body (resolved from db.memories)" in {
-      val memId = upsertMemory("CRITFACT_42", MemorySource.Critical)
+      val memId = upsertMemory("CRITFACT_42", MemorySource.Explicit, pinned = true)
       bodyOf(TurnInput(emptyView, criticalMemories = Vector(memId))) should include("CRITFACT_42")
     }
 

@@ -34,13 +34,13 @@ class TokenEstimatorSpec extends AnyWordSpec with Matchers {
     "use summary when set, fact when not" in {
       val withSummary = ContextMemory(
         fact = "x" * 400,                    // 100 heuristic tokens
-        source = MemorySource.Critical,
+        source = MemorySource.Explicit, pinned = true,
         spaceId = GlobalSpace,
         summary = "y" * 40                   // 10 heuristic tokens
       )
       val withoutSummary = ContextMemory(
         fact = "x" * 400,
-        source = MemorySource.Critical,
+        source = MemorySource.Explicit, pinned = true,
         spaceId = GlobalSpace
       )
       val withTokens = TokenEstimator.estimateMemories(Vector(withSummary), HeuristicTokenizer)

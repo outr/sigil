@@ -77,7 +77,7 @@ class CriticalMemoryBudgetWarningSpec extends AsyncWordSpec with AsyncTaskSpec w
       val convId = Conversation.id(s"warn-${rapid.Unique()}")
       val heavyCritical = ContextMemory(
         fact = ("This is a verbose persistent directive across many sentences. " * 130).trim,
-        source = MemorySource.Critical,
+        source = MemorySource.Explicit, pinned = true,
         spaceId = GlobalSpace,
         key = s"crit-heavy-${rapid.Unique()}"
       )
@@ -105,7 +105,7 @@ class CriticalMemoryBudgetWarningSpec extends AsyncWordSpec with AsyncTaskSpec w
       val convId = Conversation.id(s"no-warn-${rapid.Unique()}")
       val tinyCritical = ContextMemory(
         fact = "Be concise.",
-        source = MemorySource.Critical,
+        source = MemorySource.Explicit, pinned = true,
         spaceId = GlobalSpace,
         key = s"crit-tiny-${rapid.Unique()}"
       )
