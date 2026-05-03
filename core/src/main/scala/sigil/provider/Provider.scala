@@ -366,7 +366,7 @@ trait Provider {
     if (instr.nonEmpty) sb.append("\n").append(instr).append("\n")
 
     if (resolved.criticalMemories.nonEmpty) {
-      sb.append("\n== Critical directives ==\n")
+      sb.append("\n== Pinned directives ==\n")
       resolved.criticalMemories.foreach(m => sb.append(s"- ${memoryRenderText(m)}\n"))
     }
 
