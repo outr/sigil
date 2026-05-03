@@ -29,7 +29,7 @@ val bsp4jVersion: String = "2.2.0-M4.TEST"
 
 val lsp4jDebugVersion: String = "1.0.0"
 
-val striderVersion: String = "1.0.2-SNAPSHOT"
+val striderVersion: String = "1.0.2"
 
 ThisBuild / versionScheme := Some("early-semver")
 ThisBuild / licenses := Seq("MIT" -> url("https://github.com/outr/sigil/blob/master/LICENSE"))
