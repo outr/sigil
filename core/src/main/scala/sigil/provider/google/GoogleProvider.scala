@@ -33,7 +33,7 @@ case class GoogleProvider(apiKey: String,
   override val providerKey: String = Google.Provider
   override protected def sigil: Sigil = sigilRef
 
-  override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
+  override def call(input: ProviderCall): Stream[ProviderEvent] = {
     val state = new StreamState(new ToolCallAccumulator(input.tools))
     Stream.force(
       for {
@@ -42,7 +42,9 @@ case class GoogleProvider(apiKey: String,
         lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(streamTimeout).streamLines()
       } yield {
         val bodyBuf = new StringBuilder
+        // Bug #77 — overall stream-lifetime deadline; see OpenAIProvider rationale.
         lines
+          .timeout(streamTimeout)
           .flatMap { line =>
             bodyBuf.append(line).append('\n')
             Stream.emits(parseLine(line, state))
@@ -58,7 +60,7 @@ case class GoogleProvider(apiKey: String,
     )
   }
 
-  override protected def httpRequestFor(input: ProviderCall): Task[HttpRequest] = Task {
+  override def httpRequestFor(input: ProviderCall): Task[HttpRequest] = Task {
     val modelName = Google.stripProviderPrefix(input.modelId.value)
     val bodyStr = JsonFormatter.Compact(buildBody(input))
     HttpRequest(

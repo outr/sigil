@@ -74,13 +74,13 @@ final class MockProvider(
     * skip the registry. */
   override def models: List[Model] = Nil
 
-  override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
+  override def call(input: ProviderCall): Stream[ProviderEvent] = {
     captured.add(input)
     val script = Option(queue.poll()).getOrElse(defaultResponse)
     Stream.emits(script.events)
   }
 
-  override protected def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
+  override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
     Task.error(new UnsupportedOperationException(
       "MockProvider has no wire format; use a real provider for HTTP-payload assertions."
     ))

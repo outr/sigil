@@ -64,6 +64,23 @@ trait Tool extends RecordDocument[Tool] {
     * runtime config) override this. */
   def inputDefinition: fabric.define.Definition = inputRW.definition
 
+  /** Pre-execution gates the orchestrator runs before
+    * [[execute]]. Each [[ToolPrecondition]] returns either
+    * [[ToolPreconditionResult.Satisfied]] (proceed) or
+    * [[ToolPreconditionResult.Unsatisfied]] (skip execution; emit a
+    * `Role.Tool` Message describing what needs to happen first, the
+    * agent reads it on its next turn). Default empty — no gating.
+    *
+    * Examples:
+    *   - A Slack-posting tool gates on an active OAuth token.
+    *   - A code-execution tool gates on a sandbox being warm.
+    *   - A tool with a paid quota gates on the caller having budget.
+    *
+    * Preconditions are descriptive only — they identify the gap; they
+    * don't fix it. Apps wire concrete setup tools and surface their
+    * names via `suggestedFix` so the agent has an explicit next call. */
+  def preconditions: List[ToolPrecondition] = Nil
+
   /** How long this tool's `ToolResults` frames should remain in the
     * curated turn input.
     *

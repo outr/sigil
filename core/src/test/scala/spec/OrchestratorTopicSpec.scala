@@ -49,9 +49,9 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
-    override protected def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
+    override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
       Task.error(new UnsupportedOperationException("StubProvider: no wire rendering"))
-    override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
+    override def call(input: ProviderCall): Stream[ProviderEvent] = {
       val isClassifier = input.tools.exists(_.schema.name.value == "classify_topic_shift")
       if (isClassifier) classifierKind match {
         case Some(kind) =>

@@ -49,9 +49,9 @@ class OrchestratorSilentTurnSpec extends AsyncWordSpec with AsyncTaskSpec with M
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
-    override protected def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
+    override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
       Task.error(new UnsupportedOperationException("no wire"))
-    override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
+    override def call(input: ProviderCall): Stream[ProviderEvent] = {
       val callId = CallId("silent-call")
       // Use NoResponseTool's input shape but as a non-recognized tool
       // name — the orchestrator will see ToolCallStart for an unknown
@@ -73,9 +73,9 @@ class OrchestratorSilentTurnSpec extends AsyncWordSpec with AsyncTaskSpec with M
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
-    override protected def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
+    override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
       Task.error(new UnsupportedOperationException("no wire"))
-    override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
+    override def call(input: ProviderCall): Stream[ProviderEvent] = {
       val callId = CallId("respond-call")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
@@ -92,9 +92,9 @@ class OrchestratorSilentTurnSpec extends AsyncWordSpec with AsyncTaskSpec with M
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
-    override protected def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
+    override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
       Task.error(new UnsupportedOperationException("no wire"))
-    override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
+    override def call(input: ProviderCall): Stream[ProviderEvent] = {
       val callId = CallId("noresp-call")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, NoResponseTool.schema.name.value),

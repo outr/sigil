@@ -46,9 +46,9 @@ class PlainTextRejectionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
-    override protected def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
+    override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
       Task.error(new UnsupportedOperationException("no wire"))
-    override protected def call(input: ProviderCall): Stream[ProviderEvent] =
+    override def call(input: ProviderCall): Stream[ProviderEvent] =
       Stream.emits(List(
         ProviderEvent.TextDelta("!"),
         ProviderEvent.TextDelta("["),
@@ -67,9 +67,9 @@ class PlainTextRejectionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
-    override protected def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
+    override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
       Task.error(new UnsupportedOperationException("no wire"))
-    override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
+    override def call(input: ProviderCall): Stream[ProviderEvent] = {
       val cid = CallId("ok-call")
       Stream.emits(List(
         ProviderEvent.TextDelta("(narrating)"),
@@ -87,9 +87,9 @@ class PlainTextRejectionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
-    override protected def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
+    override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
       Task.error(new UnsupportedOperationException("no wire"))
-    override protected def call(input: ProviderCall): Stream[ProviderEvent] =
+    override def call(input: ProviderCall): Stream[ProviderEvent] =
       Stream.emit(ProviderEvent.Done(StopReason.Complete))
   }
 

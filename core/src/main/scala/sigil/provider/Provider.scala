@@ -68,6 +68,22 @@ trait Provider {
     * [[sigil.tokenize.JtokkitTokenizer.OpenAIChatGpt]]). */
   def tokenizer: Tokenizer = HeuristicTokenizer
 
+  /** Proactive [[RateLimiter]]. The framework's `apply` awaits
+   * [[RateLimiter.acquire]] before invoking [[call]]; concrete
+   * providers feed [[RateLimiter.observe]] from response headers
+   * (`x-ratelimit-remaining-*`, `retry-after`, etc.) so the
+   * framework paces outgoing traffic instead of taking 429s.
+   *
+   * Default [[RateLimiter.NoOp]] is zero-cost — providers / apps
+   * that want pacing override with [[RateLimiter.forKey]] to share
+   * one limiter per API key, or [[RateLimiter.default]] for an
+   * un-shared instance.
+   *
+   * Distinct from [[ProviderStrategy]]'s reactive cooldown — the
+   * strategy decides what to do AFTER a failure; the rate limiter
+   * tries to stop the failure from happening. */
+  def rateLimiter: RateLimiter = RateLimiter.NoOp
+
   // ---- public entry points (final) ----
 
   /**
@@ -78,7 +94,7 @@ trait Provider {
    * The stream terminates with a `Done` event (or `Error`).
    */
   final def apply(request: ProviderRequest): Stream[ProviderEvent] =
-    Stream.force(translate(request).map { providerCall =>
+    Stream.force(rateLimiter.acquire.flatMap(_ => translate(request)).map { providerCall =>
       preFlightGate(request, providerCall) match {
         case Right(safe)  => call(safe)
         case Left(reason) => Stream.force(Task.error(reason))
@@ -195,14 +211,14 @@ trait Provider {
    * provider's request format, POST, parse the streaming response into
    * [[ProviderEvent]]s.
    */
-  protected def call(input: ProviderCall): Stream[ProviderEvent]
+  def call(input: ProviderCall): Stream[ProviderEvent]
 
   /**
    * Build the wire-level [[spice.http.HttpRequest]] from a [[ProviderCall]] without
    * sending it. Used by the final [[requestConverter]] for inspect-only
    * test paths.
    */
-  protected def httpRequestFor(input: ProviderCall): Task[HttpRequest]
+  def httpRequestFor(input: ProviderCall): Task[HttpRequest]
 
   // ---- shared translation, private to the framework ----
 

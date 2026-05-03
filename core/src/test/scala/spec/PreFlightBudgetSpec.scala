@@ -162,10 +162,10 @@ private class RecordingStubProvider extends Provider {
   override protected def sigil: Sigil = TestSigil
   override def tokenizer: Tokenizer = HeuristicTokenizer
 
-  override protected def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
+  override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
     Task.error(new UnsupportedOperationException("RecordingStubProvider"))
 
-  override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
+  override def call(input: ProviderCall): Stream[ProviderEvent] = {
     callCount.incrementAndGet()
     lastCall.set(input)
     Stream.emit(ProviderEvent.Done(StopReason.Complete))

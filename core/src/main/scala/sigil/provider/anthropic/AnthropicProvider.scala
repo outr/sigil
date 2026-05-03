@@ -47,7 +47,7 @@ case class AnthropicProvider(apiKey: String,
     * extra (already-cheap) shedding stages. */
   override def tokenizer: Tokenizer = JtokkitTokenizer.OpenAIChatGpt
 
-  override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
+  override def call(input: ProviderCall): Stream[ProviderEvent] = {
     val state = new StreamState(new ToolCallAccumulator(input.tools))
     Stream.force(
       for {
@@ -56,7 +56,12 @@ case class AnthropicProvider(apiKey: String,
         lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(streamTimeout).streamLines()
       } yield {
         val bodyBuf = new StringBuilder
+        // Bug #77 — overall stream-lifetime deadline; see OpenAIProvider
+        // for the rationale (keepalives keep netty's per-poll timer alive
+        // indefinitely; rapid's `Stream.timeout` is wall-clock-based and
+        // catches the stuck-but-trickling case).
         lines
+          .timeout(streamTimeout)
           .flatMap { line =>
             bodyBuf.append(line).append('\n')
             Stream.emits(parseLine(line, state))
@@ -72,7 +77,7 @@ case class AnthropicProvider(apiKey: String,
     )
   }
 
-  override protected def httpRequestFor(input: ProviderCall): Task[HttpRequest] = Task {
+  override def httpRequestFor(input: ProviderCall): Task[HttpRequest] = Task {
     val bodyStr = JsonFormatter.Compact(buildBody(input))
     HttpRequest(
       method = HttpMethod.Post,

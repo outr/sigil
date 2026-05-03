@@ -53,9 +53,9 @@ class StandardMemoryExtractorSpec extends AsyncWordSpec with AsyncTaskSpec with 
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
-    override protected def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
+    override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
       Task.error(new UnsupportedOperationException("StubProvider"))
-    override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
+    override def call(input: ProviderCall): Stream[ProviderEvent] = {
       val toolName = input.tools.headOption.map(_.schema.name.value).getOrElse("")
       toolName match {
         case "extract_memories_with_keys" =>

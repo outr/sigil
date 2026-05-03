@@ -27,15 +27,55 @@ final class JtokkitTokenizer(encoding: Encoding) extends Tokenizer {
 }
 
 object JtokkitTokenizer {
-  private lazy val registry = Encodings.newDefaultEncodingRegistry()
+  /** Whether jtokkit is on the classpath. Probed once at startup; the result
+    * is captured in `available` and consulted by [[OpenAIChatGpt]] /
+    * [[OpenAIO200k]] so a missing dep degrades to [[HeuristicTokenizer]]
+    * instead of throwing `NoClassDefFoundError` at the first agent turn.
+    * Bug #76 — `sigil-core`'s declared `jtokkit` dependency doesn't always
+    * resolve transitively into a downstream consumer's classpath; the
+    * sigil-all umbrella explicitly redeclares it, but this fallback
+    * protects future packaging regressions in the same shape. */
+  val available: Boolean = {
+    try {
+      Class.forName("com.knuddels.jtokkit.Encodings")
+      true
+    } catch {
+      case _: ClassNotFoundException | _: NoClassDefFoundError => false
+    }
+  }
+
+  /** Per-JVM warn-once flag — emit a single WARN the first time a caller
+    * asks for a Jtokkit-backed tokenizer when jtokkit isn't on the
+    * classpath. Repeating the WARN per call would be noise. */
+  @volatile private var warnedMissing: Boolean = false
+
+  private def warnFallback(name: String): Unit = synchronized {
+    if (!warnedMissing) {
+      warnedMissing = true
+      scribe.warn(
+        s"jtokkit is not on the classpath — `JtokkitTokenizer.$name` falling back to " +
+          s"HeuristicTokenizer (4-chars-per-token approximation). Token-budget estimates " +
+          s"will be coarser. Add `\"com.knuddels\" % \"jtokkit\" % \"<version>\"` to your " +
+          s"dependencies (or depend on `sigil-all`, which re-declares it explicitly) to restore " +
+          s"accurate counts. See bugs/76."
+      )
+    }
+  }
+
+  private lazy val registry =
+    if (available) Encodings.newDefaultEncodingRegistry() else null
 
   /** cl100k_base — used by GPT-3.5 and GPT-4 chat completions. Best default
     * for OpenAI Chat Completions and a good approximation for Anthropic
-    * and DeepSeek. */
-  lazy val OpenAIChatGpt: JtokkitTokenizer =
-    new JtokkitTokenizer(registry.getEncoding(EncodingType.CL100K_BASE))
+    * and DeepSeek. Returns a [[HeuristicTokenizer]] when jtokkit is
+    * missing; logs a one-time WARN at first access. */
+  lazy val OpenAIChatGpt: Tokenizer =
+    if (available) new JtokkitTokenizer(registry.getEncoding(EncodingType.CL100K_BASE))
+    else { warnFallback("OpenAIChatGpt"); HeuristicTokenizer }
 
-  /** o200k_base — used by GPT-4o / o-series. */
-  lazy val OpenAIO200k: JtokkitTokenizer =
-    new JtokkitTokenizer(registry.getEncoding(EncodingType.O200K_BASE))
+  /** o200k_base — used by GPT-4o / o-series. Returns a [[HeuristicTokenizer]]
+    * when jtokkit is missing; logs a one-time WARN at first access. */
+  lazy val OpenAIO200k: Tokenizer =
+    if (available) new JtokkitTokenizer(registry.getEncoding(EncodingType.O200K_BASE))
+    else { warnFallback("OpenAIO200k"); HeuristicTokenizer }
 }

@@ -136,6 +136,7 @@ trait WorkflowSigil extends Sigil {
       maxConcurrentWorkflows
     )
     manager.init().sync()
+    _workflowManagerStarted = true
     manager
   }
 
@@ -172,5 +173,23 @@ trait WorkflowSigil extends Sigil {
     val base = super.modes
     if (workflowBuilderModeEnabled) WorkflowBuilderMode :: base else base
   }
+
+  /** Tear down the Strider-backed workflow manager on Sigil shutdown.
+    * Disposes the manager's executor fiber + flushes any in-flight
+    * runs; chains through `super.onShutdown` so apps that mix multiple
+    * modules into one Sigil tear each down in declaration order.
+    *
+    * Guarded by `_workflowManagerStarted` so we never accidentally
+    * trigger `workflowManager`'s lazy init (which starts the engine)
+    * just to dispose it — apps that never used the engine pay zero
+    * shutdown cost. */
+  override protected def onShutdown: rapid.Task[Unit] =
+    (if (_workflowManagerStarted) workflowManager.dispose() else rapid.Task.unit)
+      .flatMap(_ => super.onShutdown)
+
+  /** Tracks whether `workflowManager`'s lazy val has been forced.
+    * Updated by an internal accessor wrapper so `onShutdown` can
+    * decide whether disposal is even needed. */
+  @volatile private var _workflowManagerStarted: Boolean = false
 }
 

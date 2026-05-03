@@ -1,6 +1,7 @@
 package sigil.conversation.compression
 
 import lightdb.id.Id
+import lightdb.time.Timestamp
 import rapid.Task
 import sigil.Sigil
 import sigil.conversation.{ContextFrame, ContextMemory, ConversationView, MemorySource}
@@ -50,14 +51,16 @@ case class StandardMemoryRetriever(spaces: Set[SpaceId],
   override def retrieve(sigil: Sigil,
                         view: ConversationView,
                         chain: List[ParticipantId]): Task[MemoryRetrievalResult] = {
+    val now = Timestamp()
     val criticalsTask: Task[Vector[Id[ContextMemory]]] =
-      if (includeCritical) loadCriticals(sigil) else Task.pure(Vector.empty)
+      if (includeCritical) loadCriticals(sigil, now) else Task.pure(Vector.empty)
 
     val similarTask: Task[Vector[Id[ContextMemory]]] =
       queryFrom(view, chain) match {
         case None | Some("") => Task.pure(Vector.empty)
         case Some(query) =>
-          sigil.searchMemories(query, spaces, limit).map(_.map(_._id).toVector)
+          sigil.searchMemories(query, spaces, limit)
+            .map(_.iterator.filterNot(StandardMemoryRetriever.isExpired(_, now)).map(_._id).toVector)
       }
 
     for {
@@ -73,12 +76,18 @@ case class StandardMemoryRetriever(spaces: Set[SpaceId],
   /** Load every Critical-source memory in the configured spaces.
     * Uses `_.list` + in-memory filter because
     * [[SpaceId]] is polymorphic and the Lucene store doesn't
-    * support equality on poly fields — same pattern the specs use. */
-  private def loadCriticals(sigil: Sigil): Task[Vector[Id[ContextMemory]]] =
+    * support equality on poly fields — same pattern the specs use.
+    *
+    * Expired memories (whose `expiresAt` is set and in the past) are
+    * skipped — apps that want non-expiring criticals leave the field
+    * unset, which is the default. */
+  private def loadCriticals(sigil: Sigil, now: Timestamp): Task[Vector[Id[ContextMemory]]] =
     if (spaces.isEmpty) Task.pure(Vector.empty)
     else sigil.withDB(_.memories.transaction(_.list)).map { all =>
       all.iterator
-        .filter(m => m.source == MemorySource.Critical && spaces.contains(m.spaceId))
+        .filter(m => m.source == MemorySource.Critical
+                  && spaces.contains(m.spaceId)
+                  && !StandardMemoryRetriever.isExpired(m, now))
         .map(_._id)
         .toVector
     }
@@ -89,6 +98,14 @@ object StandardMemoryRetriever {
     * participant chain. Returning `None` or an empty string skips
     * the retrieval call for this turn. */
   type QueryBuilder = (ConversationView, List[ParticipantId]) => Option[String]
+
+  /** Memory is expired (and should be skipped on retrieval) when its
+    * `expiresAt` field is set and not in the future. Records with
+    * `expiresAt = None` never expire. The store row stays — only the
+    * per-turn surfaced set excludes it. Apps that want hard eviction
+    * (DB-level deletion) wire a separate sweep effect. */
+  def isExpired(m: ContextMemory, now: Timestamp): Boolean =
+    m.expiresAt.exists(_.value <= now.value)
 
   /** Walk frames back-to-front; take the first `Text` frame whose
     * participant isn't `chain.last` (the agent about to act). That's

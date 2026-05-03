@@ -281,7 +281,16 @@ lazy val all = (project in file("all"))
   .dependsOn(core, secrets, script, mcp, metals, tooling, debug, workflow, browser)
   .settings(docNoLinkWarnings *)
   .settings(
-    name := "sigil-all"
+    name := "sigil-all",
+    // Bug #76 belt-and-suspenders: re-declare runtime libs whose transitive
+    // resolution from `sigil-core` is unreliable across resolvers. The
+    // `sigil-all` POM lists each at the top level so coursier / Maven /
+    // Ivy / Gradle / Mill all pick them up regardless of how they follow
+    // `compile->default(runtime)` mappings. The same pattern catches future
+    // cases (a tokenizer / parser dep added to sigil-script, etc.).
+    libraryDependencies ++= Seq(
+      "com.knuddels" % "jtokkit" % jtokkitVersion
+    )
   )
 
 lazy val browser = (project in file("browser"))

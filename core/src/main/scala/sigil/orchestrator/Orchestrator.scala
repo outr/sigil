@@ -12,7 +12,7 @@ import sigil.signal.{MessageContentDelta, ContentKind, EventState, ImageDelta, M
 import sigil.tool.model.{MarkdownContentParser, RespondInput, ResponseContent}
 import sigil.tool.ToolName
 import sigil.TurnContext
-import sigil.tool.{Tool, ToolInput}
+import sigil.tool.{Tool, ToolInput, ToolPreconditionResult}
 
 /**
  * Stateless, per-invocation bridge between the provider wire stream and the
@@ -604,6 +604,30 @@ object Orchestrator {
     // event carries `origin` pointing to its parent ToolInvoke" so
     // FrameBuilder pairs by parent rather than by scan, and multiple
     // Tool events from one executeTyped all pair to the same call.
+    //
+    // Fast path: tools without preconditions construct their stream
+    // synchronously — preserves bug #49's behaviour (sync throws in
+    // `tool.execute` are caught by the outer `Task(...).handleError`
+    // at the dispatch site so the surrounding stream survives).
+    // Wrapping the fast path in `Stream.force(Task...)` would convert
+    // sync throws into async stream errors and slide past that
+    // handler. Slow path (preconditions present) accepts that small
+    // shift in error semantics — the tradeoff for declarable gates.
+    if (tool.preconditions.isEmpty) runExecute(tool, input, context, originatingInvokeId)
+    else Stream.force(preflightOutcome(tool, context, originatingInvokeId).map {
+      case Right(()) => runExecute(tool, input, context, originatingInvokeId)
+      case Left(blockedSignals) => Stream.emits(blockedSignals)
+    })
+  }
+
+  /** Tool execution path — emit each event with origin-stamping +
+    * paired StateDelta. Extracted so both fast (no-precondition) and
+    * slow (precondition-gated) executeAtomic paths share one
+    * implementation. */
+  private def runExecute(tool: Tool,
+                         input: ToolInput,
+                         context: TurnContext,
+                         originatingInvokeId: Id[Event]): Stream[Signal] =
     tool.execute(input, context).flatMap { ev =>
       val stamped = if (ev.origin.isDefined) ev else ev.withOrigin(Some(originatingInvokeId))
       Stream.emits(List[Signal](
@@ -611,7 +635,48 @@ object Orchestrator {
         StateDelta(target = stamped._id, conversationId = stamped.conversationId, state = EventState.Complete)
       ))
     }
-  }
+
+  /** Run every [[Tool.preconditions]] check. If any returns
+    * [[ToolPreconditionResult.Unsatisfied]], yield a Role.Tool
+    * Message describing the blocked state instead of letting the
+    * tool's `execute` run. The Message is paired to the originating
+    * ToolInvoke so FrameBuilder threads it under that call. */
+  private def preflightOutcome(tool: Tool,
+                               context: TurnContext,
+                               originatingInvokeId: Id[Event]): Task[Either[List[Signal], Unit]] =
+    if (tool.preconditions.isEmpty) Task.pure(Right(()))
+    else Task.sequence(tool.preconditions.map(p => p.check(context).map(p.name -> _))).map { results =>
+      val unsatisfied = results.collect {
+        case (n, ToolPreconditionResult.Unsatisfied(reason, fix)) => (n, reason, fix)
+      }
+      if (unsatisfied.isEmpty) Right(())
+      else {
+        val lines = unsatisfied.map { case (n, reason, fix) =>
+          val fixHint = fix.map(f => s" — try `$f`").getOrElse("")
+          s"- **$n**: $reason$fixHint"
+        }.mkString("\n")
+        val body =
+          s"""Tool `${tool.name.value}` cannot run yet — preconditions not met:
+             |
+             |$lines
+             |
+             |Resolve the blocked items, then retry.""".stripMargin
+        val msg = Message(
+          participantId = context.caller,
+          conversationId = context.conversation.id,
+          topicId = context.conversation.currentTopicId,
+          content = Vector(ResponseContent.Failure(body, recoverable = true)),
+          role = MessageRole.Tool,
+          state = EventState.Complete,
+          origin = Some(originatingInvokeId)
+        )
+        Left(List[Signal](
+          msg,
+          StateDelta(target = msg._id, conversationId = msg.conversationId, state = EventState.Complete)
+        ))
+      }
+    }
+
 
   /**
    * Given a respond call's `topicLabel` + `topicSummary`, decide via the

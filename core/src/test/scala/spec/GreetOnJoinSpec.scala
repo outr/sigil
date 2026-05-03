@@ -226,10 +226,10 @@ private object NoOpStubProvider extends Provider {
   override def models: List[Model] = Nil
   override protected def sigil: Sigil = TestSigil
 
-  override protected def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
+  override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
     Task.error(new UnsupportedOperationException("NoOpStubProvider"))
 
-  override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
+  override def call(input: ProviderCall): Stream[ProviderEvent] = {
     callCount.incrementAndGet()
     Stream.emit(ProviderEvent.Done(StopReason.Complete))
   }

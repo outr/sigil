@@ -70,9 +70,9 @@ class OrchestratorMemoryExtractionSpec extends AsyncWordSpec with AsyncTaskSpec 
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: Sigil = TestSigil
-    override protected def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
+    override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
       Task.error(new UnsupportedOperationException("StubProvider"))
-    override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
+    override def call(input: ProviderCall): Stream[ProviderEvent] = {
       // Streaming respond — the orchestrator's ContentBlockDelta path
       // accumulates "Hello world" into the in-flight Message; Done
       // fires the memory extractor with the buffered text.

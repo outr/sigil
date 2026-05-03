@@ -10,7 +10,7 @@ import sigil.conversation.Conversation
 import sigil.db.Model
 import sigil.event.{Event, Message, MessageRole}
 import sigil.participant.{AgentParticipant, DefaultAgentParticipant, ParticipantId}
-import sigil.provider.{GenerationSettings, Instructions, Mode, Provider}
+import sigil.provider.{Effort, GenerationSettings, Instructions, Mode, Provider}
 import sigil.provider.llamacpp.LlamaCppProvider
 import sigil.signal.EventState
 import sigil.tool.ToolName
@@ -128,7 +128,20 @@ class NewsArticleDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       // roster (navigate + save_html + xpath_query + text_search + respond)
       // so we don't list toolNames here.
       instructions = Instructions.autonomous(),
-      generationSettings = GenerationSettings(maxOutputTokens = Some(2000), temperature = Some(0.0))
+      // Pin `effort = Low` for OpenAI reasoning-family models (gpt-5.4-mini
+      // and friends) — without it, the default `effort = medium` lets the
+      // model spend minutes in reasoning between SSE token emissions, which
+      // looks indistinguishable from a hung stream from the framework's
+      // vantage. Bug #77 — OpenAI's reasoning tokens don't count against
+      // `maxOutputTokens`, so capping output won't bound total wall time.
+      // `Low` keeps the classification quick enough for a deterministic
+      // 5-minute outer test deadline. LlamaCpp / Anthropic ignore the
+      // field, so this is safe across the providerSelection branches.
+      generationSettings = GenerationSettings(
+        maxOutputTokens = Some(2000),
+        temperature = Some(0.0),
+        effort = Some(Effort.Low)
+      )
     )
 
   // -- the test --

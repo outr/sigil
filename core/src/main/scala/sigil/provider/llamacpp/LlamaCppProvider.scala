@@ -31,7 +31,7 @@ case class LlamaCppProvider(url: URL,
   /** Serialize the uniform [[ProviderCall]] to a llama.cpp / OpenAI-compatible
     * chat-completions request and run the streaming response through
     * [[SSELineParser]] + chunk parsing. */
-  override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
+  override def call(input: ProviderCall): Stream[ProviderEvent] = {
     val state = new StreamState(new ToolCallAccumulator(input.tools))
     Stream.force(
       for {
@@ -44,7 +44,9 @@ case class LlamaCppProvider(url: URL,
         // the response too. Spice's `streamLines()` otherwise bypasses
         // the interceptor chain entirely.
         val bodyBuf = new StringBuilder
+        // Bug #77 — overall stream-lifetime deadline; see OpenAIProvider rationale.
         lines
+          .timeout(streamTimeout)
           .flatMap { line =>
             bodyBuf.append(line).append('\n')
             Stream.emits(parseLine(line, state))
@@ -63,7 +65,7 @@ case class LlamaCppProvider(url: URL,
   /** Build the wire-level chat-completions HttpRequest from a uniform
     * ProviderCall. Used both by [[call]] and (via the trait's final
     * `requestConverter`) by inspect-only test paths. */
-  override protected def httpRequestFor(input: ProviderCall): Task[HttpRequest] = Task {
+  override def httpRequestFor(input: ProviderCall): Task[HttpRequest] = Task {
     val bodyStr = JsonFormatter.Compact(buildBody(input))
     HttpRequest(
       method = HttpMethod.Post,

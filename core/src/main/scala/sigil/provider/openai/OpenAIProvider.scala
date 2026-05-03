@@ -57,7 +57,7 @@ case class OpenAIProvider(apiKey: String,
     * conservative anyway. */
   override def tokenizer: Tokenizer = JtokkitTokenizer.OpenAIChatGpt
 
-  override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
+  override def call(input: ProviderCall): Stream[ProviderEvent] = {
     val state = new StreamState(new ToolCallAccumulator(input.tools))
     Stream.force(
       for {
@@ -66,7 +66,16 @@ case class OpenAIProvider(apiKey: String,
         lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(streamTimeout).streamLines()
       } yield {
         val bodyBuf = new StringBuilder
+        // Bug #77 — enforce an overall stream-lifetime deadline at our
+        // level. Spice's `.timeout(streamTimeout)` configures Netty's
+        // per-poll timer, which keepalives from upstream (OpenAI's SSE
+        // `: keepalive` lines, periodic empty newlines) keep resetting —
+        // a stream that produces only keepalives never reaches netty's
+        // idle timeout and hangs the agent loop indefinitely. rapid's
+        // `Stream.timeout` checks a wall-clock deadline before every
+        // pull, so accumulated time across keepalives DOES trip it.
         lines
+          .timeout(streamTimeout)
           .flatMap { line =>
             bodyBuf.append(line).append('\n')
             Stream.emits(parseLine(line, state))
@@ -82,7 +91,7 @@ case class OpenAIProvider(apiKey: String,
     )
   }
 
-  override protected def httpRequestFor(input: ProviderCall): Task[HttpRequest] = Task {
+  override def httpRequestFor(input: ProviderCall): Task[HttpRequest] = Task {
     val (path, body) =
       if (isImageOnlyModel(input.modelId)) ("/v1/images/generations", buildImagesBody(input))
       else ("/v1/responses", buildBody(input))

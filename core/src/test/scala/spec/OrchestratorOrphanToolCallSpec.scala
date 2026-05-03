@@ -35,9 +35,9 @@ class OrchestratorOrphanToolCallSpec extends AsyncWordSpec with AsyncTaskSpec wi
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
-    override protected def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
+    override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
       Task.error(new UnsupportedOperationException("no wire"))
-    override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
+    override def call(input: ProviderCall): Stream[ProviderEvent] = {
       val callId = CallId("orphan-call")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
@@ -58,9 +58,9 @@ class OrchestratorOrphanToolCallSpec extends AsyncWordSpec with AsyncTaskSpec wi
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
-    override protected def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
+    override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
       Task.error(new UnsupportedOperationException("no wire"))
-    override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
+    override def call(input: ProviderCall): Stream[ProviderEvent] = {
       val callId = CallId("orphan-throw-call")
       // Emit an index sequence then throw on the second eval —
       // that makes the error surface at stepTask level (where
@@ -81,9 +81,9 @@ class OrchestratorOrphanToolCallSpec extends AsyncWordSpec with AsyncTaskSpec wi
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
-    override protected def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
+    override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
       Task.error(new UnsupportedOperationException("no wire"))
-    override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
+    override def call(input: ProviderCall): Stream[ProviderEvent] = {
       val callId = CallId("orphan-error-call")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),

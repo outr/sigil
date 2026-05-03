@@ -175,13 +175,18 @@ case class StandardContextCurator(sigil: Sigil,
     * here to avoid pulling that private into the curator API. Ids that
     * fail to resolve are dropped silently (the curator's concern is
     * size; missing records are the retriever's bug). */
-  private def resolveMemoriesAndSummaries(memResult: MemoryRetrievalResult): Task[(Vector[ContextMemory], Vector[ContextMemory])] =
+  private def resolveMemoriesAndSummaries(memResult: MemoryRetrievalResult): Task[(Vector[ContextMemory], Vector[ContextMemory])] = {
+    val now = lightdb.time.Timestamp()
     for {
       crit <- Task.sequence(memResult.criticalMemories.toList.map(id =>
                 sigil.withDB(_.memories.transaction(_.get(id)))))
       regular <- Task.sequence(memResult.memories.toList.map(id =>
                    sigil.withDB(_.memories.transaction(_.get(id)))))
-    } yield (crit.flatten.toVector, regular.flatten.toVector)
+    } yield (
+      crit.flatten.iterator.filterNot(StandardMemoryRetriever.isExpired(_, now)).toVector,
+      regular.flatten.iterator.filterNot(StandardMemoryRetriever.isExpired(_, now)).toVector
+    )
+  }
 
   /** Information ids referenced inside the current frames. Used by
     * Stage 2 to keep only those entries the agent might actually
