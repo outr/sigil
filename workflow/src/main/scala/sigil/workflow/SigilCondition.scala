@@ -27,7 +27,7 @@ final case class SigilCondition(input: ConditionStepInput,
                                 onTrueId: Id[Step],
                                 onFalseId: Id[Step],
                                 id: Id[Step] = Step.id()) extends Condition derives RW {
-  override def name: String = if (input.name.nonEmpty) input.name else input.id
+  override def name: String = input.name.getOrElse(input.id)
 
   override def onTrue: Id[Step] = onTrueId
   override def onFalse: Id[Step] = onFalseId

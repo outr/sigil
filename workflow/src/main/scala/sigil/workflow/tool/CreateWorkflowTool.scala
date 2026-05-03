@@ -8,7 +8,7 @@ import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
 import sigil.workflow.{WorkflowStepInput, WorkflowTemplate, WorkflowTrigger}
 
 case class CreateWorkflowInput(name: String,
-                               description: String = "",
+                               description: Option[String] = None,
                                steps: List[WorkflowStepInput] = Nil,
                                triggers: List[WorkflowTrigger] = Nil,
                                variableDefs: List[strider.WorkflowVariable] = Nil,
@@ -44,9 +44,9 @@ final class CreateWorkflowTool extends TypedTool[CreateWorkflowInput](
         name = "summarize-input",
         steps = List(sigil.workflow.JobStepInput(
           id = "summarize",
-          prompt = "Summarize: {{input}}",
-          modelId = "openai/gpt-5.4-mini",
-          output = "summary"
+          prompt = Some("Summarize: {{input}}"),
+          modelId = Some("openai/gpt-5.4-mini"),
+          output = Some("summary")
         ))
       )
     )

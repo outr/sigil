@@ -17,9 +17,10 @@ package sigil
 case object GlobalSpace extends SpaceId {
   override val value: String = "global"
   override val displayName: String = "Global"
-  override val description: String =
+  override val description: Option[String] = Some(
     "Visible to every caller in every conversation. Use for facts that apply to " +
       "all users / projects (framework defaults, universal safety rules). Apps " +
       "that scope memory to user / project spaces never assign this to their own " +
       "records."
+  )
 }

@@ -15,8 +15,8 @@ import fabric.rw.*
  * iteration outputs."
  */
 case class LoopStepInput(id: String,
-                         name: String = "",
                          over: String,
-                         itemVariable: String = "item",
                          body: List[WorkflowStepInput],
-                         output: String = "") extends WorkflowStepInput derives RW
+                         name: Option[String] = None,
+                         itemVariable: String = "item",
+                         output: Option[String] = None) extends WorkflowStepInput derives RW

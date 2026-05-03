@@ -78,10 +78,10 @@ class WorkflowScaffoldSpec extends AnyWordSpec with Matchers {
     "round-trip JobStepInput" in {
       roundTrip[WorkflowStepInput](JobStepInput(
         id = "summarize",
-        name = "Summarize the input",
-        prompt = "Summarize: {{input}}",
-        modelId = "openai/gpt-5.4-mini",
-        output = "summary"
+        name = Some("Summarize the input"),
+        prompt = Some("Summarize: {{input}}"),
+        modelId = Some("openai/gpt-5.4-mini"),
+        output = Some("summary")
       ))
     }
     "round-trip ConditionStepInput" in {
@@ -104,8 +104,8 @@ class WorkflowScaffoldSpec extends AnyWordSpec with Matchers {
       roundTrip[WorkflowStepInput](ParallelStepInput(
         id = "parallel",
         branches = List(
-          List(JobStepInput(id = "a", prompt = "A", modelId = "m")),
-          List(JobStepInput(id = "b", prompt = "B", modelId = "m"))
+          List(JobStepInput(id = "a", prompt = Some("A"), modelId = Some("m"))),
+          List(JobStepInput(id = "b", prompt = Some("B"), modelId = Some("m")))
         ),
         joinMode = "all"
       ))
@@ -114,7 +114,7 @@ class WorkflowScaffoldSpec extends AnyWordSpec with Matchers {
       roundTrip[WorkflowStepInput](LoopStepInput(
         id = "loop",
         over = "items",
-        body = List(JobStepInput(id = "process", prompt = "{{item}}", modelId = "m"))
+        body = List(JobStepInput(id = "process", prompt = Some("{{item}}"), modelId = Some("m")))
       ))
     }
     "round-trip SubWorkflowStepInput" in {
@@ -122,7 +122,7 @@ class WorkflowScaffoldSpec extends AnyWordSpec with Matchers {
         id = "sub",
         workflowId = "wf-123",
         variables = Map("input" -> "{{prior}}"),
-        output = "subResult"
+        output = Some("subResult")
       ))
     }
     "round-trip TriggerStepInput carrying a typed trigger" in {
@@ -138,12 +138,12 @@ class WorkflowScaffoldSpec extends AnyWordSpec with Matchers {
     "round-trip with a mixed step list and trigger list" in {
       val tmpl = WorkflowTemplate(
         name = "demo",
-        description = "Mixed shapes",
+        description = Some("Mixed shapes"),
         steps = List(
-          JobStepInput(id = "s1", prompt = "Hello {{name}}", modelId = "m"),
+          JobStepInput(id = "s1", prompt = Some("Hello {{name}}"), modelId = Some("m")),
           ConditionStepInput(id = "s2", expression = "{{x}} == \"ok\"", onTrue = "s3", onFalse = "s4"),
-          JobStepInput(id = "s3", prompt = "Yes"),
-          JobStepInput(id = "s4", prompt = "No")
+          JobStepInput(id = "s3", prompt = Some("Yes")),
+          JobStepInput(id = "s4", prompt = Some("No"))
         ),
         triggers = List(
           ConversationMessageTrigger(conversationId = "c"),
@@ -176,8 +176,8 @@ class WorkflowScaffoldSpec extends AnyWordSpec with Matchers {
         summon[RW[SigilApproval]]
       )
       val inputs: List[WorkflowStepInput] = List(
-        JobStepInput(id = "a", prompt = "Hello", modelId = "m"),
-        JobStepInput(id = "b", prompt = "World", modelId = "m")
+        JobStepInput(id = "a", prompt = Some("Hello"), modelId = Some("m")),
+        JobStepInput(id = "b", prompt = Some("World"), modelId = Some("m"))
       )
       val compiled = WorkflowStepInputCompiler.compile(inputs)
       compiled.steps should have size 2

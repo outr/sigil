@@ -26,9 +26,9 @@ import fabric.rw.*
  * past an approval the user couldn't ack would betray the gate's intent).
  */
 case class ApprovalStepInput(id: String,
-                             name: String = "",
                              prompt: String,
+                             name: Option[String] = None,
                              options: List[String] = List("approve", "reject"),
-                             output: String = "",
+                             output: Option[String] = None,
                              timeoutMs: Option[Long] = None,
                              timeoutAction: String = "Fail") extends WorkflowStepInput derives RW

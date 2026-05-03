@@ -42,9 +42,9 @@ trait SpaceId {
   /** What the space contains and when a memory belongs here. Shown to
     * the unified memory classifier and the agent so the space picker
     * can disambiguate. Apps SHOULD override with one or two sentences;
-    * empty (the default) leaves the classifier with only `displayName`
+    * `None` (the default) leaves the classifier with only `displayName`
     * to go on. */
-  def description: String = ""
+  def description: Option[String] = None
 }
 
 object SpaceId extends PolyType[SpaceId]()(using scala.reflect.ClassTag(classOf[SpaceId]))

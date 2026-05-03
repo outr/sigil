@@ -12,7 +12,7 @@ import strider.step.Step
 
 case class ResumeWorkflowInput(runId: String,
                                stepId: String,
-                               payload: String = "") extends ToolInput derives RW
+                               payload: Option[String] = None) extends ToolInput derives RW
 
 /**
  * Resume a workflow run paused on a [[strider.step.Approval]] or
@@ -36,7 +36,7 @@ final class ResumeWorkflowTool extends TypedTool[ResumeWorkflowInput](
   examples = List(
     ToolExample(
       "approve a pending approval",
-      ResumeWorkflowInput(runId = "run-abc", stepId = "review", payload = "approve")
+      ResumeWorkflowInput(runId = "run-abc", stepId = "review", payload = Some("approve"))
     )
   ),
   keywords = Set("workflow", "resume", "approve", "continue")
@@ -52,9 +52,10 @@ final class ResumeWorkflowTool extends TypedTool[ResumeWorkflowInput](
             authorizeRun(host, wf, ctx.chain).flatMap {
               case Left(_) => Task.pure(s"Workflow run '${input.runId}' not found.")
               case Right(_) =>
-                val payloadJson: Json = if (input.payload.isEmpty) Null else str(input.payload)
+                val payloadJson: Json = input.payload.filter(_.nonEmpty).fold[Json](Null)(str)
+                val payloadDisplay = input.payload.getOrElse("")
                 host.workflowManager.resume(workflowId, Id[Step](input.stepId), payloadJson)
-                  .map(_ => s"Workflow run '${input.runId}' resumed at step '${input.stepId}' with payload '${input.payload}'.")
+                  .map(_ => s"Workflow run '${input.runId}' resumed at step '${input.stepId}' with payload '$payloadDisplay'.")
                   .handleError(e => Task.pure(s"Resume failed: ${e.getMessage}"))
             }
         }

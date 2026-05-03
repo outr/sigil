@@ -18,9 +18,9 @@ import fabric.rw.*
  * payload; `"branch:<stepId>"` jumps to a different step.
  */
 case class TriggerStepInput(id: String,
-                            name: String = "",
                             trigger: WorkflowTrigger,
+                            name: Option[String] = None,
                             mode: String = "continue",
-                            output: String = "",
+                            output: Option[String] = None,
                             timeoutMs: Option[Long] = None,
                             timeoutAction: String = "fail") extends WorkflowStepInput derives RW

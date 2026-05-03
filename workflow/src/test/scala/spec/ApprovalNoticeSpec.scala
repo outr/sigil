@@ -41,7 +41,7 @@ class ApprovalNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       val convIdStr = "approval-test-conv"
       val approval = SigilApproval(ApprovalStepInput(
         id = "review",
-        name = "Review the change",
+        name = Some("Review the change"),
         prompt = "Approve or reject the rollout?",
         options = List("approve", "reject"),
         timeoutMs = Some(30000L)

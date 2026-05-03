@@ -13,7 +13,7 @@ import fabric.rw.*
  * fail-fast contract Strider's primitive `Condition` step has.
  */
 case class ConditionStepInput(id: String,
-                              name: String = "",
                               expression: String,
                               onTrue: String,
-                              onFalse: String) extends WorkflowStepInput derives RW
+                              onFalse: String,
+                              name: Option[String] = None) extends WorkflowStepInput derives RW

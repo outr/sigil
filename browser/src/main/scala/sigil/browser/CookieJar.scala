@@ -35,8 +35,8 @@ import sigil.SpaceId
  * `BrowserScript.cookieJarId` for resume.
  */
 case class CookieJar(space: SpaceId,
-                     encryptedData: String = "",
-                     encryptedSalt: String = "",
+                     encryptedData: Option[String] = None,
+                     encryptedSalt: Option[String] = None,
                      metadata: Map[String, String] = Map.empty,
                      created: Timestamp = Timestamp(),
                      modified: Timestamp = Timestamp(),

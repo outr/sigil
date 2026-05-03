@@ -15,7 +15,7 @@ import fabric.rw.*
  * child's final result.
  */
 case class SubWorkflowStepInput(id: String,
-                                name: String = "",
                                 workflowId: String,
+                                name: Option[String] = None,
                                 variables: Map[String, String] = Map.empty,
-                                output: String = "") extends WorkflowStepInput derives RW
+                                output: Option[String] = None) extends WorkflowStepInput derives RW

@@ -29,7 +29,7 @@ final class McpTool(manager: McpManager,
                     serverConfig: McpServerConfig,
                     definition: McpToolDefinition) extends Tool {
 
-  override val name: ToolName = ToolName(serverConfig.prefix + definition.name)
+  override val name: ToolName = ToolName(serverConfig.prefix.getOrElse("") + definition.name)
   override val description: String = definition.description.getOrElse("")
   override val inputRW: RW[JsonInput] = summon[RW[JsonInput]]
 

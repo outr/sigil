@@ -2373,7 +2373,7 @@ trait Sigil {
     val spaceCatalog =
       if (accessibleSpaces.isEmpty) "  (none — only global available)"
       else accessibleSpaces.toList.sortBy(_.value).map { s =>
-        val desc = if (s.description.nonEmpty) s" — ${s.description}" else ""
+        val desc = s.description.fold("")(d => s" — $d")
         s"  - value=\"${s.value}\" displayName=\"${s.displayName}\"$desc"
       }.mkString("\n")
     val rendered = renderMemoryForClassification(memory)

@@ -26,10 +26,10 @@ trait WorkflowStepInput {
     * `branch` jumps, etc. Required and unique within a workflow. */
   def id: String
 
-  /** Human-readable name shown in the workflow's history and
-    * surfaced in the conversation as part of step lifecycle Events.
-    * Defaults to the step kind + `id` when blank. */
-  def name: String
+  /** Optional human-readable name shown in the workflow's history
+    * and surfaced in the conversation as part of step lifecycle
+    * Events. Compilers fall back to `id` when None. */
+  def name: Option[String]
 }
 
 object WorkflowStepInput extends PolyType[WorkflowStepInput]()(using scala.reflect.ClassTag(classOf[WorkflowStepInput]))
