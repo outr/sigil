@@ -8,7 +8,7 @@ import sigil.db.Model
 import sigil.provider.{
   BuiltInTool, CallId, ErrorClassifier, ErrorClassification, GenerationSettings,
   LoadBalancedProvider, Provider, ProviderCall, ProviderEvent, ProviderType,
-  StopReason, ToolChoice
+  RateLimiter, StopReason, ToolChoice
 }
 import spice.http.HttpRequest
 
@@ -139,6 +139,45 @@ class LoadBalancedProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       }
       ex.getMessage should include("at least one provider")
       Task.unit.map(_ => succeed)
+    }
+
+    "consult each pool member's rateLimiter on dispatch" in {
+      // Per-API-key pacing: each pool member typically holds a distinct
+      // RateLimiter (one per upstream account). The load-balancer's `call`
+      // must drain `head.rateLimiter` before invoking the member, otherwise
+      // the per-member pacing the class doc-string promises is unreachable.
+      class TrackingLimiter extends RateLimiter {
+        val acquired = new AtomicInteger(0)
+        override def acquire: Task[Unit] = Task { acquired.incrementAndGet(); () }
+        override def observe(remainingRequests: Option[Long],
+                              remainingTokens: Option[Long],
+                              resetSeconds: Option[Long],
+                              retryAfter: Option[scala.concurrent.duration.FiniteDuration]): Unit = ()
+      }
+      class TrackedLimiterProvider extends Provider {
+        val callerLimiter = new TrackingLimiter
+        override def `type`: ProviderType = ProviderType.LlamaCpp
+        override def models: List[Model] = Nil
+        override def rateLimiter: RateLimiter = callerLimiter
+        override protected def sigil: _root_.sigil.Sigil = TestSigil
+        override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
+          Task.error(new UnsupportedOperationException("no wire"))
+        override def call(input: ProviderCall): Stream[ProviderEvent] =
+          Stream.emits(List(ProviderEvent.Done(StopReason.Complete)))
+      }
+
+      val a = new TrackedLimiterProvider
+      val b = new TrackedLimiterProvider
+      val pool = LoadBalancedProvider(Vector(a, b), TestSigil)
+
+      for {
+        _ <- pool.call(emptyCall).toList
+        _ <- pool.call(emptyCall).toList
+      } yield {
+        // Round-robin: each member ran once and its limiter was consulted once.
+        a.callerLimiter.acquired.get() shouldBe 1
+        b.callerLimiter.acquired.get() shouldBe 1
+      }
     }
   }
 }

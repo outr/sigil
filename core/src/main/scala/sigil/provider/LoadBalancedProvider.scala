@@ -84,8 +84,14 @@ case class LoadBalancedProvider(pool: Vector[Provider],
       case Nil =>
         Stream.force(Task.error(new RuntimeException("LoadBalancedProvider: every pool member failed")))
       case head :: tail =>
+        // Pool members typically carry distinct API keys → distinct
+        // RateLimiter instances. The outer `apply` already drained the
+        // load-balancer's own limiter (default NoOp); we drain the pool
+        // member's limiter here so per-key pacing actually runs before
+        // each call. Without this hop the per-member limiter the
+        // class doc-string promises is unreachable from the live path.
         Stream.force(
-          head.call(input).toList.attempt.flatMap {
+          head.rateLimiter.acquire.flatMap(_ => head.call(input).toList.attempt).flatMap {
             case scala.util.Success(events) =>
               Task.pure(Stream.emits(events))
             case scala.util.Failure(err) =>
