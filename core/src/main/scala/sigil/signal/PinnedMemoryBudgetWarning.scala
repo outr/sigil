@@ -18,8 +18,8 @@ import sigil.participant.ParticipantId
  * Apps subscribe via `signals` filtered to `PinnedMemoryBudgetWarning`
  * and render a red badge / banner ("Pinned memories exceed N% of
  * available context — consider reviewing"). Pair with
- * [[sigil.tool.context.ListPinnedMemoriesTool]] to let the user
- * review and trim.
+ * [[sigil.tool.context.ListMemoriesTool]] (with `pinned = Some(true)`)
+ * to let the user review and trim.
  *
  * The warning is stateless per turn — re-emitted whenever the
  * threshold is exceeded; apps that want throttling apply it on the

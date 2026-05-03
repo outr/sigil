@@ -90,7 +90,7 @@ trait Tool extends RecordDocument[Tool] {
     * would just waste tokens.
     *
     * Memory-related tools set this true (`save_memory`,
-    * `unpin_memory`, `list_pinned_memories`, etc.). Tools whose
+    * `unpin_memory`, `list_memories(pinned=true)`, etc.). Tools whose
     * usefulness doesn't depend on space wiring leave this false. */
   def requiresAccessibleSpaces: Boolean = false
 

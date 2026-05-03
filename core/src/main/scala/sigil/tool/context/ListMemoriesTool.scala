@@ -82,14 +82,23 @@ case object ListMemoriesTool extends TypedTool[ListMemoriesInput](
       val effective = if (input.spaces.nonEmpty) input.spaces.intersect(accessible) else accessible
       if (effective.isEmpty)
         Task.pure("""{"memories":[],"page":{"offset":0,"limit":0,"returned":0,"totalMatched":0,"hasMore":false},"note":"No accessible memory spaces for this chain."}""")
-      else
-        context.sigil.findMemories(effective).map { memories =>
+      else {
+        // pinned-only requests use the Lucene-pushed critical-memory
+        // query (O(N_pinned)) instead of pulling every memory and
+        // filtering — the typical "what's pinned in my context?"
+        // path needs to stay fast as the memory store grows.
+        val source: Task[List[ContextMemory]] = input.pinned match {
+          case Some(true) => context.sigil.findCriticalMemories(effective)
+          case _          => context.sigil.findMemories(effective)
+        }
+        source.map { memories =>
           val filtered = applyFilters(memories, input)
           val limit = math.max(1, math.min(input.limit, MaxPageSize))
           val offset = math.max(0, input.offset)
           val page = filtered.slice(offset, offset + limit)
           render(page, offset = offset, limit = limit, totalMatched = filtered.size)
         }
+      }
     }
 
   private def applyFilters(memories: List[ContextMemory], input: ListMemoriesInput): List[ContextMemory] = {

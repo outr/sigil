@@ -5,7 +5,6 @@ import sigil.tool.{Tool, ToolInput}
 import sigil.tool.context.{
   ContextBreakdownInput, ContextBreakdownTool,
   ListMemoriesInput, ListMemoriesTool,
-  ListPinnedMemoriesInput, ListPinnedMemoriesTool,
   MoveMemoryInput, MoveMemoryTool,
   PinMemoryInput, PinMemoryTool,
   UnpinMemoryInput, UnpinMemoryTool
@@ -53,12 +52,12 @@ import sigil.tool.skill.{ActivateSkillInput, ActivateSkillTool}
  *     skill catalogs. Apps without skills surface it as a no-op tool
  *     the model could waste tokens trying to call.
  *
- *   - `list_pinned_memories` / `unpin_memory` / `context_breakdown` —
+ *   - `list_memories` / `unpin_memory` / `context_breakdown` —
  *     context-introspection surface (Phase 2 of context-limit
  *     enforcement). Apps that surface a "review pinned memories"
  *     UI / context-utilisation gauge opt in; apps that don't use
- *     critical-memory pinning (or that present such reviews via app
- *     UI rather than agent dialog) skip these.
+ *     pinned memories (or that present such reviews via app UI
+ *     rather than agent dialog) skip these.
  *
  * Adding any of these to a small core roster shifts the model's
  * tool-selection decisions — concretely, OpenAI's GPT can pick
@@ -106,7 +105,6 @@ object CoreTools {
       summon[RW[StopInput]],
       summon[RW[ActivateSkillInput]],
       summon[RW[ListMemoriesInput]],
-      summon[RW[ListPinnedMemoriesInput]],
       summon[RW[PinMemoryInput]],
       summon[RW[UnpinMemoryInput]],
       summon[RW[MoveMemoryInput]],

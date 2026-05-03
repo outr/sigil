@@ -17,7 +17,7 @@ import fabric.rw.*
  * @param category        which subsystem the insight relates to
  * @param message         one-line human-readable summary
  * @param suggestedAction optional tool-call hint the agent (or app)
- *                        can act on (e.g. `list_pinned_memories`)
+ *                        can act on (e.g. `list_memories(pinned=true)`)
  */
 case class ContextManagementInsight(level: InsightLevel,
                                     category: InsightCategory,

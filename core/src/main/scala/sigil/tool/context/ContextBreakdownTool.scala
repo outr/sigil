@@ -29,7 +29,7 @@ case object ContextBreakdownTool extends TypedTool[ContextBreakdownInput](
       |this turn — frames, critical memories, retrieved memories, active skills, etc.
       |Use this when the user asks "what's in your context?" / "why is my context full?".
       |
-      |Pair with `list_pinned_memories` to drill into Critical directives, or
+      |Pair with `list_memories(pinned=true)` to drill into Critical directives, or
       |`unpin_memory` to remove ones the user no longer needs.""".stripMargin,
   keywords = Set("context", "breakdown", "tokens", "usage", "share", "where", "why")
 ) {

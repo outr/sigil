@@ -21,13 +21,13 @@ import sigil.tool.model.ResponseContent
  *      space.
  *   3. If no key match, try `_id` lookup as a fallback (for cases
  *      where the agent received a UUID-style id from
- *      `list_pinned_memories`).
+ *      `list_memories(pinned=true)`).
  */
 case object UnpinMemoryTool extends TypedTool[UnpinMemoryInput](
   name = ToolName("unpin_memory"),
   description =
     """Unpin a memory so it stops rendering every turn. The record stays on disk —
-      |the agent / user can re-pin later. Use this when the user reviews `list_pinned_memories`
+      |the agent / user can re-pin later. Use this when the user reviews `list_memories(pinned=true)`
       |and decides a directive is no longer applicable.
       |
       |- `key`   — the memory's stable key (preferred) or `_id` value if no key.
@@ -74,7 +74,7 @@ case object UnpinMemoryTool extends TypedTool[UnpinMemoryInput](
       pinned.find(m => m.key.contains(key)) match {
         case some @ Some(_) => Task.pure(some)
         case None =>
-          // Fallback: maybe the agent passed an _id (UUID-style) from list_pinned_memories
+          // Fallback: maybe the agent passed an _id (UUID-style) from list_memories(pinned=true)
           context.sigil.withDB(_.memories.transaction(_.get(Id[ContextMemory](key)))).map {
             case some @ Some(m) if spaces.contains(m.spaceId) => some
             case _                                            => None

@@ -63,20 +63,24 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
         ).flatMap {
           case None => Task.pure(Nil)
           case Some(result) =>
-            val kept = result.memories.filter(m => m.key.nonEmpty && m.content.nonEmpty)
+            val kept = result.memories.filter(_.content.nonEmpty)
             Task.sequence(kept.map { m =>
-              sigil.upsertMemoryByKeyFor(ContextMemory(
+              val mem = ContextMemory(
                 fact = m.content,
                 label = m.label,
                 summary = m.content,
                 source = MemorySource.Compression,
                 spaceId = space,
-                key = Some(m.key),
+                key = m.key,
                 keywords = m.tags.toVector,
                 memoryType = defaultType,
                 status = defaultStatus,
                 conversationId = Some(conversationId)
-              ), chain, conversationId).map(_.memory)
+              )
+              if (m.key.isDefined)
+                sigil.upsertMemoryByKeyFor(mem, chain, conversationId).map(_.memory)
+              else
+                sigil.persistMemoryFor(mem, chain, conversationId)
             })
         }.handleError { e =>
           Task(scribe.warn(s"StandardMemoryExtractor: extraction failed for conversation ${conversationId.value}: ${e.getMessage}"))

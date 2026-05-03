@@ -1093,7 +1093,7 @@ trait Sigil {
         rawTools    <- Task.sequence(effectiveNames.map(n => findTools.byName(n))).map(_.flatten.toVector)
         // Filter out memory tools when the chain has no accessible
         // spaces — surfacing `save_memory` / `unpin_memory` /
-        // `list_pinned_memories` to an agent that has nowhere to write
+        // `list_memories` to an agent that has nowhere to write
         // would just waste tokens on tool descriptions the agent
         // would fail to use.
         accessible  <- accessibleSpaces(effectiveChain)
@@ -1180,7 +1180,7 @@ trait Sigil {
 
   /**
    * The default [[SpaceId]] for agent-written memories (e.g.
-   * `RememberTool` invocations) when the agent doesn't supply one
+   * `save_memory` invocations) when the agent doesn't supply one
    * explicitly. Apps that want per-user / per-conversation /
    * per-project scoping return the appropriate concrete subtype; apps
    * that haven't wired memory yet return `Task.pure(None)` (the
@@ -1191,8 +1191,8 @@ trait Sigil {
 
   /**
    * The default [[SpaceId]] set used by recall-style searches
-   * (e.g. `RecallTool`) when the agent doesn't supply a filter. Apps
-   * typically return the caller's user/space combination.
+   * (e.g. `semantic_search`) when the agent doesn't supply a filter.
+   * Apps typically return the caller's user/space combination.
    */
   def defaultRecallSpaces(conversationId: Id[Conversation]): Task[Set[SpaceId]] =
     defaultMemorySpace(conversationId).map(_.toSet)
@@ -1208,11 +1208,11 @@ trait Sigil {
 
   /** All pinned memories scoped to the supplied spaces — the
     * inviolable subset the framework renders every turn. Used by
-    * `list_pinned_memories` and the core-context cap validator. Pushes
-    * the `pinned == true` filter into Lucene; the result is filtered
-    * to the requested spaces in-memory (since `SpaceId` is polymorphic
-    * the equality side uses the indexed `spaceIdValue` projection
-    * downstream of [[findMemories]]). */
+    * `list_memories(pinned=true)` and the core-context cap validator.
+    * Pushes the `pinned == true` filter into Lucene; the result is
+    * filtered to the requested spaces in-memory (since `SpaceId` is
+    * polymorphic the equality side uses the indexed `spaceIdValue`
+    * projection downstream of [[findMemories]]). */
   def findCriticalMemories(spaces: Set[SpaceId]): Task[List[ContextMemory]] =
     findMemories(spaces).map(_.filter(_.pinned))
 
@@ -2555,7 +2555,7 @@ trait Sigil {
     }
 
   /** Bump `accessCount` and `lastAccessedAt` on a memory. Called by
-    * retrieval paths (RecallTool, MemoryRetriever) so apps can
+    * retrieval paths (`semantic_search`, MemoryRetriever) so apps can
     * implement LRU-based retention without Sigil needing its own
     * pruner. */
   def recordMemoryAccess(id: Id[ContextMemory]): Task[Unit] =

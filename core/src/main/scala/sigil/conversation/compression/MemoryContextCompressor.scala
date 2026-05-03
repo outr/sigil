@@ -7,24 +7,23 @@ import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary, Conversa
 import sigil.SpaceId
 import sigil.db.Model
 import sigil.participant.ParticipantId
-import sigil.tool.consult.{ConsultTool, ExtractMemoriesInput, ExtractMemoriesTool, SummarizationInput, SummarizationTool}
+import sigil.tool.consult.{ConsultTool, ExtractMemoriesWithKeysInput, ExtractMemoriesWithKeysTool, SummarizationInput, SummarizationTool}
 
 /**
  * Two-pass LLM compressor. First pass asks the consulted model to
- * extract a list of durable facts (via [[ExtractMemoriesTool]]); the
- * framework persists each fact as a [[ContextMemory]] in the space
- * returned by [[sigil.Sigil.compressionMemorySpace]]. Second pass
- * summarizes the excerpt the normal way (via [[SummarizationTool]]),
- * so the summary is free to stay short — the facts it would otherwise
- * repeat are already on disk.
+ * extract a list of durable facts (via [[ExtractMemoriesWithKeysTool]]);
+ * the framework persists each fact as a [[ContextMemory]] in the space
+ * returned by [[sigil.Sigil.compressionMemorySpace]]. Facts that come
+ * back with a `key` get versioned via `upsertMemoryByKey`; keyless
+ * facts append as new records. Second pass summarizes the excerpt the
+ * normal way (via [[SummarizationTool]]), so the summary is free to
+ * stay short — the facts it would otherwise repeat are already on disk.
  *
  * This is the compression-time pathway. For per-turn extraction (fire
  * after every agent response, before compression thresholds trigger),
  * see
  * [[sigil.conversation.compression.extract.StandardMemoryExtractor]]
- * which uses richer keyed memories via
- * [[sigil.tool.consult.ExtractMemoriesWithKeysTool]] +
- * `Sigil.upsertMemoryByKey` for automatic versioning.
+ * which uses the same tool against a smaller window.
  *
  * Falls back to [[SummaryOnlyCompressor]]'s behavior in these cases:
  *   - `compressionMemorySpace(conversationId)` returns `None` (app
@@ -73,33 +72,39 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                                 conversationId: Id[Conversation],
                                 space: SpaceId): Task[Unit] = {
     val userPrompt =
-      s"""List durable facts from the following conversation excerpt. Output via the `extract_memories` tool.
+      s"""Extract durable facts from the following conversation excerpt. Output via the
+         |`extract_memories_with_keys` tool. Supply a `key` for facts that represent a durable
+         |identity slot whose value may change over time (so future extractions can version it);
+         |omit `key` for one-shot facts.
          |
          |${transcript}""".stripMargin
-    ConsultTool.invoke[ExtractMemoriesInput](
+    ConsultTool.invoke[ExtractMemoriesWithKeysInput](
       sigil = sigil,
       modelId = modelId,
       chain = chain,
       systemPrompt = extractionSystemPrompt,
       userPrompt = userPrompt,
-      tool = ExtractMemoriesTool
+      tool = ExtractMemoriesWithKeysTool
     ).flatMap {
       case Some(result) =>
-        val kept = result.facts.map(_.trim).filter(_.length >= minFactChars)
-        Task.sequence(kept.map { fact =>
-          sigil.persistMemoryFor(ContextMemory(
-            fact = fact,
-            // Compressor-extracted facts arrive as terse one-liners
-            // already; synthesise a short label from the first clause
-            // and use the fact itself as the summary. Apps that want
-            // richer metadata for compressor output run their own
-            // post-processing pass.
-            label = MemoryContextCompressor.synthesizeLabel(fact),
-            summary = fact,
+        val kept = result.memories.filter(_.content.trim.length >= minFactChars)
+        Task.sequence(kept.map { m =>
+          val label = if (m.label.trim.nonEmpty) m.label
+                      else MemoryContextCompressor.synthesizeLabel(m.content)
+          val mem = ContextMemory(
+            fact = m.content,
+            label = label,
+            summary = m.content,
             source = MemorySource.Compression,
             spaceId = space,
+            key = m.key,
+            keywords = m.tags.toVector,
             conversationId = Some(conversationId)
-          ), chain, conversationId)
+          )
+          if (m.key.isDefined)
+            sigil.upsertMemoryByKeyFor(mem, chain, conversationId).map(_.memory)
+          else
+            sigil.persistMemoryFor(mem, chain, conversationId)
         }).unit
       case None => Task.unit
     }.handleError { e =>
