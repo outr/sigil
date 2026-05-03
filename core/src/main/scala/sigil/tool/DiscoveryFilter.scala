@@ -29,6 +29,27 @@ object DiscoveryFilter {
     passesModeAffinity && passesSpaceAffinity
   }
 
+  /** Policy filter — `Exclusive(names)` and `Scoped(names)` restrict the
+    * discovery catalog to `names`; `Discoverable(names)` adds those names
+    * to the catalog regardless of [[sigil.tool.Tool.modes]] affinity (so
+    * a tool flagged for the parent mode shows up under this mode without
+    * needing its `modes` set widened); the rest don't restrict.
+    *
+    * Discovery-side counterpart to the roster-side fold in
+    * [[sigil.Sigil.effectiveToolNames]]. Apps that override
+    * [[sigil.Sigil.findCapabilities]] either reuse this helper or
+    * implement their own (e.g. for per-tenant catalog gating). */
+  def passesPolicy(tool: Tool, policy: sigil.provider.ToolPolicy): Boolean =
+    policy match {
+      case sigil.provider.ToolPolicy.Standard
+         | sigil.provider.ToolPolicy.None
+         | sigil.provider.ToolPolicy.PureDiscovery
+         | sigil.provider.ToolPolicy.Active(_)
+         | sigil.provider.ToolPolicy.Discoverable(_) => true
+      case sigil.provider.ToolPolicy.Exclusive(names) => names.contains(tool.name)
+      case sigil.provider.ToolPolicy.Scoped(names)    => names.contains(tool.name)
+    }
+
   def matches(tool: Tool, request: DiscoveryRequest): Boolean =
     passesAffinity(tool, request) && score(tool, request.keywords) > 0
 

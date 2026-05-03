@@ -423,7 +423,8 @@ trait Sigil {
   def findCapabilities(request: sigil.tool.DiscoveryRequest): rapid.Task[List[sigil.tool.discovery.CapabilityMatch]] = {
     import sigil.tool.discovery.{CapabilityMatch, CapabilityStatus, CapabilityType}
     for {
-      tools    <- findTools(request)
+      rawTools <- findTools(request)
+      tools    = rawTools.filter(t => sigil.tool.DiscoveryFilter.passesPolicy(t, request.mode.tools))
       modes    <- findModes(request)
       skills   <- findSkills(request)
       memories <- findCapabilitiesMemories(request)
