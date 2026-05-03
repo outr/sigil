@@ -20,12 +20,17 @@ package sigil.tool
  */
 object DiscoveryFilter {
 
-  def matches(tool: Tool, request: DiscoveryRequest): Boolean = {
+  /** Mode + space affinity — independent of keyword matching. Used by
+    * [[DbToolFinder]] as a post-filter on the Lucene-ranked results
+    * (Lucene handles keyword scoring; affinity is policy). */
+  def passesAffinity(tool: Tool, request: DiscoveryRequest): Boolean = {
     val passesModeAffinity  = tool.modes.contains(request.mode.id)
     val passesSpaceAffinity = tool.space == sigil.GlobalSpace || request.callerSpaces.contains(tool.space)
-    if (!(passesModeAffinity && passesSpaceAffinity)) false
-    else score(tool, request.keywords) > 0
+    passesModeAffinity && passesSpaceAffinity
   }
+
+  def matches(tool: Tool, request: DiscoveryRequest): Boolean =
+    passesAffinity(tool, request) && score(tool, request.keywords) > 0
 
   def score(tool: Tool, keywords: String): Double = {
     val kws = keywords.toLowerCase.split("\\s+").filter(_.nonEmpty).toList

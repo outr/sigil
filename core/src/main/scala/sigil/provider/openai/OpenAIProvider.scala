@@ -7,6 +7,7 @@ import sigil.Sigil
 import sigil.db.Model
 import sigil.provider.*
 import sigil.provider.sse.{SSELine, SSELineParser}
+import sigil.tokenize.{JtokkitTokenizer, Tokenizer}
 import sigil.tool.{DefinitionToSchema, Tool, ToolInput, ToolSchema}
 import sigil.tool.ToolInput.given
 import spice.http.{HttpMethod, HttpRequest, HttpResponse, HttpStatus}
@@ -48,6 +49,13 @@ case class OpenAIProvider(apiKey: String,
   override def `type`: ProviderType = ProviderType.OpenAI
   override val providerKey: String = OpenAI.Provider
   override protected def sigil: Sigil = sigilRef
+
+  /** OpenAI Chat Completions / Responses use the cl100k_base /
+    * o200k_base BPE tokenizer. cl100k is the safe default — accurate
+    * for GPT-3.5 / GPT-4 / GPT-4o-mini, slightly conservative (~5%
+    * over) for o-series. The pre-flight gate's job is to err
+    * conservative anyway. */
+  override def tokenizer: Tokenizer = JtokkitTokenizer.OpenAIChatGpt
 
   override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
     val state = new StreamState(new ToolCallAccumulator(input.tools))

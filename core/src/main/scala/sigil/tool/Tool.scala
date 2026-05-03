@@ -128,4 +128,19 @@ object Tool extends PolyType[Tool]()(using scala.reflect.ClassTag(classOf[Tool])
   val spaceId: I[String]           = field.index(_.space.value)
   val keywordIndex: I[Set[String]] = field.index(_.keywords)
   val createdByIndex: I[Option[String]] = field.index(_.createdBy.map(_.value))
+
+  /**
+   * Tokenized full-text index over the tool's name + description + curated
+   * keywords. Backs `find_capability`'s BM25-scored search via
+   * [[sigil.tool.DbToolFinder]] — Lucene tokenises the joined string,
+   * the search query OR-combines per-keyword `TermQuery`s, and the
+   * `BestMatch` sort returns documents in descending relevance order.
+   *
+   * Apps can rebuild the searchable surface per tool by overriding any
+   * of the source fields; the index recomputes on `tools.upsert`.
+   */
+  val searchText: lightdb.field.Field.Tokenized[Tool] =
+    field.tokenized("searchText", (t: Tool) =>
+      s"${t.name.value} ${t.description} ${t.keywords.mkString(" ")}"
+    )
 }

@@ -14,7 +14,7 @@ final case class GetMagicNumberInput() extends ToolInput derives RW
  * Test-only tool used by [[MultiStepToolFlowSpec]] to demonstrate the
  * multi-step tool-flow gap. Returns the literal string "42" via a
  * `Message(participantId = context.caller)` — the same emission
- * pattern the existing core tools (`LookupInformationTool`,
+ * pattern the existing core tools (`LookupTool`,
  * `RespondTool`) use.
  *
  * The point: this is the natural shape an app builder would write

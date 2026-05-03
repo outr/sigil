@@ -78,7 +78,7 @@ object TestSigil extends Sigil {
       sigil.tool.core.ChangeModeTool,
       SendSlackMessageTool,
       sigil.tool.util.SleepTool,
-      sigil.tool.util.LookupInformationTool,
+      sigil.tool.util.LookupTool,
       GetMagicNumberTool
     )
 
@@ -234,7 +234,7 @@ object TestSigil extends Sigil {
 
   /** Expose the in-memory information store that backs `getInformation`
     * so specs populate it before exercising
-    * [[sigil.tool.util.LookupInformationTool]]. */
+    * [[sigil.tool.util.LookupTool]]. */
   def information: InMemoryInformation = informationRef.get()
 
   /**

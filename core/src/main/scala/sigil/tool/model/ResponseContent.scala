@@ -1,5 +1,6 @@
 package sigil.tool.model
 
+import fabric.Json
 import fabric.rw.*
 import lightdb.id.Id
 import sigil.security.SecretKind
@@ -203,4 +204,69 @@ enum ResponseContent derives RW {
                            language: Option[String] = None,
                            contentType: String = "application/octet-stream",
                            size: Long = 0L)
+
+  /**
+   * Container that groups a sequence of [[ResponseContent]] blocks into
+   * a single composable unit. The agent emits one `Card` per `respond_card`
+   * call; richer multi-card responses use `respond_cards`. Recursive — a
+   * Card's sections may themselves contain Card blocks for nested groups.
+   *
+   *   - `sections` — the building blocks composed into this card, stored
+   *     as raw JSON values to break what would otherwise be a self-
+   *     referential cycle in fabric's auto-derived RW (`Card.sections:
+   *     Vector[ResponseContent]` → enum RW → Card case → enum RW
+   *     deadlocks during lazy-val initialization). Construct via
+   *     [[Card.of]] when you have typed blocks, render via
+   *     [[Card.typedSections]] to recover them. Wire-format-wise the
+   *     JSON is exactly what a typed `Vector[ResponseContent]` would
+   *     serialize to, so no observer downstream sees a difference.
+   *   - `title` — optional card title rendered as a header before
+   *     `sections`. Distinct from a `Heading` block inside `sections` —
+   *     renderers may style the title differently (card chrome vs.
+   *     section header).
+   *   - `kind` — optional UI styling hint (`"alert"`, `"info"`,
+   *     `"recipe"`, `"metric"`, …). The framework doesn't interpret
+   *     it; apps map kinds to their UI components / style sheets.
+   *     Renderers that have no equivalent (plain text, generic
+   *     markdown) ignore it.
+   */
+  case Card(sections: List[Json],
+            title: Option[String] = None,
+            kind: Option[String] = None)
+}
+
+object ResponseContent {
+  /** Explicit RW for the [[ResponseContent.Card]] case so tools that
+   * constrain their input to Cards specifically (e.g. `respond_card`)
+   * can round-trip. Lives in the enum's companion so implicit search
+   * for `RW[ResponseContent.Card]` finds it. The case is non-recursive
+   * (`sections: List[Json]`), so this derivation completes without the
+   * cycle that `Vector[ResponseContent]` would introduce. */
+  given cardRW: RW[ResponseContent.Card] = RW.gen
+}
+
+/**
+ * Construction + access helpers for [[ResponseContent.Card]] — the
+ * enum case stores `sections` as `List[Json]` (raw JSON) to break
+ * what would otherwise be a self-referential cycle in fabric's
+ * auto-derived RW. Apps construct Cards from typed blocks via
+ * `Card(blocks, title, kind)` and read them back via
+ * `Card.typedSections(card)`.
+ */
+object Card {
+  /** Build a [[ResponseContent.Card]] from typed blocks. Each block
+   * round-trips through the enum's RW into a Json value so the wire
+   * format matches what a `Vector[ResponseContent]`-typed field would
+   * have produced. */
+  def apply(sections: Vector[ResponseContent],
+            title: Option[String] = None,
+            kind: Option[String] = None): ResponseContent.Card =
+    ResponseContent.Card(sections.map(_.json).toList, title, kind)
+
+  /** Materialize the typed blocks back from a Card's raw section JSON.
+   * Used by renderers (which need typed dispatch) and apps that want to
+   * inspect a Card's contents structurally. Each Json value is read via
+   * the parent `ResponseContent` RW. */
+  def typedSections(card: ResponseContent.Card): Vector[ResponseContent] =
+    card.sections.iterator.map(j => j.as[ResponseContent]).toVector
 }

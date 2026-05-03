@@ -29,7 +29,9 @@ val bsp4jVersion: String = "2.2.0-M4.TEST"
 
 val lsp4jDebugVersion: String = "1.0.0"
 
-val striderVersion: String = "1.0.2-SNAPSHOT"
+val striderVersion: String = "1.0.2"
+
+val jtokkitVersion: String = "1.1.0"
 
 ThisBuild / versionScheme := Some("early-semver")
 ThisBuild / licenses := Seq("MIT" -> url("https://github.com/outr/sigil/blob/master/LICENSE"))
@@ -56,7 +58,7 @@ val docNoLinkWarnings: Seq[Setting[?]] = Seq(
 )
 
 lazy val root = (project in file("."))
-  .aggregate(core, secrets, script, mcp, tooling, metals, debug, workflow, browser, benchmark, docs)
+  .aggregate(core, secrets, script, mcp, tooling, metals, debug, workflow, browser, all, benchmark, docs)
   .settings(
     name := "sigil",
     publish / skip := true
@@ -77,6 +79,10 @@ lazy val core = (project in file("core"))
       "com.outr" %% "lightdb-all" % lightdbVersion,
       "org.commonmark" % "commonmark" % commonmarkVersion,
       "software.amazon.awssdk" % "s3" % awsS3Version exclude ("software.amazon.awssdk", "netty-nio-client"),
+      // Pure-Java port of OpenAI's tiktoken — used by `sigil.tokenize.JtokkitTokenizer`
+      // for accurate token counts when validating that wire requests fit the model's
+      // context window. Decent approximation for non-OpenAI providers too.
+      "com.knuddels" % "jtokkit" % jtokkitVersion,
       "org.scalatest" %% "scalatest" % scalatestVersion % Test,
       "com.outr" %% "rapid-test" % rapidVersion % Test,
       "com.outr" %% "spice-server-undertow" % spiceVersion % Test
@@ -266,6 +272,16 @@ lazy val workflow = (project in file("workflow"))
         runPolicy = Tests.SubProcess(ForkOptions())
       )
     })
+  )
+
+/** Aggregator artifact — depends on every published Sigil module so a downstream
+  * consumer can pull in the whole framework with one `"com.outr" %% "sigil-all" %
+  * version` line. No source of its own; the POM carries the transitive deps. */
+lazy val all = (project in file("all"))
+  .dependsOn(core, secrets, script, mcp, metals, tooling, debug, workflow, browser)
+  .settings(docNoLinkWarnings *)
+  .settings(
+    name := "sigil-all"
   )
 
 lazy val browser = (project in file("browser"))

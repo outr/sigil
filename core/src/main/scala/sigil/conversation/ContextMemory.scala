@@ -86,5 +86,16 @@ object ContextMemory extends RecordDocumentModel[ContextMemory] with JsonConvers
   val pinned: I[Boolean] = field.index(_.pinned)
   val conversationId: I[Option[Id[Conversation]]] = field.index(_.conversationId)
 
+  /** Tokenized full-text index over key + label + summary + fact + tags.
+    * Backs `find_capability`'s BM25-scored memory search (same shape
+    * as [[sigil.tool.Tool.searchText]] / [[sigil.skill.Skill.searchText]]).
+    * Memory matches in `find_capability` carry only the key + summary
+    * — the agent calls `lookup(capabilityType=Memory, name=key)` to
+    * pull the full fact when it judges the memory worth the tokens. */
+  val searchText: lightdb.field.Field.Tokenized[ContextMemory] =
+    field.tokenized("searchText", (m: ContextMemory) =>
+      s"${m.key} ${m.label} ${m.summary} ${m.fact} ${m.tags.mkString(" ")}"
+    )
+
   override def id(value: String = Unique()): Id[ContextMemory] = Id(value)
 }

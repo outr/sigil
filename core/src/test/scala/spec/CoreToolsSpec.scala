@@ -11,8 +11,9 @@ import sigil.event.{Message, Stop, TopicChange}
 import sigil.information.Information
 import sigil.signal.EventState
 import sigil.tool.core.{RespondTool, StopTool}
-import sigil.tool.util.LookupInformationTool
-import sigil.tool.model.{LookupInformationInput, RespondInput, StopInput}
+import sigil.tool.discovery.CapabilityType
+import sigil.tool.util.LookupTool
+import sigil.tool.model.{LookupInput, RespondInput, StopInput}
 
 /**
  * Round-trip coverage for framework tools where direct `execute` semantics
@@ -22,7 +23,7 @@ import sigil.tool.model.{LookupInformationInput, RespondInput, StopInput}
  *     `currentTopicId`. Topic-change resolution itself lives in
  *     [[sigil.orchestrator.Orchestrator]], not this tool — so the direct
  *     `execute` path here emits only the Message, not any `TopicChange`.
- *   - [[LookupInformationTool]] — resolves an Information id via
+ *   - [[LookupTool]] — resolves an Information id via
  *     [[sigil.Sigil.getInformation]] (backed by
  *     [[sigil.information.InMemoryInformation]] in tests) and returns a
  *     Message carrying the resolved content.
@@ -102,7 +103,7 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     }
   }
 
-  "LookupInformationTool" should {
+  "LookupTool" should {
     "emit a Message carrying the resolved information when the store has it" in {
       val convId = freshConversationId("lookup-hit")
       val infoId = Id[Information]("info-hit")
@@ -113,8 +114,8 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       Information.register(summon[RW[TestInformationWithBody]])
       TestSigil.information.put(full)
 
-      val events = LookupInformationTool
-        .execute(LookupInformationInput(id = infoId), turnContextFor(convId))
+      val events = LookupTool
+        .execute(LookupInput(capabilityType = CapabilityType.Information, name = infoId.value), turnContextFor(convId))
         .toList
       events.map { list =>
         list should have size 1
@@ -129,8 +130,8 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "emit a not-found Message when the id doesn't resolve" in {
       val convId = freshConversationId("lookup-miss")
       val missingId = Id[Information]("info-missing")
-      val events = LookupInformationTool
-        .execute(LookupInformationInput(id = missingId), turnContextFor(convId))
+      val events = LookupTool
+        .execute(LookupInput(capabilityType = CapabilityType.Information, name = missingId.value), turnContextFor(convId))
         .toList
       events.map { list =>
         list should have size 1
@@ -138,8 +139,22 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         val text = msg.content.collectFirst {
           case sigil.tool.model.ResponseContent.Text(t) => t
         }.getOrElse("")
-        text should include("No Information found")
+        text should include("no Information found")
         text should include(missingId.value)
+      }
+    }
+
+    "decline retrieval for Tool capability type" in {
+      val convId = freshConversationId("lookup-tool-not-supported")
+      val events = LookupTool
+        .execute(LookupInput(capabilityType = CapabilityType.Tool, name = "respond"), turnContextFor(convId))
+        .toList
+      events.map { list =>
+        list should have size 1
+        val text = list.head.asInstanceOf[Message].content.collectFirst {
+          case sigil.tool.model.ResponseContent.Text(t) => t
+        }.getOrElse("")
+        text should include("not retrievable")
       }
     }
   }

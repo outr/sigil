@@ -32,6 +32,7 @@ import sigil.provider.{ConversationMode, ConversationRequest, Mode, ProviderStra
 import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
 import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MessageIndexingEffect, RedactLocationTransform, SettledEffect, SignalHub, ViewerTransform}
+import sigil.render.{ContentRenderer, HtmlRenderer, MarkdownRenderer, PlainTextRenderer, SlackMrkdwnRenderer}
 import sigil.provider.Provider
 import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, Signal, ToolDelta}
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
@@ -220,6 +221,66 @@ trait Sigil {
    */
   def testMode: Boolean = false
 
+  /**
+   * When true, the provider stack runs
+   * [[sigil.diagnostics.RequestProfiler]] over every outbound request
+   * and emits the per-section token breakdown — plus
+   * [[sigil.diagnostics.ContextManagementInsight]] derivations — as a
+   * [[sigil.signal.WireRequestProfile]] Notice. Default ON: the
+   * tokenizer pass is fast (jtokkit milliseconds even on 25K-token
+   * requests per Phase 0 measurements) and the data is what apps
+   * surface to drive their always-visible context-utilisation gauge.
+   *
+   * Apps that don't need the data override to false to skip the
+   * tokenizer pass.
+   */
+  def profileWireRequests: Boolean = true
+
+  /**
+   * Cap on the inviolable "core context" — Critical memories +
+   * static system-prompt overhead — as a fraction of the model's
+   * context window. Enforced at write time by [[persistMemory]] /
+   * [[upsertMemoryByKey]]: if persisting / upserting a Critical
+   * memory would push the core total past this share, the operation
+   * fails with [[sigil.provider.CoreContextOverflowException]]
+   * carrying diagnostics for the caller.
+   *
+   * Why this exists: the framework's auto-shedding machinery (curator
+   * stages + provider pre-flight gate) only works when the sheddable
+   * sections (frames + retrieved memories + Information catalog +
+   * tool roster) have room. By capping the inviolable share at 50%,
+   * we guarantee at least 50% of every model's window stays available
+   * for sheddable content — making `RequestOverBudgetException`
+   * effectively unreachable in normal operation.
+   *
+   * Apps with thinner pinned sets can tighten (`0.35`); apps with
+   * rich personas / many compliance directives can loosen (`0.65`).
+   */
+  def coreContextShareLimit: Double = 0.5
+
+  /** Validate that a proposed Critical-source memory persist /
+    * upsert would not push the inviolable core-context past
+    * [[coreContextShareLimit]]. No-op for non-Critical memories.
+    * Fails the task with [[sigil.provider.CoreContextOverflowException]]
+    * when over the cap. */
+  protected def validateCoreContextCap(proposed: ContextMemory): Task[Unit] =
+    if (proposed.source != sigil.conversation.MemorySource.Critical) Task.unit
+    else sigil.conversation.CoreContextValidator.smallestModelContext(this) match {
+      case None => Task.unit  // no models registered; nothing to validate against
+      case Some(model) =>
+        sigil.conversation.CoreContextValidator.estimate(this, Set(proposed.spaceId)).flatMap { current =>
+          val projected = sigil.conversation.CoreContextValidator.projectedTotal(current, proposed)
+          val limit = sigil.conversation.CoreContextValidator.limitFor(model, coreContextShareLimit)
+          if (projected <= limit) Task.unit
+          else Task.error(new sigil.provider.CoreContextOverflowException(
+            wouldBeTotal = projected,
+            limit = limit,
+            modelId = model._id,
+            largestExistingContributors = current.contributors.take(5)
+          ))
+        }
+    }
+
   // -- tool catalog --
 
   /**
@@ -249,6 +310,27 @@ trait Sigil {
   def toolRegistrations: List[RW[? <: sigil.tool.Tool]] = Nil
 
   /**
+   * Apps' authoring shape for [[sigil.skill.Skill]] singletons that
+   * should always be present in the DB. Mirrors [[staticTools]]:
+   * synced into [[sigil.db.SigilDB.skills]] every startup by
+   * [[sigil.skill.StaticSkillSyncUpgrade]] and surfaced through
+   * `find_capability` once the agent's request matches.
+   *
+   * {{{
+   *   override def staticSkills: List[Skill] = super.staticSkills ++ List(MySkill)
+   * }}}
+   */
+  def staticSkills: List[sigil.skill.Skill] = Nil
+
+  /**
+   * App-provided `Skill` subtypes for runtime instance creation —
+   * mirrors [[toolRegistrations]] but for skills. Apps building agent
+   * flows that author skills at runtime register their case-class RWs
+   * here so the polymorphic `Skill` RW can round-trip records.
+   */
+  def skillRegistrations: List[RW[? <: sigil.skill.Skill]] = Nil
+
+  /**
    * App-provided [[sigil.tool.ToolInput]] RWs. Registered into the
    * `ToolInput` poly at init so providers can deserialize tool-call
    * arguments. `staticTools`' input RWs are auto-derived; this list
@@ -265,9 +347,56 @@ trait Sigil {
    */
   def findTools: sigil.tool.ToolFinder = defaultFindTools
 
+  /** Skill discovery finder. Default queries [[sigil.db.SigilDB.skills]]
+    * via [[sigil.skill.DbSkillFinder]] (BM25 over `searchText`,
+    * mode-scoped post-filter). Apps override for custom skill catalogs. */
+  def findSkills(request: sigil.tool.DiscoveryRequest): rapid.Task[List[sigil.skill.Skill]] =
+    sigil.skill.DbSkillFinder(this).apply(request)
+
+  /** Maximum number of memory matches surfaced by [[findCapabilitiesMemories]].
+    * Memory catalogs grow large; an aggressive cap keeps `find_capability`
+    * results focused. */
+  def findCapabilitiesMemoriesMaxResults: Int = 10
+
+  /** Memory discovery for `find_capability`. BM25 search over the
+    * [[sigil.conversation.ContextMemory]] `searchText` index, post-
+    * filtered by space affinity (`spaceId == GlobalSpace` OR caller
+    * has access). Returns the top
+    * [[findCapabilitiesMemoriesMaxResults]] hits, each as a
+    * (memory, BM25 score) pair. Apps override for vector / hybrid
+    * scoring or alternate filters. */
+  def findCapabilitiesMemories(request: sigil.tool.DiscoveryRequest): rapid.Task[List[(sigil.conversation.ContextMemory, Double)]] = {
+    import lightdb.Sort
+    import lightdb.filter.*
+    val tokens = request.keywords.toLowerCase.split("\\s+").filter(_.nonEmpty).toList
+    if (tokens.isEmpty) Task.pure(Nil)
+    else withDB(_.memories.transaction { tx =>
+      tx.query
+        .filter { _ =>
+          val keywordClauses = tokens.map { kw =>
+            FilterClause(ContextMemory.searchText.exactly(kw), Condition.Should, None)
+          }
+          Filter.Multi(minShould = 1, filters = keywordClauses)
+        }
+        .scored
+        .sort(Sort.BestMatch())
+        .limit(findCapabilitiesMemoriesMaxResults * 2)
+        .toList
+    }).map { memories =>
+      memories
+        .filter(m => m.spaceId == GlobalSpace || request.callerSpaces.contains(m.spaceId))
+        .take(findCapabilitiesMemoriesMaxResults)
+        // BM25 score is already implicit in the order; surface a simple
+        // descending integer so memory matches mix sensibly with tool /
+        // skill scores in the merged result list.
+        .zipWithIndex
+        .map { case (m, i) => m -> (findCapabilitiesMemoriesMaxResults - i).toDouble }
+    }
+  }
+
   /**
    * Unified discovery across every category of capability the
-   * framework surfaces (tools, modes, skills). Bug #66.
+   * framework surfaces (tools, modes, skills, memories). Bug #66.
    *
    * Default composition:
    *   - Calls [[findTools]] to gather matching tools, wraps each as a
@@ -276,6 +405,9 @@ trait Sigil {
    *     currently-active mode — switching to the mode you're already
    *     in is a no-op), wraps each with a `RequiresSetup(change_mode("…"))`
    *     hint so the agent has the actionable next call inline.
+   *   - Calls [[findSkills]] to gather matching skills available in
+   *     the current mode, wraps each with a
+   *     `RequiresSetup(activate_skill("…"))` hint.
    *   - Sorts the combined list by `score` descending and returns it.
    *
    * Mode-gated tools (per `ScriptAuthoringMode`'s pattern) are
@@ -291,8 +423,10 @@ trait Sigil {
   def findCapabilities(request: sigil.tool.DiscoveryRequest): rapid.Task[List[sigil.tool.discovery.CapabilityMatch]] = {
     import sigil.tool.discovery.{CapabilityMatch, CapabilityStatus, CapabilityType}
     for {
-      tools <- findTools(request)
-      modes <- findModes(request)
+      tools    <- findTools(request)
+      modes    <- findModes(request)
+      skills   <- findSkills(request)
+      memories <- findCapabilitiesMemories(request)
     } yield {
       val toolMatches = tools.zipWithIndex.map { case (t, i) =>
         // Tool ranking comes from the finder; we approximate a score
@@ -314,16 +448,50 @@ trait Sigil {
           status = CapabilityStatus.RequiresSetup(s"""change_mode("${m.name}")""")
         )
       }
-      (toolMatches ++ modeMatches).sortBy(-_.score)
+      val skillMatches = skills.zipWithIndex.map { case (s, i) =>
+        CapabilityMatch(
+          name = s.name,
+          description = s.description,
+          capabilityType = CapabilityType.Skill,
+          score = (skills.size - i).toDouble,
+          status = CapabilityStatus.RequiresSetup(s"""activate_skill("${s.name}")""")
+        )
+      }
+      val memoryMatches = memories.map { case (m, score) =>
+        // Memory matches surface key + summary only — the agent calls
+        // `lookup(capabilityType=Memory, name=key)` to pull the full
+        // fact when it decides the memory is worth the tokens.
+        val displayName = if (m.key.nonEmpty) m.key else m._id.value
+        val displaySummary = if (m.summary.nonEmpty) m.summary
+                             else if (m.label.nonEmpty) m.label
+                             else m.fact.take(140)
+        CapabilityMatch(
+          name = displayName,
+          description = displaySummary,
+          capabilityType = CapabilityType.Memory,
+          score = score,
+          status = CapabilityStatus.RequiresSetup(s"""lookup(capabilityType="Memory", name="$displayName")""")
+        )
+      }
+      (toolMatches ++ modeMatches ++ skillMatches ++ memoryMatches).sortBy(-_.score)
     }
   }
+
+  /** Maximum number of modes [[findModes]] returns. Mode catalogs are
+    * typically small (3-10), so a tight cap prevents `find_capability`
+    * from drowning the agent in suggestions. Apps with broader mode
+    * spaces override. */
+  def findModesMaxResults: Int = 5
 
   /**
    * Score-and-filter the registered modes against the
    * [[sigil.tool.DiscoveryRequest]]'s keyword query. Default: lexical
-   * match against `name + description + skill.content` (case-
-   * insensitive); excludes the currently-active mode (no-op switch);
-   * returns each match paired with a relevance score.
+   * match against `name + description + skill.content + keywords`
+   * (case-insensitive). Curated [[sigil.provider.Mode.keywords]] are
+   * the highest-weighted signal so authors can steer matching for
+   * terms not in the public description. Excludes the currently-active
+   * mode (no-op switch); returns the top [[findModesMaxResults]]
+   * paired with relevance scores.
    *
    * Apps override for app-specific gating (e.g. tenant-scoped modes,
    * per-chain mode policies) or smarter scoring (embedding-backed,
@@ -336,24 +504,28 @@ trait Sigil {
     else availableModes.iterator
       .filter(m => m.name != request.mode.name)
       .map { m =>
+        val curatedKeywords = m.keywords.map(_.toLowerCase)
         val haystack = (
           m.name + " " +
           m.description + " " +
           m.skill.map(_.content).getOrElse("")
         ).toLowerCase
-        // Score: 5 per exact-word match, 2 per substring match.
-        // Cheap; mirrors the spirit of `DbToolFinder`'s lexical scoring.
+        // Score per keyword: take the strongest signal. Curated keyword
+        // set match (8) beats exact-word match in haystack (5) beats
+        // substring (2). Sum across input keywords.
         val score = needles.foldLeft(0.0) { (acc, kw) =>
+          val curated = if (curatedKeywords.contains(kw)) 8.0 else 0.0
           val words = haystack.split("\\W+").toSet
           val exact = if (words.contains(kw)) 5.0 else 0.0
           val sub   = if (haystack.contains(kw)) 2.0 else 0.0
-          acc + math.max(exact, sub)
+          acc + math.max(curated, math.max(exact, sub))
         }
         m -> score
       }
       .filter(_._2 > 0.0)
       .toList
       .sortBy(-_._2)
+      .take(findModesMaxResults)
   }
 
   /** The set of [[SpaceId]]s the caller chain is authorized to see —
@@ -789,6 +961,7 @@ trait Sigil {
       ChangeModeTool, FindCapabilityTool, NoResponseTool, RespondTool,
       RespondFailureTool, RespondFieldTool, RespondOptionsTool, StopTool
     }
+    import sigil.tool.skill.ActivateSkillTool
     val fullEssentials = List(
       RespondTool, RespondOptionsTool, RespondFieldTool, RespondFailureTool,
       NoResponseTool, StopTool
@@ -832,6 +1005,7 @@ trait Sigil {
     val priority: Map[sigil.tool.ToolName, Int] = Map(
       ChangeModeTool.schema.name        -> 0,
       FindCapabilityTool.schema.name    -> 1,
+      ActivateSkillTool.schema.name     -> 2,
       StopTool.schema.name              -> 100,
       RespondTool.schema.name           -> 101,
       RespondOptionsTool.schema.name    -> 102,
@@ -1034,6 +1208,15 @@ trait Sigil {
         .toList
     })
 
+  /** All [[MemorySource.Critical]] memories scoped to the supplied
+    * spaces — the inviolable subset the framework renders every turn.
+    * Used by `list_pinned_memories` and the core-context cap
+    * validator. Filters in-memory after a Lucene-side space query
+    * since `source` isn't indexed; tool catalogues are typically
+    * small enough that this is fine. */
+  def findCriticalMemories(spaces: Set[SpaceId]): Task[List[ContextMemory]] =
+    findMemories(spaces).map(_.filter(_.source == sigil.conversation.MemorySource.Critical))
+
   // -- geospatial capture & enrichment --
 
   /**
@@ -1158,6 +1341,35 @@ trait Sigil {
    * add/remove/reorder — see `sigil.pipeline.ViewerTransform`.
    */
   def viewerTransforms: List[ViewerTransform] = List(RedactLocationTransform)
+
+  /**
+   * Named registry of [[ContentRenderer]]s — the projection table the
+   * framework (and apps' settled effects / wire transports) use to turn
+   * a `Vector[ResponseContent]` into a target representation.
+   *
+   * Defaults ship four [[String]] renderers — `"markdown"`,
+   * `"slack"`, `"html"`, `"text"` — covering the common conversation
+   * UI / Slack / email / fallback surfaces. Apps register additional
+   * named renderers (Discord-flavoured markdown, Microsoft Teams
+   * AdaptiveCard JSON, terminal ANSI, …) by overriding this hook with
+   * a superset:
+   *
+   * {{{
+   *   override def contentRenderers: Map[String, ContentRenderer[String]] =
+   *     super.contentRenderers + ("discord" -> DiscordRenderer)
+   * }}}
+   *
+   * Apps that need non-`String` outputs (Slack Block Kit JSON, HTML
+   * AST nodes) define a separate registry on their `Sigil` subclass
+   * — the framework registry stays `String`-typed to keep the common
+   * "render-and-send-text" path simple.
+   */
+  def contentRenderers: Map[String, ContentRenderer[String]] = Map(
+    "markdown" -> MarkdownRenderer,
+    "slack"    -> SlackMrkdwnRenderer,
+    "html"     -> HtmlRenderer,
+    "text"     -> PlainTextRenderer
+  )
 
   /**
    * Fold a signal through [[viewerTransforms]] in declaration order,
@@ -1688,16 +1900,45 @@ trait Sigil {
   }
 
   private final def applyModeSkill(mc: ModeChange): Task[Unit] =
-    mc.mode.skill match {
-      case Some(slot) =>
-        updateProjection(mc.conversationId, mc.participantId)(
-          proj => proj.copy(activeSkills = proj.activeSkills + (SkillSource.Mode -> slot))
-        )
-      case None =>
-        // No skill on this mode — clear any stale Mode-source slot.
-        updateProjection(mc.conversationId, mc.participantId)(
-          proj => proj.copy(activeSkills = proj.activeSkills - SkillSource.Mode)
-        )
+    updateProjection(mc.conversationId, mc.participantId) { proj =>
+      val newModeId = mc.mode.id
+
+      // Step 1 — archive any Discovery slot bound to a different mode,
+      // clearing the live Discovery slot. The slot's bound mode is
+      // tracked on `discoverySkillMode`, set when `activate_skill`
+      // ran. If `discoverySkillMode` is None or already equals the
+      // new mode, no archive needed.
+      val (archiveMap, clearedDiscovery) = proj.discoverySkillMode match {
+        case Some(boundMode) if boundMode != newModeId =>
+          val archived = proj.activeSkills.get(SkillSource.Discovery) match {
+            case Some(slot) => proj.lastDiscoverySkillByMode + (boundMode -> slot)
+            case None       => proj.lastDiscoverySkillByMode
+          }
+          (archived, proj.activeSkills - SkillSource.Discovery)
+        case _ => (proj.lastDiscoverySkillByMode, proj.activeSkills)
+      }
+
+      // Step 2 — restore an archived slot for the incoming mode (if
+      // one was saved on a prior departure).
+      val (restoredSkills, restoredDiscoveryMode, prunedArchive) =
+        archiveMap.get(newModeId) match {
+          case Some(slot) =>
+            (clearedDiscovery + (SkillSource.Discovery -> slot), Some(newModeId), archiveMap - newModeId)
+          case None =>
+            (clearedDiscovery, proj.discoverySkillMode.filter(_ == newModeId), archiveMap)
+        }
+
+      // Step 3 — apply the new mode's bundled skill to the Mode slot.
+      val withModeSkill = mc.mode.skill match {
+        case Some(slot) => restoredSkills + (SkillSource.Mode -> slot)
+        case None       => restoredSkills - SkillSource.Mode
+      }
+
+      proj.copy(
+        activeSkills = withModeSkill,
+        lastDiscoverySkillByMode = prunedArchive,
+        discoverySkillMode = restoredDiscoveryMode
+      )
     }
 
   /**
@@ -1919,10 +2160,18 @@ trait Sigil {
   /** Persist a new [[ContextMemory]] and return the stored record.
     * When vector search is wired, auto-embeds `memory.fact` and
     * upserts into [[vectorIndex]] with payload
-    * `kind=memory, spaceId=…`. */
+    * `kind=memory, spaceId=…`.
+    *
+    * Critical-source memories (`memory.source == MemorySource.Critical`)
+    * pass through [[validateCoreContextCap]] first — if persisting
+    * would push the inviolable core-context past
+    * [[coreContextShareLimit]], the task fails with
+    * [[sigil.provider.CoreContextOverflowException]]. */
   def persistMemory(memory: ContextMemory): Task[ContextMemory] =
-    withDB(_.memories.transaction(_.upsert(memory))).flatMap { stored =>
-      indexMemory(stored).map(_ => stored)
+    validateCoreContextCap(memory).flatMap { _ =>
+      withDB(_.memories.transaction(_.upsert(memory))).flatMap { stored =>
+        indexMemory(stored).map(_ => stored)
+      }
     }
 
   /**
@@ -1943,7 +2192,13 @@ trait Sigil {
   def upsertMemoryByKey(memory: ContextMemory): Task[UpsertMemoryResult] = {
     if (memory.key.isEmpty)
       Task.error(new IllegalArgumentException("upsertMemoryByKey requires a non-empty key; use persistMemory for un-keyed inserts"))
-    else withDB { db =>
+    else validateCoreContextCap(memory).flatMap { _ =>
+      upsertMemoryByKeyImpl(memory)
+    }
+  }
+
+  private def upsertMemoryByKeyImpl(memory: ContextMemory): Task[UpsertMemoryResult] =
+    withDB { db =>
       db.memories.transaction { tx =>
         import lightdb.filter.*
         tx.query
@@ -1985,7 +2240,6 @@ trait Sigil {
     }.flatMap { result =>
       indexMemory(result.memory).map(_ => result)
     }
-  }
 
   /**
    * Convenience overload: persist a memory and auto-fill `createdBy`
@@ -3180,6 +3434,7 @@ trait Sigil {
       // Aggregates after leaves.
       _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
       _ = sigil.tool.Tool.register((staticTools.map(t => RW.static(t)) ++ toolRegistrations).distinct*)
+      _ = sigil.skill.Skill.register((staticSkills.map(s => RW.static(s)) ++ skillRegistrations).distinct*)
       _ = Signal.register((allEventRWs ++ allDeltaRWs ++ allNoticeRWs ++ signalRegistrations)*)
     } yield ()
   }.singleton
@@ -3214,18 +3469,55 @@ trait Sigil {
       db = buildDB(
         directory = directory,
         storeManager = collectionStore,
-        appUpgrades = List(new sigil.tool.StaticToolSyncUpgrade(staticTools))
+        appUpgrades = List(
+          new sigil.tool.StaticToolSyncUpgrade(staticTools),
+          new sigil.skill.StaticSkillSyncUpgrade(staticSkills)
+        )
       )
       _ <- db.init
       _ <- if (vectorWired) vectorIndex.ensureCollection(embeddingProvider.dimensions)
            else Task.unit
       _ <- cache.loadFromDisk
+      _ <- validateModeSkillSizes()
       _ <- startModelRefresh()
     } yield SigilInstance(
       config = config,
       db = db
     )
   }.singleton
+
+  /** Per-mode share of the smallest registered model's context window
+    * a Mode's bundled skill content is allowed to consume. Default
+    * 10% — a mode skill that exceeds this at startup fails the
+    * `Sigil.instance` task with [[sigil.provider.CoreContextOverflowException]]
+    * so the app can't ship a configuration that pre-emptively
+    * crowds the budget. Override to relax for richly-skilled modes. */
+  def modeSkillShareLimit: Double = 0.10
+
+  /** Validate that every registered Mode's bundled skill content (if
+    * any) fits under [[modeSkillShareLimit]] × smallest-model-context.
+    * Modes share `SkillSource.Mode` slot; one per active mode. Apps
+    * with intentionally large skills override [[modeSkillShareLimit]]
+    * or skip the validation by overriding this method. */
+  protected def validateModeSkillSizes(): Task[Unit] = Task {
+    sigil.conversation.CoreContextValidator.smallestModelContext(this) match {
+      case None => () // no models registered → can't validate
+      case Some(model) =>
+        val limit = (model.contextLength.toDouble * modeSkillShareLimit).toInt
+        val violations = availableModes.flatMap(m => m.skill.toList.map(slot => m -> slot))
+          .filter { case (_, slot) => sigil.tokenize.HeuristicTokenizer.count(slot.content) > limit }
+        if (violations.nonEmpty) {
+          val msg = violations.map { case (mode, slot) =>
+            val tokens = sigil.tokenize.HeuristicTokenizer.count(slot.content)
+            s"mode '${mode.name}' skill '${slot.name}' is ${tokens} tok (limit ${limit})"
+          }.mkString("; ")
+          throw new IllegalStateException(
+            s"Mode skill content exceeds modeSkillShareLimit (${(modeSkillShareLimit * 100).toInt}%): $msg. " +
+              s"Trim the skill content or override Sigil.modeSkillShareLimit."
+          )
+        }
+    }
+  }
 
   /**
    * Kick off the periodic model-registry refresh. First refresh runs

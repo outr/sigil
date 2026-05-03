@@ -10,6 +10,7 @@ import sigil.conversation.{ContextMemory, ContextSummary, Conversation, Conversa
 import sigil.event.Event
 import sigil.signal.{Delta, Signal}
 import sigil.provider.{ProviderConfig, ProviderStrategyRecord, SpaceProviderAssignment}
+import sigil.skill.Skill
 import sigil.spatial.GeocodingCache
 import sigil.storage.StoredFile
 import sigil.tool.Tool
@@ -52,6 +53,7 @@ abstract class SigilDB(override val directory: Option[Path],
   val topics: S[Topic, Topic.type] = store(Topic).withCache(CacheConfig.lru(2000))()
   val geocodingCache: S[GeocodingCache, GeocodingCache.type] = store(GeocodingCache)()
   val tools: S[Tool, Tool.type] = store(Tool).withCache(CacheConfig.lru(500))()
+  val skills: S[Skill, Skill.type] = store(Skill).withCache(CacheConfig.lru(500))()
   val storedFiles: S[StoredFile, StoredFile.type] = store(StoredFile)()
   val providerConfigs: S[ProviderConfig, ProviderConfig.type] = store(ProviderConfig)()
   val providerStrategies: S[ProviderStrategyRecord, ProviderStrategyRecord.type] = store(ProviderStrategyRecord)()

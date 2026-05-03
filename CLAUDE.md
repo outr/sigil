@@ -121,6 +121,23 @@ Enforced at two points by `Sigil.canSee(signal, viewer)`:
 
 **Post-decode validation.** `ToolInputValidator` walks parsed tool args alongside the input's `Definition` and re-checks every constraint (`pattern`, length, numeric bounds, array bounds) before `tool.execute` runs. The orchestrator's `ToolCallAccumulator.complete()` calls it just after `JsonParser` and just before `inputRW.write`; a violation emits a `ProviderEvent.Error` and the typed input is never produced. This closes the gap that grammar-constrained decoders (OpenAI strict mode, Gemini) open by design — those decoders strip `pattern`/`format`/numeric-bound keywords from the wire schema because character-level constraints don't compose with token-level sampling. Sigil keeps the annotations on the Scala types and re-validates here for every provider, strict or not.
 
+### Content rendering
+
+A Message's `content: Vector[ResponseContent]` is the structural reply shape — every block carries enough metadata for arbitrary projection, not just the agent's first display. `sigil.render.ContentRenderer[Output]` is the projection table that turns a vector of blocks into a target representation. Four `ContentRenderer[String]` implementations ship in core (registered on `Sigil.contentRenderers`):
+
+| Key | Renderer | Use |
+|---|---|---|
+| `markdown` | `MarkdownRenderer` | CommonMark — in-app conversation UI, GitHub flavoured surfaces |
+| `slack` | `SlackMrkdwnRenderer` | Slack mrkdwn dialect (single-asterisk bold, `<url\|label>` links, no images) |
+| `html` | `HtmlRenderer` | Email bodies, web preview panes; HTML-escapes all text |
+| `text` | `PlainTextRenderer` | SMS, voice TTS, accessibility fallbacks — no markup of its own |
+
+Apps register additional named renderers (`"discord"`, `"teams"`, terminal ANSI, etc.) by overriding `Sigil.contentRenderers`. Apps that need non-`String` outputs (Slack Block Kit JSON AST, HTML element trees) define their own typed registry alongside — the framework's `String` registry stays as-is to keep the common "render-and-send-text" path simple.
+
+Multi-destination routing is app-side: a `SettledEffect` consumes settled `Message` events, looks up the right renderer in `sigil.contentRenderers`, and pushes the rendered string to whatever sink the app wires (Slack `chat.postMessage`, SES, a webhook). The framework provides the rendering primitives; apps choose where the bytes land.
+
+**Card composition.** `ResponseContent.Card(sections, title, kind)` groups other blocks into a single composable unit. Apps that want card-shaped replies opt in to the `respond_card` / `respond_cards` tools (shipped in core but NOT in the default `CoreTools.all` roster — adding them to a small default surface shifts the LLM's tool-selection decisions in ways that hurt mode-switch / reply-shape choices for apps that won't use cards). `respond_card` emits a single Card; `respond_cards` packages a sequence (dashboard tiles, search-result hits) into one Message. `sections` is stored as `List[fabric.Json]` rather than `Vector[ResponseContent]` to break a self-referential cycle in fabric's auto-derived RW (otherwise Card → Vector\[parent\] → enum RW deadlocks during lazy-val initialization). The wire format is identical to what `Vector[ResponseContent]` would have produced — no observer downstream sees the difference. Apps construct Cards from typed blocks via `Card(blocks, title, kind)` (the helper in `sigil.tool.model.Card`) and read them back via `Card.typedSections(card)`. Renderers always go through `Card.typedSections` to recover the typed structure.
+
 ### Memory
 
 Three pathways, all writing `ContextMemory` with a `MemorySpaceId` discriminator:
@@ -355,6 +372,31 @@ Apps mix in `MetalsSigil` and override `metalsWorkspace(conversationId)` to map 
 **Why not bake into `sigil-tooling`:** considered, rejected. `sigil-tooling` is protocol-direct LSP/BSP integration (the agent talks LSP4J / bsp4j directly, no MCP indirection). Folding in would mix two distinct concerns — low-latency raw LSP wrapping vs. spawn-and-proxy of an MCP-exposed tool. Separate module keeps both clean.
 
 **Why not put it in the consumer (Sage) directly:** centralising in Sigil means every Sigil consumer with Scala work gets it for free. The Metals lifecycle / `.metals/mcp.json` discovery / `mcpManager.closeClient` integration is generic — there's nothing app-specific. Consumers diverge only on `metalsWorkspace`, which is exactly what the hook is for.
+
+### Context-limit enforcement
+
+The framework guarantees no `HTTP 400 — context too long` from the model reaches the consumer. Layered defence:
+
+1. **Prevention — write-time core-context cap** (`Sigil.coreContextShareLimit`, default 50%). Pinning a `MemorySource.Critical` memory that would push the inviolable share past `0.5 × model.contextLength` fails with `CoreContextOverflowException` carrying the largest existing pinned items. The cap guarantees the auto-shedding machinery always has at least 50% of the window for sheddable content. Apps tighten / loosen via the override. `Sigil.modeSkillShareLimit` (default 10%) does the same for Mode-bundled skills at startup.
+
+2. **Auto-shedding — `StandardContextCurator.budgetResolve`**, in order: drop non-critical retrieved memories → drop unreferenced Information records → frame compression via `MemoryContextCompressor`. Critical memories are NEVER touched. The order was set by Phase 0 measurements (`benchmark/profiles/SUMMARY.md`).
+
+3. **Provider pre-flight gate** (`Provider.preFlightGate`). After `translate`, the gate estimates the rendered request via `Provider.tokenizer` (jtokkit cl100k for OpenAI/Anthropic, heuristic fallback elsewhere) and compares to the model's `contextLength`. If over: emergency-shed (drop tool roster down to framework essentials → drop oldest frames). If still over after all shedding: `RequestOverBudgetException`.
+
+4. **Visibility — `WireRequestProfile`** Notice (`Sigil.profileWireRequests`, default ON). Every wire request emits a per-section breakdown plus `ContextManagementInsight`s (memory share, tool roster size, compression imminent, budget near limit). Apps subscribe to `signals` filtered to `WireRequestProfile` and render their always-visible context-utilisation gauge.
+
+5. **In-conversation warning**. When this turn's resolved Critical memories occupy more than `criticalShareWarningThreshold` (default 30%) of the model's window, the curator appends a `_budgetWarning` entry to `TurnInput.extraContext`. The agent reads it on its next turn — it can mention to the user, ignore, or call the introspection tools proactively. Stateless re-derivation per turn — no throttling state needed.
+
+6. **Agent introspection** — three core tools handle "user wants to review pinned items":
+   - `list_pinned_memories` — every Critical memory the chain can access, with key + summary + token cost.
+   - `unpin_memory(key)` — demotes a memory's `source` from Critical to Compression. Doesn't delete; just removes the every-turn render.
+   - `context_breakdown` — current turn's section breakdown, returned as JSON the agent can render to the user.
+
+7. **`summary || fact` rendering**. `Provider.renderSystem` prefers `m.summary` when set, falls back to `m.fact`. Apps writing concise critical directives via the summary field shrink per-turn rendered cost; the full fact stays recoverable via `lookup(capabilityType="Memory", name=key)`.
+
+**Durability story** (matters for shed-aggressiveness): events are append-only on `SigilDB.events`; compression / curation only edits the per-turn `TurnInput`, never the durable log. Anything trimmed from a turn's prompt is recoverable on demand via `search_conversation` (Lucene-backed event-log search), `lookup` (Memory + Information by key), or `recall_memory` (semantic). Shedding is lossy at the prompt level only.
+
+**Phase 0 instrumentation**: `RequestProfiler` + the bench scenarios under `benchmark/src/main/scala/bench/contextprofile/` produce per-section reports in `benchmark/profiles/`. Run when iterating on shed policy or evaluating downstream apps' context shape.
 
 ## Conventions
 

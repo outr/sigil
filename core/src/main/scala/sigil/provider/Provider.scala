@@ -2,10 +2,15 @@ package sigil.provider
 
 import rapid.{Stream, Task}
 import sigil.Sigil
-import sigil.conversation.{ContextFrame, TurnInput}
+import sigil.conversation.{ContextFrame, ContextMemory, TurnInput}
 import sigil.db.Model
+import sigil.diagnostics.RequestProfiler
 import sigil.participant.ParticipantId
+import sigil.signal.WireRequestProfile
+import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
+import sigil.tool.Tool
 import sigil.tool.core.RespondTool
+import sigil.render.MarkdownRenderer
 import sigil.tool.model.ResponseContent
 import spice.http.HttpRequest
 
@@ -55,6 +60,14 @@ trait Provider {
    */
   def models: List[Model] = sigil.cache.find(provider = Some(providerKey))
 
+  /** Tokenizer used by the framework's budget-validation pass to
+    * estimate request size before sending. Default is the
+    * char-count [[sigil.tokenize.HeuristicTokenizer]]; concrete
+    * providers override to wire their model's actual tokenizer
+    * (e.g. `OpenAIProvider` returns
+    * [[sigil.tokenize.JtokkitTokenizer.OpenAIChatGpt]]). */
+  def tokenizer: Tokenizer = HeuristicTokenizer
+
   // ---- public entry points (final) ----
 
   /**
@@ -65,7 +78,97 @@ trait Provider {
    * The stream terminates with a `Done` event (or `Error`).
    */
   final def apply(request: ProviderRequest): Stream[ProviderEvent] =
-    Stream.force(translate(request).map(call))
+    Stream.force(translate(request).map { providerCall =>
+      preFlightGate(request, providerCall) match {
+        case Right(safe)  => call(safe)
+        case Left(reason) => Stream.force(Task.error(reason))
+      }
+    })
+
+  /** Pre-flight budget validation. Estimates the rendered request via
+    * the provider's [[tokenizer]] and compares against the model's
+    * `contextLength`. If over, applies emergency shedding (tool-
+    * roster trim → last-resort frame drop) until the request fits OR
+    * raises [[RequestOverBudgetException]] when nothing more can be
+    * safely cut (critical memories are inviolable).
+    *
+    * Returns `Right(call)` when the request fits (possibly after
+    * shedding), `Left(exception)` when it can't be made to fit. */
+  private def preFlightGate(request: ProviderRequest, providerCall: ProviderCall): Either[Throwable, ProviderCall] = {
+    val limit = sigil.cache.find(request.modelId).map(_.contextLength.toInt).getOrElse(Int.MaxValue)
+    if (limit == Int.MaxValue) Right(providerCall) // no model record — can't validate; trust the curator
+    else {
+      val tok = tokenizer
+      def estimateOf(c: ProviderCall): Int =
+        tok.count(c.system) + c.messages.iterator.map(estimateMessage(_, tok)).sum + estimateRoster(c.tools, tok)
+
+      val initial = estimateOf(providerCall)
+      if (initial <= limit) Right(providerCall)
+      else {
+        val shed = emergencyShed(providerCall, limit, tok, estimateOf)
+        if (estimateOf(shed) <= limit) Right(shed)
+        else Left(new RequestOverBudgetException(estimateOf(shed), limit, request.modelId))
+      }
+    }
+  }
+
+  /** Best-effort token count for a single [[ProviderMessage]] as it
+    * lands on the wire — covers User text + Assistant tool-call args
+    * + ToolResult content. Per-message overhead approximated by the
+    * tokenizer's `countMessages` chat-format adjustment. */
+  private def estimateMessage(m: ProviderMessage, tok: Tokenizer): Int = m match {
+    case ProviderMessage.System(c)            => tok.count(c) + 3
+    case ProviderMessage.User(blocks)         => blocks.iterator.map {
+      case MessageContent.Text(t)     => tok.count(t)
+      case MessageContent.Image(_, _) => 85 // standard low-detail image overhead per OpenAI's docs
+    }.sum + 3
+    case ProviderMessage.Assistant(c, calls)  =>
+      tok.count(c) + calls.iterator.map(tc => tok.count(tc.name) + tok.count(tc.argsJson)).sum + 3
+    case ProviderMessage.ToolResult(_, c)     => tok.count(c) + 3
+    case ProviderMessage.Reasoning(_, _, _) => 0  // provider-specific reasoning state
+  }
+
+  /** Token cost of the wire tool roster: each tool's `descriptionFor`
+    * + JSON-schema metadata overhead (approximated by the description
+    * length itself — schema bodies are comparable in size for typical
+    * tools). */
+  private def estimateRoster(tools: Vector[Tool], tok: Tokenizer): Int =
+    tools.iterator.map(t =>
+      tok.count(t.schema.name.value) + tok.count(t.descriptionFor(ConversationMode, sigil)) + 30
+    ).sum
+
+  /** Emergency-shed: trim tool roster (cap descriptions or drop
+    * un-essential tools) and drop oldest frames until the request
+    * fits. Stops when nothing more can be safely cut — caller raises
+    * [[RequestOverBudgetException]] in that case. Does NOT call the
+    * LLM (compression already happened in the curator); pure
+    * truncation. */
+  private def emergencyShed(initial: ProviderCall,
+                            limit: Int,
+                            tok: Tokenizer,
+                            estimateOf: ProviderCall => Int): ProviderCall = {
+    var current = initial
+
+    // Stage 4 — drop tool roster down to framework essentials only.
+    // Critical for cases where a large tool catalog is the bulk of
+    // overhead; baseline tools (respond / find_capability / stop /
+    // change_mode) are retained so the agent can still function.
+    val essentials = Set("respond", "find_capability", "stop", "change_mode", "no_response",
+      "respond_options", "respond_field", "respond_failure", "activate_skill")
+    if (estimateOf(current) > limit && current.tools.size > essentials.size) {
+      val trimmed = current.tools.filter(t => essentials.contains(t.schema.name.value))
+      current = current.copy(tools = trimmed)
+    }
+
+    // Last-resort — drop oldest frames one at a time until fits or
+    // we hit the bottom. Critical memories live in `system`, not
+    // `messages`, so dropping messages never touches them.
+    while (estimateOf(current) > limit && current.messages.nonEmpty) {
+      current = current.copy(messages = current.messages.tail)
+    }
+
+    current
+  }
 
   /**
    * Build the underlying [[spice.http.HttpRequest]] for a sigil request without
@@ -109,11 +212,11 @@ trait Provider {
   }
 
   private def translateConversation(c: ConversationRequest): Task[ProviderCall] =
-    resolveReferences(c.turnInput).map { resolved =>
+    resolveReferences(c.turnInput).flatMap { resolved =>
       val agentId = c.chain.lastOption
       val toolChoice =
         if (c.tools.isEmpty) ToolChoice.None else ToolChoice.Required
-      ProviderCall(
+      val providerCall = ProviderCall(
         modelId = c.modelId,
         system = renderSystem(c, resolved),
         messages = renderFrames(c.turnInput.conversationView.frames, agentId),
@@ -123,6 +226,21 @@ trait Provider {
         generationSettings = c.generationSettings,
         currentMode = c.currentMode
       )
+      // Diagnostic profiling — opt-in via `Sigil.profileWireRequests`
+      // (default off). Runs the tokenizer once per turn over every
+      // section of the about-to-be-sent request and broadcasts the
+      // breakdown as a `WireRequestProfile` Notice. Phase 0
+      // instrumentation; not used on hot paths when the flag is off.
+      val emit: Task[Unit] =
+        if (sigil.profileWireRequests) {
+          agentId match {
+            case Some(pid) =>
+              val profile = RequestProfiler.profile(c, resolved, tokenizer, sigil)
+              sigil.publish(WireRequestProfile(c.conversationId, c.modelId, pid, profile))
+            case None => Task.unit
+          }
+        } else Task.unit
+      emit.map(_ => providerCall)
     }
 
   private def translateOneShot(s: OneShotRequest): ProviderCall = {
@@ -157,7 +275,7 @@ trait Provider {
       case ResponseContent.Image(url, alt)     => MessageContent.Image(url, alt)
       case ResponseContent.Markdown(t)         => MessageContent.Text(t)
       case ResponseContent.Code(c, lang)       => MessageContent.Text(s"```${lang.getOrElse("")}\n$c\n```")
-      case other                                => MessageContent.Text(other.toString)
+      case other                                => MessageContent.Text(MarkdownRenderer.renderBlock(other))
     }
 
   /** Resolve the ids on `TurnInput.criticalMemories` / `.memories` /
@@ -228,7 +346,7 @@ trait Provider {
 
     if (resolved.criticalMemories.nonEmpty) {
       sb.append("\n== Critical directives ==\n")
-      resolved.criticalMemories.foreach(m => sb.append(s"- ${m.fact}\n"))
+      resolved.criticalMemories.foreach(m => sb.append(s"- ${memoryRenderText(m)}\n"))
     }
 
     if (resolved.summaries.nonEmpty) {
@@ -238,7 +356,7 @@ trait Provider {
 
     if (resolved.memories.nonEmpty) {
       sb.append("\n== Memories ==\n")
-      resolved.memories.foreach(m => sb.append(s"- ${m.fact}\n"))
+      resolved.memories.foreach(m => sb.append(s"- ${memoryRenderText(m)}\n"))
     }
 
     if (turn.information.nonEmpty) {
@@ -305,6 +423,13 @@ trait Provider {
 
     sb.toString
   }
+
+  /** What to render for a memory in the system prompt's `Critical
+    * directives` / `Memories` sections. Prefers `summary` when set so
+    * apps that author tight directives keep per-turn cost down; the
+    * full `fact` is always recoverable via the `lookup` tool. */
+  private def memoryRenderText(m: ContextMemory): String =
+    if (m.summary.trim.nonEmpty) m.summary else m.fact
 
   /** Render a conversation's [[ContextFrame]]s into format-neutral
     * [[ProviderMessage]]s. Mapping rules:

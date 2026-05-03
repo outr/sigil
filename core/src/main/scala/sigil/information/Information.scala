@@ -7,7 +7,7 @@ import lightdb.id.Id
  * The fully-resolved content record referenced by an
  * [[InformationSummary]] in a conversation's context catalog. Returned by
  * [[sigil.Sigil.getInformation]] when the LLM invokes
- * [[sigil.tool.core.LookupInformationTool]] against a catalog id.
+ * [[sigil.tool.util.LookupTool]] against a catalog id.
  *
  * Open `PolyType` hierarchy. Sigil provides no concrete subtypes because
  * content types are domain concepts (articles, invoices, tickets,

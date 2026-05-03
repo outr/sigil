@@ -27,6 +27,15 @@ trait Mode {
     * prompt and into the `change_mode` tool's schema. */
   def description: String
 
+  /** Curated keyword set boosting this mode's score in
+    * [[sigil.Sigil.findModes]]. Pure metadata for discovery — never
+    * shown to the user, never persisted on conversation events. Useful
+    * when the mode's `name`/`description` doesn't include the natural
+    * search terms (e.g. `WebResearchMode` should match "browse",
+    * "google", "lookup"; `CodingMode` should match "function",
+    * "refactor", "debug"). */
+  def keywords: Set[String] = Set.empty
+
   /** Skill slot activated when this mode becomes current. `None`
     * means no mode-driven instructions; the agent uses whatever skills
     * come from other sources (discovery, user overrides). */

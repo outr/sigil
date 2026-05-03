@@ -150,5 +150,11 @@ object ConversationSession {
       case ResponseContent.SecretRef(_, label)       => label
       case ResponseContent.StoredFileReference(_, title, _, _, _) => title
       case ResponseContent.Divider                   => ""
+      case c: ResponseContent.Card =>
+        val body = textOf(Message(participantId = m.participantId,
+                                  conversationId = m.conversationId,
+                                  topicId = m.topicId,
+                                  content = sigil.tool.model.Card.typedSections(c)))
+        c.title.fold(body)(t => if (body.isEmpty) t else s"$t\n$body")
     }.filter(_.nonEmpty).mkString("\n").trim
 }

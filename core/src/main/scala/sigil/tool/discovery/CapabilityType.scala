@@ -26,8 +26,20 @@ enum CapabilityType derives RW {
   case Mode
 
   /** A standalone skill — system-prompt overlay for specialised
-    * tasks. Today every skill ships attached to a Mode (so a Skill
-    * match implies `Mode` semantics with a mode entry hint), but
-    * a future "free-floating skill" surface stays expressible. */
+    * tasks. Skills can ship attached to a Mode (auto-activate on
+    * mode entry) or as free-floating records that an agent
+    * activates explicitly via `activate_skill` after discovery. */
   case Skill
+
+  /** A persisted [[sigil.conversation.ContextMemory]] — a fact the
+    * agent can pull into context via `lookup`. Discovery returns
+    * `name` (memory key) + `summary`; `lookup` retrieves the full
+    * `fact`. Memory matches do not auto-load — the agent decides
+    * whether the fact is worth the token cost. */
+  case Memory
+
+  /** A persisted [[sigil.information.Information]] record — large
+    * referenced content the agent retrieves via `lookup` to get
+    * the full body behind a catalog entry's summary. */
+  case Information
 }

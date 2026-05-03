@@ -7,6 +7,7 @@ import sigil.Sigil
 import sigil.db.Model
 import sigil.provider.*
 import sigil.provider.sse.{SSELine, SSELineParser}
+import sigil.tokenize.{JtokkitTokenizer, Tokenizer}
 import sigil.tool.{DefinitionToSchema, Tool, ToolInput, ToolSchema}
 import sigil.tool.ToolInput.given
 import spice.http.{HttpMethod, HttpRequest, HttpResponse, HttpStatus}
@@ -38,6 +39,13 @@ case class AnthropicProvider(apiKey: String,
   override def `type`: ProviderType = ProviderType.Anthropic
   override val providerKey: String = Anthropic.Provider
   override protected def sigil: Sigil = sigilRef
+
+  /** Anthropic's tokenizer isn't published; cl100k_base is within
+    * ~10% of empirical Claude token counts for English prose, which
+    * is plenty of accuracy for budget headroom checks. The pre-flight
+    * gate errs conservative anyway, and overshoot only triggers
+    * extra (already-cheap) shedding stages. */
+  override def tokenizer: Tokenizer = JtokkitTokenizer.OpenAIChatGpt
 
   override protected def call(input: ProviderCall): Stream[ProviderEvent] = {
     val state = new StreamState(new ToolCallAccumulator(input.tools))

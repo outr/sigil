@@ -24,7 +24,7 @@ import scala.concurrent.duration.*
  * Setup:
  *   - One data-returning tool ([[GetMagicNumberTool]]) emitting
  *     `Message(participantId = caller)` — the same shape the
- *     existing core tools (`LookupInformationTool`, `RespondTool`)
+ *     existing core tools (`LookupTool`, `RespondTool`)
  *     use.
  *   - A user prompt that requires the agent to call
  *     `get_magic_number`, *read* its result from context, and *then*

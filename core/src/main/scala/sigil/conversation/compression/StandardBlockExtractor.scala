@@ -16,7 +16,7 @@ import sigil.information.{Information, InformationSummary}
  *
  * Apps must override [[sigil.Sigil.putInformation]] to a functional
  * implementation — without it, the catalog references won't resolve
- * through [[sigil.tool.util.LookupInformationTool]].
+ * through [[sigil.tool.util.LookupTool]].
  *
  * Knobs:
  *   - [[minChars]]: size threshold in characters (default 2000 ≈ 500
@@ -87,7 +87,7 @@ case class StandardBlockExtractor(toInformation: (String, Id[Information]) => In
 
 object StandardBlockExtractor {
   val DefaultPlaceholder: (Id[Information], String) => String =
-    (id, summary) => s"(large content stored as Information[${id.value}]. Summary: $summary. Use `lookup_information` to retrieve full content.)"
+    (id, summary) => s"(large content stored as Information[${id.value}]. Summary: $summary. Use `lookup(capabilityType=\"Information\", name=\"${id.value}\")` to retrieve full content.)"
 
   val DefaultSummary: String => String = content => {
     val firstLine = content.linesIterator.find(_.trim.nonEmpty).getOrElse("").trim

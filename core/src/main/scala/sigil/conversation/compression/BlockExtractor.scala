@@ -9,7 +9,7 @@ import sigil.conversation.ContextFrame
  * into persistent [[sigil.information.Information]] records, replacing
  * the long content inline with a one-line placeholder reference that
  * the LLM can resolve on demand via
- * [[sigil.tool.util.LookupInformationTool]].
+ * [[sigil.tool.util.LookupTool]].
  *
  * This keeps large blobs (code listings, big JSON payloads, fetched
  * documents) out of the rolling context AND out of any subsequent

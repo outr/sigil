@@ -8,7 +8,7 @@ import lightdb.id.Id
  * surface in the provider context as a brief catalog ("Referenced
  * content:") of `id` + `summary` lines; the full typed record is fetched
  * on demand through [[sigil.Sigil.getInformation]] when the LLM cites the
- * id via [[sigil.tool.core.LookupInformationTool]].
+ * id via [[sigil.tool.util.LookupTool]].
  *
  * `informationType` pins the entry to a specific registered
  * [[Information]] subtype so renderers and resolvers can route without

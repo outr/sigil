@@ -5,7 +5,7 @@ import sigil.tool.consult.{ConsultTool, ExtractMemoriesTool, ExtractMemoriesWith
 import sigil.tool.core.ChangeModeTool
 import sigil.tool.fs.{BashTool, DeleteFileTool, EditFileTool, FileSystemContext, GlobTool, GrepTool, ReadFileTool, WriteFileTool}
 import sigil.tool.memory.{ForgetTool, MemoryHistoryTool, RecallTool, RememberTool}
-import sigil.tool.util.{LookupInformationTool, SaveMemoryTool, SearchConversationTool, SemanticSearchTool, SleepTool, SystemStatsTool}
+import sigil.tool.util.{LookupTool, SaveMemoryTool, SearchConversationTool, SemanticSearchTool, SleepTool, SystemStatsTool}
 import sigil.tool.web.WebFetchTool
 
 import scala.concurrent.duration.*
@@ -78,7 +78,7 @@ object AllShippedTools {
     RecallTool,
     RememberTool,
     // Lookup / search / housekeeping.
-    LookupInformationTool,
+    LookupTool,
     new SaveMemoryTool(space),
     SearchConversationTool,
     SemanticSearchTool,

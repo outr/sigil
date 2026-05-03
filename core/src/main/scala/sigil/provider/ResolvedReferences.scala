@@ -14,6 +14,6 @@ import sigil.conversation.{ContextMemory, ContextSummary}
  * [[ProviderCall]] with rendered `system` text and don't see this type
  * directly.
  */
-private[sigil] case class ResolvedReferences(criticalMemories: Vector[ContextMemory],
-                                             memories: Vector[ContextMemory],
-                                             summaries: Vector[ContextSummary])
+case class ResolvedReferences(criticalMemories: Vector[ContextMemory],
+                              memories: Vector[ContextMemory],
+                              summaries: Vector[ContextSummary])

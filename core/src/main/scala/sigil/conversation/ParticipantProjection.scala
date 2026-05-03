@@ -1,6 +1,8 @@
 package sigil.conversation
 
 import fabric.rw.*
+import lightdb.id.Id
+import sigil.provider.Mode
 import sigil.tool.ToolName
 
 /**
@@ -9,6 +11,11 @@ import sigil.tool.ToolName
  * Derived from the event log as events reach `EventState.Complete`:
  *   - `activeSkills` — updated on `ModeChange` (Mode-source slot) and
  *     app-specific skill activation events
+ *   - `lastDiscoverySkillByMode` — when the agent leaves a mode, the
+ *     [[SkillSource.Discovery]] slot active at that moment is archived
+ *     under the OUTGOING mode's id; on a later return to that mode,
+ *     the slot is restored. Lets agents "remember" the skill they had
+ *     loaded for a mode without re-discovering it.
  *   - `recentTools` — pushed onto the head when a `ToolInvoke` from this
  *     participant completes
  *   - `suggestedTools` — replaced when a `ToolResults` from this participant
@@ -20,6 +27,8 @@ import sigil.tool.ToolName
  * provider request, but the truth lives on the view.
  */
 case class ParticipantProjection(activeSkills: Map[SkillSource, ActiveSkillSlot] = Map.empty,
+                                 lastDiscoverySkillByMode: Map[Id[Mode], ActiveSkillSlot] = Map.empty,
+                                 discoverySkillMode: Option[Id[Mode]] = None,
                                  recentTools: List[ToolName] = Nil,
                                  suggestedTools: List[ToolName] = Nil,
                                  extraContext: Map[ContextKey, String] = Map.empty)
