@@ -87,6 +87,11 @@ object ContextMemory extends RecordDocumentModel[ContextMemory] with JsonConvers
   val statusName: I[String] = field.index(_.status.toString)
   val pinned: I[Boolean] = field.index(_.pinned)
   val conversationId: I[Option[Id[Conversation]]] = field.index(_.conversationId)
+  /** `expiresAt.value` projected for indexing — Lucene can't filter on
+    * the polymorphic `Timestamp` directly. Records with no expiry
+    * project as `None`. Backs the opt-in expiry sweep
+    * ([[Sigil.expiredMemorySweepInterval]]). */
+  val expiresAtValue: I[Option[Long]] = field.index("expiresAtValue", _.expiresAt.map(_.value))
 
   /** Tokenized full-text index over key + label + summary + fact +
     * keywords. Backs `find_capability`'s BM25-scored memory search

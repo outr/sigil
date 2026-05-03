@@ -7,11 +7,11 @@ import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary, Conversa
 import sigil.SpaceId
 import sigil.db.Model
 import sigil.participant.ParticipantId
-import sigil.tool.consult.{ConsultTool, ExtractMemoriesWithKeysInput, ExtractMemoriesWithKeysTool, SummarizationInput, SummarizationTool}
+import sigil.tool.consult.{ConsultTool, ExtractMemoriesInput, ExtractMemoriesTool, SummarizationInput, SummarizationTool}
 
 /**
  * Two-pass LLM compressor. First pass asks the consulted model to
- * extract a list of durable facts (via [[ExtractMemoriesWithKeysTool]]);
+ * extract a list of durable facts (via [[ExtractMemoriesTool]]);
  * the framework persists each fact as a [[ContextMemory]] in the space
  * returned by [[sigil.Sigil.compressionMemorySpace]]. Facts that come
  * back with a `key` get versioned via `upsertMemoryByKey`; keyless
@@ -73,18 +73,18 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                                 space: SpaceId): Task[Unit] = {
     val userPrompt =
       s"""Extract durable facts from the following conversation excerpt. Output via the
-         |`extract_memories_with_keys` tool. Supply a `key` for facts that represent a durable
+         |`extract_memories` tool. Supply a `key` for facts that represent a durable
          |identity slot whose value may change over time (so future extractions can version it);
          |omit `key` for one-shot facts.
          |
          |${transcript}""".stripMargin
-    ConsultTool.invoke[ExtractMemoriesWithKeysInput](
+    ConsultTool.invoke[ExtractMemoriesInput](
       sigil = sigil,
       modelId = modelId,
       chain = chain,
       systemPrompt = extractionSystemPrompt,
       userPrompt = userPrompt,
-      tool = ExtractMemoriesWithKeysTool
+      tool = ExtractMemoriesTool
     ).flatMap {
       case Some(result) =>
         val kept = result.memories.filter(_.content.trim.length >= minFactChars)

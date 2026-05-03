@@ -55,6 +55,7 @@ case object MemoryHistoryTool extends TypedTool[MemoryHistoryInput](
         val until = v.validUntil.map(_.value.toString).getOrElse("—")
         sb.append(s"  $marker validFrom=$from validUntil=$until\n")
         sb.append(s"    ${v.fact}\n")
+        v.justification.foreach(j => sb.append(s"    why: $j\n"))
       }
       sb.toString
     }

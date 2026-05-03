@@ -129,7 +129,15 @@ case class StandardMemoryRetriever(limit: Int = 5,
       val lexicalIds = lexicalHits.iterator
         .filterNot(StandardMemoryRetriever.isExpired(_, now))
         .map(_._id).toList
-      StandardMemoryRetriever.rrfFuse(List(vectorIds, lexicalIds), rrfK).take(limit).toVector
+      // Confidence shapes the fused score: a 0.5-confidence memory's
+      // RRF contributions count for half a 1.0-confidence peer's, so
+      // ties break toward higher-confidence facts. Default 1.0 (the
+      // norm) means apps that don't write confidence get RRF-only
+      // ranking — backward-compatible.
+      val confidenceById: Map[Id[ContextMemory], Double] =
+        (vectorHits.iterator ++ lexicalHits.iterator).map(m => m._id -> m.confidence).toMap
+      val weight: Id[ContextMemory] => Double = id => confidenceById.getOrElse(id, 1.0)
+      StandardMemoryRetriever.rrfFuse(List(vectorIds, lexicalIds), rrfK, weight).take(limit).toVector
     }
   }
 
@@ -208,17 +216,19 @@ object StandardMemoryRetriever {
   }
 
   /** Reciprocal Rank Fusion of N ranked id lists. Standard formula:
-    * `score(d) = sum over rankers r of 1 / (k + rank_r(d))`, where rank
-    * starts at 1. A document only ranked by one signal still
-    * contributes; documents ranked highly across multiple signals
-    * accumulate the most score. Returns ids in descending fused-score
-    * order. */
-  def rrfFuse[A](rankings: List[List[A]], k: Int): List[A] = {
+    * `score(d) = sum over rankers r of weight(d) / (k + rank_r(d))`,
+    * where rank starts at 1. A document only ranked by one signal
+    * still contributes; documents ranked highly across multiple
+    * signals accumulate the most score. The `weightOf` hook lets
+    * callers shape the fused score with per-document signals like
+    * confidence — default 1.0 reproduces the standard RRF formula.
+    * Returns ids in descending fused-score order. */
+  def rrfFuse[A](rankings: List[List[A]], k: Int, weightOf: A => Double = (_: A) => 1.0): List[A] = {
     val accum = scala.collection.mutable.LinkedHashMap.empty[A, Double]
     rankings.foreach { ranking =>
       ranking.iterator.zipWithIndex.foreach { case (id, idx) =>
         val rank = idx + 1
-        val contribution = 1.0 / (k + rank)
+        val contribution = weightOf(id) / (k + rank)
         accum.updateWith(id) {
           case Some(v) => Some(v + contribution)
           case None    => Some(contribution)

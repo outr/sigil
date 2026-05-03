@@ -93,4 +93,30 @@ class MemoryExpirySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       }
     }
   }
+
+  "Sigil.sweepExpiredMemories" should {
+    "hard-delete records whose expiresAt is at or before now, leaving live + non-expiring rows" in {
+      val now = Timestamp()
+      val past = Timestamp(now.value - 60_000L)
+      val future = Timestamp(now.value + 60_000L)
+      val expired1 = make(expiresAt = Some(past)).copy(key = Some("sweep.expired.1"), fact = "expired one")
+      val expired2 = make(expiresAt = Some(past)).copy(key = Some("sweep.expired.2"), fact = "expired two")
+      val live = make(expiresAt = Some(future)).copy(key = Some("sweep.live"), fact = "still valid")
+      val nonExpiring = make().copy(key = Some("sweep.permanent"), fact = "no expiry")
+      for {
+        _       <- TestSigil.upsertMemoryByKey(expired1)
+        _       <- TestSigil.upsertMemoryByKey(expired2)
+        _       <- TestSigil.upsertMemoryByKey(live)
+        _       <- TestSigil.upsertMemoryByKey(nonExpiring)
+        removed <- TestSigil.sweepExpiredMemories(now)
+        survivors <- TestSigil.findMemories(Set(Space)).map(_.flatMap(_.key).toSet)
+      } yield {
+        removed shouldBe 2
+        survivors should contain("sweep.live")
+        survivors should contain("sweep.permanent")
+        survivors should not contain "sweep.expired.1"
+        survivors should not contain "sweep.expired.2"
+      }
+    }
+  }
 }

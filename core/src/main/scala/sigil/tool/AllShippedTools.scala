@@ -1,7 +1,7 @@
 package sigil.tool
 
 import sigil.SpaceId
-import sigil.tool.consult.{ConsultTool, ExtractMemoriesWithKeysTool, RerankTool, SummarizationTool}
+import sigil.tool.consult.{ConsultTool, ExtractMemoriesTool, RerankTool, SummarizationTool}
 import sigil.tool.core.ChangeModeTool
 import sigil.tool.fs.{BashTool, DeleteFileTool, EditFileTool, FileSystemContext, GlobTool, GrepTool, ReadFileTool, WriteFileTool}
 import sigil.tool.memory.{ForgetMemoryTool, MemoryHistoryTool}
@@ -68,7 +68,7 @@ object AllShippedTools {
     ChangeModeTool,
     // Consult / classifier helpers (per-turn one-shot agents).
     ConsultTool,
-    ExtractMemoriesWithKeysTool,
+    ExtractMemoriesTool,
     RerankTool,
     SummarizationTool,
     // Memory-store CRUD.
