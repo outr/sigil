@@ -10,6 +10,7 @@ import sigil.provider.sse.{SSELine, SSELineParser}
 import sigil.tokenize.{JtokkitTokenizer, Tokenizer}
 import sigil.tool.{DefinitionToSchema, Tool, ToolInput, ToolSchema}
 import sigil.tool.ToolInput.given
+import sigil.provider.debug.StreamWireInterceptor
 import spice.http.{HttpMethod, HttpRequest, HttpResponse, HttpStatus}
 import spice.http.client.HttpClient
 import spice.http.content.StringContent
@@ -65,7 +66,6 @@ case class OpenAIProvider(apiKey: String,
         intercepted <- sigilRef.wireInterceptor.before(raw)
         lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(streamTimeout).streamLines()
       } yield {
-        val bodyBuf = new StringBuilder
         // Bug #77 — enforce an overall stream-lifetime deadline at our
         // level. Spice's `.timeout(streamTimeout)` configures Netty's
         // per-poll timer, which keepalives from upstream (OpenAI's SSE
@@ -74,19 +74,9 @@ case class OpenAIProvider(apiKey: String,
         // idle timeout and hangs the agent loop indefinitely. rapid's
         // `Stream.timeout` checks a wall-clock deadline before every
         // pull, so accumulated time across keepalives DOES trip it.
-        lines
-          .timeout(streamTimeout)
-          .flatMap { line =>
-            bodyBuf.append(line).append('\n')
-            Stream.emits(parseLine(line, state))
-          }
-          .onFinalize(Task.defer {
-            val response = HttpResponse(
-              status = HttpStatus.OK,
-              content = Some(StringContent(bodyBuf.toString, ContentType("text", "event-stream")))
-            )
-            sigilRef.wireInterceptor.after(intercepted, Success(response)).unit
-          })
+        StreamWireInterceptor.attach(lines.timeout(streamTimeout), sigilRef.wireInterceptor, intercepted) { line =>
+          Stream.emits(parseLine(line, state))
+        }
       }
     )
   }

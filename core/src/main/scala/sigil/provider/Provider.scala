@@ -68,20 +68,22 @@ trait Provider {
     * [[sigil.tokenize.JtokkitTokenizer.OpenAIChatGpt]]). */
   def tokenizer: Tokenizer = HeuristicTokenizer
 
-  /** Proactive [[RateLimiter]]. The framework's `apply` awaits
-   * [[RateLimiter.acquire]] before invoking [[call]]; concrete
-   * providers feed [[RateLimiter.observe]] from response headers
-   * (`x-ratelimit-remaining-*`, `retry-after`, etc.) so the
-   * framework paces outgoing traffic instead of taking 429s.
+  /** Proactive [[RateLimiter]] consulted before each outgoing request.
+   * The framework's `apply` awaits [[RateLimiter.acquire]] before
+   * dispatching to [[call]]. Apps wire concrete observers separately:
+   * spice's `streamLines()` doesn't surface response headers, so the
+   * framework can't auto-feed [[RateLimiter.observe]] from the
+   * provider's response. Apps that want proactive pacing typically:
    *
-   * Default [[RateLimiter.NoOp]] is zero-cost — providers / apps
-   * that want pacing override with [[RateLimiter.forKey]] to share
-   * one limiter per API key, or [[RateLimiter.default]] for an
-   * un-shared instance.
+   *   - Override `rateLimiter` to return [[RateLimiter.forKey(apiKey)]]
+   *     (per-key shared instance).
+   *   - Front the provider with their own HTTP layer that tees rate-
+   *     limit headers into `observe()`.
    *
-   * Distinct from [[ProviderStrategy]]'s reactive cooldown — the
-   * strategy decides what to do AFTER a failure; the rate limiter
-   * tries to stop the failure from happening. */
+   * The default [[RateLimiter.NoOp]] is zero-cost. Distinct from
+   * [[ProviderStrategy]]'s reactive cooldown — the strategy decides
+   * what to do AFTER a failure; the rate limiter tries to stop the
+   * failure from happening, IF the app feeds it data. */
   def rateLimiter: RateLimiter = RateLimiter.NoOp
 
   // ---- public entry points (final) ----

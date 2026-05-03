@@ -56,4 +56,47 @@ class JtokkitFallbackSpec extends AnyWordSpec with Matchers {
       HeuristicTokenizer.count("hello world") should be > 0
     }
   }
+
+  "JtokkitTokenizer.selectTokenizer (bug #76 fallback)" should {
+    "return the encoding factory's tokenizer when probe = true (jtokkit available path)" in {
+      // We can't observe `selectTokenizer` directly (it's package-private),
+      // but the production constants `OpenAIChatGpt` / `OpenAIO200k` exercise
+      // the probe = true path because jtokkit IS on the test classpath.
+      // Both should be JtokkitTokenizer instances with non-zero counts.
+      JtokkitTokenizer.OpenAIChatGpt.getClass.getSimpleName shouldBe "JtokkitTokenizer"
+      JtokkitTokenizer.OpenAIO200k.getClass.getSimpleName shouldBe "JtokkitTokenizer"
+    }
+
+    "return HeuristicTokenizer when probe = false (jtokkit missing path) — deterministic test of the fallback branch" in {
+      // Use the package-private decision helper to drive the false branch
+      // without actually removing jtokkit from the classpath. This is the
+      // only way to lock in bug #76's fix — without this assertion, the
+      // fallback branch would be dead code that no test ever executes.
+      val factory: () => sigil.tokenize.Tokenizer = () => fail(
+        "encoding factory must NOT be invoked when probe = false"
+      )
+      val result = sigil.tokenize.JtokkitTokenizer.selectTokenizer(
+        probe = false,
+        encodingFactory = factory,
+        slotName = "test-fallback"
+      )
+      result shouldBe HeuristicTokenizer
+    }
+
+    "use the encoding factory when probe = true" in {
+      // Drive the true branch with a stub factory; assert factory was invoked
+      // and its return value is what selectTokenizer returns.
+      val sentinel: sigil.tokenize.Tokenizer = new sigil.tokenize.Tokenizer {
+        override def count(text: String): Int = 42
+      }
+      var factoryInvoked = false
+      val result = sigil.tokenize.JtokkitTokenizer.selectTokenizer(
+        probe = true,
+        encodingFactory = () => { factoryInvoked = true; sentinel },
+        slotName = "test-real"
+      )
+      factoryInvoked shouldBe true
+      result shouldBe sentinel
+    }
+  }
 }

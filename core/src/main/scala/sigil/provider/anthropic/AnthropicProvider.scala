@@ -55,24 +55,15 @@ case class AnthropicProvider(apiKey: String,
         intercepted <- sigilRef.wireInterceptor.before(raw)
         lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(streamTimeout).streamLines()
       } yield {
-        val bodyBuf = new StringBuilder
         // Bug #77 — overall stream-lifetime deadline; see OpenAIProvider
         // for the rationale (keepalives keep netty's per-poll timer alive
         // indefinitely; rapid's `Stream.timeout` is wall-clock-based and
         // catches the stuck-but-trickling case).
-        lines
-          .timeout(streamTimeout)
-          .flatMap { line =>
-            bodyBuf.append(line).append('\n')
-            Stream.emits(parseLine(line, state))
-          }
-          .onFinalize(Task.defer {
-            val response = HttpResponse(
-              status = HttpStatus.OK,
-              content = Some(StringContent(bodyBuf.toString, ContentType("text", "event-stream")))
-            )
-            sigilRef.wireInterceptor.after(intercepted, Success(response)).unit
-          })
+        _root_.sigil.provider.debug.StreamWireInterceptor.attach(
+          lines.timeout(streamTimeout), sigilRef.wireInterceptor, intercepted
+        ) { line =>
+          Stream.emits(parseLine(line, state))
+        }
       }
     )
   }

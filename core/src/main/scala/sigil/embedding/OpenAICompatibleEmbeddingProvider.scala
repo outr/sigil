@@ -25,17 +25,31 @@ case class OpenAICompatibleEmbeddingProvider(apiKey: String,
 
   override def embed(text: String): Task[Vector[Double]] = {
     val body = obj("model" -> str(model), "input" -> str(text))
-    postJson(baseUrl.withPath("/v1/embeddings"), body).map { json =>
-      json("data").asVector.head("embedding").asVector.map(_.asDouble)
+    postJson(baseUrl.withPath("/v1/embeddings"), body).flatMap { json =>
+      json("data").asVector.headOption match {
+        case Some(item) => Task.pure(item("embedding").asVector.map(_.asDouble))
+        case None       => Task.error(new RuntimeException(
+          s"Embedding response had an empty `data` array — model=$model, url=$baseUrl"
+        ))
+      }
     }
   }
 
   override def embedBatch(texts: List[String]): Task[List[Vector[Double]]] = {
     val body = obj("model" -> str(model), "input" -> arr(texts.map(str)*))
-    postJson(baseUrl.withPath("/v1/embeddings"), body).map { json =>
-      json("data").asVector.sortBy(_("index").asInt).map { item =>
-        item("embedding").asVector.map(_.asDouble)
-      }.toList
+    postJson(baseUrl.withPath("/v1/embeddings"), body).flatMap { json =>
+      val data = json("data").asVector
+      if (data.size != texts.size) {
+        Task.error(new RuntimeException(
+          s"Embedding batch response size mismatch — requested ${texts.size}, got ${data.size}"
+        ))
+      } else {
+        Task.pure(
+          data.sortBy(_("index").asInt).map { item =>
+            item("embedding").asVector.map(_.asDouble)
+          }.toList
+        )
+      }
     }
   }
 

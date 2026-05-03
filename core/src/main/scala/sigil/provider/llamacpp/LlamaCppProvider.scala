@@ -39,25 +39,16 @@ case class LlamaCppProvider(url: URL,
         intercepted <- sigilRef.wireInterceptor.before(raw)
         lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(streamTimeout).streamLines()
       } yield {
-        // Tap the stream to accumulate the full SSE body; invoke
-        // `.after()` at stream completion so wireInterceptor records
-        // the response too. Spice's `streamLines()` otherwise bypasses
-        // the interceptor chain entirely.
-        val bodyBuf = new StringBuilder
         // Bug #77 — overall stream-lifetime deadline; see OpenAIProvider rationale.
-        lines
-          .timeout(streamTimeout)
-          .flatMap { line =>
-            bodyBuf.append(line).append('\n')
-            Stream.emits(parseLine(line, state))
-          }
-          .onFinalize(Task.defer {
-            val response = HttpResponse(
-              status = HttpStatus.OK,
-              content = Some(StringContent(bodyBuf.toString, ContentType("text", "event-stream")))
-            )
-            sigilRef.wireInterceptor.after(intercepted, Success(response)).unit
-          })
+        // Wire-interceptor capture: tap the stream to accumulate the full SSE
+        // body and dispatch Success/Failure to `.after()` based on whether the
+        // stream completed cleanly or raised. Spice's `streamLines()` would
+        // otherwise bypass the interceptor chain entirely.
+        _root_.sigil.provider.debug.StreamWireInterceptor.attach(
+          lines.timeout(streamTimeout), sigilRef.wireInterceptor, intercepted
+        ) { line =>
+          Stream.emits(parseLine(line, state))
+        }
       }
     )
   }

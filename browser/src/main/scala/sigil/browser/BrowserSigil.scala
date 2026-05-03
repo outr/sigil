@@ -244,6 +244,14 @@ trait BrowserSigil extends Sigil with SecretsSigil {
     * round-trip without apps having to remember it. */
   override def toolRegistrations: List[RW[? <: sigil.tool.Tool]] =
     summon[RW[BrowserScript]] :: super.toolRegistrations
+
+  /** Tear down every live [[BrowserController]] on `Sigil.shutdown`.
+    * Each controller's Chrome subprocess is closed and any bound
+    * cookie jar is persisted before disposal. Chains through
+    * `super.onShutdown` so apps that mix multiple modules tear each
+    * down in declaration order. */
+  override protected def onShutdown: rapid.Task[Unit] =
+    BrowserSigil.disposeAll.flatMap(_ => super.onShutdown)
 }
 
 object BrowserSigil {

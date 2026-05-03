@@ -65,17 +65,34 @@ object JtokkitTokenizer {
   private lazy val registry =
     if (available) Encodings.newDefaultEncodingRegistry() else null
 
+  /** Decision helper extracted so both `OpenAIChatGpt` / `OpenAIO200k`
+   * lazy vals AND test code can verify the fallback path
+   * deterministically. Production callers always pass `available`
+   * for `probe`; the spec for bug #76 passes `false` to verify the
+   * heuristic path is wired correctly without needing to actually
+   * remove jtokkit from the classpath. Public for test access; not
+   * intended as a stable API. */
+  def selectTokenizer(probe: Boolean,
+                      encodingFactory: () => Tokenizer,
+                      slotName: String): Tokenizer =
+    if (probe) encodingFactory()
+    else { warnFallback(slotName); HeuristicTokenizer }
+
   /** cl100k_base — used by GPT-3.5 and GPT-4 chat completions. Best default
     * for OpenAI Chat Completions and a good approximation for Anthropic
     * and DeepSeek. Returns a [[HeuristicTokenizer]] when jtokkit is
     * missing; logs a one-time WARN at first access. */
-  lazy val OpenAIChatGpt: Tokenizer =
-    if (available) new JtokkitTokenizer(registry.getEncoding(EncodingType.CL100K_BASE))
-    else { warnFallback("OpenAIChatGpt"); HeuristicTokenizer }
+  lazy val OpenAIChatGpt: Tokenizer = selectTokenizer(
+    probe = available,
+    encodingFactory = () => new JtokkitTokenizer(registry.getEncoding(EncodingType.CL100K_BASE)),
+    slotName = "OpenAIChatGpt"
+  )
 
   /** o200k_base — used by GPT-4o / o-series. Returns a [[HeuristicTokenizer]]
     * when jtokkit is missing; logs a one-time WARN at first access. */
-  lazy val OpenAIO200k: Tokenizer =
-    if (available) new JtokkitTokenizer(registry.getEncoding(EncodingType.O200K_BASE))
-    else { warnFallback("OpenAIO200k"); HeuristicTokenizer }
+  lazy val OpenAIO200k: Tokenizer = selectTokenizer(
+    probe = available,
+    encodingFactory = () => new JtokkitTokenizer(registry.getEncoding(EncodingType.O200K_BASE)),
+    slotName = "OpenAIO200k"
+  )
 }
