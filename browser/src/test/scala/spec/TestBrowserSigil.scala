@@ -43,6 +43,10 @@ class TestBrowserDB(directory: Option[Path],
   * gate themselves on Chrome availability and self-skip when not
   * present. */
 object TestBrowserSigil extends Sigil with BrowserSigil {
+  // See `core/.../TestSigil.scala` for context — disable rapid's
+  // tracing in the test JVM to dodge a JIT-pressure flake on CI.
+  rapid.trace.Trace.Enabled = false
+
   override type DB = TestBrowserDB
 
   override protected def buildDB(directory: Option[Path],

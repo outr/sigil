@@ -39,6 +39,10 @@ class TestMetalsDB(directory: Option[Path],
   *     [[setIdleTimeout]] so the idle-reap behavior can be exercised
   *     without waiting fifteen real minutes. */
 object TestMetalsSigil extends Sigil with MetalsSigil {
+  // See `core/.../TestSigil.scala` for context — disable rapid's
+  // tracing in the test JVM to dodge a JIT-pressure flake on CI.
+  rapid.trace.Trace.Enabled = false
+
   override type DB = TestMetalsDB
   override protected def buildDB(directory: Option[Path],
                                   storeManager: CollectionManager,

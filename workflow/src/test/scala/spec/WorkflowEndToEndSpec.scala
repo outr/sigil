@@ -130,6 +130,10 @@ object WorkflowTestTopic {
   * uses Sigil's default DB layout under a per-suite path, no
   * real provider, no participants list except the test user. */
 object TestWorkflowSigil extends Sigil with WorkflowSigil {
+  // See `core/.../TestSigil.scala` for context — disable rapid's
+  // tracing in the test JVM to dodge a JIT-pressure flake on CI.
+  rapid.trace.Trace.Enabled = false
+
   override type DB = TestWorkflowDB
 
   override protected def buildDB(directory: Option[java.nio.file.Path],

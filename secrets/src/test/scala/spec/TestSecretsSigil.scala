@@ -39,6 +39,10 @@ class TestSecretsDB(directory: Option[Path],
   * test only exercises the secret store, not the full conversation
   * surface. */
 object TestSecretsSigil extends Sigil with SecretsSigil {
+  // See `core/.../TestSigil.scala` for context — disable rapid's
+  // tracing in the test JVM to dodge a JIT-pressure flake on CI.
+  rapid.trace.Trace.Enabled = false
+
   override type DB = TestSecretsDB
   override protected def buildDB(directory: Option[Path],
                                   storeManager: CollectionManager,

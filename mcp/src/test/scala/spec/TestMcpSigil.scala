@@ -28,6 +28,10 @@ class TestMcpDB(directory: Option[Path],
     with McpCollections
 
 object TestMcpSigil extends Sigil with McpSigil {
+  // See `core/.../TestSigil.scala` for context — disable rapid's
+  // tracing in the test JVM to dodge a JIT-pressure flake on CI.
+  rapid.trace.Trace.Enabled = false
+
   override type DB = TestMcpDB
   override protected def buildDB(directory: Option[Path],
                                   storeManager: CollectionManager,
