@@ -244,11 +244,14 @@ trait Provider {
         generationSettings = c.generationSettings,
         currentMode = c.currentMode
       )
-      // Diagnostic profiling — opt-in via `Sigil.profileWireRequests`
-      // (default off). Runs the tokenizer once per turn over every
-      // section of the about-to-be-sent request and broadcasts the
-      // breakdown as a `WireRequestProfile` Notice. Phase 0
-      // instrumentation; not used on hot paths when the flag is off.
+      // Diagnostic profiling — gated on `Sigil.profileWireRequests`
+      // (default on; apps override to false to skip). Runs the
+      // tokenizer once per turn over every section of the about-to-
+      // be-sent request and broadcasts the breakdown as a
+      // `WireRequestProfile` Notice. Cheap (jtokkit milliseconds
+      // for typical request sizes) — supports the always-visible
+      // context-utilisation gauge downstream apps render without
+      // further opt-in.
       val emit: Task[Unit] =
         if (sigil.profileWireRequests) {
           agentId match {
