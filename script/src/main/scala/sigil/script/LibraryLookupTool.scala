@@ -126,26 +126,40 @@ case object LibraryLookupTool extends TypedTool[LibraryLookupInput](
 
   /** Walk the context classloader chain and gather every `.class`
     * entry's FQN. Each invocation scans fresh — script-authoring is
-    * an interactive flow, not a hot path. */
+    * an interactive flow, not a hot path. Falls back to
+    * `java.class.path` when the loader chain has no URLClassLoader
+    * ancestors (sbt 1 worker JVMs, fat-jar launches, jlink images). */
   private def scanClasspath(): List[String] = {
     val loader = Thread.currentThread().getContextClassLoader
     val out = collection.mutable.LinkedHashSet.empty[String]
+    var sawUrlLoader = false
     var current: ClassLoader = loader
     while (current != null) {
       current match {
         case ucl: URLClassLoader =>
+          sawUrlLoader = true
           ucl.getURLs.foreach { url =>
-            try {
-              val file = new File(url.toURI)
-              if (file.isFile && file.getName.endsWith(".jar")) gatherJar(file, out)
-              else if (file.isDirectory) gatherDir(file, file, out)
-            } catch { case _: Throwable => () }
+            try gatherEntry(new File(url.toURI), out)
+            catch { case _: Throwable => () }
           }
         case _ => ()
       }
       current = current.getParent
     }
+    if (!sawUrlLoader) {
+      Option(System.getProperty("java.class.path")).filter(_.nonEmpty).foreach { cp =>
+        cp.split(java.io.File.pathSeparator).foreach { entry =>
+          try gatherEntry(new File(entry), out)
+          catch { case _: Throwable => () }
+        }
+      }
+    }
     out.toList
+  }
+
+  private def gatherEntry(file: File, out: collection.mutable.LinkedHashSet[String]): Unit = {
+    if (file.isFile && file.getName.endsWith(".jar")) gatherJar(file, out)
+    else if (file.isDirectory) gatherDir(file, file, out)
   }
 
   private def gatherJar(file: File, out: collection.mutable.LinkedHashSet[String]): Unit = {

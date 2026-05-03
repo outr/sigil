@@ -196,17 +196,13 @@ object ScalaScriptExecutor {
     * from any `URLClassLoader` ancestors, and join their filesystem
     * paths into a `File.pathSeparator`-separated classpath string
     * suitable for [[ScalaScriptExecutor]]'s `classpathOverride`.
+    * Falls back to `java.class.path` when the loader chain has no
+    * `URLClassLoader` ancestors (sbt 1, fat-jar launches, jlink
+    * images) so callers always get a classpath under any test JVM
+    * shape.
     *
-    * Returns `None` when the loader chain has no `URLClassLoader`
-    * ancestors (Java 17+ `AppClassLoader` for fat-jar launches,
-    * jlink images, Bazel binaries, etc.) — apps in those environments
-    * compute the classpath through their own mechanism (sbt's
-    * `Test / fullClasspath`, an explicit list of jars, etc.).
-    *
-    * Bug #57 — sbt 2 test workers populate `java.class.path` with
-    * only sbt's own plumbing; the real test classpath lives in a
-    * `URLClassLoader` the worker constructs manually. Calling this
-    * from inside such a worker recovers the full classpath. */
+    * Returns `None` only when both the URL walk and `java.class.path`
+    * are empty (extremely unusual). */
   def detectClasspathFromContext(): Option[String] = {
     val loader = Thread.currentThread().getContextClassLoader
     val urls = collection.mutable.LinkedHashSet.empty[String]
@@ -222,6 +218,7 @@ object ScalaScriptExecutor {
       }
       current = current.getParent
     }
-    if (urls.isEmpty) None else Some(urls.mkString(File.pathSeparator))
+    if (urls.nonEmpty) Some(urls.mkString(File.pathSeparator))
+    else Option(System.getProperty("java.class.path")).filter(_.nonEmpty)
   }
 }
