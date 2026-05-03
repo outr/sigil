@@ -48,12 +48,11 @@ import sigil.spatial.Place
  * for memories captured without geolocation.
  */
 case class ContextMemory(fact: String,
+                         label: String,
+                         summary: String,
                          source: MemorySource,
                          spaceId: SpaceId,
-                         key: String = "",
-                         label: String = "",
-                         summary: String = "",
-                         tags: Vector[String] = Vector.empty,
+                         key: Option[String] = None,
                          keywords: Vector[String] = Vector.empty,
                          memoryType: MemoryType = MemoryType.Fact,
                          status: MemoryStatus = MemoryStatus.Approved,
@@ -84,24 +83,26 @@ object ContextMemory extends RecordDocumentModel[ContextMemory] with JsonConvers
   // for polymorphic records or Scala 3 enums. Queries compare against
   // the projected string value.
   val spaceIdValue: I[String] = field.index(_.spaceId.value)
-  val key: I[String] = field.index(_.key)
+  val key: I[Option[String]] = field.index(_.key)
   val statusName: I[String] = field.index(_.status.toString)
   val pinned: I[Boolean] = field.index(_.pinned)
   val conversationId: I[Option[Id[Conversation]]] = field.index(_.conversationId)
 
-  /** Tokenized full-text index over key + label + summary + fact + tags
-    * + keywords. Backs `find_capability`'s BM25-scored memory search
+  /** Tokenized full-text index over key + label + summary + fact +
+    * keywords. Backs `find_capability`'s BM25-scored memory search
     * AND the lexical leg of [[StandardMemoryRetriever]]'s hybrid
-    * retrieval. `keywords` are LLM-extracted at save time (cheap one-
-    * shot) so semantically-relevant queries that don't share lexical
-    * tokens with `fact` / `summary` still hit. Memory matches in
-    * `find_capability` carry only the key + summary — the agent calls
-    * `lookup(capabilityType=Memory, name=key)` to pull the full fact
-    * when it judges the memory worth the tokens. */
+    * retrieval. `keywords` is the union of agent-supplied tags and
+    * the unified classifier's LLM-extracted retrieval signals — both
+    * arrive in the same field so semantically-relevant queries that
+    * don't share lexical tokens with `fact` / `summary` still hit.
+    * Memory matches in `find_capability` carry only the key + summary
+    * — the agent calls `lookup(capabilityType=Memory, name=key)` to
+    * pull the full fact when it judges the memory worth the tokens. */
   val searchText: lightdb.field.Field.Tokenized[ContextMemory] =
-    field.tokenized("searchText", (m: ContextMemory) =>
-      s"${m.key} ${m.label} ${m.summary} ${m.fact} ${m.tags.mkString(" ")} ${m.keywords.mkString(" ")}"
-    )
+    field.tokenized("searchText", (m: ContextMemory) => {
+      val k = m.key.getOrElse("")
+      s"$k ${m.label} ${m.summary} ${m.fact} ${m.keywords.mkString(" ")}"
+    })
 
   override def id(value: String = Unique()): Id[ContextMemory] = Id(value)
 }

@@ -453,10 +453,8 @@ trait Sigil {
         // Memory matches surface key + summary only — the agent calls
         // `lookup(capabilityType=Memory, name=key)` to pull the full
         // fact when it decides the memory is worth the tokens.
-        val displayName = if (m.key.nonEmpty) m.key else m._id.value
-        val displaySummary = if (m.summary.nonEmpty) m.summary
-                             else if (m.label.nonEmpty) m.label
-                             else m.fact.take(140)
+        val displayName = m.key.getOrElse(m._id.value)
+        val displaySummary = m.summary
         CapabilityMatch(
           name = displayName,
           description = displaySummary,
@@ -2200,8 +2198,8 @@ trait Sigil {
    * [[persistMemory]] (the single-shot path; no versioning).
    */
   def upsertMemoryByKey(memory: ContextMemory): Task[UpsertMemoryResult] = {
-    if (memory.key.isEmpty)
-      Task.error(new IllegalArgumentException("upsertMemoryByKey requires a non-empty key; use persistMemory for un-keyed inserts"))
+    if (!memory.key.exists(_.nonEmpty))
+      Task.error(new IllegalArgumentException("upsertMemoryByKey requires Some(non-empty key); use persistMemory for un-keyed inserts"))
     else validateCoreContextCap(memory).flatMap { _ =>
       enrichMemoryClassification(memory, memory.createdBy.toList).flatMap(upsertMemoryByKeyImpl)
     }
@@ -2223,7 +2221,7 @@ trait Sigil {
                 val refreshed = prior.copy(
                   label = memory.label,
                   summary = memory.summary,
-                  tags = memory.tags,
+                  keywords = memory.keywords,
                   memoryType = memory.memoryType,
                   confidence = memory.confidence,
                   pinned = memory.pinned,
@@ -2480,11 +2478,11 @@ trait Sigil {
   /** Render a memory in a compact form for the classifier. */
   private def renderMemoryForClassification(memory: ContextMemory): String = {
     val sb = new StringBuilder
-    if (memory.label.nonEmpty)   sb.append(s"Label: ${memory.label}\n")
-    if (memory.key.nonEmpty)     sb.append(s"Key: ${memory.key}\n")
-    if (memory.summary.nonEmpty) sb.append(s"Summary: ${memory.summary}\n")
+    sb.append(s"Label: ${memory.label}\n")
+    memory.key.foreach(k => sb.append(s"Key: $k\n"))
+    sb.append(s"Summary: ${memory.summary}\n")
     sb.append(s"Fact: ${memory.fact}")
-    if (memory.tags.nonEmpty) sb.append(s"\nManual tags: ${memory.tags.mkString(", ")}")
+    if (memory.keywords.nonEmpty) sb.append(s"\nExisting keywords: ${memory.keywords.mkString(", ")}")
     sb.toString
   }
 
@@ -2495,7 +2493,7 @@ trait Sigil {
     else withDB(_.memories.transaction { tx =>
       import lightdb.filter.*
       tx.query
-        .filter(m => (m.spaceIdValue === spaceId.value) && (m.key === key))
+        .filter(m => (m.spaceIdValue === spaceId.value) && (m.key === Some(key)))
         .toList
         .map(_.sortBy(_.created.value))
     })

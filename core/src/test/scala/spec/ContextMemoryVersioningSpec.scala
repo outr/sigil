@@ -17,13 +17,17 @@ class ContextMemoryVersioningSpec extends AsyncWordSpec with AsyncTaskSpec with 
   private val Space = TestSpace
   private val Key = "pref.language"
 
-  private def seed(fact: String, key: String = Key, label: String = ""): ContextMemory =
+  private def seed(fact: String,
+                   key: String = Key,
+                   label: String = "Versioning seed",
+                   summary: String = "test summary"): ContextMemory =
     ContextMemory(
       fact = fact,
+      label = label,
+      summary = summary,
       source = MemorySource.Explicit,
       spaceId = Space,
-      key = key,
-      label = label,
+      key = if (key.isEmpty) None else Some(key),
       memoryType = MemoryType.Preference
     )
 

@@ -67,12 +67,12 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
             Task.sequence(kept.map { m =>
               sigil.upsertMemoryByKeyFor(ContextMemory(
                 fact = m.content,
-                source = MemorySource.Compression,
-                spaceId = space,
-                key = m.key,
                 label = m.label,
                 summary = m.content,
-                tags = m.tags.toVector,
+                source = MemorySource.Compression,
+                spaceId = space,
+                key = Some(m.key),
+                keywords = m.tags.toVector,
                 memoryType = defaultType,
                 status = defaultStatus,
                 conversationId = Some(conversationId)

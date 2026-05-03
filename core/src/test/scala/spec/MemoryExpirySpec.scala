@@ -37,6 +37,8 @@ class MemoryExpirySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
                    justification: Option[String] = None): ContextMemory =
     ContextMemory(
       fact = "user prefers concise replies",
+      label = "Concise replies",
+      summary = "User prefers concise replies.",
       source = MemorySource.Explicit,
       spaceId = Space,
       memoryType = MemoryType.Preference,
@@ -68,7 +70,7 @@ class MemoryExpirySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "round-trip the justification field" in {
       val key = "pref.justification.roundtrip"
       val seed = make(justification = Some("inferred from explicit user request 2026-05-02"))
-        .copy(key = key)
+        .copy(key = Some(key))
       for {
         _       <- TestSigil.upsertMemoryByKey(seed)
         history <- TestSigil.memoryHistory(key, Space)
@@ -81,7 +83,7 @@ class MemoryExpirySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "round-trip the expiresAt field" in {
       val key = "pref.expiresat.roundtrip"
       val expiry = Timestamp(System.currentTimeMillis() + 86_400_000L) // tomorrow
-      val seed = make(expiresAt = Some(expiry)).copy(key = key)
+      val seed = make(expiresAt = Some(expiry)).copy(key = Some(key))
       for {
         _       <- TestSigil.upsertMemoryByKey(seed)
         history <- TestSigil.memoryHistory(key, Space)

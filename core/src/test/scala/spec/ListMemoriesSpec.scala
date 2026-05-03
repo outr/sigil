@@ -55,11 +55,12 @@ class ListMemoriesSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
                    fact: String,
                    in: SpaceId = GlobalSpace,
                    pinned: Boolean = false,
-                   label: String = ""): Task[ContextMemory] =
+                   label: String = "test memory"): Task[ContextMemory] =
     TestSigil.persistMemory(ContextMemory(
       fact = fact,
-      key = key,
       label = label,
+      summary = fact,
+      key = Some(key),
       source = MemorySource.Explicit,
       spaceId = in,
       pinned = pinned

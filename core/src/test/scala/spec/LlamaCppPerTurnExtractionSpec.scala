@@ -92,7 +92,7 @@ class LlamaCppPerTurnExtractionSpec extends AsyncWordSpec with AsyncTaskSpec wit
                 // At least one key should relate to a durable fact
                 // the model saw (name / location / preference). Accept
                 // any of the canonical shapes the LLM might produce.
-                val keys = stored.map(_.key.toLowerCase)
+                val keys = stored.flatMap(_.key.map(_.toLowerCase))
                 val looksDurable = keys.exists(k =>
                   k.contains("name") || k.contains("location") ||
                   k.contains("prefer") || k.contains("language") ||

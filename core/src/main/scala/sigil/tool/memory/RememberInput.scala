@@ -23,7 +23,7 @@ case class RememberInput(key: String,
                          label: String,
                          summary: String,
                          content: String,
-                         tags: Vector[String] = Vector.empty,
+                         keywords: Vector[String] = Vector.empty,
                          memoryType: MemoryType = MemoryType.Fact,
                          spaceId: Option[SpaceId] = None)
   extends ToolInput derives RW

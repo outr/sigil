@@ -48,12 +48,12 @@ case object RememberTool extends TypedTool[RememberInput](
         case Some(space) =>
           val memory = ContextMemory(
             fact = input.content,
-            source = MemorySource.Explicit,
-            spaceId = space,
-            key = input.key,
             label = input.label,
             summary = input.summary,
-            tags = input.tags,
+            source = MemorySource.Explicit,
+            spaceId = space,
+            key = Some(input.key),
+            keywords = input.keywords,
             memoryType = input.memoryType,
             status = MemoryStatus.Approved,
             conversationId = Some(context.conversation.id)

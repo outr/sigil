@@ -77,9 +77,13 @@ class PinnedMemoryBudgetWarningSpec extends AsyncWordSpec with AsyncTaskSpec wit
       val convId = Conversation.id(s"warn-${rapid.Unique()}")
       val heavyCritical = ContextMemory(
         fact = ("This is a verbose persistent directive across many sentences. " * 130).trim,
+        label = "Heavy directive",
+        // Empty summary — renderer falls back to `fact`; the heavy
+        // fact is what trips the threshold.
+        summary = "",
         source = MemorySource.Explicit, pinned = true,
         spaceId = GlobalSpace,
-        key = s"crit-heavy-${rapid.Unique()}"
+        key = Some(s"crit-heavy-${rapid.Unique()}")
       )
       val curator = StandardContextCurator(
         sigil = TestSigil,
@@ -105,9 +109,11 @@ class PinnedMemoryBudgetWarningSpec extends AsyncWordSpec with AsyncTaskSpec wit
       val convId = Conversation.id(s"no-warn-${rapid.Unique()}")
       val tinyCritical = ContextMemory(
         fact = "Be concise.",
+        label = "Be concise",
+        summary = "Be concise.",
         source = MemorySource.Explicit, pinned = true,
         spaceId = GlobalSpace,
-        key = s"crit-tiny-${rapid.Unique()}"
+        key = Some(s"crit-tiny-${rapid.Unique()}")
       )
       val curator = StandardContextCurator(
         sigil = TestSigil,

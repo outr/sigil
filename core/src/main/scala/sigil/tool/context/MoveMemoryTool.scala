@@ -79,7 +79,7 @@ case object MoveMemoryTool extends TypedTool[MoveMemoryInput](
                          spaces: Set[SpaceId],
                          context: TurnContext): Task[Option[ContextMemory]] =
     context.sigil.findMemories(spaces).flatMap { memories =>
-      memories.find(m => m.key == key) match {
+      memories.find(m => m.key.contains(key)) match {
         case some @ Some(_) => Task.pure(some)
         case None =>
           context.sigil.withDB(_.memories.transaction(_.get(Id[ContextMemory](key)))).map {
@@ -90,5 +90,5 @@ case object MoveMemoryTool extends TypedTool[MoveMemoryInput](
     }
 
   private def displayKey(m: ContextMemory): String =
-    if (m.key.nonEmpty) m.key else if (m.label.nonEmpty) m.label else m._id.value
+    m.key.getOrElse(m.label)
 }

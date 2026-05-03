@@ -55,7 +55,9 @@ class PinUnpinMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
   private def seed(key: String, fact: String, pinned: Boolean = false): Task[ContextMemory] =
     TestSigil.persistMemory(ContextMemory(
       fact = fact,
-      key = key,
+      label = key,
+      summary = fact,
+      key = Some(key),
       source = MemorySource.Explicit,
       spaceId = GlobalSpace,
       pinned = pinned

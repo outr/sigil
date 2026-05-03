@@ -33,6 +33,8 @@ class SigilEmbeddingWiringSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "auto-index a persisted ContextMemory and retrieve it via searchMemories" in {
       val mem = ContextMemory(
         fact = "The capital of France is Paris.",
+        label = "France capital",
+        summary = "Paris is the capital of France.",
         source = MemorySource.Explicit,
         spaceId = WiringSpace
       )

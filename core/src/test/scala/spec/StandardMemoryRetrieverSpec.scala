@@ -34,16 +34,22 @@ class StandardMemoryRetrieverSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
       val critical = TestSigil.persistMemory(ContextMemory(
         fact = "The user must never be given financial advice.",
+        label = "No financial advice",
+        summary = "Never give the user financial advice.",
         source = MemorySource.Explicit, pinned = true,
         spaceId = MemoryTestSpace
       )).sync()
       val relevant = TestSigil.persistMemory(ContextMemory(
         fact = "The user's favorite color is blue.",
+        label = "Favorite color",
+        summary = "User's favorite colour is blue.",
         source = MemorySource.Explicit,
         spaceId = MemoryTestSpace
       )).sync()
       val unrelated = TestSigil.persistMemory(ContextMemory(
         fact = "The user's pet's name is Biscuit.",
+        label = "Pet name",
+        summary = "User's pet is named Biscuit.",
         source = MemorySource.Explicit,
         spaceId = MemoryTestSpace
       )).sync()

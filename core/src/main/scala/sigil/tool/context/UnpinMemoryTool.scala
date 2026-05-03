@@ -71,7 +71,7 @@ case object UnpinMemoryTool extends TypedTool[UnpinMemoryInput](
                          spaces: Set[sigil.SpaceId],
                          context: TurnContext): Task[Option[ContextMemory]] =
     context.sigil.findCriticalMemories(spaces).flatMap { pinned =>
-      pinned.find(m => m.key == key) match {
+      pinned.find(m => m.key.contains(key)) match {
         case some @ Some(_) => Task.pure(some)
         case None =>
           // Fallback: maybe the agent passed an _id (UUID-style) from list_pinned_memories
@@ -83,5 +83,5 @@ case object UnpinMemoryTool extends TypedTool[UnpinMemoryInput](
     }
 
   private def displayKey(m: ContextMemory): String =
-    if (m.key.nonEmpty) m.key else if (m.label.nonEmpty) m.label else m._id.value
+    m.key.getOrElse(m.label)
 }
