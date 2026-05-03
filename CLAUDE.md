@@ -212,22 +212,23 @@ A `Mode` carries:
 - `skill: Option[ActiveSkillSlot]` — replaces the old `modeSkill` hook; framework reads `mode.skill` directly on `ModeChange` settle.
 - `tools: ToolPolicy` — tool-availability policy.
 
-`ToolPolicy` is a sum type (`sigil.provider.ToolPolicy`) covering six composition policies:
+`ToolPolicy` is a sum type (`sigil.provider.ToolPolicy`) covering seven composition policies:
 
 | Case | Roster | Discovery catalog |
 |---|---|---|
 | `Standard` | baseline + `find_capability` | full |
 | `None` | essentials only (no `find_capability`) | empty |
+| `PureDiscovery` | `stop` + `find_capability` only (no respond / no_response) | full |
 | `Active(names)` | baseline + names | full |
-| `Discoverable(names)` | baseline | full (apps override `discoveryCatalog` for cross-mode gating) |
+| `Discoverable(names)` | baseline | full |
 | `Exclusive(names)` | essentials + names (baseline suppressed) | names only |
 | `Scoped(names)` | baseline | names only |
 
-Framework essentials (always in the roster) are `respond`, `no_response`, `change_mode`, `stop`. `find_capability` joins them unless `ToolPolicy.None` is active.
+Framework essentials (always in the roster) are `respond` / `respond_options` / `respond_field` / `respond_failure`, `no_response`, and `stop`. `find_capability` joins them unless `ToolPolicy.None` is active. `change_mode` is NOT auto-included — apps with multiple `Mode`s register `ChangeModeTool` via their own `staticTools` and add it to the agent's `toolNames`. `PureDiscovery` strips the respond family + `no_response` so the agent can only act via discovered tools (then a final `respond` once it finds one) — useful for "search → act" agents that should never short-circuit to chatter.
 
-Composition happens in `Sigil.effectiveToolNames(agent, behavior, mode, suggested)` and `Sigil.modeAllowsDiscovery(mode, toolName): Boolean` — both are `def`s apps override for exotic rules. The behavior + mode policies are layered in order via an internal fold: each `Active(names)` / `Exclusive(names)` contributes extras, `None` / `Exclusive` strips baseline, `None` strips `find_capability`. `Sigil.process` calls `effectiveToolNames`; `FindCapabilityTool.execute` filters its `ToolFinder` results through `modeAllowsDiscovery`.
+Composition happens in `Sigil.effectiveToolNames(agent, mode, suggested): List[ToolName]` (a single `def` apps override for exotic rules). The agent's `tools` policy and the active mode's `tools` policy are folded in order over an internal `PolicyState`: each `Active(names)` / `Exclusive(names)` contributes extras, `None` / `Exclusive` strips baseline, `None` strips `find_capability`, `PureDiscovery` strips the respond family + `no_response`. The result is sorted by tool-position priority (action tools first, response tools last) — small models exhibit a real first-tool bias, so putting `change_mode` / `find_capability` early lets "do X" requests land on the action path instead of being captured by the always-applicable `respond` family.
 
-The discovery path is deliberately predicate-based, not list-based — `ToolFinder` produces keyword-matched subsets (DB-backed finders may stream) and the framework applies the mode predicate per result. No "all tools" list ever materializes.
+Discovery filtering — whether a `find_capability` candidate is allowed for the current chain + mode — happens inside the `ToolFinder` itself via `DiscoveryFilter.passesAffinity(tool, request)` (mode + space affinity). Apps with cross-mode-gating semantics swap the whole finder by overriding `Sigil.findTools(request)`. The framework deliberately keeps the discovery path predicate-based, not list-based — `ToolFinder` produces keyword-matched subsets (DB-backed finders may stream) and the predicate is applied per result. No "all tools" list ever materializes.
 
 ### Role (per-agent identity primitive)
 

@@ -12,6 +12,26 @@ package sigil.provider
  */
 trait ErrorClassifier {
   def classify(throwable: Throwable): ErrorClassification
+
+  /**
+   * Compose with another classifier. `this` wins on `Retry` / `Fatal`;
+   * a `Fallthrough` defers to `other`. Apps chain a provider-specific
+   * classifier on top of [[ErrorClassifier.Default]] so well-typed
+   * exceptions get explicit handling and unknown errors fall back to
+   * the standard HTTP-signature heuristics.
+   *
+   * Idiom: `myProviderClassifier.orElse(ErrorClassifier.Default)`.
+   */
+  def orElse(other: ErrorClassifier): ErrorClassifier = {
+    val self = this
+    new ErrorClassifier {
+      override def classify(throwable: Throwable): ErrorClassification =
+        self.classify(throwable) match {
+          case ErrorClassification.Fallthrough => other.classify(throwable)
+          case decided                         => decided
+        }
+    }
+  }
 }
 
 enum ErrorClassification {
