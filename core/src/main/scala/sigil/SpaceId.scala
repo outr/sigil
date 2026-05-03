@@ -29,7 +29,22 @@ import fabric.rw.PolyType
  *     used to filter `find_capability` results.
  */
 trait SpaceId {
+  /** Stable string identifier — used for indexing, equality, and wire
+    * round-trip. Must be unique across all spaces an app registers. */
   def value: String
+
+  /** Human-readable label shown to agents and users when they reason
+    * about the space — e.g. picking which space a new memory belongs
+    * in. Defaults to `value.capitalize`; concrete spaces override for
+    * nicer presentation (`"Project Atlas"`, `"User preferences"`). */
+  def displayName: String = value.capitalize
+
+  /** What the space contains and when a memory belongs here. Shown to
+    * the unified memory classifier and the agent so the space picker
+    * can disambiguate. Apps SHOULD override with one or two sentences;
+    * empty (the default) leaves the classifier with only `displayName`
+    * to go on. */
+  def description: String = ""
 }
 
 object SpaceId extends PolyType[SpaceId]()(using scala.reflect.ClassTag(classOf[SpaceId]))

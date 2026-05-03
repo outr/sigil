@@ -3,19 +3,19 @@ package sigil.tool.context
 import lightdb.id.Id
 import rapid.{Stream, Task}
 import sigil.TurnContext
-import sigil.conversation.{ContextMemory, MemorySource}
+import sigil.conversation.ContextMemory
 import sigil.event.{Event, Message, MessageRole}
 import sigil.tool.{ToolName, TypedTool}
 import sigil.tool.model.ResponseContent
 
 /**
- * Demote a Critical memory to a sheddable source ([[MemorySource.Compression]]).
- * The record stays on disk; only its rendering policy changes — it's no
- * longer in the inviolable "render every turn" set, but
- * `recall_memory` / `lookup` can still surface it on demand.
+ * Unpin a memory so it stops rendering every turn. The record stays
+ * on disk; only its rendering policy changes — `recall_memory` /
+ * `lookup` can still surface it on demand and topical retrieval will
+ * pick it up when keywords match.
  *
  * Resolution order when looking up the target:
- *   1. Within the caller's accessible spaces, find Critical memories
+ *   1. Within the caller's accessible spaces, find pinned memories
  *      matching `key`. If exactly one match, use it.
  *   2. If multiple matches and `space` is supplied, filter to that
  *      space.
@@ -26,7 +26,7 @@ import sigil.tool.model.ResponseContent
 case object UnpinMemoryTool extends TypedTool[UnpinMemoryInput](
   name = ToolName("unpin_memory"),
   description =
-    """Demote a Critical memory so it stops rendering every turn. The record stays on disk —
+    """Unpin a memory so it stops rendering every turn. The record stays on disk —
       |the agent / user can re-pin later. Use this when the user reviews `list_pinned_memories`
       |and decides a directive is no longer applicable.
       |
@@ -54,23 +54,23 @@ case object UnpinMemoryTool extends TypedTool[UnpinMemoryInput](
         Task.pure(s"[unpin_memory] no accessible memory spaces; cannot unpin '${input.key}'.")
       else
         findTarget(input.key, effective, context).flatMap {
-          case Some(memory) if memory.source == MemorySource.Critical =>
-            val demoted = memory.copy(source = MemorySource.Compression)
-            context.sigil.withDB(_.memories.transaction(_.upsert(demoted))).map { _ =>
-              s"[unpin_memory] demoted memory '${displayKey(memory)}' from Critical → Compression. The record remains accessible via lookup or recall_memory."
+          case Some(memory) if memory.pinned =>
+            val unpinned = memory.copy(pinned = false)
+            context.sigil.withDB(_.memories.transaction(_.upsert(unpinned))).map { _ =>
+              s"[unpin_memory] unpinned memory '${displayKey(memory)}'. The record remains accessible via topical retrieval, lookup, and recall_memory."
             }
           case Some(memory) =>
-            Task.pure(s"[unpin_memory] memory '${displayKey(memory)}' is already source=${memory.source}; nothing to do.")
+            Task.pure(s"[unpin_memory] memory '${displayKey(memory)}' is not pinned; nothing to do.")
           case None =>
-            Task.pure(s"[unpin_memory] no Critical memory found matching key '${input.key}' in accessible spaces.")
+            Task.pure(s"[unpin_memory] no pinned memory found matching key '${input.key}' in accessible spaces.")
         }
     }
 
   private def findTarget(key: String,
                          spaces: Set[sigil.SpaceId],
                          context: TurnContext): Task[Option[ContextMemory]] =
-    context.sigil.findCriticalMemories(spaces).flatMap { criticals =>
-      criticals.find(m => m.key == key) match {
+    context.sigil.findCriticalMemories(spaces).flatMap { pinned =>
+      pinned.find(m => m.key == key) match {
         case some @ Some(_) => Task.pure(some)
         case None =>
           // Fallback: maybe the agent passed an _id (UUID-style) from list_pinned_memories

@@ -6,17 +6,16 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.{Sigil, SpaceId}
-import sigil.conversation.{ContextFrame, ContextMemory, ConversationView, MemorySource}
+import sigil.conversation.{ContextFrame, ContextMemory, ConversationView}
 import sigil.participant.ParticipantId
 
 /**
  * Default [[MemoryRetriever]]. Produces two buckets for every turn:
  *
- *   - `criticalMemories`: every [[ContextMemory]] in the configured
- *     spaces whose `source` is [[MemorySource.Critical]]. Surfaces
- *     unconditionally every turn — the provider renders them in a
- *     distinct "Critical directives" section, so safety rules and
- *     identity anchors never depend on the LLM's query phrasing.
+ *   - `criticalMemories`: every pinned [[ContextMemory]] in the
+ *     configured spaces. Surfaces unconditionally every turn — the
+ *     provider renders them in a distinct "Pinned directives" section,
+ *     so always-applies rules don't depend on the LLM's query phrasing.
  *
  *   - `memories`: top-K most relevant non-critical memories, ranked by
  *     a hybrid Lucene + vector retrieval. The query signal is built
@@ -102,7 +101,11 @@ case class StandardMemoryRetriever(spaces: Set[SpaceId],
     }
 
   /** Run vector + Lucene retrieval in parallel, fuse via RRF. Drops
-    * memories outside [[spaces]] and expired records. */
+    * memories outside [[spaces]], expired records, and pinned memories
+    * (those render in the Pinned section already; topical retrieval
+    * mustn't double-render). The Lucene leg pushes the `pinned ==
+    * false` filter into the index; the vector leg filters post-fetch
+    * since the vector payload doesn't carry pinned status. */
   private def hybridSearch(sigil: Sigil,
                            query: String,
                            now: Timestamp): Task[Vector[Id[ContextMemory]]] = {
@@ -111,8 +114,13 @@ case class StandardMemoryRetriever(spaces: Set[SpaceId],
       vectorHits <- sigil.searchMemories(query, spaces, candidatePool)
       lexicalHits <- luceneHits(sigil, query, candidatePool)
     } yield {
-      val vectorIds  = vectorHits.iterator.filterNot(StandardMemoryRetriever.isExpired(_, now)).map(_._id).toList
-      val lexicalIds = lexicalHits.iterator.filterNot(StandardMemoryRetriever.isExpired(_, now)).map(_._id).toList
+      val vectorIds  = vectorHits.iterator
+        .filterNot(_.pinned)
+        .filterNot(StandardMemoryRetriever.isExpired(_, now))
+        .map(_._id).toList
+      val lexicalIds = lexicalHits.iterator
+        .filterNot(StandardMemoryRetriever.isExpired(_, now))
+        .map(_._id).toList
       StandardMemoryRetriever.rrfFuse(List(vectorIds, lexicalIds), rrfK).take(limit).toVector
     }
   }
@@ -120,7 +128,8 @@ case class StandardMemoryRetriever(spaces: Set[SpaceId],
   /** Lucene BM25 query over `ContextMemory.searchText`. Splits `query`
     * into whitespace tokens and OR-matches; result order is BM25
     * relevance (lightdb's `Sort.BestMatch`). Filters to configured
-    * spaces. */
+    * spaces and excludes pinned memories (those render in the
+    * Pinned section already; topical retrieval mustn't double-render). */
   private def luceneHits(sigil: Sigil,
                          query: String,
                          candidatePool: Int): Task[List[ContextMemory]] = {
@@ -132,7 +141,8 @@ case class StandardMemoryRetriever(spaces: Set[SpaceId],
           val clauses = tokens.map { kw =>
             FilterClause(ContextMemory.searchText.exactly(kw), Condition.Should, None)
           }
-          Filter.Multi(minShould = 1, filters = clauses)
+          Filter.Multi(minShould = 1, filters = clauses) &&
+            (ContextMemory.pinned === false)
         }
         .scored
         .sort(Sort.BestMatch())
@@ -141,19 +151,26 @@ case class StandardMemoryRetriever(spaces: Set[SpaceId],
     }).map(_.filter(m => spaces.contains(m.spaceId)))
   }
 
-  /** Load every Critical-source memory in the configured spaces.
-    * Uses `_.list` + in-memory filter because [[SpaceId]] is polymorphic
-    * and the Lucene store doesn't support equality on poly fields.
-    * Expired records are skipped. */
+  /** Load every pinned memory in the configured spaces. Pushes the
+    * filter into Lucene via the indexed `pinned` boolean and the
+    * `spaceIdValue` string projection: `pinned == true AND spaceIdValue
+    * IN spaces`. Expiry is filtered in-memory on the (small) result.
+    * O(N_pinned_in_accessible_spaces) per turn instead of
+    * O(N_total_memories). */
   private def loadCriticals(sigil: Sigil, now: Timestamp): Task[Vector[Id[ContextMemory]]] =
     if (spaces.isEmpty) Task.pure(Vector.empty)
-    else sigil.withDB(_.memories.transaction(_.list)).map { all =>
-      all.iterator
-        .filter(m => m.source == MemorySource.Critical
-                  && spaces.contains(m.spaceId)
-                  && !StandardMemoryRetriever.isExpired(m, now))
-        .map(_._id)
-        .toVector
+    else sigil.withDB(_.memories.transaction { tx =>
+      val spaceClauses = spaces.toList.map { space =>
+        FilterClause(ContextMemory.spaceIdValue === space.value, Condition.Should, None)
+      }
+      tx.query
+        .filter(_ =>
+          Filter.Multi(minShould = 1, filters = spaceClauses) &&
+            (ContextMemory.pinned === true)
+        )
+        .toList
+    }).map { rows =>
+      rows.iterator.filterNot(StandardMemoryRetriever.isExpired(_, now)).map(_._id).toVector
     }
 }
 
