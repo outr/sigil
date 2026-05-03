@@ -17,7 +17,7 @@ import fabric.rw.*
  * itself fails only if the join mode demands it.
  */
 case class ParallelStepInput(id: String,
-                             name: String = "",
                              branches: List[List[WorkflowStepInput]],
+                             name: Option[String] = None,
                              joinMode: String = "all",
-                             output: String = "") extends WorkflowStepInput derives RW
+                             output: Option[String] = None) extends WorkflowStepInput derives RW

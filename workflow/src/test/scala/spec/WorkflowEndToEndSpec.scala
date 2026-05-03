@@ -55,8 +55,8 @@ class WorkflowEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
       val template = WorkflowTemplate(
         name = "noop",
-        description = "Single empty step — completes immediately",
-        steps = List(JobStepInput(id = "noop", name = "Noop step")),
+        description = Some("Single empty step — completes immediately"),
+        steps = List(JobStepInput(id = "noop", name = Some("Noop step"))),
         space = GlobalSpace,
         createdBy = Some(WorkflowTestUser),
         conversationId = Some(convId)

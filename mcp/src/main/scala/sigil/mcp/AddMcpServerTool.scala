@@ -12,7 +12,7 @@ case class AddMcpServerInput(name: String,
                              command: Option[String] = None,
                              args: List[String] = Nil,
                              url: Option[String] = None,
-                             prefix: String = "",
+                             prefix: Option[String] = None,
                              headers: Map[String, String] = Map.empty,
                              roots: List[String] = Nil) extends ToolInput derives RW
 
@@ -35,7 +35,7 @@ final class AddMcpServerTool(manager: McpManager) extends TypedTool[AddMcpServer
   examples = List(
     ToolExample(
       "stdio fetch server",
-      AddMcpServerInput(name = "fetch", command = Some("mcp-server-fetch"), prefix = "fetch_")
+      AddMcpServerInput(name = "fetch", command = Some("mcp-server-fetch"), prefix = Some("fetch_"))
     ),
     ToolExample(
       "remote HTTP+SSE server with auth",

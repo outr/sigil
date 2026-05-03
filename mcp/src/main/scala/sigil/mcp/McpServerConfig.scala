@@ -50,7 +50,7 @@ import sigil.db.Model
  */
 case class McpServerConfig(name: String,
                            transport: McpTransport,
-                           prefix: String = "",
+                           prefix: Option[String] = None,
                            space: SpaceId = GlobalSpace,
                            samplingModelId: Option[Id[Model]] = None,
                            roots: List[String] = Nil,

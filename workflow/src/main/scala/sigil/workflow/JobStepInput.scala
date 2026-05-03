@@ -24,12 +24,12 @@ import fabric.rw.*
  * roster to a subset; empty means whatever the agent normally has.
  */
 case class JobStepInput(id: String,
-                        name: String = "",
-                        prompt: String = "",
-                        tool: String = "",
-                        arguments: String = "",
-                        output: String = "",
-                        modelId: String = "",
+                        name: Option[String] = None,
+                        prompt: Option[String] = None,
+                        tool: Option[String] = None,
+                        arguments: Option[String] = None,
+                        output: Option[String] = None,
+                        modelId: Option[String] = None,
                         tools: List[String] = Nil,
                         continueOnError: Boolean = false,
                         retryCount: Int = 0,

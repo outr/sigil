@@ -122,6 +122,6 @@ final case class SigilWorkflowParent(template: WorkflowTemplate) extends Workflo
     queue = Nil,
     sourceId = Id(template._id.value)
   )
-  override def description: String = template.description
+  override def description: String = template.description.getOrElse("")
   override def enabled: Boolean = template.enabled
 }

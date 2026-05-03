@@ -86,7 +86,7 @@ object WorkflowStepInputCompiler {
           itemsVariable = l.over,
           bodySteps = bodyIds,
           itemVariableName = l.itemVariable,
-          outputVariable = if (l.output.nonEmpty) l.output else "loopResults"
+          outputVariable = l.output.filter(_.nonEmpty).getOrElse("loopResults")
         )
         register(l.id, step)
         step.id

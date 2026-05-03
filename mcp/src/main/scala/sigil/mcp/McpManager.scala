@@ -84,7 +84,7 @@ final class McpManager(sigil: Sigil { type DB <: SigilDB & McpCollections },
     * server's `prefix` already applied to each name. */
   def allToolsByDisplayName: Task[Map[String, (McpServerConfig, McpToolDefinition)]] = listConfigs().flatMap { configs =>
     Task.sequence(configs.map { cfg =>
-      listTools(cfg.name).map(_.map(td => (cfg.prefix + td.name) -> (cfg, td))).handleError { t =>
+      listTools(cfg.name).map(_.map(td => (cfg.prefix.getOrElse("") + td.name) -> (cfg, td))).handleError { t =>
         Task {
           scribe.warn(s"MCP: failed to list tools for ${cfg.name}: ${t.getMessage}")
           Nil

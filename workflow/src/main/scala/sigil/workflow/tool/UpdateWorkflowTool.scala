@@ -55,7 +55,7 @@ final class UpdateWorkflowTool extends TypedTool[UpdateWorkflowInput](
               case Right(_) =>
                 val updated = prior.copy(
                   name         = input.name.getOrElse(prior.name),
-                  description  = input.description.getOrElse(prior.description),
+                  description  = input.description.orElse(prior.description),
                   steps        = input.steps.getOrElse(prior.steps),
                   triggers     = input.triggers.getOrElse(prior.triggers),
                   variableDefs = input.variableDefs.getOrElse(prior.variableDefs),

@@ -357,21 +357,21 @@ case object TestAgent extends AgentParticipantId {
 case object TestSpace extends SpaceId {
   override val value: String = "test-space"
   override val displayName: String = "Test space"
-  override val description: String = "Generic test scope used by specs that don't care about partitioning."
+  override val description: Option[String] = Some("Generic test scope used by specs that don't care about partitioning.")
 }
 
 /** Memory space used by the Sigil embedding-wiring spec. */
 case object WiringSpace extends SpaceId {
   override val value: String = "wiring-space"
   override val displayName: String = "Wiring space"
-  override val description: String = "Vector-wiring spec scope."
+  override val description: Option[String] = Some("Vector-wiring spec scope.")
 }
 
 /** Memory space used by the memory-compressor spec for extracted facts. */
 case object MemoryTestSpace extends SpaceId {
   override val value: String = "memory-compressor-space"
   override val displayName: String = "Memory test space"
-  override val description: String = "Compressor / retrieval spec scope."
+  override val description: Option[String] = Some("Compressor / retrieval spec scope.")
 }
 
 /**

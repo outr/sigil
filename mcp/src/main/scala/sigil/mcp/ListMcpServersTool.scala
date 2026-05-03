@@ -24,7 +24,8 @@ final class ListMcpServersTool(manager: McpManager) extends TypedTool[ListMcpSer
             case McpTransport.HttpSse(url, _)  => s"http: $url"
           }
           val countStr = if (count >= 0) s"$count tools" else "(unreachable)"
-          s"- ${cfg.name} (${cfg.prefix}*) — $transport — $countStr"
+          val prefixDisplay = cfg.prefix.fold("(no prefix)")(p => s"$p*")
+          s"- ${cfg.name} ($prefixDisplay) — $transport — $countStr"
         }
       }).map { lines =>
         val text = if (lines.isEmpty) "(no MCP servers registered)" else lines.mkString("\n")

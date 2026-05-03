@@ -43,7 +43,7 @@ import strider.step.{Job, Step}
  */
 final case class SigilJobStep(input: JobStepInput,
                               id: Id[Step] = Step.id()) extends Job[Json] derives RW {
-  override def name: String = if (input.name.nonEmpty) input.name else input.id
+  override def name: String = input.name.getOrElse(input.id)
 
   override def continueOnError: Boolean = input.continueOnError
   override def retryCount: Int = input.retryCount
@@ -51,11 +51,17 @@ final case class SigilJobStep(input: JobStepInput,
 
   override def execute(workflow: Workflow, pm: ProgressManager): Task[Json] = {
     val host = WorkflowHost.get
-    val toolName = input.tool.trim
-    val resolvedPrompt = WorkflowVariableSubstitution.substitute(input.prompt, workflow.variables)
-    if (toolName.nonEmpty) runTool(host, workflow, toolName)
-    else if (resolvedPrompt.nonEmpty) runPrompt(host, resolvedPrompt)
-    else Task.pure(Null)
+    val toolName = input.tool.map(_.trim).filter(_.nonEmpty)
+    val resolvedPrompt = input.prompt
+      .map(p => WorkflowVariableSubstitution.substitute(p, workflow.variables))
+      .filter(_.nonEmpty)
+    toolName match {
+      case Some(t) => runTool(host, workflow, t)
+      case None => resolvedPrompt match {
+        case Some(p) => runPrompt(host, p)
+        case None    => Task.pure(Null)
+      }
+    }
   }
 
   /** Resolve `tool` against the host Sigil's `findTools.byName`,
@@ -67,7 +73,9 @@ final case class SigilJobStep(input: JobStepInput,
       case None =>
         Task.error(new RuntimeException(s"Workflow step '${input.id}' references unknown tool '$toolName'."))
       case Some(tool) =>
-        val argsRaw = WorkflowVariableSubstitution.substitute(input.arguments, workflow.variables).trim
+        val argsRaw = input.arguments
+          .map(a => WorkflowVariableSubstitution.substitute(a, workflow.variables).trim)
+          .getOrElse("")
         val argsJson: Json =
           if (argsRaw.isEmpty) obj()
           else scala.util.Try(fabric.io.JsonParser(argsRaw)).getOrElse(obj())
@@ -92,28 +100,27 @@ final case class SigilJobStep(input: JobStepInput,
     }
   }
 
-  private def runPrompt(host: Sigil, prompt: String): Task[Json] = {
-    val modelIdStr = input.modelId.trim
-    if (modelIdStr.isEmpty)
-      Task.error(new RuntimeException(
-        s"Workflow step '${input.id}' has a prompt but no `modelId`. Set `modelId` to the model the prompt should run against."
-      ))
-    else {
-      val modelId = Id[Model](modelIdStr)
-      host.providerFor(modelId, Nil).flatMap { provider =>
-        val request = OneShotRequest(
-          modelId = modelId,
-          systemPrompt = "",
-          userPrompt = prompt,
-          generationSettings = GenerationSettings()
-        )
-        val acc = new java.lang.StringBuilder
-        provider(request).evalMap {
-          case ProviderEvent.TextDelta(t)            => Task { acc.append(t); () }
-          case ProviderEvent.ContentBlockDelta(_, t) => Task { acc.append(t); () }
-          case _                                     => Task.unit
-        }.drain.map(_ => str(acc.toString): Json)
-      }
+  private def runPrompt(host: Sigil, prompt: String): Task[Json] =
+    input.modelId.map(_.trim).filter(_.nonEmpty) match {
+      case None =>
+        Task.error(new RuntimeException(
+          s"Workflow step '${input.id}' has a prompt but no `modelId`. Set `modelId` to the model the prompt should run against."
+        ))
+      case Some(s) =>
+        val modelId = Id[Model](s)
+        host.providerFor(modelId, Nil).flatMap { provider =>
+          val request = OneShotRequest(
+            modelId = modelId,
+            systemPrompt = "",
+            userPrompt = prompt,
+            generationSettings = GenerationSettings()
+          )
+          val acc = new java.lang.StringBuilder
+          provider(request).evalMap {
+            case ProviderEvent.TextDelta(t)            => Task { acc.append(t); () }
+            case ProviderEvent.ContentBlockDelta(_, t) => Task { acc.append(t); () }
+            case _                                     => Task.unit
+          }.drain.map(_ => str(acc.toString): Json)
+        }
     }
-  }
 }

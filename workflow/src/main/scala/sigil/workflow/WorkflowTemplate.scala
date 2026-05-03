@@ -39,7 +39,7 @@ import sigil.participant.ParticipantId.given
  * inputs the workflow expects.
  */
 case class WorkflowTemplate(name: String,
-                            description: String = "",
+                            description: Option[String] = None,
                             steps: List[WorkflowStepInput] = Nil,
                             triggers: List[WorkflowTrigger] = Nil,
                             variableDefs: List[strider.WorkflowVariable] = Nil,

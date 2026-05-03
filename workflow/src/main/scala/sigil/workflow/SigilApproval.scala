@@ -22,7 +22,7 @@ import strider.step.{Approval, Step, TimeoutAction}
  */
 final case class SigilApproval(input: ApprovalStepInput,
                                id: Id[Step] = Step.id()) extends Approval derives RW {
-  override def name: String = if (input.name.nonEmpty) input.name else input.id
+  override def name: String = input.name.getOrElse(input.id)
 
   override def prompt: String = input.prompt
   override def options: List[String] = input.options
