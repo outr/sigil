@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & test
 
-Scala 3.8.3 on sbt. The root project is `sigil`; sub-projects: `core` (framework), `secrets` (server-side secret store, opt-in module), `script` (REPL-backed code execution, opt-in module — adds `scala3-repl` dep), `mcp` (MCP client + persisted server registry, opt-in module), `benchmark` (memory-retrieval runners), `docs` (mdoc).
+Scala 3.8.3 on sbt. The root project is `sigil`; sub-projects: `core` (framework), `secrets` (server-side secret store, opt-in), `script` (REPL-backed code execution — adds `scala3-repl` dep), `mcp` (MCP client + persisted server registry), `metals` (Metals subprocess management surfacing Scala IDE tools via MCP), `tooling` (raw LSP + BSP integration: editor-protocol primitives without an MCP hop), `debug` (DAP integration for runtime debugging — launches, breakpoints, stepping), `workflow` (Strider-backed workflow runtime), `browser` (Playwright-backed web automation tools — fetch / click / type / extract), `all` (publish-only umbrella aggregating every module's classpath), `benchmark` (memory-retrieval runners), `docs` (mdoc). Every non-core module is opt-in: apps add the dep + mix in the matching `*Sigil` trait + `*Collections` if persistence is needed.
 
 - Compile: `sbt compile`
 - All tests: `sbt test`
@@ -361,7 +361,7 @@ Opt-in sub-project that connects Sigil agents to MCP (Model Context Protocol) se
 **Tool surface.** `McpToolFinder` implements `ToolFinder`. Each MCP-advertised tool becomes an `McpTool` whose:
 - `name` is `serverConfig.prefix + serverTool.name` (apps disambiguate cross-server collisions via the `prefix`).
 - `inputDefinition` is built by `JsonSchemaToDefinition` from the server's raw JSON Schema — the LLM sees the server's schema, the agent's typed input arrives as `JsonInput(json: Json) extends ToolInput with JsonWrapper`.
-- `spaces` is `serverConfig.space.toSet` — apps confine MCP servers to user / tenant / project spaces.
+- `space` is `serverConfig.space` — apps confine MCP servers to a user / tenant / project space (single-assignment per the framework rule).
 - `execute` calls `McpManager.callTool` and translates the server's `CallToolResult` to one or more `Message` events.
 
 **Sampling** (`sampling/createMessage` from server): `McpSigil.samplingHandlerFor(config)` returns a per-server `SamplingHandler`. The default `ProviderSamplingHandler` (active when `samplingModelId` is set) translates the server's request into a `OneShotRequest` and runs it through `Sigil.providerFor(modelId, chain).apply(...)` — collecting `TextDelta` / `ContentBlockDelta` events into the response text. `Refusing` (when `samplingModelId` is unset) fails the request with an explanatory error. Apps override the hook for custom sampling (token budgets, model fallback, etc.).
