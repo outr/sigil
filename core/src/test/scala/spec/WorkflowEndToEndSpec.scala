@@ -146,8 +146,17 @@ object TestWorkflowSigil extends Sigil with WorkflowSigil {
   override protected def participantIds: List[RW[? <: ParticipantId]] =
     List(RW.static(WorkflowTestUser))
 
+  /** Mutable provider hook — defaults to throwing for specs that
+    * don't drive LLM calls. The worker integration spec calls
+    * `setProvider(Task.pure(realProvider))` to plug in llama.cpp. */
+  private val providerRef = new java.util.concurrent.atomic.AtomicReference[() => Task[Provider]](
+    () => Task.error(new RuntimeException("TestWorkflowSigil — no provider configured (call setProvider to wire one)"))
+  )
+
+  def setProvider(p: => Task[Provider]): Unit = providerRef.set(() => p)
+
   override def providerFor(modelId: Id[Model], chain: List[ParticipantId]): Task[Provider] =
-    Task.error(new RuntimeException("TestWorkflowSigil — no provider configured (this spec doesn't drive prompts)"))
+    providerRef.get()()
 
   /** Per-suite init: wipes any prior DB at the per-suite path, points
     * `sigil.dbPath` at it, and forces the Sigil instance to start so
