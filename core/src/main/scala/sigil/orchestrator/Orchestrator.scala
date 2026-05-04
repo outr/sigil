@@ -7,7 +7,7 @@ import sigil.Sigil
 import sigil.conversation.{ContextFrame, Conversation, Topic, TopicShiftResult}
 import sigil.event.{Event, Message, MessageRole, MessageVisibility, Reasoning, TopicChange, TopicChangeKind, ToolInvoke}
 import sigil.participant.ParticipantId
-import sigil.provider.{ConversationRequest, Provider, ProviderEvent}
+import sigil.provider.{CallId, ConversationRequest, Provider, ProviderEvent}
 import sigil.signal.{MessageContentDelta, ContentKind, EventState, ImageDelta, MessageDelta, Signal, StateDelta, ToolDelta}
 import sigil.tool.model.{MarkdownContentParser, RespondInput, ResponseContent}
 import sigil.tool.ToolName
@@ -96,9 +96,27 @@ object Orchestrator {
       }
   }
 
+  /** A tool call that's been started but not yet settled. Tracks the
+    * provider's `CallId` (origin of routing for parallel tool calls)
+    * alongside the framework-side invokeId and the wire-level tool
+    * name. Stored in a `LinkedHashMap` keyed by `CallId` so iteration
+    * order is insertion order (the orchestrator's streaming-text path
+    * routes ContentBlock events to the most recently started tool —
+    * which is `activeCalls.lastOption.map(_._2)`). */
+  private final case class ActiveCall(toolName: String, invokeId: lightdb.id.Id[Event])
+
   private final class State {
-    var activeToolName: Option[String] = None
-    var activeToolInvokeId: Option[lightdb.id.Id[Event]] = None
+    /** Tool calls in flight, keyed by the provider's `CallId`. OpenAI
+      * (and Anthropic with `parallel_tool_use: true`) interleave
+      * deltas for multiple calls inside one turn; the orchestrator
+      * needs to route each `ToolCallComplete` back to the matching
+      * `ToolCallStart`'s invokeId rather than tracking a single
+      * "active" call. Pre-fix this map was an `Option[Id[Event]]`
+      * which silently dropped invokeIds when a second `Start` arrived
+      * before the first `Complete`. */
+    val activeCalls: scala.collection.mutable.LinkedHashMap[CallId, ActiveCall] =
+      scala.collection.mutable.LinkedHashMap.empty
+
     /** Bug #69 — track the most recently settled ToolInvoke's id so a
       * `ProviderEvent.Error` arriving after `ToolCallComplete` (e.g. a
       * stream-level error after the tool itself succeeded) can still
@@ -106,6 +124,14 @@ object Orchestrator {
       * post-completion error path would emit a Tool-role event with
       * no parent, violating the framework's invariant. */
     var lastSettledInvokeId: Option[lightdb.id.Id[Event]] = None
+
+    /** Most-recent active tool name — used by streaming-text paths
+      * (ContentBlockStart/Delta) that want to route to whichever tool
+      * is "currently" producing content. With parallel tool calls
+      * this is the most recently started; `respond`-style streaming
+      * is rarely paralleled in practice so the heuristic holds. */
+    def activeToolName: Option[String] = activeCalls.lastOption.map(_._2.toolName)
+    def activeToolInvokeId: Option[lightdb.id.Id[Event]] = activeCalls.lastOption.map(_._2.invokeId)
     var activeMessageId: Option[lightdb.id.Id[Event]] = None
     var currentKind: Option[ContentKind] = None
     var currentArg: Option[String] = None
@@ -154,10 +180,9 @@ object Orchestrator {
     val topicId = request.currentTopic.id
 
     event match {
-      case ProviderEvent.ToolCallStart(_, toolName) =>
+      case ProviderEvent.ToolCallStart(callId, toolName) =>
         val invokeId = Event.id()
-        state.activeToolName = Some(toolName)
-        state.activeToolInvokeId = Some(invokeId)
+        state.activeCalls(callId) = ActiveCall(toolName, invokeId)
         state.activeMessageId = None
         state.currentKind = None
         state.currentArg = None
@@ -221,17 +246,14 @@ object Orchestrator {
         )
         Stream.emits(createMessageSignal.toList ::: List(delta))
 
-      case ProviderEvent.ToolCallComplete(_, input) =>
-        val invokeId = state.activeToolInvokeId.getOrElse {
-          throw new IllegalStateException("ToolCallComplete without a preceding ToolCallStart.")
+      case ProviderEvent.ToolCallComplete(callId, input) =>
+        val active = state.activeCalls.remove(callId).getOrElse {
+          throw new IllegalStateException(
+            s"ToolCallComplete($callId) without a preceding ToolCallStart. " +
+              s"Active calls: [${state.activeCalls.keys.map(_.value).mkString(", ")}]."
+          )
         }
-        // Clear the active-tool tracking so a subsequent `Done` doesn't
-        // re-emit a duplicate orphan-settle ToolDelta. The settle the
-        // current handler emits below IS the canonical close for this
-        // call; the orphan path is only for streams that ended between
-        // `ToolCallStart` and `ToolCallComplete`. Bug #49 surfaced this
-        // duplicate in the back-to-back-tool-call test.
-        state.activeToolInvokeId = None
+        val invokeId = active.invokeId
         // Bug #69 — record this so a ProviderEvent.Error arriving
         // after settle has a parent to stamp on its error Message.
         state.lastSettledInvokeId = Some(invokeId)
@@ -240,7 +262,7 @@ object Orchestrator {
         // consistent across the call's lifecycle (Active invoke,
         // Complete settle). The flag isn't load-bearing for any
         // framework-internal logic — it's a hint for client UIs.
-        val isInternal = state.activeToolName.exists(Orchestrator.UserVisibleTerminalTools.contains)
+        val isInternal = Orchestrator.UserVisibleTerminalTools.contains(active.toolName)
         val toolDeltaPrefix: List[Signal] = List(ToolDelta(
           target = invokeId,
           conversationId = convId,
@@ -254,9 +276,12 @@ object Orchestrator {
             // ContentBlockDeltas. Close the open block, parse the
             // assembled content as markdown, replace Message.content
             // with the parsed blocks, then run topic resolution and
-            // settle.
+            // settle. Use `active.toolName` (the local just removed
+            // from activeCalls) rather than state.activeToolName,
+            // which now reads the most-recent-remaining call after
+            // the remove above.
             val closeBlock = closeCurrentBlock(state, convId)
-            (state.activeToolName, input) match {
+            (Some(active.toolName), input) match {
               case (Some("respond"), r: RespondInput) =>
                 val parsed = MarkdownContentParser.parse(r.content)
                 val settle = MessageDelta(
@@ -292,8 +317,8 @@ object Orchestrator {
             // "input pending" with no follow-up. `Stream.force` defers
             // stream materialization to Task evaluation, where
             // `handleError` can catch and substitute.
-            val tool = toolsByName.get(state.activeToolName.getOrElse(""))
-            val toolName = state.activeToolName.getOrElse("?")
+            val tool = toolsByName.get(active.toolName)
+            val toolName = active.toolName
             val executed: Stream[Signal] = tool match {
               case Some(t) =>
                 Stream.force(
@@ -533,9 +558,9 @@ object Orchestrator {
   private def settleOrphanToolInvoke(state: State,
                                      convId: lightdb.id.Id[Conversation],
                                      error: Option[String] = None): List[Signal] = {
-    val closes = state.activeToolInvokeId.toList.map { invokeId =>
+    val closes = state.activeCalls.values.toList.map { active =>
       ToolDelta(
-        target = invokeId,
+        target = active.invokeId,
         conversationId = convId,
         input = None,
         state = Some(EventState.Complete),
@@ -547,8 +572,7 @@ object Orchestrator {
         error = error
       ): Signal
     }
-    state.activeToolInvokeId = None
-    state.activeToolName = None
+    state.activeCalls.clear()
     closes
   }
 
