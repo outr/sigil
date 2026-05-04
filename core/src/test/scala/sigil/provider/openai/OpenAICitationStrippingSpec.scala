@@ -154,4 +154,8 @@ class OpenAICitationStrippingSpec extends AnyWordSpec with Matchers {
       items.head.encryptedContent shouldBe Some("OPAQUE_BASE64_BLOB")
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }
