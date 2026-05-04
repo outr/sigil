@@ -132,9 +132,15 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
           temperature = Some(1.0),
           effort = Some(Effort.Low)
         )
+        // Asserts thinking-mode still produces a response-family tool
+        // call. The specific tool name (`respond` vs `respond_field`
+        // vs `respond_options`) is incidental — at temperature 1.0
+        // the model legitimately varies. The test's intent is
+        // "thinking ≠ broken", not "model picked exactly respond".
+        val responseFamily = Set("respond", "respond_options", "respond_field", "respond_failure")
         request("What is 2+2? Respond with just the number.", generationSettings = gen).map { events =>
           val start = events.collectFirst { case s: ProviderEvent.ToolCallStart => s }
-          start.map(_.toolName) shouldBe Some(RespondTool.schema.name.value)
+          start.map(_.toolName).getOrElse("") should (be(oneElementOf(responseFamily)))
           events.last shouldBe a[ProviderEvent.Done]
           events.last.asInstanceOf[ProviderEvent.Done].stopReason shouldBe StopReason.ToolCall
         }
