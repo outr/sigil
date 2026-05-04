@@ -3070,6 +3070,7 @@ trait Sigil {
                       summary: String = Topic.DefaultSummary,
                       participants: List[Participant] = Nil,
                       currentMode: Mode = ConversationMode,
+                      parentConversationId: Option[Id[Conversation]] = None,
                       conversationId: Id[Conversation] = Conversation.id()): Task[Conversation] = {
     val topic = Topic(
       conversationId = conversationId,
@@ -3081,6 +3082,7 @@ trait Sigil {
       topics = List(TopicEntry(topic._id, topic.label, topic.summary)),
       participants = participants,
       currentMode = currentMode,
+      parentConversationId = parentConversationId,
       _id = conversationId
     )
     for {
