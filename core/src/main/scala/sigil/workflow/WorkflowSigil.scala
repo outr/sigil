@@ -61,6 +61,7 @@ trait WorkflowSigil extends Sigil {
       summon[RW[sigil.workflow.event.WorkflowStepCompleted]] ::
       summon[RW[sigil.workflow.event.WorkflowRunCompleted]] ::
       summon[RW[sigil.workflow.event.WorkflowRunFailed]] ::
+      summon[RW[sigil.workflow.event.TaskExecuted]] ::
       super.eventRegistrations
 
   /** Auto-register the workflow Notices (approval prompts, etc.) so
