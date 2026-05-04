@@ -119,12 +119,10 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
           val summary  = finalResult.flatMap(_.get("summary").map(_.asString)).getOrElse("")
           complete shouldBe true
           summary should not be empty
-          // Loose match — quantised models sometimes paraphrase. We're
-          // verifying the loop captured a meaningful summary, not the
-          // exact wording.
           summary.toLowerCase should include("hello")
         }
       }
+
     }
   }
 
