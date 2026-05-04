@@ -47,7 +47,10 @@ if ! command -v sbt >/dev/null 2>&1; then
 fi
 
 ts=$(date +%Y-%m-%d_%H%M%S)
-outdir="benchmark/results/overnight-$ts"
+# Absolute paths — bench JVMs run with CWD=benchmark/, so a relative
+# --report would land at benchmark/benchmark/results/... and fail to
+# write. The first overnight run hit this; absolute paths fix it.
+outdir="$(pwd)/benchmark/results/overnight-$ts"
 mkdir -p "$outdir"
 summary="$outdir/SUMMARY.md"
 
