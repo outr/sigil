@@ -70,4 +70,8 @@ class WsServerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       } yield exchange.response.status should not be HttpStatus.NotFound
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

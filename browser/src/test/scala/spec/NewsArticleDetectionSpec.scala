@@ -257,4 +257,8 @@ class NewsArticleDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
     loop
   }
+
+  "tear down" should {
+    "dispose TestBrowserSigil" in TestBrowserSigil.shutdown.map(_ => succeed)
+  }
 }

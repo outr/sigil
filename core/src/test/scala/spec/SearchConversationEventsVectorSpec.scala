@@ -54,4 +54,8 @@ class SearchConversationEventsVectorSpec extends AsyncWordSpec with AsyncTaskSpe
       }
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

@@ -298,4 +298,8 @@ class FrameBuilderSpec extends AnyWordSpec with Matchers {
       frames.last.asInstanceOf[ContextFrame.ToolResult].content shouldBe "plain text"
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

@@ -167,4 +167,8 @@ class MessageVisibilitySpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     }
   }
 
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

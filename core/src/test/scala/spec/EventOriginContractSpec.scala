@@ -397,4 +397,8 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
       followupIdx should be < trailingIdx
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

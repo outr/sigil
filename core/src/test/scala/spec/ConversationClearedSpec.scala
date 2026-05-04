@@ -150,4 +150,8 @@ class ConversationClearedSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       TestSigil.clearConversation(convId, TestUser).map(_ => succeed)
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

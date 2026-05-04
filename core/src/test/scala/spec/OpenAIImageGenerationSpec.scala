@@ -86,4 +86,8 @@ class OpenAIImageGenerationSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       }
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

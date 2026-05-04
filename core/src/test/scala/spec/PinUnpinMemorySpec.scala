@@ -169,4 +169,8 @@ class PinUnpinMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       }
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

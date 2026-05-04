@@ -90,4 +90,8 @@ class SseFramerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       Task(SseFramer.Heartbeat shouldBe ":hb\n\n")
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

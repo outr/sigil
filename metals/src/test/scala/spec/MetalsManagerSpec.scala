@@ -177,4 +177,8 @@ class MetalsManagerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       }
     }
   }
+
+  "tear down" should {
+    "dispose TestMetalsSigil" in TestMetalsSigil.shutdown.map(_ => succeed)
+  }
 }

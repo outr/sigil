@@ -84,4 +84,8 @@ class OpenAIRequestCoverageSpec extends AbstractRequestCoverageSpec {
       }
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

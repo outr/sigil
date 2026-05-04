@@ -72,4 +72,8 @@ class McpManagerCancellationSpec extends AsyncWordSpec with AsyncTaskSpec with M
       }
     }
   }
+
+  "tear down" should {
+    "dispose TestMcpSigil" in TestMcpSigil.shutdown.map(_ => succeed)
+  }
 }

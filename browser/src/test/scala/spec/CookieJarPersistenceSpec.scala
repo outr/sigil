@@ -77,4 +77,8 @@ class CookieJarPersistenceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       }
     }
   }
+
+  "tear down" should {
+    "dispose TestBrowserSigil" in TestBrowserSigil.shutdown.map(_ => succeed)
+  }
 }

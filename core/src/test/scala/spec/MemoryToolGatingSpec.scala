@@ -76,4 +76,8 @@ class MemoryToolGatingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       sigil.tool.core.FindCapabilityTool.requiresAccessibleSpaces shouldBe false
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

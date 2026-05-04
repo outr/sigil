@@ -17,4 +17,8 @@ class GoogleProviderSpec extends AbstractProviderSpec {
     GoogleLiveSupport.runGated(this, testName, args) {
       super.run(testName, args)
     }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

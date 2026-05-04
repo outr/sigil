@@ -376,4 +376,8 @@ class ConversationViewSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       } yield fetched.map(_.text) shouldBe List("OLDER", "NEWER")
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

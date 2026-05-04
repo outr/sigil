@@ -113,4 +113,8 @@ class OrchestratorConversationSpaceSpec extends AsyncWordSpec with AsyncTaskSpec
       }
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

@@ -123,4 +123,8 @@ class BrowserSubstrateSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       }
     }
   }
+
+  "tear down" should {
+    "dispose TestBrowserSigil" in TestBrowserSigil.shutdown.map(_ => succeed)
+  }
 }

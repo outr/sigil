@@ -156,4 +156,8 @@ class ContentExternalizationSpec extends AsyncWordSpec with AsyncTaskSpec with M
       }
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

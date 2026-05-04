@@ -41,4 +41,8 @@ class SubtypeNameRegistrySpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       deltas.intersect(notices) shouldBe empty
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

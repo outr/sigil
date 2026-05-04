@@ -150,6 +150,10 @@ class ViewerStateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       }
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }
 
 /** Test-only payload — registered with the poly RW at spec init so

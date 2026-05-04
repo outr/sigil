@@ -221,4 +221,8 @@ class ParticipantLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       succeed
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

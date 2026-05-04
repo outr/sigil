@@ -200,4 +200,8 @@ class JsonFieldSchemaSpec extends AnyWordSpec with Matchers {
       DefinitionToSchema.containsJson(summon[RW[Outer]].definition) shouldBe true
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }
