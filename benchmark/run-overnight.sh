@@ -31,6 +31,21 @@ cd "$(dirname "$0")/.."
 export SIGIL_LLAMACPP_HOST="${SIGIL_LLAMACPP_HOST:-http://localhost:8081}"
 echo "Using SIGIL_LLAMACPP_HOST=$SIGIL_LLAMACPP_HOST"
 
+# Locate sbt — SDKMAN installs aren't on subshell PATH by default.
+if ! command -v sbt >/dev/null 2>&1; then
+  if [ -x "$HOME/.sdkman/candidates/sbt/current/bin/sbt" ]; then
+    export PATH="$HOME/.sdkman/candidates/sbt/current/bin:$PATH"
+    echo "Using sbt from $HOME/.sdkman/candidates/sbt/current/bin"
+  elif [ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]; then
+    # shellcheck disable=SC1091
+    source "$HOME/.sdkman/bin/sdkman-init.sh"
+    echo "Sourced SDKMAN; sbt should now be on PATH"
+  else
+    echo "ERROR: sbt not found on PATH and no SDKMAN install detected" >&2
+    exit 1
+  fi
+fi
+
 ts=$(date +%Y-%m-%d_%H%M%S)
 outdir="benchmark/results/overnight-$ts"
 mkdir -p "$outdir"
