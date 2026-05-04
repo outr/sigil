@@ -9,4 +9,8 @@ class AnthropicRequestCoverageSpec extends AbstractRequestCoverageSpec {
   override protected def providerInstance: Provider =
     AnthropicProvider(apiKey = "sk-ant-test-placeholder", sigilRef = TestSigil)
   override protected def modelId: Id[Model] = Model.id("anthropic", "claude-haiku-4-5")
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

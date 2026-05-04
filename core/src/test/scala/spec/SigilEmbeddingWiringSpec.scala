@@ -60,5 +60,9 @@ class SigilEmbeddingWiringSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       } yield hits.flatMap(_.payload.get("summaryId")) should contain(summary._id.value)
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }
 

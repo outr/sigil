@@ -26,4 +26,8 @@ class OpenAIConversationSpec extends AbstractConversationSpec {
     OpenAILiveSupport.runGated(this, testName, args) {
       super.run(testName, args)
     }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

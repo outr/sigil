@@ -84,4 +84,8 @@ class SigilDbEventLogSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       } yield replayed shouldBe List.empty
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

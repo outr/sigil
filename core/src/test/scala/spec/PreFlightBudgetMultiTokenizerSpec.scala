@@ -172,4 +172,8 @@ class PreFlightBudgetMultiTokenizerSpec extends AsyncWordSpec with AsyncTaskSpec
       Stream.emit(ProviderEvent.Done(StopReason.Complete))
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

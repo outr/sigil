@@ -162,4 +162,8 @@ class SecretStoreSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       } yield outAsString shouldBe None
     }
   }
+
+  "tear down" should {
+    "dispose TestSecretsSigil" in TestSecretsSigil.shutdown.map(_ => succeed)
+  }
 }

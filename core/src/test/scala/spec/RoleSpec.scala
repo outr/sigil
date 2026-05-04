@@ -160,4 +160,8 @@ class RoleSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       SkillSource.Role("planner") should not equal SkillSource.Role("critic")
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

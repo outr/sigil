@@ -147,6 +147,10 @@ class PreFlightBudgetSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       }
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }
 
 /** Fake provider that captures the [[ProviderCall]] it receives and

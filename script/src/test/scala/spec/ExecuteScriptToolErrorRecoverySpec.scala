@@ -183,4 +183,8 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
       }
     }
   }
+
+  "tear down" should {
+    "dispose TestScriptSigil" in TestScriptSigil.shutdown.map(_ => succeed)
+  }
 }

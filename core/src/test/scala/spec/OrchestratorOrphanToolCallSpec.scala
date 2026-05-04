@@ -196,4 +196,8 @@ class OrchestratorOrphanToolCallSpec extends AsyncWordSpec with AsyncTaskSpec wi
       }
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

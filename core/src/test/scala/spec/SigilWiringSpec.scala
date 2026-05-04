@@ -262,4 +262,8 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
       TestSigil.testMode shouldBe true
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

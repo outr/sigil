@@ -77,4 +77,8 @@ class PolymorphicRegistrationOrderSpec extends AnyWordSpec with Matchers {
       case DefType.Opt(inner) => polyOf(inner)
       case _                => None
     }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

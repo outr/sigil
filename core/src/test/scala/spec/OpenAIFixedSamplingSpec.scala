@@ -144,4 +144,8 @@ class OpenAIFixedSamplingSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       }
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

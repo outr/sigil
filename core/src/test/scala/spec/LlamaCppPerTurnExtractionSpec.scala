@@ -106,4 +106,8 @@ class LlamaCppPerTurnExtractionSpec extends AsyncWordSpec with AsyncTaskSpec wit
         }
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

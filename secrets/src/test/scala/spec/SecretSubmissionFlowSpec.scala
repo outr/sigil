@@ -124,4 +124,8 @@ class SecretSubmissionFlowSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       }
     }
   }
+
+  "tear down" should {
+    "dispose TestSecretsSigil" in TestSecretsSigil.shutdown.map(_ => succeed)
+  }
 }

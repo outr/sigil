@@ -386,4 +386,8 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       }
     }
   }
+
+  "tear down" should {
+    "dispose TestScriptSigil" in TestScriptSigil.shutdown.map(_ => succeed)
+  }
 }

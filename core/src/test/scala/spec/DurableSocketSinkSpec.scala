@@ -99,4 +99,8 @@ class DurableSocketSinkSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       } yield succeed
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

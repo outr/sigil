@@ -211,6 +211,10 @@ class GreetOnJoinSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       }
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }
 
 /** Stub provider used by [[GreetOnJoinSpec]]. Emits exactly one

@@ -9,4 +9,8 @@ class DeepSeekRequestCoverageSpec extends AbstractRequestCoverageSpec {
   override protected def providerInstance: Provider =
     DeepSeekProvider(apiKey = "sk-test-placeholder", sigilRef = TestSigil)
   override protected def modelId: Id[Model] = Model.id("deepseek", "deepseek-chat")
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

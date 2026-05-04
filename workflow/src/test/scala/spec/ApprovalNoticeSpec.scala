@@ -125,4 +125,8 @@ class ApprovalNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       step(TimeoutAction.Fail)    shouldBe TimeoutAction.Fail
     }
   }
+
+  "tear down" should {
+    "dispose TestWorkflowSigil" in TestWorkflowSigil.shutdown.map(_ => succeed)
+  }
 }

@@ -96,4 +96,8 @@ class NoticeSpec extends AnyWordSpec with Matchers {
       scopedB.toList.sync()   shouldBe empty
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

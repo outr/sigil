@@ -128,4 +128,8 @@ class ModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   // Discovery filtering is exercised by DbToolFinderSpec, which covers
   // the same matrix as the prior `modeAllowsDiscovery` tests but against
   // the live finder + DiscoveryFilter helper.
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

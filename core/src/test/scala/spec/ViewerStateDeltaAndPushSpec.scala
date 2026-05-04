@@ -151,4 +151,8 @@ class ViewerStateDeltaAndPushSpec extends AsyncWordSpec with AsyncTaskSpec with 
       }
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

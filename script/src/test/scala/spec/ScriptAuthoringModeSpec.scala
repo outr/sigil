@@ -265,4 +265,8 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       }
     }
   }
+
+  "tear down" should {
+    "dispose TestScriptSigil" in TestScriptSigil.shutdown.map(_ => succeed)
+  }
 }

@@ -114,6 +114,10 @@ class WorkflowEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     }
     loop
   }
+
+  "tear down" should {
+    "dispose TestWorkflowSigil" in TestWorkflowSigil.shutdown.map(_ => succeed)
+  }
 }
 
 case object WorkflowTestUser extends AgentParticipantId {

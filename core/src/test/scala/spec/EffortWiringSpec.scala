@@ -221,4 +221,8 @@ class EffortWiringSpec extends AnyWordSpec with Matchers {
       body should include("\"effort\":\"high\"")
     }
   }
+
+  "tear down" should {
+    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+  }
 }

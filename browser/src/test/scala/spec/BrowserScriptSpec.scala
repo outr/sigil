@@ -107,4 +107,8 @@ class BrowserScriptSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       }
     }
   }
+
+  "tear down" should {
+    "dispose TestBrowserSigil" in TestBrowserSigil.shutdown.map(_ => succeed)
+  }
 }
