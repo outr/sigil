@@ -39,10 +39,6 @@ class TestSecretsDB(directory: Option[Path],
   * test only exercises the secret store, not the full conversation
   * surface. */
 object TestSecretsSigil extends Sigil with SecretsSigil {
-  // See `core/.../TestSigil.scala` — bypass SynchronousFiber via
-  // FixedThreadPoolFiber to dodge the rapid fiber-runtime flake.
-  rapid.Task.Virtual = false
-
   override type DB = TestSecretsDB
   override protected def buildDB(directory: Option[Path],
                                   storeManager: CollectionManager,

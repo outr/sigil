@@ -78,7 +78,7 @@ case object ListMemoriesTool extends TypedTool[ListMemoriesInput](
     })
 
   private def collect(input: ListMemoriesInput, context: TurnContext): Task[String] =
-    context.sigil.accessibleSpaces(context.chain).flatMap { accessible =>
+    context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       val effective = if (input.spaces.nonEmpty) input.spaces.intersect(accessible) else accessible
       if (effective.isEmpty)
         Task.pure("""{"memories":[],"page":{"offset":0,"limit":0,"returned":0,"totalMatched":0,"hasMore":false},"note":"No accessible memory spaces for this chain."}""")

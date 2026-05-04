@@ -54,7 +54,7 @@ case object MoveMemoryTool extends TypedTool[MoveMemoryInput](
     })
 
   private def move(input: MoveMemoryInput, context: TurnContext): Task[String] =
-    context.sigil.accessibleSpaces(context.chain).flatMap { accessible =>
+    context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       if (!accessible.contains(input.newSpace))
         Task.pure(s"[move_memory] target space '${input.newSpace.value}' is not in this caller's accessible spaces; cannot move.")
       else {

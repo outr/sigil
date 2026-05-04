@@ -25,7 +25,7 @@ case object ListScriptToolsTool extends TypedTool[ListScriptToolsInput](
 ) {
   override protected def executeTyped(input: ListScriptToolsInput,
                                       context: TurnContext): Stream[Event] = Stream.force(
-    context.sigil.accessibleSpaces(context.chain).flatMap { accessible =>
+    context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       context.sigil.withDB(_.tools.transaction(_.list)).map { allTools =>
         val needle = input.nameContains.map(_.toLowerCase)
         val visible = allTools.collect { case s: ScriptTool => s }.filter { t =>

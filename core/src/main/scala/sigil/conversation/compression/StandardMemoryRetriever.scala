@@ -67,7 +67,7 @@ case class StandardMemoryRetriever(limit: Int = 5,
                            chain: List[ParticipantId]): Task[MemoryRetrievalResult] = {
     val now = Timestamp()
     for {
-      spaces    <- resolveSpaces(sigil, chain)
+      spaces    <- resolveSpaces(sigil, chain, view.conversationId)
       criticals <- if (includePinned) loadPinned(sigil, spaces, now) else Task.pure(Vector.empty)
       regular   <- buildQuery(sigil, view, chain).flatMap {
         case None        => Task.pure(Vector.empty)
@@ -79,8 +79,10 @@ case class StandardMemoryRetriever(limit: Int = 5,
   /** Resolve the per-turn space set: caller's accessible spaces plus
     * [[GlobalSpace]] (universally accessible — pinned memories in
     * Global render across every conversation that can see them). */
-  private def resolveSpaces(sigil: Sigil, chain: List[ParticipantId]): Task[Set[SpaceId]] =
-    sigil.accessibleSpaces(chain).map(_ + GlobalSpace)
+  private def resolveSpaces(sigilArg: Sigil,
+                            chain: List[ParticipantId],
+                            conversationId: lightdb.id.Id[sigil.conversation.Conversation]): Task[Set[SpaceId]] =
+    sigilArg.accessibleSpaces(chain, conversationId).map(_ + GlobalSpace)
 
   /** Compose the per-turn retrieval query. Caller-supplied
     * [[queryFrom]] takes precedence; otherwise read the topic state

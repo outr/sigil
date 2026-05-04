@@ -49,7 +49,7 @@ case object FindCapabilityTool extends TypedTool[FindCapabilityInput](
 
   override protected def executeTyped(input: FindCapabilityInput, context: TurnContext): rapid.Stream[Event] =
     rapid.Stream.force(
-      context.sigil.accessibleSpaces(context.chain).flatMap { spaces =>
+      context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { spaces =>
         val request = DiscoveryRequest(
           // Bug #52 — normalise explicitly: lowercase, replace any
           // non-alphanumeric run with a single space, trim. The

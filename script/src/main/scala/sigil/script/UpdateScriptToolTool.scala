@@ -35,7 +35,7 @@ case object UpdateScriptToolTool extends TypedTool[UpdateScriptToolInput](
 ) {
   override protected def executeTyped(input: UpdateScriptToolInput,
                                       context: TurnContext): Stream[Event] = Stream.force(
-    context.sigil.accessibleSpaces(context.chain).flatMap { accessible =>
+    context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       context.sigil.withDB(_.tools.transaction { tx =>
         tx.query.filter(_.toolName === input.name).toList.map(_.headOption).flatMap {
           case None =>
