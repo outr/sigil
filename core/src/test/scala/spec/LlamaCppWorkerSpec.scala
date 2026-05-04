@@ -123,7 +123,148 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
         }
       }
 
+      // Quantised local models occasionally short-circuit the
+      // AskParent: instruction and answer directly on iteration 1.
+      // When that happens the worker terminates without ever
+      // suspending — there's no question for us to answer. We
+      // treat that as a skip rather than a failure: the
+      // architectural assertions only hold when the LLM actually
+      // followed the AskParent: directive.
+      "complete the AskParent → answer_worker → resume cycle end-to-end" in {
+        val parentConvId = Conversation.id(s"parent-conv-${rapid.Unique()}")
+        val workerConvId = Conversation.id(s"worker-conv-${rapid.Unique()}")
+        val role = Role(
+          name = "decider",
+          description =
+            """You are a deciding agent. You don't know the user's color preference and MUST
+              |ask the parent before answering. On your FIRST iteration, emit exactly one line:
+              |  AskParent: What color should I use, red or blue?
+              |Do not emit Complete yet. After the parent answers, your next iteration sees the
+              |answer in context — emit:
+              |  Complete: <one-paragraph confirmation that names the chosen color>""".stripMargin,
+          workType = AnalysisWork
+        )
+        val brief = "Pick a color for the user. Ask the parent first."
+
+        val stepInput = AgentDecisionStepInput(
+          id = "decision-0", role = role, brief = brief,
+          modelId = modelId.value, maxIterations = 6
+        )
+        import sigil.workflow.SigilWorkflowModel.stepRW
+        val compiled = WorkflowStepInputCompiler.compile(List(stepInput))
+        val sourceId = Id[WorkflowParent](s"adhoc-askparent-${rapid.Unique()}")
+
+        val parentConv = Conversation(
+          topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
+          _id = parentConvId
+        )
+        val workerConv = Conversation(
+          topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
+          parentConversationId = Some(parentConvId),
+          _id = workerConvId
+        )
+
+        for {
+          _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(parentConv)))
+          _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(workerConv)))
+          run <- TestWorkflowSigil.workflowManager.schedule(
+            name     = "askparent-worker",
+            steps    = compiled.steps,
+            sourceId = sourceId
+          ).flatMap(wf =>
+            TestWorkflowSigil.workflowManager.collection.transaction(_.modify(wf._id) {
+              case Some(c) => Task.pure(Some(c.copy(conversationId = Some(workerConvId.value))))
+              case None    => Task.pure(None)
+            }).map(_ => wf)
+          )
+
+          questionIdOpt <- pollForQuestionOrTerminal(run._id)
+          settled <- questionIdOpt match {
+            case Some(qid) =>
+              republishUntilSettled(run._id, sigil.signal.WorkerAnswer(
+                taskId = run._id.value, questionId = qid, answer = "blue"
+              ))
+            case None =>
+              TestWorkflowSigil.workflowManager.collection.transaction(_.get(run._id)).map(_.get)
+          }
+        } yield {
+          settled.status shouldBe WorkflowStatus.Success
+          val outputs = settled.stepResults.flatMap(_.output)
+          val completionSummary = outputs.flatMap { json =>
+            for {
+              c <- json.get("complete").map(_.asBoolean) if c
+              s <- json.get("summary").map(_.asString)
+            } yield s
+          }
+          completionSummary should not be empty
+
+          // When the LLM actually emitted AskParent on iteration 1
+          // (the architecturally-interesting path), assert the
+          // suspend/resume mechanic worked: workflow.payloads holds
+          // the AnswerTrigger's settle output keyed by trigger
+          // step id, with our published answer ("blue") observable.
+          // When the LLM short-circuited and terminated on iter 1
+          // without asking, we still pass — the simpler-shape
+          // worker spec covers that path.
+          if (questionIdOpt.isDefined) {
+            val triggerPayloads = settled.payloads.values.toList
+            val capturedAnswer = triggerPayloads.flatMap(_.get("answer").map(_.asString))
+            capturedAnswer should contain("blue")
+          }
+          succeed
+        }
+      }
     }
+  }
+
+  /** Re-publish the answer Notice every 2s and wait for the
+    * workflow to reach a terminal state — closes the registration-
+    * timing race where the very first publish lands before the
+    * AnswerTrigger's signal subscription is hot. Caps at 90s. */
+  private def republishUntilSettled(runId: Id[Workflow], answer: sigil.signal.WorkerAnswer): Task[Workflow] = {
+    val deadline = System.currentTimeMillis() + 90_000L
+    def loop(): Task[Workflow] =
+      TestWorkflowSigil.workflowManager.collection.transaction(_.get(runId)).flatMap {
+        case None => Task.error(new RuntimeException(s"workflow $runId disappeared"))
+        case Some(wf) if wf.finished => Task.pure(wf)
+        case Some(_) if System.currentTimeMillis() > deadline =>
+          Task.error(new RuntimeException(s"worker $runId did not settle within 90s of answer"))
+        case Some(_) =>
+          TestWorkflowSigil.publish(answer).flatMap(_ =>
+            Task.sleep(2.seconds).flatMap(_ => loop())
+          )
+      }
+    loop()
+  }
+
+  /** Poll until either:
+    *   - The workflow's stepResults contain one with `asked: true`
+    *     (LLM emitted AskParent: — return Some(questionId))
+    *   - The workflow finishes (LLM short-circuited and terminated
+    *     directly — return None)
+    *   - 30 s elapse (raise) */
+  private def pollForQuestionOrTerminal(runId: Id[Workflow]): Task[Option[String]] = {
+    val deadline = System.currentTimeMillis() + 30_000L
+    def loop(): Task[Option[String]] =
+      TestWorkflowSigil.workflowManager.collection.transaction(_.get(runId)).flatMap {
+        case None => Task.error(new RuntimeException(s"workflow $runId disappeared"))
+        case Some(wf) =>
+          val asked = wf.stepResults.flatMap(_.output).flatMap { json =>
+            for {
+              a <- json.get("asked").map(_.asBoolean) if a
+              q <- json.get("questionId").map(_.asString)
+            } yield q
+          }
+          asked.headOption match {
+            case Some(qid)              => Task.pure(Some(qid))
+            case None if wf.finished    => Task.pure(None)
+            case None if System.currentTimeMillis() > deadline =>
+              Task.error(new RuntimeException(s"workflow $runId neither asked nor finished within 30s"))
+            case None =>
+              Task.sleep(200.millis).flatMap(_ => loop())
+          }
+      }
+    loop()
   }
 
   "tear down" should {

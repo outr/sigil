@@ -13,7 +13,7 @@ import sigil.signal.EventState
 import sigil.tool.model.ResponseContent
 import sigil.workflow.trigger.AnswerTrigger
 import strider.Workflow
-import strider.step.{Job, Step}
+import strider.step.{Job, JobContext, Step}
 
 /**
  * Strider executor for [[AgentDecisionStepInput]]. Runs one LLM
@@ -46,7 +46,27 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
                                         id: Id[Step] = Step.id()) extends Job[Json] derives RW {
   override def name: String = input.name.getOrElse(input.id)
 
-  override def execute(workflow: Workflow, pm: ProgressManager): Task[Json] = {
+  /** Default execute path — used when invoked outside the runner
+    * (e.g., direct Strider scheduling without contextualized
+    * dispatch). Falls back to opening a separate transaction for
+    * `updateSteps`, which races with the runner's post-execute
+    * modify (bug #5). The contextualized path below threads the
+    * runner's txn correctly and is the production code path. */
+  override def execute(workflow: Workflow, pm: ProgressManager): Task[Json] =
+    runIteration(workflow, ctx = None)
+
+  /** The runner's preferred entry point — receives the runner's
+    * own [[JobContext]] so any `updateSteps` calls thread through
+    * the same transaction the runner's post-execute modify will
+    * read. Closes bug #5. */
+  override def executeToJsonContextualized(workflow: Workflow,
+                                           pm: ProgressManager,
+                                           ctx: JobContext): Task[Json] = {
+    scribe.info(s"[AgentDecisionStep] iter=${input.iteration} ctx=YES queue=${workflow.queue.map(_.value)} completed=${workflow.completed.map(_.value)}")
+    runIteration(workflow, ctx = Some(ctx))
+  }
+
+  private def runIteration(workflow: Workflow, ctx: Option[JobContext]): Task[Json] = {
     val host = WorkflowHost.get
     val modelId = Id[Model](input.modelId)
 
@@ -69,12 +89,12 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
         case _                                     => Task.unit
       }.drain.flatMap { _ =>
         val response = acc.toString
-        decideNext(host, workflow, response, usageRef.get())
+        decideNext(host, workflow, response, usageRef.get(), ctx)
       }
     }
   }
 
-  private def decideNext(host: sigil.Sigil, workflow: Workflow, response: String, usage: Option[TokenUsage]): Task[Json] =
+  private def decideNext(host: sigil.Sigil, workflow: Workflow, response: String, usage: Option[TokenUsage], ctx: Option[JobContext]): Task[Json] =
     SigilAgentDecisionStep.parseMarker(response) match {
       case SigilAgentDecisionStep.MarkerCompletion(summary) =>
         Task.pure(SigilAgentDecisionStep.withUsage(obj(
@@ -94,7 +114,7 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
         ), usage))
 
       case SigilAgentDecisionStep.MarkerAskParent(question) =>
-        suspendForAnswer(host, workflow, response, question).map { questionId =>
+        suspendForAnswer(host, workflow, response, question, ctx).map { questionId =>
           SigilAgentDecisionStep.withUsage(obj(
             "complete"   -> bool(false),
             "asked"      -> bool(true),
@@ -106,7 +126,7 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
 
       case SigilAgentDecisionStep.MarkerReport(report) =>
         publishReport(host, workflow, report).flatMap { _ =>
-          appendNextIteration(host, workflow, response).map { _ =>
+          appendNextIteration(host, workflow, response, ctx).map { _ =>
             SigilAgentDecisionStep.withUsage(obj(
               "complete"  -> bool(false),
               "reported"  -> bool(true),
@@ -117,7 +137,7 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
         }
 
       case SigilAgentDecisionStep.MarkerStatus(status) =>
-        appendNextIteration(host, workflow, response).map { _ =>
+        appendNextIteration(host, workflow, response, ctx).map { _ =>
           SigilAgentDecisionStep.withUsage(obj(
             "complete"      -> bool(false),
             "currentStatus" -> str(status),
@@ -126,7 +146,7 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
         }
 
       case SigilAgentDecisionStep.MarkerNone =>
-        appendNextIteration(host, workflow, response).map { _ =>
+        appendNextIteration(host, workflow, response, ctx).map { _ =>
           SigilAgentDecisionStep.withUsage(obj(
             "complete"  -> bool(false),
             "partial"   -> str(response),
@@ -178,7 +198,7 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
     * as a hidden-from-user Message, then append a TriggerStep on an
     * AnswerTrigger plus a follow-up AgentDecisionStep that will see
     * the answer in priorReasoning when the trigger fires. */
-  private def suspendForAnswer(host: sigil.Sigil, workflow: Workflow, response: String, question: String): Task[String] = host match {
+  private def suspendForAnswer(host: sigil.Sigil, workflow: Workflow, response: String, question: String, ctx: Option[JobContext]): Task[String] = host match {
     case ws: WorkflowSigil =>
       val workerConvIdOpt = workflow.conversationId.map(s => Id[Conversation](s))
       val questionId = s"q${input.iteration + 1}-${rapid.Unique()}"
@@ -200,7 +220,15 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
         _ <- {
           import sigil.workflow.SigilWorkflowModel.stepRW
           val compiled = WorkflowStepInputCompiler.compile(List(triggerStep, nextStep))
-          ws.workflowManager.updateSteps(workflow._id, workflow.steps ++ compiled.steps).unit
+          val newSteps = workflow.steps ++ compiled.steps
+          scribe.info(s"[AgentDecisionStep] suspendForAnswer ctx=${ctx.isDefined} oldSteps=${workflow.steps.size} newSteps=${newSteps.size} questionId=$questionId")
+          ctx match {
+            case Some(c) => c.updateStepsInTxn(workflow._id, newSteps).flatMap { wf =>
+              scribe.info(s"[AgentDecisionStep] post-suspend queue=${wf.queue.map(_.value)} completed=${wf.completed.map(_.value)} runningId=${wf.runningId.map(_.value)} stepsCount=${wf.steps.size}")
+              Task.unit
+            }
+            case None    => ws.workflowManager.updateSteps(workflow._id, newSteps).unit
+          }
         }
       } yield questionId
     case _ =>
@@ -249,7 +277,7 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
         Task { scribe.warn(s"AgentDecisionStep ask_parent: worker conv $workerConvId not found"); () }
     }
 
-  private def appendNextIteration(host: sigil.Sigil, workflow: Workflow, lastResponse: String): Task[Unit] = host match {
+  private def appendNextIteration(host: sigil.Sigil, workflow: Workflow, lastResponse: String, ctx: Option[JobContext]): Task[Unit] = host match {
     case ws: WorkflowSigil =>
       val priorReasoning = input.priorReasoning :+ lastResponse
       val nextStep = input.copy(
@@ -259,7 +287,11 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
       )
       import sigil.workflow.SigilWorkflowModel.stepRW
       val compiled = WorkflowStepInputCompiler.compile(List(nextStep))
-      ws.workflowManager.updateSteps(workflow._id, workflow.steps ++ compiled.steps).unit
+      val newSteps = workflow.steps ++ compiled.steps
+      ctx match {
+        case Some(c) => c.updateStepsInTxn(workflow._id, newSteps).unit
+        case None    => ws.workflowManager.updateSteps(workflow._id, newSteps).unit
+      }
     case _ =>
       Task.error(new IllegalStateException(
         "AgentDecisionStep requires the host Sigil to mix in WorkflowSigil. " +
