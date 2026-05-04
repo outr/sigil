@@ -12,7 +12,7 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
-import sigil.conversation.{ActiveSkillSlot, ContextKey, ContextMemory, ContextSummary, Conversation, ConversationView, FrameBuilder, MemoryStatus, ParticipantProjection, SkillSource, Topic, TopicEntry, TopicShiftResult, TurnInput, UpsertMemoryResult}
+import sigil.conversation.{ActiveSkillSlot, ContextKey, ContextMemory, ContextSummary, Conversation, ConversationView, FrameBuilder, MemorySource, MemoryStatus, ParticipantProjection, SkillSource, Topic, TopicEntry, TopicShiftResult, TurnInput, UpsertMemoryResult}
 import sigil.SpaceId
 import sigil.cache.ModelRegistry
 import sigil.controller.OpenRouter
@@ -2273,6 +2273,93 @@ trait Sigil {
                            conversationId: Id[Conversation]): Task[UpsertMemoryResult] =
     enrich(memory, chain, conversationId).flatMap(upsertMemoryByKey)
 
+  /**
+   * Seed a [[SpaceId]] with a list of declarative natural-language
+   * statements at account-creation time (or any moment the app has
+   * known facts that haven't yet shown up in conversation):
+   *
+   * {{{
+   *   sigil.initializeMemories(
+   *     space      = UserSpace(userId),
+   *     statements = List(
+   *       "My first name is Matt",
+   *       "My last name is Hicks",
+   *       "My email address is matt@outr.com",
+   *       "I'm 46 years old"
+   *     ),
+   *     modelId    = extractionModelId,
+   *     chain      = List(theUserId, theAgentId)
+   *   )
+   * }}}
+   *
+   * The framework wraps the statements in an extraction prompt and
+   * runs them through [[ExtractMemoriesTool]] via [[ConsultTool]] —
+   * one LLM round-trip per call regardless of statement count, so
+   * the model can disambiguate keys cross-statement (e.g. it
+   * produces `user.first_name` + `user.last_name` rather than
+   * collapsing both into `user.name`).
+   *
+   * Each result becomes a [[ContextMemory]] with
+   * `source = MemorySource.UserInput`, `status = MemoryStatus.Approved`,
+   * and `pinned = pinAll` (default `true` — declarative identity
+   * facts are almost always always-loaded). Keyed entries route
+   * through [[upsertMemoryByKey]] (idempotent — re-running with the
+   * same seeds refreshes rather than duplicates); keyless entries
+   * fall back to [[persistMemory]].
+   *
+   * Apps that want fine-grained per-fact control over pinning skip
+   * this helper and construct [[ContextMemory]] records directly.
+   */
+  def initializeMemories(space: SpaceId,
+                         statements: List[String],
+                         modelId: Id[Model],
+                         chain: List[sigil.participant.ParticipantId],
+                         pinAll: Boolean = true,
+                         systemPrompt: String = Sigil.DefaultInitializationSystemPrompt): Task[List[ContextMemory]] = {
+    val cleaned = statements.iterator.map(_.trim).filter(_.nonEmpty).toList
+    if (cleaned.isEmpty) Task.pure(Nil)
+    else {
+      val numbered = cleaned.iterator.zipWithIndex.map { case (s, i) => s"  ${i + 1}. $s" }.mkString("\n")
+      val userPrompt =
+        s"""Convert each statement below into a durable memory via the `extract_memories` tool.
+           |One memory per statement. Use a stable `key` rooted at the user's identity (e.g.
+           |"user.first_name", "user.email") so future updates can version the slot.
+           |
+           |Statements:
+           |$numbered""".stripMargin
+      sigil.tool.consult.ConsultTool.invoke[sigil.tool.consult.ExtractMemoriesInput](
+        sigil = this,
+        modelId = modelId,
+        chain = chain,
+        systemPrompt = systemPrompt,
+        userPrompt = userPrompt,
+        tool = sigil.tool.consult.ExtractMemoriesTool
+      ).flatMap {
+        case None => Task.pure(Nil)
+        case Some(result) =>
+          val kept = result.memories.filter(_.content.trim.nonEmpty)
+          Task.sequence(kept.map { m =>
+            val mem = ContextMemory(
+              fact       = m.content,
+              label      = if (m.label.trim.nonEmpty) m.label else m.key.getOrElse("memory"),
+              summary    = m.content,
+              source     = MemorySource.UserInput,
+              spaceId    = space,
+              key        = m.key,
+              keywords   = m.tags.toVector,
+              pinned     = pinAll,
+              status     = MemoryStatus.Approved,
+              createdBy  = chain.lastOption
+            )
+            // Seeded outside any conversation, so leave `conversationId`
+            // None and skip the `*For` variants' location lookup.
+            if (m.key.isDefined) upsertMemoryByKey(mem).map(_.memory)
+            else persistMemory(mem)
+          })
+      }
+    }
+  }
+
   /** Internal helper — fold chain-derived `createdBy` + `location`
     * onto a memory without overwriting fields the caller already set. */
   private def enrich(memory: ContextMemory,
@@ -3965,4 +4052,25 @@ trait Sigil {
     new sigil.transport.SigilDbEventLog(this)
 
   case class SigilInstance(config: Config, db: DB)
+}
+
+object Sigil {
+  /** Default extraction system prompt for [[Sigil.initializeMemories]].
+    * Apps that want a domain-specific extraction shape (e.g. medical
+    * intake, onboarding survey) override the parameter directly. */
+  val DefaultInitializationSystemPrompt: String =
+    """You convert a list of declarative user statements into durable memories.
+      |
+      |For each statement, emit one memory with:
+      |  - `key`: a stable, dot-separated identifier rooted at the user's identity
+      |    (e.g. "user.first_name", "user.last_name", "user.email", "user.age",
+      |    "user.timezone"). Same identity slot across statements MUST share a
+      |    key so future updates can version it rather than duplicating.
+      |  - `label`: a short human-readable name for the slot (e.g. "First name").
+      |  - `content`: the canonical fact, self-contained and third-person.
+      |    Convert "I'm 46 years old" into "User is 46 years old."
+      |  - `tags`: optional retrieval tokens (e.g. ["identity", "name"]).
+      |
+      |One statement maps to one memory. Do not split, merge, or infer beyond
+      |what the statements explicitly say.""".stripMargin
 }
