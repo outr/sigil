@@ -140,7 +140,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         val responseFamily = Set("respond", "respond_options", "respond_field", "respond_failure")
         request("What is 2+2? Respond with just the number.", generationSettings = gen).map { events =>
           val start = events.collectFirst { case s: ProviderEvent.ToolCallStart => s }
-          start.map(_.toolName).getOrElse("") should (be(oneElementOf(responseFamily)))
+          responseFamily should contain (start.map(_.toolName).getOrElse(""))
           events.last shouldBe a[ProviderEvent.Done]
           events.last.asInstanceOf[ProviderEvent.Done].stopReason shouldBe StopReason.ToolCall
         }
