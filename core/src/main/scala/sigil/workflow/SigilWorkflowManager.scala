@@ -6,7 +6,7 @@ import sigil.{Sigil, SpaceId}
 import sigil.conversation.{Conversation, Topic}
 import sigil.event.Event
 import sigil.participant.ParticipantId
-import sigil.workflow.event.{WorkflowRunCompleted, WorkflowRunFailed, WorkflowRunStarted, WorkflowStepCompleted}
+import sigil.workflow.event.{TaskExecuted, WorkflowRunCompleted, WorkflowRunFailed, WorkflowRunStarted, WorkflowStepCompleted}
 import strider.{AbstractWorkflowManager, Workflow, WorkflowParent, WorkflowStatus}
 import strider.step.Step
 
@@ -50,7 +50,7 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
         workflowId = workflow.sourceId.value, workflowName = workflow.name,
         runId = workflow._id.value
       )
-    }
+    }.flatMap(_ => maybePublishTaskExecuted(workflow))
 
   override protected def onWorkflowFailed(workflow: Workflow): Task[Unit] =
     publishLifecycle(workflow) { case (caller, convId, topicId) =>
@@ -73,6 +73,66 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
         stepId = stepId.value, stepName = stepName, success = success
       )
     }
+
+  /** When a settled workflow run is a *worker* (contains an
+    * [[SigilAgentDecisionStep]]) AND its conversation has a
+    * [[sigil.conversation.Conversation.parentConversationId]] set,
+    * publish a [[TaskExecuted]] Event into the parent conversation
+    * carrying the worker's summary, role name, and iteration
+    * count. Lets the parent agent's TriggerFilter fire on the
+    * settle without having to subscribe to step-result diffs.
+    *
+    * Workers without a parent conv (orphan workers — unusual) and
+    * non-worker workflow runs (cron jobs, agent-authored multi-step
+    * templates) emit nothing here; their `WorkflowRunCompleted`
+    * stays the only signal. */
+  private def maybePublishTaskExecuted(workflow: Workflow): Task[Unit] = {
+    val agentSteps = workflow.steps.collect { case s: SigilAgentDecisionStep => s }
+    if (agentSteps.isEmpty) return Task.unit
+
+    val workerConvIdOpt = workflow.conversationId.map(s => Id[Conversation](s))
+    workerConvIdOpt match {
+      case None => Task.unit
+      case Some(workerConvId) =>
+        host.withDB(_.conversations.transaction(_.get(workerConvId))).flatMap {
+          case None => Task.unit
+          case Some(workerConv) => workerConv.parentConversationId match {
+            case None => Task.unit
+            case Some(parentConvId) =>
+              host.withDB(_.conversations.transaction(_.get(parentConvId))).flatMap {
+                case None => Task.unit
+                case Some(parentConv) =>
+                  // Pull the latest AgentDecisionStep's settle payload
+                  // — that's where the summary text lives.
+                  val finalResult: Option[fabric.Json] = workflow.stepResults.headOption.flatMap(_.output)
+                  val summary    = finalResult.flatMap(_.get("summary").map(_.asString)).getOrElse("")
+                  val exhausted  = finalResult.flatMap(_.get("exhausted").map(_.asBoolean)).getOrElse(false)
+                  val iterations = finalResult.flatMap(_.get("iteration").map(_.asInt)).getOrElse(0) + 1
+                  val roleName   = agentSteps.head.input.role.name
+
+                  parentConv.participants.headOption match {
+                    case None => Task.unit
+                    case Some(p) =>
+                      val ev = TaskExecuted(
+                        participantId         = p.id,
+                        conversationId        = parentConvId,
+                        topicId               = parentConv.currentTopicId,
+                        taskId                = workflow._id.value,
+                        roleName              = roleName,
+                        summary               = summary,
+                        iterations            = iterations,
+                        exhausted             = exhausted,
+                        workerConversationId  = Some(workerConvId)
+                      )
+                      host.publish(ev).handleError(t =>
+                        Task(scribe.warn(s"TaskExecuted publish failed for run ${workflow._id.value}: ${t.getMessage}"))
+                      )
+                  }
+              }
+          }
+        }
+    }
+  }
 
   /** Helper — when a workflow run carries a `conversationId`,
     * publish the supplied lifecycle Event into that conversation
