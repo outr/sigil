@@ -26,6 +26,11 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 
+# Ensure llama.cpp routes to the local server (gemma-4-26b on :8081).
+# /etc/environment doesn't always propagate through subshell invocation.
+export SIGIL_LLAMACPP_HOST="${SIGIL_LLAMACPP_HOST:-http://localhost:8081}"
+echo "Using SIGIL_LLAMACPP_HOST=$SIGIL_LLAMACPP_HOST"
+
 ts=$(date +%Y-%m-%d_%H%M%S)
 outdir="benchmark/results/overnight-$ts"
 mkdir -p "$outdir"
@@ -149,7 +154,7 @@ fi
 if [ -d "$BFCL_DIR" ]; then
   # Models match previous runs in scores.md so the overnight is an
   # apples-to-apples regression check.
-  for model in "openai/gpt-5.4" "openai/gpt-4o-mini" "llamacpp/qwen3.5-9b-q4_k_m"; do
+  for model in "openai/gpt-5.4" "openai/gpt-4o-mini" "llamacpp/gemma-4-26b"; do
     label_safe="bfcl-$(echo "$model" | tr '/' '_')"
     run_bench "BFCL ($model)" \
       "$outdir/$label_safe.md" \
@@ -162,7 +167,7 @@ fi
 
 # --- Agent-loop safety ---
 # Models match previous runs in scores.md.
-for model in "openai/gpt-5.4-mini" "anthropic/claude-haiku-4-5" "llamacpp/qwen3.5-9b-q4_k_m"; do
+for model in "openai/gpt-5.4-mini" "anthropic/claude-haiku-4-5" "llamacpp/gemma-4-26b"; do
   label_safe="agentdojo-banking-$(echo "$model" | tr '/' '_')"
   run_bench "AgentDojo banking ($model)" \
     "$outdir/$label_safe.md" \
