@@ -84,4 +84,35 @@ class AgentDecisionStepLogicSpec extends AnyWordSpec with Matchers {
       user should include("--- Continue ---")
     }
   }
+
+  "parseAskParent" should {
+    "extract a question following an `AskParent:` line marker" in {
+      val response = "Reasoning so far.\nAskParent: Should we use OAuth or basic auth?"
+      SigilAgentDecisionStep.parseAskParent(response) shouldBe Some("Should we use OAuth or basic auth?")
+    }
+
+    "be case-insensitive" in {
+      SigilAgentDecisionStep.parseAskParent("askParent: clarify scope?") shouldBe Some("clarify scope?")
+    }
+
+    "ignore mid-paragraph mentions" in {
+      SigilAgentDecisionStep.parseAskParent("the agent should AskParent: in cases like this") shouldBe None
+    }
+  }
+
+  "parseMarker" should {
+    "prefer Complete over AskParent if both are present (terminating wins over waiting)" in {
+      val response = "AskParent: anything?\nComplete: done."
+      SigilAgentDecisionStep.parseMarker(response) shouldBe SigilAgentDecisionStep.MarkerCompletion("done.")
+    }
+
+    "return MarkerAskParent when only AskParent is present" in {
+      val response = "Some thinking.\nAskParent: which DB?"
+      SigilAgentDecisionStep.parseMarker(response) shouldBe SigilAgentDecisionStep.MarkerAskParent("which DB?")
+    }
+
+    "return MarkerNone when neither marker is present" in {
+      SigilAgentDecisionStep.parseMarker("Just thinking out loud.") shouldBe SigilAgentDecisionStep.MarkerNone
+    }
+  }
 }
