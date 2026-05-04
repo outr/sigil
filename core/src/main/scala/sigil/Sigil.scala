@@ -4019,6 +4019,38 @@ trait Sigil {
   def activeTasks(viewer: ParticipantId): Task[List[sigil.conversation.ConversationTask]] =
     Task.pure(Nil)
 
+  /**
+   * Sub-conversation cost rollup. Returns `conversationId.cost` plus
+   * the recursively-summed cost of every conversation that lists
+   * `conversationId` (transitively) as its `parentConversationId`.
+   *
+   * Worker delegation creates a hierarchy — user-facing conv → worker
+   * conv → potentially sub-worker convs — and apps showing total
+   * cost for a top-level conversation want the inclusive figure. Each
+   * conversation's own `cost` field is incremented by the framework
+   * on settled provider calls (see [[sigil.signal.ConversationCostUpdated]]);
+   * this method walks the tree at query time.
+   *
+   * Returns 0 if `conversationId` doesn't exist. Cycles in the parent
+   * relationship would loop forever — the framework's spawn surface
+   * doesn't create cycles, but apps with hand-rolled hierarchies
+   * should ensure they don't either.
+   */
+  def totalCostFor(conversationId: Id[Conversation]): Task[BigDecimal] =
+    withDB(_.conversations.transaction(_.list)).flatMap { allConvs =>
+      val byParent: Map[Id[Conversation], List[Conversation]] =
+        allConvs.groupBy(_.parentConversationId.getOrElse(Id[Conversation]("")))
+          .filter(_._1.value.nonEmpty)
+
+      def sum(id: Id[Conversation]): BigDecimal = {
+        val self = allConvs.find(_._id == id).map(_.cost).getOrElse(BigDecimal(0))
+        val children = byParent.getOrElse(id, Nil)
+        self + children.map(c => sum(c._id)).sum
+      }
+
+      Task.pure(sum(conversationId))
+    }
+
   // -- shutdown --
 
   /**
