@@ -111,7 +111,29 @@ class AgentDecisionStepLogicSpec extends AnyWordSpec with Matchers {
       SigilAgentDecisionStep.parseMarker(response) shouldBe SigilAgentDecisionStep.MarkerAskParent("which DB?")
     }
 
-    "return MarkerNone when neither marker is present" in {
+    "return MarkerReport when Report is present (and no higher-priority markers)" in {
+      val response = "Working on it.\nReport: I've finished phase 1; moving to phase 2."
+      SigilAgentDecisionStep.parseMarker(response) shouldBe
+        SigilAgentDecisionStep.MarkerReport("I've finished phase 1; moving to phase 2.")
+    }
+
+    "return MarkerStatus when Status is present (and no higher-priority markers)" in {
+      val response = "Reasoning.\nStatus: compiling step 3/7"
+      SigilAgentDecisionStep.parseMarker(response) shouldBe
+        SigilAgentDecisionStep.MarkerStatus("compiling step 3/7")
+    }
+
+    "prefer AskParent over Report when both are present (waiting beats reporting)" in {
+      val response = "Report: done with research.\nAskParent: which option?"
+      SigilAgentDecisionStep.parseMarker(response) shouldBe SigilAgentDecisionStep.MarkerAskParent("which option?")
+    }
+
+    "prefer Report over Status when both are present" in {
+      val response = "Status: in progress\nReport: milestone reached"
+      SigilAgentDecisionStep.parseMarker(response) shouldBe SigilAgentDecisionStep.MarkerReport("milestone reached")
+    }
+
+    "return MarkerNone when no markers are present" in {
       SigilAgentDecisionStep.parseMarker("Just thinking out loud.") shouldBe SigilAgentDecisionStep.MarkerNone
     }
   }
