@@ -101,6 +101,32 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
           ): Json
         }
 
+      case SigilAgentDecisionStep.MarkerReport(report) =>
+        // Worker wants to surface a progress update to the user
+        // mid-task. Publish into the parent conv with default
+        // visibility so the user sees it, then continue iterating.
+        publishReport(host, workflow, report).flatMap { _ =>
+          appendNextIteration(host, workflow, response).map { _ =>
+            obj(
+              "complete"  -> bool(false),
+              "reported"  -> bool(true),
+              "report"    -> str(report),
+              "iteration" -> num(input.iteration)
+            ): Json
+          }
+        }
+
+      case SigilAgentDecisionStep.MarkerStatus(status) =>
+        // Worker pinged a panel-status update. Capture in the step
+        // output for diagnostic / panel use; continue iterating.
+        appendNextIteration(host, workflow, response).map { _ =>
+          obj(
+            "complete"      -> bool(false),
+            "currentStatus" -> str(status),
+            "iteration"     -> num(input.iteration)
+          ): Json
+        }
+
       case SigilAgentDecisionStep.MarkerNone =>
         appendNextIteration(host, workflow, response).map { _ =>
           obj(
@@ -110,6 +136,45 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
           ): Json
         }
     }
+
+  /** Publish a worker `Report:` line into the parent conversation
+    * with default (`MessageVisibility.All`) visibility, so the user
+    * sees mid-task progress updates inline in their conversation.
+    * Same parent-resolution path as `publishToParent` (used by
+    * `AskParent`) but with user-visible visibility instead of
+    * Agents-only. */
+  private def publishReport(host: sigil.Sigil, workflow: Workflow, report: String): Task[Unit] = {
+    val workerConvIdOpt = workflow.conversationId.map(s => Id[Conversation](s))
+    workerConvIdOpt match {
+      case None => Task.unit
+      case Some(workerConvId) =>
+        host.withDB(_.conversations.transaction(_.get(workerConvId))).flatMap {
+          case Some(workerConv) => workerConv.parentConversationId match {
+            case Some(parentConvId) =>
+              host.withDB(_.conversations.transaction(_.get(parentConvId))).flatMap {
+                case Some(parentConv) =>
+                  parentConv.participants.headOption match {
+                    case Some(senderParticipant) =>
+                      val msg = Message(
+                        participantId  = senderParticipant.id,
+                        conversationId = parentConvId,
+                        topicId        = parentConv.currentTopicId,
+                        content        = Vector(ResponseContent.Text(report)),
+                        state          = EventState.Complete,
+                        role           = MessageRole.Standard,
+                        visibility     = MessageVisibility.All
+                      )
+                      host.publish(msg).unit
+                    case None => Task.unit
+                  }
+                case None => Task.unit
+              }
+            case None => Task.unit
+          }
+          case None => Task.unit
+        }
+    }
+  }
 
   /** Suspend the run: post the question into the parent conversation
     * as a hidden-from-user Message, then append a TriggerStep on an
@@ -207,10 +272,16 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
 
 object SigilAgentDecisionStep {
 
-  /** Parsed marker — drives the next-step decision in `decideNext`. */
+  /** Parsed marker — drives the next-step decision in `decideNext`.
+    * Priority when multiple appear in one response (highest wins):
+    * Completion (terminate) > AskParent (suspend) > Report
+    * (user-visible message + continue) > Status (panel-status update
+    * + continue) > None (regular ReAct continuation). */
   sealed trait Marker
   case class MarkerCompletion(summary: String) extends Marker
   case class MarkerAskParent(question: String) extends Marker
+  case class MarkerReport(report: String) extends Marker
+  case class MarkerStatus(status: String) extends Marker
   case object MarkerNone extends Marker
 
   /** System prompt: role description plus the worker-loop coda
@@ -232,9 +303,18 @@ object SigilAgentDecisionStep {
        |answer from context or escalate to the user), and resumes you with the answer in your
        |context on the next iteration.
        |
+       |If you have a meaningful progress update for the user (a milestone reached, an
+       |intermediate finding, etc.), emit:
+       |  Report: <user-visible message>
+       |The framework posts this into the user's conversation and continues your run.
+       |
+       |If you want a short status line on your task card without surfacing it to the user
+       |(panel display only), emit:
+       |  Status: <short status text>
+       |
        |If you need to keep working (research more, plan further, etc.), just write your reasoning
        |and the framework will give you another turn with your reasoning carried forward. Don't
-       |emit `Complete:` or `AskParent:` until you genuinely need them.""".stripMargin
+       |emit any of these markers until you genuinely need them.""".stripMargin
   }
 
   /** User prompt: the brief plus any accumulated reasoning from
@@ -253,18 +333,24 @@ object SigilAgentDecisionStep {
     }
   }
 
-  /** Scan the response for the first matching marker. `Complete:`
-    * wins over `AskParent:` if the LLM emits both — terminating is
-    * stronger than waiting. Both are anchored at line start so
-    * mid-paragraph mentions don't false-positive. */
+  /** Scan the response for the first matching marker, by priority
+    * order: Completion (terminate) > AskParent (suspend) > Report
+    * (user-visible message + continue) > Status (panel update +
+    * continue) > None. All markers are line-anchored (case-
+    * insensitive); mid-paragraph mentions don't false-positive. */
   def parseMarker(response: String): Marker = {
     parseCompletion(response) match {
       case Some(summary) => MarkerCompletion(summary)
-      case None =>
-        parseAskParent(response) match {
-          case Some(question) => MarkerAskParent(question)
-          case None           => MarkerNone
+      case None => parseAskParent(response) match {
+        case Some(question) => MarkerAskParent(question)
+        case None => parseReport(response) match {
+          case Some(report) => MarkerReport(report)
+          case None => parseStatus(response) match {
+            case Some(status) => MarkerStatus(status)
+            case None         => MarkerNone
+          }
         }
+      }
     }
   }
 
@@ -284,6 +370,29 @@ object SigilAgentDecisionStep {
     pattern.findFirstMatchIn(response).map { m =>
       val afterMarker = response.substring(m.start)
       "(?im)^\\s*AskParent:\\s*".r.replaceFirstIn(afterMarker, "").trim
+    }
+  }
+
+  /** Pull the post-`Report:` user-visible message out of the
+    * response. Workers use this to surface progress updates to the
+    * user mid-task without terminating. */
+  def parseReport(response: String): Option[String] = {
+    val pattern = "(?im)^\\s*Report:\\s*(.+)$".r
+    pattern.findFirstMatchIn(response).map { m =>
+      val afterMarker = response.substring(m.start)
+      "(?im)^\\s*Report:\\s*".r.replaceFirstIn(afterMarker, "").trim
+    }
+  }
+
+  /** Pull the post-`Status:` short status line out of the response.
+    * Workers use this for panel-display progress text ("Compiling
+    * step 3/7") that doesn't need to surface to the user but should
+    * appear on the worker's task card. */
+  def parseStatus(response: String): Option[String] = {
+    val pattern = "(?im)^\\s*Status:\\s*(.+)$".r
+    pattern.findFirstMatchIn(response).map { m =>
+      val afterMarker = response.substring(m.start)
+      "(?im)^\\s*Status:\\s*".r.replaceFirstIn(afterMarker, "").trim
     }
   }
 }
