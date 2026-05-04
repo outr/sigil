@@ -287,6 +287,21 @@ trait Sigil {
    * {{{
    *   override def staticTools: List[Tool] = super.staticTools ++ List(MyTool, OtherTool)
    * }}}
+   *
+   * NOTE: this method is invoked MORE THAN ONCE during startup —
+   * once for input-RW gathering and again when registering the
+   * polymorphic `Tool` RW. Any value an override constructs inline
+   * gets re-built each call, so tools that hold mutable state
+   * (e.g. [[sigil.tool.process.ProcessRegistry]]) must be hoisted
+   * to a `lazy val` (or `val`) on the Sigil subclass and referenced
+   * from the override:
+   * {{{
+   *   private lazy val processRegistry = new ProcessRegistry()
+   *   override def staticTools: List[Tool] =
+   *     super.staticTools ++ AllShippedTools(fs, MySpace, Some(processRegistry))
+   * }}}
+   * Otherwise the second invocation hands tools a fresh registry
+   * and handles minted via the first call's tools become unfindable.
    */
   def staticTools: List[sigil.tool.Tool] = sigil.tool.core.CoreTools.all.toList
 

@@ -1,17 +1,17 @@
 ThisBuild / organization := "com.outr"
-ThisBuild / version := "1.0.0-SNAPSHOT1"
+ThisBuild / version := "1.0.0-SNAPSHOT2"
 
 ThisBuild / scalaVersion := "3.8.3"
 
-val rapidVersion: String = "2.9.3"
+val rapidVersion: String = "2.9.4"
 
-val spiceVersion: String = "1.8.3"
+val spiceVersion: String = "1.8.4"
 
 val profigVersion: String = "3.7.1"
 
 val scribeVersion: String = "3.19.0"
 
-val lightdbVersion: String = "4.34.1"
+val lightdbVersion: String = "4.34.2"
 
 val scalatestVersion: String = "3.2.20"
 
@@ -38,10 +38,9 @@ ThisBuild / licenses := Seq("MIT" -> url("https://github.com/outr/sigil/blob/mas
 ThisBuild / scalacOptions ++= Seq(
   "-deprecation",
   "-feature",
-  "-unchecked",
-  "-Xmax-inlines",
-  "64"
+  "-unchecked"
 )
+ThisBuild / javaOptions ++= Seq("-Xmx16G", "-Xss4m", "-XX:MaxMetaspaceSize=2g")
 
 ThisBuild / evictionErrorLevel := Level.Info
 
