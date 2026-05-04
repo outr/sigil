@@ -8,7 +8,7 @@ import rapid.Task
 import sigil.conversation.Conversation
 import sigil.db.Model
 import sigil.event.{Message, MessageRole, MessageVisibility}
-import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent}
+import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent, TokenUsage}
 import sigil.signal.EventState
 import sigil.tool.model.ResponseContent
 import sigil.workflow.trigger.AnswerTrigger
@@ -60,80 +60,77 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
         generationSettings = GenerationSettings()
       )
       val acc = new java.lang.StringBuilder
+      val usageRef = new java.util.concurrent.atomic.AtomicReference[Option[TokenUsage]](None)
       provider(request).evalMap {
         case ProviderEvent.TextDelta(t)            => Task { acc.append(t); () }
         case ProviderEvent.ContentBlockDelta(_, t) => Task { acc.append(t); () }
+        case ProviderEvent.Usage(u)                => Task { usageRef.set(Some(u)); () }
         case _                                     => Task.unit
       }.drain.flatMap { _ =>
         val response = acc.toString
-        decideNext(host, workflow, response)
+        decideNext(host, workflow, response, usageRef.get())
       }
     }
   }
 
-  private def decideNext(host: sigil.Sigil, workflow: Workflow, response: String): Task[Json] =
+  private def decideNext(host: sigil.Sigil, workflow: Workflow, response: String, usage: Option[TokenUsage]): Task[Json] =
     SigilAgentDecisionStep.parseMarker(response) match {
       case SigilAgentDecisionStep.MarkerCompletion(summary) =>
-        Task.pure(obj(
+        Task.pure(SigilAgentDecisionStep.withUsage(obj(
           "complete"  -> bool(true),
           "summary"   -> str(summary),
           "iteration" -> num(input.iteration),
           "exhausted" -> bool(false)
-        ): Json)
+        ), usage))
 
       case _ if input.iteration + 1 >= input.maxIterations =>
         // Cap reached — settle whatever response we got as the summary.
-        Task.pure(obj(
+        Task.pure(SigilAgentDecisionStep.withUsage(obj(
           "complete"  -> bool(true),
           "summary"   -> str(response),
           "iteration" -> num(input.iteration),
           "exhausted" -> bool(true)
-        ): Json)
+        ), usage))
 
       case SigilAgentDecisionStep.MarkerAskParent(question) =>
         suspendForAnswer(host, workflow, response, question).map { questionId =>
-          obj(
+          SigilAgentDecisionStep.withUsage(obj(
             "complete"   -> bool(false),
             "asked"      -> bool(true),
             "questionId" -> str(questionId),
             "question"   -> str(question),
             "iteration"  -> num(input.iteration)
-          ): Json
+          ), usage)
         }
 
       case SigilAgentDecisionStep.MarkerReport(report) =>
-        // Worker wants to surface a progress update to the user
-        // mid-task. Publish into the parent conv with default
-        // visibility so the user sees it, then continue iterating.
         publishReport(host, workflow, report).flatMap { _ =>
           appendNextIteration(host, workflow, response).map { _ =>
-            obj(
+            SigilAgentDecisionStep.withUsage(obj(
               "complete"  -> bool(false),
               "reported"  -> bool(true),
               "report"    -> str(report),
               "iteration" -> num(input.iteration)
-            ): Json
+            ), usage)
           }
         }
 
       case SigilAgentDecisionStep.MarkerStatus(status) =>
-        // Worker pinged a panel-status update. Capture in the step
-        // output for diagnostic / panel use; continue iterating.
         appendNextIteration(host, workflow, response).map { _ =>
-          obj(
+          SigilAgentDecisionStep.withUsage(obj(
             "complete"      -> bool(false),
             "currentStatus" -> str(status),
             "iteration"     -> num(input.iteration)
-          ): Json
+          ), usage)
         }
 
       case SigilAgentDecisionStep.MarkerNone =>
         appendNextIteration(host, workflow, response).map { _ =>
-          obj(
+          SigilAgentDecisionStep.withUsage(obj(
             "complete"  -> bool(false),
             "partial"   -> str(response),
             "iteration" -> num(input.iteration)
-          ): Json
+          ), usage)
         }
     }
 
@@ -271,6 +268,22 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
 }
 
 object SigilAgentDecisionStep {
+
+  /** Append a `usage: {prompt, completion, total}` block to a step
+    * settle payload when token usage is known. Apps doing per-step
+    * cost attribution read this directly off the step result; UI
+    * panels can show "this iteration cost X tokens." When the
+    * provider didn't surface usage events on this round-trip, the
+    * payload stays unchanged. */
+  def withUsage(payload: fabric.Json, usage: Option[TokenUsage]): Json = usage match {
+    case None => payload
+    case Some(u) =>
+      payload.merge(obj("usage" -> obj(
+        "prompt"     -> num(u.promptTokens),
+        "completion" -> num(u.completionTokens),
+        "total"      -> num(u.totalTokens)
+      )))
+  }
 
   /** Parsed marker — drives the next-step decision in `decideNext`.
     * Priority when multiple appear in one response (highest wins):
