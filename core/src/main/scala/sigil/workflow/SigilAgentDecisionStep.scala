@@ -51,8 +51,9 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
     val modelId = Id[Model](input.modelId)
 
     host.providerFor(modelId, Nil).flatMap { provider =>
+      val answersFromParent = SigilAgentDecisionStep.extractParentAnswers(workflow)
       val systemPrompt = SigilAgentDecisionStep.buildSystemPrompt(input)
-      val userPrompt   = SigilAgentDecisionStep.buildUserPrompt(input)
+      val userPrompt   = SigilAgentDecisionStep.buildUserPrompt(input, answersFromParent)
       val request = OneShotRequest(
         modelId            = modelId,
         systemPrompt       = systemPrompt,
@@ -331,18 +332,42 @@ object SigilAgentDecisionStep {
   }
 
   /** User prompt: the brief plus any accumulated reasoning from
-    * prior iterations, so each turn sees the full chain. */
-  def buildUserPrompt(input: AgentDecisionStepInput): String = {
-    if (input.priorReasoning.isEmpty) input.brief
-    else {
-      val priors = input.priorReasoning.zipWithIndex.map { case (text, i) =>
+    * prior iterations, plus any answers that have arrived from the
+    * parent agent since the worker's last AskParent suspension.
+    * Parent answers go into a clearly-marked block so the LLM
+    * can pick out the new context vs the prior reasoning chain. */
+  def buildUserPrompt(input: AgentDecisionStepInput, parentAnswers: List[ParentAnswer] = Nil): String = {
+    val priorBlock =
+      if (input.priorReasoning.isEmpty) ""
+      else input.priorReasoning.zipWithIndex.map { case (text, i) =>
         s"--- Iteration ${i + 1} ---\n$text"
-      }.mkString("\n\n")
+      }.mkString("\n\n") + "\n\n"
+    val answersBlock =
+      if (parentAnswers.isEmpty) ""
+      else parentAnswers.map { a =>
+        s"--- Parent answer to question ${a.questionId} ---\n${a.answer}"
+      }.mkString("\n\n") + "\n\n"
+    if (priorBlock.isEmpty && answersBlock.isEmpty) input.brief
+    else
       s"""${input.brief}
          |
-         |$priors
-         |
-         |--- Continue ---""".stripMargin
+         |$priorBlock$answersBlock--- Continue ---""".stripMargin
+  }
+
+  /** Walk the workflow's persisted step results and pull out every
+    * answer the parent has provided so far. Each AnswerTrigger
+    * settles with `{taskId, questionId, answer}` in its `output`
+    * payload; we project to a typed [[ParentAnswer]] for
+    * `buildUserPrompt`. Returns oldest-to-newest so the LLM sees
+    * answers in the order they arrived. */
+  def extractParentAnswers(workflow: strider.Workflow): List[ParentAnswer] = {
+    workflow.stepResults.reverse.flatMap { sr =>
+      sr.output.flatMap { json =>
+        for {
+          questionId <- json.get("questionId").map(_.asString)
+          answer     <- json.get("answer").map(_.asString)
+        } yield ParentAnswer(questionId, answer)
+      }
     }
   }
 
