@@ -141,6 +141,44 @@ trait WorkflowSigil extends Sigil {
     manager
   }
 
+  override def activeTasksFor(conversationId: Id[sigil.conversation.Conversation])
+    : Task[List[sigil.conversation.ConversationTask]] = {
+    if (!_workflowManagerStarted) Task.pure(Nil)
+    else workflowManager.collection.transaction { tx =>
+      tx.query.toList.map { all =>
+        all.iterator
+          .filter(wf => wf.conversationId.contains(conversationId.value))
+          .filter(wf => !wf.finished)
+          .flatMap(sigil.conversation.ConversationTask.fromWorkflow)
+          .toList
+      }
+    }
+  }
+
+  override def activeTasks(viewer: sigil.participant.ParticipantId)
+    : Task[List[sigil.conversation.ConversationTask]] = {
+    if (!_workflowManagerStarted) Task.pure(Nil)
+    else for {
+      runs <- workflowManager.collection.transaction(_.query.toList)
+      // Default visibility predicate: viewer sees a task when they
+      // can see the underlying conversation. Cheapest sufficient
+      // filter today is "the conversation has them as a participant"
+      // — apps with admin / multi-tenant overrides extend this method.
+      viewerConvIds <- withDB(_.conversations.transaction(_.list)).map { convs =>
+        convs.collect {
+          case conv if conv.participants.exists(_.id == viewer) => conv._id.value
+        }.toSet
+      }
+    } yield {
+      runs.iterator
+        .filter(wf => wf.conversationId.exists(viewerConvIds.contains))
+        .filter(wf => !wf.finished)
+        .flatMap(sigil.conversation.ConversationTask.fromWorkflow)
+        .toList
+        .sortBy(_.modifiedAt.value)(using Ordering.Long.reverse)
+    }
+  }
+
   /** Whether the framework's workflow management tools (`create_workflow`,
     * `list_workflows`, `run_workflow`, …) are appended to `staticTools`.
     * Default true. Apps locking down the agent surface override to false
