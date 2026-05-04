@@ -108,7 +108,8 @@ object CoreTools {
       summon[RW[PinMemoryInput]],
       summon[RW[UnpinMemoryInput]],
       summon[RW[MoveMemoryInput]],
-      summon[RW[ContextBreakdownInput]]
+      summon[RW[ContextBreakdownInput]],
+      summon[RW[sigil.tool.model.CompleteTaskInput]]
     )
 
   val coreToolNames: List[sigil.tool.ToolName] = all.map(_.schema.name).toList

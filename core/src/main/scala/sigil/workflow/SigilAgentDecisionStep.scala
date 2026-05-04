@@ -61,10 +61,8 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
     * read. Closes bug #5. */
   override def executeToJsonContextualized(workflow: Workflow,
                                            pm: ProgressManager,
-                                           ctx: JobContext): Task[Json] = {
-    scribe.info(s"[AgentDecisionStep] iter=${input.iteration} ctx=YES queue=${workflow.queue.map(_.value)} completed=${workflow.completed.map(_.value)}")
+                                           ctx: JobContext): Task[Json] =
     runIteration(workflow, ctx = Some(ctx))
-  }
 
   private def runIteration(workflow: Workflow, ctx: Option[JobContext]): Task[Json] = {
     val host = WorkflowHost.get
@@ -78,18 +76,43 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
         modelId            = modelId,
         systemPrompt       = systemPrompt,
         userPrompt         = userPrompt,
-        generationSettings = GenerationSettings()
+        generationSettings = GenerationSettings(),
+        // Expose `complete_task` to the LLM as a typed tool. Models
+        // that prefer structured tool calls over the `Complete:`
+        // line marker land here; the orchestrator decodes the args
+        // via inputRW so `ToolCallComplete.input` arrives typed as
+        // [[sigil.tool.model.CompleteTaskInput]]. When the LLM
+        // emits the marker instead, our text accumulator catches it
+        // via `parseMarker`. Both paths work.
+        tools = Vector(sigil.tool.util.CompleteTaskTool)
       )
       val acc = new java.lang.StringBuilder
       val usageRef = new java.util.concurrent.atomic.AtomicReference[Option[TokenUsage]](None)
+      val toolCompletionRef = new java.util.concurrent.atomic.AtomicReference[Option[String]](None)
       provider(request).evalMap {
         case ProviderEvent.TextDelta(t)            => Task { acc.append(t); () }
         case ProviderEvent.ContentBlockDelta(_, t) => Task { acc.append(t); () }
         case ProviderEvent.Usage(u)                => Task { usageRef.set(Some(u)); () }
+        case ProviderEvent.ToolCallComplete(_, ti: sigil.tool.model.CompleteTaskInput) =>
+          Task { toolCompletionRef.set(Some(ti.summary)); () }
         case _                                     => Task.unit
       }.drain.flatMap { _ =>
         val response = acc.toString
-        decideNext(host, workflow, response, usageRef.get(), ctx)
+        toolCompletionRef.get() match {
+          // LLM called complete_task as a structured tool — settle
+          // immediately with its supplied summary.
+          case Some(summary) =>
+            Task.pure(SigilAgentDecisionStep.withUsage(obj(
+              "complete"  -> bool(true),
+              "summary"   -> str(summary),
+              "iteration" -> num(input.iteration),
+              "exhausted" -> bool(false)
+            ), usageRef.get()))
+          // Fall through to marker-based handling for `Complete:` /
+          // `AskParent:` / `Report:` / `Status:` / continuation.
+          case None =>
+            decideNext(host, workflow, response, usageRef.get(), ctx)
+        }
       }
     }
   }
@@ -221,12 +244,8 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
           import sigil.workflow.SigilWorkflowModel.stepRW
           val compiled = WorkflowStepInputCompiler.compile(List(triggerStep, nextStep))
           val newSteps = workflow.steps ++ compiled.steps
-          scribe.info(s"[AgentDecisionStep] suspendForAnswer ctx=${ctx.isDefined} oldSteps=${workflow.steps.size} newSteps=${newSteps.size} questionId=$questionId")
           ctx match {
-            case Some(c) => c.updateStepsInTxn(workflow._id, newSteps).flatMap { wf =>
-              scribe.info(s"[AgentDecisionStep] post-suspend queue=${wf.queue.map(_.value)} completed=${wf.completed.map(_.value)} runningId=${wf.runningId.map(_.value)} stepsCount=${wf.steps.size}")
-              Task.unit
-            }
+            case Some(c) => c.updateStepsInTxn(workflow._id, newSteps).unit
             case None    => ws.workflowManager.updateSteps(workflow._id, newSteps).unit
           }
         }
@@ -339,8 +358,12 @@ object SigilAgentDecisionStep {
        |
        |You are running as a worker — this is iteration ${input.iteration + 1} of up to ${input.maxIterations}.
        |
-       |When you have completed the work the user briefed you on, respond with a single line:
-       |  Complete: <one-paragraph summary of what you did and what the result is>
+       |When you have completed the work the user briefed you on, you have two equivalent ways
+       |to terminate:
+       |  - Call the `complete_task` tool with `summary` — preferred for tool-calling-capable
+       |    models (typed args, schema-validated).
+       |  - Or respond with a single line: `Complete: <one-paragraph summary>` — fallback
+       |    for plain-text emission.
        |
        |If you need clarification or a decision from the parent agent before you can proceed,
        |emit a single line:
