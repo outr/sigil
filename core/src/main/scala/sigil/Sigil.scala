@@ -2833,6 +2833,12 @@ trait Sigil {
     *       stack) or truncates the stack back to that entry (if it is —
     *       the natural "return to prior topic" flow)
     *     - `Rename` mutates the active entry's label + summary in place
+    *   - `cost` is incremented when a [[Message]] settles whose
+    *     `modelId` resolves to a known [[Model]] in
+    *     [[sigil.cache.ModelRegistry]] (USD; per-token pricing
+    *     multiplied by [[sigil.provider.TokenUsage]]). Each non-zero
+    *     increment publishes a [[sigil.signal.ConversationCostUpdated]]
+    *     Notice with the new total + per-Message delta.
     *
     * Fires only on the SETTLE (an Event already at `Complete`, or a
     * `Delta` that transitions its target to `Complete`), never on the
@@ -2857,7 +2863,44 @@ trait Sigil {
         })).unit
       case Some(tc: TopicChange) =>
         applyTopicChangeToStack(tc)
+      case Some(m: Message) =>
+        applyMessageCostToConversation(m)
       case _ => Task.unit
+    }
+  }
+
+  /** Increment [[Conversation.cost]] for a settled [[Message]] whose
+    * `modelId` is known to the [[sigil.cache.ModelRegistry]].
+    *
+    * Math: per-token pricing × token counts (USD). Cache miss or
+    * `modelId = None` → no-op (the Message contributes zero). On a
+    * non-zero delta, publishes a
+    * [[sigil.signal.ConversationCostUpdated]] Notice carrying the new
+    * running total + the per-Message delta. */
+  private final def applyMessageCostToConversation(m: Message): Task[Unit] = {
+    val deltaOpt: Option[BigDecimal] = m.modelId.flatMap { mid =>
+      cache.find(mid).map { model =>
+        val pricing = model.pricing
+        val u = m.usage
+        pricing.prompt * u.promptTokens + pricing.completion * u.completionTokens
+      }
+    }.filter(_ > 0)
+    deltaOpt match {
+      case None => Task.unit
+      case Some(delta) =>
+        withDB(_.conversations.transaction(_.modify(m.conversationId) {
+          case None => Task.pure(None)
+          case Some(conv) =>
+            Task.pure(Some(conv.copy(cost = conv.cost + delta, modified = Timestamp(Nowish()))))
+        })).flatMap {
+          case Some(updated) =>
+            publish(sigil.signal.ConversationCostUpdated(
+              conversationId = updated._id,
+              cost = updated.cost,
+              delta = delta
+            ))
+          case None => Task.unit
+        }
     }
   }
 

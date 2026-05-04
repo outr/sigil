@@ -5,6 +5,7 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import sigil.conversation.{Conversation, Topic}
+import sigil.db.Model
 import sigil.participant.ParticipantId
 import sigil.provider.TokenUsage
 import sigil.signal.EventState
@@ -40,12 +41,21 @@ import sigil.tool.model.ResponseContent
  * admin/system events (`TitleUpdated`, `Deleted`, `ErrorOccurred`) have
  * weak-to-meaningless geo semantics. If more event subtypes need geo
  * later, promote via a `Geolocated` mixin rather than widening `Event`.
+ *
+ * `modelId` records the model that produced this Message — set on Messages
+ * authored by a provider call (the orchestrator stamps it from the
+ * resolved `ConversationRequest.modelId`, which already accounts for any
+ * `ProviderStrategy.routed` candidate selection). Left `None` on
+ * Messages the framework synthesizes (user input, tool results,
+ * diagnostics, image-only outputs without a token cost). Drives the
+ * per-conversation `Conversation.cost` projection.
  */
 case class Message(participantId: ParticipantId,
                    conversationId: Id[Conversation],
                    topicId: Id[Topic],
                    content: Vector[ResponseContent] = Vector.empty,
                    usage: TokenUsage = TokenUsage(0, 0, 0),
+                   modelId: Option[Id[Model]] = None,
                    state: EventState = EventState.Active,
                    timestamp: Timestamp = Timestamp(Nowish()),
                    location: Option[Place] = None,

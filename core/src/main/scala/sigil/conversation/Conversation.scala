@@ -44,6 +44,16 @@ import sigil.provider.{ConversationMode, Mode}
  * `Sigil.newConversation` bootstraps an initial entry so `topics.last`
  * always resolves.
  *
+ * `cost` is a running total in USD across every settled [[Message]]
+ * whose [[sigil.event.Message.modelId]] resolves to a known
+ * [[sigil.db.Model]] in the [[sigil.cache.ModelRegistry]]. Maintained
+ * by the framework's projection step on `Sigil.publish`; callers
+ * never set it directly. Messages with `modelId = None` (user input,
+ * tool results) and Messages whose model is unknown to the registry
+ * contribute zero. Each increment fires a
+ * [[sigil.signal.ConversationCostUpdated]] Notice carrying the new
+ * total plus the per-Message delta.
+ *
  * `RecordDocument` brings `created` / `modified` timestamps — useful for
  * "last activity" sorting in UIs.
  */
@@ -53,6 +63,7 @@ case class Conversation(topics: List[TopicEntry],
                         space: SpaceId = GlobalSpace,
                         currentKeywords: Vector[String] = Vector.empty,
                         clearedAt: Option[Timestamp] = None,
+                        cost: BigDecimal = BigDecimal(0),
                         created: Timestamp = Timestamp(),
                         modified: Timestamp = Timestamp(),
                         _id: Id[Conversation] = Conversation.id())

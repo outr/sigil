@@ -234,6 +234,7 @@ object Orchestrator {
               conversationId = convId,
               topicId = topicId,
               content = Vector.empty,
+              modelId = Some(request.modelId),
               _id = id,
               state = EventState.Active
             )
@@ -408,6 +409,7 @@ object Orchestrator {
                   conversationId = convId,
                   topicId = topicId,
                   content = Vector(ResponseContent.Image(url = url)),
+                  modelId = Some(request.modelId),
                   state = EventState.Active
                 )
                 state.imageMessageIds = state.imageMessageIds + (callId.value -> message._id)
@@ -436,6 +438,7 @@ object Orchestrator {
                     conversationId = convId,
                     topicId = topicId,
                     content = Vector(ResponseContent.Image(url = url)),
+                    modelId = Some(request.modelId),
                     state = EventState.Complete
                   )
                 ))
