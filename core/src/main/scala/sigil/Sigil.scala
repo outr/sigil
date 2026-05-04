@@ -518,9 +518,37 @@ trait Sigil {
       .take(findModesMaxResults)
   }
 
-  /** The set of [[SpaceId]]s the caller chain is authorized to see —
-    * used to filter `find_capability` results. Default empty
-    * (fail-closed). Apps override with their own policy. */
+  /** The set of [[SpaceId]]s the caller chain is authorized to see in
+    * the context of `conversationId` — used to filter `find_capability`
+    * results, scope memory retrieval, gate `lookup`, etc. Apps that
+    * need per-conversation space scoping (per-workspace memory pools,
+    * per-tenant isolation in multi-tenant apps, per-topic spaces)
+    * override THIS method and use `conversationId` to select the right
+    * scope.
+    *
+    * Default delegates to the conversation-agnostic
+    * [[accessibleSpaces(chain)]] for backward compatibility — apps
+    * that previously overrode the single-arg method continue to work.
+    *
+    * Bug #77: prior to this signature, the conversation context wasn't
+    * available at access-decision time, so apps either side-stored
+    * "active workspace per chain participant" (brittle — one
+    * participant has many concurrent conversations) or returned every
+    * conceivable space (over-shared across conversations). Both
+    * workarounds are wrong; the framework should let the app decide
+    * based on the actual conversation that's running.
+    */
+  def accessibleSpaces(chain: List[ParticipantId],
+                       conversationId: Id[Conversation]): Task[Set[SpaceId]] =
+    accessibleSpaces(chain)
+
+  /** Conversation-agnostic access set — used by admin paths that
+    * don't run inside a conversation (storedFile lookups, provider-
+    * config reads, viewer-scoped tool listings). Apps without
+    * per-conversation scoping override this single hook and the
+    * two-arg [[accessibleSpaces(chain, conversationId)]] inherits
+    * the same set for every conversation by default. Default empty
+    * (fail-closed). */
   def accessibleSpaces(chain: List[ParticipantId]): Task[Set[SpaceId]] =
     Task.pure(Set.empty)
 
@@ -1096,7 +1124,7 @@ trait Sigil {
         // `list_memories` to an agent that has nowhere to write
         // would just waste tokens on tool descriptions the agent
         // would fail to use.
-        accessible  <- accessibleSpaces(effectiveChain)
+        accessible  <- accessibleSpaces(effectiveChain, context.conversation.id)
         t            = if (accessible.isEmpty) rawTools.filterNot(_.requiresAccessibleSpaces)
                         else rawTools
         // Resolve the agent's roles for this turn. Static agents return
@@ -2446,7 +2474,10 @@ trait Sigil {
       case None => Task.pure(memory)
       case Some(modelId) =>
         for {
-          accessible <- accessibleSpaces(chain).map(_ + GlobalSpace)
+          accessible <- memory.conversationId match {
+                          case Some(convId) => accessibleSpaces(chain, convId).map(_ + GlobalSpace)
+                          case None         => accessibleSpaces(chain).map(_ + GlobalSpace)
+                        }
           recentMsg  <- recentUserMessageText(memory.conversationId)
           enriched   <- runMemoryClassifier(memory, chain, modelId, accessible, recentMsg)
         } yield enriched

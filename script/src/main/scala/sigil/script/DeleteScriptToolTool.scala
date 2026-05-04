@@ -24,7 +24,7 @@ case object DeleteScriptToolTool extends TypedTool[DeleteScriptToolInput](
 ) {
   override protected def executeTyped(input: DeleteScriptToolInput,
                                       context: TurnContext): Stream[Event] = Stream.force(
-    context.sigil.accessibleSpaces(context.chain).flatMap { accessible =>
+    context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       context.sigil.withDB(_.tools.transaction { tx =>
         tx.query.filter(_.toolName === input.name).toList.map(_.headOption).flatMap {
           case None =>

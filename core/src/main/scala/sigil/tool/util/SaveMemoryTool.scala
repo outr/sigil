@@ -97,7 +97,7 @@ final class SaveMemoryTool(space: SpaceId,
   private def resolveSpace(hint: Option[String], ctx: TurnContext): rapid.Task[SpaceId] = hint match {
     case None => rapid.Task.pure(space)
     case Some(value) =>
-      ctx.sigil.accessibleSpaces(ctx.chain).map { accessible =>
+      ctx.sigil.accessibleSpaces(ctx.chain, ctx.conversation.id).map { accessible =>
         accessible.find(_.value == value.trim).getOrElse(space)
       }
   }

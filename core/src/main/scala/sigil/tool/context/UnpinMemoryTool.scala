@@ -49,7 +49,7 @@ case object UnpinMemoryTool extends TypedTool[UnpinMemoryInput](
     })
 
   private def unpin(input: UnpinMemoryInput, context: TurnContext): Task[String] =
-    context.sigil.accessibleSpaces(context.chain).flatMap { accessible =>
+    context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       val effective = input.space.map(s => Set(s).intersect(accessible)).getOrElse(accessible)
       if (effective.isEmpty)
         Task.pure(s"[unpin_memory] no accessible memory spaces; cannot unpin '${input.key}'.")

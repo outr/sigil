@@ -40,14 +40,6 @@ import java.util.concurrent.atomic.AtomicReference
  * opt for stub responses via `context.sigil.testMode`.
  */
 object TestSigil extends Sigil {
-  // Route the test JVM through `FixedThreadPoolFiber` instead of
-  // `VirtualThreadFiber` → `SynchronousFiber`, bypassing the
-  // SynchronousFiber state-machine race that causes intermittent
-  // ClassCastExceptions on CI (see rapid issue + Completable.onComplete
-  // sync-callback diagnosis). Side benefit: FixedThreadPoolFiber
-  // tends to be faster on test workloads.
-  rapid.Task.Virtual = false
-
   override type DB = sigil.db.DefaultSigilDB
   override protected def buildDB(directory: Option[java.nio.file.Path],
                                   storeManager: lightdb.store.CollectionManager,

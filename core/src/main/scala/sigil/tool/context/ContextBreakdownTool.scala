@@ -47,7 +47,7 @@ case object ContextBreakdownTool extends TypedTool[ContextBreakdownInput](
     })
 
   private def breakdown(context: TurnContext): Task[String] =
-    context.sigil.accessibleSpaces(context.chain).flatMap { spaces =>
+    context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { spaces =>
       val critTask = if (spaces.isEmpty) Task.pure(List.empty[ContextMemory])
                      else context.sigil.findCriticalMemories(spaces)
       critTask.map { criticals =>
