@@ -25,6 +25,10 @@ case object TestProjectSpace extends SpaceId {
 }
 
 object TestScriptSigil extends Sigil with ScriptSigil {
+  // See `core/.../TestSigil.scala` — bypass SynchronousFiber via
+  // FixedThreadPoolFiber to dodge the rapid fiber-runtime flake.
+  rapid.Task.Virtual = false
+
   override type DB = DefaultSigilDB
 
   override protected def buildDB(directory: Option[Path],

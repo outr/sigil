@@ -134,6 +134,10 @@ object WorkflowTestTopic {
   * uses Sigil's default DB layout under a per-suite path, no
   * real provider, no participants list except the test user. */
 object TestWorkflowSigil extends Sigil with WorkflowSigil {
+  // See `core/.../TestSigil.scala` — bypass SynchronousFiber via
+  // FixedThreadPoolFiber to dodge the rapid fiber-runtime flake.
+  rapid.Task.Virtual = false
+
   override type DB = TestWorkflowDB
 
   override protected def buildDB(directory: Option[java.nio.file.Path],

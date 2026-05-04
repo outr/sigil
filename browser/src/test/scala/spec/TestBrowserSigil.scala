@@ -43,6 +43,10 @@ class TestBrowserDB(directory: Option[Path],
   * gate themselves on Chrome availability and self-skip when not
   * present. */
 object TestBrowserSigil extends Sigil with BrowserSigil {
+  // See `core/.../TestSigil.scala` — bypass SynchronousFiber via
+  // FixedThreadPoolFiber to dodge the rapid fiber-runtime flake.
+  rapid.Task.Virtual = false
+
   override type DB = TestBrowserDB
 
   override protected def buildDB(directory: Option[Path],

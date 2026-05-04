@@ -39,6 +39,10 @@ class TestMetalsDB(directory: Option[Path],
   *     [[setIdleTimeout]] so the idle-reap behavior can be exercised
   *     without waiting fifteen real minutes. */
 object TestMetalsSigil extends Sigil with MetalsSigil {
+  // See `core/.../TestSigil.scala` — bypass SynchronousFiber via
+  // FixedThreadPoolFiber to dodge the rapid fiber-runtime flake.
+  rapid.Task.Virtual = false
+
   override type DB = TestMetalsDB
   override protected def buildDB(directory: Option[Path],
                                   storeManager: CollectionManager,

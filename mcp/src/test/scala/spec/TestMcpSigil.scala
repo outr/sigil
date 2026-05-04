@@ -28,6 +28,10 @@ class TestMcpDB(directory: Option[Path],
     with McpCollections
 
 object TestMcpSigil extends Sigil with McpSigil {
+  // See `core/.../TestSigil.scala` — bypass SynchronousFiber via
+  // FixedThreadPoolFiber to dodge the rapid fiber-runtime flake.
+  rapid.Task.Virtual = false
+
   override type DB = TestMcpDB
   override protected def buildDB(directory: Option[Path],
                                   storeManager: CollectionManager,
