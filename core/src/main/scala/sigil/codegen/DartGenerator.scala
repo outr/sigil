@@ -21,9 +21,11 @@ import java.nio.file.{Path, Paths}
  *     Sigil's wire vocabulary is Signals; consumers shouldn't be picking
  *     a different wire type.
  *   - sets `durableSubtypes` to [[Sigil.eventSubtypeNames]] so the
- *     generator knows which Signal subtypes ride the durable channel
- *     (everything that's an `Event`) vs. the ephemeral one (Deltas,
- *     Notices).
+ *     generator knows which Signal subtypes are replayable on resume
+ *     (everything that's an `Event` — those persist to
+ *     `SigilDB.events`). Deltas and Notices ride the same durable
+ *     wire channel as Events but aren't replayed across server
+ *     restart; the codegen flags them so clients reconcile correctly.
  *
  * Apps invoke from a small `runMain` shim:
  *

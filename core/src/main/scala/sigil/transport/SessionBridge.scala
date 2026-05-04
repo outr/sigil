@@ -6,7 +6,6 @@ import lightdb.id.Id
 import rapid.Task
 import sigil.Sigil
 import sigil.conversation.Conversation
-import sigil.event.Event
 import sigil.participant.ParticipantId
 import sigil.signal.{Notice, Signal}
 import spice.http.durable.DurableSession
@@ -16,12 +15,15 @@ import spice.http.durable.DurableSession
  *
  *   - **Outbound (server → client)** — attaches a
  *     [[DurableSocketSink]] subscribed to the session's `channelId`,
- *     viewer-filtered through `signalsFor`. Events ride the durable
- *     channel; Deltas ride ephemeral.
+ *     viewer-filtered through `signalsFor`. Every Signal subtype
+ *     (Event, Delta, Notice) rides the durable channel via
+ *     `protocol.push` — sequenced, ack-tracked, and replayable from
+ *     spice's outbound ring on within-session reconnect.
  *   - **Inbound (client → server)** — wires `protocol.onEvent` so
- *     client-pushed Events flow into `sigil.publish`. Failures are
- *     logged at WARN and skipped; one bad event doesn't tear down
- *     the channel.
+ *     client-pushed Signals flow into `sigil.publish`. (Sigil's
+ *     publish pipeline accepts any Signal and routes per subtype.)
+ *     Failures are logged at WARN and skipped; one bad signal
+ *     doesn't tear down the channel.
  *   - **Ephemeral inbound** — by default warn-logged because
  *     Sigil's wire vocabulary is Signals only. Apps that want to
  *     handle non-Signal ephemeral traffic (heartbeats, ping/pong,
@@ -108,7 +110,7 @@ object SessionBridge {
     *                        entirely (live-only).
     */
   def attach[Info: RW](sigil: Sigil,
-                       session: DurableSession[Id[Conversation], Event, Info],
+                       session: DurableSession[Id[Conversation], Signal, Info],
                        viewer: ParticipantId,
                        onSessionStart: Id[Conversation] => Task[Unit] = (_: Id[Conversation]) => Task.unit,
                        onEphemeral: Option[Json => Task[Unit]] = None,
@@ -126,13 +128,16 @@ object SessionBridge {
       onSessionStart(convId)
     }.flatMap { _ =>
       Task {
-        // Inbound: client-pushed Events → sigil.publish.
-        session.protocol.onEvent.attach { case (seq, event) =>
+        // Inbound: client-pushed Signals → sigil.publish. The
+        // durable channel's onEvent receives Signal (the channel is
+        // typed over the full sum), and `Sigil.publish` accepts the
+        // full Signal sum and dispatches per subtype internally.
+        session.protocol.onEvent.attach { case (seq, signal) =>
           sigil
-            .publish(event)
+            .publish(signal)
             .handleError(t => Task {
               scribe.warn(
-                s"SessionBridge: publish failed for inbound event seq=$seq on ${convId}: ${t.getMessage}", t
+                s"SessionBridge: publish failed for inbound signal seq=$seq on ${convId}: ${t.getMessage}", t
               )
             })
             .start()

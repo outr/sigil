@@ -7,7 +7,7 @@ import sigil.Sigil
 import sigil.conversation.{Conversation, Topic}
 import sigil.event.{AgentState, Event, Message}
 import sigil.participant.ParticipantId
-import sigil.signal.EventState
+import sigil.signal.{EventState, Signal}
 import sigil.tool.model.ResponseContent
 import spice.http.durable.DurableSocketClient
 
@@ -27,7 +27,7 @@ final class ConversationSession(sigil: Sigil,
                                 viewer: ParticipantId,
                                 agentIds: Set[ParticipantId],
                                 topicId: Id[Topic],
-                                val client: DurableSocketClient[Id[Conversation], Event, String],
+                                val client: DurableSocketClient[Id[Conversation], Signal, String],
                                 val convId: Id[Conversation],
                                 val received: ConversationSession.Received) {
 

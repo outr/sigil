@@ -5,8 +5,8 @@ import lightdb.id.Id
 import rapid.Task
 import sigil.Sigil
 import sigil.conversation.Conversation
-import sigil.event.Event
 import sigil.participant.ParticipantId
+import sigil.signal.Signal
 import spice.http.durable.{DurableSocketConfig, DurableSocketServer, ReconnectStrategy}
 import spice.http.server.MutableHttpServer
 import spice.http.server.config.HttpServerListener
@@ -105,8 +105,8 @@ final class WsServer[Info: RW](sigil: Sigil,
   /** The DurableSocket server. Public so apps can poke at sessions /
     * channels for advanced scenarios (custom resume flows, channel
     * introspection). */
-  val durableServer: DurableSocketServer[Id[Conversation], Event, Info] =
-    new DurableSocketServer[Id[Conversation], Event, Info](
+  val durableServer: DurableSocketServer[Id[Conversation], Signal, Info] =
+    new DurableSocketServer[Id[Conversation], Signal, Info](
       config = config,
       eventLog = sigil.eventLog,
       resolveChannel = resolveChannel

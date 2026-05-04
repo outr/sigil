@@ -52,8 +52,15 @@ ThisBuild / evictionErrorLevel := Level.Info
 // links still break, the warning is the only artifact). Pass scaladoc's
 // `-no-link-warnings` flag to silence them so `publishLocal` and
 // `Compile/doc` produce clean output. Real code warnings still surface.
+//
+// Scala 3 scaladoc forks its own JVM that doesn't inherit
+// `ThisBuild / javaOptions`. `publishLocal` triggers `doc` per
+// aggregated module — give the fork a real heap so a large module
+// (`core`, `browser`) doesn't OOM mid-doc with the default 1g.
 val docNoLinkWarnings: Seq[Setting[?]] = Seq(
-  Compile / doc / scalacOptions += "-no-link-warnings"
+  Compile / doc / scalacOptions += "-no-link-warnings",
+  Compile / doc / fork := true,
+  Compile / doc / javaOptions ++= Seq("-Xmx8g", "-Xss4m", "-XX:MaxMetaspaceSize=2g")
 )
 
 lazy val root = (project in file("."))

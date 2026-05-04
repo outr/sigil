@@ -6,19 +6,25 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.conversation.Conversation
-import sigil.event.{Event, Message}
-import sigil.signal.EventState
+import sigil.event.Message
+import sigil.signal.{ContentKind, EventState, MessageContentDelta, MessageDelta}
 import sigil.tool.model.ResponseContent
 import sigil.transport.SigilDbEventLog
 
 /**
  * Coverage for the `EventLog` adapter that surfaces `SigilDB.events`
- * to spice's `DurableSocketServer`. Verifies:
+ * to spice's `DurableSocketServer`. The wire channel is typed over
+ * the full [[sigil.signal.Signal]] sum, so this log accepts every
+ * subtype on `append` even though only Events durably persist.
  *
- *   - `append` is a no-op on the persistence side and returns the
- *     event's `timestamp.value` as the seq.
- *   - `replay` filters by conversationId, returns only events newer
- *     than the cursor, and pairs them with their timestamps.
+ *   - `append` returns a strictly-monotonic per-channel seq, biased
+ *     toward `event.timestamp.value` for Events and
+ *     `System.currentTimeMillis()` for Deltas / Notices. Persistence
+ *     is a no-op (Events already reach `SigilDB.events` through
+ *     `Sigil.publish` ahead of this layer).
+ *   - `replay` filters by conversationId + `timestamp > afterSeq`
+ *     and returns Events only — Deltas / Notices are not durably
+ *     replayable across server restart.
  */
 class SigilDbEventLogSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -39,20 +45,36 @@ class SigilDbEventLogSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     )
 
   "SigilDbEventLog.append" should {
-    "return event.timestamp.value as the seq without writing again" in {
+    "use event.timestamp.value as the seq without writing" in {
       val convId = freshConv("append")
       val event = msg(convId, 4242L, "doesnt matter")
       for {
-        // The event is NOT pre-persisted — we want to assert append doesn't
-        // accidentally write either.
         seq <- log.append(convId, event)
-        // SigilDB.events should still NOT contain the event after append.
         existing <- TestSigil.withDB(_.events.transaction(_.list)).map { all =>
           all.exists(_._id == event._id)
         }
       } yield {
         seq shouldBe 4242L
         existing shouldBe false
+      }
+    }
+
+    "produce a strictly monotonic seq for Deltas and Notices on the same channel" in {
+      val convId = freshConv("monotonic")
+      val ev = msg(convId, 1000L, "anchor")
+      val delta = MessageDelta(
+        target = ev._id,
+        conversationId = convId,
+        content = Some(MessageContentDelta(kind = ContentKind.Text, arg = None, complete = false, delta = "x"))
+      )
+      for {
+        s1 <- log.append(convId, ev)
+        s2 <- log.append(convId, delta)
+        s3 <- log.append(convId, delta)
+      } yield {
+        s1 shouldBe 1000L
+        s2 should be > s1
+        s3 should be > s2
       }
     }
   }
@@ -69,7 +91,6 @@ class SigilDbEventLogSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         _ <- TestSigil.publish(msg(convB, 250L, "b-noise"))
         replayed <- log.replay(convA, afterSeq = 150L)
       } yield {
-        // Only convA's a-mid (200) and a-new (300) qualify.
         val texts = replayed.collect { case (seq, m: Message) =>
           (seq, m.content.collect { case ResponseContent.Text(t) => t }.mkString)
         }
