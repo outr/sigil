@@ -7,6 +7,7 @@ import sigil.Sigil
 import sigil.conversation.Conversation
 import sigil.event.Event
 import sigil.participant.{AgentParticipant, ParticipantId}
+import sigil.signal.Signal
 import sigil.transport.SessionBridge
 import spice.http.client.HttpClient
 import spice.http.durable.{DurableSocketClient, DurableSocketConfig, DurableSocketServer, ReconnectStrategy}
@@ -64,8 +65,8 @@ final class ConversationHarness(sigil: Sigil,
 
   /** The DurableSocket server. Public so apps can poke at sessions /
     * channels for advanced scenarios (custom resume flows, etc.). */
-  lazy val durableServer: DurableSocketServer[Id[Conversation], Event, String] =
-    new DurableSocketServer[Id[Conversation], Event, String](
+  lazy val durableServer: DurableSocketServer[Id[Conversation], Signal, String] =
+    new DurableSocketServer[Id[Conversation], Signal, String](
       config = DurableSocketConfig(ackBatchDelay = 50.millis, reconnectStrategy = ReconnectStrategy.none),
       eventLog = sigil.eventLog,
       // `info` carries the conversationId string supplied at connect time.
@@ -134,7 +135,7 @@ final class ConversationHarness(sigil: Sigil,
     for {
       _ <- sigil.withDB(_.conversations.transaction(_.upsert(convo)))
       received = new ConversationSession.Received
-      client = new DurableSocketClient[Id[Conversation], Event, String](
+      client = new DurableSocketClient[Id[Conversation], Signal, String](
         createWebSocket = () => HttpClient.url(url"ws://localhost".withPort(serverPort).withPath(path"/ws")).webSocket(),
         config = DurableSocketConfig(ackBatchDelay = 50.millis, reconnectStrategy = ReconnectStrategy.none),
         outboundLog = sigil.eventLog,
@@ -142,7 +143,13 @@ final class ConversationHarness(sigil: Sigil,
         info = convId.value,
         clientId = clientId
       )
-      _ = client.onEvent.attach { case (_, e) => received.add(e) }
+      _ = client.onEvent.attach {
+        // The wire channel now carries the full Signal sum. Tests
+        // inspect settled state via `received`, which only collects
+        // Events; Deltas / Notices stream past unobserved here.
+        case (_, e: Event) => received.add(e)
+        case _             => ()
+      }
       _ <- client.connect()
       _ <- awaitSessionReady(clientId)
       // Settle a moment for the server's SignalTransport subscription

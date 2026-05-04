@@ -12,8 +12,9 @@ import rapid.AsyncTaskSpec
  *
  * Before the fix, `summon[RW[Event]].definition` (cast from
  * `RW[Signal]`) returned every Signal subtype regardless of tier, so
- * downstream consumers had no way to ask "which subtypes are durable
- * Events vs ephemeral Notices/Deltas?" without hardcoding the answer.
+ * downstream consumers had no way to ask "which subtypes replay across
+ * reconnect (Events) vs which are live-only (Notices / Deltas)?"
+ * without hardcoding the answer.
  */
 class SubtypeNameRegistrySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
