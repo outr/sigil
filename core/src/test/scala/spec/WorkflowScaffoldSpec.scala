@@ -45,7 +45,21 @@ class WorkflowScaffoldSpec extends AnyWordSpec with Matchers {
     summon[RW[ParallelStepInput]],
     summon[RW[LoopStepInput]],
     summon[RW[SubWorkflowStepInput]],
-    summon[RW[TriggerStepInput]]
+    summon[RW[TriggerStepInput]],
+    summon[RW[AgentDecisionStepInput]]
+  )
+
+  // Role.workType requires the open WorkType polytype to know its
+  // framework subtypes. WorkflowSigil normally registers these via
+  // Sigil.polymorphicRegistrations; doing it manually here keeps the
+  // scaffold spec self-contained.
+  sigil.provider.WorkType.register(
+    RW.static[sigil.provider.WorkType](sigil.provider.ConversationWork),
+    RW.static[sigil.provider.WorkType](sigil.provider.CodingWork),
+    RW.static[sigil.provider.WorkType](sigil.provider.AnalysisWork),
+    RW.static[sigil.provider.WorkType](sigil.provider.ClassificationWork),
+    RW.static[sigil.provider.WorkType](sigil.provider.CreativeWork),
+    RW.static[sigil.provider.WorkType](sigil.provider.SummarizationWork)
   )
 
   private def roundTrip[T: RW](value: T): Unit = {
@@ -130,6 +144,20 @@ class WorkflowScaffoldSpec extends AnyWordSpec with Matchers {
       roundTrip[WorkflowStepInput](TriggerStepInput(
         id = "wait",
         trigger = TimeTrigger(intervalMs = Some(30000L))
+      ))
+    }
+    "round-trip AgentDecisionStepInput carrying the worker's role + brief" in {
+      import sigil.role.Role
+      import sigil.provider.AnalysisWork
+      roundTrip[WorkflowStepInput](AgentDecisionStepInput(
+        id = "decision",
+        role = Role(
+          name = "researcher",
+          description = "Research the user's question and synthesize an answer.",
+          workType = AnalysisWork
+        ),
+        brief = "Find recent papers on retrieval-augmented generation",
+        modelId = "anthropic/claude-sonnet-4-6"
       ))
     }
   }
