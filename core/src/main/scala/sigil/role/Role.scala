@@ -2,6 +2,7 @@ package sigil.role
 
 import fabric.rw.*
 import sigil.conversation.ActiveSkillSlot
+import sigil.provider.{ConversationWork, WorkType}
 
 /**
  * Atomic role assignment carried by an [[sigil.participant.AgentParticipant]].
@@ -10,7 +11,7 @@ import sigil.conversation.ActiveSkillSlot
  * Role is the agent-level identity — assigned at construction,
  * immutable for the agent's lifetime.
  *
- * A `Role` contributes two things to the agent's system prompt:
+ * A `Role` contributes three things:
  *   - `description` — the role's scope/identity statement ("You plan
  *     tasks, decompose user goals, and reason about ordering"). Renders
  *     into the system prompt's role-scope section.
@@ -18,6 +19,15 @@ import sigil.conversation.ActiveSkillSlot
  *     atomic capability text the model should keep in mind. When set,
  *     it's appended to the participant projection's "Active skills"
  *     section under [[sigil.conversation.SkillSource.Role]].
+ *   - `workType` — the [[sigil.provider.WorkType]] the role's work
+ *     falls under. Worker-delegation flows pick the spawning agent's
+ *     [[sigil.participant.AgentParticipant.workType]] from the role's
+ *     declaration, so a research worker (analysis) and a code worker
+ *     (coding) route through `ProviderStrategy.routed` to the
+ *     appropriate model chain. Multi-role agents in regular
+ *     conversations use the agent's own `workType` (the role's value
+ *     is consulted only at delegation time). Defaults to
+ *     [[ConversationWork]] — sensible for a generalist.
  *
  * Roles are pure data — case class, fabric RW round-trips trivially.
  *
@@ -39,4 +49,5 @@ import sigil.conversation.ActiveSkillSlot
  */
 case class Role(name: String,
                 description: String,
-                skill: Option[ActiveSkillSlot] = None) derives RW
+                skill: Option[ActiveSkillSlot] = None,
+                workType: WorkType = ConversationWork) derives RW
