@@ -54,6 +54,23 @@ import sigil.provider.{ConversationMode, Mode}
  * [[sigil.signal.ConversationCostUpdated]] Notice carrying the new
  * total plus the per-Message delta.
  *
+ * `parentConversationId`, when set, points at the conversation that
+ * spawned this one — typically the user-facing conversation that
+ * delegated work into a worker scratchpad conversation. The framework
+ * uses this for sub-conversation cost rollup ("total cost for this
+ * top-level conversation" sums own `cost` plus every transitively
+ * descendant child's `cost`) and for UI drill-down (clicking into a
+ * worker's history navigates from the user-facing conv to its
+ * children). `None` for top-level conversations.
+ *
+ * `archived = true` soft-hides the conversation from default
+ * listings without deleting it. The framework sets this when a
+ * worker conversation's owning workflow run settles (the worker's
+ * scratchpad is no longer "live" but the audit trail stays
+ * queryable). Apps' default conversation queries should filter
+ * `archived === false`; explicit drill-down still resolves
+ * archived conversations.
+ *
  * `RecordDocument` brings `created` / `modified` timestamps — useful for
  * "last activity" sorting in UIs.
  */
@@ -64,6 +81,8 @@ case class Conversation(topics: List[TopicEntry],
                         currentKeywords: Vector[String] = Vector.empty,
                         clearedAt: Option[Timestamp] = None,
                         cost: BigDecimal = BigDecimal(0),
+                        parentConversationId: Option[Id[Conversation]] = None,
+                        archived: Boolean = false,
                         created: Timestamp = Timestamp(),
                         modified: Timestamp = Timestamp(),
                         _id: Id[Conversation] = Conversation.id())
