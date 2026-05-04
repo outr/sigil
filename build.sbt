@@ -29,7 +29,7 @@ val bsp4jVersion: String = "2.2.0-M4.TEST"
 
 val lsp4jDebugVersion: String = "1.0.0"
 
-val striderVersion: String = "1.0.2"
+val striderVersion: String = "1.0.3-SNAPSHOT1"
 
 val jtokkitVersion: String = "1.1.0"
 
