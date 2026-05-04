@@ -40,17 +40,6 @@ import java.util.concurrent.atomic.AtomicReference
  * opt for stub responses via `context.sigil.testMode`.
  */
 object TestSigil extends Sigil {
-  // Disable rapid's source-location tracing across the whole test JVM.
-  // The traced FlatMap path inside `SynchronousFiber.handle` boxes the
-  // continuation as `(Function1, Trace)` and dispatches via line 169's
-  // tuple match — a path that intermittently produces ClassCastException
-  // / MatchError(null) on CI under JIT pressure (different spec aborts
-  // on each run). The non-traced path at line 159 (plain Function1) is
-  // stable. Trade-off: thinner stack frames on test failures; gain:
-  // non-flaky CI. Flipped at object-init time so every Task constructed
-  // by TestSigil downstream sees `Trace.Enabled = false`.
-  rapid.trace.Trace.Enabled = false
-
   override type DB = sigil.db.DefaultSigilDB
   override protected def buildDB(directory: Option[java.nio.file.Path],
                                   storeManager: lightdb.store.CollectionManager,
