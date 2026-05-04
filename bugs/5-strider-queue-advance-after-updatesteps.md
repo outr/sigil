@@ -28,40 +28,70 @@ preserved if you want to repro: same shape as `LlamaCppWorkerSpec`'s
 existing test but with a brief that forces the LLM to emit
 `AskParent:` first.
 
-**What I think is happening:** Inside the current step's `execute`,
-`updateSteps` runs and rebuilds the queue. At that moment the current
-step is NOT in `wf.completed` yet (we're still inside execute), so the
-new queue includes the current step's id at the front — `[currentId,
-TriggerId, NextDecisionId]`. After the step settles, Strider:
+**Root cause (after investigation):** LightDB transaction isolation.
 
-  1. Adds `currentId` to `completed`.
-  2. Picks the next step from `queue`. If it pops the front (which is
-     `currentId`, now in completed) and treats it as "done, don't run
-     again", then it might also conclude the workflow has no remaining
-     work and finish.
+Strider's `executeWorkflow` runs inside one long-lived transaction
+(`txn`) that the runner threads through `recurseWorkflow` →
+`executeJob` → step's `execute`. Reads on that transaction see its
+own snapshot.
 
-OR: Strider's runner stamps the workflow's queue snapshot when it
-begins a step and ignores mid-execute mutations until the step
-finishes. So `updateSteps`'s queue change is effectively dropped.
+Our `updateSteps`-from-execute call opens a **separate** transaction:
 
-Either way, the real fix is one of:
+```scala
+def updateSteps(workflowId, newSteps): Task[Workflow] =
+  collection.transaction { txn =>  // NEW transaction
+    modify(workflowId, txn) { wf => ... }
+  }
+```
 
-  - **Filter the current step's id out of the new queue ourselves**:
-    `newSteps.map(_.id).filterNot(_ == currentStepId).filterNot(wf.completed.contains)`
-    so the queue Strider re-reads only contains genuinely-pending ids.
-    (Belt-and-suspenders; doesn't help if Strider snapshots the queue.)
-  - **Defer the `updateSteps` call to AFTER the step's `execute`
-    returns**. Strider would need a hook for "I'm settling and want to
-    append these steps next." The closest existing hook is
-    `manager.onStepCompleted`, but that's fire-and-forget — doesn't
-    accept new step inputs.
-  - **Inspect Strider's runner more carefully**. Maybe there's an
-    existing affordance — `runNextScheduled` / queue-pop semantics —
-    that we just need to use correctly. The unit-tested
-    `AbstractWorkflowManager#updateSteps` IS designed for live edits
-    (it has `propagateChanges` / `resolveConflict` for the case where
-    completed steps changed). Maybe the issue is just that the
-    in-execute call interleaves badly with the runner's loop.
+It writes the new queue and commits. But the runner's long-lived
+transaction is still alive and reads its own snapshot — which has
+the OLD queue (just the original step). After the current step
+settles, the runner's `recurseWorkflow` checks
+`workflow.queue.nonEmpty` against the snapshot, sees it empty, and
+returns. `executeWorkflow` (line 497) then runs:
+
+```scala
+addHistory(workflow._id, WorkflowActivity.Completed(true), txn)
+  .when(!wf.finished && wf.waitingStepId.isEmpty)
+```
+
+The workflow gets marked Completed(true) before the new steps are
+even visible. Game over.
+
+The single-shot Complete: case works because the worker terminates
+INSIDE the first execute (no `updateSteps` call) — the runner's
+"queue is empty, complete the workflow" path is correct for that
+shape.
+
+**Fix avenues:**
+
+  - **Pass the runner's `txn` into the step's execute** — Strider
+    would need to extend `Job[T].execute(workflow, pm)` to
+    `execute(workflow, pm, txn)`. The step could then call a
+    `manager.updateStepsIn(txn, runId, newSteps)` overload that
+    uses the SAME transaction. Real Strider API surface change.
+  - **Don't use updateSteps from execute; use a runner hook
+    instead.** Have `AgentDecisionStep` return a special "append
+    these steps" payload, and override `onStepCompleted` in
+    `SigilWorkflowManager` to detect the payload + call updateSteps
+    AFTER the runner's transaction completes. But onStepCompleted
+    runs inside `flatTap` between modify and recurseWorkflow —
+    same transaction, same issue.
+  - **Run AgentDecisionStep iterations as separate workflow runs
+    chained via SubWorkflow / Trigger.** Each iteration is its own
+    run that schedules the next one on completion. Heavier shape;
+    each iteration loses access to the ambient run state (variable
+    bag, payloads, etc.).
+  - **Fix at Strider layer** by making the runner re-read the
+    workflow row after each step. Adds a DB read per step but
+    makes mid-execute mutations honor-able.
+
+I lean on the first option (txn parameter on execute) — most
+direct fix, smallest API surface change, makes the architectural
+intent explicit ("steps can mutate the workflow within their own
+execution boundary"). It's a Strider release coupled with a Sigil
+release; ~half-day of work spread across both repos.
 
 **Suggested fix:** Investigate Strider's queue-iteration logic. Possible
 work breakdown:
