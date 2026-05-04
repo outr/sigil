@@ -94,7 +94,8 @@ trait WorkflowSigil extends Sigil {
     summon[RW[ParallelStepInput]],
     summon[RW[LoopStepInput]],
     summon[RW[SubWorkflowStepInput]],
-    summon[RW[TriggerStepInput]]
+    summon[RW[TriggerStepInput]],
+    summon[RW[AgentDecisionStepInput]]
   ) ++ workflowStepInputRegistrations)*)
 
   /** Override to point the Strider engine at a specific directory.

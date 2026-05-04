@@ -56,6 +56,11 @@ object WorkflowStepInputCompiler {
         register(j.id, step)
         step.id
 
+      case a: AgentDecisionStepInput =>
+        val step = SigilAgentDecisionStep(a)
+        register(a.id, step)
+        step.id
+
       case c: ConditionStepInput =>
         // Targets resolve in a second pass — for now, plant
         // placeholder Ids that get patched once every input id is
