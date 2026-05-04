@@ -64,7 +64,7 @@ val docNoLinkWarnings: Seq[Setting[?]] = Seq(
 )
 
 lazy val root = (project in file("."))
-  .aggregate(core, secrets, script, mcp, tooling, metals, debug, workflow, browser, all, benchmark, docs)
+  .aggregate(core, secrets, script, mcp, tooling, metals, debug, browser, all, benchmark, docs)
   .settings(
     name := "sigil",
     publish / skip := true
@@ -83,6 +83,11 @@ lazy val core = (project in file("core"))
       "com.outr" %% "spice-server" % spiceVersion,
       "com.outr" %% "spice-openapi" % spiceVersion,
       "com.outr" %% "lightdb-all" % lightdbVersion,
+      // Strider — typed embedded workflow engine. Was a separate
+      // sub-project (`sigil-workflow`); folded into core because
+      // worker delegation is built on top of workflow runs and
+      // we want it available without a mixin.
+      "com.outr" %% "strider" % striderVersion,
       "org.commonmark" % "commonmark" % commonmarkVersion,
       "software.amazon.awssdk" % "s3" % awsS3Version exclude ("software.amazon.awssdk", "netty-nio-client"),
       // Pure-Java port of OpenAI's tiktoken — used by `sigil.tokenize.JtokkitTokenizer`
@@ -255,36 +260,11 @@ lazy val debug = (project in file("debug"))
     })
   )
 
-lazy val workflow = (project in file("workflow"))
-  .dependsOn(core % "compile->compile;test->test")
-  .settings(docNoLinkWarnings *)
-  .settings(
-    name := "sigil-workflow",
-    libraryDependencies ++= Seq(
-      // Strider — typed embedded workflow engine. Sigil wraps the
-      // existing manager and exposes workflow management as an
-      // agent-callable tool family on top.
-      "com.outr" %% "strider" % striderVersion,
-      "org.scalatest" %% "scalatest" % scalatestVersion % Test,
-      "com.outr" %% "rapid-test" % rapidVersion % Test
-    ),
-    fork := true,
-    Test / parallelExecution := false,
-    Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
-    Test / testGrouping := Def.uncached((Test / definedTests).value.map { test =>
-      Tests.Group(
-        name = test.name,
-        tests = Seq(test),
-        runPolicy = Tests.SubProcess(ForkOptions())
-      )
-    })
-  )
-
 /** Aggregator artifact — depends on every published Sigil module so a downstream
   * consumer can pull in the whole framework with one `"com.outr" %% "sigil-all" %
   * version` line. No source of its own; the POM carries the transitive deps. */
 lazy val all = (project in file("all"))
-  .dependsOn(core, secrets, script, mcp, metals, tooling, debug, workflow, browser)
+  .dependsOn(core, secrets, script, mcp, metals, tooling, debug, browser)
   .settings(docNoLinkWarnings *)
   .settings(
     name := "sigil-all",
