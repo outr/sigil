@@ -17,7 +17,7 @@ val scalatestVersion: String = "3.2.20"
 
 val scalapassVersion: String = "1.4.1"
 
-val awsS3Version: String = "2.43.0"
+val awsS3Version: String = "2.43.2"
 
 val robobrowserVersion: String = "2.3.2"
 
@@ -274,9 +274,11 @@ lazy val workflow = (project in file("workflow"))
     })
   )
 
-/** Aggregator artifact — depends on every published Sigil module so a downstream
-  * consumer can pull in the whole framework with one `"com.outr" %% "sigil-all" %
-  * version` line. No source of its own; the POM carries the transitive deps. */
+/**
+ * Aggregator artifact — depends on every published Sigil module so a downstream
+ * consumer can pull in the whole framework with one `"com.outr" %% "sigil-all" %
+ * version` line. No source of its own; the POM carries the transitive deps.
+ */
 lazy val all = (project in file("all"))
   .dependsOn(core, secrets, script, mcp, metals, tooling, debug, workflow, browser)
   .settings(docNoLinkWarnings *)
