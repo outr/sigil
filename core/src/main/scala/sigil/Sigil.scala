@@ -3985,6 +3985,40 @@ trait Sigil {
 
   def withDB[Return](f: DB => Task[Return]): Task[Return] = instance.flatMap(sigil => f(sigil.db))
 
+  // -- active tasks --
+
+  /**
+   * In-flight tasks (worker delegations + scheduled / running workflows)
+   * tied to `conversationId`. Default returns Nil for apps that don't mix
+   * in the workflow runtime; [[sigil.workflow.WorkflowSigil]] overrides
+   * with the live query against `db.workflows`.
+   *
+   * UI surfaces use this for the per-conversation "what's running"
+   * panel — sticky cards that hang around until the underlying
+   * workflow run settles. Apps fetching the conversation should
+   * pair this with `Conversation` itself; the projection is computed
+   * on demand rather than persisted on the record so workflow-state
+   * changes don't have to ripple through a denormalization step.
+   */
+  def activeTasksFor(conversationId: Id[Conversation]): Task[List[sigil.conversation.ConversationTask]] =
+    Task.pure(Nil)
+
+  /**
+   * Global view across every conversation `viewer` can see. Default
+   * returns Nil; [[sigil.workflow.WorkflowSigil]] overrides with a
+   * `viewer`-scoped query.
+   *
+   * Lets UIs render a "what am I currently running, anywhere?"
+   * sidebar without forcing the user to remember which conversation
+   * spawned which task. Visibility is intentionally
+   * conversation-membership based by default — viewers see tasks in
+   * conversations they're a participant in. Apps with custom
+   * authorization layer (admin viewers, multi-tenant scoping)
+   * override the WorkflowSigil-side filter or wrap this method.
+   */
+  def activeTasks(viewer: ParticipantId): Task[List[sigil.conversation.ConversationTask]] =
+    Task.pure(Nil)
+
   // -- shutdown --
 
   /**
