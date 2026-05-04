@@ -84,7 +84,8 @@ trait WorkflowSigil extends Sigil {
     summon[RW[sigil.workflow.trigger.ConversationMessageTrigger]],
     summon[RW[sigil.workflow.trigger.TimeTrigger]],
     summon[RW[sigil.workflow.trigger.WebhookTrigger]],
-    summon[RW[sigil.workflow.trigger.WorkflowEventTrigger]]
+    summon[RW[sigil.workflow.trigger.WorkflowEventTrigger]],
+    summon[RW[sigil.workflow.trigger.AnswerTrigger]]
   ) ++ workflowTriggerRegistrations)*)
 
   WorkflowStepInput.register((List(
