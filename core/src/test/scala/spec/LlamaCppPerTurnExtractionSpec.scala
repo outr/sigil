@@ -87,8 +87,10 @@ class LlamaCppPerTurnExtractionSpec extends AsyncWordSpec with AsyncTaskSpec wit
             .map { stored =>
               withClue(s"extractor returned ${persisted.size} entries: ${persisted.map(_.key).mkString(", ")} | persisted: ${stored.map(_.key).mkString(", ")}") {
                 stored should not be empty
-                // Auto-extracted facts land as Pending by default
-                stored.foreach(_.status shouldBe MemoryStatus.Pending)
+                // Auto-extracted facts land as Approved by default so the
+                // primary path surfaces them on the next turn without
+                // requiring an explicit approval step.
+                stored.foreach(_.status shouldBe MemoryStatus.Approved)
                 // At least one key should relate to a durable fact
                 // the model saw (name / location / preference). Accept
                 // any of the canonical shapes the LLM might produce.

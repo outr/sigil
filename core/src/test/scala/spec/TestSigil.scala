@@ -8,7 +8,7 @@ import rapid.Task
 import sigil.{Sigil, TurnContext}
 import sigil.conversation.{ActiveSkillSlot, Conversation, ConversationView, Topic, TopicEntry, TurnInput}
 import sigil.SpaceId
-import sigil.conversation.compression.extract.{MemoryExtractor, NoOpMemoryExtractor}
+import sigil.conversation.compression.extract.{MemoryExtractor, StandardMemoryExtractor}
 import sigil.db.Model
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
 import sigil.event.Event
@@ -114,7 +114,14 @@ object TestSigil extends Sigil {
   private val defaultPutInformation: Information => Unit = _ => ()
   private val defaultCurate: (ConversationView, Id[Model], List[ParticipantId]) => Task[TurnInput] =
     (view, _, _) => Task.pure(TurnInput(view))
-  private val defaultMemoryExtractor: MemoryExtractor = NoOpMemoryExtractor
+  // Inherit Sigil's framework default — `StandardMemoryExtractor`
+  // wired to `compressionMemorySpace` — so test JVMs exercise the
+  // primary extractor path. When `compressionSpaceRef` is None
+  // (default), the extractor short-circuits with no LLM call. Tests
+  // that opt into extraction call `setCompressionSpace(...)` AND
+  // wire a provider.
+  private val defaultMemoryExtractor: MemoryExtractor =
+    StandardMemoryExtractor(spaceIdFor = compressionMemorySpace)
   private val defaultWireInterceptor: spice.http.client.intercept.Interceptor =
     spice.http.client.intercept.Interceptor.empty
   private val defaultLocationFor: (ParticipantId, Id[Conversation]) => Task[Option[Place]] =

@@ -100,7 +100,7 @@ class StandardMemoryExtractorSpec extends AsyncWordSpec with AsyncTaskSpec with 
       ).map(_ shouldBe empty)
     }
 
-    "persist one memory per extracted entry with pending status" in {
+    "persist one memory per extracted entry with default approved status" in {
       val memories = List(
         ExtractedMemory(content = "User prefers dark mode.", label = "UI theme",
           key = Some("user.ui.theme"), tags = List("preference")),
@@ -115,7 +115,7 @@ class StandardMemoryExtractorSpec extends AsyncWordSpec with AsyncTaskSpec with 
       ).map { produced =>
         produced.flatMap(_.key) should contain allOf ("user.ui.theme", "user.time_zone")
         produced.foreach { m =>
-          m.status shouldBe sigil.conversation.MemoryStatus.Pending
+          m.status shouldBe sigil.conversation.MemoryStatus.Approved
           m.conversationId shouldBe Some(convId)
         }
         succeed

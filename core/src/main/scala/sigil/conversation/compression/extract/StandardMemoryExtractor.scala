@@ -21,9 +21,11 @@ import sigil.tool.consult.{ConsultTool, ExtractMemoriesInput, ExtractMemoriesToo
  *      [[SpaceId]] via `spaceIdFor`, then calls
  *      [[Sigil.upsertMemoryByKey]] so versioning happens
  *      automatically.
- *   4. Persists with `status = defaultStatus` (defaulting to
- *      `Pending`) so apps with an approval UX can gate auto-
- *      extracted facts before surfacing them.
+ *   4. Persists with `status = defaultStatus`. Default
+ *      [[MemoryStatus.Approved]] — the framework's primary path
+ *      surfaces extracted memories on the next turn without
+ *      gating. Apps with a human-in-the-loop approval UX override
+ *      to [[MemoryStatus.Pending]] and surface a review screen.
  *
  * Apps pair this with a specific `modelId` (usually a cheap
  * extraction-tier model) and `chain` so the consult call has correct
@@ -31,7 +33,7 @@ import sigil.tool.consult.{ConsultTool, ExtractMemoriesInput, ExtractMemoriesToo
  */
 case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalFilter,
                                    spaceIdFor: Id[Conversation] => Task[Option[SpaceId]],
-                                   defaultStatus: MemoryStatus = MemoryStatus.Pending,
+                                   defaultStatus: MemoryStatus = MemoryStatus.Approved,
                                    defaultType: MemoryType = MemoryType.Fact,
                                    systemPrompt: String = StandardMemoryExtractor.DefaultSystemPrompt)
   extends MemoryExtractor {
