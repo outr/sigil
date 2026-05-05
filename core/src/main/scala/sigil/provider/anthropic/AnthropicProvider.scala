@@ -345,8 +345,16 @@ case class AnthropicProvider(apiKey: String,
         Vector.empty
 
       case "error" =>
-        val msg = json.get("error").flatMap(_.get("message")).map(_.asString).getOrElse("unknown error")
-        Vector(ProviderEvent.Error(msg))
+        // Bug #8 — Anthropic embeds unrecoverable mid-stream failures
+        // (overloaded_error, etc.) as `event: error\ndata: {...}` on a
+        // 200-OK SSE stream. Throw a ProviderStreamException so
+        // runAgentLoop's handler (Bug #6) surfaces a user-visible
+        // Failure Message instead of leaving the chat with the
+        // "(agent completed without a reply)" placeholder.
+        val err  = json.get("error").getOrElse(Obj.empty)
+        val msg  = err.get("message").map(_.asString).getOrElse("unknown error")
+        val typ  = err.get("type").map(_.asString).getOrElse("error")
+        throw new ProviderStreamException(Anthropic.Provider, 0, typ, msg)
 
       case _ => Vector.empty
     }

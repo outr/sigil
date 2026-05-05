@@ -206,6 +206,19 @@ case class GoogleProvider(apiKey: String,
     * JSON object with `candidates`, optional `usageMetadata`, and
     * optional `finishReason` on a candidate. */
   private def parseChunk(json: Json, state: StreamState): Vector[ProviderEvent] = {
+    // Bug #8 — Gemini occasionally embeds an `error` object in an
+    // otherwise 200-OK stream (e.g. quota / safety pipeline failures
+    // that don't fit `finishReason`). Throw a ProviderStreamException
+    // so the agent loop's handler (Bug #6) renders a user-visible
+    // Failure Message rather than dropping the chunk silently.
+    json.get("error").foreach { err =>
+      if (!err.isNull) {
+        val code = err.get("code").map(_.asInt).getOrElse(0)
+        val msg  = err.get("message").map(_.asString).getOrElse("(no message)")
+        val typ  = err.get("status").map(_.asString).getOrElse("error")
+        throw new ProviderStreamException(Google.Provider, code, typ, msg)
+      }
+    }
     val events = Vector.newBuilder[ProviderEvent]
     val candidate = json.get("candidates").flatMap(_.asVector.headOption)
 
