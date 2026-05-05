@@ -11,7 +11,7 @@ val profigVersion: String = "3.7.1"
 
 val scribeVersion: String = "3.19.0"
 
-val lightdbVersion: String = "4.34.2"
+val lightdbVersion: String = "4.35.0"
 
 val scalatestVersion: String = "3.2.20"
 
@@ -260,9 +260,11 @@ lazy val debug = (project in file("debug"))
     })
   )
 
-/** Aggregator artifact — depends on every published Sigil module so a downstream
-  * consumer can pull in the whole framework with one `"com.outr" %% "sigil-all" %
-  * version` line. No source of its own; the POM carries the transitive deps. */
+/**
+ * Aggregator artifact — depends on every published Sigil module so a downstream
+ * consumer can pull in the whole framework with one `"com.outr" %% "sigil-all" %
+ * version` line. No source of its own; the POM carries the transitive deps.
+ */
 lazy val all = (project in file("all"))
   .dependsOn(core, secrets, script, mcp, metals, tooling, debug, browser)
   .settings(docNoLinkWarnings *)
