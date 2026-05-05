@@ -286,7 +286,11 @@ case class LlamaCppProvider(url: URL,
 
   // ---- streaming response parsing ----
 
-  private def parseLine(line: String, state: StreamState): Vector[ProviderEvent] =
+  // `private[llamacpp]` so dedicated parser tests can drive the
+  // chunk-level paths (especially Bug #8's inline-error detection)
+  // without spinning up a stub HTTP server. Not part of the public
+  // surface — apps invoke through `call(...)` like any other provider.
+  private[llamacpp] def parseLine(line: String, state: StreamState): Vector[ProviderEvent] =
     SSELineParser.parse(line) match {
       case SSELine.Data(json) => parseChunk(json, state)
       case SSELine.Done       => state.flushDone()
@@ -295,7 +299,22 @@ case class LlamaCppProvider(url: URL,
       case SSELine.Blank | SSELine.Comment | _: SSELine.Other => Vector.empty
     }
 
-  private def parseChunk(json: Json, state: StreamState): Vector[ProviderEvent] = {
+  private[llamacpp] def parseChunk(json: Json, state: StreamState): Vector[ProviderEvent] = {
+    // Bug #8 — llama.cpp embeds server-side mid-stream failures as
+    // `data: {"error": {...}}` events on a 200-OK chat-completions
+    // stream. The choices-only parser would silently drop them and
+    // the agent loop would see a no-op turn (→ "(agent completed
+    // without a reply)" placeholder). Throw a ProviderStreamException
+    // so the runAgentLoop handler from Bug #6 surfaces the upstream
+    // error as a user-visible Failure Message instead.
+    json.get("error").foreach { err =>
+      if (!err.isNull) {
+        val code = err.get("code").map(_.asInt).getOrElse(0)
+        val msg  = err.get("message").map(_.asString).getOrElse("(no message)")
+        val typ  = err.get("type").map(_.asString).getOrElse("error")
+        throw new ProviderStreamException(LlamaCpp.Provider, code, typ, msg)
+      }
+    }
     val events = Vector.newBuilder[ProviderEvent]
     val choice = json.get("choices").flatMap(_.asVector.headOption)
 
@@ -388,7 +407,7 @@ case class LlamaCppProvider(url: URL,
     if (id.startsWith(prefix)) id.drop(prefix.length) else id
   }
 
-  final private class StreamState(val acc: ToolCallAccumulator) {
+  final private[llamacpp] class StreamState(val acc: ToolCallAccumulator) {
     var pendingDone: Option[StopReason] = None
 
     def flushDone(): Vector[ProviderEvent] = pendingDone match {
