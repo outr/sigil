@@ -1,15 +1,10 @@
 package sigil.tool.output
 
-import fabric.{num, obj, str}
-import fabric.io.JsonFormatter
 import lightdb.id.Id
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.{Event, Message, MessageRole}
-import sigil.signal.EventState
 import sigil.storage.StoredFile
-import sigil.tool.{ToolExample, ToolName, TypedTool}
-import sigil.tool.model.ResponseContent
+import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
 
 /**
  * `tool_output_get` — fetch the full payload (or a byte slice) of a
@@ -20,14 +15,16 @@ import sigil.tool.model.ResponseContent
  * Authorization is delegated to [[sigil.Sigil.fetchStoredFile]] —
  * the caller's `accessibleSpaces` must include the StoredFile's
  * space, otherwise the lookup silently misses (returns
- * `ok = false, error = "not found or unauthorized"`).
+ * [[ToolOutputGetResult.NotFound]]).
  *
  * Slicing: when `start` and / or `length` are set, returns the
  * specified byte range as text (UTF-8). Useful for iterating through
  * a multi-megabyte log a chunk at a time without exhausting context.
+ *
+ * Emits a typed [[ToolOutputGetResult]] (`Found | NotFound`).
  */
 case object ToolOutputGetTool
-  extends TypedTool[ToolOutputGetInput](
+  extends TypedOutputTool[ToolOutputGetInput, ToolOutputGetResult](
     name = ToolName("tool_output_get"),
     description =
       """Fetch the full payload (or a byte slice) of a prior tool call's externalized output by
@@ -43,47 +40,33 @@ case object ToolOutputGetTool
     keywords = Set("tool", "output", "get", "fetch", "externalized")
   ) {
 
-  override protected def executeTyped(input: ToolOutputGetInput, ctx: TurnContext): Stream[Event] =
-    Stream.force(
-      ctx.sigil.fetchStoredFile(Id[StoredFile](input.outputId), ctx.chain).map {
-        case None =>
-          emit(ctx, obj(
-            "ok"    -> str("false"),
-            "error" -> str(s"output ${input.outputId} not found or unauthorized")
-          ))
-        case Some((file, bytes)) =>
-          val sliced = (input.start, input.length) match {
-            case (Some(s), Some(l)) =>
-              val from = s.toInt.max(0).min(bytes.length)
-              val to   = (from + l.toInt.max(0)).min(bytes.length)
-              bytes.slice(from, to)
-            case (Some(s), None) =>
-              val from = s.toInt.max(0).min(bytes.length)
-              bytes.slice(from, bytes.length)
-            case (None, Some(l)) =>
-              val to = l.toInt.max(0).min(bytes.length)
-              bytes.slice(0, to)
-            case (None, None) => bytes
-          }
-          val payload = new String(sliced, "UTF-8")
-          emit(ctx, obj(
-            "ok"          -> str("true"),
-            "outputId"    -> str(input.outputId),
-            "contentType" -> str(file.contentType),
-            "size"        -> num(file.size),
-            "returned"    -> num(sliced.length.toLong),
-            "content"     -> str(payload)
-          ))
-      }
-    )
-
-  private def emit(ctx: TurnContext, payload: fabric.Json): Stream[Event] =
-    Stream.emit[Event](Message(
-      participantId  = ctx.caller,
-      conversationId = ctx.conversation.id,
-      topicId        = ctx.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Text(JsonFormatter.Compact(payload))),
-      state          = EventState.Complete,
-      role           = MessageRole.Tool
-    ))
+  override protected def executeTyped(input: ToolOutputGetInput, ctx: TurnContext): Task[ToolOutputGetResult] =
+    ctx.sigil.fetchStoredFile(Id[StoredFile](input.outputId), ctx.chain).map {
+      case None =>
+        ToolOutputGetResult.NotFound(
+          outputId = input.outputId,
+          error    = s"output ${input.outputId} not found or unauthorized"
+        )
+      case Some((file, bytes)) =>
+        val sliced = (input.start, input.length) match {
+          case (Some(s), Some(l)) =>
+            val from = s.toInt.max(0).min(bytes.length)
+            val to   = (from + l.toInt.max(0)).min(bytes.length)
+            bytes.slice(from, to)
+          case (Some(s), None) =>
+            val from = s.toInt.max(0).min(bytes.length)
+            bytes.slice(from, bytes.length)
+          case (None, Some(l)) =>
+            val to = l.toInt.max(0).min(bytes.length)
+            bytes.slice(0, to)
+          case (None, None) => bytes
+        }
+        ToolOutputGetResult.Found(
+          outputId    = input.outputId,
+          contentType = file.contentType,
+          size        = file.size,
+          returned    = sliced.length.toLong,
+          content     = new String(sliced, "UTF-8")
+        )
+    }
 }
