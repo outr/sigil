@@ -85,4 +85,37 @@ trait LspToolSupport {
     val json = rw.read(value)
     reply(context, JsonFormatter.Compact(json), isError = false)
   }
+
+  /** Typed variant of [[withSession]] for tools that extend
+    * `TypedOutputTool[I, O]`. Runs `body` against an open session
+    * and returns its typed `Output`. Error paths (no config / spawn
+    * failure / RPC error) get routed to the caller's `onError`
+    * mapping — typically a sentinel variant on the tool's Output
+    * enum. Lets each tool's typed shape carry its own error states
+    * without forcing a generic envelope. */
+  protected def withSessionTyped[Output](languageId: String,
+                                         filePath: String,
+                                         context: TurnContext,
+                                         onError: String => Output)
+                                        (body: (LspSession, String, String) => Task[Output]): Task[Output] =
+    manager.configFor(languageId).flatMap {
+      case None => Task.pure(onError(s"No LspServerConfig persisted for '$languageId'."))
+      case Some(config) =>
+        val root = manager.resolveRoot(filePath, config.rootMarkers)
+        val uri = new File(filePath).toURI.toString
+        manager.session(languageId, root).flatMap(body(_, uri, root))
+          .handleError(e => Task.pure(onError(s"LSP error: ${e.getMessage}")))
+    }
+
+  /** Typed variant of [[withOpenDocument]] for `TypedOutputTool[I, O]`
+    * tools. Calls `didOpen` on the target file before running `body`. */
+  protected def withOpenDocumentTyped[Output](languageId: String,
+                                              filePath: String,
+                                              context: TurnContext,
+                                              onError: String => Output)
+                                             (body: (LspSession, String) => Task[Output]): Task[Output] =
+    withSessionTyped(languageId, filePath, context, onError) { (session, uri, _) =>
+      val text = scala.util.Try(Files.readString(Paths.get(filePath))).toOption.getOrElse("")
+      session.didOpen(uri, languageId, text).flatMap(_ => body(session, uri))
+    }
 }

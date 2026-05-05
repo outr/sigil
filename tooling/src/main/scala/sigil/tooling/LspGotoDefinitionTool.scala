@@ -1,11 +1,9 @@
 package sigil.tooling
 
 import fabric.rw.*
-import fabric.io.JsonFormatter
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.LspLocation
 
 case class LspGotoDefinitionInput(languageId: String,
@@ -24,15 +22,17 @@ case class LspGotoDefinitionInput(languageId: String,
  * language server resolves through the actual symbol resolution
  * graph (imports, type aliases, generics) — finds the right Foo
  * when there are nine `Foo` in scope.
+ *
+ * Emits `List[LspLocation]` — empty when no definition was found.
  */
-final class LspGotoDefinitionTool(val manager: LspManager) extends TypedTool[LspGotoDefinitionInput](
+final class LspGotoDefinitionTool(val manager: LspManager) extends TypedOutputTool[LspGotoDefinitionInput, List[LspLocation]](
   name = ToolName("lsp_goto_definition"),
   description =
     """Find where a symbol is defined.
       |
       |`languageId` selects the persisted LspServerConfig.
       |`filePath` + `line` + `character` (0-based) point at any character inside the identifier.
-      |Returns one or more file:line:character locations.""".stripMargin,
+      |Returns `[{uri, filePath, range:{start, end}}]` — empty when no definition found.""".stripMargin,
   examples = List(
     ToolExample(
       "scala goto-def at line 42 col 12",
@@ -40,11 +40,11 @@ final class LspGotoDefinitionTool(val manager: LspManager) extends TypedTool[Lsp
     )
   )
 ) with LspToolSupport {
-  override protected def executeTyped(input: LspGotoDefinitionInput, context: TurnContext): Stream[Event] =
-    withOpenDocument(input.languageId, input.filePath, context) { (session, uri) =>
-      session.gotoDefinition(uri, input.line, input.character).map { locations =>
-        val typed = locations.map(LspLocation.fromLsp4j)
-        JsonFormatter.Compact(summon[RW[List[LspLocation]]].read(typed))
-      }
+  override protected def executeTyped(input: LspGotoDefinitionInput, context: TurnContext): Task[List[LspLocation]] =
+    withOpenDocumentTyped[List[LspLocation]](
+      input.languageId, input.filePath, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { (session, uri) =>
+      session.gotoDefinition(uri, input.line, input.character).map(_.map(LspLocation.fromLsp4j))
     }
 }

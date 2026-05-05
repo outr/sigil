@@ -1,10 +1,10 @@
 package sigil.tooling
 
 import fabric.rw.*
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.LspLocation
 
 case class LspTypeDefinitionInput(languageId: String,
                                   filePath: String,
@@ -18,16 +18,17 @@ case class LspTypeDefinitionInput(languageId: String,
  * `x`, type-definition lands on `Foo`.
  *
  * Useful when the agent needs to read the type's source to understand
- * a method's return shape.
+ * a method's return shape. Emits `List[LspLocation]`.
  */
-final class LspTypeDefinitionTool(val manager: LspManager) extends TypedTool[LspTypeDefinitionInput](
+final class LspTypeDefinitionTool(val manager: LspManager) extends TypedOutputTool[LspTypeDefinitionInput, List[LspLocation]](
   name = ToolName("lsp_type_definition"),
   description =
     """Find the type of a symbol — its class / trait / struct definition.
       |
       |`languageId` + `filePath` identify the source document.
       |`line` + `character` (0-based) point at the symbol whose type to look up.
-      |Distinct from `lsp_goto_definition`, which finds the symbol itself.""".stripMargin,
+      |Distinct from `lsp_goto_definition`, which finds the symbol itself.
+      |Returns `[{uri, filePath, range}]`.""".stripMargin,
   examples = List(
     ToolExample(
       "find the type of a value",
@@ -35,14 +36,11 @@ final class LspTypeDefinitionTool(val manager: LspManager) extends TypedTool[Lsp
     )
   )
 ) with LspToolSupport {
-  override protected def executeTyped(input: LspTypeDefinitionInput, context: TurnContext): Stream[Event] =
-    withOpenDocument(input.languageId, input.filePath, context) { (session, uri) =>
-      session.typeDefinition(uri, input.line, input.character).map { locations =>
-        if (locations.isEmpty) "No type definition found."
-        else locations.map { l =>
-          val r = l.getRange
-          s"  ${l.getUri} ${r.getStart.getLine + 1}:${r.getStart.getCharacter + 1}"
-        }.mkString("\n")
-      }
+  override protected def executeTyped(input: LspTypeDefinitionInput, context: TurnContext): Task[List[LspLocation]] =
+    withOpenDocumentTyped[List[LspLocation]](
+      input.languageId, input.filePath, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { (session, uri) =>
+      session.typeDefinition(uri, input.line, input.character).map(_.map(LspLocation.fromLsp4j))
     }
 }

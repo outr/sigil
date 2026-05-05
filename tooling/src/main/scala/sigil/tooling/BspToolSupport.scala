@@ -49,4 +49,16 @@ trait BspToolSupport {
       role = MessageRole.Tool,
       visibility = MessageVisibility.All
     )
+
+  /** Typed variant for tools extending `TypedOutputTool[I, O]`. Runs
+    * `body` against a session and returns its typed `Output`. Errors
+    * (config / spawn / RPC failures) get routed to the caller's
+    * `onError` mapping — typically a sentinel variant on the tool's
+    * Output type. */
+  protected def withSessionTyped[Output](projectRoot: String,
+                                         context: TurnContext,
+                                         onError: String => Output)
+                                        (body: BspSession => Task[Output]): Task[Output] =
+    manager.session(projectRoot).flatMap(body)
+      .handleError(e => Task.pure(onError(s"BSP error: ${e.getMessage}")))
 }

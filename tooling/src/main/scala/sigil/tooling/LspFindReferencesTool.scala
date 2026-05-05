@@ -1,10 +1,10 @@
 package sigil.tooling
 
 import fabric.rw.*
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.LspLocation
 
 case class LspFindReferencesInput(languageId: String,
                                   filePath: String,
@@ -13,6 +13,12 @@ case class LspFindReferencesInput(languageId: String,
                                   includeDeclaration: Boolean = true,
                                   maxResults: Int = 200) extends ToolInput derives RW
 
+/** Typed result for [[LspFindReferencesTool]]. `truncated = true`
+  * when the server returned more locations than `maxResults`; the
+  * `locations` list reflects the post-cap slice. */
+case class LspFindReferencesOutput(locations: List[LspLocation],
+                                   truncated: Boolean) derives RW
+
 /**
  * Find every usage of a symbol across the workspace. The server
  * resolves through actual symbol identity (not text match), so a
@@ -20,9 +26,9 @@ case class LspFindReferencesInput(languageId: String,
  * partial qualification.
  *
  * Capped at `maxResults` to keep huge codebases from blowing the
- * agent's context. The summary line indicates when the cap fired.
+ * agent's context. `truncated` is true when the cap fired.
  */
-final class LspFindReferencesTool(val manager: LspManager) extends TypedTool[LspFindReferencesInput](
+final class LspFindReferencesTool(val manager: LspManager) extends TypedOutputTool[LspFindReferencesInput, LspFindReferencesOutput](
   name = ToolName("lsp_find_references"),
   description =
     """Find every usage of a symbol across the workspace.
@@ -30,7 +36,9 @@ final class LspFindReferencesTool(val manager: LspManager) extends TypedTool[Lsp
       |`languageId` + `filePath` identify the source document.
       |`line` + `character` (0-based) point inside the symbol.
       |`includeDeclaration` (default true) — whether to include the symbol's own definition.
-      |`maxResults` (default 200) — caps the response.""".stripMargin,
+      |`maxResults` (default 200) — caps the response.
+      |
+      |Returns `{locations: [{uri, filePath, range}], truncated}`.""".stripMargin,
   examples = List(
     ToolExample(
       "find references to a method",
@@ -41,20 +49,17 @@ final class LspFindReferencesTool(val manager: LspManager) extends TypedTool[Lsp
     )
   )
 ) with LspToolSupport {
-  override protected def executeTyped(input: LspFindReferencesInput, context: TurnContext): Stream[Event] =
-    withOpenDocument(input.languageId, input.filePath, context) { (session, uri) =>
+  override protected def executeTyped(input: LspFindReferencesInput, context: TurnContext): Task[LspFindReferencesOutput] =
+    withOpenDocumentTyped[LspFindReferencesOutput](
+      input.languageId, input.filePath, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { (session, uri) =>
       session.references(uri, input.line, input.character, input.includeDeclaration).map { locations =>
-        if (locations.isEmpty) "No references found."
-        else {
-          val capped = locations.take(input.maxResults)
-          val rendered = capped.map { l =>
-            val r = l.getRange
-            s"  ${l.getUri} ${r.getStart.getLine + 1}:${r.getStart.getCharacter + 1}"
-          }.mkString("\n")
-          if (locations.size > input.maxResults)
-            s"$rendered\n... (${locations.size - input.maxResults} more, raise maxResults to see all)"
-          else rendered
-        }
+        val capped = locations.take(input.maxResults)
+        LspFindReferencesOutput(
+          locations = capped.map(LspLocation.fromLsp4j),
+          truncated = locations.size > input.maxResults
+        )
       }
     }
 }
