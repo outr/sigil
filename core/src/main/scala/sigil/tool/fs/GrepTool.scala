@@ -1,46 +1,37 @@
 package sigil.tool.fs
 
-import fabric.{Arr, Json, num, obj, str}
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.model.GrepInput
-import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.tool.model.{GrepInput, GrepOutput}
+import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
 
 /**
- * Search files under a path for a regex pattern. `glob`
- * (optional) restricts the file set; `contextLines` adds before/
- * after context to each match. Result event carries an array of
- * matches with file path, line number, content, and context.
+ * Search files under a path for a regex pattern. `glob` (optional)
+ * restricts the file set; `contextLines` adds before/after context.
+ * Emits a typed [[GrepOutput]] carrying the structured match list
+ * — agents iterate `matches` and pattern-match on `filePath` /
+ * `lineNumber` without parsing JSON.
  */
 final class GrepTool(context: FileSystemContext)
-  extends TypedTool[GrepInput](
+  extends TypedOutputTool[GrepInput, GrepOutput](
     name = ToolName("grep"),
     description =
       """Search files under `path` for a regex pattern. `glob` optionally restricts the file set;
-        |`contextLines` adds surrounding-context output to each match. Returns matching lines with file
-        |path and line number.""".stripMargin,
+        |`contextLines` adds surrounding-context output to each match. Returns
+        |`{matches: [{filePath, lineNumber, content, contextBefore, contextAfter}], count}`.""".stripMargin,
     examples = List(
       ToolExample("Find TODOs in Scala source", GrepInput(path = "src", pattern = "TODO", glob = Some("**/*.scala"))),
       ToolExample("Find function definition with context", GrepInput(path = ".", pattern = "def myFunction", contextLines = 2))
     ),
     keywords = Set("grep", "search", "regex", "find", "match", "lines")
   ) {
-  override protected def executeTyped(input: GrepInput, ctx: TurnContext): Stream[Event] = Stream.force(
+  override protected def executeTyped(input: GrepInput, ctx: TurnContext): Task[GrepOutput] =
     WorkspacePathResolver.resolve(ctx, input.path).flatMap { base =>
       context.searchFiles(base, input.pattern, input.glob, input.maxMatches, input.contextLines).map { matches =>
-        val items: Vector[Json] = matches.toVector.map { m =>
-          obj(
-            "filePath"      -> str(m.filePath),
-            "lineNumber"    -> num(m.lineNumber),
-            "content"       -> str(m.content),
-            "contextBefore" -> Arr(m.contextBefore.map(str(_)).toVector),
-            "contextAfter"  -> Arr(m.contextAfter.map(str(_)).toVector)
-          )
-        }
-        val payload = obj("matches" -> Arr(items), "count" -> num(matches.size))
-        Stream.emit[Event](FsToolEmit(payload, ctx))
+        GrepOutput(matches = matches.toList, count = matches.size)
       }
     }
-  )
+
+  override protected def summarize(out: GrepOutput, jsonRendered: String): String =
+    s"[grep ${out.count} match(es) — externalized; call tool_output_get to read]"
 }

@@ -1,13 +1,11 @@
 package sigil.tool.fs
 
-import fabric.{bool, num, obj, str}
 import lightdb.time.Timestamp
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
 import sigil.storage.{FileVersion, WriteResult}
-import sigil.tool.model.EditFileInput
-import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.tool.model.{EditFileInput, EditFileOutput}
+import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
 
 import java.util.regex.Pattern
 
@@ -23,9 +21,12 @@ import java.util.regex.Pattern
  * On mismatch the tool returns the file's freshest contents so the
  * agent can re-evaluate the edit. Without `expectedHash`, the
  * commit is unconditional (legacy single-agent behavior).
+ *
+ * Emits a typed [[EditFileOutput]] — agents pattern-match on
+ * `Success`, `NotFound`, `NotUnique`, `Stale`, `FileNotFound`.
  */
 final class EditFileTool(context: FileSystemContext)
-  extends TypedTool[EditFileInput](
+  extends TypedOutputTool[EditFileInput, EditFileOutput](
     name = ToolName("edit_file"),
     description =
       """Find and replace text in a file. By default replaces the first occurrence; pass `replaceAll = true`
@@ -33,7 +34,9 @@ final class EditFileTool(context: FileSystemContext)
         |
         |Pass `expectedHash` (SHA-256 of the file when you last read it) to enable safe-edit: the change
         |commits only if no other writer has modified the file since. On mismatch, the tool returns the
-        |file's current contents so you can re-evaluate the edit against the new state.""".stripMargin,
+        |file's current contents so you can re-evaluate the edit against the new state.
+        |
+        |Output: `Success(replacements, hash?) | NotFound | NotUnique(occurrences) | Stale(currentHash, currentContent) | FileNotFound`.""".stripMargin,
     examples = List(
       ToolExample("Update a single line", EditFileInput(filePath = "config.toml", oldString = "log_level = \"info\"", newString = "log_level = \"debug\"")),
       ToolExample("Rename a symbol", EditFileInput(filePath = "src/main.rs", oldString = "old_name", newString = "new_name", replaceAll = true)),
@@ -44,22 +47,14 @@ final class EditFileTool(context: FileSystemContext)
     ),
     keywords = Set("file", "edit", "modify", "replace", "rewrite", "patch")
   ) {
-  override protected def executeTyped(input: EditFileInput, ctx: TurnContext): Stream[Event] = Stream.force(
+  override protected def executeTyped(input: EditFileInput, ctx: TurnContext): Task[EditFileOutput] =
     WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>
       context.readFile(resolved).flatMap { content =>
         val pattern = Pattern.quote(input.oldString)
         val occurrences = pattern.r.findAllIn(content).size
-        if (occurrences == 0) {
-          Task.pure(Stream.emit[Event](FsToolEmit(
-            obj("success" -> bool(false), "error" -> str("oldString not found")),
-            ctx
-          )))
-        } else if (!input.replaceAll && occurrences > 1) {
-          Task.pure(Stream.emit[Event](FsToolEmit(
-            obj("success" -> bool(false), "error" -> str("oldString not unique; pass replaceAll = true to replace all occurrences")),
-            ctx
-          )))
-        } else {
+        if (occurrences == 0) Task.pure(EditFileOutput.NotFound)
+        else if (!input.replaceAll && occurrences > 1) Task.pure(EditFileOutput.NotUnique(occurrences))
+        else {
           val replacement = java.util.regex.Matcher.quoteReplacement(input.newString)
           val (next, replaced) = if (input.replaceAll)
             (pattern.r.replaceAllIn(content, replacement), occurrences)
@@ -68,26 +63,21 @@ final class EditFileTool(context: FileSystemContext)
 
           input.expectedHash match {
             case None =>
-              context.writeFile(resolved, next).map { _ =>
-                Stream.emit[Event](FsToolEmit(obj("success" -> bool(true), "replacements" -> num(replaced)), ctx))
-              }
+              context.writeFile(resolved, next).map(_ =>
+                EditFileOutput.Success(replacements = replaced, hash = None)
+              )
             case Some(hash) =>
               val expected = FileVersion(hash, Timestamp())
-              context.writeIfMatch(resolved, next, expected).map { result =>
-                val payload = result match {
-                  case WriteResult.Written(version) =>
-                    obj(
-                      "result" -> str("written"),
-                      "hash" -> str(version.hash),
-                      "replacements" -> num(replaced)
-                    )
-                  case other => WriteResultRender(other, next)
-                }
-                Stream.emit[Event](FsToolEmit(payload, ctx))
+              context.writeIfMatch(resolved, next, expected).map {
+                case WriteResult.Written(version) =>
+                  EditFileOutput.Success(replacements = replaced, hash = Some(version.hash))
+                case WriteResult.Stale(current) =>
+                  EditFileOutput.Stale(currentHash = current.version.hash, currentContent = current.asText)
+                case WriteResult.NotFound =>
+                  EditFileOutput.FileNotFound
               }
           }
         }
       }
     }
-  )
 }

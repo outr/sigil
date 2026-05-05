@@ -1,14 +1,15 @@
 package spec
 
 import fabric.io.JsonParser
+import fabric.rw.*
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, ConversationView, TopicEntry, TurnInput}
-import sigil.event.Message
+import sigil.event.{Message, ToolResults}
 import sigil.tool.fs.{BashTool, DeleteFileTool, EditFileTool, FileSystemContext, GlobTool, GrepTool, LocalFileSystemContext, ReadFileTool, WriteFileTool}
-import sigil.tool.model.{BashInput, DeleteFileInput, EditFileInput, GlobInput, GrepInput, ReadFileInput, ResponseContent, WriteFileInput}
+import sigil.tool.model.{BashInput, BashOutput, DeleteFileInput, DeleteFileOutput, EditFileInput, EditFileOutput, GlobInput, GlobOutput, GrepInput, GrepOutput, ReadFileInput, ReadFileOutput, ResponseContent, WriteFileInput, WriteFileOutput}
 
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
@@ -51,10 +52,24 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   }
 
   private def extractJson(events: List[sigil.event.Event]): fabric.Json = {
-    events.collectFirst { case m: Message =>
-      m.content.collectFirst { case ResponseContent.Text(t) => t }
-    }.flatten.map(JsonParser(_)).getOrElse(fabric.Obj.empty)
+    // Prefer the typed payload from a ToolResults (the new
+    // TypedOutputTool emission path); fall back to a Tool-role
+    // Message's Text content for legacy untyped tools.
+    val fromTypedResults = events.collectFirst {
+      case t: ToolResults if t.typed.isDefined => t.typed.get
+    }
+    fromTypedResults.orElse {
+      events.collectFirst { case m: Message =>
+        m.content.collectFirst { case ResponseContent.Text(t) => t }
+      }.flatten.map(JsonParser(_))
+    }.getOrElse(fabric.Obj.empty)
   }
+
+  /** Decode the typed payload of a ToolResults event back to the
+    * tool's Output case class via its registered RW — what apps
+    * doing tool-to-tool composition do via [[Tool.invoke]]. */
+  private def typed[T](events: List[sigil.event.Event])(using rw: RW[T]): T =
+    rw.write(extractJson(events))
 
   "WriteFileTool + ReadFileTool" should {
     "round-trip a file's contents" in withTempDir { (ctx, _) =>
@@ -63,8 +78,8 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         wrote <- new WriteFileTool(ctx).execute(WriteFileInput("notes.txt", "hello sigil"), tc).toList
         read  <- new ReadFileTool(ctx).execute(ReadFileInput("notes.txt"), tc).toList
       } yield {
-        extractJson(wrote).get("success").map(_.asBoolean) shouldBe Some(true)
-        extractJson(read).get("content").map(_.asString) shouldBe Some("hello sigil")
+        typed[WriteFileOutput](wrote) shouldBe a[WriteFileOutput.Success]
+        typed[ReadFileOutput](read).content shouldBe "hello sigil"
       }
     }
   }
@@ -77,10 +92,10 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         _    <- new WriteFileTool(ctx).execute(WriteFileInput("data.log", text), tc).toList
         read <- new ReadFileTool(ctx).execute(ReadFileInput("data.log", offset = Some(2), limit = Some(3)), tc).toList
       } yield {
-        val payload = extractJson(read)
-        payload.get("content").map(_.asString) shouldBe Some("line 3\nline 4\nline 5")
-        payload.get("totalLines").map(_.asInt) shouldBe Some(10)
-        payload.get("linesRead").map(_.asInt) shouldBe Some(3)
+        val payload = typed[ReadFileOutput](read)
+        payload.content shouldBe "line 3\nline 4\nline 5"
+        payload.totalLines shouldBe 10
+        payload.linesRead shouldBe 3
       }
     }
   }
@@ -93,9 +108,11 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         edited <- new EditFileTool(ctx).execute(EditFileInput("c.toml", "y = 2", "y = 99"), tc).toList
         re     <- new ReadFileTool(ctx).execute(ReadFileInput("c.toml"), tc).toList
       } yield {
-        extractJson(edited).get("success").map(_.asBoolean) shouldBe Some(true)
-        extractJson(edited).get("replacements").map(_.asInt) shouldBe Some(1)
-        extractJson(re).get("content").map(_.asString) shouldBe Some("x = 1\ny = 99")
+        typed[EditFileOutput](edited) match {
+          case EditFileOutput.Success(replacements, _) => replacements shouldBe 1
+          case other => fail(s"expected Success, got $other")
+        }
+        typed[ReadFileOutput](re).content shouldBe "x = 1\ny = 99"
       }
     }
 
@@ -105,8 +122,10 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         _      <- new WriteFileTool(ctx).execute(WriteFileInput("d.txt", "foo\nfoo"), tc).toList
         edited <- new EditFileTool(ctx).execute(EditFileInput("d.txt", "foo", "bar"), tc).toList
       } yield {
-        extractJson(edited).get("success").map(_.asBoolean) shouldBe Some(false)
-        extractJson(edited).get("error").map(_.asString.contains("not unique")).getOrElse(false) shouldBe true
+        typed[EditFileOutput](edited) match {
+          case EditFileOutput.NotUnique(occ) => occ shouldBe 2
+          case other                         => fail(s"expected NotUnique, got $other")
+        }
       }
     }
 
@@ -115,18 +134,20 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       for {
         _      <- new WriteFileTool(ctx).execute(WriteFileInput("safe.toml", "x = 1\ny = 2"), tc).toList
         readJ  <- new ReadFileTool(ctx).execute(ReadFileInput("safe.toml"), tc).toList
-        hash    = extractJson(readJ).get("hash").map(_.asString).get
+        hash    = typed[ReadFileOutput](readJ).hash.get
         edited <- new EditFileTool(ctx).execute(
                     EditFileInput("safe.toml", "y = 2", "y = 99", expectedHash = Some(hash)),
                     tc
                   ).toList
         re     <- new ReadFileTool(ctx).execute(ReadFileInput("safe.toml"), tc).toList
       } yield {
-        val payload = extractJson(edited)
-        payload.get("result").map(_.asString) shouldBe Some("written")
-        payload.get("hash").map(_.asString).isDefined shouldBe true
-        payload.get("replacements").map(_.asInt) shouldBe Some(1)
-        extractJson(re).get("content").map(_.asString) shouldBe Some("x = 1\ny = 99")
+        typed[EditFileOutput](edited) match {
+          case EditFileOutput.Success(repls, h) =>
+            repls shouldBe 1
+            h shouldBe defined
+          case other => fail(s"expected Success, got $other")
+        }
+        typed[ReadFileOutput](re).content shouldBe "x = 1\ny = 99"
       }
     }
 
@@ -140,12 +161,14 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
                   ).toList
         re     <- new ReadFileTool(ctx).execute(ReadFileInput("conflict.toml"), tc).toList
       } yield {
-        val payload = extractJson(edited)
-        payload.get("result").map(_.asString) shouldBe Some("stale")
-        payload.get("currentHash").map(_.asString).isDefined shouldBe true
-        payload.get("currentContent").map(_.asString) shouldBe Some("x = 1")
+        typed[EditFileOutput](edited) match {
+          case EditFileOutput.Stale(currentHash, currentContent) =>
+            currentHash should not be empty
+            currentContent shouldBe "x = 1"
+          case other => fail(s"expected Stale, got $other")
+        }
         // File unchanged
-        extractJson(re).get("content").map(_.asString) shouldBe Some("x = 1")
+        typed[ReadFileOutput](re).content shouldBe "x = 1"
       }
     }
 
@@ -154,7 +177,7 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       for {
         _      <- new WriteFileTool(ctx).execute(WriteFileInput("ow.txt", "v1"), tc).toList
         readJ  <- new ReadFileTool(ctx).execute(ReadFileInput("ow.txt"), tc).toList
-        hash    = extractJson(readJ).get("hash").map(_.asString).get
+        hash    = typed[ReadFileOutput](readJ).hash.get
         ok     <- new WriteFileTool(ctx).execute(
                     WriteFileInput("ow.txt", "v2", expectedHash = Some(hash)),
                     tc
@@ -165,9 +188,11 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
                     tc
                   ).toList
       } yield {
-        extractJson(ok).get("result").map(_.asString) shouldBe Some("written")
-        extractJson(stale).get("result").map(_.asString) shouldBe Some("stale")
-        extractJson(stale).get("currentContent").map(_.asString) shouldBe Some("v2")
+        typed[WriteFileOutput](ok) shouldBe a[WriteFileOutput.Success]
+        typed[WriteFileOutput](stale) match {
+          case WriteFileOutput.Stale(_, content) => content shouldBe "v2"
+          case other                             => fail(s"expected Stale, got $other")
+        }
       }
     }
   }
@@ -179,7 +204,7 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         _ <- new WriteFileTool(ctx).execute(WriteFileInput("scratch.txt", "x"), tc).toList
         d <- new DeleteFileTool(ctx).execute(DeleteFileInput("scratch.txt"), tc).toList
       } yield {
-        extractJson(d).get("deleted").map(_.asBoolean) shouldBe Some(true)
+        typed[DeleteFileOutput](d).deleted shouldBe true
       }
     }
   }
@@ -193,8 +218,7 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         _    <- new WriteFileTool(ctx).execute(WriteFileInput("c.txt", "x"), tc).toList
         out  <- new GlobTool(ctx).execute(GlobInput(basePath = ".", pattern = "*.scala"), tc).toList
       } yield {
-        val paths = extractJson(out).get("paths").map(_.asVector.map(_.asString).toList).getOrElse(Nil).toSet
-        paths shouldBe Set("a.scala", "b.scala")
+        typed[GlobOutput](out).paths.toSet shouldBe Set("a.scala", "b.scala")
       }
     }
   }
@@ -206,8 +230,7 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         _    <- new WriteFileTool(ctx).execute(WriteFileInput("notes.md", "alpha\nbeta\nALPHA"), tc).toList
         out  <- new GrepTool(ctx).execute(GrepInput(path = ".", pattern = "(?i)alpha"), tc).toList
       } yield {
-        val matches = extractJson(out).get("matches").map(_.asVector.toList).getOrElse(Nil)
-        matches.map(_.get("lineNumber").map(_.asInt)).toSet shouldBe Set(Some(1), Some(3))
+        typed[GrepOutput](out).matches.map(_.lineNumber).toSet shouldBe Set(1, 3)
       }
     }
   }
@@ -216,16 +239,16 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "execute a shell command and capture stdout" in withTempDir { (ctx, _) =>
       val tc = turnContext()
       new BashTool(ctx).execute(BashInput("echo sigil-bash"), tc).toList.map { events =>
-        val payload = extractJson(events)
-        payload.get("stdout").map(_.asString.trim) shouldBe Some("sigil-bash")
-        payload.get("exitCode").map(_.asInt) shouldBe Some(0)
+        val payload = typed[BashOutput](events)
+        payload.stdout.trim shouldBe "sigil-bash"
+        payload.exitCode shouldBe 0
       }
     }
 
     "report a non-zero exit code" in withTempDir { (ctx, _) =>
       val tc = turnContext()
       new BashTool(ctx).execute(BashInput("exit 42"), tc).toList.map { events =>
-        extractJson(events).get("exitCode").map(_.asInt) shouldBe Some(42)
+        typed[BashOutput](events).exitCode shouldBe 42
       }
     }
   }

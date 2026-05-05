@@ -1,32 +1,28 @@
 package sigil.tool.fs
 
-import fabric.{Arr, num, obj, str}
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.model.GlobInput
-import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.tool.model.{GlobInput, GlobOutput}
+import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
 
 /**
- * List files under `basePath` matching a glob pattern.
- * Result event carries `paths: List[String]` and `count`.
+ * List files under `basePath` matching a glob pattern. Emits a
+ * typed [[GlobOutput]] (`paths: List[String], count: Int`).
  */
 final class GlobTool(context: FileSystemContext)
-  extends TypedTool[GlobInput](
+  extends TypedOutputTool[GlobInput, GlobOutput](
     name = ToolName("glob"),
-    description = "List files under a directory matching a glob pattern (e.g. '**/*.scala'). Returns relative paths.",
+    description = "List files under a directory matching a glob pattern (e.g. '**/*.scala'). Returns `{paths: [String], count}`.",
     examples = List(
       ToolExample("Scala sources under src", GlobInput(basePath = "src", pattern = "**/*.scala")),
       ToolExample("Top-level docs", GlobInput(basePath = ".", pattern = "*.md"))
     ),
     keywords = Set("glob", "find", "list", "files", "pattern")
   ) {
-  override protected def executeTyped(input: GlobInput, ctx: TurnContext): Stream[Event] = Stream.force(
+  override protected def executeTyped(input: GlobInput, ctx: TurnContext): Task[GlobOutput] =
     WorkspacePathResolver.resolve(ctx, input.basePath).flatMap { base =>
       context.listFiles(base, input.pattern, input.maxResults).map { paths =>
-        val payload = obj("paths" -> Arr(paths.map(str(_)).toVector), "count" -> num(paths.size))
-        Stream.emit[Event](FsToolEmit(payload, ctx))
+        GlobOutput(paths = paths.toList, count = paths.size)
       }
     }
-  )
 }
