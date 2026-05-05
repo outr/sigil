@@ -1,5 +1,5 @@
 ThisBuild / organization := "com.outr"
-ThisBuild / version := "1.0.0-SNAPSHOT2"
+ThisBuild / version := "1.0.0-SNAPSHOT3"
 
 ThisBuild / scalaVersion := "3.8.3"
 
@@ -29,7 +29,7 @@ val bsp4jVersion: String = "2.2.0-M4.TEST"
 
 val lsp4jDebugVersion: String = "1.0.0"
 
-val striderVersion: String = "1.0.3-SNAPSHOT1"
+val striderVersion: String = "1.0.3"
 
 val jtokkitVersion: String = "1.1.0"
 
