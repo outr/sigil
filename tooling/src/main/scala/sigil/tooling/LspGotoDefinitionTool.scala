@@ -1,10 +1,12 @@
 package sigil.tooling
 
 import fabric.rw.*
+import fabric.io.JsonFormatter
 import rapid.Stream
 import sigil.TurnContext
 import sigil.event.Event
 import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tooling.types.LspLocation
 
 case class LspGotoDefinitionInput(languageId: String,
                                   filePath: String,
@@ -41,11 +43,8 @@ final class LspGotoDefinitionTool(val manager: LspManager) extends TypedTool[Lsp
   override protected def executeTyped(input: LspGotoDefinitionInput, context: TurnContext): Stream[Event] =
     withOpenDocument(input.languageId, input.filePath, context) { (session, uri) =>
       session.gotoDefinition(uri, input.line, input.character).map { locations =>
-        if (locations.isEmpty) "No definition found."
-        else locations.map { l =>
-          val r = l.getRange
-          s"  ${l.getUri} ${r.getStart.getLine + 1}:${r.getStart.getCharacter + 1}"
-        }.mkString("\n")
+        val typed = locations.map(LspLocation.fromLsp4j)
+        JsonFormatter.Compact(summon[RW[List[LspLocation]]].read(typed))
       }
     }
 }

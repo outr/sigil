@@ -1,11 +1,13 @@
 package sigil.tooling
 
 import fabric.rw.*
-import org.eclipse.lsp4j.{DiagnosticSeverity, DocumentDiagnosticReport}
+import fabric.io.JsonFormatter
+import org.eclipse.lsp4j.DocumentDiagnosticReport
 import rapid.Stream
 import sigil.TurnContext
 import sigil.event.Event
 import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tooling.types.{LspDiagnostic, LspDiagnosticsResult}
 
 import scala.jdk.CollectionConverters.*
 
@@ -45,25 +47,15 @@ final class LspPullDiagnosticsTool(val manager: LspManager) extends TypedTool[Ls
       session.pullDiagnostics(uri).map(render(input.filePath, _))
     }
 
-  private def render(filePath: String, report: Option[DocumentDiagnosticReport]): String = report match {
-    case None => s"$filePath: no pull-model report (server may not support pull diagnostics)."
-    case Some(r) =>
-      val items = if (r.isLeft) Option(r.getLeft.getItems).map(_.asScala.toList).getOrElse(Nil)
-                  else Nil
-      if (items.isEmpty) s"$filePath: 0 diagnostics."
-      else {
-        val rendered = items.map { d =>
-          val sev = d.getSeverity match {
-            case null                           => "unknown"
-            case DiagnosticSeverity.Error       => "error"
-            case DiagnosticSeverity.Warning     => "warning"
-            case DiagnosticSeverity.Information => "info"
-            case DiagnosticSeverity.Hint        => "hint"
-          }
-          val pos = s"${d.getRange.getStart.getLine + 1}:${d.getRange.getStart.getCharacter + 1}"
-          s"  [$sev] $pos: ${d.getMessage}"
-        }.mkString("\n")
-        s"$filePath: ${items.size} diagnostic(s).\n$rendered"
-      }
+  private def render(filePath: String, report: Option[DocumentDiagnosticReport]): String = {
+    val items = report match {
+      case Some(r) if r.isLeft => Option(r.getLeft.getItems).map(_.asScala.toList).getOrElse(Nil)
+      case _                   => Nil
+    }
+    val typed = LspDiagnosticsResult(
+      filePath    = filePath,
+      diagnostics = items.map(LspDiagnostic.fromLsp4j(filePath, _))
+    )
+    JsonFormatter.Compact(summon[RW[LspDiagnosticsResult]].read(typed))
   }
 }
