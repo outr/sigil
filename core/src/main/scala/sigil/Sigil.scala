@@ -608,12 +608,16 @@ trait Sigil {
   def storeBytes(space: SpaceId,
                  data: Array[Byte],
                  contentType: String,
-                 metadata: Map[String, String] = Map.empty): Task[sigil.storage.StoredFile] = {
+                 metadata: Map[String, String] = Map.empty,
+                 category: sigil.storage.StoredFileCategory = sigil.storage.StoredFileCategory.UserAttachment,
+                 expiresAt: Option[lightdb.time.Timestamp] = None): Task[sigil.storage.StoredFile] = {
     val record = sigil.storage.StoredFile(
       space = space,
       path = "",
       contentType = contentType,
       size = data.length.toLong,
+      category = category,
+      expiresAt = expiresAt,
       metadata = metadata
     )
     val derivedPath = s"${space.value}/${record._id.value}"
@@ -1840,11 +1844,16 @@ trait Sigil {
     * walks `SigilDB.storedFiles` and filters by
     * `accessibleSpaces(List(viewer))`. */
   def listStoredFiles(viewer: ParticipantId,
-                      spaces: Option[Set[SpaceId]] = None): Task[List[sigil.signal.StoredFileSummary]] =
+                      spaces: Option[Set[SpaceId]] = None,
+                      categories: Option[Set[sigil.storage.StoredFileCategory]] = None,
+                      includeExpired: Boolean = false): Task[List[sigil.signal.StoredFileSummary]] =
     accessibleSpaces(List(viewer)).flatMap { authorized =>
       val effective = spaces.fold(authorized)(_.intersect(authorized))
+      val now = lightdb.time.Timestamp()
       withDB(_.storedFiles.transaction(_.list)).map(_.toList.collect {
-        case file if effective.contains(file.space) =>
+        case file if effective.contains(file.space)
+                  && categories.forall(_.contains(file.category))
+                  && (includeExpired || !file.isExpired(now)) =>
           sigil.signal.StoredFileSummary.fromStoredFile(file)
       })
     }
@@ -3896,6 +3905,7 @@ trait Sigil {
       _ <- validateModeSkillSizes()
       _ <- startModelRefresh()
       _ <- startExpiredMemorySweep()
+      _ <- startMaintenanceTasks()
     } yield SigilInstance(
       config = config,
       db = db
@@ -3979,6 +3989,82 @@ trait Sigil {
         else safeSweep.flatMap(_ => Task.sleep(interval)).flatMap(_ => loop)
       Task { loop.startUnit(); () }
   }
+
+  /**
+   * Per-task fibers for every entry in [[maintenanceTasks]]. Each
+   * task runs on its own cadence; failures are logged at WARN and
+   * swallowed so a transient hiccup doesn't break the loop. Boots
+   * after the DB is up but before [[instance]] resolves, so the first
+   * tick of a `runImmediatelyOnStart = true` task fires once the
+   * Sigil is fully ready.
+   */
+  private def startMaintenanceTasks(): Task[Unit] =
+    rapid.Task.sequence(maintenanceTasks.map { task =>
+      def safeRun: Task[Unit] = task.runOnce(this).handleError { e =>
+        Task { scribe.warn(s"Maintenance task '${task.name}' failed: ${e.getMessage}"); () }
+      }
+      def loop: Task[Unit] =
+        if (isShutdown) Task.unit
+        else safeRun.flatMap(_ => Task.sleep(task.interval)).flatMap(_ => loop)
+      val firstFire =
+        if (task.runImmediatelyOnStart) loop
+        else Task.sleep(task.interval).flatMap(_ => loop)
+      Task { firstFire.startUnit(); () }
+    }).map(_ => ())
+
+  /**
+   * Apps and the framework's own subsystems plug periodic
+   * housekeeping work in here — TTL sweeps, cache rotations,
+   * schema-upgrade rechecks, etc. Each [[sigil.maintenance.MaintenanceTask]]
+   * gets its own background fiber managed by [[startMaintenanceTasks]].
+   *
+   * Default: empty. The framework's own maintenance tasks
+   * ([[sigil.maintenance.StoredFileExpirationSweep]] for Bug #9's
+   * tool-output retention) plug in here as they ship.
+   *
+   * Apps override and concatenate to add their own tasks:
+   *
+   * {{{
+   *   override def maintenanceTasks: List[MaintenanceTask] =
+   *     super.maintenanceTasks ++ List(MyAppCacheRotation, MyAppMetricsFlush)
+   * }}}
+   */
+  def maintenanceTasks: List[sigil.maintenance.MaintenanceTask] =
+    List(sigil.maintenance.StoredFileExpirationSweep(storedFileExpirationInterval))
+
+  /** Cadence for [[sigil.maintenance.StoredFileExpirationSweep]] —
+    * how often the framework reclaims expired
+    * [[sigil.storage.StoredFile]] records (chiefly the
+    * `Category.ToolOutput` entries written by Bug #9's
+    * externalization path). Default: 1 hour. Apps with stricter
+    * retention windows or larger volumes override. */
+  def storedFileExpirationInterval: scala.concurrent.duration.FiniteDuration =
+    scala.concurrent.duration.DurationInt(1).hour
+
+  /** Byte threshold above which the framework auto-stores tool
+    * output / oversized message-content blocks in `SigilDB.storedFiles`
+    * and emits a pointer instead of inlining the payload. Applies
+    * uniformly to:
+    *
+    *   - `Sigil.contentExternalizationTransform` for oversized text /
+    *     image blocks in user-typed Messages.
+    *   - `ToolResults` events emitted by tools whose payload exceeds
+    *     this threshold (Bug #9 phase 4).
+    *
+    * Default: 4096 bytes. Apps tuning for tiny-context models lower
+    * it; apps with high-resolution agents and lots of context room
+    * raise it. Set to `Long.MaxValue` to opt out of externalization
+    * entirely (every block stays inline). */
+  def contentExternalizationThreshold: Long = 4096L
+
+  /** Default retention window applied to a newly-written
+    * `StoredFileCategory.ToolOutput` record's `expiresAt`. Apps
+    * shorten / lengthen as policy dictates; downstream consumers
+    * with explicit "review later" UIs can override per-call by
+    * writing through [[Sigil.storeBytes]] directly with a custom
+    * `expiresAt`. Default: 24 hours. */
+  def toolOutputRetention: scala.concurrent.duration.FiniteDuration =
+    scala.concurrent.duration.DurationInt(24).hours
 
   /**
    * One-shot sweep — deletes every memory with `expiresAt` set and
