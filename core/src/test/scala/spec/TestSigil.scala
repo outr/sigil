@@ -79,7 +79,8 @@ object TestSigil extends Sigil {
       SendSlackMessageTool,
       sigil.tool.util.SleepTool,
       sigil.tool.util.LookupTool,
-      GetMagicNumberTool
+      GetMagicNumberTool,
+      ProgressEmittingTool
     )
 
   // ---- registration lists ----

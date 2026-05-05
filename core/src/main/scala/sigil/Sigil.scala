@@ -25,7 +25,7 @@ import sigil.tool.consult.{ConsultTool, TopicClassifierTool}
 import sigil.provider.GenerationSettings
 import sigil.db.{DefaultSigilDB, Model, SigilDB}
 import sigil.dispatcher.{StopFlag, TriggerFilter}
-import sigil.event.{AgentState, Event, Message, MessageVisibility, ModeChange, Stop, ToolInvoke, TopicChange, TopicChangeKind}
+import sigil.event.{AgentState, Event, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, TopicChange, TopicChangeKind}
 import sigil.role.Role
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{ConversationMode, ConversationRequest, Mode, ProviderStrategy, ToolPolicy}
@@ -3616,14 +3616,52 @@ trait Sigil {
           }
         }
     }.handleError { t =>
-      // Any unhandled failure mid-turn — release the lock so the agent
-      // isn't stuck Active forever, then re-raise so the fiber's error
-      // boundary logs it. Failure during release itself is swallowed (we
-      // already have the original error to report).
+      // Any unhandled failure mid-turn — surface the failure to the
+      // user so the chat doesn't go silent (Bug #6), then release the
+      // lock so the agent isn't stuck Active forever, then re-raise
+      // so the fiber's error boundary logs it. Each step is
+      // independently best-effort: a downstream failure (DB
+      // unavailable, hub closed, missing topic, etc.) doesn't mask
+      // the original error.
       scribe.error(s"runAgent failed for ${agent.id.value} in ${convId.value}", t)
-      releaseClaim(claimed).handleError(_ => Task.unit).flatMap(_ => Task.error(t))
+      publishFailureMessage(agent, convId, t).handleError(_ => Task.unit)
+        .flatMap(_ => releaseClaim(claimed).handleError(_ => Task.unit))
+        .flatMap(_ => Task.error(t))
     }
   }
+
+  /** Publish a `Failure`-content Message into the conversation when
+    * `runAgentLoop` crashes mid-turn. Lets clients render a red error
+    * bubble in place of the frozen "still typing" indicator the
+    * activity-state delta from `releaseClaim` would leave on its own.
+    *
+    * Best-effort: degenerate states (conversation gone, no topics) skip
+    * publication rather than fabricate a topic id; the caller's
+    * `releaseClaim` still flips the agent state to Idle/Complete. */
+  private final def publishFailureMessage(agent: AgentParticipant,
+                                          convId: Id[Conversation],
+                                          t: Throwable): Task[Unit] =
+    withDB(_.conversations.transaction(_.get(convId))).flatMap {
+      case None => Task.unit
+      case Some(conv) => conv.topics.headOption match {
+        case None        => Task.unit
+        case Some(topic) =>
+          val reason = Option(t.getMessage).filter(_.nonEmpty)
+            .map(m => s"${t.getClass.getSimpleName}: $m")
+            .getOrElse(t.getClass.getSimpleName)
+          publish(Message(
+            participantId  = agent.id,
+            conversationId = convId,
+            topicId        = topic.id,
+            content        = Vector(sigil.tool.model.ResponseContent.Failure(
+              reason      = reason,
+              recoverable = false
+            )),
+            state          = EventState.Complete,
+            role           = MessageRole.Standard
+          )).map(_ => ())
+      }
+    }
 
   /** Synthesize a placeholder Message when the agent loop terminates
     * without ever calling a user-visible terminal tool (`respond`,
