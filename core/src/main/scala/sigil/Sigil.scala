@@ -627,6 +627,40 @@ trait Sigil {
     }
   }
 
+  /** Bug #9 phase 4 — write a tool's full payload to the
+    * `Category.ToolOutput` slice of `SigilDB.storedFiles` with the
+    * configured retention window applied to `expiresAt`. Used by
+    * tools that want to externalize oversized output (typed JSON,
+    * raw text logs, etc.) and emit only a summary inline.
+    *
+    * Caller resolves the [[SpaceId]] (typically the conversation's
+    * `space` so multi-tenant scoping holds) and supplies a
+    * `contentType` (`"application/json"` for typed structured
+    * payloads, `"text/plain"` for raw transcripts, etc.). The
+    * returned [[sigil.storage.StoredFile]]'s `_id` is what goes
+    * into `ToolResults.outputId`.
+    *
+    * `expiresAt` defaults to `now + toolOutputRetention`; apps that
+    * want explicit per-call retention pass an absolute Timestamp. */
+  def storeToolOutput(space: SpaceId,
+                      data: Array[Byte],
+                      contentType: String = "application/octet-stream",
+                      metadata: Map[String, String] = Map.empty,
+                      expiresAt: Option[lightdb.time.Timestamp] = None): Task[sigil.storage.StoredFile] = {
+    val effectiveExpiresAt = expiresAt.orElse {
+      val now = lightdb.time.Timestamp().value
+      Some(lightdb.time.Timestamp(now + toolOutputRetention.toMillis))
+    }
+    storeBytes(
+      space       = space,
+      data        = data,
+      contentType = contentType,
+      metadata    = metadata,
+      category    = sigil.storage.StoredFileCategory.ToolOutput,
+      expiresAt   = effectiveExpiresAt
+    )
+  }
+
   /** Read bytes by id with authz. Returns `None` if the file doesn't
     * exist OR the caller's `accessibleSpaces` doesn't include the
     * file's space. Mirroring `find_capability`'s fail-closed
@@ -4040,22 +4074,6 @@ trait Sigil {
     * retention windows or larger volumes override. */
   def storedFileExpirationInterval: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.DurationInt(1).hour
-
-  /** Byte threshold above which the framework auto-stores tool
-    * output / oversized message-content blocks in `SigilDB.storedFiles`
-    * and emits a pointer instead of inlining the payload. Applies
-    * uniformly to:
-    *
-    *   - `Sigil.contentExternalizationTransform` for oversized text /
-    *     image blocks in user-typed Messages.
-    *   - `ToolResults` events emitted by tools whose payload exceeds
-    *     this threshold (Bug #9 phase 4).
-    *
-    * Default: 4096 bytes. Apps tuning for tiny-context models lower
-    * it; apps with high-resolution agents and lots of context room
-    * raise it. Set to `Long.MaxValue` to opt out of externalization
-    * entirely (every block stays inline). */
-  def contentExternalizationThreshold: Long = 4096L
 
   /** Default retention window applied to a newly-written
     * `StoredFileCategory.ToolOutput` record's `expiresAt`. Apps
