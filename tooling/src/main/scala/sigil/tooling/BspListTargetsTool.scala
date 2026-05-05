@@ -1,12 +1,10 @@
 package sigil.tooling
 
 import fabric.rw.*
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
-
-import scala.jdk.CollectionConverters.*
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.{BspBuildTarget, BspListTargetsResult}
 
 case class BspListTargetsInput(projectRoot: String) extends ToolInput derives RW
 
@@ -16,13 +14,13 @@ case class BspListTargetsInput(projectRoot: String) extends ToolInput derives RW
  * right target id before calling `bsp_compile` / `bsp_test` / etc.
  * with an explicit list.
  */
-final class BspListTargetsTool(val manager: BspManager) extends TypedTool[BspListTargetsInput](
+final class BspListTargetsTool(val manager: BspManager) extends TypedOutputTool[BspListTargetsInput, BspListTargetsResult](
   name = ToolName("bsp_list_targets"),
   description =
     """List every build target advertised by the project's BSP server.
       |
       |`projectRoot` selects the persisted BspBuildConfig.
-      |Returns each target's URI, display name, language tags, and capabilities (canCompile / canTest / canRun).""".stripMargin,
+      |Returns each target's URI, display name, language tags, and capabilities (canCompile / canTest / canRun / canDebug).""".stripMargin,
   examples = List(
     ToolExample(
       "list targets in a project",
@@ -30,22 +28,16 @@ final class BspListTargetsTool(val manager: BspManager) extends TypedTool[BspLis
     )
   )
 ) with BspToolSupport {
-  override protected def executeTyped(input: BspListTargetsInput, context: TurnContext): Stream[Event] =
-    withSession(input.projectRoot, context) { session =>
+  override protected def executeTyped(input: BspListTargetsInput, context: TurnContext): Task[BspListTargetsResult] =
+    withSessionTyped[BspListTargetsResult](
+      input.projectRoot, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { session =>
       session.workspaceBuildTargets.map { targets =>
-        if (targets.isEmpty) "No build targets."
-        else targets.map { t =>
-          val caps = t.getCapabilities
-          val flags = List(
-            if (caps != null && caps.getCanCompile) Some("compile") else None,
-            if (caps != null && caps.getCanTest)    Some("test")    else None,
-            if (caps != null && caps.getCanRun)     Some("run")     else None,
-            if (caps != null && caps.getCanDebug)   Some("debug")   else None
-          ).flatten.mkString(",")
-          val langs = Option(t.getLanguageIds).map(_.asScala.toList.mkString(",")).getOrElse("")
-          val display = Option(t.getDisplayName).getOrElse("(unnamed)")
-          s"  ${t.getId.getUri}\n      name: $display | langs: $langs | caps: $flags"
-        }.mkString("\n")
+        BspListTargetsResult(
+          projectRoot = input.projectRoot,
+          targets     = targets.map(BspBuildTarget.fromBsp4j)
+        )
       }
     }
 }

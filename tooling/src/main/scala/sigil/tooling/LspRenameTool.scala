@@ -1,10 +1,10 @@
 package sigil.tooling
 
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.LspRenameResult
 
 import scala.jdk.CollectionConverters.*
 
@@ -25,7 +25,7 @@ case class LspRenameInput(languageId: String,
  * different class, etc.). For the agent, this is the safe path to
  * symbol-level refactors.
  */
-final class LspRenameTool(val manager: LspManager) extends TypedTool[LspRenameInput](
+final class LspRenameTool(val manager: LspManager) extends TypedOutputTool[LspRenameInput, LspRenameResult](
   name = ToolName("lsp_rename"),
   description =
     """Rename a symbol across the workspace.
@@ -33,7 +33,7 @@ final class LspRenameTool(val manager: LspManager) extends TypedTool[LspRenameIn
       |`languageId` + `filePath` identify the source document.
       |`line` + `character` (0-based) point at the symbol to rename.
       |`newName` is the replacement identifier.
-      |Server-suggested edits land on disk via the framework's WorkspaceEditApplier.""".stripMargin,
+      |Returns `Applied(newName, filesChanged)` / `PartialFailure(newName, filesChanged)` / `NoEdits`.""".stripMargin,
   examples = List(
     ToolExample(
       "rename a method",
@@ -44,10 +44,13 @@ final class LspRenameTool(val manager: LspManager) extends TypedTool[LspRenameIn
     )
   )
 ) with LspToolSupport {
-  override protected def executeTyped(input: LspRenameInput, context: TurnContext): Stream[Event] =
-    withOpenDocument(input.languageId, input.filePath, context) { (session, uri) =>
+  override protected def executeTyped(input: LspRenameInput, context: TurnContext): Task[LspRenameResult] =
+    withOpenDocumentTyped[LspRenameResult](
+      input.languageId, input.filePath, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { (session, uri) =>
       session.rename(uri, input.line, input.character, input.newName).flatMap {
-        case None       => Task.pure("Server returned no rename edits — symbol may not be renameable here.")
+        case None       => Task.pure(LspRenameResult.NoEdits)
         case Some(edit) =>
           val ok = PermissiveWorkspaceEditApplier.apply(edit)
           val urisChanged = (
@@ -61,10 +64,10 @@ final class LspRenameTool(val manager: LspManager) extends TypedTool[LspRenameIn
               new java.io.File(java.net.URI.create(u)).getAbsolutePath -> org.eclipse.lsp4j.FileChangeType.Changed
             }.toMap
           )
-          notifyTask.map(_ =>
-            if (ok) s"Renamed to '${input.newName}' across ${urisChanged.size} file(s)."
-            else s"Rename produced edits across ${urisChanged.size} file(s) but at least one application failed."
-          )
+          notifyTask.map { _ =>
+            if (ok) LspRenameResult.Applied(input.newName, urisChanged.size)
+            else    LspRenameResult.PartialFailure(input.newName, urisChanged.size)
+          }
       }
     }
 }

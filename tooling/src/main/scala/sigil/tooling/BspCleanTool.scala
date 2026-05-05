@@ -1,10 +1,10 @@
 package sigil.tooling
 
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.BspCleanResult
 
 case class BspCleanInput(projectRoot: String,
                          targets: List[String] = Nil) extends ToolInput derives RW
@@ -14,14 +14,13 @@ case class BspCleanInput(projectRoot: String,
  * suspects an incremental compiler artifact is stale. Empty
  * `targets` cleans every workspace target.
  */
-final class BspCleanTool(val manager: BspManager) extends TypedTool[BspCleanInput](
+final class BspCleanTool(val manager: BspManager) extends TypedOutputTool[BspCleanInput, BspCleanResult](
   name = ToolName("bsp_clean"),
   description =
     """Clean the build cache for the given targets via the BSP server.
       |
       |`projectRoot` selects the persisted BspBuildConfig.
-      |`targets` (optional) is the list of target URIs; empty cleans every workspace target.
-      |Returns whether the clean was acknowledged.""".stripMargin,
+      |`targets` (optional) is the list of target URIs; empty cleans every workspace target.""".stripMargin,
   examples = List(
     ToolExample(
       "clean every target",
@@ -29,14 +28,16 @@ final class BspCleanTool(val manager: BspManager) extends TypedTool[BspCleanInpu
     )
   )
 ) with BspToolSupport {
-  override protected def executeTyped(input: BspCleanInput, context: TurnContext): Stream[Event] =
-    withSession(input.projectRoot, context) { session =>
+  override protected def executeTyped(input: BspCleanInput, context: TurnContext): Task[BspCleanResult] =
+    withSessionTyped[BspCleanResult](
+      input.projectRoot, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { session =>
       targetsFromInput(session, input.targets).flatMap { targets =>
-        if (targets.isEmpty) Task.pure("No targets to clean.")
+        if (targets.isEmpty) Task.pure(BspCleanResult(input.projectRoot, 0, cleaned = false))
         else session.cleanCache(targets).map { result =>
           val ok = Option(result.getCleaned).map(_.booleanValue).getOrElse(false)
-          if (ok) s"Cleaned ${targets.size} target(s)."
-          else s"Clean reported not-cleaned across ${targets.size} target(s)."
+          BspCleanResult(input.projectRoot, targets.size, cleaned = ok)
         }
       }
     }

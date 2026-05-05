@@ -1,10 +1,10 @@
 package sigil.tooling
 
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.{BspTargetTestClasses, BspTestClassesResult}
 
 import scala.jdk.CollectionConverters.*
 
@@ -21,7 +21,7 @@ case class BspScalaTestClassesInput(projectRoot: String,
  * BSP in favor of `buildTarget/jvmTestEnvironment`, but still
  * shipped by sbt and Bloop).
  */
-final class BspScalaTestClassesTool(val manager: BspManager) extends TypedTool[BspScalaTestClassesInput](
+final class BspScalaTestClassesTool(val manager: BspManager) extends TypedOutputTool[BspScalaTestClassesInput, BspTestClassesResult](
   name = ToolName("bsp_scala_test_classes"),
   description =
     """List discovered Scala test classes for each target.
@@ -36,18 +36,25 @@ final class BspScalaTestClassesTool(val manager: BspManager) extends TypedTool[B
     )
   )
 ) with BspToolSupport {
-  override protected def executeTyped(input: BspScalaTestClassesInput, context: TurnContext): Stream[Event] =
-    withSession(input.projectRoot, context) { session =>
+  override protected def executeTyped(input: BspScalaTestClassesInput,
+                                      context: TurnContext): Task[BspTestClassesResult] =
+    withSessionTyped[BspTestClassesResult](
+      input.projectRoot, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { session =>
       targetsFromInput(session, input.targets).flatMap { targets =>
-        if (targets.isEmpty) Task.pure("No targets.")
+        if (targets.isEmpty) Task.pure(BspTestClassesResult(input.projectRoot, Nil))
         else session.scalaTestClasses(targets).map { items =>
-          if (items.isEmpty) "No test classes discovered."
-          else items.map { item =>
-            val target = item.getTarget.getUri
-            val classes = Option(item.getClasses).map(_.asScala.toList.mkString("\n      ")).getOrElse("")
-            val framework = Option(item.getFramework).getOrElse("")
-            s"  $target  [framework: $framework]\n      $classes"
-          }.mkString("\n")
+          BspTestClassesResult(
+            projectRoot = input.projectRoot,
+            items = items.map { item =>
+              BspTargetTestClasses(
+                target    = item.getTarget.getUri,
+                framework = Option(item.getFramework).filter(_.nonEmpty),
+                classes   = Option(item.getClasses).map(_.asScala.toList).getOrElse(Nil)
+              )
+            }
+          )
         }
       }
     }

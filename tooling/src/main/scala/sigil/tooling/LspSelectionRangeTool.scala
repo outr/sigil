@@ -2,10 +2,10 @@ package sigil.tooling
 
 import fabric.rw.*
 import org.eclipse.lsp4j.{Position, SelectionRange}
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.{LspRange, LspSelectionRangeChain, LspSelectionRangeResult}
 
 case class LspSelectionRangeInput(languageId: String,
                                   filePath: String,
@@ -27,14 +27,15 @@ object LspSelectionRangeInput {
  * essential when the agent is reasoning about "the entire surrounding
  * context" for an edit.
  */
-final class LspSelectionRangeTool(val manager: LspManager) extends TypedTool[LspSelectionRangeInput](
+final class LspSelectionRangeTool(val manager: LspManager) extends TypedOutputTool[LspSelectionRangeInput, LspSelectionRangeResult](
   name = ToolName("lsp_selection_range"),
   description =
     """For each input cursor position, return the chain of progressively-larger semantic
       |regions enclosing it (identifier → expression → statement → method → class …).
       |
       |`languageId` + `filePath` identify the document.
-      |`positions` is the list of (line, character) pairs (0-based).""".stripMargin,
+      |`positions` is the list of (line, character) pairs (0-based).
+      |Returns `{filePath, chains: [{ranges: [innermost, ..., outermost]}]}` — one chain per input position.""".stripMargin,
   examples = List(
     ToolExample(
       "expand selection at one position",
@@ -45,24 +46,27 @@ final class LspSelectionRangeTool(val manager: LspManager) extends TypedTool[Lsp
     )
   )
 ) with LspToolSupport {
-  override protected def executeTyped(input: LspSelectionRangeInput, context: TurnContext): Stream[Event] =
-    withOpenDocument(input.languageId, input.filePath, context) { (session, uri) =>
+  override protected def executeTyped(input: LspSelectionRangeInput, context: TurnContext): Task[LspSelectionRangeResult] =
+    withOpenDocumentTyped[LspSelectionRangeResult](
+      input.languageId, input.filePath, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { (session, uri) =>
       val positions = input.positions.map(p => new Position(p.line, p.character))
       session.selectionRange(uri, positions).map { results =>
-        if (results.isEmpty) "No selection ranges."
-        else results.zipWithIndex.map { case (range, idx) =>
-          s"position ${idx + 1}:\n${renderChain(range, depth = 0)}"
-        }.mkString("\n\n")
+        LspSelectionRangeResult(
+          filePath = input.filePath,
+          chains   = results.map(r => LspSelectionRangeChain(flatten(r)))
+        )
       }
     }
 
-  private def renderChain(range: SelectionRange, depth: Int): String = {
-    val indent = "  " * depth
-    val r = range.getRange
-    val line = s"$indent${r.getStart.getLine + 1}:${r.getStart.getCharacter + 1} – ${r.getEnd.getLine + 1}:${r.getEnd.getCharacter + 1}"
-    Option(range.getParent) match {
-      case None    => line
-      case Some(p) => s"$line\n${renderChain(p, depth + 1)}"
+  private def flatten(range: SelectionRange): List[LspRange] = {
+    val acc = scala.collection.mutable.ListBuffer.empty[LspRange]
+    var cursor: SelectionRange = range
+    while (cursor != null) {
+      acc += LspRange.fromLsp4j(cursor.getRange)
+      cursor = cursor.getParent
     }
+    acc.toList
   }
 }

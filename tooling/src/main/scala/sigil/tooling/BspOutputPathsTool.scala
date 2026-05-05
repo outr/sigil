@@ -1,10 +1,10 @@
 package sigil.tooling
 
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.{BspOutputPathItem, BspOutputPathsResult, BspTargetOutputPaths}
 
 import scala.jdk.CollectionConverters.*
 
@@ -17,7 +17,7 @@ case class BspOutputPathsInput(projectRoot: String,
  * artifacts directly when a downstream tool needs the classpath
  * or jar output.
  */
-final class BspOutputPathsTool(val manager: BspManager) extends TypedTool[BspOutputPathsInput](
+final class BspOutputPathsTool(val manager: BspManager) extends TypedOutputTool[BspOutputPathsInput, BspOutputPathsResult](
   name = ToolName("bsp_output_paths"),
   description =
     """List build output directories / jars for the given targets.
@@ -31,20 +31,24 @@ final class BspOutputPathsTool(val manager: BspManager) extends TypedTool[BspOut
     )
   )
 ) with BspToolSupport {
-  override protected def executeTyped(input: BspOutputPathsInput, context: TurnContext): Stream[Event] =
-    withSession(input.projectRoot, context) { session =>
+  override protected def executeTyped(input: BspOutputPathsInput,
+                                      context: TurnContext): Task[BspOutputPathsResult] =
+    withSessionTyped[BspOutputPathsResult](
+      input.projectRoot, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { session =>
       targetsFromInput(session, input.targets).flatMap { targets =>
-        if (targets.isEmpty) Task.pure("No targets.")
+        if (targets.isEmpty) Task.pure(BspOutputPathsResult(input.projectRoot, Nil))
         else session.outputPaths(targets).map { items =>
-          if (items.isEmpty) "No output items."
-          else items.map { item =>
-            val target = item.getTarget.getUri
-            val paths = Option(item.getOutputPaths).map(_.asScala.toList.map { p =>
-              val kind = if (p.getKind == ch.epfl.scala.bsp4j.OutputPathItemKind.DIRECTORY) "dir" else "file"
-              s"      [$kind] ${p.getUri}"
-            }.mkString("\n")).getOrElse("")
-            s"  $target\n$paths"
-          }.mkString("\n")
+          BspOutputPathsResult(
+            projectRoot = input.projectRoot,
+            items = items.map { item =>
+              BspTargetOutputPaths(
+                target = item.getTarget.getUri,
+                paths = Option(item.getOutputPaths).map(_.asScala.toList.map(BspOutputPathItem.fromBsp4j)).getOrElse(Nil)
+              )
+            }
+          )
         }
       }
     }

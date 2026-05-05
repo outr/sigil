@@ -2,10 +2,10 @@ package sigil.tooling
 
 import ch.epfl.scala.bsp4j.StatusCode
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.BspExecResult
 
 case class BspTestInput(projectRoot: String,
                         targets: List[String] = Nil,
@@ -20,7 +20,7 @@ case class BspTestInput(projectRoot: String,
  * like `-z 'substring of test name'`, etc.). Empty `targets` means
  * "every workspace target that supports test".
  */
-final class BspTestTool(val manager: BspManager) extends TypedTool[BspTestInput](
+final class BspTestTool(val manager: BspManager) extends TypedOutputTool[BspTestInput, BspExecResult](
   name = ToolName("bsp_test"),
   description =
     """Run tests for build targets via the BSP server.
@@ -28,7 +28,7 @@ final class BspTestTool(val manager: BspManager) extends TypedTool[BspTestInput]
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty tests every target with the test capability.
       |`arguments` (optional) flows through to the test runner.
-      |Returns the status (OK / ERROR / CANCELLED) plus stdout/stderr captured during the run.""".stripMargin,
+      |Returns `{status, targetCount, stdout, stderr}` where status is `OK` / `ERROR` / `CANCELLED` / `NO_TARGETS`.""".stripMargin,
   examples = List(
     ToolExample(
       "run a single sbt suite",
@@ -39,24 +39,29 @@ final class BspTestTool(val manager: BspManager) extends TypedTool[BspTestInput]
     )
   )
 ) with BspToolSupport {
-  override protected def executeTyped(input: BspTestInput, context: TurnContext): Stream[Event] =
-    withSession(input.projectRoot, context) { session =>
+  override protected def executeTyped(input: BspTestInput, context: TurnContext): Task[BspExecResult] =
+    withSessionTyped[BspExecResult](
+      input.projectRoot, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { session =>
       targetsFromInput(session, input.targets).flatMap { resolved =>
-        val testable = resolved.filter(_ => true) // Filtering by capability requires a list+lookup; skip for now.
-        if (testable.isEmpty) Task.pure("No targets to test.")
+        if (resolved.isEmpty) Task.pure(BspExecResult(input.projectRoot, "NO_TARGETS", 0, "", ""))
         else {
-          // Drain prior output so we only show what arrived during this call.
           session.client.drainRunOutput()
-          session.test(testable, input.arguments).map { result =>
+          session.test(resolved, input.arguments).map { result =>
             val status = result.getStatusCode match {
               case StatusCode.OK        => "OK"
               case StatusCode.ERROR     => "ERROR"
               case StatusCode.CANCELLED => "CANCELLED"
             }
             val (out, err) = session.client.drainRunOutput()
-            val outBlock = if (out.isEmpty) "" else s"\n--- stdout ---\n${out.mkString}"
-            val errBlock = if (err.isEmpty) "" else s"\n--- stderr ---\n${err.mkString}"
-            s"Test $status (${testable.size} target(s) in ${input.projectRoot})$outBlock$errBlock"
+            BspExecResult(
+              projectRoot = input.projectRoot,
+              status      = status,
+              targetCount = resolved.size,
+              stdout      = out.mkString,
+              stderr      = err.mkString
+            )
           }
         }
       }

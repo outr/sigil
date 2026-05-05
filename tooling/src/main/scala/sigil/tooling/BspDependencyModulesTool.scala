@@ -1,10 +1,10 @@
 package sigil.tooling
 
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.{BspDependencyModule, BspDependencyModulesResult, BspTargetDependencyModules}
 
 import scala.jdk.CollectionConverters.*
 
@@ -20,10 +20,10 @@ case class BspDependencyModulesInput(projectRoot: String,
  * paths; this returns the coordinates the build references. Useful
  * for "what version of X does this project pull in?"
  */
-final class BspDependencyModulesTool(val manager: BspManager) extends TypedTool[BspDependencyModulesInput](
+final class BspDependencyModulesTool(val manager: BspManager) extends TypedOutputTool[BspDependencyModulesInput, BspDependencyModulesResult](
   name = ToolName("bsp_dependency_modules"),
   description =
-    """List each target's library dependencies as module coordinates (groupId:artifactId:version).
+    """List each target's library dependencies as module coordinates (groupId:artifactId, version).
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin,
@@ -34,19 +34,26 @@ final class BspDependencyModulesTool(val manager: BspManager) extends TypedTool[
     )
   )
 ) with BspToolSupport {
-  override protected def executeTyped(input: BspDependencyModulesInput, context: TurnContext): Stream[Event] =
-    withSession(input.projectRoot, context) { session =>
+  override protected def executeTyped(input: BspDependencyModulesInput,
+                                      context: TurnContext): Task[BspDependencyModulesResult] =
+    withSessionTyped[BspDependencyModulesResult](
+      input.projectRoot, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { session =>
       targetsFromInput(session, input.targets).flatMap { targets =>
-        if (targets.isEmpty) Task.pure("No targets.")
+        if (targets.isEmpty) Task.pure(BspDependencyModulesResult(input.projectRoot, Nil))
         else session.dependencyModules(targets).map { items =>
-          if (items.isEmpty) "No dependency module items."
-          else items.map { item =>
-            val target = item.getTarget.getUri
-            val mods = Option(item.getModules).map(_.asScala.toList.map { m =>
-              s"      ${m.getName}:${m.getVersion}"
-            }.mkString("\n")).getOrElse("")
-            s"  $target\n$mods"
-          }.mkString("\n")
+          BspDependencyModulesResult(
+            projectRoot = input.projectRoot,
+            items = items.map { item =>
+              BspTargetDependencyModules(
+                target  = item.getTarget.getUri,
+                modules = Option(item.getModules).map(_.asScala.toList.map { m =>
+                  BspDependencyModule(name = m.getName, version = m.getVersion)
+                }).getOrElse(Nil)
+              )
+            }
+          )
         }
       }
     }

@@ -3,10 +3,10 @@ package sigil.tooling
 import fabric.rw.*
 import org.eclipse.lsp4j.{DocumentSymbol, SymbolInformation}
 import org.eclipse.lsp4j.jsonrpc.messages.{Either => LspEither}
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.{LspDocumentSymbolEntry, LspDocumentSymbolsResult, LspPosition}
 
 import scala.jdk.CollectionConverters.*
 
@@ -21,15 +21,17 @@ case class LspDocumentSymbolsInput(languageId: String,
  *
  * The agent uses this for "what's in this file" before edits, and
  * to locate a symbol by name without a workspace-wide search.
+ *
+ * Output flattens hierarchy into a depth-indexed list so consumers
+ * walk one stream and re-render indentation from `depth`.
  */
-final class LspDocumentSymbolsTool(val manager: LspManager) extends TypedTool[LspDocumentSymbolsInput](
+final class LspDocumentSymbolsTool(val manager: LspManager) extends TypedOutputTool[LspDocumentSymbolsInput, LspDocumentSymbolsResult](
   name = ToolName("lsp_document_symbols"),
   description =
     """List the symbols (classes / methods / fields / etc.) defined in a file.
       |
       |`languageId` + `filePath` identify the document.
-      |Output is hierarchical when the server supports `DocumentSymbol`;
-      |flat for legacy `SymbolInformation` results.""".stripMargin,
+      |Returns `{filePath, entries: [{kind, name, position, depth}]}` — `depth = 0` is top-level.""".stripMargin,
   examples = List(
     ToolExample(
       "outline a Scala file",
@@ -37,34 +39,42 @@ final class LspDocumentSymbolsTool(val manager: LspManager) extends TypedTool[Ls
     )
   )
 ) with LspToolSupport {
-  override protected def executeTyped(input: LspDocumentSymbolsInput, context: TurnContext): Stream[Event] =
-    withOpenDocument(input.languageId, input.filePath, context) { (session, uri) =>
+  override protected def executeTyped(input: LspDocumentSymbolsInput,
+                                      context: TurnContext): Task[LspDocumentSymbolsResult] =
+    withOpenDocumentTyped[LspDocumentSymbolsResult](
+      input.languageId, input.filePath, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { (session, uri) =>
       session.documentSymbols(uri).map { symbols =>
-        if (symbols.isEmpty) "No symbols."
-        else symbols.map(renderTop).mkString("\n")
+        val entries = symbols.flatMap { either =>
+          if (either.isLeft) flattenInfo(either.getLeft, depth = 0)
+          else flattenDoc(either.getRight, depth = 0)
+        }
+        LspDocumentSymbolsResult(filePath = input.filePath, entries = entries)
       }
     }
 
-  private def renderTop(either: LspEither[SymbolInformation, DocumentSymbol]): String =
-    if (either.isLeft) renderInfo(either.getLeft, depth = 0)
-    else renderDoc(either.getRight, depth = 0)
-
   @annotation.nowarn("cat=deprecation")
-  private def renderInfo(si: SymbolInformation, depth: Int): String = {
-    val indent = "  " * depth
-    val loc = si.getLocation
-    val r = if (loc != null) loc.getRange else null
-    val pos = if (r != null) s" @${r.getStart.getLine + 1}:${r.getStart.getCharacter + 1}" else ""
-    s"$indent[${si.getKind}] ${si.getName}$pos"
+  private def flattenInfo(si: SymbolInformation, depth: Int): List[LspDocumentSymbolEntry] = {
+    val pos = Option(si.getLocation).flatMap(l => Option(l.getRange).map(_.getStart))
+      .map(LspPosition.fromLsp4j).getOrElse(LspPosition(0, 0))
+    List(LspDocumentSymbolEntry(
+      kind     = Option(si.getKind).map(_.toString.toLowerCase).getOrElse("unknown"),
+      name     = si.getName,
+      position = pos,
+      depth    = depth
+    ))
   }
 
-  private def renderDoc(ds: DocumentSymbol, depth: Int): String = {
-    val indent = "  " * depth
-    val r = ds.getRange
-    val pos = s" @${r.getStart.getLine + 1}:${r.getStart.getCharacter + 1}"
-    val head = s"$indent[${ds.getKind}] ${ds.getName}$pos"
-    val children = Option(ds.getChildren).map(_.asScala.toList).getOrElse(Nil)
-    if (children.isEmpty) head
-    else (head :: children.map(renderDoc(_, depth + 1))).mkString("\n")
+  private def flattenDoc(ds: DocumentSymbol, depth: Int): List[LspDocumentSymbolEntry] = {
+    val head = LspDocumentSymbolEntry(
+      kind     = Option(ds.getKind).map(_.toString.toLowerCase).getOrElse("unknown"),
+      name     = ds.getName,
+      position = LspPosition.fromLsp4j(ds.getRange.getStart),
+      depth    = depth
+    )
+    val tail = Option(ds.getChildren).map(_.asScala.toList).getOrElse(Nil)
+      .flatMap(flattenDoc(_, depth + 1))
+    head :: tail
   }
 }

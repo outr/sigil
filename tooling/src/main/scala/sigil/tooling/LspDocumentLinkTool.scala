@@ -2,10 +2,10 @@ package sigil.tooling
 
 import fabric.rw.*
 import org.eclipse.lsp4j.DocumentLink
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.{LspDocumentLinkItem, LspDocumentLinkResult, LspPosition}
 
 case class LspDocumentLinkInput(languageId: String,
                                 filePath: String) extends ToolInput derives RW
@@ -17,13 +17,13 @@ case class LspDocumentLinkInput(languageId: String,
  * servers) provide rich link metadata; servers that don't return
  * an empty list.
  */
-final class LspDocumentLinkTool(val manager: LspManager) extends TypedTool[LspDocumentLinkInput](
+final class LspDocumentLinkTool(val manager: LspManager) extends TypedOutputTool[LspDocumentLinkInput, LspDocumentLinkResult](
   name = ToolName("lsp_document_links"),
   description =
     """List the document links the language server has identified in a file.
       |
       |`languageId` + `filePath` identify the document.
-      |Each entry shows the link's range and target (if resolved).""".stripMargin,
+      |Each entry shows the link's start position and target URI (when resolved).""".stripMargin,
   examples = List(
     ToolExample(
       "list links in a Markdown file",
@@ -31,18 +31,19 @@ final class LspDocumentLinkTool(val manager: LspManager) extends TypedTool[LspDo
     )
   )
 ) with LspToolSupport {
-  override protected def executeTyped(input: LspDocumentLinkInput, context: TurnContext): Stream[Event] =
-    withOpenDocument(input.languageId, input.filePath, context) { (session, uri) =>
+  override protected def executeTyped(input: LspDocumentLinkInput, context: TurnContext): Task[LspDocumentLinkResult] =
+    withOpenDocumentTyped[LspDocumentLinkResult](
+      input.languageId, input.filePath, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { (session, uri) =>
       session.documentLinks(uri).map { links =>
-        if (links.isEmpty) "No document links."
-        else links.map(render).mkString("\n")
+        LspDocumentLinkResult(filePath = input.filePath, items = links.map(toItem))
       }
     }
 
-  private def render(link: DocumentLink): String = {
-    val r = link.getRange
-    val pos = s"${r.getStart.getLine + 1}:${r.getStart.getCharacter + 1}"
-    val target = Option(link.getTarget).getOrElse("(unresolved)")
-    s"  $pos → $target"
-  }
+  private def toItem(link: DocumentLink): LspDocumentLinkItem =
+    LspDocumentLinkItem(
+      position = LspPosition.fromLsp4j(link.getRange.getStart),
+      target   = Option(link.getTarget)
+    )
 }
