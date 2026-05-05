@@ -328,7 +328,13 @@ object Orchestrator {
                     chain = request.chain,
                     conversation = conversation,
                     conversationView = request.turnInput.conversationView,
-                    turnInput = request.turnInput
+                    turnInput = request.turnInput,
+                    // Bug #7 — stamp the dispatching tool's invoke id +
+                    // name so `TurnContext.reportProgress` can publish
+                    // ToolProgress pulses without the tool author
+                    // having to thread the correlation id manually.
+                    currentToolInvokeId = Some(invokeId),
+                    currentToolName     = Some(t.name)
                   ), invokeId)).handleError { err =>
                     scribe.error(s"Atomic tool '$toolName' threw during execution", err)
                     Task.pure(Stream.emit[Signal](Message(

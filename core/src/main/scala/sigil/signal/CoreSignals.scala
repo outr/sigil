@@ -74,7 +74,8 @@ object CoreSignals {
     summon[RW[WireRequestProfile]],
     summon[RW[PinnedMemoryBudgetWarning]],
     summon[RW[ConversationCostUpdated]],
-    summon[RW[WorkerAnswer]]
+    summon[RW[WorkerAnswer]],
+    summon[RW[ToolProgress]]
   )
 
   val all: List[RW[? <: Signal]] = events ++ deltas ++ notices
