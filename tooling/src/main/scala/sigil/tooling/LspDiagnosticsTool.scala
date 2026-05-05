@@ -1,11 +1,13 @@
 package sigil.tooling
 
 import fabric.rw.*
-import org.eclipse.lsp4j.{Diagnostic, DiagnosticSeverity}
+import fabric.io.JsonFormatter
+import org.eclipse.lsp4j.Diagnostic
 import rapid.{Stream, Task}
 import sigil.TurnContext
 import sigil.event.Event
 import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tooling.types.{LspDiagnostic, LspDiagnosticsResult}
 
 case class LspDiagnosticsInput(languageId: String,
                                filePath: String,
@@ -22,6 +24,12 @@ case class LspDiagnosticsInput(languageId: String,
  * different speeds — Metals on cold cache can take 1–2s; rust-analyzer
  * is sub-second after warm-up. Tools that already opened the file
  * earlier in the turn pass `0` to read the latest snapshot directly.
+ *
+ * Bug #9 phase 6: emits a typed [[LspDiagnosticsResult]] JSON shape
+ * — `{filePath, diagnostics: [{filePath, range:{start, end},
+ * severity, message, code, source}, ...]}` — so agents can iterate
+ * the typed list and pattern-match on severity instead of regex-
+ * parsing rendered strings.
  */
 final class LspDiagnosticsTool(val manager: LspManager) extends TypedTool[LspDiagnosticsInput](
   name = ToolName("lsp_diagnostics"),
@@ -32,7 +40,9 @@ final class LspDiagnosticsTool(val manager: LspManager) extends TypedTool[LspDia
       |`filePath` is the absolute path to the file. The session's project root is resolved
       |from the config's `rootMarkers` walked up from the file's directory.
       |`waitMs` (default 1500) is how long to wait for the server to finish publishing
-      |diagnostics after opening the file. Pass 0 to read the existing snapshot only.""".stripMargin,
+      |diagnostics after opening the file. Pass 0 to read the existing snapshot only.
+      |
+      |Returns JSON: {filePath, diagnostics: [{range:{start, end}, severity, message, code, source}]}.""".stripMargin,
   examples = List(
     ToolExample(
       "scala diagnostics for a single file",
@@ -46,21 +56,11 @@ final class LspDiagnosticsTool(val manager: LspManager) extends TypedTool[LspDia
       wait.map(_ => render(input.filePath, session.diagnosticsFor(uri)))
     }
 
-  private def render(filePath: String, diags: List[Diagnostic]): String =
-    if (diags.isEmpty) s"$filePath: 0 diagnostics."
-    else {
-      val rendered = diags.map { d =>
-        val sev = d.getSeverity match {
-          case null                           => "unknown"
-          case DiagnosticSeverity.Error       => "error"
-          case DiagnosticSeverity.Warning     => "warning"
-          case DiagnosticSeverity.Information => "info"
-          case DiagnosticSeverity.Hint        => "hint"
-        }
-        val r = d.getRange
-        val pos = s"${r.getStart.getLine + 1}:${r.getStart.getCharacter + 1}"
-        s"  [$sev] $pos: ${d.getMessage}"
-      }.mkString("\n")
-      s"$filePath: ${diags.size} diagnostic(s).\n$rendered"
-    }
+  private def render(filePath: String, diags: List[Diagnostic]): String = {
+    val typed = LspDiagnosticsResult(
+      filePath    = filePath,
+      diagnostics = diags.map(LspDiagnostic.fromLsp4j(filePath, _))
+    )
+    JsonFormatter.Compact(summon[RW[LspDiagnosticsResult]].read(typed))
+  }
 }

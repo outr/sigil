@@ -1,11 +1,13 @@
 package sigil.tooling
 
-import ch.epfl.scala.bsp4j.{Diagnostic, DiagnosticSeverity, StatusCode}
+import ch.epfl.scala.bsp4j.StatusCode
 import fabric.rw.*
+import fabric.io.JsonFormatter
 import rapid.{Stream, Task}
 import sigil.TurnContext
 import sigil.event.Event
 import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tooling.types.{BspCompileResult, BspDiagnostic}
 
 case class BspCompileInput(projectRoot: String,
                            targets: List[String] = Nil) extends ToolInput derives RW
@@ -36,7 +38,15 @@ final class BspCompileTool(val manager: BspManager) extends TypedTool[BspCompile
   override protected def executeTyped(input: BspCompileInput, context: TurnContext): Stream[Event] =
     withSession(input.projectRoot, context) { session =>
       targetsFromInput(session, input.targets).flatMap { targets =>
-        if (targets.isEmpty) Task.pure("No build targets to compile.")
+        if (targets.isEmpty) {
+          val empty = BspCompileResult(
+            projectRoot = input.projectRoot,
+            status      = "NO_TARGETS",
+            targetCount = 0,
+            diagnostics = Nil
+          )
+          Task.pure(JsonFormatter.Compact(summon[RW[BspCompileResult]].read(empty)))
+        }
         else session.compile(targets).map { result =>
           val status = result.getStatusCode match {
             case StatusCode.OK        => "OK"
@@ -44,26 +54,21 @@ final class BspCompileTool(val manager: BspManager) extends TypedTool[BspCompile
             case StatusCode.CANCELLED => "CANCELLED"
           }
           val diags = session.client.diagnosticsSnapshot
-          val diagSummary =
-            if (diags.values.forall(_.isEmpty)) ""
-            else "\n" + diags.toList.map { case (uri, ds) =>
-              s"$uri: ${ds.size} diagnostic(s).\n" + ds.map(renderDiag).mkString("\n")
-            }.mkString("\n")
-          s"Compile $status (${targets.size} target(s) in ${input.projectRoot})$diagSummary"
+          val typedDiags = diags.toList.flatMap { case (uri, ds) =>
+            val path = scala.util.Try {
+              val u = new java.net.URI(uri)
+              if (u.getScheme == "file") java.nio.file.Paths.get(u).toString else uri
+            }.getOrElse(uri)
+            ds.map(BspDiagnostic.fromBsp4j(path, _))
+          }
+          val typed = BspCompileResult(
+            projectRoot = input.projectRoot,
+            status      = status,
+            targetCount = targets.size,
+            diagnostics = typedDiags
+          )
+          JsonFormatter.Compact(summon[RW[BspCompileResult]].read(typed))
         }
       }
     }
-
-  private def renderDiag(d: Diagnostic): String = {
-    val sev = d.getSeverity match {
-      case null                           => "unknown"
-      case DiagnosticSeverity.ERROR       => "error"
-      case DiagnosticSeverity.WARNING     => "warning"
-      case DiagnosticSeverity.INFORMATION => "info"
-      case DiagnosticSeverity.HINT        => "hint"
-    }
-    val r = d.getRange
-    val pos = s"${r.getStart.getLine + 1}:${r.getStart.getCharacter + 1}"
-    s"  [$sev] $pos: ${d.getMessage}"
-  }
 }

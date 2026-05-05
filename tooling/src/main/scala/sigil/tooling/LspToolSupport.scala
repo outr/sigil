@@ -1,5 +1,7 @@
 package sigil.tooling
 
+import fabric.rw.*
+import fabric.io.JsonFormatter
 import rapid.{Stream, Task}
 import sigil.TurnContext
 import sigil.event.{Event, Message, MessageRole, MessageVisibility}
@@ -68,4 +70,19 @@ trait LspToolSupport {
       role = MessageRole.Tool,
       visibility = MessageVisibility.All
     )
+
+  /** JSON-emitting variant of [[reply]] for tools that produce
+    * structured [[sigil.tooling.types]] values. Serializes `value`
+    * to compact JSON via fabric so apps consuming the wire receive
+    * a typed-shape payload (Bug #9 phase 6) — no regex-parsing of
+    * rendered text required.
+    *
+    * The tool's body becomes "compute the typed value, return it";
+    * `replyJsonStream` wraps it into a Stream\[Event] for the typed
+    * tool's `executeTyped` return. */
+  protected def replyJson[T: RW](context: TurnContext, value: T): Event = {
+    val rw   = summon[RW[T]]
+    val json = rw.read(value)
+    reply(context, JsonFormatter.Compact(json), isError = false)
+  }
 }

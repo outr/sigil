@@ -1,13 +1,13 @@
 package sigil.tooling
 
 import fabric.rw.*
-import org.eclipse.lsp4j.{Hover, MarkupContent}
+import fabric.io.JsonFormatter
+import org.eclipse.lsp4j.Hover
 import rapid.Stream
 import sigil.TurnContext
 import sigil.event.Event
 import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
-
-import scala.jdk.CollectionConverters.*
+import sigil.tooling.types.LspHover
 
 case class LspHoverInput(languageId: String,
                          filePath: String,
@@ -43,18 +43,8 @@ final class LspHoverTool(val manager: LspManager) extends TypedTool[LspHoverInpu
       session.hover(uri, input.line, input.character).map(render)
     }
 
-  private def render(hover: Option[Hover]): String = hover match {
-    case None    => "No hover information."
-    case Some(h) =>
-      val contents = h.getContents
-      if (contents == null) "No hover information."
-      else if (contents.isLeft) {
-        contents.getLeft.asScala.map { either =>
-          if (either.isLeft) either.getLeft else either.getRight.getValue
-        }.mkString("\n\n")
-      } else {
-        val mc: MarkupContent = contents.getRight
-        if (mc == null || mc.getValue == null) "No hover information." else mc.getValue
-      }
+  private def render(hover: Option[Hover]): String = {
+    val typed: Option[LspHover] = hover.map(LspHover.fromLsp4j)
+    JsonFormatter.Compact(summon[RW[Option[LspHover]]].read(typed))
   }
 }
