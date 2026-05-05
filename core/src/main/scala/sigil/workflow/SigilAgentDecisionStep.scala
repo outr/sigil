@@ -68,53 +68,154 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
     val host = WorkflowHost.get
     val modelId = Id[Model](input.modelId)
 
-    host.providerFor(modelId, Nil).flatMap { provider =>
-      val answersFromParent = SigilAgentDecisionStep.extractParentAnswers(workflow)
-      val systemPrompt = SigilAgentDecisionStep.buildSystemPrompt(input)
-      val userPrompt   = SigilAgentDecisionStep.buildUserPrompt(input, answersFromParent)
-      val request = OneShotRequest(
-        modelId            = modelId,
-        systemPrompt       = systemPrompt,
-        userPrompt         = userPrompt,
-        generationSettings = GenerationSettings(),
-        // Expose `complete_task` to the LLM as a typed tool. Models
-        // that prefer structured tool calls over the `Complete:`
-        // line marker land here; the orchestrator decodes the args
-        // via inputRW so `ToolCallComplete.input` arrives typed as
-        // [[sigil.tool.model.CompleteTaskInput]]. When the LLM
-        // emits the marker instead, our text accumulator catches it
-        // via `parseMarker`. Both paths work.
-        tools = Vector(sigil.tool.util.CompleteTaskTool)
-      )
-      val acc = new java.lang.StringBuilder
-      val usageRef = new java.util.concurrent.atomic.AtomicReference[Option[TokenUsage]](None)
-      val toolCompletionRef = new java.util.concurrent.atomic.AtomicReference[Option[String]](None)
-      provider(request).evalMap {
-        case ProviderEvent.TextDelta(t)            => Task { acc.append(t); () }
-        case ProviderEvent.ContentBlockDelta(_, t) => Task { acc.append(t); () }
-        case ProviderEvent.Usage(u)                => Task { usageRef.set(Some(u)); () }
-        case ProviderEvent.ToolCallComplete(_, ti: sigil.tool.model.CompleteTaskInput) =>
-          Task { toolCompletionRef.set(Some(ti.summary)); () }
-        case _                                     => Task.unit
-      }.drain.flatMap { _ =>
-        val response = acc.toString
-        toolCompletionRef.get() match {
-          // LLM called complete_task as a structured tool — settle
-          // immediately with its supplied summary.
-          case Some(summary) =>
-            Task.pure(SigilAgentDecisionStep.withUsage(obj(
-              "complete"  -> bool(true),
-              "summary"   -> str(summary),
-              "iteration" -> num(input.iteration),
-              "exhausted" -> bool(false)
-            ), usageRef.get()))
-          // Fall through to marker-based handling for `Complete:` /
-          // `AskParent:` / `Report:` / `Status:` / continuation.
-          case None =>
-            decideNext(host, workflow, response, usageRef.get(), ctx)
+    // Resolve the worker's role-supplied tool roster. Each name
+    // gets looked up via the host's tool finder; missing tools are
+    // silently skipped (warned) so a bad `toolNames` entry doesn't
+    // crash the worker. `complete_task` is always appended.
+    SigilAgentDecisionStep.resolveTools(host, input.toolNames).flatMap { workerTools =>
+      val toolsForRequest = (workerTools :+ sigil.tool.util.CompleteTaskTool).toVector
+      host.providerFor(modelId, Nil).flatMap { provider =>
+        val answersFromParent = SigilAgentDecisionStep.extractParentAnswers(workflow)
+        val systemPrompt = SigilAgentDecisionStep.buildSystemPrompt(input)
+        val userPrompt   = SigilAgentDecisionStep.buildUserPrompt(input, answersFromParent)
+        val request = OneShotRequest(
+          modelId            = modelId,
+          systemPrompt       = systemPrompt,
+          userPrompt         = userPrompt,
+          generationSettings = GenerationSettings(),
+          tools              = toolsForRequest
+        )
+        val acc = new java.lang.StringBuilder
+        val usageRef = new java.util.concurrent.atomic.AtomicReference[Option[TokenUsage]](None)
+        val toolCompletionRef = new java.util.concurrent.atomic.AtomicReference[Option[String]](None)
+        // Capture EVERY tool call the LLM made during this turn —
+        // complete_task short-circuits termination, all others get
+        // dispatched against the host's tool registry and their
+        // results folded into the next iteration's priorReasoning.
+        val otherCalls = new java.util.concurrent.ConcurrentLinkedQueue[(String, sigil.tool.ToolInput)]()
+        provider(request).evalMap {
+          case ProviderEvent.TextDelta(t)            => Task { acc.append(t); () }
+          case ProviderEvent.ContentBlockDelta(_, t) => Task { acc.append(t); () }
+          case ProviderEvent.Usage(u)                => Task { usageRef.set(Some(u)); () }
+          case ProviderEvent.ToolCallComplete(_, ti: sigil.tool.model.CompleteTaskInput) =>
+            Task { toolCompletionRef.set(Some(ti.summary)); () }
+          case ProviderEvent.ToolCallStart(callId, name) =>
+            // Capture the name keyed by callId so the matching
+            // ToolCallComplete can route. We hold name + input at
+            // ToolCallComplete time anyway, but ToolCallStart isn't
+            // load-bearing — we just need ToolCallComplete to know
+            // which tool was called. Strider's orchestrator already
+            // pairs them, so the input arrives typed via inputRW.
+            Task.unit
+          case ProviderEvent.ToolCallComplete(_, ti) =>
+            // A non-complete_task tool call. Look up by class —
+            // the orchestrator already decoded the args via the
+            // tool's inputRW, so `ti` is the typed input. We need
+            // to find the tool whose inputRW produced this type and
+            // dispatch.
+            Task { otherCalls.add((ti.getClass.getName, ti)); () }
+          case _ => Task.unit
+        }.drain.flatMap { _ =>
+          val response = acc.toString
+          toolCompletionRef.get() match {
+            // LLM called complete_task as a structured tool — settle
+            // immediately with its supplied summary.
+            case Some(summary) =>
+              Task.pure(SigilAgentDecisionStep.withUsage(obj(
+                "complete"  -> bool(true),
+                "summary"   -> str(summary),
+                "iteration" -> num(input.iteration),
+                "exhausted" -> bool(false)
+              ), usageRef.get()))
+            // Tool calls (non-complete_task) — dispatch each, fold
+            // results into priorReasoning, continue iterating.
+            case None if !otherCalls.isEmpty =>
+              dispatchToolCallsAndContinue(host, workflow, response, otherCalls, workerTools, ctx).map { json =>
+                SigilAgentDecisionStep.withUsage(json, usageRef.get())
+              }
+            // Fall through to marker-based handling for `Complete:` /
+            // `AskParent:` / `Report:` / `Status:` / continuation.
+            case None =>
+              decideNext(host, workflow, response, usageRef.get(), ctx)
+          }
         }
       }
     }
+  }
+
+  /** Dispatch each captured non-complete_task tool call against the
+    * worker's tool roster, accumulate their text results, fold them
+    * into the next iteration's `priorReasoning`, and append a
+    * follow-up [[AgentDecisionStepInput]] to the run. */
+  private def dispatchToolCallsAndContinue(host: sigil.Sigil,
+                                           workflow: Workflow,
+                                           response: String,
+                                           calls: java.util.concurrent.ConcurrentLinkedQueue[(String, sigil.tool.ToolInput)],
+                                           workerTools: List[sigil.tool.Tool],
+                                           ctx: Option[JobContext]): Task[Json] = host match {
+    case ws: WorkflowSigil =>
+      import scala.jdk.CollectionConverters.*
+      val callList = calls.iterator().asScala.toList
+      // Build a map from input class name → tool that produces that input,
+      // so we can dispatch by-input-type. (The orchestrator's typed input
+      // arrives as the result of `tool.inputRW.write(json)`, so its class
+      // is the tool's input case-class.)
+      val byInputClass: Map[String, sigil.tool.Tool] = workerTools.map { t =>
+        // `inputRW.definition.className` is the canonical fabric class name;
+        // the input we got back has matching getClass.getName.
+        val cls = t.inputRW.definition.className.getOrElse(t.name.value)
+        cls -> t
+      }.toMap
+      SyntheticTurnContext.build(host, workflow).flatMap { tcx =>
+        val toolEvents: Task[List[String]] = rapid.Task.sequence(callList.map { case (className, ti) =>
+          // Match by input-class against the registered worker tools.
+          val toolOpt = byInputClass.get(className).orElse {
+            // Fallback: linear scan accepting any tool whose
+            // inputRW class name matches. Covers the case where
+            // the dispatcher captured a slightly different class
+            // representation (boxed primitives, etc.).
+            workerTools.find(_.inputRW.definition.className.contains(className))
+          }
+          toolOpt match {
+            case Some(t) =>
+              t.execute(ti, tcx).toList.map { evs =>
+                val text = evs.collect { case m: sigil.event.Message =>
+                  m.content.collect { case sigil.tool.model.ResponseContent.Text(s) => s }.mkString
+                }.filter(_.nonEmpty).mkString("\n")
+                s"[Tool ${t.name.value}] $text"
+              }
+            case None =>
+              rapid.Task.pure(s"[Tool $className] (no matching tool in worker roster — call dropped)")
+          }
+        })
+        toolEvents.flatMap { results =>
+          val toolBlock = results.mkString("\n\n")
+          val priorReasoning = input.priorReasoning :+ s"$response\n\n--- Tool results ---\n$toolBlock"
+          val nextStep = input.copy(
+            id              = s"decision-${input.iteration + 1}",
+            iteration       = input.iteration + 1,
+            priorReasoning  = priorReasoning
+          )
+          import sigil.workflow.SigilWorkflowModel.stepRW
+          val compiled = WorkflowStepInputCompiler.compile(List(nextStep))
+          val newSteps = workflow.steps ++ compiled.steps
+          val appendTask = ctx match {
+            case Some(c) => c.updateStepsInTxn(workflow._id, newSteps).unit
+            case None    => ws.workflowManager.updateSteps(workflow._id, newSteps).unit
+          }
+          appendTask.map { _ =>
+            obj(
+              "complete"     -> bool(false),
+              "toolsCalled"  -> num(callList.size),
+              "iteration"    -> num(input.iteration)
+            ): Json
+          }
+        }
+      }
+    case _ =>
+      Task.error(new IllegalStateException(
+        "AgentDecisionStep tool dispatch requires the host Sigil to mix in WorkflowSigil."
+      ))
   }
 
   private def decideNext(host: sigil.Sigil, workflow: Workflow, response: String, usage: Option[TokenUsage], ctx: Option[JobContext]): Task[Json] =
@@ -354,10 +455,18 @@ object SigilAgentDecisionStep {
     * Kept terse — the role's own description does most of the
     * identity work. */
   def buildSystemPrompt(input: AgentDecisionStepInput): String = {
+    val toolBlock =
+      if (input.toolNames.isEmpty) ""
+      else s"""
+              |Tools available to you on this run: ${input.toolNames.mkString(", ")}.
+              |Call them via the standard tool-call interface; the framework dispatches each
+              |call, captures its result, and folds the result text into your context on the
+              |next iteration so you can read what came back and decide what to do next.
+              |""".stripMargin
     s"""${input.role.description}
        |
        |You are running as a worker — this is iteration ${input.iteration + 1} of up to ${input.maxIterations}.
-       |
+       |$toolBlock
        |When you have completed the work the user briefed you on, you have two equivalent ways
        |to terminate:
        |  - Call the `complete_task` tool with `summary` — preferred for tool-calling-capable
@@ -425,6 +534,18 @@ object SigilAgentDecisionStep {
       }
     }
   }
+
+  /** Resolve a list of tool names against the host's tool finder.
+    * Missing names log a warning and are skipped — the worker's
+    * roster degrades gracefully rather than failing the whole run
+    * on a typo'd or app-decommissioned tool name. */
+  def resolveTools(host: sigil.Sigil, names: List[String]): rapid.Task[List[sigil.tool.Tool]] =
+    rapid.Task.sequence(names.map { n =>
+      host.findTools.byName(sigil.tool.ToolName(n)).map {
+        case Some(t) => Some(t)
+        case None    => scribe.warn(s"AgentDecisionStep: tool '$n' not found in host registry; dropping from worker roster"); None
+      }
+    }).map(_.flatten)
 
   /** Scan the response for the first matching marker, by priority
     * order: Completion (terminate) > AskParent (suspend) > Report

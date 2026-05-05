@@ -158,6 +158,13 @@ object TestWorkflowSigil extends Sigil with WorkflowSigil {
   override def providerFor(modelId: Id[Model], chain: List[ParticipantId]): Task[Provider] =
     providerRef.get()()
 
+  /** Test-only tool surface — adds [[EchoBackTool]] (used by the
+    * worker tool-dispatch coverage in [[LlamaCppWorkerSpec]]) on top
+    * of the standard CoreTools.all roster. Other specs that don't
+    * touch `echo_back` ignore it. */
+  override def staticTools: List[sigil.tool.Tool] =
+    super.staticTools :+ EchoBackTool
+
   /** Per-suite init: wipes any prior DB at the per-suite path, points
     * `sigil.dbPath` at it, and forces the Sigil instance to start so
     * the workflow manager + Strider engine wire up before tests run. */

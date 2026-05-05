@@ -19,7 +19,14 @@ import sigil.tool.ToolInput
  * the role's WorkType via `ProviderStrategy.routed` before calling
  * this tool. Future versions may take it implicitly via the
  * strategy machinery.
+ *
+ * `toolNames` is the worker's tool roster — names looked up against
+ * the host's `findTools` registry. The framework always appends
+ * `complete_task` so workers can terminate via typed tool call.
+ * Empty list means a "pure reasoning" worker (text-only ReAct via
+ * markers; no tool dispatch).
  */
 case class DelegateTaskInput(role: Role,
                              brief: String,
-                             modelId: String) extends ToolInput derives RW
+                             modelId: String,
+                             toolNames: List[String] = Nil) extends ToolInput derives RW
