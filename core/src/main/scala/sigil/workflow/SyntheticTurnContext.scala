@@ -43,6 +43,27 @@ object SyntheticTurnContext {
         for {
           maybeConv <- host.withDB(_.conversations.transaction(_.get(convId)))
           maybeView <- host.withDB(_.views.transaction(_.get(ConversationView.idFor(convId))))
+          // Worker conversations spawned by `delegate_task` start
+          // with empty `participants` — the worker isn't a real
+          // persisted participant, it's a workflow run. Fall back to
+          // the parent conversation's participant matching
+          // `workflow.createdBy` so tool dispatch from inside the
+          // worker has a stable caller attribution.
+          parentChain <- maybeConv match {
+            case Some(conv) if conv.participants.isEmpty =>
+              conv.parentConversationId match {
+                case Some(parentId) =>
+                  host.withDB(_.conversations.transaction(_.get(parentId))).map {
+                    case Some(parent) =>
+                      val createdByValue = workflow.createdBy.getOrElse("")
+                      val matched = parent.participants.find(_.id.value == createdByValue).map(_.id)
+                      matched.orElse(parent.participants.headOption.map(_.id)).toList
+                    case None => Nil
+                  }
+                case None => Task.pure(Nil)
+              }
+            case _ => Task.pure(Nil)
+          }
         } yield maybeConv match {
           case None       => emptyContext(host)
           case Some(conv) =>
@@ -52,8 +73,9 @@ object SyntheticTurnContext {
             ))
             val createdByValue = workflow.createdBy.getOrElse("")
             val matched = conv.participants.find(_.id.value == createdByValue).map(_.id)
-            val chain: List[ParticipantId] =
+            val ownChain: List[ParticipantId] =
               matched.orElse(conv.participants.headOption.map(_.id)).toList
+            val chain = if (ownChain.nonEmpty) ownChain else parentChain
             TurnContext(
               sigil = host,
               chain = chain,

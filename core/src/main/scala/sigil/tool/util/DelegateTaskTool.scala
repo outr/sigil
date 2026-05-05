@@ -82,11 +82,12 @@ case object DelegateTaskTool
         parentConversationId  = Some(parentConvId)
       )
       stepInput = AgentDecisionStepInput(
-        id      = "decision-0",
-        name    = Some(s"Worker decision (${input.role.name})"),
-        role    = input.role,
-        brief   = input.brief,
-        modelId = input.modelId
+        id        = "decision-0",
+        name      = Some(s"Worker decision (${input.role.name})"),
+        role      = input.role,
+        brief     = input.brief,
+        modelId   = input.modelId,
+        toolNames = input.toolNames
       )
       compiled = WorkflowStepInputCompiler.compile(List(stepInput))(using summon[fabric.rw.RW[strider.step.Step]])
       // Synthetic ad-hoc parent id — for inline runs there's no
