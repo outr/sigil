@@ -15,9 +15,10 @@ import sigil.tool.ToolInput
  *
  *   - `prompt` — the question text shown above the options.
  *   - `options` — the available choices. Order is preserved.
- *   - `allowMultiple` — `false` (default) means exactly one option may
- *     be selected; `true` means zero or more, and any option flagged
- *     `exclusive = true` cannot be combined with other selections.
+ *   - `allowMultiple` — required (no default). `true` = independent
+ *     choices the user can pick in any combination; `false` = forced
+ *     single selection. Required (rather than defaulted) so the model
+ *     reads the tool description and chooses consciously each call.
  *
  * The user is always free to reply with natural language instead of
  * picking from the options — the framework does not require a
@@ -25,4 +26,4 @@ import sigil.tool.ToolInput
  */
 case class RespondOptionsInput(prompt: String,
                                options: List[SelectOption],
-                               allowMultiple: Boolean = false) extends ToolInput derives RW
+                               allowMultiple: Boolean) extends ToolInput derives RW
