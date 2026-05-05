@@ -1,14 +1,10 @@
 package sigil.tool.util
 
-import fabric.io.JsonFormatter
-import fabric.{Arr, Json, num, obj, str}
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.{SpaceId, TurnContext}
 import sigil.conversation.MemoryStatus
-import sigil.event.{Event, Message, MessageRole}
-import sigil.signal.EventState
-import sigil.tool.model.{ResponseContent, SemanticSearchInput}
-import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.tool.model.{SemanticSearchHit, SemanticSearchInput, SemanticSearchOutput}
+import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
 
 /**
  * The unified memory-retrieval tool. Wraps
@@ -23,13 +19,16 @@ import sigil.tool.{ToolExample, ToolName, TypedTool}
  *
  * Falls back to [[sigil.Sigil.defaultRecallSpaces]] when the agent
  * doesn't pass an explicit `spaces` set.
+ *
+ * Emits a typed [[SemanticSearchOutput]] (`query`, `memories: List[SemanticSearchHit]`, `count`).
  */
-case object SemanticSearchTool extends TypedTool[SemanticSearchInput](
+case object SemanticSearchTool extends TypedOutputTool[SemanticSearchInput, SemanticSearchOutput](
   name = ToolName("semantic_search"),
   description =
     """Search persisted memories. Returns matches ranked by embedding similarity when a vector
       |index is wired (otherwise Lucene/substring fallback). Use to recall a previously stored
-      |fact before asking the user the same thing again.""".stripMargin,
+      |fact before asking the user the same thing again. Returns
+      |`{query, memories: [{memoryId, key?, label, summary, fact, pinned, archived, confidence, justification?}], count}`.""".stripMargin,
   examples = List(
     ToolExample("Recall a preference", SemanticSearchInput(query = "user's preferred coding style")),
     ToolExample("Top 3 matches only", SemanticSearchInput(query = "deadline next week", limit = 3)),
@@ -38,10 +37,10 @@ case object SemanticSearchTool extends TypedTool[SemanticSearchInput](
   ),
   keywords = Set("semantic", "search", "memory", "recall", "remember", "find", "vector", "similarity", "rag")
 ) {
-  override protected def executeTyped(input: SemanticSearchInput, ctx: TurnContext): Stream[Event] = Stream.force {
+  override protected def executeTyped(input: SemanticSearchInput, ctx: TurnContext): Task[SemanticSearchOutput] =
     resolveSpaces(input, ctx).flatMap { spaces =>
       if (spaces.isEmpty)
-        Task.pure(toMsg(ctx, render(input.query, Nil)))
+        Task.pure(SemanticSearchOutput(query = input.query, memories = Nil, count = 0))
       else
         ctx.sigil.searchMemories(input.query, spaces, input.limit).flatMap { hits =>
           val filtered = hits.filter { m =>
@@ -49,47 +48,28 @@ case object SemanticSearchTool extends TypedTool[SemanticSearchInput](
               (input.includeHistory || m.validUntil.isEmpty)
           }
           Task.sequence(filtered.map(m => ctx.sigil.recordMemoryAccess(m._id)))
-            .map(_ => toMsg(ctx, render(input.query, filtered)))
+            .map(_ => SemanticSearchOutput(
+              query    = input.query,
+              memories = filtered.map(toHit),
+              count    = filtered.size
+            ))
         }
-    }.map(msg => Stream.emit[Event](msg))
-  }
+    }
 
   private def resolveSpaces(input: SemanticSearchInput, ctx: TurnContext): Task[Set[SpaceId]] =
     if (input.spaces.nonEmpty) Task.pure(input.spaces)
     else ctx.sigil.defaultRecallSpaces(ctx.conversation.id)
 
-  private def render(query: String, hits: List[sigil.conversation.ContextMemory]): String = {
-    val items: Vector[Json] = hits.toVector.map { m =>
-      val keyJson: Json = m.key match {
-        case Some(k) => str(k)
-        case None    => fabric.Null
-      }
-      val justificationJson: Json = m.justification match {
-        case Some(j) => str(j)
-        case None    => fabric.Null
-      }
-      obj(
-        "memoryId"      -> str(m._id.value),
-        "key"           -> keyJson,
-        "label"         -> str(m.label),
-        "summary"       -> str(m.summary),
-        "fact"          -> str(m.fact),
-        "pinned"        -> (if (m.pinned) fabric.bool(true) else fabric.bool(false)),
-        "archived"      -> (if (m.validUntil.isDefined) fabric.bool(true) else fabric.bool(false)),
-        "confidence"    -> num(m.confidence),
-        "justification" -> justificationJson
-      )
-    }
-    JsonFormatter.Compact(obj("query" -> str(query), "memories" -> Arr(items), "count" -> num(hits.size)))
-  }
-
-  private def toMsg(ctx: TurnContext, body: String): Message =
-    Message(
-      participantId  = ctx.caller,
-      conversationId = ctx.conversation.id,
-      topicId        = ctx.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Text(body)),
-      state          = EventState.Complete,
-      role           = MessageRole.Tool
+  private def toHit(m: sigil.conversation.ContextMemory): SemanticSearchHit =
+    SemanticSearchHit(
+      memoryId      = m._id.value,
+      key           = m.key,
+      label         = m.label,
+      summary       = m.summary,
+      fact          = m.fact,
+      pinned        = m.pinned,
+      archived      = m.validUntil.isDefined,
+      confidence    = m.confidence,
+      justification = m.justification
     )
 }

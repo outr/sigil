@@ -5,9 +5,10 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.TurnContext
 import sigil.conversation.{Conversation, ConversationView, TurnInput}
-import sigil.event.Message
+import fabric.rw.*
+import sigil.event.{Message, ToolResults}
 import sigil.signal.EventState
-import sigil.tool.model.{ResponseContent, SearchConversationInput}
+import sigil.tool.model.{ResponseContent, SearchConversationInput, SearchConversationOutput}
 import sigil.tool.util.SearchConversationTool
 
 /**
@@ -49,8 +50,14 @@ class SearchConversationToolSpec extends AsyncWordSpec with AsyncTaskSpec with M
     )
   }
 
+  private def typed(events: List[sigil.event.Event]): SearchConversationOutput = {
+    val tr = events.collectFirst { case t: ToolResults => t }
+      .getOrElse(fail("expected a ToolResults event"))
+    summon[RW[SearchConversationOutput]].write(tr.typed.get)
+  }
+
   "SearchConversationTool (fallback path)" should {
-    "return a Message containing matches scoped to the caller's conversation" in {
+    "return typed hits scoped to the caller's conversation" in {
       text("We deployed Qdrant to the staging cluster this morning.")
       text("Lunch choices: sushi, tacos, pizza.")
       text("Qdrant indexing for the documents will start tonight.")
@@ -61,24 +68,23 @@ class SearchConversationToolSpec extends AsyncWordSpec with AsyncTaskSpec with M
         contextFor(convId)
       )
       stream.toList.map { emitted =>
-        val message = emitted.collectFirst { case m: Message => m }.getOrElse(fail("expected a Message"))
-        val body = message.content.collect { case ResponseContent.Text(t) => t }.mkString
-        body should include("deployed Qdrant")
-        body should include("Qdrant indexing")
-        body should not include "UNRELATED"
+        val out = typed(emitted)
+        val combined = out.hits.map(_.snippet).mkString(" | ")
+        combined should include("deployed Qdrant")
+        combined should include("Qdrant indexing")
+        combined should not include "UNRELATED"
       }
     }
 
-    "emit an empty-result Message when nothing matches" in {
+    "emit an empty-hits result when nothing matches" in {
       val stream = SearchConversationTool.execute(
         SearchConversationInput(query = "zzznomatch"),
         contextFor(convId)
       )
       stream.toList.map { emitted =>
-        val body = emitted.collectFirst { case m: Message => m }
-          .map(_.content.collect { case ResponseContent.Text(t) => t }.mkString)
-          .getOrElse("")
-        body should startWith("No results")
+        val out = typed(emitted)
+        out.count shouldBe 0
+        out.hits shouldBe empty
       }
     }
   }

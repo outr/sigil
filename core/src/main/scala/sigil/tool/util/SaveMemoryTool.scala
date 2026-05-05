@@ -1,12 +1,10 @@
 package sigil.tool.util
 
-import rapid.Stream
+import rapid.Task
 import sigil.{SpaceId, TurnContext}
 import sigil.conversation.{ContextMemory, MemorySource, UpsertMemoryResult}
-import sigil.event.{Event, Message, MessageRole}
-import sigil.signal.EventState
-import sigil.tool.model.{ResponseContent, SaveMemoryInput}
-import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.tool.model.{SaveMemoryInput, SaveMemoryOutput}
+import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
 
 /**
  * Surface [[sigil.Sigil.upsertMemoryByKey]] (or `persistMemory` when
@@ -17,15 +15,17 @@ import sigil.tool.{ToolExample, ToolName, TypedTool}
  * `space` is fixed at construction — apps that want per-call space
  * scoping construct multiple instances of the tool with different
  * `space` arguments and route via mode / behavior.
+ *
+ * Emits a typed [[SaveMemoryOutput]] (`outcome`, `memoryId`).
  */
 final class SaveMemoryTool(space: SpaceId,
                            source: MemorySource = MemorySource.Explicit)
-  extends TypedTool[SaveMemoryInput](
+  extends TypedOutputTool[SaveMemoryInput, SaveMemoryOutput](
     name = ToolName("save_memory"),
     description =
       """Persist a fact for later retrieval. Required: `fact` + `label` (short title) + `summary`
         |(one-line gist). Pass `key` to overwrite a previously-saved memory under that key (versioned
-        |upsert); omit `key` to append a new memory.""".stripMargin,
+        |upsert); omit `key` to append a new memory. Returns `{outcome, memoryId}`.""".stripMargin,
     examples = List(
       ToolExample(
         "Save a user preference",
@@ -50,7 +50,7 @@ final class SaveMemoryTool(space: SpaceId,
 
   override val requiresAccessibleSpaces: Boolean = true
 
-  override protected def executeTyped(input: SaveMemoryInput, ctx: TurnContext): Stream[Event] = Stream.force {
+  override protected def executeTyped(input: SaveMemoryInput, ctx: TurnContext): Task[SaveMemoryOutput] =
     resolveSpace(input.space, ctx).flatMap { resolvedSpace =>
       val mem = ContextMemory(
         fact       = input.fact,
@@ -63,39 +63,28 @@ final class SaveMemoryTool(space: SpaceId,
         keywords   = input.keywords,
         memoryType = input.memoryType
       )
-      val saved = input.key match {
+      input.key match {
         case Some(_) =>
           ctx.sigil.upsertMemoryByKeyFor(mem, ctx.chain, ctx.conversation.id).map { r =>
             val outcome = r match {
               case _: UpsertMemoryResult.Stored    => "Stored"
               case _: UpsertMemoryResult.Refreshed => "Refreshed"
-              case _: UpsertMemoryResult.Versioned => "Versioned (prior archived)"
+              case _: UpsertMemoryResult.Versioned => "Versioned"
             }
-            s"$outcome memory ${r.memory._id.value}."
+            SaveMemoryOutput(outcome = outcome, memoryId = r.memory._id.value)
           }
         case None =>
           ctx.sigil.persistMemoryFor(mem, ctx.chain, ctx.conversation.id)
-            .map(stored => s"Stored memory ${stored._id.value}.")
-      }
-      saved.map { text =>
-        Stream.emit[Event](Message(
-          participantId  = ctx.caller,
-          conversationId = ctx.conversation.id,
-          topicId        = ctx.conversation.currentTopicId,
-          content        = Vector(ResponseContent.Text(text)),
-          state          = EventState.Complete,
-          role           = MessageRole.Tool
-        ))
+            .map(stored => SaveMemoryOutput(outcome = "Stored", memoryId = stored._id.value))
       }
     }
-  }
 
   /** Resolve the agent's space hint to a concrete [[SpaceId]]. When
     * the hint is omitted or doesn't match an accessible space, fall
     * back to the tool's default `space` and let the framework's
     * classifier decide if the caller left it at GlobalSpace. */
-  private def resolveSpace(hint: Option[String], ctx: TurnContext): rapid.Task[SpaceId] = hint match {
-    case None => rapid.Task.pure(space)
+  private def resolveSpace(hint: Option[String], ctx: TurnContext): Task[SpaceId] = hint match {
+    case None => Task.pure(space)
     case Some(value) =>
       ctx.sigil.accessibleSpaces(ctx.chain, ctx.conversation.id).map { accessible =>
         accessible.find(_.value == value.trim).getOrElse(space)

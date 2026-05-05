@@ -1,18 +1,16 @@
 package sigil.tool.util
 
-import fabric.io.JsonFormatter
 import fabric.rw.*
 import lightdb.id.Id
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
 import sigil.conversation.ContextMemory
-import sigil.event.{Event, Message, MessageRole}
 import sigil.information.Information
 import sigil.information.Information.given
 import sigil.skill.Skill
 import sigil.tool.discovery.CapabilityType
-import sigil.tool.{ToolName, TypedTool}
-import sigil.tool.model.{LookupInput, ResponseContent}
+import sigil.tool.{ToolName, TypedOutputTool}
+import sigil.tool.model.{LookupInput, LookupOutput}
 
 /**
  * Generic retrieval tool. Resolves any retrievable
@@ -27,14 +25,14 @@ import sigil.tool.model.{LookupInput, ResponseContent}
  *
  * `Tool` and `Mode` capability types are not retrievable — tools are
  * called via their name in the tool roster; modes are entered via
- * `change_mode`. Looking those up returns a not-supported message
+ * `change_mode`. Looking those up returns a `NotRetrievable` result
  * rather than silently doing nothing.
  *
- * The result is emitted as a tool-role [[Message]] containing the
- * full JSON serialisation of the record, suitable for the agent to
- * read on its next turn.
+ * Emits a typed [[LookupOutput]] enum — `Found(payload)` carries the
+ * matched record's JSON for the caller to deserialize against
+ * whichever shape matches `capabilityType`.
  */
-case object LookupTool extends TypedTool[LookupInput](
+case object LookupTool extends TypedOutputTool[LookupInput, LookupOutput](
   name = ToolName("lookup"),
   description =
     """Resolve a capability match (from `find_capability`) to its full record. Use this when
@@ -45,57 +43,54 @@ case object LookupTool extends TypedTool[LookupInput](
       |- `name` — the identifier the match surfaced (memory key, information id-as-string,
       |  skill name).
       |
-      |Tools and modes are not retrievable — call tools directly; switch modes via `change_mode`.""".stripMargin,
+      |Tools and modes are not retrievable — call tools directly; switch modes via `change_mode`.
+      |Returns `Found(capabilityType, name, payload)`, `NotFound(capabilityType, name)`, or
+      |`NotRetrievable(capabilityType, name, hint)`.""".stripMargin,
   keywords = Set("lookup", "fetch", "retrieve", "resolve", "details", "full", "expand")
 ) {
-  override protected def executeTyped(input: LookupInput, context: TurnContext): Stream[Event] =
-    Stream.force(resolve(input, context).map { body =>
-      Stream.emits(List[Event](Message(
-        participantId = context.caller,
-        conversationId = context.conversation.id,
-        topicId = context.conversation.currentTopicId,
-        content = Vector(ResponseContent.Text(body)),
-        role = MessageRole.Tool
-      )))
-    })
-
-  private def resolve(input: LookupInput, context: TurnContext): Task[String] =
+  override protected def executeTyped(input: LookupInput, context: TurnContext): Task[LookupOutput] = {
+    val typeName = input.capabilityType.toString
     input.capabilityType match {
-      case CapabilityType.Memory      => resolveMemory(input.name, context)
-      case CapabilityType.Information => resolveInformation(input.name, context)
-      case CapabilityType.Skill       => resolveSkill(input.name, context)
-      case CapabilityType.Tool        => Task.pure(s"[lookup] tools are not retrievable — call '${input.name}' directly.")
-      case CapabilityType.Mode        => Task.pure(s"[lookup] modes are not retrievable — call change_mode(\"${input.name}\") to enter it.")
+      case CapabilityType.Memory      => resolveMemory(input.name, typeName, context)
+      case CapabilityType.Information => resolveInformation(input.name, typeName, context)
+      case CapabilityType.Skill       => resolveSkill(input.name, typeName, context)
+      case CapabilityType.Tool =>
+        Task.pure(LookupOutput.NotRetrievable(typeName, input.name,
+          s"tools are not retrievable — call '${input.name}' directly."))
+      case CapabilityType.Mode =>
+        Task.pure(LookupOutput.NotRetrievable(typeName, input.name,
+          s"modes are not retrievable — call change_mode(\"${input.name}\") to enter it."))
     }
+  }
 
-  private def resolveMemory(name: String, context: TurnContext): Task[String] =
+  private def resolveMemory(name: String, typeName: String, context: TurnContext): Task[LookupOutput] =
     context.sigil.withDB { db =>
       db.memories.transaction { tx =>
         tx.query.filter(_.key === Some(name)).toList.flatMap { byKey =>
           byKey.headOption match {
-            case Some(memory) => Task.pure(formatMemory(memory))
-            case None         =>
+            case Some(memory) =>
+              Task.pure(LookupOutput.Found(typeName, name, summon[RW[ContextMemory]].read(memory)))
+            case None =>
               tx.get(Id[ContextMemory](name)).map {
-                case Some(memory) => formatMemory(memory)
-                case None         => s"[lookup] no Memory found for name '$name'."
+                case Some(memory) =>
+                  LookupOutput.Found(typeName, name, summon[RW[ContextMemory]].read(memory))
+                case None =>
+                  LookupOutput.NotFound(typeName, name)
               }
           }
         }
       }
     }
 
-  private def resolveInformation(name: String, context: TurnContext): Task[String] =
+  private def resolveInformation(name: String, typeName: String, context: TurnContext): Task[LookupOutput] =
     context.sigil.getInformation(Id[Information](name)).map {
-      case Some(full) => JsonFormatter.Default(summon[RW[Information]].read(full))
-      case None       => s"[lookup] no Information found for id '$name'."
+      case Some(full) => LookupOutput.Found(typeName, name, summon[RW[Information]].read(full))
+      case None       => LookupOutput.NotFound(typeName, name)
     }
 
-  private def resolveSkill(name: String, context: TurnContext): Task[String] =
+  private def resolveSkill(name: String, typeName: String, context: TurnContext): Task[LookupOutput] =
     context.sigil.withDB(_.skills.transaction(_.get(Id[Skill](name)))).map {
-      case Some(skill) => JsonFormatter.Default(summon[RW[Skill]].read(skill))
-      case None        => s"[lookup] no Skill found for name '$name'."
+      case Some(skill) => LookupOutput.Found(typeName, name, summon[RW[Skill]].read(skill))
+      case None        => LookupOutput.NotFound(typeName, name)
     }
-
-  private def formatMemory(m: ContextMemory): String =
-    JsonFormatter.Default(summon[RW[ContextMemory]].read(m))
 }

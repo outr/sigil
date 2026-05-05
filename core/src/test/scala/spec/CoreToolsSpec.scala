@@ -119,15 +119,17 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         .toList
       events.map { list =>
         list should have size 1
-        val msg = list.head.asInstanceOf[Message]
-        val text = msg.content.collectFirst {
-          case sigil.tool.model.ResponseContent.Text(t) => t
-        }.getOrElse("")
-        text should include("HIT_BODY_42")
+        val tr = list.head.asInstanceOf[sigil.event.ToolResults]
+        val rw = summon[RW[sigil.tool.model.LookupOutput]]
+        rw.write(tr.typed.get) match {
+          case sigil.tool.model.LookupOutput.Found(_, _, payload) =>
+            fabric.io.JsonFormatter.Compact(payload) should include("HIT_BODY_42")
+          case other => fail(s"expected Found, got $other")
+        }
       }
     }
 
-    "emit a not-found Message when the id doesn't resolve" in {
+    "emit a NotFound when the id doesn't resolve" in {
       val convId = freshConversationId("lookup-miss")
       val missingId = Id[Information]("info-missing")
       val events = LookupTool
@@ -135,12 +137,12 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         .toList
       events.map { list =>
         list should have size 1
-        val msg = list.head.asInstanceOf[Message]
-        val text = msg.content.collectFirst {
-          case sigil.tool.model.ResponseContent.Text(t) => t
-        }.getOrElse("")
-        text should include("no Information found")
-        text should include(missingId.value)
+        val tr = list.head.asInstanceOf[sigil.event.ToolResults]
+        val rw = summon[RW[sigil.tool.model.LookupOutput]]
+        rw.write(tr.typed.get) match {
+          case sigil.tool.model.LookupOutput.NotFound(_, name) => name shouldBe missingId.value
+          case other => fail(s"expected NotFound, got $other")
+        }
       }
     }
 
@@ -151,10 +153,13 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         .toList
       events.map { list =>
         list should have size 1
-        val text = list.head.asInstanceOf[Message].content.collectFirst {
-          case sigil.tool.model.ResponseContent.Text(t) => t
-        }.getOrElse("")
-        text should include("not retrievable")
+        val tr = list.head.asInstanceOf[sigil.event.ToolResults]
+        val rw = summon[RW[sigil.tool.model.LookupOutput]]
+        rw.write(tr.typed.get) match {
+          case sigil.tool.model.LookupOutput.NotRetrievable(_, _, hint) =>
+            hint should include("not retrievable")
+          case other => fail(s"expected NotRetrievable, got $other")
+        }
       }
     }
   }

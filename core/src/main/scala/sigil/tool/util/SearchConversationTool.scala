@@ -1,18 +1,20 @@
 package sigil.tool.util
 
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
 import sigil.event.{Event, Message, TopicChange}
-import sigil.tool.model.{ResponseContent, SearchConversationInput}
-import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.tool.model.{ResponseContent, SearchConversationHit, SearchConversationInput, SearchConversationOutput}
+import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
 
 /**
  * Opt-in util-tier tool: retrieves historical events from the persistent
  * event log of the caller's current conversation. Companion to
  * conversation compression — compression trims the rolling context;
  * the event log retains everything; this tool recovers detail.
+ *
+ * Emits a typed [[SearchConversationOutput]] (`query`, `hits: List[SearchConversationHit]`, `count`).
  */
-case object SearchConversationTool extends TypedTool[SearchConversationInput](
+case object SearchConversationTool extends TypedOutputTool[SearchConversationInput, SearchConversationOutput](
   name = ToolName("search_conversation"),
   description =
     """Search the persistent log of the current conversation for earlier events that match a query.
@@ -30,7 +32,9 @@ case object SearchConversationTool extends TypedTool[SearchConversationInput](
       |
       |`topicId` — optional; restrict to events tagged with a specific topic.
       |
-      |`limit` — max results (default 10).""".stripMargin,
+      |`limit` — max results (default 10).
+      |
+      |Returns `{query, hits: [{eventId, timestamp, participantId, topicId, eventType, snippet}], count}`.""".stripMargin,
   examples = List(
     ToolExample(
       "Find earlier exchanges mentioning the Qdrant deployment",
@@ -39,42 +43,36 @@ case object SearchConversationTool extends TypedTool[SearchConversationInput](
   ),
   keywords = Set("search", "conversation", "history", "find", "recall")
 ) {
-  override protected def executeTyped(input: SearchConversationInput, context: TurnContext): Stream[Event] =
-    Stream.force {
-      context.sigil
-        .searchConversationEvents(
-          conversationId = context.conversation.id,
+  override protected def executeTyped(input: SearchConversationInput, context: TurnContext): Task[SearchConversationOutput] =
+    context.sigil
+      .searchConversationEvents(
+        conversationId = context.conversation.id,
+        query = input.query,
+        topicId = input.topicId,
+        limit = input.limit
+      )
+      .map { events =>
+        SearchConversationOutput(
           query = input.query,
-          topicId = input.topicId,
-          limit = input.limit
+          hits  = events.map(toHit),
+          count = events.size
         )
-        .map { hits =>
-          val body = if (hits.isEmpty) s"No results for query: ${input.query}"
-                     else renderHits(hits)
-          Stream.emits(List[Event](
-            Message(
-              participantId = context.caller,
-              conversationId = context.conversation.id,
-              topicId = context.conversation.currentTopicId,
-              content = Vector(ResponseContent.Text(body)),
-              role = sigil.event.MessageRole.Tool
-            )
-          ))
-        }
-    }
-
-  private def renderHits(events: List[Event]): String = {
-    val sb = new StringBuilder
-    sb.append(s"${events.size} result(s):\n")
-    events.foreach { e =>
-      val snippet = e match {
-        case m: Message =>
-          m.content.collect { case ResponseContent.Text(t) => t }.mkString(" ").take(280)
-        case tc: TopicChange => s"[topic change] ${tc.newLabel}"
-        case other           => other.getClass.getSimpleName
       }
-      sb.append(s"- ${e.timestamp.value} ${e.participantId.value} (topic=${e.topicId.value}): $snippet\n")
+
+  private def toHit(e: Event): SearchConversationHit = {
+    val snippet = e match {
+      case m: Message =>
+        m.content.collect { case ResponseContent.Text(t) => t }.mkString(" ").take(280)
+      case tc: TopicChange => s"[topic change] ${tc.newLabel}"
+      case other           => other.getClass.getSimpleName
     }
-    sb.toString
+    SearchConversationHit(
+      eventId       = e._id.value,
+      timestamp     = e.timestamp.value,
+      participantId = e.participantId.value,
+      topicId       = e.topicId.value,
+      eventType     = e.getClass.getSimpleName,
+      snippet       = snippet
+    )
   }
 }
