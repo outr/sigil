@@ -2,10 +2,10 @@ package sigil.tooling
 
 import ch.epfl.scala.bsp4j.{BuildTargetIdentifier, StatusCode}
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.BspExecResult
 
 case class BspRunInput(projectRoot: String,
                        target: String,
@@ -21,7 +21,7 @@ case class BspRunInput(projectRoot: String,
  * is debugging a small program. For long-running services or
  * interactive programs, prefer running outside Sigil.
  */
-final class BspRunTool(val manager: BspManager) extends TypedTool[BspRunInput](
+final class BspRunTool(val manager: BspManager) extends TypedOutputTool[BspRunInput, BspExecResult](
   name = ToolName("bsp_run"),
   description =
     """Run a single build target via the BSP server (typically a `Main` class).
@@ -29,7 +29,7 @@ final class BspRunTool(val manager: BspManager) extends TypedTool[BspRunInput](
       |`projectRoot` selects the persisted BspBuildConfig.
       |`target` is the target URI to run.
       |`arguments` (optional) flows through to the running program.
-      |Returns status plus captured stdout/stderr.""".stripMargin,
+      |Returns `{status, targetCount: 1, stdout, stderr}` where status is `OK` / `ERROR` / `CANCELLED`.""".stripMargin,
   examples = List(
     ToolExample(
       "run a main class",
@@ -41,8 +41,11 @@ final class BspRunTool(val manager: BspManager) extends TypedTool[BspRunInput](
     )
   )
 ) with BspToolSupport {
-  override protected def executeTyped(input: BspRunInput, context: TurnContext): Stream[Event] =
-    withSession(input.projectRoot, context) { session =>
+  override protected def executeTyped(input: BspRunInput, context: TurnContext): Task[BspExecResult] =
+    withSessionTyped[BspExecResult](
+      input.projectRoot, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { session =>
       session.client.drainRunOutput()
       session.run(new BuildTargetIdentifier(input.target), input.arguments).map { result =>
         val status = result.getStatusCode match {
@@ -51,9 +54,13 @@ final class BspRunTool(val manager: BspManager) extends TypedTool[BspRunInput](
           case StatusCode.CANCELLED => "CANCELLED"
         }
         val (out, err) = session.client.drainRunOutput()
-        val outBlock = if (out.isEmpty) "" else s"\n--- stdout ---\n${out.mkString}"
-        val errBlock = if (err.isEmpty) "" else s"\n--- stderr ---\n${err.mkString}"
-        s"Run $status (${input.target} in ${input.projectRoot})$outBlock$errBlock"
+        BspExecResult(
+          projectRoot = input.projectRoot,
+          status      = status,
+          targetCount = 1,
+          stdout      = out.mkString,
+          stderr      = err.mkString
+        )
       }
     }
 }

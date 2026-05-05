@@ -3,10 +3,10 @@ package sigil.tooling
 import fabric.rw.*
 import org.eclipse.lsp4j.{CodeAction, Command, Position, Range}
 import org.eclipse.lsp4j.jsonrpc.messages.{Either => LspEither}
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.{LspCodeActionItem, LspCodeActionResult}
 
 case class LspCodeActionInput(languageId: String,
                               filePath: String,
@@ -27,7 +27,7 @@ case class LspCodeActionInput(languageId: String,
  * `["quickfix"]`, `["refactor.extract"]`, `["source.organizeImports"]`
  * — defined in the spec under "CodeActionKind".
  */
-final class LspCodeActionTool(val manager: LspManager) extends TypedTool[LspCodeActionInput](
+final class LspCodeActionTool(val manager: LspManager) extends TypedOutputTool[LspCodeActionInput, LspCodeActionResult](
   name = ToolName("lsp_code_action"),
   description =
     """List code actions (quick fixes / refactors) available for a range.
@@ -37,7 +37,7 @@ final class LspCodeActionTool(val manager: LspManager) extends TypedTool[LspCode
       |the selection or cursor span. For a cursor-only invocation, set start == end.
       |`onlyKinds` (optional) filters by LSP code-action kind ("quickfix", "refactor.extract",
       |"source.organizeImports", etc.).
-      |Returns numbered action titles; apply by index with `lsp_apply_code_action`.""".stripMargin,
+      |Returns `{filePath, items: [{index, kind, title}]}`. Apply by index with `lsp_apply_code_action`.""".stripMargin,
   examples = List(
     ToolExample(
       "scala quick-fixes for a single line",
@@ -51,28 +51,27 @@ final class LspCodeActionTool(val manager: LspManager) extends TypedTool[LspCode
     )
   )
 ) with LspToolSupport {
-  override protected def executeTyped(input: LspCodeActionInput, context: TurnContext): Stream[Event] =
-    withOpenDocument(input.languageId, input.filePath, context) { (session, uri) =>
+  override protected def executeTyped(input: LspCodeActionInput, context: TurnContext): Task[LspCodeActionResult] =
+    withOpenDocumentTyped[LspCodeActionResult](
+      input.languageId, input.filePath, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { (session, uri) =>
       val range = new Range(
         new Position(input.startLine, input.startCharacter),
         new Position(input.endLine, input.endCharacter)
       )
       session.codeAction(uri, range, input.onlyKinds).map { actions =>
-        if (actions.isEmpty) "No code actions available."
-        else {
-          actions.zipWithIndex.map { case (a, idx) => render(a, idx) }.mkString("\n")
-        }
+        LspCodeActionResult(
+          filePath = input.filePath,
+          items    = actions.zipWithIndex.map { case (a, idx) => toItem(a, idx) }
+        )
       }
     }
 
-  private def render(action: LspEither[Command, CodeAction], idx: Int): String = {
-    val (title, kind) =
-      if (action.isLeft) (action.getLeft.getTitle, "command")
-      else {
-        val ca = action.getRight
-        val k = Option(ca.getKind).getOrElse("(unknown)")
-        (ca.getTitle, k)
-      }
-    s"  [$idx] [$kind] $title"
-  }
+  private def toItem(action: LspEither[Command, CodeAction], idx: Int): LspCodeActionItem =
+    if (action.isLeft) LspCodeActionItem(idx, "command", action.getLeft.getTitle)
+    else {
+      val ca = action.getRight
+      LspCodeActionItem(idx, Option(ca.getKind).getOrElse("(unknown)"), ca.getTitle)
+    }
 }

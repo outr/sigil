@@ -1,10 +1,10 @@
 package sigil.tooling
 
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.{BspDependencySourcesResult, BspTargetDependencySources}
 
 import scala.jdk.CollectionConverters.*
 
@@ -17,7 +17,7 @@ case class BspDependencySourcesInput(projectRoot: String,
  * doesn't answer the question — equivalent to "navigate into
  * source jar" in an IDE.
  */
-final class BspDependencySourcesTool(val manager: BspManager) extends TypedTool[BspDependencySourcesInput](
+final class BspDependencySourcesTool(val manager: BspManager) extends TypedOutputTool[BspDependencySourcesInput, BspDependencySourcesResult](
   name = ToolName("bsp_dependency_sources"),
   description =
     """List the source jars for each target's library dependencies.
@@ -31,17 +31,24 @@ final class BspDependencySourcesTool(val manager: BspManager) extends TypedTool[
     )
   )
 ) with BspToolSupport {
-  override protected def executeTyped(input: BspDependencySourcesInput, context: TurnContext): Stream[Event] =
-    withSession(input.projectRoot, context) { session =>
+  override protected def executeTyped(input: BspDependencySourcesInput,
+                                      context: TurnContext): Task[BspDependencySourcesResult] =
+    withSessionTyped[BspDependencySourcesResult](
+      input.projectRoot, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { session =>
       targetsFromInput(session, input.targets).flatMap { targets =>
-        if (targets.isEmpty) Task.pure("No targets.")
+        if (targets.isEmpty) Task.pure(BspDependencySourcesResult(input.projectRoot, Nil))
         else session.dependencySources(targets).map { items =>
-          if (items.isEmpty) "No dependency source items."
-          else items.map { item =>
-            val target = item.getTarget.getUri
-            val sources = Option(item.getSources).map(_.asScala.toList.mkString("\n      ")).getOrElse("")
-            s"  $target\n      $sources"
-          }.mkString("\n")
+          BspDependencySourcesResult(
+            projectRoot = input.projectRoot,
+            items = items.map { item =>
+              BspTargetDependencySources(
+                target  = item.getTarget.getUri,
+                sources = Option(item.getSources).map(_.asScala.toList).getOrElse(Nil)
+              )
+            }
+          )
         }
       }
     }

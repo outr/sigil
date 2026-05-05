@@ -2,10 +2,10 @@ package sigil.tooling
 
 import fabric.rw.*
 import org.eclipse.lsp4j.{InlayHint, InlayHintKind, Position, Range}
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.{LspInlayHintItem, LspInlayHintsResult, LspPosition}
 
 import scala.jdk.CollectionConverters.*
 
@@ -24,14 +24,15 @@ case class LspInlayHintsInput(languageId: String,
  *
  * Default range covers the whole file (`startLine=0, endLine=∞`).
  */
-final class LspInlayHintsTool(val manager: LspManager) extends TypedTool[LspInlayHintsInput](
+final class LspInlayHintsTool(val manager: LspManager) extends TypedOutputTool[LspInlayHintsInput, LspInlayHintsResult](
   name = ToolName("lsp_inlay_hints"),
   description =
     """List inlay hints (inferred types, parameter labels) in a range.
       |
       |`languageId` + `filePath` identify the document.
       |`startLine`/`startCharacter`/`endLine`/`endCharacter` (0-based) bound the range;
-      |defaults to the whole file.""".stripMargin,
+      |defaults to the whole file.
+      |Each item: `{kind, position, label}` where kind is `type` / `param` / `hint`.""".stripMargin,
   examples = List(
     ToolExample(
       "scala inlay hints for the whole file",
@@ -39,20 +40,21 @@ final class LspInlayHintsTool(val manager: LspManager) extends TypedTool[LspInla
     )
   )
 ) with LspToolSupport {
-  override protected def executeTyped(input: LspInlayHintsInput, context: TurnContext): Stream[Event] =
-    withOpenDocument(input.languageId, input.filePath, context) { (session, uri) =>
+  override protected def executeTyped(input: LspInlayHintsInput, context: TurnContext): Task[LspInlayHintsResult] =
+    withOpenDocumentTyped[LspInlayHintsResult](
+      input.languageId, input.filePath, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { (session, uri) =>
       val range = new Range(
         new Position(input.startLine, input.startCharacter),
         new Position(input.endLine, input.endCharacter)
       )
       session.inlayHints(uri, range).map { hints =>
-        if (hints.isEmpty) "No inlay hints."
-        else hints.map(render).mkString("\n")
+        LspInlayHintsResult(filePath = input.filePath, items = hints.map(toItem))
       }
     }
 
-  private def render(hint: InlayHint): String = {
-    val pos = s"${hint.getPosition.getLine + 1}:${hint.getPosition.getCharacter + 1}"
+  private def toItem(hint: InlayHint): LspInlayHintItem = {
     val kind = Option(hint.getKind).map {
       case InlayHintKind.Type      => "type"
       case InlayHintKind.Parameter => "param"
@@ -62,6 +64,6 @@ final class LspInlayHintsTool(val manager: LspManager) extends TypedTool[LspInla
       case lbl =>
         Option(lbl.getRight).map(_.asScala.toList.map(_.getValue).mkString).getOrElse("")
     }
-    s"  [$kind] $pos: $label"
+    LspInlayHintItem(kind = kind, position = LspPosition.fromLsp4j(hint.getPosition), label = label)
   }
 }

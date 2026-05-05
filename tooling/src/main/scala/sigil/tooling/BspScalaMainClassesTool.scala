@@ -1,10 +1,10 @@
 package sigil.tooling
 
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.{BspMainClassEntry, BspMainClassesResult, BspTargetMainClasses}
 
 import scala.jdk.CollectionConverters.*
 
@@ -17,7 +17,7 @@ case class BspScalaMainClassesInput(projectRoot: String,
  * calling [[BspRunTool]] when the agent doesn't know which class
  * to run.
  */
-final class BspScalaMainClassesTool(val manager: BspManager) extends TypedTool[BspScalaMainClassesInput](
+final class BspScalaMainClassesTool(val manager: BspManager) extends TypedOutputTool[BspScalaMainClassesInput, BspMainClassesResult](
   name = ToolName("bsp_scala_main_classes"),
   description =
     """List discovered Scala main classes for each target.
@@ -31,20 +31,29 @@ final class BspScalaMainClassesTool(val manager: BspManager) extends TypedTool[B
     )
   )
 ) with BspToolSupport {
-  override protected def executeTyped(input: BspScalaMainClassesInput, context: TurnContext): Stream[Event] =
-    withSession(input.projectRoot, context) { session =>
+  override protected def executeTyped(input: BspScalaMainClassesInput,
+                                      context: TurnContext): Task[BspMainClassesResult] =
+    withSessionTyped[BspMainClassesResult](
+      input.projectRoot, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { session =>
       targetsFromInput(session, input.targets).flatMap { targets =>
-        if (targets.isEmpty) Task.pure("No targets.")
+        if (targets.isEmpty) Task.pure(BspMainClassesResult(input.projectRoot, Nil))
         else session.scalaMainClasses(targets).map { items =>
-          if (items.isEmpty) "No main classes discovered."
-          else items.map { item =>
-            val target = item.getTarget.getUri
-            val classes = Option(item.getClasses).map(_.asScala.toList.map { c =>
-              val args = Option(c.getArguments).map(_.asScala.toList.mkString(" ")).getOrElse("")
-              s"      ${c.getClassName}${if (args.nonEmpty) s"  ($args)" else ""}"
-            }.mkString("\n")).getOrElse("")
-            s"  $target\n$classes"
-          }.mkString("\n")
+          BspMainClassesResult(
+            projectRoot = input.projectRoot,
+            items = items.map { item =>
+              BspTargetMainClasses(
+                target = item.getTarget.getUri,
+                classes = Option(item.getClasses).map(_.asScala.toList.map { c =>
+                  BspMainClassEntry(
+                    className = c.getClassName,
+                    arguments = Option(c.getArguments).map(_.asScala.toList).getOrElse(Nil)
+                  )
+                }).getOrElse(Nil)
+              )
+            }
+          )
         }
       }
     }

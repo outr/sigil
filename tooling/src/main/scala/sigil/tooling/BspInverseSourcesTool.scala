@@ -1,10 +1,10 @@
 package sigil.tooling
 
 import fabric.rw.*
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.BspInverseSourcesResult
 
 import java.io.File
 
@@ -17,7 +17,7 @@ case class BspInverseSourcesInput(projectRoot: String,
  * hand and wants to know "which target should I compile/test to
  * pick up this change?"
  */
-final class BspInverseSourcesTool(val manager: BspManager) extends TypedTool[BspInverseSourcesInput](
+final class BspInverseSourcesTool(val manager: BspManager) extends TypedOutputTool[BspInverseSourcesInput, BspInverseSourcesResult](
   name = ToolName("bsp_inverse_sources"),
   description =
     """For a source file, return the build targets that own it.
@@ -34,12 +34,19 @@ final class BspInverseSourcesTool(val manager: BspManager) extends TypedTool[Bsp
     )
   )
 ) with BspToolSupport {
-  override protected def executeTyped(input: BspInverseSourcesInput, context: TurnContext): Stream[Event] =
-    withSession(input.projectRoot, context) { session =>
+  override protected def executeTyped(input: BspInverseSourcesInput,
+                                      context: TurnContext): Task[BspInverseSourcesResult] =
+    withSessionTyped[BspInverseSourcesResult](
+      input.projectRoot, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { session =>
       val uri = new File(input.filePath).toURI.toString
       session.inverseSources(uri).map { targets =>
-        if (targets.isEmpty) s"No target owns ${input.filePath}."
-        else targets.map(t => s"  ${t.getUri}").mkString("\n")
+        BspInverseSourcesResult(
+          projectRoot = input.projectRoot,
+          filePath    = input.filePath,
+          targets     = targets.map(_.getUri)
+        )
       }
     }
 }

@@ -1,10 +1,10 @@
 package sigil.tooling
 
 import fabric.rw.*
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.BspReloadResult
 
 case class BspReloadInput(projectRoot: String) extends ToolInput derives RW
 
@@ -14,7 +14,7 @@ case class BspReloadInput(projectRoot: String) extends ToolInput derives RW
  * `Cargo.toml`, etc.) so subsequent compile/test calls see the new
  * targets / dependencies.
  */
-final class BspReloadTool(val manager: BspManager) extends TypedTool[BspReloadInput](
+final class BspReloadTool(val manager: BspManager) extends TypedOutputTool[BspReloadInput, BspReloadResult](
   name = ToolName("bsp_reload"),
   description =
     """Reload the build server's project model (after build-file edits).
@@ -27,8 +27,11 @@ final class BspReloadTool(val manager: BspManager) extends TypedTool[BspReloadIn
     )
   )
 ) with BspToolSupport {
-  override protected def executeTyped(input: BspReloadInput, context: TurnContext): Stream[Event] =
-    withSession(input.projectRoot, context) { session =>
-      session.reload.map(_ => s"Reloaded build for ${input.projectRoot}.")
+  override protected def executeTyped(input: BspReloadInput, context: TurnContext): Task[BspReloadResult] =
+    withSessionTyped[BspReloadResult](
+      input.projectRoot, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { session =>
+      session.reload.map(_ => BspReloadResult(input.projectRoot))
     }
 }

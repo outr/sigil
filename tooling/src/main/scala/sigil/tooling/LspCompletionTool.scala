@@ -2,10 +2,10 @@ package sigil.tooling
 
 import fabric.rw.*
 import org.eclipse.lsp4j.CompletionItem
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.{LspCompletionItem, LspCompletionResult}
 
 case class LspCompletionInput(languageId: String,
                               filePath: String,
@@ -24,14 +24,15 @@ case class LspCompletionInput(languageId: String,
  * pressing Ctrl-Space. Far higher signal than scanning files for
  * naming conventions.
  */
-final class LspCompletionTool(val manager: LspManager) extends TypedTool[LspCompletionInput](
+final class LspCompletionTool(val manager: LspManager) extends TypedOutputTool[LspCompletionInput, LspCompletionResult](
   name = ToolName("lsp_completion"),
   description =
     """Get completion candidates at a position.
       |
       |`languageId` selects the persisted LspServerConfig.
       |`filePath` + `line` + `character` (0-based) point at the cursor location.
-      |`maxResults` (default 50) caps the response so large catalogs don't flood context.""".stripMargin,
+      |`maxResults` (default 50) caps the response so large catalogs don't flood context.
+      |Returns `{filePath, items: [{label, kind, detail}], totalCount, truncated}`.""".stripMargin,
   examples = List(
     ToolExample(
       "scala completion at a method-call position",
@@ -39,23 +40,26 @@ final class LspCompletionTool(val manager: LspManager) extends TypedTool[LspComp
     )
   )
 ) with LspToolSupport {
-  override protected def executeTyped(input: LspCompletionInput, context: TurnContext): Stream[Event] =
-    withOpenDocument(input.languageId, input.filePath, context) { (session, uri) =>
+  override protected def executeTyped(input: LspCompletionInput, context: TurnContext): Task[LspCompletionResult] =
+    withOpenDocumentTyped[LspCompletionResult](
+      input.languageId, input.filePath, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { (session, uri) =>
       session.completion(uri, input.line, input.character).map { items =>
-        if (items.isEmpty) "No completions."
-        else {
-          val capped = items.take(input.maxResults)
-          val rendered = capped.map(render).mkString("\n")
-          if (items.size > input.maxResults)
-            s"$rendered\n... (${items.size - input.maxResults} more, tighten by raising maxResults)"
-          else rendered
-        }
+        val capped = items.take(input.maxResults).map(toItem)
+        LspCompletionResult(
+          filePath   = input.filePath,
+          items      = capped,
+          totalCount = items.size,
+          truncated  = items.size > input.maxResults
+        )
       }
     }
 
-  private def render(item: CompletionItem): String = {
-    val detail = Option(item.getDetail).map(d => s" — $d").getOrElse("")
-    val kind = Option(item.getKind).map(_.toString.toLowerCase).getOrElse("?")
-    s"  [$kind] ${item.getLabel}$detail"
-  }
+  private def toItem(item: CompletionItem): LspCompletionItem =
+    LspCompletionItem(
+      label  = item.getLabel,
+      kind   = Option(item.getKind).map(_.toString.toLowerCase),
+      detail = Option(item.getDetail)
+    )
 }

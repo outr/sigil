@@ -1,10 +1,10 @@
 package sigil.tooling
 
 import fabric.rw.*
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.LspDidChangeResult
 
 case class LspDidChangeInput(languageId: String,
                              filePath: String,
@@ -21,7 +21,7 @@ case class LspDidChangeInput(languageId: String,
  * `workspace/didChangeWatchedFiles` notification is the typical
  * fan-out path. This tool exists for explicit "refresh now" flows.
  */
-final class LspDidChangeTool(val manager: LspManager) extends TypedTool[LspDidChangeInput](
+final class LspDidChangeTool(val manager: LspManager) extends TypedOutputTool[LspDidChangeInput, LspDidChangeResult](
   name = ToolName("lsp_did_change"),
   description =
     """Notify the language server that a document has changed and pass the new full text.
@@ -36,8 +36,11 @@ final class LspDidChangeTool(val manager: LspManager) extends TypedTool[LspDidCh
     )
   )
 ) with LspToolSupport {
-  override protected def executeTyped(input: LspDidChangeInput, context: TurnContext): Stream[Event] =
-    withSession(input.languageId, input.filePath, context) { (session, uri, _) =>
-      session.didChangeFull(uri, input.text).map(_ => s"Notified server of change to $uri.")
+  override protected def executeTyped(input: LspDidChangeInput, context: TurnContext): Task[LspDidChangeResult] =
+    withSessionTyped[LspDidChangeResult](
+      input.languageId, input.filePath, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { (session, uri, _) =>
+      session.didChangeFull(uri, input.text).map(_ => LspDidChangeResult(uri))
     }
 }

@@ -2,10 +2,10 @@ package sigil.tooling
 
 import fabric.rw.*
 import org.eclipse.lsp4j.{FormattingOptions, Position, Range}
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.LspFormatResult
 
 import java.nio.file.{Files, Paths, StandardOpenOption}
 
@@ -26,7 +26,7 @@ case class LspFormatRangeInput(languageId: String,
  * Same writeback semantics as [[LspFormatTool]]: applies the edits
  * to disk and notifies the server.
  */
-final class LspFormatRangeTool(val manager: LspManager) extends TypedTool[LspFormatRangeInput](
+final class LspFormatRangeTool(val manager: LspManager) extends TypedOutputTool[LspFormatRangeInput, LspFormatResult](
   name = ToolName("lsp_format_range"),
   description =
     """Format a specific range within a file via the language server.
@@ -34,7 +34,7 @@ final class LspFormatRangeTool(val manager: LspManager) extends TypedTool[LspFor
       |`languageId` + `filePath` identify the document.
       |`startLine`/`startCharacter`/`endLine`/`endCharacter` (0-based) define the range.
       |`tabSize` and `insertSpaces` are passed as FormattingOptions.
-      |Writes the formatted result back to disk and re-syncs the server.""".stripMargin,
+      |Writes the formatted result back to disk; returns `{filePath, editsApplied}`.""".stripMargin,
   examples = List(
     ToolExample(
       "format a single method body",
@@ -46,24 +46,27 @@ final class LspFormatRangeTool(val manager: LspManager) extends TypedTool[LspFor
     )
   )
 ) with LspToolSupport {
-  override protected def executeTyped(input: LspFormatRangeInput, context: TurnContext): Stream[Event] =
-    withOpenDocument(input.languageId, input.filePath, context) { (session, uri) =>
+  override protected def executeTyped(input: LspFormatRangeInput, context: TurnContext): Task[LspFormatResult] =
+    withOpenDocumentTyped[LspFormatResult](
+      input.languageId, input.filePath, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { (session, uri) =>
       val range = new Range(
         new Position(input.startLine, input.startCharacter),
         new Position(input.endLine, input.endCharacter)
       )
       val opts = new FormattingOptions(input.tabSize, input.insertSpaces)
       session.rangeFormatting(uri, range, opts).flatMap { edits =>
-        if (edits.isEmpty) Task.pure(s"No formatting changes for the range.")
+        if (edits.isEmpty) Task.pure(LspFormatResult(input.filePath, editsApplied = 0))
         else Task {
           val path = Paths.get(input.filePath)
           val contents = Files.readString(path)
           val updated = WorkspaceEditApplier.applyTextEdits(contents, edits)
           Files.writeString(path, updated, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
-          s"Formatted range (${edits.size} edit(s) applied)."
-        }.flatMap { msg =>
+          edits.size
+        }.flatMap { applied =>
           val text = Files.readString(Paths.get(input.filePath))
-          session.didChangeFull(uri, text).map(_ => msg)
+          session.didChangeFull(uri, text).map(_ => LspFormatResult(input.filePath, editsApplied = applied))
         }
       }
     }

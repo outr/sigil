@@ -1,10 +1,10 @@
 package sigil.tooling
 
 import fabric.rw.*
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.{LspPrepareRenameResult, LspRange}
 
 case class LspPrepareRenameInput(languageId: String,
                                  filePath: String,
@@ -14,18 +14,18 @@ case class LspPrepareRenameInput(languageId: String,
 /**
  * Test whether a symbol at a position can be renamed before
  * committing to the round-trip. Returns the editable range when yes,
- * an explanatory message when no. The agent uses this to fail fast
- * for "rename this thing" attempts on positions that aren't valid
- * symbols (whitespace, keywords, etc.).
+ * a sentinel when no. The agent uses this to fail fast for "rename
+ * this thing" attempts on positions that aren't valid symbols
+ * (whitespace, keywords, etc.).
  */
-final class LspPrepareRenameTool(val manager: LspManager) extends TypedTool[LspPrepareRenameInput](
+final class LspPrepareRenameTool(val manager: LspManager) extends TypedOutputTool[LspPrepareRenameInput, LspPrepareRenameResult](
   name = ToolName("lsp_prepare_rename"),
   description =
     """Check whether a symbol at a position is renameable.
       |
       |`languageId` + `filePath` identify the document.
       |`line` + `character` (0-based) point at the candidate symbol.
-      |Returns the editable range when yes, "not renameable" when no.""".stripMargin,
+      |Returns `Renameable(range)` when yes, `NotRenameable` when no.""".stripMargin,
   examples = List(
     ToolExample(
       "check before renaming",
@@ -33,14 +33,14 @@ final class LspPrepareRenameTool(val manager: LspManager) extends TypedTool[LspP
     )
   )
 ) with LspToolSupport {
-  override protected def executeTyped(input: LspPrepareRenameInput, context: TurnContext): Stream[Event] =
-    withOpenDocument(input.languageId, input.filePath, context) { (session, uri) =>
+  override protected def executeTyped(input: LspPrepareRenameInput, context: TurnContext): Task[LspPrepareRenameResult] =
+    withOpenDocumentTyped[LspPrepareRenameResult](
+      input.languageId, input.filePath, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { (session, uri) =>
       session.prepareRename(uri, input.line, input.character).map {
-        case None => "Not renameable at this position."
-        case Some(range) =>
-          val s = range.getStart
-          val e = range.getEnd
-          s"Renameable range: ${s.getLine + 1}:${s.getCharacter + 1} – ${e.getLine + 1}:${e.getCharacter + 1}"
+        case None        => LspPrepareRenameResult.NotRenameable
+        case Some(range) => LspPrepareRenameResult.Renameable(LspRange.fromLsp4j(range))
       }
     }
 }

@@ -2,13 +2,12 @@ package sigil.tooling
 
 import fabric.rw.*
 import org.eclipse.lsp4j.FormattingOptions
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.LspFormatResult
 
 import java.nio.file.{Files, Paths, StandardOpenOption}
-import scala.jdk.CollectionConverters.*
 
 case class LspFormatInput(languageId: String,
                           filePath: String,
@@ -25,7 +24,7 @@ case class LspFormatInput(languageId: String,
  * Rust, etc.). Servers that don't have formatting support return an
  * empty edit list — the file is unchanged.
  */
-final class LspFormatTool(val manager: LspManager) extends TypedTool[LspFormatInput](
+final class LspFormatTool(val manager: LspManager) extends TypedOutputTool[LspFormatInput, LspFormatResult](
   name = ToolName("lsp_format"),
   description =
     """Format a file via the language server's formatting provider.
@@ -34,7 +33,7 @@ final class LspFormatTool(val manager: LspManager) extends TypedTool[LspFormatIn
       |`tabSize` (default 2) and `insertSpaces` (default true) are passed as
       |FormattingOptions to the server; many servers honor only the project's
       |configured formatter and ignore these.
-      |Writes the formatted result back to disk.""".stripMargin,
+      |Writes the formatted result back to disk; returns `{filePath, editsApplied}`.""".stripMargin,
   examples = List(
     ToolExample(
       "format a Scala file",
@@ -42,21 +41,23 @@ final class LspFormatTool(val manager: LspManager) extends TypedTool[LspFormatIn
     )
   )
 ) with LspToolSupport {
-  override protected def executeTyped(input: LspFormatInput, context: TurnContext): Stream[Event] =
-    withOpenDocument(input.languageId, input.filePath, context) { (session, uri) =>
+  override protected def executeTyped(input: LspFormatInput, context: TurnContext): Task[LspFormatResult] =
+    withOpenDocumentTyped[LspFormatResult](
+      input.languageId, input.filePath, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { (session, uri) =>
       val opts = new FormattingOptions(input.tabSize, input.insertSpaces)
       session.formatting(uri, opts).flatMap { edits =>
-        if (edits.isEmpty) Task.pure(s"No formatting changes for ${input.filePath}.")
+        if (edits.isEmpty) Task.pure(LspFormatResult(input.filePath, editsApplied = 0))
         else Task {
           val path = Paths.get(input.filePath)
           val contents = Files.readString(path)
           val updated = WorkspaceEditApplier.applyTextEdits(contents, edits)
           Files.writeString(path, updated, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
-          s"Formatted ${input.filePath} (${edits.size} edit(s) applied)."
-        }.flatMap { msg =>
-          // Re-sync the server's open-document state with the new text.
+          edits.size
+        }.flatMap { applied =>
           val text = Files.readString(Paths.get(input.filePath))
-          session.didChangeFull(uri, text).map(_ => msg)
+          session.didChangeFull(uri, text).map(_ => LspFormatResult(input.filePath, editsApplied = applied))
         }
       }
     }

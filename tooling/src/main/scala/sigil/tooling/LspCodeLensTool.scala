@@ -2,10 +2,10 @@ package sigil.tooling
 
 import fabric.rw.*
 import org.eclipse.lsp4j.CodeLens
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.{LspCodeLensItem, LspCodeLensResult, LspPosition}
 
 case class LspCodeLensInput(languageId: String,
                             filePath: String) extends ToolInput derives RW
@@ -17,13 +17,13 @@ case class LspCodeLensInput(languageId: String,
  * via `lsp_apply_code_lens` (TBD — currently just listed; the
  * command-runner path is out of scope for the proof-of-concept).
  */
-final class LspCodeLensTool(val manager: LspManager) extends TypedTool[LspCodeLensInput](
+final class LspCodeLensTool(val manager: LspManager) extends TypedOutputTool[LspCodeLensInput, LspCodeLensResult](
   name = ToolName("lsp_code_lens"),
   description =
     """List code lenses in a file (run / debug / N-references / etc. annotations).
       |
       |`languageId` + `filePath` identify the document.
-      |Each entry shows position, command (if any), and title.""".stripMargin,
+      |Returns each lens's position, optional title, and whether it carries a runnable command.""".stripMargin,
   examples = List(
     ToolExample(
       "list lenses on a Scala file",
@@ -31,18 +31,22 @@ final class LspCodeLensTool(val manager: LspManager) extends TypedTool[LspCodeLe
     )
   )
 ) with LspToolSupport {
-  override protected def executeTyped(input: LspCodeLensInput, context: TurnContext): Stream[Event] =
-    withOpenDocument(input.languageId, input.filePath, context) { (session, uri) =>
+  override protected def executeTyped(input: LspCodeLensInput, context: TurnContext): Task[LspCodeLensResult] =
+    withOpenDocumentTyped[LspCodeLensResult](
+      input.languageId, input.filePath, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { (session, uri) =>
       session.codeLens(uri).map { lenses =>
-        if (lenses.isEmpty) "No code lenses."
-        else lenses.map(render).mkString("\n")
+        LspCodeLensResult(filePath = input.filePath, items = lenses.map(toItem))
       }
     }
 
-  private def render(lens: CodeLens): String = {
-    val r = lens.getRange
-    val pos = s"${r.getStart.getLine + 1}:${r.getStart.getCharacter + 1}"
-    val title = Option(lens.getCommand).map(_.getTitle).getOrElse("(no command)")
-    s"  $pos: $title"
+  private def toItem(lens: CodeLens): LspCodeLensItem = {
+    val cmd = Option(lens.getCommand)
+    LspCodeLensItem(
+      position   = LspPosition.fromLsp4j(lens.getRange.getStart),
+      title      = cmd.flatMap(c => Option(c.getTitle)),
+      hasCommand = cmd.isDefined
+    )
   }
 }

@@ -1,10 +1,10 @@
 package sigil.tooling
 
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tooling.types.{BspResourcesResult, BspTargetResources}
 
 import scala.jdk.CollectionConverters.*
 
@@ -17,7 +17,7 @@ case class BspResourcesInput(projectRoot: String,
  * Distinct from sources: resources don't compile, they're packaged
  * verbatim.
  */
-final class BspResourcesTool(val manager: BspManager) extends TypedTool[BspResourcesInput](
+final class BspResourcesTool(val manager: BspManager) extends TypedOutputTool[BspResourcesInput, BspResourcesResult](
   name = ToolName("bsp_resources"),
   description =
     """List resource directories / files for the given build targets.
@@ -31,17 +31,23 @@ final class BspResourcesTool(val manager: BspManager) extends TypedTool[BspResou
     )
   )
 ) with BspToolSupport {
-  override protected def executeTyped(input: BspResourcesInput, context: TurnContext): Stream[Event] =
-    withSession(input.projectRoot, context) { session =>
+  override protected def executeTyped(input: BspResourcesInput, context: TurnContext): Task[BspResourcesResult] =
+    withSessionTyped[BspResourcesResult](
+      input.projectRoot, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { session =>
       targetsFromInput(session, input.targets).flatMap { targets =>
-        if (targets.isEmpty) Task.pure("No targets.")
+        if (targets.isEmpty) Task.pure(BspResourcesResult(input.projectRoot, Nil))
         else session.resources(targets).map { items =>
-          if (items.isEmpty) "No resource items."
-          else items.map { item =>
-            val target = item.getTarget.getUri
-            val res = Option(item.getResources).map(_.asScala.toList.mkString("\n      ")).getOrElse("")
-            s"  $target\n      $res"
-          }.mkString("\n")
+          BspResourcesResult(
+            projectRoot = input.projectRoot,
+            items = items.map { item =>
+              BspTargetResources(
+                target    = item.getTarget.getUri,
+                resources = Option(item.getResources).map(_.asScala.toList).getOrElse(Nil)
+              )
+            }
+          )
         }
       }
     }
