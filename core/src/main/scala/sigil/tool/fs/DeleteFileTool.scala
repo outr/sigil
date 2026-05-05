@@ -1,30 +1,26 @@
 package sigil.tool.fs
 
-import fabric.{bool, obj}
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.model.DeleteFileInput
-import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.tool.model.{DeleteFileInput, DeleteFileOutput}
+import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
 
 /**
- * Delete a file. Result reports whether the file existed prior to
- * deletion (`deleted = true` for actually removed, `false` if the
- * path did not exist).
+ * Delete a file. Emits a typed [[DeleteFileOutput]] reporting
+ * whether the file existed prior to deletion (`deleted = true` for
+ * actually removed, `false` if the path did not exist).
  */
 final class DeleteFileTool(context: FileSystemContext)
-  extends TypedTool[DeleteFileInput](
+  extends TypedOutputTool[DeleteFileInput, DeleteFileOutput](
     name = ToolName("delete_file"),
-    description = "Delete a file. Returns `deleted: true` if the file existed and was removed; `false` if it did not exist.",
+    description = "Delete a file. Returns `{deleted: Boolean}` — true when the file existed and was removed; false when it did not exist.",
     examples = List(
       ToolExample("Remove a temp file", DeleteFileInput(filePath = "/tmp/scratch.txt"))
     ),
     keywords = Set("file", "delete", "remove", "rm", "unlink")
   ) {
-  override protected def executeTyped(input: DeleteFileInput, ctx: TurnContext): Stream[Event] =
-    Stream.force(WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>
-      context.deleteFile(resolved).map { existed =>
-        Stream.emit[Event](FsToolEmit(obj("deleted" -> bool(existed)), ctx))
-      }
-    })
+  override protected def executeTyped(input: DeleteFileInput, ctx: TurnContext): Task[DeleteFileOutput] =
+    WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>
+      context.deleteFile(resolved).map(existed => DeleteFileOutput(deleted = existed))
+    }
 }
