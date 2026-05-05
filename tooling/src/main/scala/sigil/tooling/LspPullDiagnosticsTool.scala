@@ -1,12 +1,10 @@
 package sigil.tooling
 
 import fabric.rw.*
-import fabric.io.JsonFormatter
 import org.eclipse.lsp4j.DocumentDiagnosticReport
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.{LspDiagnostic, LspDiagnosticsResult}
 
 import scala.jdk.CollectionConverters.*
@@ -26,15 +24,17 @@ case class LspPullDiagnosticsInput(languageId: String,
  * implement pull. Many older servers don't. Agents that need a
  * synchronous answer prefer this; tools waiting on a settled state
  * use [[LspDiagnosticsTool]].
+ *
+ * Emits a typed [[LspDiagnosticsResult]].
  */
-final class LspPullDiagnosticsTool(val manager: LspManager) extends TypedTool[LspPullDiagnosticsInput](
+final class LspPullDiagnosticsTool(val manager: LspManager) extends TypedOutputTool[LspPullDiagnosticsInput, LspDiagnosticsResult](
   name = ToolName("lsp_pull_diagnostics"),
   description =
     """Pull diagnostics for a file synchronously (LSP 3.17 pull-model).
       |
       |`languageId` + `filePath` identify the document.
-      |Returns the server's current diagnostic snapshot. Servers without pull-model
-      |support fall back to a push-snapshot.""".stripMargin,
+      |Returns `{filePath, diagnostics: [...]}`. Servers without pull-model support fall back to
+      |a push-snapshot.""".stripMargin,
   examples = List(
     ToolExample(
       "pull diagnostics for a single file",
@@ -42,20 +42,20 @@ final class LspPullDiagnosticsTool(val manager: LspManager) extends TypedTool[Ls
     )
   )
 ) with LspToolSupport {
-  override protected def executeTyped(input: LspPullDiagnosticsInput, context: TurnContext): Stream[Event] =
-    withOpenDocument(input.languageId, input.filePath, context) { (session, uri) =>
-      session.pullDiagnostics(uri).map(render(input.filePath, _))
+  override protected def executeTyped(input: LspPullDiagnosticsInput, context: TurnContext): Task[LspDiagnosticsResult] =
+    withOpenDocumentTyped[LspDiagnosticsResult](
+      input.languageId, input.filePath, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { (session, uri) =>
+      session.pullDiagnostics(uri).map { report =>
+        val items = report match {
+          case Some(r) if r.isLeft => Option(r.getLeft.getItems).map(_.asScala.toList).getOrElse(Nil)
+          case _                   => Nil
+        }
+        LspDiagnosticsResult(
+          filePath    = input.filePath,
+          diagnostics = items.map(LspDiagnostic.fromLsp4j(input.filePath, _))
+        )
+      }
     }
-
-  private def render(filePath: String, report: Option[DocumentDiagnosticReport]): String = {
-    val items = report match {
-      case Some(r) if r.isLeft => Option(r.getLeft.getItems).map(_.asScala.toList).getOrElse(Nil)
-      case _                   => Nil
-    }
-    val typed = LspDiagnosticsResult(
-      filePath    = filePath,
-      diagnostics = items.map(LspDiagnostic.fromLsp4j(filePath, _))
-    )
-    JsonFormatter.Compact(summon[RW[LspDiagnosticsResult]].read(typed))
-  }
 }

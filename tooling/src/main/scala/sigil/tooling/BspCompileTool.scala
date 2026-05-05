@@ -2,11 +2,9 @@ package sigil.tooling
 
 import ch.epfl.scala.bsp4j.StatusCode
 import fabric.rw.*
-import fabric.io.JsonFormatter
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.{BspCompileResult, BspDiagnostic}
 
 case class BspCompileInput(projectRoot: String,
@@ -17,17 +15,18 @@ case class BspCompileInput(projectRoot: String,
  * `projectRoot` selects the persisted [[BspBuildConfig]].
  * `targets` is the list of target URIs to compile; empty means
  * "every workspace target" (the default at-rest sbt + Bloop
- * shape). Returns the BSP `StatusCode` and any diagnostics the
- * server published during the compile.
+ * shape). Emits a typed [[BspCompileResult]] with `status` (OK /
+ * ERROR / CANCELLED / NO_TARGETS) and any diagnostics the server
+ * published.
  */
-final class BspCompileTool(val manager: BspManager) extends TypedTool[BspCompileInput](
+final class BspCompileTool(val manager: BspManager) extends TypedOutputTool[BspCompileInput, BspCompileResult](
   name = ToolName("bsp_compile"),
   description =
     """Compile build targets via the project's BSP server (sbt or Bloop).
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is a list of target URIs; empty compiles every workspace target.
-      |Returns the compile status (OK / ERROR / CANCELLED) plus any diagnostics published.""".stripMargin,
+      |Returns `{projectRoot, status, targetCount, diagnostics: [{filePath, range, severity, message, code, source}]}`.""".stripMargin,
   examples = List(
     ToolExample(
       "compile all targets in a project",
@@ -35,17 +34,19 @@ final class BspCompileTool(val manager: BspManager) extends TypedTool[BspCompile
     )
   )
 ) with BspToolSupport {
-  override protected def executeTyped(input: BspCompileInput, context: TurnContext): Stream[Event] =
-    withSession(input.projectRoot, context) { session =>
+  override protected def executeTyped(input: BspCompileInput, context: TurnContext): Task[BspCompileResult] =
+    withSessionTyped[BspCompileResult](
+      input.projectRoot, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { session =>
       targetsFromInput(session, input.targets).flatMap { targets =>
         if (targets.isEmpty) {
-          val empty = BspCompileResult(
+          Task.pure(BspCompileResult(
             projectRoot = input.projectRoot,
             status      = "NO_TARGETS",
             targetCount = 0,
             diagnostics = Nil
-          )
-          Task.pure(JsonFormatter.Compact(summon[RW[BspCompileResult]].read(empty)))
+          ))
         }
         else session.compile(targets).map { result =>
           val status = result.getStatusCode match {
@@ -61,13 +62,12 @@ final class BspCompileTool(val manager: BspManager) extends TypedTool[BspCompile
             }.getOrElse(uri)
             ds.map(BspDiagnostic.fromBsp4j(path, _))
           }
-          val typed = BspCompileResult(
+          BspCompileResult(
             projectRoot = input.projectRoot,
             status      = status,
             targetCount = targets.size,
             diagnostics = typedDiags
           )
-          JsonFormatter.Compact(summon[RW[BspCompileResult]].read(typed))
         }
       }
     }

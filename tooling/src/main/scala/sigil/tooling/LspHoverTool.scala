@@ -1,12 +1,9 @@
 package sigil.tooling
 
 import fabric.rw.*
-import fabric.io.JsonFormatter
-import org.eclipse.lsp4j.Hover
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.LspHover
 
 case class LspHoverInput(languageId: String,
@@ -22,15 +19,18 @@ case class LspHoverInput(languageId: String,
  * Markdown-formatted output (most servers ship `MarkupContent`).
  * Servers that respond with the legacy `MarkedString` shape are
  * coalesced into the same plain-string output.
+ *
+ * Emits `Option[LspHover]` — `None` when the server returned no
+ * hover info at that position.
  */
-final class LspHoverTool(val manager: LspManager) extends TypedTool[LspHoverInput](
+final class LspHoverTool(val manager: LspManager) extends TypedOutputTool[LspHoverInput, Option[LspHover]](
   name = ToolName("lsp_hover"),
   description =
     """Get type signature + documentation at a source position.
       |
       |`languageId` selects the persisted LspServerConfig.
       |`filePath` + `line` + `character` (0-based) point at any character inside the symbol.
-      |Returns markdown-formatted hover content (type, inferred signature, doc comments).""".stripMargin,
+      |Returns `Option[{contents, kind, range?}]` — `None` if the server has no hover info there.""".stripMargin,
   examples = List(
     ToolExample(
       "scala hover on a symbol",
@@ -38,13 +38,11 @@ final class LspHoverTool(val manager: LspManager) extends TypedTool[LspHoverInpu
     )
   )
 ) with LspToolSupport {
-  override protected def executeTyped(input: LspHoverInput, context: TurnContext): Stream[Event] =
-    withOpenDocument(input.languageId, input.filePath, context) { (session, uri) =>
-      session.hover(uri, input.line, input.character).map(render)
+  override protected def executeTyped(input: LspHoverInput, context: TurnContext): Task[Option[LspHover]] =
+    withOpenDocumentTyped[Option[LspHover]](
+      input.languageId, input.filePath, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { (session, uri) =>
+      session.hover(uri, input.line, input.character).map(_.map(LspHover.fromLsp4j))
     }
-
-  private def render(hover: Option[Hover]): String = {
-    val typed: Option[LspHover] = hover.map(LspHover.fromLsp4j)
-    JsonFormatter.Compact(summon[RW[Option[LspHover]]].read(typed))
-  }
 }

@@ -1,12 +1,10 @@
 package sigil.tooling
 
 import fabric.rw.*
-import fabric.io.JsonFormatter
 import org.eclipse.lsp4j.Diagnostic
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.{LspDiagnostic, LspDiagnosticsResult}
 
 case class LspDiagnosticsInput(languageId: String,
@@ -31,7 +29,7 @@ case class LspDiagnosticsInput(languageId: String,
  * the typed list and pattern-match on severity instead of regex-
  * parsing rendered strings.
  */
-final class LspDiagnosticsTool(val manager: LspManager) extends TypedTool[LspDiagnosticsInput](
+final class LspDiagnosticsTool(val manager: LspManager) extends TypedOutputTool[LspDiagnosticsInput, LspDiagnosticsResult](
   name = ToolName("lsp_diagnostics"),
   description =
     """Fetch the language server's diagnostics for a file (errors, warnings, hints).
@@ -42,7 +40,7 @@ final class LspDiagnosticsTool(val manager: LspManager) extends TypedTool[LspDia
       |`waitMs` (default 1500) is how long to wait for the server to finish publishing
       |diagnostics after opening the file. Pass 0 to read the existing snapshot only.
       |
-      |Returns JSON: {filePath, diagnostics: [{range:{start, end}, severity, message, code, source}]}.""".stripMargin,
+      |Returns `{filePath, diagnostics: [{range:{start, end}, severity, message, code, source}]}`.""".stripMargin,
   examples = List(
     ToolExample(
       "scala diagnostics for a single file",
@@ -50,17 +48,15 @@ final class LspDiagnosticsTool(val manager: LspManager) extends TypedTool[LspDia
     )
   )
 ) with LspToolSupport {
-  override protected def executeTyped(input: LspDiagnosticsInput, context: TurnContext): Stream[Event] =
-    withOpenDocument(input.languageId, input.filePath, context) { (session, uri) =>
+  override protected def executeTyped(input: LspDiagnosticsInput, context: TurnContext): Task[LspDiagnosticsResult] =
+    withOpenDocumentTyped[LspDiagnosticsResult](
+      input.languageId, input.filePath, context,
+      onError = msg => throw new RuntimeException(msg)
+    ) { (session, uri) =>
       val wait = if (input.waitMs > 0) session.waitForDiagnostics(input.waitMs) else Task.unit
-      wait.map(_ => render(input.filePath, session.diagnosticsFor(uri)))
+      wait.map(_ => LspDiagnosticsResult(
+        filePath    = input.filePath,
+        diagnostics = session.diagnosticsFor(uri).map(LspDiagnostic.fromLsp4j(input.filePath, _))
+      ))
     }
-
-  private def render(filePath: String, diags: List[Diagnostic]): String = {
-    val typed = LspDiagnosticsResult(
-      filePath    = filePath,
-      diagnostics = diags.map(LspDiagnostic.fromLsp4j(filePath, _))
-    )
-    JsonFormatter.Compact(summon[RW[LspDiagnosticsResult]].read(typed))
-  }
 }
