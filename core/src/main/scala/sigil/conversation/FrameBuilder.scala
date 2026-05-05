@@ -91,6 +91,13 @@ object FrameBuilder {
             case Some(s) if s.nonEmpty => s + "\n" + pointer
             case _                     => pointer
           }
+        case tr: ToolResults if tr.typed.isDefined =>
+          // Typed-output tool (TypedOutputTool[I, O]) — fold the
+          // structured JSON directly so the agent's view is the
+          // same shape consuming-side code pattern-matches against
+          // via the tool's outputRW. Strip framework boilerplate
+          // wrappers from the typed payload.
+          JsonFormatter.Compact(tr.typed.get)
         case other =>
           val payload = stripEventBoilerplate(Event.rw.read(other))
           JsonFormatter.Compact(payload)

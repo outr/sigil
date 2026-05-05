@@ -64,6 +64,13 @@ trait Tool extends RecordDocument[Tool] {
     * runtime config) override this. */
   def inputDefinition: fabric.define.Definition = inputRW.definition
 
+  /** The schema's output definition — present for tools that declare
+    * a typed `Output` shape via [[TypedOutputTool]], `None` for legacy
+    * tools that emit free-form Tool-role Messages. Surfaced in
+    * `find_capability` results so agents can reason about the result
+    * shape before calling. */
+  def outputDefinition: Option[fabric.define.Definition] = None
+
   /** Pre-execution gates the orchestrator runs before
     * [[execute]]. Each [[ToolPrecondition]] returns either
     * [[ToolPreconditionResult.Satisfied]] (proceed) or
@@ -142,7 +149,8 @@ trait Tool extends RecordDocument[Tool] {
     name = name,
     description = description,
     input = inputDefinition,
-    examples = examples
+    examples = examples,
+    output = outputDefinition
   )
 }
 
