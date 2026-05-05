@@ -65,9 +65,14 @@ class WorkspaceRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   }
 
   private def extractJson(events: List[sigil.event.Event]): fabric.Json = {
-    events.collectFirst { case m: Message =>
-      m.content.collectFirst { case ResponseContent.Text(t) => t }
-    }.flatten.map(JsonParser(_)).getOrElse(fabric.Obj.empty)
+    val fromTyped = events.collectFirst {
+      case t: sigil.event.ToolResults if t.typed.isDefined => t.typed.get
+    }
+    fromTyped.orElse {
+      events.collectFirst { case m: Message =>
+        m.content.collectFirst { case ResponseContent.Text(t) => t }
+      }.flatten.map(JsonParser(_))
+    }.getOrElse(fabric.Obj.empty)
   }
 
   // FS context with NO basePath — same shape Sage uses (full
