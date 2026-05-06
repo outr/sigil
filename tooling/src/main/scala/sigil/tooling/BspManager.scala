@@ -29,23 +29,39 @@ final class BspManager(sigil: Sigil { type DB <: SigilDB & ToolingCollections })
         Task.pure(existing)
       case None =>
         configFor(projectRoot).flatMap {
+          case Some(config) => spawn(projectRoot, config)
           case None =>
-            Task.error(new IllegalStateException(
-              s"No BspBuildConfig persisted for project root '$projectRoot'. " +
-                s"Save one via Sigil.withDB(_.bspBuilds.transaction(_.upsert(BspBuildConfig(...)))) first."
-            ))
-          case Some(config) =>
-            BspSession.spawn(config).map { session =>
-              val prior = sessions.putIfAbsent(projectRoot, session)
-              if (prior != null) {
-                session.shutdown().sync()
-                prior.touch()
-                prior
-              } else session
+            // No persisted config — fall back to `.bsp/<server>.json`
+            // discovery (BSP spec convention). On hit: upsert the
+            // discovered config so subsequent calls skip the scan,
+            // then spawn. On miss: surface a "no config and no
+            // discovery file" error pointing at the registration
+            // path AND the `sbt bspConfig` generation step. Sigil bug #20.
+            BspDiscovery.scan(projectRoot) match {
+              case Some(discovered) =>
+                sigil.withDB(_.bspBuilds.transaction(_.upsert(discovered)))
+                  .flatMap(_ => spawn(projectRoot, discovered))
+              case None =>
+                Task.error(new IllegalStateException(
+                  s"No BspBuildConfig persisted for project root '$projectRoot' and no " +
+                    s"`.bsp/<server>.json` discovery file found. Save one via " +
+                    s"Sigil.withDB(_.bspBuilds.transaction(_.upsert(BspBuildConfig(...)))) " +
+                    s"or generate `.bsp/sbt.json` (sbt: `sbt bspConfig`) first."
+                ))
             }
         }
     }
   }
+
+  private def spawn(projectRoot: String, config: BspBuildConfig): Task[BspSession] =
+    BspSession.spawn(config).map { session =>
+      val prior = sessions.putIfAbsent(projectRoot, session)
+      if (prior != null) {
+        session.shutdown().sync()
+        prior.touch()
+        prior
+      } else session
+    }
 
   def withSession[T](projectRoot: String)(f: BspSession => Task[T]): Task[T] =
     session(projectRoot).flatMap(f)
