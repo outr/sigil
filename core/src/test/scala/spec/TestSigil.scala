@@ -146,6 +146,9 @@ object TestSigil extends Sigil {
     (_: List[ParticipantId]) => Task.pure(Set.empty[SpaceId])
   )
   private val memoryClassifierModelRef = new AtomicReference[Option[Id[Model]]](None)
+  private val resolveProviderStrategyRef = new AtomicReference[SpaceId => Task[Option[sigil.provider.ProviderStrategy]]](
+    (_: SpaceId) => Task.pure(None)
+  )
 
   // ---- hook overrides delegate to refs ----
 
@@ -182,6 +185,9 @@ object TestSigil extends Sigil {
 
   override def accessibleSpaces(chain: List[ParticipantId]): Task[Set[SpaceId]] =
     accessibleSpacesRef.get().apply(chain)
+
+  override def resolveProviderStrategy(space: SpaceId): Task[Option[sigil.provider.ProviderStrategy]] =
+    resolveProviderStrategyRef.get().apply(space)
 
   override def memoryClassifierModel: Option[Id[Model]] = memoryClassifierModelRef.get()
 
@@ -232,6 +238,13 @@ object TestSigil extends Sigil {
   def setMemoryClassifierModel(modelId: Option[Id[Model]]): Unit =
     memoryClassifierModelRef.set(modelId)
 
+  /** Install a `resolveProviderStrategy` resolver — specs exercising
+    * provider routing (bug #41 size-aware candidate picking, etc.)
+    * wire a custom strategy here. Default returns `None` (no
+    * strategy → routedModelFor falls back to its `fallback` arg). */
+  def setResolveProviderStrategy(f: SpaceId => Task[Option[sigil.provider.ProviderStrategy]]): Unit =
+    resolveProviderStrategyRef.set(f)
+
   /** Reset every mutable hook to its default. Call from `beforeEach`
     * (or inline at the start of a test) to guarantee isolation from
     * prior tests within the same suite. */
@@ -248,6 +261,8 @@ object TestSigil extends Sigil {
     locationForRef.set(defaultLocationFor)
     geocoderRef.set(defaultGeocoder)
     memoryClassifierModelRef.set(None)
+    resolveProviderStrategyRef.set((_: SpaceId) => Task.pure(None))
+    accessibleSpacesRef.set((_: List[ParticipantId]) => Task.pure(Set.empty[SpaceId]))
   }
 
   /** Expose the in-memory information store that backs `getInformation`

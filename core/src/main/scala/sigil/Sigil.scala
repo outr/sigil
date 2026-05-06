@@ -906,17 +906,55 @@ trait Sigil {
   /** Pick a model for `workType`, scoped to `chain`. Default impl walks
     * the chain's accessible spaces, resolves each space's
     * [[sigil.provider.ProviderStrategy]], and returns the first
-    * available candidate for `workType`. Falls back to `fallback`
-    * when no strategy applies or no candidate is available.
+    * available candidate for `workType` whose `Model.contextLength`
+    * can accommodate `estimatedInputTokens + reservedOutputTokens`.
+    * Falls back to `fallback` when no strategy applies or no candidate
+    * fits.
     *
     * Bug #26 — used by the framework's compressor to route
     * summarization through a `SummarizationWork`-tier model rather
-    * than inheriting the calling agent's modelId. Apps can override
-    * for custom routing (e.g. cost-aware fallback ordering). */
+    * than inheriting the calling agent's modelId.
+    *
+    * Bug #41 — `estimatedInputTokens` lets callers skip candidates
+    * whose context window can't physically fit the request, so a
+    * cost-aware chain like `[llama (32K), gpt-5.5, claude]` does the
+    * right thing automatically: small input → llama; oversized input
+    * → fall through to a frontier candidate. `None` (default) keeps
+    * the legacy head-first behavior for callers that have no size
+    * signal. Candidates whose `Model.contextLength` isn't in the
+    * cache are NOT skipped (treated as "size unknown" → keep) so
+    * apps with custom-provider models lacking a registered
+    * contextLength aren't broken.
+    *
+    * `reservedOutputTokens` is the budget reserved for the response
+    * — added to `estimatedInputTokens` when measuring fit. Default
+    * 1024 is enough for typical summary outputs; callers expecting
+    * larger responses pass higher.
+    *
+    * Apps override for custom routing (e.g. cost-aware fallback
+    * ordering, sticky model preferences). */
   def routedModelFor(workType: sigil.provider.WorkType,
                      chain: List[ParticipantId],
-                     fallback: Id[Model]): Task[Id[Model]] = {
+                     fallback: Id[Model],
+                     estimatedInputTokens: Option[Long] = None,
+                     reservedOutputTokens: Long = 1024L): Task[Id[Model]] = {
     val convId: Id[Conversation] = sigil.conversation.Conversation.id("__no_conv__")
+    val required = estimatedInputTokens.map(_ + reservedOutputTokens)
+
+    def fits(candidate: sigil.provider.ModelCandidate): Boolean = required match {
+      case None => true
+      case Some(needed) =>
+        cache.find(candidate.modelId).map(_.contextLength) match {
+          // contextLength unknown → don't filter (custom provider /
+          // stale registry). Caller still gets a candidate; if it
+          // overflows downstream, the compressor's chunk-and-merge
+          // fallback in `compressLarge` handles it.
+          case None       => true
+          case Some(0L)   => true
+          case Some(ctx)  => needed <= ctx
+        }
+    }
+
     accessibleSpaces(chain, convId).flatMap { spaces =>
       val ordered = spaces.toList
       def loop(remaining: List[SpaceId]): Task[Option[Id[Model]]] = remaining match {
@@ -925,9 +963,9 @@ trait Sigil {
           resolveProviderStrategy(space).flatMap {
             case None => loop(rest)
             case Some(strategy) =>
-              strategy.availableCandidates(workType).headOption match {
-                case Some(c) => Task.pure(Some(c.modelId))
-                case None    => loop(rest)
+              strategy.availableCandidates(workType).find(fits).map(_.modelId) match {
+                case Some(modelId) => Task.pure(Some(modelId))
+                case None          => loop(rest)
               }
           }
       }
