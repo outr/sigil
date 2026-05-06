@@ -133,18 +133,47 @@ trait Provider {
 
   /** Best-effort token count for a single [[ProviderMessage]] as it
     * lands on the wire — covers User text + Assistant tool-call args
-    * + ToolResult content. Per-message overhead approximated by the
-    * tokenizer's `countMessages` chat-format adjustment. */
-  private def estimateMessage(m: ProviderMessage, tok: Tokenizer): Int = m match {
-    case ProviderMessage.System(c)            => tok.count(c) + 3
+    * + ToolResult content + Reasoning summaries + per-message
+    * role/envelope overhead.
+    *
+    * Bug #44 — counts the JSON-RPC wrapper around each Assistant
+    * tool call (`{"id": "...", "type": "function", "function":
+    * {"name": "...", "arguments": "..."}}`) and the role/content
+    * envelope on every ToolResult, plus the Reasoning body
+    * (previously `=> 0`). Tool-using conversations accumulate
+    * dozens of these wrappers per turn; under-counting accumulates
+    * to 1-3K of unaccounted wire tokens.
+    *
+    * Per-message envelope is `+4` (was `+3`) — OpenAI's chat format
+    * adds ~4 tokens for the role + content envelope. */
+  protected def estimateMessage(m: ProviderMessage, tok: Tokenizer): Int = m match {
+    case ProviderMessage.System(c)            => tok.count(c) + 4
     case ProviderMessage.User(blocks)         => blocks.iterator.map {
       case MessageContent.Text(t)     => tok.count(t)
       case MessageContent.Image(_, _) => 85 // standard low-detail image overhead per OpenAI's docs
-    }.sum + 3
+    }.sum + 4
     case ProviderMessage.Assistant(c, calls)  =>
-      tok.count(c) + calls.iterator.map(tc => tok.count(tc.name) + tok.count(tc.argsJson)).sum + 3
-    case ProviderMessage.ToolResult(_, c)     => tok.count(c) + 3
-    case ProviderMessage.Reasoning(_, _, _) => 0  // provider-specific reasoning state
+      // Each tool call ships as a JSON-RPC wrapper:
+      //   {"id":"...","type":"function","function":{"name":"...","arguments":"..."}}
+      // Wrapper keys + braces + quotes + commas approximate +18 tokens
+      // per call across providers (OpenAI chat-completions, Anthropic
+      // messages, llama.cpp openai-compat).
+      val callsCost = calls.iterator.map { tc =>
+        tok.count(tc.id) + tok.count(tc.name) + tok.count(tc.argsJson) + 18
+      }.sum
+      tok.count(c) + callsCost + 4
+    case ProviderMessage.ToolResult(callId, c) =>
+      // Tool result envelope: `{"role":"tool","tool_call_id":"...","content":"..."}`
+      // — the call_id linkage is small but real; +8 covers wrapper keys.
+      tok.count(callId) + tok.count(c) + 8
+    case ProviderMessage.Reasoning(_, summary, encryptedContent) =>
+      // Bug #44 — reasoning blocks are non-trivial when kept (Anthropic
+      // extended thinking, OpenAI o-series, gemma's thinking mode).
+      // Encrypted content is opaque but ships verbatim, so its size
+      // counts even if its content doesn't decode.
+      val summaryTokens = tok.count(summary.mkString("\n"))
+      val cotTokens = encryptedContent.fold(0)(tok.count)
+      summaryTokens + cotTokens + 4
   }
 
   /** Token cost of the wire tool roster — name + description + the
