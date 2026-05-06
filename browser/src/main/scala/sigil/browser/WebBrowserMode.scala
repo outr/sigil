@@ -1,7 +1,7 @@
 package sigil.browser
 
 import sigil.conversation.ActiveSkillSlot
-import sigil.provider.{BuiltInTool, Mode, ToolPolicy}
+import sigil.provider.{AnalysisWork, BuiltInTool, Mode, ToolPolicy, WorkType}
 import sigil.tool.ToolName
 
 /**
@@ -27,6 +27,8 @@ case object WebBrowserMode extends Mode {
 
   override val description: String =
     "Drive a real headless browser. Navigate, click, type, scroll, screenshot, save HTML, and run structural queries (XPath / text search) over saved pages."
+
+  override val workType: Option[WorkType] = Some(AnalysisWork)
 
   override val skill: Option[ActiveSkillSlot] = Some(ActiveSkillSlot(
     name = "web-browser",

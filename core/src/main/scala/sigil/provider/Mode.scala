@@ -65,6 +65,14 @@ trait Mode {
     * that always wants Claude, regardless of who's logged in. */
   def strategyId: Option[Id[ProviderStrategyRecord]] = None
 
+  /** Override the agent's [[WorkType]] while this mode is current.
+    * `None` (default) keeps the agent's declared workType. Modes
+    * that intrinsically dictate the work shape declare it here so
+    * provider routing follows naturally — e.g. `ScriptAuthoringMode`
+    * pins `Some(CodingWork)` so the cheap-fast conversational chain
+    * doesn't run when the agent is authoring runtime tools. */
+  def workType: Option[WorkType] = None
+
   /** Stable `Id[Mode]` derived from [[name]]. Used by `Tool.modes`
     * to declare mode affinity in a persistable, query-friendly shape. */
   final lazy val id: Id[Mode] = Id(name)

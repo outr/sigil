@@ -28,7 +28,7 @@ import sigil.dispatcher.{StopFlag, TriggerFilter}
 import sigil.event.{AgentState, Event, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, TopicChange, TopicChangeKind}
 import sigil.role.Role
 import sigil.orchestrator.Orchestrator
-import sigil.provider.{ConversationMode, ConversationRequest, Mode, ProviderStrategy, ToolPolicy}
+import sigil.provider.{ConversationMode, ConversationRequest, Mode, ProviderStrategy, ToolPolicy, WorkType}
 import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
 import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect, MessageIndexingEffect, RedactLocationTransform, SettledEffect, SignalHub, ViewerTransform}
@@ -1155,14 +1155,19 @@ trait Sigil {
           resolveProviderStrategy(context.conversation.space)
       }
 
+    // Mode-overrides-agent for work-type routing: a mode that intrinsically
+    // dictates a work shape (`ScriptAuthoringMode = CodingWork`,
+    // `WebBrowserMode = AnalysisWork`) routes the turn to the matching
+    // candidate chain even when the agent itself defaults to
+    // `ConversationWork`. Modes that don't pin a work type fall through
+    // to whatever the agent declares.
+    val effectiveWorkType: WorkType =
+      context.conversation.currentMode.workType.getOrElse(agent.workType)
+
     val resolved: Task[(Provider, Vector[Tool], Id[Model], GenerationSettings, List[sigil.role.Role])] =
       for {
         strategyOpt <- strategyTask
-        // Pick the first available candidate for the agent's work
-        // type. Empty candidate list (e.g. record had no defaults)
-        // falls through to `agent.modelId`.
-        chosen       = strategyOpt
-                         .flatMap(_.availableCandidates(agent.workType).headOption)
+        chosen       = strategyOpt.flatMap(_.availableCandidates(effectiveWorkType).headOption)
         modelId      = chosen.map(_.modelId).getOrElse(agent.modelId)
         // Per-candidate `settings` overlays the agent's
         // generationSettings. The framework keeps the agent's settings

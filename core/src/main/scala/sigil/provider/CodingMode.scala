@@ -29,4 +29,5 @@ case object CodingMode extends Mode {
   override val name: String = "coding"
   override val description: String =
     "Writing, debugging, or refactoring code. Optimizes for technical accuracy, syntax, and software-engineering principles."
+  override val workType: Option[WorkType] = Some(CodingWork)
 }
