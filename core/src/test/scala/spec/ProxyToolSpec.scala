@@ -9,7 +9,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream}
 import sigil.TurnContext
-import sigil.conversation.{Conversation, Topic}
+import sigil.conversation.{ConversationView, Conversation, Topic}
 import sigil.event.{Event, Message, MessageVisibility, MessageRole}
 import sigil.participant.ParticipantId
 import sigil.signal.EventState
@@ -110,7 +110,6 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       sigil = TestSigil,
       chain = List(TestUser),
       conversation = conv,
-      conversationView = sigil.conversation.ConversationView(conversationId = convId),
       turnInput = sigil.conversation.TurnInput(sigil.conversation.ConversationView(conversationId = convId))
     )
   }

@@ -3,35 +3,33 @@ package sigil.workflow
 import lightdb.id.Id
 import rapid.Task
 import sigil.{Sigil, TurnContext}
-import sigil.conversation.{Conversation, ConversationView, TurnInput}
+import sigil.conversation.{Conversation, TurnInput}
 import sigil.participant.ParticipantId
 import strider.Workflow
 
 /**
  * Build a [[TurnContext]] for in-workflow tool execution. Workflows
  * run outside of an agent's normal turn — there's no live
- * conversation view, no curator output, no real participant chain.
- * Tools that need any of those are at risk of mis-behaving when
- * called from a workflow; the synthetic context provides the best
- * approximation:
+ * conversation projection, no curator output, no real participant
+ * chain. Tools that need any of those are at risk of mis-behaving
+ * when called from a workflow; the synthetic context provides the
+ * best approximation:
  *
- *   - `conversation` is loaded from the workflow's
- *     `conversationId` if set, otherwise a placeholder is built
- *     in-memory (one-off ids, no persistence).
+ *   - `conversation` is loaded from the workflow's `conversationId`
+ *     if set, otherwise a placeholder is built in-memory (one-off
+ *     ids, no persistence).
  *   - `chain` resolves to the workflow's `createdBy` (matched
  *     against the conversation's participants list); falls back to
- *     the conversation's first participant; ultimately falls back
- *     to a synthetic anonymous chain when the conversation is
- *     itself synthetic.
- *   - `conversationView` is the persisted view (loaded from
- *     `db.views`) when available; otherwise an empty view.
+ *     the conversation's first participant; ultimately falls back to
+ *     a synthetic anonymous chain when the conversation is itself
+ *     synthetic.
  *   - `turnInput` is empty — no curator runs from a workflow step.
  *
- * Tools that strictly require a real turn (Stop dispatch,
- * topic-shift detection, etc.) won't behave correctly here. The
- * common case (file system tools, web fetches, save_memory,
- * notifications) all run cleanly because they only consult
- * `chain`, `conversation.id`, and `sigil`.
+ * Tools that strictly require a real turn (Stop dispatch, topic-
+ * shift detection, etc.) won't behave correctly here. The common
+ * case (file system tools, web fetches, save_memory, notifications)
+ * all run cleanly because they only consult `chain`,
+ * `conversation.id`, and `sigil`.
  */
 object SyntheticTurnContext {
 
@@ -42,13 +40,6 @@ object SyntheticTurnContext {
         val convId = Id[Conversation](convIdStr)
         for {
           maybeConv <- host.withDB(_.conversations.transaction(_.get(convId)))
-          maybeView <- host.withDB(_.views.transaction(_.get(ConversationView.idFor(convId))))
-          // Worker conversations spawned by `delegate_task` start
-          // with empty `participants` — the worker isn't a real
-          // persisted participant, it's a workflow run. Fall back to
-          // the parent conversation's participant matching
-          // `workflow.createdBy` so tool dispatch from inside the
-          // worker has a stable caller attribution.
           parentChain <- maybeConv match {
             case Some(conv) if conv.participants.isEmpty =>
               conv.parentConversationId match {
@@ -67,10 +58,6 @@ object SyntheticTurnContext {
         } yield maybeConv match {
           case None       => emptyContext(host)
           case Some(conv) =>
-            val view = maybeView.getOrElse(ConversationView(
-              conversationId = convId,
-              _id = ConversationView.idFor(convId)
-            ))
             val createdByValue = workflow.createdBy.getOrElse("")
             val matched = conv.participants.find(_.id.value == createdByValue).map(_.id)
             val ownChain: List[ParticipantId] =
@@ -80,8 +67,7 @@ object SyntheticTurnContext {
               sigil = host,
               chain = chain,
               conversation = conv,
-              conversationView = view,
-              turnInput = TurnInput(view)
+              turnInput = TurnInput(conversationId = convId)
             )
         }
     }
@@ -103,13 +89,11 @@ object SyntheticTurnContext {
       modified = now,
       _id = convId
     )
-    val view = ConversationView(conversationId = convId, _id = ConversationView.idFor(convId))
     TurnContext(
       sigil = host,
       chain = Nil,
       conversation = conv,
-      conversationView = view,
-      turnInput = TurnInput(view)
+      turnInput = TurnInput(conversationId = convId)
     )
   }
 }

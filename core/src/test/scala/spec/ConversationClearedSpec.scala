@@ -4,7 +4,7 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
-import sigil.conversation.{Conversation, ContextFrame}
+import sigil.conversation.{ConversationView, Conversation, ContextFrame}
 import sigil.event.Message
 import sigil.signal.{ConversationCleared, EventState, Signal}
 import sigil.tool.model.ResponseContent
@@ -43,21 +43,20 @@ class ConversationClearedSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
   "Sigil.clearConversation" should {
 
-    "empty the ConversationView frames while keeping the conversation row alive" in {
+    "empty the rolling-window frames while keeping the conversation row alive" in {
       val convId = freshConvId("basic")
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       for {
-        _      <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _      <- TestSigil.publish(msg(convId, "pre-clear-1"))
-        _      <- TestSigil.publish(msg(convId, "pre-clear-2"))
-        viewBefore <- TestSigil.viewFor(convId)
-        _      <- TestSigil.clearConversation(convId, TestUser)
-        viewAfter  <- TestSigil.viewFor(convId)
-        convAfter  <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
+        _           <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _           <- TestSigil.publish(msg(convId, "pre-clear-1"))
+        _           <- TestSigil.publish(msg(convId, "pre-clear-2"))
+        framesBefore <- TestSigil.framesFor(convId)
+        _           <- TestSigil.clearConversation(convId, TestUser)
+        framesAfter <- TestSigil.framesFor(convId)
+        convAfter   <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
       } yield {
-        viewBefore.frames should have size 2
-        viewAfter.frames shouldBe empty
-        // The conversation row is still alive — same id, topics intact.
+        framesBefore should have size 2
+        framesAfter shouldBe empty
         convAfter shouldBe defined
         convAfter.get._id shouldBe convId
         convAfter.get.topics shouldBe TestTopicStack
@@ -96,10 +95,10 @@ class ConversationClearedSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         _    <- TestSigil.clearConversation(convId, TestUser)
         // Use a future-stamped message so it definitely lands after
         // the watermark even if wall-clock granularity collides.
-        _    <- TestSigil.publish(msg(convId, "post-clear", System.currentTimeMillis() + 5000))
-        view <- TestSigil.viewFor(convId)
+        _      <- TestSigil.publish(msg(convId, "post-clear", System.currentTimeMillis() + 5000))
+        frames <- TestSigil.framesFor(convId)
       } yield {
-        view.frames.collect { case t: ContextFrame.Text => t.content } shouldBe Vector("post-clear")
+        frames.collect { case t: ContextFrame.Text => t.content } shouldBe Vector("post-clear")
       }
     }
 
@@ -130,16 +129,16 @@ class ConversationClearedSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       }
     }
 
-    "rebuildView reproduces the same empty post-clear projection" in {
+    "framesFor returns empty after clear (Lucene watermark applied at query time)" in {
       val convId = freshConvId("rebuild")
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       for {
-        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _ <- TestSigil.publish(msg(convId, "pre-rebuild"))
-        _ <- TestSigil.clearConversation(convId, TestUser)
-        rebuilt <- TestSigil.rebuildView(convId)
+        _      <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _      <- TestSigil.publish(msg(convId, "pre-rebuild"))
+        _      <- TestSigil.clearConversation(convId, TestUser)
+        frames <- TestSigil.framesFor(convId)
       } yield {
-        rebuilt.frames shouldBe empty
+        frames shouldBe empty
       }
     }
 

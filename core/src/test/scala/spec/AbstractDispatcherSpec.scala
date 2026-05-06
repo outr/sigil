@@ -391,18 +391,18 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         _ <- TestSigil.updateProjection(conversationId, TestAgent)(
           _.copy(suggestedTools = List(ToolName("sleep")))
         )
-        before <- TestSigil.viewFor(conversationId)
+        before <- TestSigil.projectionFor(TestAgent, conversationId)
         _ <- TestSigil.publish(userMessage)
         _ <- awaitIdle(recorder, timeoutMs = 20000)
-        after <- TestSigil.viewFor(conversationId)
+        after <- TestSigil.projectionFor(TestAgent, conversationId)
       } yield (before, after)
 
       task.map { case (before, after) =>
         // Sanity: suggestion was actually present before the turn ran.
-        before.projectionFor(TestAgent).suggestedTools shouldBe List(ToolName("sleep"))
+        before.suggestedTools shouldBe List(ToolName("sleep"))
         // After an agent turn that didn't trigger a new find_capability,
         // the stale suggestion is cleared.
-        after.projectionFor(TestAgent).suggestedTools shouldBe empty
+        after.suggestedTools shouldBe empty
       }
     }
 

@@ -38,7 +38,7 @@ class OpenAIRequestCoverageSpec extends AbstractRequestCoverageSpec {
       conversationId = conversationId,
       modelId = targetModelId,
       instructions = Instructions(),
-      turnInput = TurnInput(emptyView),
+      turnInput = emptyTurnInput,
       currentMode = ConversationMode,
       currentTopic = TestTopicEntry,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
@@ -54,7 +54,7 @@ class OpenAIRequestCoverageSpec extends AbstractRequestCoverageSpec {
   s"${getClass.getSimpleName}.requestConverter (bug #62)" should {
     "ask for reasoning.summary='auto' and include 'reasoning.encrypted_content' for gpt-5 family models" in {
       // The default modelId (`gpt-5.4-nano`) is a reasoning-family model.
-      val body = bodyOf(TurnInput(emptyView))
+      val body = bodyOf(emptyTurnInput)
       body should include("\"reasoning\":{")
       body should include("\"summary\":\"auto\"")
       body should include("\"include\":[\"reasoning.encrypted_content\"]")

@@ -327,7 +327,6 @@ object Orchestrator {
                     sigil = sigil,
                     chain = request.chain,
                     conversation = conversation,
-                    conversationView = request.turnInput.conversationView,
                     turnInput = request.turnInput,
                     // Bug #7 — stamp the dispatching tool's invoke id +
                     // name so `TurnContext.reportProgress` can publish
@@ -598,7 +597,7 @@ object Orchestrator {
                                   state: State): Task[Unit] = {
     val agentResponse = state.turnBuffer.toString.trim
     val caller = request.chain.lastOption
-    val userText = request.turnInput.conversationView.frames.reverseIterator
+    val userText = request.turnInput.frames.reverseIterator
       .collectFirst {
         case t: ContextFrame.Text if !caller.contains(t.participantId) => t.content
       }
@@ -743,7 +742,7 @@ object Orchestrator {
       case None => // fall through to classifier
     }
 
-    val userMessage = request.turnInput.conversationView.frames.reverseIterator.collectFirst {
+    val userMessage = request.turnInput.frames.reverseIterator.collectFirst {
       case t: ContextFrame.Text if t.participantId != caller => t.content
     }.getOrElse("")
 

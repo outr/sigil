@@ -5,7 +5,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.TurnContext
-import sigil.conversation.{Conversation, ConversationView, TopicEntry, TurnInput}
+import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
 import sigil.event.Message
 import sigil.provider.AnalysisWork
 import sigil.role.Role
@@ -35,7 +35,6 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       sigil            = TestSigil,
       chain            = List(TestUser),
       conversation     = conv,
-      conversationView = ConversationView(conversationId = convId),
       turnInput        = TurnInput(ConversationView(conversationId = convId))
     )
   }

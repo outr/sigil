@@ -71,12 +71,12 @@ class OrchestratorMultiToolPerTurnSpec extends AsyncWordSpec with AsyncTaskSpec 
   private def runWith(provider: Provider, suffix: String): Task[List[Signal]] = {
     val convId = Conversation.id(s"multi-tool-$suffix")
     val conv = Conversation(topics = TestTopicStack, _id = convId)
-    val view = ConversationView(conversationId = convId, _id = ConversationView.idFor(convId))
+    val viewConvId = convId
     val request = ConversationRequest(
       conversationId     = convId,
       modelId            = modelId,
       instructions       = Instructions(),
-      turnInput          = TurnInput(view),
+      turnInput          = TurnInput(conversationId = viewConvId),
       currentMode        = ConversationMode,
       currentTopic       = TestTopicEntry,
       previousTopics     = Nil,

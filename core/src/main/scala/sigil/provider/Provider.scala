@@ -217,6 +217,28 @@ trait Provider {
   def call(input: ProviderCall): Stream[ProviderEvent]
 
   /**
+   * Append one frame's wire shape to an existing encoded-context
+   * buffer (bug #26). The buffer is opaque to the framework — each
+   * provider owns its own representation. Default implementation
+   * uses a newline-delimited transcript readable across providers
+   * so the framework can debug / measure cache size without
+   * provider-specific decoders.
+   *
+   * Returns `(updatedBuffer, tokensAdded)`; `tokensAdded` is
+   * estimated via this provider's [[tokenizer]] over the rendered
+   * frame's textual content.
+   */
+  def appendFrame(buffer: String,
+                  frame: ContextFrame,
+                  agentId: Option[ParticipantId]): (String, Long) = {
+    val rendered = ContextFrameDigest.render(frame)
+    val sep = if (buffer.isEmpty) "" else "\n"
+    val updated = buffer + sep + rendered
+    val tokensAdded = tokenizer.count(rendered).toLong
+    (updated, tokensAdded)
+  }
+
+  /**
    * Build the wire-level [[spice.http.HttpRequest]] from a [[ProviderCall]] without
    * sending it. Used by the final [[requestConverter]] for inspect-only
    * test paths.
@@ -238,7 +260,7 @@ trait Provider {
       val providerCall = ProviderCall(
         modelId = c.modelId,
         system = renderSystem(c, resolved),
-        messages = renderFrames(c.turnInput.conversationView.frames, agentId),
+        messages = renderFrames(c.turnInput.frames, agentId),
         tools = c.tools,
         builtInTools = c.builtInTools,
         toolChoice = toolChoice,
@@ -321,12 +343,11 @@ trait Provider {
   /** Compose the system prompt body from every contextually relevant
     * field on a [[ConversationRequest]]. Each section is omitted
     * when its source is empty. Every Model-visible field on `TurnInput`
-    * / `ConversationView` MUST appear here. The companion
+    * MUST appear here. The companion
     * [[spec.LlamaCppRequestCoverageSpec]] is the regression guard. */
   private def renderSystem(c: ConversationRequest,
                            resolved: ResolvedReferences): String = {
     val turn = c.turnInput
-    val view = turn.conversationView
     val chain = c.chain
     val sb = new StringBuilder
 
@@ -406,7 +427,7 @@ trait Provider {
         }
     }
 
-    val skills = view.aggregatedSkills(chain)
+    val skills = turn.aggregatedSkills(chain)
     val roleSkills = c.roles.flatMap(_.skill.toList)
     val allSkills = (skills ++ roleSkills).distinctBy(_.name)
     if (allSkills.nonEmpty) {
@@ -417,13 +438,13 @@ trait Provider {
       }
     }
 
-    val recentTools = chain.flatMap(id => view.projectionFor(id).recentTools).distinct
+    val recentTools = chain.flatMap(id => turn.projectionFor(id).recentTools).distinct
     if (recentTools.nonEmpty) {
       sb.append("\n== Recently used tools ==\n")
       recentTools.foreach(t => sb.append(s"- $t\n"))
     }
 
-    val suggestedTools = chain.flatMap(id => view.projectionFor(id).suggestedTools).distinct
+    val suggestedTools = chain.flatMap(id => turn.projectionFor(id).suggestedTools).distinct
     if (suggestedTools.nonEmpty) {
       sb.append("\n== Suggested tools ==\n")
       suggestedTools.foreach(t => sb.append(s"- $t\n"))
@@ -435,7 +456,7 @@ trait Provider {
     }
 
     val perParticipantExtras =
-      chain.flatMap(id => view.projectionFor(id).extraContext.map(id -> _))
+      chain.flatMap(id => turn.projectionFor(id).extraContext.map(id -> _))
     if (perParticipantExtras.nonEmpty) {
       sb.append("\n== Participant context ==\n")
       perParticipantExtras.foreach { case (pid, (k, v)) =>

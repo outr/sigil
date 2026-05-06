@@ -4,7 +4,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.TurnContext
-import sigil.conversation.{Conversation, ConversationView, TurnInput}
+import sigil.conversation.{ConversationView, Conversation, TurnInput}
 import fabric.rw.*
 import sigil.event.{Message, ToolResults}
 import sigil.signal.EventState
@@ -40,13 +40,12 @@ class SearchConversationToolSpec extends AsyncWordSpec with AsyncTaskSpec with M
   private def contextFor(convIdArg: lightdb.id.Id[Conversation]): TurnContext = {
     val conv = Conversation(_id = convIdArg, topics = List(TestTopicEntry))
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv))).sync()
-    val view = ConversationView(conversationId = convIdArg, _id = ConversationView.idFor(convIdArg))
+    val viewConvId = convIdArg
     TurnContext(
       sigil = TestSigil,
       chain = List(TestUser, TestAgent),
       conversation = conv,
-      conversationView = view,
-      turnInput = TurnInput(view)
+      turnInput = TurnInput(conversationId = viewConvId)
     )
   }
 

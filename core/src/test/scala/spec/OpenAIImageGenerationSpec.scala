@@ -4,7 +4,7 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
-import sigil.conversation.{ContextFrame, Conversation, ConversationView, TurnInput}
+import sigil.conversation.{ConversationView, ContextFrame, Conversation, TurnInput}
 import sigil.db.Model
 import sigil.event.{Event, Message}
 import sigil.orchestrator.Orchestrator
@@ -44,8 +44,7 @@ class OpenAIImageGenerationSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
           content = userText,
           participantId = TestUser,
           sourceEventId = Id[Event]("u-1")
-        )),
-        _id = ConversationView.idFor(convId)
+        ))
       )
       val request = ConversationRequest(
         conversationId = convId,

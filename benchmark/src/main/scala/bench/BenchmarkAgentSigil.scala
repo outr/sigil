@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
 import sigil.{Sigil, SpaceId, TurnContext}
-import sigil.conversation.{ConversationView, TurnInput}
+import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.Model
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
 import sigil.information.Information
@@ -107,10 +107,10 @@ final class BenchmarkAgentSigil(viewer: ParticipantId,
   override protected def participants: List[RW[? <: Participant]] = participantRWs
   override protected def modes: List[Mode] = Nil
 
-  override def curate(view: ConversationView,
+  override def curate(conversationId: Id[Conversation],
                       modelId: Id[Model],
                       chain: List[ParticipantId]): Task[TurnInput] =
-    Task.pure(TurnInput(view))
+    Task.pure(TurnInput(conversationId = conversationId))
 
   override def getInformation(id: Id[Information]): Task[Option[Information]] = Task.pure(None)
   override def putInformation(information: Information): Task[Unit] = Task.unit

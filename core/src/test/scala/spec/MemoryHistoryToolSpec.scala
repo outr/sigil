@@ -5,7 +5,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.TurnContext
-import sigil.conversation.{Conversation, ContextMemory, ConversationView, MemorySource, TurnInput}
+import sigil.conversation.{ConversationView, Conversation, ContextMemory, MemorySource, TurnInput}
 import sigil.event.Message
 import sigil.tool.memory.{MemoryHistoryInput, MemoryHistoryTool}
 import sigil.tool.model.ResponseContent
@@ -24,13 +24,12 @@ class MemoryHistoryToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     Conversation.id(s"memhist-$suffix-${rapid.Unique()}")
 
   private def ctx(c: Id[Conversation]): TurnContext = {
-    val view = ConversationView(conversationId = c, _id = ConversationView.idFor(c))
+    val viewConvId = c
     TurnContext(
       sigil = TestSigil,
       chain = List(TestUser, TestAgent),
       conversation = Conversation(topics = TestTopicStack, _id = c),
-      conversationView = view,
-      turnInput = TurnInput(view)
+      turnInput = TurnInput(conversationId = viewConvId)
     )
   }
 

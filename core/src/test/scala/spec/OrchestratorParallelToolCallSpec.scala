@@ -5,7 +5,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.{GlobalSpace, SpaceId, TurnContext}
-import sigil.conversation.{Conversation, ConversationView, TurnInput}
+import sigil.conversation.{ConversationView, Conversation, TurnInput}
 import sigil.db.Model
 import sigil.event.{Event, ToolInvoke}
 import sigil.orchestrator.Orchestrator
@@ -73,12 +73,12 @@ class OrchestratorParallelToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
   private def runWith(provider: Provider): Task[List[Signal]] = {
     val convId = Conversation.id(s"parallel-tool-${rapid.Unique()}")
     val conv = Conversation(topics = TestTopicStack, _id = convId)
-    val view = ConversationView(conversationId = convId, _id = ConversationView.idFor(convId))
+    val viewConvId = convId
     val request = ConversationRequest(
       conversationId     = convId,
       modelId            = modelId,
       instructions       = Instructions(),
-      turnInput          = TurnInput(view),
+      turnInput          = TurnInput(conversationId = viewConvId),
       currentMode        = ConversationMode,
       currentTopic       = TestTopicEntry,
       generationSettings = GenerationSettings(),

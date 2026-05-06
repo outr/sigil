@@ -6,7 +6,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.{GlobalSpace, SpaceId, TurnContext}
-import sigil.conversation.{Conversation, ConversationView, Topic, TopicEntry, TurnInput}
+import sigil.conversation.{Conversation, Topic, TopicEntry, TurnInput}
 import sigil.event.Message
 import sigil.participant.{AgentParticipantId, ParticipantId}
 import sigil.script.{
@@ -37,7 +37,7 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   private def ctx(suffix: String, chain: List[ParticipantId] = List(TestScriptUser, TestScriptAgent)): TurnContext = {
     val convId = Conversation.id(s"script-$suffix-${rapid.Unique()}")
     val topic = Topic(conversationId = convId, label = "Scripts", summary = "Test", createdBy = TestScriptUser)
-    val view = ConversationView(conversationId = convId, _id = ConversationView.idFor(convId))
+    val viewConvId = convId
     TurnContext(
       sigil = TestScriptSigil,
       chain = chain,
@@ -45,8 +45,7 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         topics = List(TopicEntry(topic._id, topic.label, topic.summary)),
         _id = convId
       ),
-      conversationView = view,
-      turnInput = TurnInput(view)
+      turnInput = TurnInput(conversationId = viewConvId)
     )
   }
 

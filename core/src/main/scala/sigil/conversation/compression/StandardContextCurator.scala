@@ -3,44 +3,37 @@ package sigil.conversation.compression
 import lightdb.id.Id
 import rapid.Task
 import sigil.Sigil
-import sigil.conversation.{ContextFrame, ContextKey, ContextMemory, ContextSummary, ConversationView, TurnInput}
+import sigil.conversation.{ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, ParticipantProjection, TurnInput}
 import sigil.db.Model
 import sigil.information.InformationSummary
 import sigil.participant.ParticipantId
 import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
 
 /**
- * Default [[ContextCurator]]. Runs a fixed pipeline:
+ * Default [[ContextCurator]]. Bug #26 — sources frames from
+ * `db.events` (via [[sigil.event.Event.contextFrame]]) and
+ * per-participant projections from `db.participantProjections`
+ * directly; no longer materializes a `ConversationView` projection.
  *
- *   1. [[optimizer]] — cheap, stateless frame cleanup.
- *   2. [[blockExtractor]] — pull long content blocks out to
+ * Per-turn pipeline:
+ *
+ *   1. Pull frames for the conversation via [[Sigil.framesFor]].
+ *   2. [[optimizer]] — cheap, stateless frame cleanup.
+ *   3. [[blockExtractor]] — pull long content blocks out to
  *      [[sigil.information.Information]] records (off by default).
- *   3. [[memoryRetriever]] — surface relevant stored memories into
- *      `TurnInput.memories` so they render in the system prompt
- *      (off by default).
- *   4. Build a tentative [[TurnInput]] from the trimmed frames +
- *      extracted catalog entries + retrieved memory ids.
- *   5. Budget check via [[budget]] against the target model's
- *      context length.
- *   6. If over budget: split frames at `max(N/2, keepMinimum)`,
- *      compress the older half via [[compressor]], and swap the new
- *      summary id into the TurnInput.
+ *   4. [[memoryRetriever]] — surface relevant stored memories into
+ *      `TurnInput.memories` (off by default).
+ *   5. Snapshot the chain's participant projections.
+ *   6. Build a tentative [[TurnInput]] from the trimmed frames +
+ *      extracted catalog entries + retrieved memory ids + projections.
+ *   7. Budget-guard via [[budget]] against the target model's
+ *      context length. Multi-stage shed:
+ *        - Stage 1 — drop non-critical retrieved memories.
+ *        - Stage 2 — drop Information records the frames don't reference.
+ *        - Stage 3 — iterative frame compression (per bug #23).
  *
- * The persistent [[ConversationView]] is never mutated — compression
- * only edits the ephemeral TurnInput that flows to the provider. Any
- * information dropped from the rolling context stays on disk via the
- * event log + (for extracted blocks) the Information catalog, and is
- * surfaced on demand by `search_conversation` / `lookup`.
- *
- * Every pipeline stage has a NoOp default — apps opt in component by
- * component:
- *   - optimizer = StandardContextOptimizer with all rules on
- *   - blockExtractor = NoOpBlockExtractor
- *   - memoryRetriever = NoOpMemoryRetriever
- *   - compressor = NoOpContextCompressor
- *   - budget = Percentage(0.8)
- *
- * Swap any or all as needed.
+ * Every pipeline stage has a NoOp default — apps opt in component
+ * by component.
  */
 case class StandardContextCurator(sigil: Sigil,
                                   optimizer: ContextOptimizer = StandardContextOptimizer(),
@@ -52,34 +45,23 @@ case class StandardContextCurator(sigil: Sigil,
                                   tokenizer: Tokenizer = HeuristicTokenizer,
                                   pinnedShareWarningThreshold: Double = 0.20) extends ContextCurator {
 
-  override def curate(view: ConversationView,
+  override def curate(conversationId: Id[Conversation],
                       modelId: Id[Model],
                       chain: List[ParticipantId]): Task[TurnInput] = {
-    // Build the elide-set from each shipped Tool's `resultTtl`. The
-    // standard policy is: any tool declaring `Some(0)` is ephemeral —
-    // its ToolResults frame is redundant after the turn settles
-    // (because the meaningful effect lives on a projection / System
-    // frame / system prompt section). Tools with positive TTLs are
-    // treated like `None` here (kept) — turn-count-aware elision is
-    // future work and apps can extend this curator for it.
     val elide: Set[String] = sigil.staticTools.iterator
       .collect { case t if t.resultTtl.contains(0) => t.name.value }
       .toSet
-    // Bug #73 — pass `chain.head` (the trigger originator, typically
-    // the user) as the current-turn source so the optimizer preserves
-    // within-turn iterations of ephemeral tools. Without this, mid-
-    // turn agent loops on `find_capability` had their prior calls
-    // elided across iterations, making each one look like a fresh
-    // start to the model and producing identical-call retry loops
-    // until `maxAgentIterations` fired.
-    val optimizedFrames = optimizer.optimize(view.frames, elide, chain.headOption)
-
     for {
+      rawFrames     <- sigil.framesFor(conversationId)
+      visibleFrames = rawFrames.filter(f => sigil.visibilityAllows(f.visibility, chain.lastOption.orNull))
+      optimizedFrames = optimizer.optimize(visibleFrames, elide, chain.headOption)
       blockResult <- blockExtractor.extract(sigil, optimizedFrames)
-      postBlockView = view.copy(frames = blockResult.frames)
-      memoryResult <- memoryRetriever.retrieve(sigil, postBlockView, chain)
+      memoryResult <- memoryRetriever.retrieve(sigil, conversationId, blockResult.frames, chain)
+      projections <- loadProjections(conversationId, chain)
       tentative = TurnInput(
-        conversationView = postBlockView,
+        conversationId = conversationId,
+        frames = blockResult.frames,
+        participantProjections = projections,
         criticalMemories = memoryResult.criticalMemories,
         memories = memoryResult.memories,
         information = blockResult.information
@@ -87,27 +69,26 @@ case class StandardContextCurator(sigil: Sigil,
       modelOpt <- modelFor(modelId)
       shed <- modelOpt match {
         case Some(model) =>
-          budgetResolve(model, postBlockView, blockResult.frames, tentative, modelId, chain, memoryResult, blockResult.information)
+          budgetResolve(model, tentative, modelId, chain, memoryResult, blockResult.information)
         case None =>
-          // No catalog record for this modelId. Either the provider
-          // forgot to seed [[sigil.cache.ModelRegistry]] (a custom
-          // provider's bug — framework-shipped providers seed at
-          // construction) or the registry was wiped. Skip budget
-          // compression and surface the optimized frames as-is.
-          // Better to miss compression than to crash the agent loop
-          // on the first turn.
           Task.pure(tentative)
       }
       result <- modelOpt match {
-        case Some(model) => attachBudgetWarning(shed, model, memoryResult, modelId, chain, postBlockView.conversationId)
+        case Some(model) => attachBudgetWarning(shed, model, memoryResult, modelId, chain, conversationId)
         case None        => Task.pure(shed)
       }
     } yield result
   }
 
+  /** Snapshot every chain participant's projection from the
+    * persistent collection. Empty when none recorded yet. */
+  private def loadProjections(conversationId: Id[Conversation],
+                              chain: List[ParticipantId]): Task[Map[ParticipantId, ParticipantProjection]] =
+    Task.sequence(chain.distinct.map { pid =>
+      sigil.projectionFor(pid, conversationId).map(p => pid -> p)
+    }).map(_.toMap)
+
   private def budgetResolve(model: Model,
-                            postBlockView: ConversationView,
-                            frames: Vector[ContextFrame],
                             tentative: TurnInput,
                             modelId: Id[Model],
                             chain: List[ParticipantId],
@@ -127,29 +108,21 @@ case class StandardContextCurator(sigil: Sigil,
             tokenizer = tokenizer
           )
 
-        // Stage 0 — already fits, done.
+        val frames = tentative.frames
+
         if (tokensOf(tentative, frames, Vector.empty) <= cap) Task.pure(tentative)
         else {
-          // Stage 1 — drop non-critical retrieved memories. Recoverable
-          // via `recall_memory` if the agent decides it needs them.
+          // Stage 1 — drop non-critical retrieved memories.
           val afterStage1 = tentative.copy(memories = Vector.empty)
           if (tokensOf(afterStage1, frames, Vector.empty) <= cap) Task.pure(afterStage1)
           else {
-            // Stage 2 — drop Information records the current frames don't
-            // reference. Agent can `lookup` them on demand.
+            // Stage 2 — drop unreferenced Information.
             val referenced = referencedInformationIds(frames)
             val keptInformation = information.filter(i => referenced.contains(i.id.value))
             val afterStage2 = afterStage1.copy(information = keptInformation)
             if (tokensOf(afterStage2, frames, Vector.empty) <= cap) Task.pure(afterStage2)
             else {
-              // Stage 3 — frame compression. Iterates: each pass keeps
-              // the newest half (or fewer when way over budget), re-
-              // summarises every dropped frame into one fresh summary,
-              // and re-checks. Termination: fits OR `kept.size <=
-              // keepMinimum` OR compressor returns None. A single split
-              // is insufficient for cases like a freshly-imported
-              // 9k-event Claude Code session where N/2 frames still
-              // overflow the model's context by orders of magnitude.
+              // Stage 3 — iterative frame compression (bug #23 + #26).
               shedFramesIteratively(
                 kept = frames,
                 droppedSoFar = Vector.empty,
@@ -157,24 +130,18 @@ case class StandardContextCurator(sigil: Sigil,
                 cap = cap,
                 modelId = modelId,
                 chain = chain,
-                conversationId = postBlockView.conversationId,
+                conversationId = tentative.conversationId,
                 tokensOfKept = (kept, summaryOpt) =>
                   tokensOf(afterStage2, kept, summaryOpt.toVector)
               ).map { case (newerKept, summaryOpt) =>
                 summaryOpt match {
                   case Some(summary) =>
-                    TurnInput(
-                      conversationView = postBlockView.copy(frames = newerKept),
-                      criticalMemories = memoryResult.criticalMemories,
-                      memories = afterStage2.memories,
-                      summaries = Vector(summary._id),
-                      information = keptInformation
+                    afterStage2.copy(
+                      frames = newerKept,
+                      summaries = Vector(summary._id)
                     )
                   case None =>
-                    // Compressor declined / failed at the first
-                    // attempt — return Stage 2's result. Provider
-                    // pre-flight gate is the next line of defence.
-                    afterStage2
+                    afterStage2.copy(frames = newerKept)
                 }
               }
             }
@@ -182,28 +149,18 @@ case class StandardContextCurator(sigil: Sigil,
         }
     }
 
-  /** Iterative Stage 3 shed. Each pass:
-    *   1. checks the current `(kept, summaryCarry)` against `cap` —
-    *      stop when fits, when `kept.size <= keepMinimum` (floor), or
-    *      when the compressor declines.
-    *   2. picks `keep`: when current tokens exceed `cap * 3`,
-    *      collapse aggressively to `keepMinimum` so a freshly-imported
-    *      9k-event history doesn't hit the budget after 12 halvings of
-    *      compress calls; otherwise standard halving.
-    *   3. splits, accumulates the dropped frames (`droppedSoFar ++ older`)
-    *      and re-compresses the full dropped set into ONE fresh summary —
-    *      callers see at most one summary regardless of iteration depth.
-    *
-    * `tokensOfKept` is closed over `afterStage2`'s memory / information
-    * shape so each iteration's check uses the actually-rendered cost.
-    */
+  /** Iterative Stage 3 shed (bug #23 — preserves the iteration model
+    * inside the new bug-#26 architecture). Each pass either fits, hits
+    * `keepMinimum`, or falls through on a compressor refusal. When the
+    * input exceeds `cap × 3`, jump straight to the floor for a single
+    * aggressive collapse instead of rounds of halving. */
   private def shedFramesIteratively(kept: Vector[ContextFrame],
                                     droppedSoFar: Vector[ContextFrame],
                                     summaryCarry: Option[ContextSummary],
                                     cap: Int,
                                     modelId: Id[Model],
                                     chain: List[ParticipantId],
-                                    conversationId: Id[_root_.sigil.conversation.Conversation],
+                                    conversationId: Id[Conversation],
                                     tokensOfKept: (Vector[ContextFrame], Option[ContextSummary]) => Int)
       : Task[(Vector[ContextFrame], Option[ContextSummary])] = {
     val current = tokensOfKept(kept, summaryCarry)
@@ -215,7 +172,7 @@ case class StandardContextCurator(sigil: Sigil,
         else math.max(keepMinimum, kept.size / 2)
       val (older, newer) = kept.splitAt(kept.size - keep)
       val toSummarize = droppedSoFar ++ older
-      compressor.compress(sigil, modelId, chain, toSummarize, conversationId).flatMap {
+      compressor.compress(sigil, modelId, chain, rapid.Stream.emits(toSummarize), conversationId).flatMap {
         case Some(summary) =>
           shedFramesIteratively(
             kept = newer,
@@ -228,21 +185,13 @@ case class StandardContextCurator(sigil: Sigil,
             tokensOfKept = tokensOfKept
           )
         case None =>
-          // Compressor declined this pass. Return what we have — if
-          // a prior pass produced a summary, the caller still wires
-          // that summary into the TurnInput; if this is the first
-          // pass, the caller falls back to the unshed Stage 2 result.
           Task.pure((kept, summaryCarry))
       }
     }
   }
 
   /** Resolve the criticalMemories / memories id buckets from a
-    * [[MemoryRetrievalResult]] to full records via the DB. Same lookup
-    * shape as [[sigil.provider.Provider.resolveReferences]]; duplicated
-    * here to avoid pulling that private into the curator API. Ids that
-    * fail to resolve are dropped silently (the curator's concern is
-    * size; missing records are the retriever's bug). */
+    * [[MemoryRetrievalResult]] to full records via the DB. */
   private def resolveMemoriesAndSummaries(memResult: MemoryRetrievalResult): Task[(Vector[ContextMemory], Vector[ContextMemory])] = {
     val now = lightdb.time.Timestamp()
     for {
@@ -256,9 +205,7 @@ case class StandardContextCurator(sigil: Sigil,
     )
   }
 
-  /** Information ids referenced inside the current frames. Used by
-    * Stage 2 to keep only those entries the agent might actually
-    * dereference this turn. */
+  /** Information ids referenced inside the current frames. */
   private def referencedInformationIds(frames: Vector[ContextFrame]): Set[String] = {
     val needle = "Information["
     frames.iterator.flatMap {
@@ -285,27 +232,12 @@ case class StandardContextCurator(sigil: Sigil,
     }
   }
 
-  /** When this turn's resolved pinned memories occupy more than
-    * [[pinnedShareWarningThreshold]] of the model's context, do two
-    * things:
-    *   1. Inject a `_budgetWarning` entry into [[TurnInput.extraContext]]
-    *      so the agent reads the breakdown on its next turn (drives the
-    *      "list_memories(pinned=true) → respond_options" flow when the
-    *      user asks).
-    *   2. Publish a [[_root_.sigil.signal.PinnedMemoryBudgetWarning]] Notice
-    *      so apps subscribing to `signals` can surface a UI banner
-    *      ("Pinned memories exceed N%") without waiting for the agent
-    *      to mention it.
-    *
-    * Single check per turn, no throttling state — re-emits whenever
-    * the threshold is exceeded. Apps that want throttling apply it on
-    * the subscriber side. */
   private def attachBudgetWarning(turnInput: TurnInput,
                                   model: Model,
                                   memResult: MemoryRetrievalResult,
                                   modelId: Id[Model],
                                   chain: List[ParticipantId],
-                                  conversationId: Id[_root_.sigil.conversation.Conversation]): Task[TurnInput] =
+                                  conversationId: Id[Conversation]): Task[TurnInput] =
     if (memResult.criticalMemories.isEmpty) Task.pure(turnInput)
     else resolveCriticalForWarning(memResult).flatMap { pinnedMemories =>
       val pinnedTokens = TokenEstimator.estimateMemories(pinnedMemories, tokenizer)
@@ -343,21 +275,11 @@ case class StandardContextCurator(sigil: Sigil,
       }
     }
 
-  /** Resolve the critical-memory ids for the warning calculation only.
-    * Distinct from [[resolveMemoriesAndSummaries]] because the budget
-    * pass may have already done that work — but the warning runs after
-    * `budgetResolve` returns, so we look these up fresh. */
   private def resolveCriticalForWarning(memResult: MemoryRetrievalResult): Task[Vector[ContextMemory]] =
     Task.sequence(memResult.criticalMemories.toList.map(id =>
       sigil.withDB(_.memories.transaction(_.get(id)))
     )).map(_.flatten.toVector)
 
-  /** Look up the target model in [[sigil.cache.ModelRegistry]].
-    * Returns `None` when no record exists — the curator's caller
-    * then short-circuits to the unbudgeted [[TurnInput]] rather than
-    * crashing the agent loop. Apps that want a stricter posture
-    * (fail-loud when a provider forgot to seed) extend this curator
-    * and override [[curate]] directly. */
   private def modelFor(modelId: Id[Model]): Task[Option[Model]] =
     Task.pure(sigil.cache.find(modelId))
 }

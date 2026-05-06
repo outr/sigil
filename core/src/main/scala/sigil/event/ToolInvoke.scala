@@ -39,8 +39,10 @@ case class ToolInvoke(toolName: ToolName,
                       internal: Boolean = false,
                       override val origin: Option[Id[Event]] = None,
                       override val source: Option[String] = None,
+                      override val contextFrame: Option[sigil.conversation.ContextFrame] = None,
                       _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
+  override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
 }

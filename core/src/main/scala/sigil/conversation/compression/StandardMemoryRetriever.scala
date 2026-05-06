@@ -6,7 +6,7 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.{GlobalSpace, Sigil, SpaceId}
-import sigil.conversation.{ContextFrame, ContextMemory, ConversationView}
+import sigil.conversation.{ContextFrame, ContextMemory, Conversation}
 import sigil.participant.ParticipantId
 
 /**
@@ -56,20 +56,22 @@ case class StandardMemoryRetriever(limit: Int = 5,
                                    rrfK: Int = 60) extends MemoryRetriever {
 
   override def retrieve(sigil: Sigil,
-                        view: ConversationView,
+                        conversationId: Id[Conversation],
+                        frames: Vector[ContextFrame],
                         chain: List[ParticipantId]): Task[MemoryRetrievalResult] =
-    sigil.cachedMemoryRetrieve(view.conversationId, computeFresh(sigil, view, chain))
+    sigil.cachedMemoryRetrieve(conversationId, computeFresh(sigil, conversationId, frames, chain))
 
   /** The uncached retrieval path — runs once per (conversation,
     * cache lifetime) under [[Sigil.cachedMemoryRetrieve]]. */
   private def computeFresh(sigil: Sigil,
-                           view: ConversationView,
+                           conversationId: Id[Conversation],
+                           frames: Vector[ContextFrame],
                            chain: List[ParticipantId]): Task[MemoryRetrievalResult] = {
     val now = Timestamp()
     for {
-      spaces    <- resolveSpaces(sigil, chain, view.conversationId)
+      spaces    <- resolveSpaces(sigil, chain, conversationId)
       criticals <- if (includePinned) loadPinned(sigil, spaces, now) else Task.pure(Vector.empty)
-      regular   <- buildQuery(sigil, view, chain).flatMap {
+      regular   <- buildQuery(sigil, conversationId, frames, chain).flatMap {
         case None        => Task.pure(Vector.empty)
         case Some(query) => hybridSearch(sigil, query, spaces, now).map(_.filterNot(criticals.toSet.contains))
       }
@@ -86,15 +88,16 @@ case class StandardMemoryRetriever(limit: Int = 5,
 
   /** Compose the per-turn retrieval query. Caller-supplied
     * [[queryFrom]] takes precedence; otherwise read the topic state
-    * from the conversation + the last non-agent message from the view. */
+    * from the conversation + the last non-agent message from frames. */
   private def buildQuery(sigil: Sigil,
-                         view: ConversationView,
+                         conversationId: Id[Conversation],
+                         frames: Vector[ContextFrame],
                          chain: List[ParticipantId]): Task[Option[String]] =
     queryFrom match {
-      case Some(builder) => Task.pure(builder(view, chain))
+      case Some(builder) => Task.pure(builder(frames, chain))
       case None          =>
-        sigil.withDB(_.conversations.transaction(_.get(view.conversationId))).map {
-          case None => StandardMemoryRetriever.lastNonAgentMessage(view, chain)
+        sigil.withDB(_.conversations.transaction(_.get(conversationId))).map {
+          case None => StandardMemoryRetriever.lastNonAgentMessage(frames, chain)
           case Some(conv) =>
             val topic = conv.topics.lastOption
             val parts = scala.collection.mutable.ListBuffer.empty[String]
@@ -103,7 +106,7 @@ case class StandardMemoryRetriever(limit: Int = 5,
               if (t.summary.nonEmpty) parts += t.summary
             }
             if (conv.currentKeywords.nonEmpty) parts += conv.currentKeywords.mkString(" ")
-            StandardMemoryRetriever.lastNonAgentMessage(view, chain).foreach(parts += _)
+            StandardMemoryRetriever.lastNonAgentMessage(frames, chain).foreach(parts += _)
             val joined = parts.iterator.map(_.trim).filter(_.nonEmpty).mkString(" ")
             if (joined.nonEmpty) Some(joined) else None
         }
@@ -193,10 +196,10 @@ case class StandardMemoryRetriever(limit: Int = 5,
 }
 
 object StandardMemoryRetriever {
-  /** Function that derives a retrieval query from the turn's view +
+  /** Function that derives a retrieval query from the turn's frames +
     * participant chain. Returning `None` or an empty string skips
     * the retrieval call for this turn. */
-  type QueryBuilder = (ConversationView, List[ParticipantId]) => Option[String]
+  type QueryBuilder = (Vector[ContextFrame], List[ParticipantId]) => Option[String]
 
   /** Memory is expired (and should be skipped on retrieval) when its
     * `expiresAt` field is set and not in the future. Records with
@@ -210,9 +213,9 @@ object StandardMemoryRetriever {
     * participant isn't `chain.last` (the agent about to act). That's
     * typically the user's latest message — the most natural retrieval
     * query. */
-  val lastNonAgentMessage: QueryBuilder = (view, chain) => {
+  val lastNonAgentMessage: QueryBuilder = (frames, chain) => {
     val agent = chain.lastOption
-    view.frames.reverseIterator.collectFirst {
+    frames.reverseIterator.collectFirst {
       case t: ContextFrame.Text if !agent.contains(t.participantId) => t.content
     }
   }

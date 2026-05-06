@@ -6,7 +6,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
-import sigil.conversation.{Conversation, ConversationView, TopicEntry, TurnInput}
+import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
 import sigil.event.ToolResults
 import sigil.storage.StoredFile
 import sigil.tool.output.{ToolOutputGetInput, ToolOutputGetResult, ToolOutputGetTool, ToolOutputSearchInput, ToolOutputSearchResult, ToolOutputSearchTool, ToolOutputSummaryInput, ToolOutputSummaryResult, ToolOutputSummaryTool}
@@ -41,7 +41,6 @@ class ToolOutputExternalizationSpec extends AsyncWordSpec with AsyncTaskSpec wit
       sigil            = TestSigil,
       chain            = chain,
       conversation     = conv,
-      conversationView = ConversationView(conversationId = convId),
       turnInput        = TurnInput(ConversationView(conversationId = convId))
     )
   }

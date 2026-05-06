@@ -5,7 +5,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.{GlobalSpace, SpaceId, TurnContext}
-import sigil.conversation.{Conversation, ContextMemory, ConversationView, MemorySource, TopicEntry, TurnInput}
+import sigil.conversation.{ConversationView, Conversation, ContextMemory, MemorySource, TopicEntry, TurnInput}
 import sigil.tool.context.{MoveMemoryInput, MoveMemoryTool}
 
 /**
@@ -28,13 +28,8 @@ class MoveMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       sigil = TestSigil,
       chain = List(TestUser, TestAgent),
       conversation = conv,
-      conversationView = ConversationView(
-        conversationId = convId,
-        _id = ConversationView.idFor(convId)
-      ),
       turnInput = TurnInput(ConversationView(
-        conversationId = convId,
-        _id = ConversationView.idFor(convId)
+        conversationId = convId
       ))
     )
   }

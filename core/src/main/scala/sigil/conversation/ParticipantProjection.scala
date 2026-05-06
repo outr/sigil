@@ -1,14 +1,16 @@
 package sigil.conversation
 
 import fabric.rw.*
+import lightdb.doc.{JsonConversion, RecordDocument, RecordDocumentModel}
 import lightdb.id.Id
+import lightdb.time.Timestamp
+import sigil.participant.ParticipantId
 import sigil.provider.Mode
 import sigil.tool.ToolName
 
 /**
- * Materialized per-participant state maintained on [[ConversationView]].
+ * Per-(participant, conversation) projection of materialized state:
  *
- * Derived from the event log as events reach `EventState.Complete`:
  *   - `activeSkills` — updated on `ModeChange` (Mode-source slot) and
  *     app-specific skill activation events
  *   - `lastDiscoverySkillByMode` — when the agent leaves a mode, the
@@ -22,14 +24,48 @@ import sigil.tool.ToolName
  *     carries fresh `find_capability` matches
  *   - `extraContext` — app-driven (populated via curator or tool behavior)
  *
- * This is the durable, re-derivable projection. The per-turn
- * [[TurnInput]] may further annotate or filter these when assembling the
- * provider request, but the truth lives on the view.
+ * Persisted as its own [[RecordDocument]] (id derived from
+ * `(participantId, conversationId)`) — bug #26 lifted projections out
+ * of the now-deleted `ConversationView` so the rolling-window cache
+ * has a single concern.
+ *
+ * Re-derivable from the event log: every settled `Sigil.publish` updates
+ * this projection alongside the event itself, but a full rebuild is
+ * available via [[Sigil.rebuildProjection]].
  */
-case class ParticipantProjection(activeSkills: Map[SkillSource, ActiveSkillSlot] = Map.empty,
+case class ParticipantProjection(participantId: ParticipantId,
+                                 conversationId: Id[Conversation],
+                                 activeSkills: Map[SkillSource, ActiveSkillSlot] = Map.empty,
                                  lastDiscoverySkillByMode: Map[Id[Mode], ActiveSkillSlot] = Map.empty,
                                  discoverySkillMode: Option[Id[Mode]] = None,
                                  recentTools: List[ToolName] = Nil,
                                  suggestedTools: List[ToolName] = Nil,
-                                 extraContext: Map[ContextKey, String] = Map.empty)
-  derives RW
+                                 extraContext: Map[ContextKey, String] = Map.empty,
+                                 created: Timestamp = Timestamp(),
+                                 modified: Timestamp = Timestamp(),
+                                 _id: Id[ParticipantProjection] = ParticipantProjection.id())
+  extends RecordDocument[ParticipantProjection]
+
+object ParticipantProjection extends RecordDocumentModel[ParticipantProjection] with JsonConversion[ParticipantProjection] {
+  implicit override def rw: RW[ParticipantProjection] = RW.gen
+
+  /** Compose a deterministic id from `(participantId, conversationId)`
+    * so lookups are O(1) and the same key always resolves to the same
+    * record. */
+  def idFor(participantId: ParticipantId, conversationId: Id[Conversation]): Id[ParticipantProjection] =
+    Id(s"${conversationId.value}:${participantId.value}")
+
+  val participantId: I[ParticipantId] = field.index(_.participantId)
+  val conversationId: I[Id[Conversation]] = field.index(_.conversationId)
+
+  override def id(value: String = rapid.Unique()): Id[ParticipantProjection] = Id(value)
+
+  /** Construct an empty projection for a (participantId, conversationId)
+    * pair using the deterministic id derived from the pair. */
+  def empty(participantId: ParticipantId, conversationId: Id[Conversation]): ParticipantProjection =
+    ParticipantProjection(
+      participantId = participantId,
+      conversationId = conversationId,
+      _id = idFor(participantId, conversationId)
+    )
+}

@@ -5,7 +5,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.TurnContext
-import sigil.conversation.{ContextFrame, Conversation, ConversationView, Topic, TopicEntry, TurnInput}
+import sigil.conversation.{ContextFrame, Conversation, Topic, TopicEntry, TurnInput}
 import sigil.db.Model
 import sigil.event.{Event, Message, ModeChange, TopicChange, TopicChangeKind, ToolInvoke}
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant}
@@ -84,21 +84,16 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       topicId = topic._id,
       content = Vector(ResponseContent.Text(message))
     )
-    val view = ConversationView(
-      conversationId = conversationId,
-      frames = Vector(ContextFrame.Text(
-        content = message,
-        participantId = TestUser,
-        sourceEventId = userMessage._id
-      )),
-      _id = ConversationView.idFor(conversationId)
-    )
+    val frames = Vector(ContextFrame.Text(
+      content = message,
+      participantId = TestUser,
+      sourceEventId = userMessage._id
+    ): ContextFrame)
     val turnContext = TurnContext(
       sigil = TestSigil,
       chain = List(TestUser),
       conversation = conv,
-      conversationView = view,
-      turnInput = TurnInput(view),
+      turnInput = TurnInput(conversationId = conversationId, frames = frames),
       currentAgentStateId = Some(testAgentStateId)
     )
     for {
@@ -136,21 +131,16 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       topicId = topic._id,
       content = Vector(ResponseContent.Text(userMessage))
     )
-    val view = ConversationView(
-      conversationId = conversationId,
-      frames = Vector(ContextFrame.Text(
-        content = userMessage,
-        participantId = TestUser,
-        sourceEventId = userEv._id
-      )),
-      _id = ConversationView.idFor(conversationId)
-    )
+    val frames = Vector(ContextFrame.Text(
+      content = userMessage,
+      participantId = TestUser,
+      sourceEventId = userEv._id
+    ): ContextFrame)
     val turnContext = TurnContext(
       sigil = TestSigil,
       chain = List(TestUser),
       conversation = conv,
-      conversationView = view,
-      turnInput = TurnInput(view),
+      turnInput = TurnInput(conversationId = conversationId, frames = frames),
       currentAgentStateId = Some(testAgentStateId)
     )
     for {
@@ -169,21 +159,16 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       content = Vector(ResponseContent.Text(message))
     )
     val conversation = Conversation(topics = TestTopicStack, _id = conversationId, currentMode = currentMode)
-    val view = ConversationView(
-      conversationId = conversationId,
-      frames = Vector(ContextFrame.Text(
-        content = message,
-        participantId = TestUser,
-        sourceEventId = userMessage._id
-      )),
-      _id = ConversationView.idFor(conversationId)
-    )
+    val frames = Vector(ContextFrame.Text(
+      content = message,
+      participantId = TestUser,
+      sourceEventId = userMessage._id
+    ): ContextFrame)
     val turnContext = TurnContext(
       sigil = TestSigil,
       chain = List(TestUser),
       conversation = conversation,
-      conversationView = view,
-      turnInput = TurnInput(view),
+      turnInput = TurnInput(conversationId = conversationId, frames = frames),
       currentAgentStateId = Some(testAgentStateId)
     )
     makeAgent().process(turnContext, Stream.emits(List[Event](userMessage))).toList
@@ -253,21 +238,16 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         content = Vector(ResponseContent.Text("What is 2+2? Respond with just the number."))
       )
       val conversation = Conversation(topics = TestTopicStack, _id = conversationId)
-      val view = ConversationView(
-        conversationId = conversationId,
-        frames = Vector(ContextFrame.Text(
-          content = "What is 2+2? Respond with just the number.",
-          participantId = TestUser,
-          sourceEventId = userMessage._id
-        )),
-        _id = ConversationView.idFor(conversationId)
-      )
+      val frames = Vector(ContextFrame.Text(
+        content = "What is 2+2? Respond with just the number.",
+        participantId = TestUser,
+        sourceEventId = userMessage._id
+      ): ContextFrame)
       val turnContext = TurnContext(
         sigil = TestSigil,
         chain = List(TestUser),
         conversation = conversation,
-        conversationView = view,
-        turnInput = TurnInput(view),
+        turnInput = TurnInput(conversationId = conversationId, frames = frames),
         currentAgentStateId = Some(testAgentStateId)
       )
 

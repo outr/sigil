@@ -6,7 +6,7 @@ import lightdb.id.Id
 import profig.Profig
 import rapid.Task
 import sigil.{Sigil, TurnContext}
-import sigil.conversation.{ActiveSkillSlot, Conversation, ConversationView, Topic, TopicEntry, TurnInput}
+import sigil.conversation.{ActiveSkillSlot, Conversation, Topic, TopicEntry, TurnInput}
 import sigil.SpaceId
 import sigil.conversation.compression.extract.{MemoryExtractor, StandardMemoryExtractor}
 import sigil.db.Model
@@ -113,8 +113,8 @@ object TestSigil extends Sigil {
   private val defaultVectorIndex: VectorIndex = NoOpVectorIndex
   private val defaultCompressionSpace: Option[SpaceId] = None
   private val defaultPutInformation: Information => Unit = _ => ()
-  private val defaultCurate: (ConversationView, Id[Model], List[ParticipantId]) => Task[TurnInput] =
-    (view, _, _) => Task.pure(TurnInput(view))
+  private val defaultCurate: (Id[Conversation], Id[Model], List[ParticipantId]) => Task[TurnInput] =
+    (convId, _, _) => Task.pure(TurnInput(conversationId = convId))
   // Inherit Sigil's framework default — `StandardMemoryExtractor`
   // wired to `compressionMemorySpace` — so test JVMs exercise the
   // primary extractor path. When `compressionSpaceRef` is None
@@ -137,7 +137,7 @@ object TestSigil extends Sigil {
   private val vectorIndexRef = new AtomicReference[VectorIndex](defaultVectorIndex)
   private val compressionSpaceRef = new AtomicReference[Option[SpaceId]](defaultCompressionSpace)
   private val putInformationRef = new AtomicReference[Information => Unit](defaultPutInformation)
-  private val curateRef = new AtomicReference[(ConversationView, Id[Model], List[ParticipantId]) => Task[TurnInput]](defaultCurate)
+  private val curateRef = new AtomicReference[(Id[Conversation], Id[Model], List[ParticipantId]) => Task[TurnInput]](defaultCurate)
   private val wireInterceptorRef = new AtomicReference[spice.http.client.intercept.Interceptor](defaultWireInterceptor)
   private val memoryExtractorRef = new AtomicReference[MemoryExtractor](defaultMemoryExtractor)
   private val locationForRef = new AtomicReference[(ParticipantId, Id[Conversation]) => Task[Option[Place]]](defaultLocationFor)
@@ -165,10 +165,10 @@ object TestSigil extends Sigil {
   override def compressionMemorySpace(conversationId: Id[Conversation]): Task[Option[SpaceId]] =
     Task.pure(compressionSpaceRef.get())
 
-  override def curate(view: ConversationView,
+  override def curate(conversationId: Id[Conversation],
                       modelId: Id[Model],
                       chain: List[ParticipantId]): Task[TurnInput] =
-    curateRef.get().apply(view, modelId, chain)
+    curateRef.get().apply(conversationId, modelId, chain)
 
   override def wireInterceptor: spice.http.client.intercept.Interceptor = wireInterceptorRef.get()
 
@@ -198,7 +198,7 @@ object TestSigil extends Sigil {
 
   /** Install a curator function — specs exercising compression /
     * custom TurnInput shaping wire a curator via this hook. */
-  def setCurate(f: (ConversationView, Id[Model], List[ParticipantId]) => Task[TurnInput]): Unit =
+  def setCurate(f: (Id[Conversation], Id[Model], List[ParticipantId]) => Task[TurnInput]): Unit =
     curateRef.set(f)
 
   /** Install a wire interceptor — specs needing full HTTP logging

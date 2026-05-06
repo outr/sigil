@@ -52,9 +52,9 @@ case object ContextBreakdownTool extends TypedTool[ContextBreakdownInput](
                      else context.sigil.findCriticalMemories(spaces)
       critTask.map { criticals =>
         val tokenizer = HeuristicTokenizer
-        val view = context.conversationView
+        val turn = context.turnInput
 
-        val frameTokens = view.frames.iterator.map {
+        val frameTokens = turn.frames.iterator.map {
           case f: ContextFrame.Text       => tokenizer.count(f.content)
           case f: ContextFrame.ToolCall   => tokenizer.count(f.argsJson)
           case f: ContextFrame.ToolResult => tokenizer.count(f.content)
@@ -66,7 +66,7 @@ case object ContextBreakdownTool extends TypedTool[ContextBreakdownInput](
           tokenizer.count(if (m.summary.trim.nonEmpty) m.summary else m.fact)
         }.sum
 
-        val skills = view.aggregatedSkills(context.chain)
+        val skills = turn.aggregatedSkills(context.chain)
         val skillTokens = skills.iterator.map(s => tokenizer.count(s.name) + tokenizer.count(s.content)).sum
 
         val mode = context.conversation.currentMode
@@ -75,7 +75,7 @@ case object ContextBreakdownTool extends TypedTool[ContextBreakdownInput](
         val total = frameTokens + criticalTokens + skillTokens + modeTokens
 
         val sections = arr(
-          obj("section" -> str("Frames"),            "tokens" -> num(frameTokens),    "count" -> num(view.frames.size)),
+          obj("section" -> str("Frames"),            "tokens" -> num(frameTokens),    "count" -> num(turn.frames.size)),
           obj("section" -> str("CriticalMemories"),  "tokens" -> num(criticalTokens), "count" -> num(criticals.size)),
           obj("section" -> str("ActiveSkills"),      "tokens" -> num(skillTokens),    "count" -> num(skills.size)),
           obj("section" -> str("ModeBlock"),         "tokens" -> num(modeTokens),     "count" -> num(1))

@@ -4,7 +4,7 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
-import sigil.conversation.{ContextFrame, Conversation, ConversationView, TurnInput}
+import sigil.conversation.{ConversationView, ContextFrame, Conversation, TurnInput}
 import sigil.db.Model
 import sigil.event.Event
 import sigil.provider.{BuiltInTool, ConversationRequest, GenerationSettings, Instructions, Mode, ConversationMode, ProviderEvent}
@@ -37,8 +37,7 @@ class OpenAIWebSearchSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
           content = "What is today's top news story? Be concise.",
           participantId = TestUser,
           sourceEventId = Id[Event]("u-1")
-        )),
-        _id = ConversationView.idFor(convId)
+        ))
       )
       val request = ConversationRequest(
         conversationId = convId,

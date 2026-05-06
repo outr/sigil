@@ -6,7 +6,7 @@ import lightdb.id.Id
 import lightdb.progress.ProgressManager
 import rapid.Task
 import sigil.{Sigil, TurnContext}
-import sigil.conversation.{Conversation, ConversationView, TurnInput}
+import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.Model
 import sigil.event.Message
 import sigil.participant.ParticipantId

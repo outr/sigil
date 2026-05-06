@@ -6,7 +6,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
-import sigil.conversation.{Conversation, ConversationView, TopicEntry, TurnInput}
+import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
 import sigil.db.Model
 import sigil.event.Message
 import sigil.participant.{AgentParticipantId, DefaultAgentParticipant}
@@ -394,7 +394,6 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
           sigil            = TestWorkflowSigil,
           chain            = List(WorkflowTestUser),
           conversation     = parentConv,
-          conversationView = ConversationView(conversationId = parentConvId),
           turnInput        = TurnInput(ConversationView(conversationId = parentConvId))
         )
 

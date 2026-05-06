@@ -2,7 +2,7 @@ package spec
 
 import fabric.io.JsonParser
 import lightdb.id.Id
-import sigil.conversation.{ContextFrame, ConversationView, TurnInput}
+import sigil.conversation.{ConversationView, ContextFrame, TurnInput}
 import sigil.db.Model
 import sigil.event.Event
 import sigil.provider.{GenerationSettings, Provider}
@@ -22,7 +22,7 @@ class LlamaCppRequestCoverageSpec extends AbstractRequestCoverageSpec {
   "LlamaCppProvider wire-specific coverage" should {
     "forward topP from GenerationSettings as top_p on the wire" in {
       val body = bodyOf(
-        TurnInput(emptyView),
+        emptyTurnInput,
         GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0), topP = Some(0.42))
       )
       body should include("\"top_p\":0.42")
@@ -30,7 +30,7 @@ class LlamaCppRequestCoverageSpec extends AbstractRequestCoverageSpec {
 
     "forward stopSequences from GenerationSettings as stop on the wire" in {
       val body = bodyOf(
-        TurnInput(emptyView),
+        emptyTurnInput,
         GenerationSettings(
           maxOutputTokens = Some(50),
           temperature = Some(0.0),
@@ -49,8 +49,8 @@ class LlamaCppRequestCoverageSpec extends AbstractRequestCoverageSpec {
     // message so the chat-template's required-user-anchor invariant
     // is satisfied.
     "inject a synthetic user-role message when the conversation has no user frames (greet-on-join shape)" in {
-      val frameless: ConversationView = emptyView.copy(frames = Vector.empty)
-      val body = bodyOf(TurnInput(frameless))
+      val frameless = emptyTurnInput.copy(frames = Vector.empty)
+      val body = bodyOf(frameless)
       // The body's `messages` array must contain at least one
       // `"role":"user"` entry — without it, Qwen3.5's chat template
       // raises and the request returns HTTP 500.
@@ -66,7 +66,7 @@ class LlamaCppRequestCoverageSpec extends AbstractRequestCoverageSpec {
     // any leading-System tail of `input.messages` into the framework's
     // single `input.system` so the rendered tail is user/assistant only.
     "collapse leading system messages into a single system entry (greet-on-join with system-only history)" in {
-      val systemOnlyView = emptyView.copy(frames = Vector(
+      val systemOnlyView = emptyTurnInput.copy(frames = Vector(
         ContextFrame.System(
           content = "Topic switched to: Greeting",
           sourceEventId = Id[Event]("sys-1")
@@ -76,7 +76,7 @@ class LlamaCppRequestCoverageSpec extends AbstractRequestCoverageSpec {
           sourceEventId = Id[Event]("sys-2")
         )
       ))
-      val body = bodyOf(TurnInput(systemOnlyView))
+      val body = bodyOf(systemOnlyView)
       val messages: Vector[fabric.Json] = JsonParser(body).get("messages").map(_.asVector).getOrElse(Vector.empty)
       val roles: Vector[String] = messages.flatMap(_.get("role").map(_.asString))
       withClue(s"roles: ${roles.mkString(",")}") {

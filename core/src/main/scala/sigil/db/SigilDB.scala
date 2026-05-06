@@ -6,7 +6,7 @@ import lightdb.id.Id
 import lightdb.store.CollectionManager
 import lightdb.upgrade.DatabaseUpgrade
 import rapid.Task
-import sigil.conversation.{ContextMemory, ContextSummary, Conversation, ConversationView, Topic}
+import sigil.conversation.{ContextMemory, ContextSummary, Conversation, EncodedContext, ParticipantProjection, Topic}
 import sigil.event.Event
 import sigil.signal.{Delta, Signal}
 import sigil.provider.{ProviderConfig, ProviderStrategyRecord, SpaceProviderAssignment}
@@ -49,7 +49,10 @@ abstract class SigilDB(override val directory: Option[Path],
   val conversations: S[Conversation, Conversation.type] = store(Conversation).withCache(CacheConfig.lru(1000))()
   val memories: S[ContextMemory, ContextMemory.type] = store(ContextMemory).withCache(CacheConfig.lru(500, 5.minutes))()
   val summaries: S[ContextSummary, ContextSummary.type] = store(ContextSummary).withCache(CacheConfig.lru(500, 5.minutes))()
-  val views: S[ConversationView, ConversationView.type] = store(ConversationView).withCache(CacheConfig.lru(1000))()
+  val participantProjections: S[ParticipantProjection, ParticipantProjection.type] =
+    store(ParticipantProjection).withCache(CacheConfig.lru(1000))()
+  val encodedContexts: S[EncodedContext, EncodedContext.type] =
+    store(EncodedContext).withCache(CacheConfig.lru(500))()
   val topics: S[Topic, Topic.type] = store(Topic).withCache(CacheConfig.lru(2000))()
   val geocodingCache: S[GeocodingCache, GeocodingCache.type] = store(GeocodingCache)()
   val tools: S[Tool, Tool.type] = store(Tool).withCache(CacheConfig.lru(500))()

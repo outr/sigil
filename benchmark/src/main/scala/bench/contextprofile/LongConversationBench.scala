@@ -27,8 +27,8 @@ object LongConversationBench {
     }.tail.toVector
 
     val profiles = framesByTurn.map { frames =>
-      val view = ProfilerHarness.viewWith(frames)
-      val req = ProfilerHarness.buildRequest(view, tools)
+      val view = (frames, Map.empty[sigil.participant.ParticipantId, sigil.conversation.ParticipantProjection])
+      val req = ProfilerHarness.buildRequest(view._1, view._2, tools)
       ProfilerHarness.profile(req)
     }
 

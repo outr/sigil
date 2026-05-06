@@ -4,14 +4,14 @@ import fabric.rw.*
 import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import sigil.conversation.{
+import sigil.conversation.{ConversationView, 
   ActiveSkillSlot,
   ContextFrame,
   ContextKey,
   ContextMemory,
   ContextSummary,
   Conversation,
-  ConversationView,
+  
   MemorySource,
   SkillSource,
   TurnInput
@@ -72,10 +72,9 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
     sourceEventId = Id[Event]("baseline-seed")
   )
 
-  protected def emptyView: ConversationView = ConversationView(
+  protected def emptyTurnInput: TurnInput = TurnInput(
     conversationId = conversationId,
-    frames = Vector(baselineFrame),
-    _id = ConversationView.idFor(conversationId)
+    frames = Vector(baselineFrame)
   )
 
   protected def defaultGenerationSettings: GenerationSettings =
@@ -122,23 +121,23 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
   s"${getClass.getSimpleName}.requestConverter" should {
     "render a Text frame from a user in the wire body" in {
       val marker = "USER_TEXT_MARKER_42"
-      val view = emptyView.copy(frames = Vector(
+      val turn = emptyTurnInput.copy(frames = Vector(
         ContextFrame.Text(content = marker, participantId = TestUser, sourceEventId = syntheticEventId)
       ))
-      bodyOf(TurnInput(view)) should include(marker)
+      bodyOf(turn) should include(marker)
     }
 
     "render a Text frame from the agent in the wire body" in {
       val marker = "AGENT_TEXT_MARKER_42"
-      val view = emptyView.copy(frames = Vector(
+      val turn = emptyTurnInput.copy(frames = Vector(
         ContextFrame.Text(content = marker, participantId = TestAgent, sourceEventId = syntheticEventId)
       ))
-      bodyOf(TurnInput(view)) should include(marker)
+      bodyOf(turn) should include(marker)
     }
 
     "render a non-respond ToolCall frame (tool name + arguments) in the wire body" in {
       val callId = syntheticEventId
-      val view = emptyView.copy(frames = Vector(
+      val turn = emptyTurnInput.copy(frames = Vector(
         ContextFrame.ToolCall(
           toolName = ToolName("change_mode"),
           argsJson = "{\"reason\":\"REASON_MARKER_42\"}",
@@ -147,14 +146,14 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
           sourceEventId = callId
         )
       ))
-      val body = bodyOf(TurnInput(view))
+      val body = bodyOf(turn)
       body should include("change_mode")
       body should include("REASON_MARKER_42")
     }
 
     "pair a ToolResult frame back to its ToolCall via call id" in {
       val callId = syntheticEventId
-      val view = emptyView.copy(frames = Vector(
+      val turn = emptyTurnInput.copy(frames = Vector(
         ContextFrame.ToolCall(
           toolName = ToolName("change_mode"),
           argsJson = "{}",
@@ -168,76 +167,80 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
           sourceEventId = syntheticEventId
         )
       ))
-      val body = bodyOf(TurnInput(view))
+      val body = bodyOf(turn)
       body should include("Coding")
       body should include(callId.value)
     }
 
     "render a System frame (e.g. title change) in the wire body" in {
       val marker = "TITLE_MARKER_42"
-      val view = emptyView.copy(frames = Vector(
+      val turn = emptyTurnInput.copy(frames = Vector(
         ContextFrame.System(content = s"Title changed to: $marker", sourceEventId = syntheticEventId)
       ))
-      bodyOf(TurnInput(view)) should include(marker)
+      bodyOf(turn) should include(marker)
     }
 
     "include criticalMemories in the wire body (resolved from db.memories)" in {
       val memId = upsertMemory("CRITFACT_42", MemorySource.Explicit, pinned = true)
-      bodyOf(TurnInput(emptyView, criticalMemories = Vector(memId))) should include("CRITFACT_42")
+      bodyOf(emptyTurnInput.copy(criticalMemories = Vector(memId))) should include("CRITFACT_42")
     }
 
     "include memories in the wire body (resolved from db.memories)" in {
       val memId = upsertMemory("MEMFACT_42", MemorySource.Explicit)
-      bodyOf(TurnInput(emptyView, memories = Vector(memId))) should include("MEMFACT_42")
+      bodyOf(emptyTurnInput.copy(memories = Vector(memId))) should include("MEMFACT_42")
     }
 
     "include summaries in the wire body (resolved from db.summaries)" in {
       val summaryId = upsertSummary("SUMMARY_TEXT_42")
-      bodyOf(TurnInput(emptyView, summaries = Vector(summaryId))) should include("SUMMARY_TEXT_42")
+      bodyOf(emptyTurnInput.copy(summaries = Vector(summaryId))) should include("SUMMARY_TEXT_42")
     }
 
     "include information catalog entries in the wire body" in {
       val infoId = Id[Information]("info-marker-42")
-      val input = TurnInput(
-        emptyView,
+      val input = emptyTurnInput.copy(
         information = Vector(
           InformationSummary(
             id = infoId,
             informationType = Information.name.of[TestInformation],
             summary = "INFO_SUMMARY_42"
           )
-        ))
+        )
+      )
       val body = bodyOf(input)
       body should include("info-marker-42")
       body should include("INFO_SUMMARY_42")
       body should include("TestInformation")
     }
 
-    "include per-participant active skills (from view projections) in the wire body" in {
-      val view = emptyView.updateParticipant(TestAgent)(_.copy(
+    "include per-participant active skills (from projections) in the wire body" in {
+      val proj = sigil.conversation.ParticipantProjection.empty(TestAgent, conversationId).copy(
         activeSkills = Map(SkillSource.Mode -> ActiveSkillSlot(
           name = "SKILL_NAME_42",
           content = "SKILL_CONTENT_42"
         ))
-      ))
-      val body = bodyOf(TurnInput(view))
+      )
+      val turn = emptyTurnInput.copy(participantProjections = Map(TestAgent -> proj))
+      val body = bodyOf(turn)
       body should include("SKILL_NAME_42")
       body should include("SKILL_CONTENT_42")
     }
 
-    "include per-participant recentTools (from view projections) in the wire body" in {
-      val view = emptyView.updateParticipant(TestAgent)(_.copy(recentTools = List(ToolName("RECENT_TOOL_42"))))
-      bodyOf(TurnInput(view)) should include("RECENT_TOOL_42")
+    "include per-participant recentTools (from projections) in the wire body" in {
+      val proj = sigil.conversation.ParticipantProjection.empty(TestAgent, conversationId)
+        .copy(recentTools = List(ToolName("RECENT_TOOL_42")))
+      val turn = emptyTurnInput.copy(participantProjections = Map(TestAgent -> proj))
+      bodyOf(turn) should include("RECENT_TOOL_42")
     }
 
-    "include per-participant suggestedTools (from view projections) in the wire body" in {
-      val view = emptyView.updateParticipant(TestAgent)(_.copy(suggestedTools = List(ToolName("SUGGESTED_TOOL_42"))))
-      bodyOf(TurnInput(view)) should include("SUGGESTED_TOOL_42")
+    "include per-participant suggestedTools (from projections) in the wire body" in {
+      val proj = sigil.conversation.ParticipantProjection.empty(TestAgent, conversationId)
+        .copy(suggestedTools = List(ToolName("SUGGESTED_TOOL_42")))
+      val turn = emptyTurnInput.copy(participantProjections = Map(TestAgent -> proj))
+      bodyOf(turn) should include("SUGGESTED_TOOL_42")
     }
 
     "include conversation-wide extraContext (from turn input) in the wire body" in {
-      val input = TurnInput(
-        emptyView,
+      val input = emptyTurnInput.copy(
         extraContext = Map(ContextKey("CONV_EXTRA_KEY_42") -> "CONV_EXTRA_VAL_42")
       )
       val body = bodyOf(input)
@@ -245,11 +248,12 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
       body should include("CONV_EXTRA_VAL_42")
     }
 
-    "include per-participant extraContext (from view projections) in the wire body" in {
-      val view = emptyView.updateParticipant(TestAgent)(_.copy(
+    "include per-participant extraContext (from projections) in the wire body" in {
+      val proj = sigil.conversation.ParticipantProjection.empty(TestAgent, conversationId).copy(
         extraContext = Map(ContextKey("PART_EXTRA_KEY_42") -> "PART_EXTRA_VAL_42")
-      ))
-      val body = bodyOf(TurnInput(view))
+      )
+      val turn = emptyTurnInput.copy(participantProjections = Map(TestAgent -> proj))
+      val body = bodyOf(turn)
       body should include("PART_EXTRA_KEY_42")
       body should include("PART_EXTRA_VAL_42")
     }
@@ -260,7 +264,7 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
     // coverage spec overrides this expectation (see
     // [[OpenAIRequestCoverageSpec.expectsReasoningSerialized]]).
     "drop Reasoning frames from the wire body by default (non-originating provider)" in {
-      val view = emptyView.copy(frames = Vector(
+      val turn = emptyTurnInput.copy(frames = Vector(
         baselineFrame,
         ContextFrame.Reasoning(
           providerItemId = "rs_REASONING_ID_42",
@@ -271,7 +275,7 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
           visibility = sigil.event.MessageVisibility.All
         )
       ))
-      val body = bodyOf(TurnInput(view))
+      val body = bodyOf(turn)
       if (expectsReasoningSerialized) {
         body should include("rs_REASONING_ID_42")
         body should include("REASONING_SUMMARY_42")

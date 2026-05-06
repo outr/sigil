@@ -95,12 +95,12 @@ class OrchestratorOrphanToolCallSpec extends AsyncWordSpec with AsyncTaskSpec wi
   private def runWith(provider: Provider, suffix: String): Task[List[sigil.signal.Signal]] = {
     val convId = Conversation.id(s"orphan-$suffix")
     val conv = Conversation(topics = TestTopicStack, _id = convId)
-    val view = ConversationView(conversationId = convId, _id = ConversationView.idFor(convId))
+    val viewConvId = convId
     val request = ConversationRequest(
       conversationId = convId,
       modelId = modelId,
       instructions = Instructions(),
-      turnInput = TurnInput(view),
+      turnInput = TurnInput(conversationId = viewConvId),
       currentMode = ConversationMode,
       currentTopic = TestTopicEntry,
       previousTopics = Nil,
@@ -144,12 +144,11 @@ class OrchestratorOrphanToolCallSpec extends AsyncWordSpec with AsyncTaskSpec wi
     "publish a terminal ToolDelta when the provider stream throws mid-call (no Done/Error arm reached)" in {
       val convId = Conversation.id("orphan-throw")
       val conv   = Conversation(topics = TestTopicStack, _id = convId)
-      val view   = ConversationView(conversationId = convId, _id = ConversationView.idFor(convId))
       val request = ConversationRequest(
         conversationId     = convId,
         modelId            = modelId,
         instructions       = Instructions(),
-        turnInput          = TurnInput(view),
+        turnInput          = TurnInput(conversationId = convId),
         currentMode        = ConversationMode,
         currentTopic       = TestTopicEntry,
         previousTopics     = Nil,

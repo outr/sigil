@@ -3,7 +3,7 @@ package spec
 import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import sigil.conversation.{ContextFrame, Conversation, FrameBuilder}
+import sigil.conversation.{ConversationView, ContextFrame, Conversation, FrameBuilder}
 import sigil.event.{Event, Message, MessageRole, ToolInvoke, ToolResults}
 import sigil.signal.EventState
 import sigil.tool.{ToolName, ToolSchema}
@@ -357,8 +357,7 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
       )
       val view = ConversationView(
         conversationId = conversationId,
-        frames = frames,
-        _id = ConversationView.idFor(conversationId)
+        frames = frames
       )
       val req: ProviderRequest = ConversationRequest(
         conversationId = conversationId,

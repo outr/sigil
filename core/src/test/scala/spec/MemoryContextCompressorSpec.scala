@@ -101,7 +101,7 @@ class MemoryContextCompressorSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val compressor = MemoryContextCompressor()
       val frames = (0 until 5).toVector.map(i => textFrame(s"utterance $i", s"ev-$i"))
       for {
-        result <- compressor.compress(TestSigil, modelId, chain = List(TestUser, TestAgent), frames, convId)
+        result <- compressor.compress(TestSigil, modelId, chain = List(TestUser, TestAgent), rapid.Stream.emits(frames), convId)
         memories <- TestSigil.withDB(_.memories.transaction(_.list))
           .map(_.filter(_.spaceId == MemoryTestSpace))
         summariesForConv <- TestSigil.summariesFor(convId)
@@ -137,7 +137,7 @@ class MemoryContextCompressorSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val compressor = MemoryContextCompressor()
       val frames = Vector(textFrame("preferences conversation", "ev-0"))
       for {
-        _ <- compressor.compress(TestSigil, modelId, chain = List(TestUser, TestAgent), frames, convId)
+        _ <- compressor.compress(TestSigil, modelId, chain = List(TestUser, TestAgent), rapid.Stream.emits(frames), convId)
         hitsForDarkMode <- TestSigil.searchMemories("user alice dark mode preference", Set(MemoryTestSpace), limit = 5)
         hitsForDeploy <- TestSigil.searchMemories("deployment staging target", Set(MemoryTestSpace), limit = 5)
       } yield {
@@ -160,7 +160,7 @@ class MemoryContextCompressorSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val compressor = MemoryContextCompressor()
       val frames = Vector(textFrame("hello", "ev-0"))
       for {
-        result <- compressor.compress(TestSigil, modelId, chain = List(TestUser, TestAgent), frames, convId)
+        result <- compressor.compress(TestSigil, modelId, chain = List(TestUser, TestAgent), rapid.Stream.emits(frames), convId)
         facts <- TestSigil.withDB(_.memories.transaction(_.list))
           .map(_.filter(_.spaceId == MemoryTestSpace).map(_.fact))
       } yield {

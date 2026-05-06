@@ -1,12 +1,13 @@
 package sigil.conversation.compression
 
 import lightdb.id.Id
-import rapid.Task
+import rapid.{Stream, Task}
 import sigil.Sigil
 import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary, Conversation, MemorySource}
 import sigil.SpaceId
 import sigil.db.Model
 import sigil.participant.ParticipantId
+import sigil.provider.SummarizationWork
 import sigil.tool.consult.{ConsultTool, ExtractMemoriesInput, ExtractMemoriesTool, SummarizationInput, SummarizationTool}
 
 /**
@@ -48,22 +49,30 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                                    extractFacts: Boolean = true) extends ContextCompressor {
 
   override def compress(sigil: Sigil,
-                        modelId: Id[Model],
+                        callerModelId: Id[Model],
                         chain: List[ParticipantId],
-                        frames: Vector[ContextFrame],
-                        conversationId: Id[Conversation]): Task[Option[ContextSummary]] = {
-    if (frames.isEmpty) Task.pure(None)
-    else for {
-      ctx <- loadContext(sigil, conversationId)
-      transcript = renderTranscript(frames, ctx._1, ctx._2)
-      spaceOpt <- if (extractFacts) sigil.compressionMemorySpace(conversationId) else Task.pure(None)
-      _ <- spaceOpt match {
-             case Some(space) => extractAndPersist(sigil, modelId, chain, transcript, conversationId, space)
-             case None        => Task.unit
-           }
-      summary <- summarize(sigil, modelId, chain, transcript, conversationId)
-    } yield summary
-  }
+                        frames: Stream[ContextFrame],
+                        conversationId: Id[Conversation]): Task[Option[ContextSummary]] =
+    frames.toList.flatMap { framesList =>
+      val materialized = framesList.toVector
+      if (materialized.isEmpty) Task.pure(None)
+      else for {
+        ctx <- loadContext(sigil, conversationId)
+        // Bug #24 / #26 — route summarization through SummarizationWork
+        // rather than inheriting the calling agent's modelId. Falls back
+        // to the caller's model when no SummarizationWork candidate is
+        // available.
+        summarizationModel <- sigil.routedModelFor(SummarizationWork, chain, callerModelId)
+                                .handleError(_ => Task.pure(callerModelId))
+        transcript = renderTranscript(materialized, ctx._1, ctx._2)
+        spaceOpt <- if (extractFacts) sigil.compressionMemorySpace(conversationId) else Task.pure(None)
+        _ <- spaceOpt match {
+               case Some(space) => extractAndPersist(sigil, summarizationModel, chain, transcript, conversationId, space)
+               case None        => Task.unit
+             }
+        summary <- summarize(sigil, summarizationModel, chain, transcript, conversationId)
+      } yield summary
+    }
 
   private def extractAndPersist(sigil: Sigil,
                                 modelId: Id[Model],

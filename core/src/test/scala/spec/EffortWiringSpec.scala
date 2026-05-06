@@ -3,7 +3,7 @@ package spec
 import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import sigil.conversation.{ContextFrame, ConversationView, TurnInput}
+import sigil.conversation.{ConversationView, ContextFrame, TurnInput}
 import sigil.db.Model
 import sigil.event.Event
 import sigil.provider.{
@@ -40,8 +40,7 @@ class EffortWiringSpec extends AnyWordSpec with Matchers {
       content = "hello",
       participantId = TestUser,
       sourceEventId = Id[Event]("effort-seed")
-    )),
-    _id = ConversationView.idFor(conversationId)
+    ))
   )
 
   private def requestWith(provider: Provider, modelId: Id[Model], gen: GenerationSettings): ProviderRequest =

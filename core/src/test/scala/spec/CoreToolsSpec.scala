@@ -6,7 +6,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.TurnContext
-import sigil.conversation.{Conversation, ConversationView, Topic, TurnInput}
+import sigil.conversation.{ConversationView, Conversation, Topic, TurnInput}
 import sigil.event.{Message, Stop, TopicChange}
 import sigil.information.Information
 import sigil.signal.EventState
@@ -35,13 +35,12 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     Conversation.id(s"core-tools-$suffix-${rapid.Unique()}")
 
   private def turnContextFor(convId: Id[Conversation]): TurnContext = {
-    val view = ConversationView(conversationId = convId, _id = ConversationView.idFor(convId))
+    val viewConvId = convId
     TurnContext(
       sigil = TestSigil,
       chain = List(TestUser, TestAgent),
       conversation = Conversation(topics = TestTopicStack, _id = convId),
-      conversationView = view,
-      turnInput = TurnInput(view)
+      turnInput = TurnInput(conversationId = viewConvId)
     )
   }
 

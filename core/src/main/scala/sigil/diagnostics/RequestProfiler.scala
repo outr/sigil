@@ -51,7 +51,6 @@ object RequestProfiler {
                   tokenizer: Tokenizer,
                   descriptionFor: Tool => String): RequestProfile = {
     val turn = request.turnInput
-    val view = turn.conversationView
     val chain = request.chain
 
     val sections = scala.collection.mutable.Map.empty[ProfileSection, Int]
@@ -123,7 +122,7 @@ object RequestProfiler {
     add(ProfileSection.Roles, rolesText)
 
     // 9. Active skills (chain-aggregated + role-bundled)
-    val skills = view.aggregatedSkills(chain)
+    val skills = turn.aggregatedSkills(chain)
     val roleSkills = request.roles.flatMap(_.skill.toList)
     val allSkills = (skills ++ roleSkills).distinctBy(_.name)
     if (allSkills.nonEmpty) {
@@ -135,14 +134,14 @@ object RequestProfiler {
     }
 
     // 10. Recently used tools
-    val recentTools = chain.flatMap(id => view.projectionFor(id).recentTools).distinct
+    val recentTools = chain.flatMap(id => turn.projectionFor(id).recentTools).distinct
     if (recentTools.nonEmpty) {
       val text = "\n== Recently used tools ==\n" + recentTools.map(t => s"- $t\n").mkString
       add(ProfileSection.RecentTools, text)
     }
 
     // 11. Suggested tools
-    val suggestedTools = chain.flatMap(id => view.projectionFor(id).suggestedTools).distinct
+    val suggestedTools = chain.flatMap(id => turn.projectionFor(id).suggestedTools).distinct
     if (suggestedTools.nonEmpty) {
       val text = "\n== Suggested tools ==\n" + suggestedTools.map(t => s"- $t\n").mkString
       add(ProfileSection.SuggestedTools, text)
@@ -154,7 +153,7 @@ object RequestProfiler {
       extraText.append("\n== Conversation context ==\n")
       turn.extraContext.foreach { case (k, v) => extraText.append(s"- ${k.value}: $v\n") }
     }
-    val perPart = chain.flatMap(id => view.projectionFor(id).extraContext.map(id -> _))
+    val perPart = chain.flatMap(id => turn.projectionFor(id).extraContext.map(id -> _))
     if (perPart.nonEmpty) {
       extraText.append("\n== Participant context ==\n")
       perPart.foreach { case (pid, (k, v)) => extraText.append(s"- ${pid.value} ${k.value}: $v\n") }
@@ -162,7 +161,7 @@ object RequestProfiler {
     add(ProfileSection.ExtraContext, extraText.toString)
 
     // 13. Frames (the message array)
-    val frameProfiles = view.frames.map { f =>
+    val frameProfiles = turn.frames.map { f =>
       val (kind, text, eventId) = f match {
         case t: ContextFrame.Text        => ("Text", t.content, t.sourceEventId)
         case tc: ContextFrame.ToolCall   => ("ToolCall", tc.argsJson, tc.sourceEventId)

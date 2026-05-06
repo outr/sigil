@@ -95,14 +95,14 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     )
     val currentEntry = TopicEntry(current._id, current.label, current.summary)
     val conv = Conversation(topics = priors :+ currentEntry, _id = convId)
-    val view = ConversationView(conversationId = convId, _id = ConversationView.idFor(convId))
+    val viewConvId = convId
     val stubProvider = new StubProvider(respondInput, classifierKind)
     TestSigil.setProvider(Task.pure(stubProvider))
     val request = ConversationRequest(
       conversationId = convId,
       modelId = modelId,
       instructions = Instructions(),
-      turnInput = TurnInput(view),
+      turnInput = TurnInput(conversationId = viewConvId),
       currentMode = ConversationMode,
       currentTopic = currentEntry,
       previousTopics = priors,

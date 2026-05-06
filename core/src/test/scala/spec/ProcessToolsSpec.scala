@@ -5,7 +5,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
-import sigil.conversation.{Conversation, ConversationView, TopicEntry, TurnInput}
+import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
 import sigil.event.Message
 import sigil.tool.model.{ProcessListInput, ProcessOutputInput, ProcessSignalInput, ProcessSpawnInput, ResponseContent}
 import sigil.tool.process.{ProcessListTool, ProcessOutputTool, ProcessRegistry, ProcessSignalTool, ProcessSpawnTool, RingBuffer}
@@ -32,7 +32,6 @@ class ProcessToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       sigil            = TestSigil,
       chain            = List(TestUser),
       conversation     = conv,
-      conversationView = ConversationView(conversationId = convId),
       turnInput        = TurnInput(ConversationView(conversationId = convId))
     )
   }
