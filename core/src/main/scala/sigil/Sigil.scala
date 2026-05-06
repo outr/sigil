@@ -143,6 +143,20 @@ trait Sigil {
    */
   protected def workTypeRegistrations: List[sigil.provider.WorkType] = Nil
 
+  /** Aggregate of framework-shipped + app-registered [[WorkType]] subtypes —
+    * symmetric with [[modes]] / [[spaceIds]]. The codegen pipeline iterates
+    * this list to populate the Dart `WorkType` polytype's subtype dispatch
+    * + singleton fields. Apps add their own subtypes via
+    * [[workTypeRegistrations]]; the framework's own ride for free. */
+  protected def workTypes: List[sigil.provider.WorkType] = (List[sigil.provider.WorkType](
+    sigil.provider.ConversationWork,
+    sigil.provider.CodingWork,
+    sigil.provider.AnalysisWork,
+    sigil.provider.ClassificationWork,
+    sigil.provider.CreativeWork,
+    sigil.provider.SummarizationWork
+  ) ++ workTypeRegistrations).distinct
+
   /**
    * App-defined [[sigil.viewer.ViewerStatePayload]] subtypes — the
    * concrete UI-state shapes apps want persisted per-viewer.
@@ -3875,16 +3889,7 @@ trait Sigil {
           )
       _ = ParticipantId.register(participantIds*)
       _ = Mode.register((ConversationMode :: modes).distinct.map(m => RW.static(m))*)
-      _ = sigil.provider.WorkType.register(
-            (List[sigil.provider.WorkType](
-              sigil.provider.ConversationWork,
-              sigil.provider.CodingWork,
-              sigil.provider.AnalysisWork,
-              sigil.provider.ClassificationWork,
-              sigil.provider.CreativeWork,
-              sigil.provider.SummarizationWork
-            ) ++ workTypeRegistrations).distinct.map(w => RW.static(w))*
-          )
+      _ = sigil.provider.WorkType.register(workTypes.map(w => RW.static(w))*)
       // Bug #53 — `toolInputRegistrations` is the mixin extension
       // point for non-static tools whose `inputRW` isn't reachable
       // through the static-roster scan (notably `JsonInput`, used by
