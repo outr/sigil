@@ -1,11 +1,11 @@
 ThisBuild / organization := "com.outr"
-ThisBuild / version := "1.0.0-SNAPSHOT4"
+ThisBuild / version := "1.0.0-SNAPSHOT5"
 
 ThisBuild / scalaVersion := "3.8.3"
 
 val rapidVersion: String = "2.9.4"
 
-val spiceVersion: String = "1.8.5-SNAPSHOT"
+val spiceVersion: String = "1.8.6-SNAPSHOT"
 
 val profigVersion: String = "3.7.1"
 
