@@ -104,7 +104,9 @@ class ScalaScriptExecutor(classpathOverride: Option[String] = None) extends Scri
     // URL, not a String — this is the cookbook's #1 footgun pre-fix).
     "spice.net.*",
     "rapid.Task",
-    "scala.jdk.CollectionConverters.*"
+    "scala.jdk.CollectionConverters.*",
+    "sigil.tool.{ToolInput, ToolName}",
+    "sigil.tool.model.*"
   )
 
   override def advertisedSurface: Option[String] = Some(
@@ -118,6 +120,13 @@ class ScalaScriptExecutor(classpathOverride: Option[String] = None) extends Scri
       |    a literal URL to `HttpClient.url(_: URL)`)
       |  - `rapid.Task` for async (use `.sync()` to block at script boundary)
       |  - `scala.jdk.CollectionConverters.*` for Java↔Scala collection bridging
+      |  - `sigil.tool.model.*` for tool input/output case classes (BashInput,
+      |    ReadFileInput, HttpRequestInput, …) — the shapes other tools take and emit.
+      |Pre-bound (no construction needed):
+      |  - `tools.callTool[Out](name, input)` invokes any host tool by name and decodes the
+      |    typed result. Example: `tools.callTool[BashOutput]("bash", BashInput(command = "ls"))`
+      |    chains a tool invocation into the script flow. Use `tools.has("name")` to gate.
+      |    Use `tools.callToolJson(name, input)` when only the raw JSON is wanted.
       |Avoid: `scala.util.parsing.json` (removed in Scala 3 — use `JsonParser(...)` instead),
       |`scala.io.Source.fromURL` for HTTP (use `HttpClient` instead),
       |`scala.collection.JavaConversions` (deprecated — `scala.jdk.CollectionConverters` is pre-imported).

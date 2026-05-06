@@ -36,7 +36,7 @@ import sigil.tool.{ToolExample, ToolName, TypedTool}
  * default [[ScalaScriptExecutor]] grants full JVM access.
  */
 class ExecuteScriptTool(executor: ScriptExecutor,
-                        bindings: TurnContext => Map[String, Any] = _ => Map.empty,
+                        bindings: TurnContext => Map[String, Any] = ScriptTools.defaultBindings,
                         override val name: ToolName = ToolName("execute_script"),
                         override val description: String = ExecuteScriptTool.DefaultDescription)
   extends TypedTool[ScriptInput](
