@@ -46,7 +46,10 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                                    summarizationSystemPrompt: String = SummaryOnlyCompressor.DefaultSystemPrompt,
                                    renderTranscript: SummaryOnlyCompressor.Renderer = SummaryOnlyCompressor.DefaultRenderer,
                                    minFactChars: Int = 10,
-                                   extractFacts: Boolean = true) extends ContextCompressor {
+                                   extractFacts: Boolean = true,
+                                   tokenizer: sigil.tokenize.Tokenizer = sigil.tokenize.HeuristicTokenizer,
+                                   reservedOutputTokens: Long = 1024L,
+                                   promptOverheadTokens: Long = 512L) extends ContextCompressor {
 
   override def compress(sigil: Sigil,
                         callerModelId: Id[Model],
@@ -58,21 +61,71 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
       if (materialized.isEmpty) Task.pure(None)
       else for {
         ctx <- loadContext(sigil, conversationId)
-        // Bug #24 / #26 — route summarization through SummarizationWork
-        // rather than inheriting the calling agent's modelId. Falls back
-        // to the caller's model when no SummarizationWork candidate is
-        // available.
-        summarizationModel <- sigil.routedModelFor(SummarizationWork, chain, callerModelId)
-                                .handleError(_ => Task.pure(callerModelId))
+        // Bug #41 — estimate transcript size so the routed candidate
+        // is sized for the input.
         transcript = renderTranscript(materialized, ctx._1, ctx._2)
+        estimatedInput = (tokenizer.count(transcript) +
+                          tokenizer.count(summarizationSystemPrompt) +
+                          tokenizer.count(extractionSystemPrompt) +
+                          promptOverheadTokens).toLong
+        // Bug #24 / #26 / #41 — route summarization through
+        // SummarizationWork sized for the input; fall back to the
+        // caller's model when no SummarizationWork candidate fits.
+        summarizationModel <- sigil.routedModelFor(
+                                SummarizationWork,
+                                chain,
+                                fallback = callerModelId,
+                                estimatedInputTokens = Some(estimatedInput),
+                                reservedOutputTokens = reservedOutputTokens
+                              ).handleError(_ => Task.pure(callerModelId))
         spaceOpt <- if (extractFacts) sigil.compressionMemorySpace(conversationId) else Task.pure(None)
+        // Bug #41 — when input exceeds the picked model's window,
+        // chunk-and-merge for the summary path. Extraction stays
+        // single-shot (the extraction's per-fact output is naturally
+        // chunked; merging fact lists across chunks is straight
+        // concat).
+        available = sigil.cache.find(summarizationModel).map(_.contextLength).getOrElse(0L) - reservedOutputTokens - promptOverheadTokens
+        transcriptTokens = tokenizer.count(transcript).toLong
         _ <- spaceOpt match {
-               case Some(space) => extractAndPersist(sigil, summarizationModel, chain, transcript, conversationId, space)
+               case Some(space) =>
+                 if (available <= 0L || transcriptTokens <= available)
+                   extractAndPersist(sigil, summarizationModel, chain, transcript, conversationId, space)
+                 else
+                   extractAndPersistChunked(sigil, summarizationModel, chain, materialized, ctx, conversationId, space, available)
                case None        => Task.unit
              }
-        summary <- summarize(sigil, summarizationModel, chain, transcript, conversationId)
+        summary <- if (available <= 0L || transcriptTokens <= available)
+                     summarize(sigil, summarizationModel, chain, transcript, conversationId)
+                   else
+                     SummaryOnlyCompressor(
+                       systemPrompt = summarizationSystemPrompt,
+                       renderTranscript = renderTranscript,
+                       tokenizer = tokenizer,
+                       reservedOutputTokens = reservedOutputTokens,
+                       promptOverheadTokens = promptOverheadTokens
+                     ).compress(sigil, summarizationModel, chain, rapid.Stream.emits(materialized), conversationId)
       } yield summary
     }
+
+  /** Bug #41 — extraction with chunk-and-merge: for inputs bigger than
+    * the picked model's window, run `extract_memories` per chunk and
+    * concatenate the resulting facts. No final merge step (each fact
+    * is independently meaningful; cross-chunk dedup happens via
+    * `upsertMemoryByKeyFor`). */
+  private def extractAndPersistChunked(sigil: Sigil,
+                                       modelId: Id[Model],
+                                       chain: List[ParticipantId],
+                                       frames: Vector[ContextFrame],
+                                       ctx: (Option[_root_.sigil.provider.Mode], Option[_root_.sigil.conversation.TopicEntry]),
+                                       conversationId: Id[Conversation],
+                                       space: SpaceId,
+                                       availableTokens: Long): Task[Unit] = {
+    val chunks = SummaryOnlyCompressor.chunkByTokens(frames, ctx, renderTranscript, tokenizer, availableTokens)
+    Task.sequence(chunks.map { chunk =>
+      val text = renderTranscript(chunk, ctx._1, ctx._2)
+      extractAndPersist(sigil, modelId, chain, text, conversationId, space)
+    }).unit
+  }
 
   private def extractAndPersist(sigil: Sigil,
                                 modelId: Id[Model],

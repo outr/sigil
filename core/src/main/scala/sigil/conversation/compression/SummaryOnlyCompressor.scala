@@ -7,6 +7,7 @@ import sigil.conversation.{ContextFrame, ContextSummary, Conversation}
 import sigil.db.Model
 import sigil.participant.ParticipantId
 import sigil.provider.SummarizationWork
+import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
 import sigil.tool.consult.{ConsultTool, SummarizationInput, SummarizationTool}
 
 /**
@@ -33,7 +34,10 @@ import sigil.tool.consult.{ConsultTool, SummarizationInput, SummarizationTool}
  */
 case class SummaryOnlyCompressor(systemPrompt: String = SummaryOnlyCompressor.DefaultSystemPrompt,
                                  renderTranscript: SummaryOnlyCompressor.Renderer =
-                                   SummaryOnlyCompressor.DefaultRenderer) extends ContextCompressor {
+                                   SummaryOnlyCompressor.DefaultRenderer,
+                                 tokenizer: Tokenizer = HeuristicTokenizer,
+                                 reservedOutputTokens: Long = 1024L,
+                                 promptOverheadTokens: Long = 512L) extends ContextCompressor {
 
   override def compress(sigil: Sigil,
                         callerModelId: Id[Model],
@@ -45,49 +49,116 @@ case class SummaryOnlyCompressor(systemPrompt: String = SummaryOnlyCompressor.De
       if (materialized.isEmpty) Task.pure(None)
       else for {
         ctx <- loadContext(sigil, conversationId)
-        // Bug #24 / #26 — route the summarization through a
-        // SummarizationWork-tier model rather than inheriting the
-        // caller's model. Falls back to the caller's model when no
-        // SummarizationWork candidate is available.
-        summarizationModel <- resolveSummarizationModel(sigil, callerModelId, chain)
+        // Bug #41 — estimate transcript size so `routedModelFor`
+        // can skip candidates whose contextLength can't fit.
         transcript = renderTranscript(materialized, ctx._1, ctx._2)
-        userPrompt = s"""Summarize the following conversation excerpt. Output via the `summarize_conversation` tool.
-                        |
-                        |${transcript}""".stripMargin
-        result <- ConsultTool.invoke[SummarizationInput](
-                    sigil = sigil,
-                    modelId = summarizationModel,
-                    chain = chain,
-                    systemPrompt = systemPrompt,
-                    userPrompt = userPrompt,
-                    tool = SummarizationTool
-                  ).flatMap {
-                    case Some(r) if r.summary.trim.nonEmpty =>
-                      val summary = ContextSummary(
-                        text = r.summary.trim,
-                        conversationId = conversationId,
-                        tokenEstimate = math.max(1, r.tokenEstimate)
-                      )
-                      sigil.persistSummary(summary).map(Some(_))
-                    case _ => Task.pure(None)
-                  }.handleError { e =>
-                    Task {
-                      scribe.warn(s"SummaryOnlyCompressor: compression call failed for conversation ${conversationId.value}: ${e.getMessage}")
-                      None
-                    }
-                  }
+        estimatedInput = (tokenizer.count(transcript) + tokenizer.count(systemPrompt) + promptOverheadTokens).toLong
+        // Bug #24 / #26 / #41 — route through a `SummarizationWork`
+        // candidate sized for the input; fall back to the caller's
+        // model when no strategy / candidate fits.
+        summarizationModel <- resolveSummarizationModel(sigil, callerModelId, chain, Some(estimatedInput))
+        // Bug #41 — if even the picked model can't fit (e.g. fallback
+        // path with `routedModelFor` returning the caller's model
+        // unchanged), chunk the frames into pieces that fit and merge.
+        result <- compressOrChunk(sigil, summarizationModel, chain, materialized, ctx, conversationId)
       } yield result
     }
 
-  /** Resolve a model for the summarization call. Bug #26 — prefer a
-    * `SummarizationWork`-routed candidate via the framework's
-    * provider-strategy chain; fall back to the caller's model when
-    * the strategy returns no candidates. */
+  /** Decide between single-shot and chunk-and-merge based on whether
+    * the rendered transcript fits the picked model's context window.
+    * `Model.contextLength` unknown → assume single-shot is fine. */
+  private def compressOrChunk(sigil: Sigil,
+                              modelId: Id[Model],
+                              chain: List[ParticipantId],
+                              frames: Vector[ContextFrame],
+                              ctx: (Option[_root_.sigil.provider.Mode], Option[_root_.sigil.conversation.TopicEntry]),
+                              conversationId: Id[Conversation]): Task[Option[ContextSummary]] = {
+    val transcript = renderTranscript(frames, ctx._1, ctx._2)
+    val transcriptTokens = tokenizer.count(transcript).toLong
+    val available = sigil.cache.find(modelId).map(_.contextLength).getOrElse(0L) - reservedOutputTokens - promptOverheadTokens
+    if (available <= 0L || transcriptTokens <= available)
+      summarizeOnce(sigil, modelId, chain, transcript, conversationId)
+    else
+      chunkAndMerge(sigil, modelId, chain, frames, ctx, conversationId, available)
+  }
+
+  private def summarizeOnce(sigil: Sigil,
+                            modelId: Id[Model],
+                            chain: List[ParticipantId],
+                            transcript: String,
+                            conversationId: Id[Conversation]): Task[Option[ContextSummary]] = {
+    val userPrompt = s"""Summarize the following conversation excerpt. Output via the `summarize_conversation` tool.
+                        |
+                        |${transcript}""".stripMargin
+    ConsultTool.invoke[SummarizationInput](
+      sigil = sigil,
+      modelId = modelId,
+      chain = chain,
+      systemPrompt = systemPrompt,
+      userPrompt = userPrompt,
+      tool = SummarizationTool
+    ).flatMap {
+      case Some(r) if r.summary.trim.nonEmpty =>
+        val summary = ContextSummary(
+          text = r.summary.trim,
+          conversationId = conversationId,
+          tokenEstimate = math.max(1, r.tokenEstimate)
+        )
+        sigil.persistSummary(summary).map(Some(_))
+      case _ => Task.pure(None)
+    }.handleError { e =>
+      Task {
+        scribe.warn(s"SummaryOnlyCompressor: compression call failed for conversation ${conversationId.value}: ${e.getMessage}")
+        None
+      }
+    }
+  }
+
+  /** Bug #41 fallback — input exceeds the picked model's window. Split
+    * `frames` into chunks each sized for `availableTokens`,
+    * summarize each, then merge the per-chunk summaries with one
+    * final call. Bounded memory throughout: each chunk's frames are
+    * dropped after `summarizeOnce` returns. */
+  private def chunkAndMerge(sigil: Sigil,
+                            modelId: Id[Model],
+                            chain: List[ParticipantId],
+                            frames: Vector[ContextFrame],
+                            ctx: (Option[_root_.sigil.provider.Mode], Option[_root_.sigil.conversation.TopicEntry]),
+                            conversationId: Id[Conversation],
+                            availableTokens: Long): Task[Option[ContextSummary]] = {
+    val chunks = SummaryOnlyCompressor.chunkByTokens(frames, ctx, renderTranscript, tokenizer, availableTokens)
+    val perChunkTask: Task[List[ContextSummary]] = Task.sequence(chunks.map { chunk =>
+      val text = renderTranscript(chunk, ctx._1, ctx._2)
+      summarizeOnce(sigil, modelId, chain, text, conversationId)
+    }).map(_.flatten)
+    perChunkTask.flatMap { perChunk =>
+      if (perChunk.isEmpty) Task.pure(None)
+      else if (perChunk.size == 1) Task.pure(perChunk.headOption)
+      else {
+        val mergePrompt =
+          "Merge the following per-chunk summaries (in chronological order) into a single coherent narrative summary. " +
+            "Output via the `summarize_conversation` tool.\n\n" +
+            perChunk.zipWithIndex.map { case (s, i) => s"--- chunk ${i + 1} ---\n${s.text}" }.mkString("\n\n")
+        summarizeOnce(sigil, modelId, chain, mergePrompt, conversationId)
+      }
+    }
+  }
+
+  /** Resolve a model for the summarization call. Bug #26 / #41 —
+    * prefer a `SummarizationWork`-routed candidate sized for the
+    * input; fall back to the caller's model when the strategy returns
+    * no candidates. */
   private def resolveSummarizationModel(sigil: Sigil,
                                         callerModelId: Id[Model],
-                                        chain: List[ParticipantId]): Task[Id[Model]] =
-    sigil.routedModelFor(SummarizationWork, chain, fallback = callerModelId)
-      .handleError(_ => Task.pure(callerModelId))
+                                        chain: List[ParticipantId],
+                                        estimatedInputTokens: Option[Long]): Task[Id[Model]] =
+    sigil.routedModelFor(
+      SummarizationWork,
+      chain,
+      fallback = callerModelId,
+      estimatedInputTokens = estimatedInputTokens,
+      reservedOutputTokens = reservedOutputTokens
+    ).handleError(_ => Task.pure(callerModelId))
 
   /** Load the active conversation so the renderer can scope the
     * transcript with mode + topic. Missing conversation (shouldn't
@@ -106,6 +177,37 @@ object SummaryOnlyCompressor {
                    Option[sigil.conversation.TopicEntry]) => String
 
   val DefaultRenderer: Renderer = TranscriptRenderer.render
+
+  /** Split a frame vector into chunks each rendering to ≤
+    * `budgetTokens` per `tokenizer`. Greedy: walks frames in order,
+    * accumulates into the current chunk until adding the next frame
+    * would exceed the budget, then starts a new chunk. Single frames
+    * larger than the budget land in their own chunk on their own
+    * (the chunk-and-merge path can't sub-split a single frame; the
+    * downstream `summarizeOnce` will let the provider handle it or
+    * fail loudly). Bug #41. */
+  def chunkByTokens(frames: Vector[ContextFrame],
+                    ctx: (Option[_root_.sigil.provider.Mode], Option[_root_.sigil.conversation.TopicEntry]),
+                    render: Renderer,
+                    tokenizer: sigil.tokenize.Tokenizer,
+                    budgetTokens: Long): List[Vector[ContextFrame]] = {
+    val out = scala.collection.mutable.ListBuffer.empty[Vector[ContextFrame]]
+    var current = Vector.empty[ContextFrame]
+    var currentTokens = 0L
+    frames.foreach { frame =>
+      val frameTokens = tokenizer.count(render(Vector(frame), ctx._1, ctx._2)).toLong
+      if (current.nonEmpty && currentTokens + frameTokens > budgetTokens) {
+        out += current
+        current = Vector(frame)
+        currentTokens = frameTokens
+      } else {
+        current = current :+ frame
+        currentTokens += frameTokens
+      }
+    }
+    if (current.nonEmpty) out += current
+    out.toList
+  }
 
   val DefaultSystemPrompt: String =
     """You are a conversation summarizer for an autonomous-agent framework.
