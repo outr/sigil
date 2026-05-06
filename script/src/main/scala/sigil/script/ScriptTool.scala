@@ -75,7 +75,7 @@ case class ScriptTool(name: ToolName,
   private def runOnExecutor(executor: ScriptExecutor,
                             args: fabric.Json,
                             context: TurnContext): Stream[Event] = {
-    val bindings = Map[String, Any]("args" -> args, "context" -> context)
+    val bindings = ScriptTools.defaultBindings(context) ++ Map("args" -> args, "context" -> context)
     val started  = System.currentTimeMillis()
     // Bug #67 — wrap the construction in `Task.defer` so synchronous
     // throws during executor.execute argument evaluation surface as a
