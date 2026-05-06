@@ -45,11 +45,23 @@ object LlamaCpp {
    *
    * The sigil id is `llamacpp/<model-name>` where model-name is derived from
    * the llama.cpp id (basename, `.gguf` extension stripped, lowercased).
+   *
+   * Bug #42 — `runtimeContextOverride` carries the `n_ctx` value
+   * actually allocated by the running server (read from `/props`).
+   * Prefer it when present; fall back to the model's `n_ctx_train`
+   * (training-time max) only when `/props` wasn't reachable. The
+   * runtime value is the hard limit any provider request is checked
+   * against; using `n_ctx_train` as a stand-in produces budget
+   * decisions that are fictional whenever the operator allocated
+   * fewer slots / a smaller window than training.
    */
-  def toModel(entry: Entry): Model = {
+  def toModel(entry: Entry, runtimeContextOverride: Option[Long] = None): Model = {
     val name = modelNameFromId(entry.id)
     val id = Id[Model](s"$Provider/${name.toLowerCase}")
-    val contextLength = entry.meta.flatMap(_.nCtxTrain).getOrElse(0L)
+    val contextLength: Long =
+      runtimeContextOverride
+        .orElse(entry.meta.flatMap(_.nCtxTrain))
+        .getOrElse(0L)
 
     Model(
       canonicalSlug = s"$Provider/$name",
@@ -97,13 +109,43 @@ object LlamaCpp {
 
   /**
    * Fetch and map currently-loaded models from a llama.cpp server.
+   *
+   * Bug #42 — also queries `/props` for the runtime `n_ctx` (actual
+   * allocated context window) and `total_slots` (concurrent slots
+   * the window is split across). The per-request runtime budget is
+   * `n_ctx / total_slots` (single-slot setups: just `n_ctx`); we
+   * stamp that on every returned [[sigil.db.Model]] as
+   * `contextLength` so downstream budget gates (curator, size-aware
+   * `routedModelFor`, provider pre-flight) operate on the real limit
+   * rather than the model's training-time max. `/props` failures
+   * (older llama.cpp builds, restricted endpoints) fall through to
+   * the legacy `n_ctx_train` path.
    */
   def loadModels(baseUrl: URL): Task[List[Model]] =
-    HttpClient.url(baseUrl.withPath("/v1/models")).call[Json].map { json =>
-      val normalized = json.filterOne(SnakeToCamelFilter)
-      val data = normalized("data").asVector
-      data.map(_.as[Entry]).map(toModel).toList
+    fetchRuntimeContext(baseUrl).flatMap { runtimeContext =>
+      HttpClient.url(baseUrl.withPath("/v1/models")).call[Json].map { json =>
+        val normalized = json.filterOne(SnakeToCamelFilter)
+        val data = normalized("data").asVector
+        data.map(_.as[Entry]).map(e => toModel(e, runtimeContextOverride = runtimeContext)).toList
+      }
     }
+
+  /** Read the running server's `default_generation_settings.n_ctx` and
+    * `total_slots` from `/props`; returns the per-slot budget
+    * (`n_ctx / max(1, total_slots)`). Returns `None` when the endpoint
+    * is unreachable or the fields are missing — caller falls back to
+    * the model's training context. */
+  private def fetchRuntimeContext(baseUrl: URL): Task[Option[Long]] =
+    HttpClient.url(baseUrl.withPath("/props")).call[Json].map { json =>
+      val nCtx = json.get("default_generation_settings")
+        .flatMap(_.get("n_ctx"))
+        .map(_.asLong)
+      val totalSlots = json.get("total_slots")
+        .map(_.asLong)
+        .filter(_ > 0)
+        .getOrElse(1L)
+      nCtx.map(c => math.max(1L, c / math.max(1L, totalSlots)))
+    }.handleError(_ => Task.pure(None))
 
   private def modelNameFromId(id: String): String = {
     val basename = id.split('/').last.split('\\').last
