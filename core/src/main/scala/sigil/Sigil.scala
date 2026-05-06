@@ -143,6 +143,13 @@ trait Sigil {
    */
   protected def workTypeRegistrations: List[sigil.provider.WorkType] = Nil
 
+  /** Mixin hook for polytype registrations that need the framework's leaf
+    * polytypes (Mode, WorkType, SpaceId, ...) populated before the mixin
+    * subtypes' RW Definitions are eagerly evaluated. Runs inside
+    * [[polymorphicRegistrations]] after the framework leaves and before
+    * the aggregates (Participant, Tool, Signal). Default `Task.unit`. */
+  protected def mixinPolymorphicRegistrations: rapid.Task[Unit] = rapid.Task.unit
+
   /** Aggregate of framework-shipped + app-registered [[WorkType]] subtypes —
     * symmetric with [[modes]] / [[spaceIds]]. The codegen pipeline iterates
     * this list to populate the Dart `WorkType` polytype's subtype dispatch
@@ -3899,7 +3906,16 @@ trait Sigil {
       // [JsonInput]`.
       _ = ToolInput.register((CoreTools.inputRWs ++ findTools.toolInputRWs ++ toolInputRegistrations).distinctBy(_.definition.className)*)
       _ = sigil.viewer.ViewerStatePayload.register(viewerStatePayloadRegistrations.distinct*)
-      // Aggregates after leaves.
+      // Mixin hook — runs AFTER all framework leaf polytypes register but
+      // BEFORE the aggregates that walk Participant/Tool/Signal definitions.
+      // Mixins that register polytypes whose subtype RWs reach into framework
+      // leaves (e.g. WorkflowSigil's WorkflowStepInput → AgentDecisionStepInput
+      // → Role → WorkType) MUST run here, not at trait-init time — otherwise
+      // the subtype lazy-val Definitions cache empty leaf-poly snapshots and
+      // downstream codegen sees empty dispatchers despite the leaf register
+      // calls succeeding (sigil bug #18).
+      _ <- mixinPolymorphicRegistrations
+      // Aggregates after leaves + mixins.
       _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
       _ = sigil.tool.Tool.register((staticTools.map(t => RW.static(t)) ++ toolRegistrations).distinct*)
       _ = sigil.skill.Skill.register((staticSkills.map(s => RW.static(s)) ++ skillRegistrations).distinct*)

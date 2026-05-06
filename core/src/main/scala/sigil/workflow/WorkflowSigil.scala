@@ -75,30 +75,37 @@ trait WorkflowSigil extends Sigil {
     * that handle without threading it through Strider's engine. */
   WorkflowHost.set(this)
 
-  /** Register the framework-shipped workflow triggers + step inputs
-    * eagerly at trait init. These polys aren't reachable from the
-    * aggregate `Signal` registry (workflows persist via Strider's
-    * own collection), so they don't need to participate in
-    * `polymorphicRegistrations`'s ordering — registering at trait
-    * init is sufficient for the typed wire shapes to round-trip. */
-  WorkflowTrigger.register((List(
-    summon[RW[sigil.workflow.trigger.ConversationMessageTrigger]],
-    summon[RW[sigil.workflow.trigger.TimeTrigger]],
-    summon[RW[sigil.workflow.trigger.WebhookTrigger]],
-    summon[RW[sigil.workflow.trigger.WorkflowEventTrigger]],
-    summon[RW[sigil.workflow.trigger.AnswerTrigger]]
-  ) ++ workflowTriggerRegistrations)*)
+  /** Register the framework-shipped workflow triggers + step inputs.
+    * Runs inside [[Sigil.polymorphicRegistrations]] (via the
+    * [[Sigil.mixinPolymorphicRegistrations]] hook) after the framework
+    * leaf polytypes (WorkType, Mode, SpaceId, ...) — required because
+    * `AgentDecisionStepInput.role: Role` references `WorkType`, and
+    * forcing the step input's RW.def before WorkType is registered
+    * would cache an empty WorkType polytype state in Role.def's lazy
+    * val (sigil bug #18). */
+  override protected def mixinPolymorphicRegistrations: Task[Unit] =
+    super.mixinPolymorphicRegistrations.flatMap { _ =>
+      Task {
+        WorkflowTrigger.register((List(
+          summon[RW[sigil.workflow.trigger.ConversationMessageTrigger]],
+          summon[RW[sigil.workflow.trigger.TimeTrigger]],
+          summon[RW[sigil.workflow.trigger.WebhookTrigger]],
+          summon[RW[sigil.workflow.trigger.WorkflowEventTrigger]],
+          summon[RW[sigil.workflow.trigger.AnswerTrigger]]
+        ) ++ workflowTriggerRegistrations)*)
 
-  WorkflowStepInput.register((List(
-    summon[RW[JobStepInput]],
-    summon[RW[ConditionStepInput]],
-    summon[RW[ApprovalStepInput]],
-    summon[RW[ParallelStepInput]],
-    summon[RW[LoopStepInput]],
-    summon[RW[SubWorkflowStepInput]],
-    summon[RW[TriggerStepInput]],
-    summon[RW[AgentDecisionStepInput]]
-  ) ++ workflowStepInputRegistrations)*)
+        WorkflowStepInput.register((List(
+          summon[RW[JobStepInput]],
+          summon[RW[ConditionStepInput]],
+          summon[RW[ApprovalStepInput]],
+          summon[RW[ParallelStepInput]],
+          summon[RW[LoopStepInput]],
+          summon[RW[SubWorkflowStepInput]],
+          summon[RW[TriggerStepInput]],
+          summon[RW[AgentDecisionStepInput]]
+        ) ++ workflowStepInputRegistrations)*)
+      }
+    }
 
   /** Override to point the Strider engine at a specific directory.
     * Default: a `workflows` sub-directory under the host Sigil's
