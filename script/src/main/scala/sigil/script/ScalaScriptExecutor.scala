@@ -124,9 +124,11 @@ class ScalaScriptExecutor(classpathOverride: Option[String] = None) extends Scri
       |    ReadFileInput, HttpRequestInput, …) — the shapes other tools take and emit.
       |Pre-bound (no construction needed):
       |  - `tools.callTool[Out](name, input)` invokes any host tool by name and decodes the
-      |    typed result. Example: `tools.callTool[BashOutput]("bash", BashInput(command = "ls"))`
-      |    chains a tool invocation into the script flow. Use `tools.has("name")` to gate.
-      |    Use `tools.callToolJson(name, input)` when only the raw JSON is wanted.
+      |    typed result. Use `find_capability` FIRST (a sibling tool) to discover which
+      |    tools exist and what their inputs / outputs look like — then call them from
+      |    inside the script by name via `tools.callTool`. `tools.has("name")` returns
+      |    `true` when a tool is registered. `tools.callToolJson(name, input)` returns
+      |    the raw JSON payload.
       |Avoid: `scala.util.parsing.json` (removed in Scala 3 — use `JsonParser(...)` instead),
       |`scala.io.Source.fromURL` for HTTP (use `HttpClient` instead),
       |`scala.collection.JavaConversions` (deprecated — `scala.jdk.CollectionConverters` is pre-imported).

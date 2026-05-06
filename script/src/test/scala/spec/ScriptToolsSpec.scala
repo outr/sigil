@@ -65,10 +65,6 @@ class ScriptToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     }
 
     "be invocable from an actual ExecuteScriptTool script via the default `tools` binding" in {
-      // End-to-end: ScalaScriptExecutor evaluates a script that calls
-      // tools.callToolJson("echo", ...) and returns the echoed text.
-      // EchoInput / EchoOutput aren't in `sigil.tool.model.*`, so the
-      // script imports the test package directly.
       val executor = new sigil.script.ScalaScriptExecutor
       val tool = new sigil.script.ExecuteScriptTool(executor)
       val script =
@@ -83,6 +79,7 @@ class ScriptToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         resultText shouldBe "from-script/11"
       }
     }
+
   }
 
   "tear down" should {
