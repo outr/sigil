@@ -1,11 +1,12 @@
 package sigil.conversation.compression
 
 import lightdb.id.Id
-import rapid.Task
+import rapid.{Stream, Task}
 import sigil.Sigil
 import sigil.conversation.{ContextFrame, ContextSummary, Conversation}
 import sigil.db.Model
 import sigil.participant.ParticipantId
+import sigil.provider.SummarizationWork
 import sigil.tool.consult.{ConsultTool, SummarizationInput, SummarizationTool}
 
 /**
@@ -35,42 +36,58 @@ case class SummaryOnlyCompressor(systemPrompt: String = SummaryOnlyCompressor.De
                                    SummaryOnlyCompressor.DefaultRenderer) extends ContextCompressor {
 
   override def compress(sigil: Sigil,
-                        modelId: Id[Model],
+                        callerModelId: Id[Model],
                         chain: List[ParticipantId],
-                        frames: Vector[ContextFrame],
-                        conversationId: Id[Conversation]): Task[Option[ContextSummary]] = {
-    if (frames.isEmpty) Task.pure(None)
-    else loadContext(sigil, conversationId).flatMap { ctx =>
-      val transcript = renderTranscript(frames, ctx._1, ctx._2)
-      val userPrompt =
-        s"""Summarize the following conversation excerpt. Output via the `summarize_conversation` tool.
-           |
-           |${transcript}""".stripMargin
-
-      ConsultTool.invoke[SummarizationInput](
-        sigil = sigil,
-        modelId = modelId,
-        chain = chain,
-        systemPrompt = systemPrompt,
-        userPrompt = userPrompt,
-        tool = SummarizationTool
-      ).flatMap {
-        case Some(result) if result.summary.trim.nonEmpty =>
-          val summary = ContextSummary(
-            text = result.summary.trim,
-            conversationId = conversationId,
-            tokenEstimate = math.max(1, result.tokenEstimate)
-          )
-          sigil.persistSummary(summary).map(Some(_))
-        case _ => Task.pure(None)
-      }.handleError { e =>
-        Task {
-          scribe.warn(s"SummaryOnlyCompressor: compression call failed for conversation ${conversationId.value}: ${e.getMessage}")
-          None
-        }
-      }
+                        frames: Stream[ContextFrame],
+                        conversationId: Id[Conversation]): Task[Option[ContextSummary]] =
+    frames.toList.flatMap { framesList =>
+      val materialized = framesList.toVector
+      if (materialized.isEmpty) Task.pure(None)
+      else for {
+        ctx <- loadContext(sigil, conversationId)
+        // Bug #24 / #26 — route the summarization through a
+        // SummarizationWork-tier model rather than inheriting the
+        // caller's model. Falls back to the caller's model when no
+        // SummarizationWork candidate is available.
+        summarizationModel <- resolveSummarizationModel(sigil, callerModelId, chain)
+        transcript = renderTranscript(materialized, ctx._1, ctx._2)
+        userPrompt = s"""Summarize the following conversation excerpt. Output via the `summarize_conversation` tool.
+                        |
+                        |${transcript}""".stripMargin
+        result <- ConsultTool.invoke[SummarizationInput](
+                    sigil = sigil,
+                    modelId = summarizationModel,
+                    chain = chain,
+                    systemPrompt = systemPrompt,
+                    userPrompt = userPrompt,
+                    tool = SummarizationTool
+                  ).flatMap {
+                    case Some(r) if r.summary.trim.nonEmpty =>
+                      val summary = ContextSummary(
+                        text = r.summary.trim,
+                        conversationId = conversationId,
+                        tokenEstimate = math.max(1, r.tokenEstimate)
+                      )
+                      sigil.persistSummary(summary).map(Some(_))
+                    case _ => Task.pure(None)
+                  }.handleError { e =>
+                    Task {
+                      scribe.warn(s"SummaryOnlyCompressor: compression call failed for conversation ${conversationId.value}: ${e.getMessage}")
+                      None
+                    }
+                  }
+      } yield result
     }
-  }
+
+  /** Resolve a model for the summarization call. Bug #26 — prefer a
+    * `SummarizationWork`-routed candidate via the framework's
+    * provider-strategy chain; fall back to the caller's model when
+    * the strategy returns no candidates. */
+  private def resolveSummarizationModel(sigil: Sigil,
+                                        callerModelId: Id[Model],
+                                        chain: List[ParticipantId]): Task[Id[Model]] =
+    sigil.routedModelFor(SummarizationWork, chain, fallback = callerModelId)
+      .handleError(_ => Task.pure(callerModelId))
 
   /** Load the active conversation so the renderer can scope the
     * transcript with mode + topic. Missing conversation (shouldn't

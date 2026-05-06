@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import sigil.conversation.{
   ContextFrame, ContextMemory, ContextSummary, Conversation,
-  ConversationView, ParticipantProjection, TopicEntry, Topic, TurnInput
+  ParticipantProjection, TopicEntry, Topic, TurnInput
 }
 import sigil.GlobalSpace
 import sigil.conversation.MemorySource
@@ -113,18 +113,10 @@ object ProfilerHarness {
       tokenEstimate = text.length / 4
     )
 
-  // ---- view + request builders ----
+  // ---- request builders ----
 
-  def viewWith(frames: Vector[ContextFrame],
-               projections: Map[ParticipantId, ParticipantProjection] = Map.empty): ConversationView =
-    ConversationView(
-      conversationId = ConvId,
-      frames = frames,
-      participantProjections = projections,
-      _id = ConversationView.idFor(ConvId)
-    )
-
-  def buildRequest(view: ConversationView,
+  def buildRequest(frames: Vector[ContextFrame],
+                   projections: Map[ParticipantId, ParticipantProjection] = Map.empty,
                    tools: Vector[Tool] = Vector.empty,
                    mode: Mode = ConversationMode,
                    roles: List[Role] = Nil,
@@ -133,7 +125,9 @@ object ProfilerHarness {
                    chain: List[ParticipantId] = List(UserId, AgentId)
                   ): sigil.provider.ConversationRequest = {
     val turn = TurnInput(
-      conversationView = view,
+      conversationId = ConvId,
+      frames = frames,
+      participantProjections = projections,
       criticalMemories = Vector.empty,
       memories = Vector.empty,
       summaries = Vector.empty,

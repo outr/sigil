@@ -5,7 +5,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.{GlobalSpace, SpaceId, TurnContext}
-import sigil.conversation.{Conversation, ConversationView, TurnInput}
+import sigil.conversation.{ConversationView, Conversation, TurnInput}
 import sigil.db.Model
 import sigil.event.{Event, Message, MessageRole, ToolInvoke}
 import sigil.orchestrator.Orchestrator
@@ -107,7 +107,7 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
       conversationId     = convId,
       modelId            = Model.id("test", "model"),
       instructions       = Instructions(),
-      turnInput          = TurnInput(ConversationView(conversationId = convId, _id = ConversationView.idFor(convId))),
+      turnInput          = TurnInput(ConversationView(conversationId = convId)),
       currentMode        = ConversationMode,
       currentTopic       = TestTopicEntry,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),

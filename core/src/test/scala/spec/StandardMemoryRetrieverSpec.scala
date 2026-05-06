@@ -4,7 +4,7 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
-import sigil.conversation.{ContextFrame, ContextMemory, Conversation, ConversationView, MemorySource}
+import sigil.conversation.{ConversationView, ContextFrame, ContextMemory, Conversation, MemorySource}
 import sigil.conversation.compression.StandardMemoryRetriever
 import sigil.event.Event
 import sigil.vector.InMemoryVectorIndex
@@ -21,8 +21,7 @@ class StandardMemoryRetrieverSpec extends AsyncWordSpec with AsyncTaskSpec with 
   private def viewWithQuestion(q: String): ConversationView =
     ConversationView(
       conversationId = convId,
-      frames = Vector(ContextFrame.Text(q, TestUser, Id[Event](s"q-${rapid.Unique()}"))),
-      _id = ConversationView.idFor(convId)
+      frames = Vector(ContextFrame.Text(q, TestUser, Id[Event](s"q-${rapid.Unique()}")))
     )
 
   "StandardMemoryRetriever" should {
@@ -55,9 +54,11 @@ class StandardMemoryRetrieverSpec extends AsyncWordSpec with AsyncTaskSpec with 
       )).sync()
 
       val retriever = StandardMemoryRetriever(limit = 3)
+      val view = viewWithQuestion("What is my favorite color?")
       retriever.retrieve(
         sigil = TestSigil,
-        view = viewWithQuestion("What is my favorite color?"),
+        conversationId = view.conversationId,
+        frames = view.frames,
         chain = List(TestUser, TestAgent)
       ).map { result =>
         // Critical record always surfaces, regardless of the question.

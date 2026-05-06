@@ -7,7 +7,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.{GlobalSpace, Sigil, SpaceId}
-import sigil.conversation.{Conversation, ConversationView, Topic, TopicEntry}
+import sigil.conversation.{Conversation, Topic, TopicEntry}
 import sigil.db.{DefaultSigilDB, Model, SigilDB}
 import sigil.event.{Event, MessageRole, MessageVisibility}
 import sigil.participant.{AgentParticipantId, ParticipantId, Participant, DefaultAgentParticipant}

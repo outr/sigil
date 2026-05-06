@@ -56,10 +56,10 @@ class PublishHistoricalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val convId = freshConvId("view")
       val events: Seq[Event] = (1 to 8).map(i => msg(convId, s"frame-$i", 2_000_000L + i))
       for {
-        _    <- TestSigil.publishHistorical(events, convId)
-        view <- TestSigil.viewFor(convId)
+        _      <- TestSigil.publishHistorical(events, convId)
+        frames <- TestSigil.framesFor(convId)
       } yield {
-        val texts = view.frames.collect { case t: ContextFrame.Text => t.content }
+        val texts = frames.collect { case t: ContextFrame.Text => t.content }
         texts shouldBe Vector("frame-1", "frame-2", "frame-3", "frame-4", "frame-5", "frame-6", "frame-7", "frame-8")
       }
     }

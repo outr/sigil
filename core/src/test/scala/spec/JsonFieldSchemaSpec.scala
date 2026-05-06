@@ -95,15 +95,12 @@ class JsonFieldSchemaSpec extends AnyWordSpec with Matchers {
       modelId = Model.id("openai", "gpt-5.4-nano"),
       instructions = Instructions(),
       turnInput = TurnInput(
-        sigil.conversation.ConversationView(
-          conversationId = sigil.conversation.Conversation.id("strict-flag-test"),
-          frames = Vector(sigil.conversation.ContextFrame.Text(
-            content = "test",
-            participantId = TestUser,
-            sourceEventId = Id[sigil.event.Event]("seed")
-          )),
-          _id = sigil.conversation.ConversationView.idFor(sigil.conversation.Conversation.id("strict-flag-test"))
-        )
+        conversationId = sigil.conversation.Conversation.id("strict-flag-test"),
+        frames = Vector(sigil.conversation.ContextFrame.Text(
+          content = "test",
+          participantId = TestUser,
+          sourceEventId = Id[sigil.event.Event]("seed")
+        ))
       ),
       currentMode = ConversationMode,
       currentTopic = TestTopicEntry,
@@ -147,15 +144,12 @@ class JsonFieldSchemaSpec extends AnyWordSpec with Matchers {
         modelId = Model.id("openai", "gpt-5.4-nano"),
         instructions = Instructions(),
         turnInput = TurnInput(
-          sigil.conversation.ConversationView(
-            conversationId = sigil.conversation.Conversation.id("non-strict-keys"),
-            frames = Vector(sigil.conversation.ContextFrame.Text(
-              content = "test",
-              participantId = TestUser,
-              sourceEventId = Id[sigil.event.Event]("seed")
-            )),
-            _id = sigil.conversation.ConversationView.idFor(sigil.conversation.Conversation.id("non-strict-keys"))
-          )
+          conversationId = sigil.conversation.Conversation.id("non-strict-keys"),
+          frames = Vector(sigil.conversation.ContextFrame.Text(
+            content = "test",
+            participantId = TestUser,
+            sourceEventId = Id[sigil.event.Event]("seed")
+          ))
         ),
         currentMode = ConversationMode,
         currentTopic = TestTopicEntry,

@@ -5,7 +5,7 @@ import lightdb.time.Timestamp
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
-import sigil.conversation.{ContextFrame, ContextMemory, Conversation, ConversationView, MemorySource, TopicEntry}
+import sigil.conversation.{ConversationView, ContextFrame, ContextMemory, Conversation, MemorySource, TopicEntry}
 import sigil.conversation.compression.{StandardMemoryRetriever, MemoryRetrievalResult}
 import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
 import sigil.event.{Event, Message, TopicChange, TopicChangeKind}
@@ -171,7 +171,7 @@ class LlamaCppMemoryKeywordRetrievalSpec extends AsyncWordSpec with AsyncTaskSpe
           participantProjections = Map.empty
         )
         retriever = StandardMemoryRetriever(limit = 3)
-        result <- retriever.retrieve(TestSigil, view, chain = List(TestUser, TestAgent))
+        result <- retriever.retrieve(TestSigil, view.conversationId, view.frames, chain = List(TestUser, TestAgent))
         rendered <- TestSigil.withDB(_.memories.transaction { tx =>
           Task.sequence(result.memories.map(id => tx.get(id))).map(_.flatten)
         })
@@ -201,8 +201,8 @@ class LlamaCppMemoryKeywordRetrievalSpec extends AsyncWordSpec with AsyncTaskSpe
           participantProjections = Map.empty
         )
         retriever = StandardMemoryRetriever(limit = 3)
-        first  <- retriever.retrieve(TestSigil, view, chain = List(TestUser, TestAgent))
-        second <- retriever.retrieve(TestSigil, view, chain = List(TestUser, TestAgent))
+        first  <- retriever.retrieve(TestSigil, view.conversationId, view.frames, chain = List(TestUser, TestAgent))
+        second <- retriever.retrieve(TestSigil, view.conversationId, view.frames, chain = List(TestUser, TestAgent))
       } yield {
         // Identical references — same cached result, not re-derived.
         first shouldBe second
@@ -227,7 +227,7 @@ class LlamaCppMemoryKeywordRetrievalSpec extends AsyncWordSpec with AsyncTaskSpe
           participantProjections = Map.empty
         )
         retriever = StandardMemoryRetriever(limit = 3)
-        _ <- retriever.retrieve(TestSigil, view, chain = List(TestUser, TestAgent))
+        _ <- retriever.retrieve(TestSigil, view.conversationId, view.frames, chain = List(TestUser, TestAgent))
         cachedBefore = TestSigil.memoryRetrievalCache.peek(convId)
         // User publishes a Message — settled effect should invalidate.
         _ <- TestSigil.publish(Message(
@@ -261,7 +261,7 @@ class LlamaCppMemoryKeywordRetrievalSpec extends AsyncWordSpec with AsyncTaskSpe
           participantProjections = Map.empty
         )
         retriever = StandardMemoryRetriever(limit = 3)
-        _ <- retriever.retrieve(TestSigil, view, chain = List(TestUser, TestAgent))
+        _ <- retriever.retrieve(TestSigil, view.conversationId, view.frames, chain = List(TestUser, TestAgent))
         cachedAfterFirst = TestSigil.memoryRetrievalCache.peek(convId)
 
         // Rename — must NOT invalidate.

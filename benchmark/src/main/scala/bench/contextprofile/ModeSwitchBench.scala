@@ -61,7 +61,8 @@ object ModeSwitchBench {
       )
 
       val projections: Map[sigil.participant.ParticipantId, ParticipantProjection] = Map(
-        ProfilerHarness.AgentId -> ParticipantProjection(activeSkills = activeSkills)
+        ProfilerHarness.AgentId -> ParticipantProjection.empty(ProfilerHarness.AgentId, ProfilerHarness.ConvId)
+          .copy(activeSkills = activeSkills)
       )
 
       val frames = (1 to n).flatMap { t =>
@@ -71,8 +72,8 @@ object ModeSwitchBench {
         )
       }.toVector
 
-      val view = ProfilerHarness.viewWith(frames, projections)
-      val req = ProfilerHarness.buildRequest(view, tools, mode = mode, roles = List(plannerRole))
+      val view = (frames, projections)
+      val req = ProfilerHarness.buildRequest(view._1, view._2, tools, mode = mode, roles = List(plannerRole))
       ProfilerHarness.profile(req)
     }
 

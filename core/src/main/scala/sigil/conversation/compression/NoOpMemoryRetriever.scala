@@ -1,8 +1,9 @@
 package sigil.conversation.compression
 
+import lightdb.id.Id
 import rapid.Task
 import sigil.Sigil
-import sigil.conversation.ConversationView
+import sigil.conversation.{ContextFrame, Conversation}
 import sigil.participant.ParticipantId
 
 /**
@@ -12,7 +13,8 @@ import sigil.participant.ParticipantId
  */
 object NoOpMemoryRetriever extends MemoryRetriever {
   override def retrieve(sigil: Sigil,
-                        view: ConversationView,
+                        conversationId: Id[Conversation],
+                        frames: Vector[ContextFrame],
                         chain: List[ParticipantId]): Task[MemoryRetrievalResult] =
     Task.pure(MemoryRetrievalResult.empty)
 }

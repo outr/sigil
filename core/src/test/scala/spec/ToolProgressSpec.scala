@@ -5,7 +5,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
-import sigil.conversation.{Conversation, ConversationView, TopicEntry, TurnInput}
+import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
 import sigil.event.Event
 import sigil.signal.{Signal, ToolProgress}
 
@@ -42,8 +42,7 @@ class ToolProgressSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       sigil               = TestSigil,
       chain               = List(TestUser),
       conversation        = conv,
-      conversationView    = ConversationView(conversationId = convId),
-      turnInput           = TurnInput(ConversationView(conversationId = convId)),
+      turnInput           = TurnInput(conversationId = convId),
       currentToolInvokeId = Some(invokeId),
       currentToolName     = Some(ProgressEmittingTool.name)
     )
@@ -93,8 +92,7 @@ class ToolProgressSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         sigil               = TestSigil,
         chain               = List(TestUser),
         conversation        = conv,
-        conversationView    = ConversationView(conversationId = conv._id),
-        turnInput           = TurnInput(ConversationView(conversationId = conv._id))
+        turnInput           = TurnInput(conversationId = conv._id)
       )
 
       val recorded = new ConcurrentLinkedQueue[Signal]()

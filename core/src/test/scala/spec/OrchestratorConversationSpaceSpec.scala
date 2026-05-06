@@ -6,7 +6,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.{SpaceId, TurnContext}
-import sigil.conversation.{Conversation, ConversationView, TurnInput}
+import sigil.conversation.{ConversationView, Conversation, TurnInput}
 import sigil.db.Model
 import sigil.event.{Event, Message}
 import sigil.orchestrator.Orchestrator
@@ -81,7 +81,7 @@ class OrchestratorConversationSpaceSpec extends AsyncWordSpec with AsyncTaskSpec
 
     "thread the caller's Conversation (with custom SpaceId) into ctx.conversation (bug #46)" in {
       val convId = Conversation.id(s"orch-space-${rapid.Unique()}")
-      val view   = ConversationView(conversationId = convId, _id = ConversationView.idFor(convId))
+      val view   = ConversationView(conversationId = convId)
       // Use TestSpace — already registered in TestSigil. Confirms a
       // non-GlobalSpace value round-trips into the tool.
       val conv   = Conversation(

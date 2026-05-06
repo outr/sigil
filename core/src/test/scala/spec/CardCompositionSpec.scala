@@ -5,7 +5,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.TurnContext
-import sigil.conversation.{Conversation, ConversationView, TurnInput}
+import sigil.conversation.{ConversationView, Conversation, TurnInput}
 import sigil.event.Message
 import sigil.tool.core.{RespondCardTool, RespondCardsTool}
 import sigil.tool.model.{Card, RespondCardInput, RespondCardsInput, ResponseContent}
@@ -23,13 +23,12 @@ class CardCompositionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
   TestSigil.initFor(getClass.getSimpleName)
 
   private def turnContextFor(convId: Id[Conversation]): TurnContext = {
-    val view = ConversationView(conversationId = convId, _id = ConversationView.idFor(convId))
+    val viewConvId = convId
     TurnContext(
       sigil = TestSigil,
       chain = List(TestUser, TestAgent),
       conversation = Conversation(topics = TestTopicStack, _id = convId),
-      conversationView = view,
-      turnInput = TurnInput(view)
+      turnInput = TurnInput(conversationId = viewConvId)
     )
   }
 

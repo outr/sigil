@@ -39,11 +39,128 @@ import sigil.tool.model.ResponseContent
 object FrameBuilder {
 
   /**
+   * Compute the render-ready [[ContextFrame]] for a single Event.
+   * `None` for in-flight events and event types that don't produce
+   * a frame (`AgentState`, `Stop`, `ControlPlaneEvent`s).
+   *
+   * Pure per-event projection — no dependency on any ordering or
+   * surrounding events. The framework calls this at settle time to
+   * inline the frame onto the durable event row via
+   * [[Event.withContextFrame]]. Bug #26 — the curator queries
+   * `db.events` for `contextFrame.isDefined` to materialize a
+   * conversation's prompt history rather than walking a separate
+   * frames Vector projection.
+   */
+  def computeFrame(event: Event): Option[ContextFrame] = {
+    if (event.state != EventState.Complete) return None
+
+    if (event.role == MessageRole.Tool) {
+      val content = event match {
+        case m: Message =>
+          m.content.collect {
+            case ResponseContent.Text(t)            => t
+            case ResponseContent.Markdown(t)        => t
+            case ResponseContent.Heading(t)         => t
+            case ResponseContent.Code(c, lang)      => s"```${lang.getOrElse("")}\n$c\n```"
+            case ResponseContent.ItemList(items, _) => items.mkString("\n")
+            case ResponseContent.Link(url, label)   => s"$label $url"
+            case other                              => other.toString
+          }.mkString("\n")
+        case tr: ToolResults if tr.outputId.isDefined =>
+          val pointer = s"[output externalized: outputId=${tr.outputId.get.value} — call `tool_output_get` to read]"
+          tr.summary match {
+            case Some(s) if s.nonEmpty => s + "\n" + pointer
+            case _                     => pointer
+          }
+        case tr: ToolResults if tr.typed.isDefined =>
+          JsonFormatter.Compact(tr.typed.get)
+        case other =>
+          val payload = stripEventBoilerplate(Event.rw.read(other))
+          JsonFormatter.Compact(payload)
+      }
+      val callId = event.origin.getOrElse {
+        throw new IllegalStateException(
+          s"FrameBuilder: ${event.getClass.getSimpleName} has role=MessageRole.Tool but no `origin` " +
+            s"set. Every Tool-role event MUST carry `origin` pointing to its parent ToolInvoke. " +
+            s"Event id=${event._id.value}; participantId=${event.participantId.value}."
+        )
+      }
+      return Some(ContextFrame.ToolResult(
+        callId = callId,
+        content = content,
+        sourceEventId = event._id,
+        visibility = event.visibility
+      ))
+    }
+
+    event match {
+      case m: Message =>
+        Some(ContextFrame.Text(
+          content = renderMessageText(m),
+          participantId = m.participantId,
+          sourceEventId = m._id,
+          visibility = m.visibility
+        ))
+
+      case ti: ToolInvoke =>
+        val argsJson = ti.input
+          .map(i => JsonFormatter.Compact(stripPolyDiscriminator(summon[RW[ToolInput]].read(i))))
+          .getOrElse("{}")
+        Some(ContextFrame.ToolCall(
+          toolName = ti.toolName,
+          argsJson = argsJson,
+          callId = ti._id,
+          participantId = ti.participantId,
+          sourceEventId = ti._id,
+          visibility = ti.visibility
+        ))
+
+      case mc: ModeChange =>
+        Some(ContextFrame.System(
+          content = s"Mode changed to ${mc.mode}${mc.reason.map(r => s" ($r)").getOrElse("")}.",
+          sourceEventId = mc._id,
+          visibility = mc.visibility
+        ))
+
+      case tc: TopicChange =>
+        val content = tc.kind match {
+          case TopicChangeKind.Switch(_)             => s"Topic switched to: ${tc.newLabel}"
+          case TopicChangeKind.Rename(previousLabel) => s"Topic renamed: $previousLabel → ${tc.newLabel}"
+        }
+        Some(ContextFrame.System(
+          content = content,
+          sourceEventId = tc._id,
+          visibility = tc.visibility
+        ))
+
+      case r: Reasoning =>
+        Some(ContextFrame.Reasoning(
+          providerItemId = r.providerItemId,
+          summary = r.summary,
+          encryptedContent = r.encryptedContent,
+          participantId = r.participantId,
+          sourceEventId = r._id,
+          visibility = r.visibility
+        ))
+
+      case _: AgentState | _: Stop                       => None
+      case _: sigil.event.ControlPlaneEvent              => None
+
+      case other =>
+        throw new RuntimeException(
+          s"FrameBuilder: Event ${other.getClass.getSimpleName} has no frame rule. " +
+            s"Add a case here to either emit a frame or extend ControlPlaneEvent."
+        )
+    }
+  }
+
+  /**
    * Append frames for a newly-Complete event to an existing frame vector.
    * The return value is the updated vector.
    *
-   * `existing` is the vector the new frames are appended to; it's supplied
-   * so [[ToolResults]] can pair against the most-recent pending ToolCall.
+   * Legacy convenience wrapper around [[computeFrame]] — kept while the
+   * old `ConversationView.frames` projection is being phased out (bug
+   * #26). New code should query `Event.contextFrame` directly.
    */
   def appendFor(existing: Vector[ContextFrame], event: Event): Vector[ContextFrame] = {
     if (event.state != EventState.Complete) return existing
@@ -216,50 +333,11 @@ object FrameBuilder {
   def build(events: Iterable[Event]): Vector[ContextFrame] =
     events.foldLeft(Vector.empty[ContextFrame])((acc, e) => appendFor(acc, e))
 
-  /**
-   * Apply the participant-projection deltas this event implies:
-   *   - `ToolInvoke` complete → push toolName onto `recentTools`
-   *   - `ToolResults` complete → replace `suggestedTools` with fresh
-   *     matches
-   *
-   * `activeSkills` are driven by app-supplied events; the framework
-   * doesn't materialize them here (apps can override via custom
-   * publish-path hooks).
-   */
-  def updateProjections(existing: Map[sigil.participant.ParticipantId, ParticipantProjection],
-                        event: Event): Map[sigil.participant.ParticipantId, ParticipantProjection] = {
-    if (event.state != EventState.Complete) return existing
-    event match {
-      case ti: ToolInvoke =>
-        val pid = ti.participantId
-        val proj = existing.getOrElse(pid, ParticipantProjection())
-        val updated = proj.copy(recentTools = ti.toolName :: proj.recentTools.filterNot(_ == ti.toolName))
-        existing + (pid -> updated)
-
-      case tr: ToolResults =>
-        val pid = tr.participantId
-        val proj = existing.getOrElse(pid, ParticipantProjection())
-        val updated = proj.copy(suggestedTools = tr.schemas.map(_.name).toList)
-        existing + (pid -> updated)
-
-      case cr: CapabilityResults =>
-        // Bug #66 — only Tool-typed matches feed `suggestedTools` (the
-        // system prompt's "Suggested tools" section). Mode and Skill
-        // matches reach the agent through the tool-result content
-        // (the rendered `matches` JSON the early-return path emits)
-        // — they're not "tools to call directly" and shouldn't
-        // pollute the suggestedTools roster.
-        val pid = cr.participantId
-        val proj = existing.getOrElse(pid, ParticipantProjection())
-        val toolNames = cr.matches.collect {
-          case m if m.capabilityType == CapabilityType.Tool => ToolName(m.name)
-        }
-        val updated = proj.copy(suggestedTools = toolNames)
-        existing + (pid -> updated)
-
-      case _ => existing
-    }
-  }
+  // Bug #26 — the per-event projection updates (recentTools,
+  // suggestedTools) moved to `Sigil.applyParticipantProjectionFor`,
+  // which writes directly to the `db.participantProjections`
+  // collection. Frame-derivation itself is per-event via
+  // [[computeFrame]].
 
   private def renderMessageText(m: Message): String =
     m.content

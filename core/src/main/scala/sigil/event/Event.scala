@@ -4,7 +4,7 @@ import fabric.rw.RW
 import lightdb.doc.{Document, JsonConversion}
 import lightdb.id.Id
 import lightdb.time.Timestamp
-import sigil.conversation.{Conversation, Topic}
+import sigil.conversation.{Conversation, ContextFrame, Topic}
 import sigil.participant.ParticipantId
 import sigil.signal.{EventState, Signal}
 
@@ -124,6 +124,29 @@ trait Event extends Signal with Document[Event] {
    * "imported context, paid for elsewhere".
    */
   def source: Option[String] = None
+
+  /**
+   * Render-ready frame for prompt construction. Computed once at
+   * settle-time (`EventState.Complete`) by `FrameBuilder.computeFrame`
+   * and persisted inline on the event. `None` for in-flight events
+   * and event types that don't produce a frame ([[sigil.event.AgentState]],
+   * [[sigil.event.Stop]], [[sigil.event.ControlPlaneEvent]]s).
+   *
+   * Source of truth for prompt construction — the curator queries
+   * `db.events` (with `contextFrame.isDefined` filter) to materialize
+   * a conversation's prompt history rather than maintaining a separate
+   * frames Vector projection. Bug #26.
+   */
+  def contextFrame: Option[ContextFrame] = None
+
+  /**
+   * Returns a copy of this event with its `contextFrame` replaced.
+   * The framework's publish pipeline calls this when an event
+   * settles to `EventState.Complete` to inline the freshly-computed
+   * frame onto the durable event row. Each concrete Event implements
+   * via its own `copy(contextFrame = contextFrame)`.
+   */
+  def withContextFrame(contextFrame: Option[ContextFrame]): Event
 }
 
 object Event extends JsonConversion[Event] {

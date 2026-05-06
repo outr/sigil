@@ -5,7 +5,7 @@ import lightdb.time.Timestamp
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
-import sigil.conversation.{ContextFrame, Conversation, ConversationView, MemorySource}
+import sigil.conversation.{ContextFrame, Conversation, MemorySource}
 import sigil.conversation.compression.MemoryContextCompressor
 import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
 import sigil.event.Event
@@ -95,7 +95,7 @@ class LlamaCppMemoryExtractionSpec extends AsyncWordSpec with AsyncTaskSpec with
       val compressor = MemoryContextCompressor()
 
       for {
-        result <- compressor.compress(TestSigil, modelId, chain = List(TestUser, TestAgent), frames, convId)
+        result <- compressor.compress(TestSigil, modelId, chain = List(TestUser, TestAgent), rapid.Stream.emits(frames), convId)
         memoriesInSpace <- TestSigil.withDB(_.memories.transaction(_.list))
           .map(_.filter(_.spaceId == MemoryTestSpace))
         darkModeHits <- TestSigil.searchMemories("what color theme does alice prefer", Set(MemoryTestSpace), limit = 5)

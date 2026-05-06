@@ -12,7 +12,7 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
-import sigil.conversation.{ActiveSkillSlot, ContextKey, ContextMemory, ContextSummary, Conversation, ConversationView, FrameBuilder, MemorySource, MemoryStatus, ParticipantProjection, SkillSource, Topic, TopicEntry, TopicShiftResult, TurnInput, UpsertMemoryResult}
+import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, EncodedContext, FrameBuilder, MemorySource, MemoryStatus, ParticipantProjection, SkillSource, Topic, TopicEntry, TopicShiftResult, TurnInput, UpsertMemoryResult}
 import sigil.SpaceId
 import sigil.cache.ModelRegistry
 import sigil.controller.OpenRouter
@@ -25,7 +25,7 @@ import sigil.tool.consult.{ConsultTool, TopicClassifierTool}
 import sigil.provider.GenerationSettings
 import sigil.db.{DefaultSigilDB, Model, SigilDB}
 import sigil.dispatcher.{StopFlag, TriggerFilter}
-import sigil.event.{AgentState, Event, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, TopicChange, TopicChangeKind}
+import sigil.event.{AgentState, CapabilityResults, Event, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, ToolResults, TopicChange, TopicChangeKind}
 import sigil.role.Role
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{ConversationMode, ConversationRequest, Mode, ProviderStrategy, ToolPolicy, WorkType}
@@ -903,6 +903,38 @@ trait Sigil {
     sigil.provider.ProviderStrategy.routed(record.defaultCandidates, routes)
   }
 
+  /** Pick a model for `workType`, scoped to `chain`. Default impl walks
+    * the chain's accessible spaces, resolves each space's
+    * [[sigil.provider.ProviderStrategy]], and returns the first
+    * available candidate for `workType`. Falls back to `fallback`
+    * when no strategy applies or no candidate is available.
+    *
+    * Bug #26 — used by the framework's compressor to route
+    * summarization through a `SummarizationWork`-tier model rather
+    * than inheriting the calling agent's modelId. Apps can override
+    * for custom routing (e.g. cost-aware fallback ordering). */
+  def routedModelFor(workType: sigil.provider.WorkType,
+                     chain: List[ParticipantId],
+                     fallback: Id[Model]): Task[Id[Model]] = {
+    val convId: Id[Conversation] = sigil.conversation.Conversation.id("__no_conv__")
+    accessibleSpaces(chain, convId).flatMap { spaces =>
+      val ordered = spaces.toList
+      def loop(remaining: List[SpaceId]): Task[Option[Id[Model]]] = remaining match {
+        case Nil => Task.pure(None)
+        case space :: rest =>
+          resolveProviderStrategy(space).flatMap {
+            case None => loop(rest)
+            case Some(strategy) =>
+              strategy.availableCandidates(workType).headOption match {
+                case Some(c) => Task.pure(Some(c.modelId))
+                case None    => loop(rest)
+              }
+          }
+      }
+      loop(ordered).map(_.getOrElse(fallback))
+    }
+  }
+
   private final lazy val defaultFindTools: sigil.tool.ToolFinder = {
     val staticInputs = staticTools.map(_.inputRW).distinctBy(_.definition.className)
     val allInputs = (staticInputs ++ toolInputRegistrations).distinctBy(_.definition.className)
@@ -912,11 +944,16 @@ trait Sigil {
   // -- context curation --
 
   /**
-   * Per-turn curator: given the current [[ConversationView]] plus the
-   * target model and participant chain, produce the [[TurnInput]] the
-   * provider will render. Policy lives here — pick which
-   * memories/summaries/information to surface, apply app-specific
-   * overlays, add extra context, run budget-based compression, etc.
+   * Per-turn curator: given the conversation id, target model, and
+   * participant chain, produce the [[TurnInput]] the provider will
+   * render. Policy lives here — pick which memories / summaries /
+   * information to surface, apply app-specific overlays, add extra
+   * context, run budget-based shedding, etc.
+   *
+   * Bug #26 — the curator now sources frames from `db.events` (via
+   * [[Event.contextFrame]]) and per-participant projections from
+   * `db.participantProjections` directly; the old `ConversationView`
+   * has been retired.
    *
    * `modelId` and `chain` are forwarded so implementations that use
    * [[sigil.conversation.compression.StandardContextCurator]] (or
@@ -929,13 +966,12 @@ trait Sigil {
    * (driven by [[sigil.tool.Tool.resultTtl]]) — runs the cheap
    * cleanup pass and the budget guard so a single conversation can't
    * blow the model's context window with accumulated `find_capability`
-   * / `change_mode` results. Apps that want no curation override to
-   * `Task.pure(TurnInput(view))` explicitly.
+   * / `change_mode` results.
    */
-  def curate(view: ConversationView,
+  def curate(conversationId: Id[Conversation],
              modelId: Id[Model],
              chain: List[ParticipantId]): Task[TurnInput] =
-    sigil.conversation.compression.StandardContextCurator(this).curate(view, modelId, chain)
+    sigil.conversation.compression.StandardContextCurator(this).curate(conversationId, modelId, chain)
 
   // -- information lookup --
 
@@ -1157,7 +1193,7 @@ trait Sigil {
   private def runAgentTurn(agent: AgentParticipant,
                            context: TurnContext): Stream[Signal] = {
     val effectiveChain = context.chain.filterNot(_ == agent.id) :+ agent.id
-    val suggested      = context.conversationView.projectionFor(agent.id).suggestedTools
+    val suggested      = context.turnInput.projectionFor(agent.id).suggestedTools
     val effectiveNames = effectiveToolNames(agent, context.conversation.currentMode, suggested).distinct
 
     // Strategy resolution: Mode override beats space-level
@@ -1686,6 +1722,7 @@ trait Sigil {
       applyInboundTransforms(signal).flatMap { resolved =>
         for {
           _ <- withDB(_.apply(resolved))
+          _ <- attachContextFrameOnSettle(resolved)
           _ <- updateConversationProjection(resolved)
           _ <- updateView(resolved)
           _ <- maybeApplyModeSkill(resolved)
@@ -1699,6 +1736,42 @@ trait Sigil {
           _ <- applySettledEffects(resolved)
         } yield ()
       }
+  }
+
+  /** When a published [[Signal]] settles an Event to
+    * `EventState.Complete` (atomic Complete event OR Delta whose
+    * application yields a Complete state), compute the event's
+    * [[sigil.conversation.ContextFrame]] via
+    * [[FrameBuilder.computeFrame]] and write it back to `db.events`.
+    * Idempotent — recomputing on an event that already carries a
+    * frame is a no-op (we skip the write if the frame matches).
+    *
+    * Bug #26 — settle-time frame inlining is the source-of-truth path
+    * for prompt construction; the curator queries
+    * `event.contextFrame.isDefined` against `db.events` instead of
+    * walking a separate frames Vector projection. */
+  private final def attachContextFrameOnSettle(signal: Signal): Task[Unit] = {
+    val targetIdOpt: Option[Id[Event]] = signal match {
+      case e: Event if e.state == EventState.Complete =>
+        Some(e._id)
+      case d: sigil.signal.Delta =>
+        Some(d.target.asInstanceOf[Id[Event]])
+      case _ => None
+    }
+    targetIdOpt match {
+      case None => Task.unit
+      case Some(eventId) =>
+        withDB(_.events.transaction { tx =>
+          tx.get(eventId).flatMap {
+            case None => Task.unit
+            case Some(event) if event.state != EventState.Complete => Task.unit
+            case Some(event) =>
+              val frame = FrameBuilder.computeFrame(event)
+              if (event.contextFrame == frame) Task.unit
+              else tx.upsert(event.withContextFrame(frame)).unit
+          }
+        })
+    }
   }
 
   /**
@@ -1736,7 +1809,15 @@ trait Sigil {
         ()
       }
     else {
-      val batches = events.grouped(1000).toList
+      // Inline contextFrame on every imported event before persisting
+      // so the bulk-import path matches the publish-time pipeline's
+      // settle-time inlining (bug #26). Events that are still Active
+      // (rare for imports, but supported) keep `contextFrame = None`.
+      val framed = events.map { e =>
+        if (e.state != EventState.Complete || e.contextFrame.nonEmpty) e
+        else e.withContextFrame(FrameBuilder.computeFrame(e))
+      }
+      val batches = framed.grouped(1000).toList
       val persistAll: Task[Unit] = Task.sequence(batches.map { batch =>
         withDB(_.events.transaction { tx =>
           Task.sequence(batch.toList.map(tx.upsert))
@@ -1745,7 +1826,7 @@ trait Sigil {
       for {
         _ <- persistAll
         _ <- coalescedProjectionFor(conversationId, events)
-        _ <- rebuildView(conversationId)
+        // Frames are sourced live from `db.events` — no view to rebuild post-publishHistorical.
         _ <- Task {
                hub.emit(sigil.signal.ConversationHistoryImported(conversationId, events.size))
                ()
@@ -1833,23 +1914,16 @@ trait Sigil {
         }
       case sigil.signal.SwitchConversation(convId, limit) =>
         for {
-          view   <- withDB(_.views.transaction(_.get(ConversationView.idFor(convId))))
-          all    <- withDB { db =>
-                      db.events.transaction(_.list.map(_.filter(_.conversationId == convId)))
-                    }
-          _      <- view match {
-                      case Some(v) =>
-                        // Sort ascending by timestamp, then take the trailing
-                        // `limit`. `hasMore` is true when the underlying set
-                        // had older events past the window.
-                        val sorted = all.sortBy(_.timestamp.value)
-                        val cap = math.max(0, limit)
-                        val window = if (sorted.length <= cap) sorted else sorted.drop(sorted.length - cap)
-                        val hasMore = sorted.length > cap
-                        publishTo(fromViewer, sigil.signal.ConversationSnapshot(convId, v, window.toVector, hasMore))
-                      case None =>
-                        Task.unit
-                    }
+          all <- withDB { db =>
+                   db.events.transaction(_.list.map(_.filter(_.conversationId == convId)))
+                 }
+          _   <- {
+                   val sorted = all.sortBy(_.timestamp.value)
+                   val cap = math.max(0, limit)
+                   val window = if (sorted.length <= cap) sorted else sorted.drop(sorted.length - cap)
+                   val hasMore = sorted.length > cap
+                   publishTo(fromViewer, sigil.signal.ConversationSnapshot(convId, window.toVector, hasMore))
+                 }
         } yield ()
 
       case sigil.signal.RequestConversationHistory(convId, beforeMs, limit) =>
@@ -2146,147 +2220,130 @@ trait Sigil {
     }
 
   /**
-   * Maintain the per-conversation [[ConversationView]] as events/deltas
-   * flow through `publish`. A frame lands in the view exactly once per
-   * source event, the moment the event reaches `EventState.Complete`:
+   * Maintain per-participant [[ParticipantProjection]] state as
+   * events/deltas flow through `publish`. Bug #26 — frames live on
+   * the events themselves (`Event.contextFrame`), so the publish
+   * pipeline only needs to project the participant-side state
+   * (recentTools, suggestedTools) here.
    *
-   *   - Atomic Complete events (e.g. a user-typed Message, a
-   *     `find_capability` ToolResults) — the Event branch appends
-   *     directly.
-   *   - Events that start Active and settle later via a Delta (streaming
-   *     Message, in-flight ToolInvoke) — the Delta branch re-reads the
-   *     target post-apply. If it's now Complete, append.
+   * Updates fire exactly once per source event, the moment the
+   * event reaches `EventState.Complete`:
    *
-   * Idempotency: `appendToViewIfNew` guards against double-appends by
-   * checking whether a frame with the same `sourceEventId` already exists.
-   * Deltas that don't complete their target, or events that are still
-   * Active, fall through as no-ops.
+   *   - Atomic Complete events — apply directly.
+   *   - Events that start Active and settle later via a Delta —
+   *     the Delta branch re-reads the target post-apply.
    */
   private final def updateView(signal: Signal): Task[Unit] = signal match {
     case e: Event if e.state == EventState.Complete =>
-      appendToViewIfNew(e)
+      applyParticipantProjectionFor(e)
     case d: sigil.signal.Delta =>
       withDB(_.events.transaction(_.get(d.target.asInstanceOf[Id[Event]]))).flatMap {
-        case Some(target) if target.state == EventState.Complete => appendToViewIfNew(target)
+        case Some(target) if target.state == EventState.Complete => applyParticipantProjectionFor(target)
         case _ => Task.unit
       }
     case _ => Task.unit
   }
 
-  /** Append `event`'s frame(s) and participant-projection updates to the
-    * conversation's view, creating the view if it doesn't yet exist.
-    * Idempotent — if a frame for `event._id` already exists in the view
-    * the modify returns unchanged.
-    *
-    * Honors `Conversation.clearedAt`: events whose timestamp is at or
-    * before the most-recent clear watermark don't append to the view
-    * (they live in `db.events` for audit but stay out of the
-    * UI-facing projection). New events emitted after the clear flow
-    * through normally — their timestamps are strictly greater than
-    * the watermark by construction. */
-  private final def appendToViewIfNew(event: Event): Task[Unit] =
-    withDB(_.conversations.transaction(_.get(event.conversationId))).flatMap { convOpt =>
-      val watermark = convOpt.flatMap(_.clearedAt).map(_.value).getOrElse(0L)
-      if (event.timestamp.value <= watermark) Task.unit
-      else withDB(_.views.transaction(_.modify(ConversationView.idFor(event.conversationId)) {
-        case Some(view) if view.frames.exists(_.sourceEventId == event._id) =>
-          Task.pure(Some(view))
-        case Some(view) =>
-          val nextFrames = FrameBuilder.appendFor(view.frames, event)
-          val nextProjections = FrameBuilder.updateProjections(view.participantProjections, event)
-          Task.pure(Some(view.copy(
-            frames = nextFrames,
-            participantProjections = nextProjections,
-            modified = Timestamp(Nowish())
-          )))
-        case None =>
-          val seeded = ConversationView(
-            conversationId = event.conversationId,
-            frames = FrameBuilder.appendFor(Vector.empty, event),
-            participantProjections = FrameBuilder.updateProjections(Map.empty, event),
-            _id = ConversationView.idFor(event.conversationId)
-          )
-          Task.pure(Some(seeded))
-      })).unit
-    }
-
-  // -- view / summary helpers --
-
-  /** Fetch the [[ConversationView]] for a conversation, returning an empty
-    * seed (no frames, no projections) if one hasn't been materialized yet.
-    * Empty views are NOT persisted — the view only lands on disk once a
-    * Complete event exists to anchor it. */
-  def viewFor(conversationId: Id[Conversation]): Task[ConversationView] =
-    withDB(_.views.transaction(_.get(ConversationView.idFor(conversationId)))).map {
-      case Some(view) => view
-      case None => ConversationView(
-        conversationId = conversationId,
-        _id = ConversationView.idFor(conversationId)
-      )
-    }
-
-  /** Drop the existing view (if any) and rebuild it by folding every
-    * Complete event for the conversation through [[FrameBuilder]]. Useful
-    * for recovery, schema migrations, and tests.
-    *
-    * Returns the newly-materialized view. */
-  def rebuildView(conversationId: Id[Conversation]): Task[ConversationView] =
-    withDB(_.conversations.transaction(_.get(conversationId))).flatMap { convOpt =>
-      val clearedAt = convOpt.flatMap(_.clearedAt).map(_.value).getOrElse(0L)
-      withDB(_.events.transaction(_.list)).flatMap { all =>
-        val events = all
-          .filter(_.conversationId == conversationId)
-          // Watermark filter — events emitted at-or-before the
-          // last `clearConversation` call don't appear in the
-          // projection. The events themselves remain in
-          // `db.events` for audit / recovery; the watermark just
-          // hides them from the UI-facing view. New events
-          // (timestamps strictly greater than `clearedAt`) flow
-          // through unchanged.
-          .filter(_.timestamp.value > clearedAt)
-          .sortBy(_.timestamp.value)
-          .toVector
-        val complete = events.filter(_.state == EventState.Complete)
-        val frames = FrameBuilder.build(complete)
-        val projections = complete
-          .foldLeft(Map.empty[ParticipantId, ParticipantProjection])(FrameBuilder.updateProjections)
-        val rebuilt = ConversationView(
-          conversationId = conversationId,
-          frames = frames,
-          participantProjections = projections,
-          _id = ConversationView.idFor(conversationId)
-        )
-        for {
-          _ <- withDB(_.views.transaction(_.upsert(rebuilt)))
-          // Re-apply Mode-source skill for the most recent Complete ModeChange.
-          withSkill <- {
-            val latestMode = complete.reverseIterator.collectFirst { case mc: ModeChange => mc }
-            latestMode.fold(Task.pure(rebuilt)) { mc =>
-              applyModeSkill(mc).flatMap(_ => viewFor(conversationId))
-            }
+  /** Apply the participant-side projection updates implied by `event`
+    * to the relevant [[ParticipantProjection]] record. Runs only on
+    * Complete events. */
+  private final def applyParticipantProjectionFor(event: Event): Task[Unit] =
+    event match {
+      case ti: ToolInvoke =>
+        updateProjection(ti.conversationId, ti.participantId) { proj =>
+          proj.copy(recentTools = ti.toolName :: proj.recentTools.filterNot(_ == ti.toolName))
+        }
+      case tr: ToolResults =>
+        updateProjection(tr.conversationId, tr.participantId) { proj =>
+          proj.copy(suggestedTools = tr.schemas.map(_.name).toList)
+        }
+      case cr: CapabilityResults =>
+        updateProjection(cr.conversationId, cr.participantId) { proj =>
+          val toolNames = cr.matches.collect {
+            case m if m.capabilityType == sigil.tool.discovery.CapabilityType.Tool => sigil.tool.ToolName(m.name)
           }
-        } yield withSkill
+          proj.copy(suggestedTools = toolNames)
+        }
+      case _ => Task.unit
+    }
+
+  // -- projection helpers --
+
+  /** Fetch the [[ParticipantProjection]] for `(participantId, conversationId)`,
+    * returning an empty seed if one hasn't been materialized yet. Empty
+    * projections are NOT persisted — the projection only lands on disk
+    * once an event drives an update. */
+  def projectionFor(participantId: ParticipantId,
+                    conversationId: Id[Conversation]): Task[ParticipantProjection] =
+    withDB(_.participantProjections.transaction(_.get(ParticipantProjection.idFor(participantId, conversationId)))).map {
+      case Some(p) => p
+      case None    => ParticipantProjection.empty(participantId, conversationId)
+    }
+
+  /** Materialize the rolling-window frames for a conversation by querying
+    * `db.events` for Complete events with a non-empty
+    * [[Event.contextFrame]], honoring the conversation's `clearedAt`
+    * watermark. Returns frames in chronological (timestamp-ascending)
+    * order.
+    *
+    * Bug #26 — replaces the legacy `viewFor` / `view.frames` lookup. */
+  def framesFor(conversationId: Id[Conversation]): Task[Vector[ContextFrame]] =
+    withDB(_.conversations.transaction(_.get(conversationId))).flatMap { convOpt =>
+      val watermark = convOpt.flatMap(_.clearedAt).map(_.value).getOrElse(0L)
+      withDB(_.events.transaction(_.list)).map { all =>
+        all.iterator
+          .filter(_.conversationId == conversationId)
+          .filter(_.timestamp.value > watermark)
+          .filter(_.state == EventState.Complete)
+          .toVector
+          .sortBy(_.timestamp.value)
+          .flatMap(_.contextFrame)
       }
     }
 
-  /** Update a participant's [[ParticipantProjection]] on the conversation's
-    * view. If the view doesn't exist yet, an empty one is seeded so the
-    * projection has a durable home. Use this from curators, tools, or any
-    * app code that needs to mutate per-participant projection state. */
+  /** Fetch the [[EncodedContext]] cache row for this `(agentId,
+    * conversationId, modelId)` triple, returning a fresh empty row if
+    * none exists. Bug #26 — the curator looks this up per turn,
+    * appends since-cursor frames via the active provider's
+    * [[sigil.provider.Provider.appendFrame]], and persists the result.
+    * Cache misses (no row, or `builtThrough` behind newest event id)
+    * trigger an incremental rebuild.
+    *
+    * The cache shape is opaque to the framework — only the provider
+    * that wrote the bytes understands them. Cross-model mixing is
+    * structurally impossible because `modelId` is part of the cache
+    * key. */
+  def encodedContextFor(agentId: ParticipantId,
+                        conversationId: Id[Conversation],
+                        modelId: Id[Model]): Task[EncodedContext] =
+    withDB(_.encodedContexts.transaction(_.get(EncodedContext.idFor(agentId, conversationId, modelId)))).map {
+      case Some(c) => c
+      case None    => EncodedContext.empty(agentId, conversationId, modelId)
+    }
+
+  /** Persist (or upsert) an [[EncodedContext]] cache row. Returns the
+    * stored record (with `modified` and `lastAccessedAt` bumped to
+    * `now()`). Apps that drive their own cache flows call this after
+    * incrementally appending; the framework's curator does so
+    * automatically. */
+  def saveEncodedContext(cache: EncodedContext): Task[EncodedContext] = {
+    val now = Timestamp(Nowish())
+    val updated = cache.copy(modified = now, lastAccessedAt = now)
+    withDB(_.encodedContexts.transaction(_.upsert(updated)))
+  }
+
+  /** Update a participant's [[ParticipantProjection]] in the projections
+    * collection. Creates a fresh empty projection (with the deterministic
+    * derived id) if none exists. Use from curators, tools, or any app
+    * code that needs to mutate per-participant projection state. */
   def updateProjection(conversationId: Id[Conversation], participantId: ParticipantId)
                       (f: ParticipantProjection => ParticipantProjection): Task[Unit] =
-    withDB(_.views.transaction(_.modify(ConversationView.idFor(conversationId)) {
-      case Some(view) =>
-        Task.pure(Some(view
-          .updateParticipant(participantId)(f)
-          .copy(modified = Timestamp(Nowish()))))
+    withDB(_.participantProjections.transaction(_.modify(ParticipantProjection.idFor(participantId, conversationId)) {
+      case Some(proj) =>
+        Task.pure(Some(f(proj).copy(modified = Timestamp(Nowish()))))
       case None =>
-        val seeded = ConversationView(
-          conversationId = conversationId,
-          participantProjections = Map(participantId -> f(ParticipantProjection())),
-          _id = ConversationView.idFor(conversationId)
-        )
-        Task.pure(Some(seeded))
+        Task.pure(Some(f(ParticipantProjection.empty(participantId, conversationId))
+          .copy(modified = Timestamp(Nowish()))))
     })).unit
 
   /** Convenience: set (or replace) a skill slot for a participant. Discovery
@@ -2761,8 +2818,8 @@ trait Sigil {
     conversationId match {
       case None => Task.pure(None)
       case Some(convId) =>
-        viewFor(convId).map { view =>
-          view.frames.reverseIterator.collectFirst {
+        framesFor(convId).map { frames =>
+          frames.reverseIterator.collectFirst {
             case t: sigil.conversation.ContextFrame.Text
               if !t.participantId.isInstanceOf[sigil.participant.AgentParticipantId] => t.content
           }
@@ -3460,7 +3517,20 @@ trait Sigil {
                }
              }
            }
-      _ <- withDB(_.views.transaction(_.delete(ConversationView.idFor(conversationId))))
+      _ <- withDB { db =>
+             db.participantProjections.transaction { tx =>
+               tx.query.filter(_.conversationId === conversationId).toList.flatMap { projections =>
+                 Task.sequence(projections.map(p => tx.delete(p._id))).unit
+               }
+             }
+           }
+      _ <- withDB { db =>
+             db.encodedContexts.transaction { tx =>
+               tx.query.filter(_.conversationId === conversationId).toList.flatMap { caches =>
+                 Task.sequence(caches.map(c => tx.delete(c._id))).unit
+               }
+             }
+           }
       _ <- withDB { db =>
              db.topics.transaction { tx =>
                tx.query.filter(_.conversationId === conversationId).toList.flatMap { topics =>
@@ -3473,18 +3543,18 @@ trait Sigil {
   /**
    * Clear a conversation's visible history without deleting the
    * conversation. Sets a `clearedAt` watermark on the
-   * [[Conversation]] record; subsequent view rebuilds and
-   * frame-append paths filter out events emitted at-or-before that
-   * watermark. The events themselves stay in [[sigil.db.SigilDB.events]]
-   * for audit — this is a soft clear, not a hard delete.
+   * [[Conversation]] record; the curator's `framesFor` query honors
+   * the watermark by filtering out events at or before it. The
+   * events themselves stay in [[sigil.db.SigilDB.events]] for audit
+   * — this is a soft clear, not a hard delete.
    *
    * After clearing:
-   *   - [[ConversationView.frames]] is empty.
+   *   - [[Sigil.framesFor]] returns no frames at-or-before the watermark.
    *   - Per-participant projections (suggested tools, recent tools)
-   *     reset to defaults.
+   *     are deleted from `db.participantProjections`.
+   *   - Encoded-context caches for the conversation are evicted so
+   *     the next turn rebuilds against the post-clear event range.
    *   - New events added after the clear flow through normally.
-   *   - The agent's curator sees only post-clear events; no
-   *     pre-clear context leaks into the model's prompt.
    *
    * Broadcasts a [[sigil.signal.ConversationCleared]] Notice so
    * live viewers can reset their UI. Apps that need a hard purge
@@ -3502,16 +3572,20 @@ trait Sigil {
       case None => Task.unit  // no conversation to clear — silent no-op
       case Some(_) =>
         for {
-          // Reset the projection to empty; new events appended
-          // after this point flow through `appendToViewIfNew`,
-          // which will see the watermark and treat them as
-          // post-clear.
-          _ <- withDB(_.views.transaction(_.upsert(ConversationView(
-                 conversationId = conversationId,
-                 frames = Vector.empty,
-                 participantProjections = Map.empty,
-                 _id = ConversationView.idFor(conversationId)
-               ))))
+          _ <- withDB { db =>
+                 db.participantProjections.transaction { tx =>
+                   tx.query.filter(_.conversationId === conversationId).toList.flatMap { projections =>
+                     Task.sequence(projections.map(p => tx.delete(p._id))).unit
+                   }
+                 }
+               }
+          _ <- withDB { db =>
+                 db.encodedContexts.transaction { tx =>
+                   tx.query.filter(_.conversationId === conversationId).toList.flatMap { caches =>
+                     Task.sequence(caches.map(c => tx.delete(c._id))).unit
+                   }
+                 }
+               }
           _ <- publish(sigil.signal.ConversationCleared(
                  conversationId = conversationId,
                  clearedAt      = now,
@@ -3717,7 +3791,7 @@ trait Sigil {
         // the snapshot (which the agent saw in its roster this turn)
         // decays — suggestions live for exactly ONE turn; an agent that
         // doesn't call what it discovered loses it.
-        viewFor(convId).map(_.projectionFor(agent.id).suggestedTools).flatMap { suggestedSnapshot =>
+        projectionFor(agent.id, convId).map(_.suggestedTools).flatMap { suggestedSnapshot =>
           buildContext(agent, conv, sinceTimestamp = sinceTimestamp, claimedId = claimed._id).flatMap {
             case (ctx, triggers) =>
               // Wrap the agent's signal stream with a force-stop check so a
@@ -3869,8 +3943,8 @@ trait Sigil {
   private final def decaySuggestedTools(conversationId: Id[Conversation],
                                          agentId: ParticipantId,
                                          snapshot: List[sigil.tool.ToolName]): Task[Unit] =
-    viewFor(conversationId).flatMap { view =>
-      val current = view.projectionFor(agentId).suggestedTools
+    projectionFor(agentId, conversationId).flatMap { proj =>
+      val current = proj.suggestedTools
       if (current == snapshot && current.nonEmpty)
         updateProjection(conversationId, agentId)(_.copy(suggestedTools = Nil))
       else Task.unit
@@ -3900,8 +3974,6 @@ trait Sigil {
                                  sinceTimestamp: Timestamp,
                                  claimedId: Id[Event]): Task[(TurnContext, Stream[Event])] =
     for {
-      rawView <- viewFor(conv._id)
-      view = rawView.copy(frames = rawView.frames.filter(f => visibilityAllows(f.visibility, agent.id)))
       triggerEvents <- withDB(_.events.transaction(_.list)).map { all =>
         all.view
           .filter(e => e.conversationId == conv._id
@@ -3911,14 +3983,13 @@ trait Sigil {
           .toList
       }
       chain = buildChain(triggerEvents, agent)
-      input <- curate(view, agent.modelId, chain)
+      input <- curate(conv._id, agent.modelId, chain)
     } yield {
       val triggers: Stream[Event] = Stream.emits(triggerEvents)
       val ctx = TurnContext(
         sigil = this,
         chain = chain,
         conversation = conv,
-        conversationView = view,
         turnInput = input,
         currentAgentStateId = Some(claimedId)
       )

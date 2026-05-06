@@ -43,8 +43,8 @@ object MemoryHeavyBench {
         )
       }.toVector
 
-      val view = ProfilerHarness.viewWith(frames)
-      val req = ProfilerHarness.buildRequest(view, tools)
+      val view = (frames, Map.empty[sigil.participant.ParticipantId, sigil.conversation.ParticipantProjection])
+      val req = ProfilerHarness.buildRequest(view._1, view._2, tools)
       ProfilerHarness.profile(req, ProfilerHarness.resolved(critical = criticalMemories, retrieved = retrieved))
     }
 

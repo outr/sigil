@@ -6,7 +6,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.{GlobalSpace, TurnContext}
-import sigil.conversation.{Conversation, ConversationView, Topic, TopicEntry, TurnInput}
+import sigil.conversation.{Conversation, Topic, TopicEntry, TurnInput}
 import sigil.event.Event
 import sigil.participant.ParticipantId
 import sigil.script.{ExecuteScriptTool, ScriptInput, ScriptResult, ScriptTool, ScriptExecutor}
@@ -78,7 +78,6 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
   private def ctx(suffix: String): TurnContext = {
     val convId = Conversation.id(s"recover-$suffix-${rapid.Unique()}")
     val topic = Topic(conversationId = convId, label = "Recovery", summary = "Test", createdBy = TestScriptUser)
-    val view = ConversationView(conversationId = convId, _id = ConversationView.idFor(convId))
     TurnContext(
       sigil = TestScriptSigil,
       chain = List(TestScriptUser, TestScriptAgent),
@@ -86,8 +85,7 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
         topics = List(TopicEntry(topic._id, topic.label, topic.summary)),
         _id = convId
       ),
-      conversationView = view,
-      turnInput = TurnInput(view)
+      turnInput = TurnInput(conversationId = convId)
     )
   }
 

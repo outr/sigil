@@ -7,7 +7,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.Sigil
-import sigil.conversation.{ContextFrame, ContextMemory, Conversation, ConversationView, TurnInput}
+import sigil.conversation.{ConversationView, ContextFrame, ContextMemory, Conversation, TurnInput}
 import sigil.conversation.compression.extract.MemoryExtractor
 import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
 import sigil.event.Event
@@ -107,8 +107,7 @@ class OrchestratorMemoryExtractionSpec extends AsyncWordSpec with AsyncTaskSpec 
           content = userText,
           participantId = TestUser,
           sourceEventId = Id[Event]("seed")
-        )),
-        _id = ConversationView.idFor(convId)
+        ))
       )
       val request = ConversationRequest(
         conversationId = convId,

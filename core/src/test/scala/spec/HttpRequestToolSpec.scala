@@ -7,7 +7,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.TurnContext
-import sigil.conversation.{Conversation, ConversationView, TopicEntry, TurnInput}
+import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
 import sigil.tool.model.HttpRequestInput
 import sigil.tool.web.HttpRequestTool
 
@@ -79,7 +79,6 @@ class HttpRequestToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       topics = List(TopicEntry(TestTopicId, "test", "test")),
       _id    = convId
     ),
-    conversationView = ConversationView(conversationId = convId),
     turnInput        = TurnInput(ConversationView(conversationId = convId))
   )
 

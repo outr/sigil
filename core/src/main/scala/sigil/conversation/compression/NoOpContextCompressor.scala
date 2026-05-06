@@ -1,7 +1,7 @@
 package sigil.conversation.compression
 
 import lightdb.id.Id
-import rapid.Task
+import rapid.{Stream, Task}
 import sigil.Sigil
 import sigil.conversation.{ContextFrame, ContextSummary, Conversation}
 import sigil.db.Model
@@ -14,9 +14,9 @@ import sigil.participant.ParticipantId
  */
 object NoOpContextCompressor extends ContextCompressor {
   override def compress(sigil: Sigil,
-                        modelId: Id[Model],
+                        callerModelId: Id[Model],
                         chain: List[ParticipantId],
-                        frames: Vector[ContextFrame],
+                        frames: Stream[ContextFrame],
                         conversationId: Id[Conversation]): Task[Option[ContextSummary]] =
     Task.pure(None)
 }

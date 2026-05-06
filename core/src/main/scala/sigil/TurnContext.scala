@@ -1,7 +1,7 @@
 package sigil
 
 import lightdb.id.Id
-import sigil.conversation.{Conversation, ConversationView, TurnInput}
+import sigil.conversation.{Conversation, TurnInput}
 import sigil.event.Event
 import sigil.participant.ParticipantId
 import sigil.signal.ToolProgress
@@ -26,14 +26,13 @@ import sigil.tool.ToolName
  *                            doing the work); earlier entries are the
  *                            authority lineage.
  * @param conversation        the conversation being acted upon.
- * @param conversationView    the materialized per-conversation projection
- *                            (rolling frames + participant projections).
- *                            Maintained by `Sigil.publish` and read cheaply
- *                            here as a point-lookup.
- * @param turnInput           the curator's per-turn output — memory /
+ * @param turnInput           the curator's per-turn output — frames,
+ *                            per-participant projections, memory /
  *                            summary / information selections plus any
- *                            app-supplied overlays. Wraps the view so
- *                            providers only need one object.
+ *                            app-supplied overlays. The single
+ *                            self-contained DTO every provider call
+ *                            renders from (bug #26 — replaces the
+ *                            prior `conversationView` projection).
  * @param currentAgentStateId the id of the active [[sigil.event.AgentState]]
  *                            for the agent processing this turn, when
  *                            applicable. Set by the framework's dispatcher
@@ -74,7 +73,6 @@ import sigil.tool.ToolName
 case class TurnContext(sigil: Sigil,
                        chain: List[ParticipantId],
                        conversation: Conversation,
-                       conversationView: ConversationView,
                        turnInput: TurnInput,
                        currentAgentStateId: Option[Id[Event]] = None,
                        currentMessageId: Option[Id[Event]] = None,
@@ -86,6 +84,15 @@ case class TurnContext(sigil: Sigil,
    * The participant currently acting — `chain.last`.
    */
   def caller: ParticipantId = chain.last
+
+  /**
+   * Convenience: derive a transient [[sigil.conversation.ConversationView]]
+   * from `turnInput`. The hot path no longer carries a persisted view;
+   * `turnInput` packs `conversationId` + `frames` +
+   * `participantProjections` directly. Callers that prefer the older
+   * "view" shape access it through this accessor.
+   */
+  def conversationView: _root_.sigil.conversation.ConversationView = turnInput.conversationView
 
   /**
    * Publish a mid-execution progress pulse for the currently-dispatching

@@ -35,8 +35,8 @@ object CompressionTriggerBench {
     }
 
     val rawProfiles = cumulativeFrames.map { frames =>
-      val view = ProfilerHarness.viewWith(frames)
-      val req = ProfilerHarness.buildRequest(view, tools)
+      val view = (frames, Map.empty[sigil.participant.ParticipantId, sigil.conversation.ParticipantProjection])
+      val req = ProfilerHarness.buildRequest(view._1, view._2, tools)
       ProfilerHarness.profile(req)
     }.toVector
 
@@ -55,14 +55,8 @@ object CompressionTriggerBench {
 
     val compressedProfiles = cumulativeFrames.zipWithIndex.map { case (frames, idx) =>
       val turnNumber = idx + 1
-      val view = if (turnNumber <= compressionPoint) {
-        ProfilerHarness.viewWith(frames)
-      } else {
-        // Drop the first 15 turns × 4 frames each = 60 frames; keep the rest.
-        val keptFrames = frames.drop(60)
-        ProfilerHarness.viewWith(keptFrames)
-      }
-      val req = ProfilerHarness.buildRequest(view, tools)
+      val keptFrames = if (turnNumber <= compressionPoint) frames else frames.drop(60)
+      val req = ProfilerHarness.buildRequest(keptFrames, Map.empty, tools)
       val refs = if (turnNumber > compressionPoint)
         ProfilerHarness.resolved(summaries = Vector(summaryRecord))
       else ProfilerHarness.resolved()

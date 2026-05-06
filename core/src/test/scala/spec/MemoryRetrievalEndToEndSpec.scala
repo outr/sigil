@@ -5,7 +5,7 @@ import lightdb.time.Timestamp
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
-import sigil.conversation.{ContextFrame, ContextMemory, Conversation, ConversationView, MemorySource, TurnInput}
+import sigil.conversation.{ConversationView, ContextFrame, ContextMemory, Conversation, MemorySource, TurnInput}
 import sigil.conversation.compression.{NoOpBlockExtractor, NoOpContextCompressor, Percentage, StandardContextCurator, StandardContextOptimizer, StandardMemoryRetriever}
 import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
 import sigil.event.Event
@@ -101,8 +101,7 @@ class MemoryRetrievalEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with 
           content = question,
           participantId = TestUser,
           sourceEventId = Id[Event]("q-1")
-        )),
-        _id = ConversationView.idFor(convId)
+        ))
       )
 
       val curator = StandardContextCurator(
@@ -114,7 +113,7 @@ class MemoryRetrievalEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with 
         budget = Percentage(0.8)
       )
 
-      curator.curate(view, modelId, chain = List(TestUser, TestAgent)).flatMap { turnInput =>
+      curator.curate(view.conversationId, modelId, chain = List(TestUser, TestAgent)).flatMap { turnInput =>
         withClue(s"retrieved ids: ${turnInput.memories.map(_.value).mkString(",")}") {
           turnInput.memories should contain(persistedMemory._id)
         }

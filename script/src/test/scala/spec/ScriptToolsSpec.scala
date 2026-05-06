@@ -5,7 +5,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
-import sigil.conversation.{Conversation, ConversationView, TurnInput}
+import sigil.conversation.{Conversation, TurnInput}
 import sigil.script.ScriptTools
 import sigil.tool.{InMemoryToolFinder, ToolExample, ToolInput, ToolName, TypedOutputTool}
 
@@ -24,8 +24,7 @@ class ScriptToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     sigil            = ScriptToolsTestSigil,
     chain            = List(TestScriptUser),
     conversation     = Conversation(topics = List(testTopic), _id = convId),
-    conversationView = ConversationView(conversationId = convId),
-    turnInput        = TurnInput(ConversationView(conversationId = convId))
+    turnInput        = TurnInput(conversationId = convId)
   )
 
   "ScriptTools" should {
@@ -112,9 +111,9 @@ object ScriptToolsTestSigil
     List(RW.static(TestScriptUser))
   override val findTools: sigil.tool.ToolFinder = InMemoryToolFinder(List(EchoTool))
   override def staticTools: List[sigil.tool.Tool] = Nil
-  override def curate(view: ConversationView,
+  override def curate(conversationId: lightdb.id.Id[Conversation],
                       modelId: lightdb.id.Id[sigil.db.Model],
-                      chain: List[sigil.participant.ParticipantId]): Task[TurnInput] = Task.pure(TurnInput(view))
+                      chain: List[sigil.participant.ParticipantId]): Task[TurnInput] = Task.pure(TurnInput(conversationId = conversationId))
   override def getInformation(id: lightdb.id.Id[sigil.information.Information]): Task[Option[sigil.information.Information]] = Task.pure(None)
   override def putInformation(information: sigil.information.Information): Task[Unit] = Task.unit
   override def compressionMemorySpace(conversationId: lightdb.id.Id[Conversation]): Task[Option[sigil.SpaceId]] = Task.pure(None)

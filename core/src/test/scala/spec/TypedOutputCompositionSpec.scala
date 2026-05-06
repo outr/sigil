@@ -6,7 +6,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
-import sigil.conversation.{Conversation, ConversationView, TopicEntry, TurnInput}
+import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
 import sigil.event.{ToolResults, Event}
 import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
 import sigil.tool.fs.{BashTool, LocalFileSystemContext}
@@ -41,7 +41,6 @@ class TypedOutputCompositionSpec extends AsyncWordSpec with AsyncTaskSpec with M
       sigil            = TestSigil,
       chain            = List(TestUser),
       conversation     = conv,
-      conversationView = ConversationView(conversationId = convId),
       turnInput        = TurnInput(ConversationView(conversationId = convId))
     )
   }

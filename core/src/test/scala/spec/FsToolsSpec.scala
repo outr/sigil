@@ -6,7 +6,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
-import sigil.conversation.{Conversation, ConversationView, TopicEntry, TurnInput}
+import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
 import sigil.event.{Message, ToolResults}
 import sigil.tool.fs.{BashTool, DeleteFileTool, EditFileTool, FileSystemContext, GlobTool, GrepTool, LocalFileSystemContext, ReadFileTool, WriteFileTool}
 import sigil.tool.model.{BashInput, BashOutput, DeleteFileInput, DeleteFileOutput, EditFileInput, EditFileOutput, GlobInput, GlobOutput, GrepInput, GrepOutput, ReadFileInput, ReadFileOutput, ResponseContent, WriteFileInput, WriteFileOutput}
@@ -46,7 +46,6 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       sigil            = TestSigil,
       chain            = List(TestUser),
       conversation    = conv,
-      conversationView = ConversationView(conversationId = convId),
       turnInput        = TurnInput(ConversationView(conversationId = convId))
     )
   }

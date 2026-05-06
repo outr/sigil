@@ -6,7 +6,7 @@ import lightdb.upgrade.DatabaseUpgrade
 import profig.Profig
 import rapid.Task
 import sigil.{GlobalSpace, Sigil, SpaceId}
-import sigil.conversation.{Conversation, ConversationView, TurnInput}
+import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.{DefaultSigilDB, Model, SigilDB}
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
 import sigil.information.Information
@@ -42,9 +42,9 @@ object TestScriptSigil extends Sigil with ScriptSigil {
   override val findTools: ToolFinder = InMemoryToolFinder(Nil)
   override def staticTools: List[Tool] = Nil
 
-  override def curate(view: ConversationView,
+  override def curate(conversationId: lightdb.id.Id[Conversation],
                       modelId: lightdb.id.Id[Model],
-                      chain: List[ParticipantId]): Task[TurnInput] = Task.pure(TurnInput(view))
+                      chain: List[ParticipantId]): Task[TurnInput] = Task.pure(TurnInput(conversationId = conversationId))
 
   override def getInformation(id: lightdb.id.Id[Information]): Task[Option[Information]] = Task.pure(None)
   override def putInformation(information: Information): Task[Unit] = Task.unit
