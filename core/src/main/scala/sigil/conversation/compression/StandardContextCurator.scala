@@ -142,25 +142,38 @@ case class StandardContextCurator(sigil: Sigil,
             val afterStage2 = afterStage1.copy(information = keptInformation)
             if (tokensOf(afterStage2, frames, Vector.empty) <= cap) Task.pure(afterStage2)
             else {
-              // Stage 3 — frame compression. Existing path: split at
-              // mid-point, summarise the older half.
-              if (frames.size <= keepMinimum) Task.pure(afterStage2)
-              else {
-                val keep = math.max(keepMinimum, frames.size / 2)
-                val (older, newer) = frames.splitAt(frames.size - keep)
-                compressor.compress(sigil, modelId, chain, older, postBlockView.conversationId).map {
+              // Stage 3 — frame compression. Iterates: each pass keeps
+              // the newest half (or fewer when way over budget), re-
+              // summarises every dropped frame into one fresh summary,
+              // and re-checks. Termination: fits OR `kept.size <=
+              // keepMinimum` OR compressor returns None. A single split
+              // is insufficient for cases like a freshly-imported
+              // 9k-event Claude Code session where N/2 frames still
+              // overflow the model's context by orders of magnitude.
+              shedFramesIteratively(
+                kept = frames,
+                droppedSoFar = Vector.empty,
+                summaryCarry = None,
+                cap = cap,
+                modelId = modelId,
+                chain = chain,
+                conversationId = postBlockView.conversationId,
+                tokensOfKept = (kept, summaryOpt) =>
+                  tokensOf(afterStage2, kept, summaryOpt.toVector)
+              ).map { case (newerKept, summaryOpt) =>
+                summaryOpt match {
                   case Some(summary) =>
                     TurnInput(
-                      conversationView = postBlockView.copy(frames = newer),
+                      conversationView = postBlockView.copy(frames = newerKept),
                       criticalMemories = memoryResult.criticalMemories,
                       memories = afterStage2.memories,
                       summaries = Vector(summary._id),
                       information = keptInformation
                     )
                   case None =>
-                    // Compressor declined / failed — return Stage 2's
-                    // result. Provider pre-flight gate is the next line
-                    // of defence.
+                    // Compressor declined / failed at the first
+                    // attempt — return Stage 2's result. Provider
+                    // pre-flight gate is the next line of defence.
                     afterStage2
                 }
               }
@@ -168,6 +181,61 @@ case class StandardContextCurator(sigil: Sigil,
           }
         }
     }
+
+  /** Iterative Stage 3 shed. Each pass:
+    *   1. checks the current `(kept, summaryCarry)` against `cap` —
+    *      stop when fits, when `kept.size <= keepMinimum` (floor), or
+    *      when the compressor declines.
+    *   2. picks `keep`: when current tokens exceed `cap * 3`,
+    *      collapse aggressively to `keepMinimum` so a freshly-imported
+    *      9k-event history doesn't hit the budget after 12 halvings of
+    *      compress calls; otherwise standard halving.
+    *   3. splits, accumulates the dropped frames (`droppedSoFar ++ older`)
+    *      and re-compresses the full dropped set into ONE fresh summary —
+    *      callers see at most one summary regardless of iteration depth.
+    *
+    * `tokensOfKept` is closed over `afterStage2`'s memory / information
+    * shape so each iteration's check uses the actually-rendered cost.
+    */
+  private def shedFramesIteratively(kept: Vector[ContextFrame],
+                                    droppedSoFar: Vector[ContextFrame],
+                                    summaryCarry: Option[ContextSummary],
+                                    cap: Int,
+                                    modelId: Id[Model],
+                                    chain: List[ParticipantId],
+                                    conversationId: Id[_root_.sigil.conversation.Conversation],
+                                    tokensOfKept: (Vector[ContextFrame], Option[ContextSummary]) => Int)
+      : Task[(Vector[ContextFrame], Option[ContextSummary])] = {
+    val current = tokensOfKept(kept, summaryCarry)
+    if (current <= cap || kept.size <= keepMinimum) Task.pure((kept, summaryCarry))
+    else {
+      val aggressive = current > cap * 3
+      val keep =
+        if (aggressive) keepMinimum
+        else math.max(keepMinimum, kept.size / 2)
+      val (older, newer) = kept.splitAt(kept.size - keep)
+      val toSummarize = droppedSoFar ++ older
+      compressor.compress(sigil, modelId, chain, toSummarize, conversationId).flatMap {
+        case Some(summary) =>
+          shedFramesIteratively(
+            kept = newer,
+            droppedSoFar = toSummarize,
+            summaryCarry = Some(summary),
+            cap = cap,
+            modelId = modelId,
+            chain = chain,
+            conversationId = conversationId,
+            tokensOfKept = tokensOfKept
+          )
+        case None =>
+          // Compressor declined this pass. Return what we have — if
+          // a prior pass produced a summary, the caller still wires
+          // that summary into the TurnInput; if this is the first
+          // pass, the caller falls back to the unshed Stage 2 result.
+          Task.pure((kept, summaryCarry))
+      }
+    }
+  }
 
   /** Resolve the criticalMemories / memories id buckets from a
     * [[MemoryRetrievalResult]] to full records via the DB. Same lookup
