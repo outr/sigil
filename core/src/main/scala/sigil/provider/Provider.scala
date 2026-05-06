@@ -9,7 +9,8 @@ import sigil.participant.ParticipantId
 import sigil.signal.WireRequestProfile
 import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
 import sigil.tool.Tool
-import sigil.tool.core.RespondTool
+import sigil.tool.core.{CoreTools, RespondTool}
+import sigil.tool.core.CoreTools.atomicContentToolNames
 import sigil.render.MarkdownRenderer
 import sigil.tool.model.ResponseContent
 import spice.http.HttpRequest
@@ -471,7 +472,7 @@ trait Provider {
     * [[sigil.conversation.FrameBuilder]]), so UI-only history never
     * reaches this renderer.
     */
-  private def renderFrames(frames: Vector[ContextFrame],
+  protected[provider] def renderFrames(frames: Vector[ContextFrame],
                            agentId: Option[ParticipantId]): Vector[ProviderMessage] = {
     val out = Vector.newBuilder[ProviderMessage]
     var pendingToolCallId: Option[String] = None
@@ -502,7 +503,24 @@ trait Provider {
             argsJson = argsJson
           ))
         )
-        pendingToolCallId = Some(callId.value)
+        // Atomic content tools (`respond_options`, `respond_field`,
+        // `respond_card`, etc. — see `CoreTools.atomicContentToolNames`)
+        // emit a `Standard`-role `Message` instead of a `Tool`-role
+        // `ToolResults`, so no `ContextFrame.ToolResult` is ever
+        // produced for the call. OpenAI's Responses API strictly
+        // requires every `function_call` to be followed by a
+        // `function_call_output` carrying the same `call_id` —
+        // unsatisfied calls cause a 400 on the next request. Pair
+        // each atomic call with an empty synthetic output so the
+        // wire shape is satisfied; chat-side surface is unaffected
+        // (the rendered Message is the user-facing artifact). RespondTool
+        // is special-cased above (its function_call is dropped entirely
+        // since the next Text frame IS the response).
+        if (atomicContentToolNames.contains(toolName)) {
+          out += ProviderMessage.ToolResult(toolCallId = callId.value, content = "")
+        } else {
+          pendingToolCallId = Some(callId.value)
+        }
 
       case _: ContextFrame.ToolCall =>
       // ToolCall from someone else — skip (not rendered as a tool call for this agent).
