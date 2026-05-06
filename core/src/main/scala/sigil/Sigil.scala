@@ -1702,6 +1702,99 @@ trait Sigil {
   }
 
   /**
+   * Bulk-import historical events into a conversation. Persists +
+   * projects the batch, then emits a single
+   * [[sigil.signal.ConversationHistoryImported]] Notice carrying the
+   * conversation id and the count of events added.
+   *
+   * Skipped vs. [[publish]]: per-event `hub.emit`, [[fanOut]] (trigger
+   * evaluation), inbound transforms, and [[settledEffects]] do NOT run
+   * — these are *historical* events being seeded into context, not
+   * "happened just now" wire events. Persistence and projection still
+   * run so the conversation surfaces the events to subsequent reads.
+   *
+   * Caller is responsible for any follow-up triggering. Typical
+   * pattern: `publish` a Tool-role success Message after this resolves
+   * so the agent's normal trigger path fires once with the imported
+   * history fully in place.
+   *
+   * @param events         events to import, in source order. Each
+   *                       event's `conversationId` should match
+   *                       `conversationId`; mismatches are persisted
+   *                       under the event's own `conversationId`
+   *                       without complaint (caller's responsibility
+   *                       to validate if it cares).
+   * @param conversationId target conversation. Surfaced on the emitted
+   *                       notice so clients scope their refresh
+   *                       decision.
+   */
+  final def publishHistorical(events: Seq[sigil.event.Event],
+                              conversationId: Id[Conversation]): Task[Unit] =
+    if (events.isEmpty)
+      Task {
+        hub.emit(sigil.signal.ConversationHistoryImported(conversationId, 0))
+        ()
+      }
+    else {
+      val batches = events.grouped(1000).toList
+      val persistAll: Task[Unit] = Task.sequence(batches.map { batch =>
+        withDB(_.events.transaction { tx =>
+          Task.sequence(batch.toList.map(tx.upsert))
+        })
+      }).unit
+      for {
+        _ <- persistAll
+        _ <- coalescedProjectionFor(conversationId, events)
+        _ <- rebuildView(conversationId)
+        _ <- Task {
+               hub.emit(sigil.signal.ConversationHistoryImported(conversationId, events.size))
+               ()
+             }
+      } yield ()
+    }
+
+  /** Coalesced [[Conversation]] row update for a bulk import: applies
+    * the *last* [[ModeChange]] / [[TopicChange]] in the batch and adds
+    * the summed cost from imported [[Message]]s. Skips per-event
+    * [[sigil.signal.ConversationCostUpdated]] Notices — bulk imports
+    * are silent on the wire by design. */
+  private final def coalescedProjectionFor(conversationId: Id[Conversation],
+                                           events: Seq[sigil.event.Event]): Task[Unit] = {
+    val complete = events.filter(_.state == EventState.Complete)
+    val latestMode = complete.reverseIterator.collectFirst { case mc: ModeChange => mc }
+    val latestTopic = complete.reverseIterator.collectFirst { case tc: TopicChange => tc }
+    val totalCost: BigDecimal = complete.iterator.collect {
+      case m: Message =>
+        m.modelId.flatMap(cache.find).map { model =>
+          model.pricing.prompt * m.usage.promptTokens + model.pricing.completion * m.usage.completionTokens
+        }.getOrElse(BigDecimal(0))
+    }.foldLeft(BigDecimal(0))(_ + _)
+
+    val applyMode: Task[Unit] = latestMode match {
+      case None => Task.unit
+      case Some(mc) =>
+        withDB(_.conversations.transaction(_.modify(conversationId) {
+          case Some(conv) if conv.currentMode != mc.mode =>
+            Task.pure(Some(conv.copy(currentMode = mc.mode, modified = Timestamp(Nowish()))))
+          case other => Task.pure(other)
+        })).unit
+    }
+    val applyTopic: Task[Unit] = latestTopic match {
+      case None     => Task.unit
+      case Some(tc) => applyTopicChangeToStack(tc)
+    }
+    val applyCost: Task[Unit] =
+      if (totalCost <= 0) Task.unit
+      else withDB(_.conversations.transaction(_.modify(conversationId) {
+        case None => Task.pure(None)
+        case Some(conv) =>
+          Task.pure(Some(conv.copy(cost = conv.cost + totalCost, modified = Timestamp(Nowish()))))
+      })).unit
+
+    applyMode.flatMap(_ => applyTopic).flatMap(_ => applyCost)
+  }
+
+  /**
    * Single-target broadcast — deliver `signal` only to subscribers
    * registered with [[signalsFor]] at the given viewer. Used primarily
    * for [[sigil.signal.Notice]] replies / snapshots that should reach
