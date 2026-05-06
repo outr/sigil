@@ -147,14 +147,42 @@ trait Provider {
     case ProviderMessage.Reasoning(_, _, _) => 0  // provider-specific reasoning state
   }
 
-  /** Token cost of the wire tool roster: each tool's `descriptionFor`
-    * + JSON-schema metadata overhead (approximated by the description
-    * length itself — schema bodies are comparable in size for typical
-    * tools). */
-  private def estimateRoster(tools: Vector[Tool], tok: Tokenizer): Int =
-    tools.iterator.map(t =>
-      tok.count(t.schema.name.value) + tok.count(t.descriptionFor(ConversationMode, sigil)) + 30
-    ).sum
+  /** Token cost of the wire tool roster — name + description + the
+    * rendered JSON parameter schema body that actually ships on the
+    * wire. Bug #43 — the prior implementation approximated schema
+    * cost as a fixed +30 per tool, which severely undercounted any
+    * non-trivial input schema (often hundreds-to-thousands of
+    * tokens per tool for realistic agents). With the schema body
+    * undercounted, the pre-flight gate let requests through that
+    * subsequently overflowed at the provider.
+    *
+    * `DefinitionToSchema` produces the canonical JSON schema each
+    * provider then post-processes (strict-mode rewrites,
+    * provider-specific keyword stripping). Provider-side variations
+    * are second-order in size; counting the canonical schema gives
+    * an estimate within tokenization-noise of the actually-sent
+    * payload. Providers whose wire shape diverges materially can
+    * override [[estimateToolBytes]] for higher fidelity. */
+  protected def estimateRoster(tools: Vector[Tool], tok: Tokenizer): Int =
+    tools.iterator.map(estimateToolBytes(_, tok)).sum
+
+  /** Per-tool wire-shape estimate. Default counts name + description +
+    * the JSON-formatted parameter schema. Override for providers with
+    * extra per-tool metadata (Anthropic's `cache_control`, OpenAI's
+    * `strict` flag, etc.) — the framework's default already counts
+    * the schema body which is the dominant cost. */
+  protected def estimateToolBytes(tool: Tool, tok: Tokenizer): Int = {
+    val name        = tok.count(tool.schema.name.value)
+    val description = tok.count(tool.descriptionFor(ConversationMode, sigil))
+    val schemaJson  = fabric.io.JsonFormatter.Compact(
+      _root_.sigil.tool.DefinitionToSchema(tool.schema.input)
+    )
+    val schema      = tok.count(schemaJson)
+    // Wrapper overhead: `{"type":"function","name":"...","description":"...","parameters":{...}}`
+    // — keys + braces + colons. ~10 tokens depending on tokenizer.
+    val wrapper     = 12
+    name + description + schema + wrapper
+  }
 
   /** Emergency-shed: trim tool roster (cap descriptions or drop
     * un-essential tools) and drop oldest frames until the request
