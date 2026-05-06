@@ -62,6 +62,7 @@ case class Message(participantId: ParticipantId,
                    role: MessageRole = MessageRole.Standard,
                    override val visibility: MessageVisibility = MessageVisibility.All,
                    override val origin: Option[Id[Event]] = None,
+                   override val source: Option[String] = None,
                    _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)

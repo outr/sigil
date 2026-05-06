@@ -101,6 +101,29 @@ trait Event extends Signal with Document[Event] {
    * implements via its own `copy(origin = origin)`.
    */
   def withOrigin(origin: Option[Id[Event]]): Event
+
+  /**
+   * Origin attribution for this event. Distinct from
+   * [[sigil.event.Message.modelId]] (which answers "which model
+   * produced the content?"). `None` (default) means the event
+   * originated in this Sigil instance — a fresh provider call, a
+   * direct user input, a framework-emitted lifecycle pulse.
+   * `Some(<source>)` means the event was imported / replayed from
+   * another agent tool, a wire-log replay, or an exported session
+   * file.
+   *
+   * Convention (lowercase, hyphen-separated): `claude-code`,
+   * `cursor`, `openhands`, `wire-log-replay`. The framework does
+   * NOT enforce or interpret the value — it's an attribution string
+   * the consumer (chat UI metadata strip, cost rollup gauges, audit
+   * tooling) reads for rendering decisions.
+   *
+   * Typical pairing with [[sigil.Sigil.publishHistorical]]: bulk-import
+   * paths stamp the source on every imported event so downstream UIs
+   * can distinguish "current state, this Sigil paid for it" from
+   * "imported context, paid for elsewhere".
+   */
+  def source: Option[String] = None
 }
 
 object Event extends JsonConversion[Event] {

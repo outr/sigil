@@ -36,6 +36,7 @@ case class ToolResults(schemas: List[ToolSchema],
                        timestamp: Timestamp = Timestamp(Nowish()),
                        role: MessageRole = MessageRole.Tool,
                        override val origin: Option[Id[Event]] = None,
+                       override val source: Option[String] = None,
                        _id: Id[Event] = Event.id())
   extends Event derives RW {
   override def withState(state: EventState): Event = copy(state = state)
