@@ -1,7 +1,7 @@
 package sigil.workflow
 
 import sigil.conversation.ActiveSkillSlot
-import sigil.provider.{Mode, ToolPolicy}
+import sigil.provider.{CodingWork, Mode, ToolPolicy, WorkType}
 import sigil.tool.ToolName
 
 /**
@@ -21,6 +21,8 @@ case object WorkflowBuilderMode extends Mode {
   override val description: String =
     "Composing, editing, and running typed workflows on top of Sigil's workflow runtime. " +
       "Use the workflow_* tools to author + manage; everything is typed end-to-end."
+
+  override val workType: Option[WorkType] = Some(CodingWork)
 
   override val skill: Option[ActiveSkillSlot] = Some(ActiveSkillSlot(
     name = "WorkflowBuilder",

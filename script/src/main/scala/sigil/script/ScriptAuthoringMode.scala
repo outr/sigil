@@ -1,7 +1,7 @@
 package sigil.script
 
 import sigil.conversation.ActiveSkillSlot
-import sigil.provider.{Mode, ToolPolicy}
+import sigil.provider.{CodingWork, Mode, ToolPolicy, WorkType}
 import sigil.tool.ToolName
 
 /**
@@ -36,6 +36,8 @@ case object ScriptAuthoringMode extends Mode {
     "Author runtime script tools. Adds library introspection (`library_lookup`, `class_signatures`, " +
       "`read_source`) and the script-tool management surface (`create_script_tool`, " +
       "`update_script_tool`, `delete_script_tool`, `list_script_tools`)."
+
+  override val workType: Option[WorkType] = Some(CodingWork)
 
   override val skill: Option[ActiveSkillSlot] = Some(ActiveSkillSlot(
     name = "script-authoring",
