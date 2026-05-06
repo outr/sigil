@@ -42,6 +42,7 @@ case class TaskExecuted(participantId: ParticipantId,
                         override val visibility: MessageVisibility = MessageVisibility.All,
                         timestamp: Timestamp = Timestamp(),
                         override val origin: Option[Id[Event]] = None,
+                        override val source: Option[String] = None,
                         _id: Id[Event] = Event.id()) extends sigil.event.ControlPlaneEvent derives RW {
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
