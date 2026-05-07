@@ -4,7 +4,7 @@ import fabric.rw.*
 import fabric.io.JsonParser
 import sigil.tool.core.RespondTool
 import sigil.tool.model.JsonStringFieldExtractor
-import sigil.tool.{Tool, ToolInput, ToolInputValidator}
+import sigil.tool.{InputNormalizer, Tool, ToolInput, ToolInputValidator}
 
 import scala.collection.mutable
 
@@ -80,7 +80,17 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty) {
       toolsByName.get(s.toolName) match {
         case Some(tool) =>
           try {
-            val json = JsonParser(s.buf.toString)
+            val rawJson = JsonParser(s.buf.toString)
+            // Bug #58 — coerce `""` → `Null` for `Option[String]`
+            // fields before fabric's RW materialises the typed
+            // input. Without this, models that emit `""` as their
+            // schema-valid encoding of "no value" produce
+            // `Some("")` on the Scala side, defeating the natural
+            // `input.field.orElse(default)` idiom tool authors
+            // write against. Required string fields pass through
+            // unchanged — the coercion only applies to fields
+            // whose Definition is `Opt(Str)`.
+            val json = InputNormalizer.normalize(rawJson, tool.inputRW.definition)
             val violations = ToolInputValidator.validate(json, tool.inputRW.definition)
             if (violations.nonEmpty) {
               Vector(ProviderEvent.Error(
