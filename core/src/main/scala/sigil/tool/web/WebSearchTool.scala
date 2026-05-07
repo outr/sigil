@@ -1,8 +1,8 @@
 package sigil.tool.web
 
+import fabric.{Arr, Json, num, obj, str}
 import fabric.io.JsonFormatter
 import fabric.rw.*
-import fabric.{Arr, num, obj, str}
 import rapid.Stream
 import sigil.TurnContext
 import sigil.event.{Event, Message, MessageRole}
@@ -30,12 +30,14 @@ final class WebSearchTool(provider: SearchProvider, defaultMaxResults: Int = 10)
   override protected def executeTyped(input: WebSearchInput, ctx: TurnContext): Stream[Event] = Stream.force(
     provider.search(input.query, input.maxResults.getOrElse(defaultMaxResults)).map { results =>
       val items = results.toVector.map { r =>
-        obj(
+        val base = Vector[(String, Json)](
           "title"   -> str(r.title),
           "url"     -> str(r.url),
-          "snippet" -> str(r.snippet),
-          "score"   -> num(r.score)
+          "snippet" -> str(r.snippet)
         )
+        val withScore = r.score.fold(base)(s => base :+ ("score" -> num(s)))
+        val withRaw   = r.rawContent.fold(withScore)(c => withScore :+ ("rawContent" -> str(c)))
+        obj(withRaw*)
       }
       val payload = obj("results" -> Arr(items), "count" -> num(results.size))
       Stream.emit[Event](Message(
