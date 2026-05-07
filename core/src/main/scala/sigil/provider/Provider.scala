@@ -161,10 +161,10 @@ trait Provider {
         workflowType = "preflight",
         label = s"Rendering pre-flight for ${request.modelId.value}",
         conversationId = convId
-      ) { step =>
+      ) { control =>
         rateLimiter.acquire.flatMap { _ =>
-          withCapacity(translate(request)).flatMap { providerCall =>
-            step("Validating request size").map(_ => providerCall)
+          control.token.checkpoint.flatMap(_ => withCapacity(translate(request))).flatMap { providerCall =>
+            control.step("Validating request size").map(_ => providerCall)
           }
         }
       }.map { providerCall =>

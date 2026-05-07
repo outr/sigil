@@ -212,6 +212,8 @@ trait WorkflowSigil extends Sigil {
     new sigil.workflow.tool.RunWorkflowTool,
     new sigil.workflow.tool.CancelWorkflowTool,
     new sigil.workflow.tool.ResumeWorkflowTool,
+    new sigil.workflow.tool.ApproveWorkflowTool,
+    new sigil.workflow.tool.DeclineWorkflowTool,
     new sigil.workflow.tool.RegisterTriggerTool,
     new sigil.workflow.tool.UnregisterTriggerTool,
     new sigil.workflow.tool.ListTriggersTool

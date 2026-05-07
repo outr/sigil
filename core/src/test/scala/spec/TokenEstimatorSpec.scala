@@ -32,10 +32,13 @@ class TokenEstimatorSpec extends AnyWordSpec with Matchers {
 
   "estimateMemories" should {
     "use summary when set, fact when not" in {
+      // HeuristicTokenizer formula is length * 2 / 7 (≈ length / 3.5).
+      // 40 char summary  → 40*2/7  = 11 tokens.
+      // 400 char fact    → 400*2/7 = 114 tokens.
       val withSummary = ContextMemory(
-        fact = "x" * 400,                    // 100 heuristic tokens
+        fact = "x" * 400,
         label = "Test directive",
-        summary = "y" * 40,                  // 10 heuristic tokens
+        summary = "y" * 40,
         source = MemorySource.Explicit, pinned = true,
         spaceId = GlobalSpace
       )
@@ -52,8 +55,8 @@ class TokenEstimatorSpec extends AnyWordSpec with Matchers {
       val withTokens = TokenEstimator.estimateMemories(Vector(withSummary), HeuristicTokenizer)
       val withoutTokens = TokenEstimator.estimateMemories(Vector(withoutSummary), HeuristicTokenizer)
       withTokens should be < withoutTokens
-      withTokens shouldBe 10
-      withoutTokens shouldBe 100
+      withTokens shouldBe 11
+      withoutTokens shouldBe 114
     }
   }
 
@@ -62,7 +65,7 @@ class TokenEstimatorSpec extends AnyWordSpec with Matchers {
       val s1 = ContextSummary(text = "abcd" * 10, conversationId = Id("conv"), tokenEstimate = 0)
       val s2 = ContextSummary(text = "efgh" * 10, conversationId = Id("conv"), tokenEstimate = 0)
       val total = TokenEstimator.estimateSummaries(Vector(s1, s2), HeuristicTokenizer)
-      total shouldBe 20  // (40 + 40) / 4
+      total shouldBe 22  // (40 + 40) * 2 / 7 = 22
     }
   }
 
