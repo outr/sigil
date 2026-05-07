@@ -4,7 +4,7 @@ import fabric.*
 import fabric.rw.valueRW
 import rapid.Task
 import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
-import spice.http.client.HttpClient
+import spice.http.client.{HttpClient, RetryManager}
 import spice.http.{HttpMethod, HttpRequest}
 import spice.http.content.StringContent
 import spice.net.{ContentType, URL}
@@ -109,10 +109,25 @@ final case class LlamaCppTokenizer(baseUrl: URL,
     val req = HttpRequest(
       method = HttpMethod.Post,
       url = baseUrl.withPath("/tokenize"),
+      // Bug #56 — `Connection: close` hint asks the backend to drop
+      // the TCP connection after this response. Doesn't dictate
+      // spice's pool behaviour, but for backends that respect it
+      // (llama.cpp, most HTTP/1.1 servers) the next pool acquire
+      // gets a TCP RST on a stale slot rather than a 60s read-
+      // timeout wait.
       content = Some(StringContent(fabric.io.JsonFormatter.Compact(body), ContentType.`application/json`))
-    )
-    HttpClient.modify(_ => req).timeout(requestTimeout).call[Json].map { json =>
-      json.get("tokens").map(_.asVector.size).getOrElse(fallback.count(text))
-    }
+    ).withHeader("Connection", "close")
+    HttpClient.modify(_ => req)
+      .timeout(requestTimeout)
+      // Bug #56 — single fast retry on transient stale-pool failure;
+      // skipping retries entirely loses to legit transient blips,
+      // but the default `RetryManager.simple(retries = 2, delay =
+      // 1.second)` adds 2 seconds of delay-only time per advisory
+      // call worst case. One retry with 100ms gap recovers from a
+      // stale-pool hit while keeping the pre-flight bound tight.
+      .retryManager(RetryManager.simple(retries = 1, delay = 100.millis, warnRetries = false))
+      .call[Json].map { json =>
+        json.get("tokens").map(_.asVector.size).getOrElse(fallback.count(text))
+      }
   }
 }

@@ -74,15 +74,27 @@ case class LlamaCppProvider(url: URL,
       url = url.withPath("/apply-template"),
       content = Some(StringContent(JsonFormatter.Compact(body), ContentType.`application/json`))
     )
+      // Bug #56 — `Connection: close` to encourage the backend to
+      // drop the TCP slot rather than letting it sit warm in the
+      // pool only to go stale before the next pre-flight call.
+      .withHeader("Connection", "close")
     // Bug #54 — hard timeout so a stalled `/apply-template` call
     // can't block the agent loop indefinitely. On timeout / error,
     // fall through to the parent's piecewise estimator, which still
     // produces a usable (less accurate) number from the tokenizer
     // pass over individual sections.
-    val task: Task[Int] = HttpClient.modify(_ => req).timeout(estimateTimeout).call[Json].map { json =>
-      val rendered = json.get("prompt").map(_.asString).getOrElse("")
-      tokenizer.count(rendered)
-    }.handleError(_ => Task.pure(super.estimateRequest(call)))
+    //
+    // Bug #56 — single fast retry. The default 2-retry × 1s-delay
+    // policy adds a needless 2s of dead time when the first pool-
+    // acquire hits a stale connection; one 100ms-delay retry
+    // recovers cleanly without padding the wall-clock cost.
+    val task: Task[Int] = HttpClient.modify(_ => req)
+      .timeout(estimateTimeout)
+      .retryManager(spice.http.client.RetryManager.simple(retries = 1, delay = 100.millis, warnRetries = false))
+      .call[Json].map { json =>
+        val rendered = json.get("prompt").map(_.asString).getOrElse("")
+        tokenizer.count(rendered)
+      }.handleError(_ => Task.pure(super.estimateRequest(call)))
     task.sync()
   }
 
