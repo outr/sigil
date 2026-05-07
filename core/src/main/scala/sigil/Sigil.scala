@@ -3903,6 +3903,12 @@ trait Sigil {
     // don't re-appear as triggers next time.
     val thisIterationStart = Timestamp(Nowish())
     val stopFlag = Option(stopFlags.get(claimed._id))
+    // Bug #57 — diagnostic logging at iteration boundaries so a
+    // future repro of "agent parks at thinking" can be localised
+    // by reading the server log for missing exit lines. The cost
+    // of these scribe.debug calls is negligible compared to the
+    // turn's actual work; volume is ~3 lines per iteration.
+    scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration enter")
     // A Stop may have landed before this iteration even starts; short-
     // circuit if so (graceful = "don't start another iteration"; force
     // = "same, plus the in-flight stream below won't run"). Either way,
@@ -3924,8 +3930,10 @@ trait Sigil {
         // decays — suggestions live for exactly ONE turn; an agent that
         // doesn't call what it discovered loses it.
         projectionFor(agent.id, convId).map(_.suggestedTools).flatMap { suggestedSnapshot =>
+          scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext start")
           buildContext(agent, conv, sinceTimestamp = sinceTimestamp, claimedId = claimed._id).flatMap {
             case (ctx, triggers) =>
+              scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext done; dispatching agent.process")
               // Wrap the agent's signal stream with a force-stop check so a
               // Stop(force=true) mid-iteration terminates the stream promptly.
               // Greeting mode (only on iteration == 1): dispatch only behaviors
@@ -3961,6 +3969,7 @@ trait Sigil {
                 .drain
           }.flatMap(_ => decaySuggestedTools(convId, agent.id, suggestedSnapshot))
         }.flatMap { _ =>
+          scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration drain done")
           // After the iteration drains, check stop flags before anything
           // else — a Stop that fired mid-stream means exit now, don't
           // continue looping even if there are new triggers.

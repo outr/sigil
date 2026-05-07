@@ -113,16 +113,49 @@ trait Provider {
   final lazy val capacityGate: java.util.concurrent.Semaphore =
     new java.util.concurrent.Semaphore(maxConcurrent, /* fair */ true)
 
+  /** Wall-clock cap on `capacityGate.acquire()`. Bug #57 — the
+    * original `acquire()` blocks the calling fiber's thread
+    * indefinitely if a previous holder leaked the permit (task
+    * never settled, fiber interrupted abnormally, etc.). For an
+    * agent-loop hot path that produces zero HTTP traffic and zero
+    * CPU when this happens, the symptom is "agent parked on
+    * `thinking` forever." Bounding the wait surfaces the leak as
+    * a [[CapacityAcquireTimeoutException]] the agent loop's error
+    * handler can catch — fail loud rather than silent hang. */
+  protected def capacityAcquireTimeout: scala.concurrent.duration.FiniteDuration =
+    scala.concurrent.duration.FiniteDuration(60, "seconds")
+
   /** Run a [[Task]] with a capacity-gate permit acquired from this
     * provider. The permit releases on completion (success or
     * failure) via `guarantee`. Used by the framework to gate
     * [[apply]]'s pre-flight pass; available to providers that want
     * to gate their own advisory paths (e.g. wrapping a separate
-    * `/tokenize` call from outside `apply`'s flow). Bug #49. */
+    * `/tokenize` call from outside `apply`'s flow). Bug #49.
+    *
+    * Bug #57 — bounded `tryAcquire(timeout)` instead of unbounded
+    * `acquire()` so a permit leak in another fiber surfaces as a
+    * fail-fast `CapacityAcquireTimeoutException` rather than an
+    * indefinite thread park. The 60s default is generous enough
+    * that legit slow translates (large prompts, slow tokenizer
+    * backend) don't false-trigger; tighten via override only if a
+    * specific deployment knows its translates always finish faster. */
   protected def withCapacity[A](task: Task[A]): Task[A] =
     Task.defer {
-      capacityGate.acquire()
-      task.guarantee(Task(capacityGate.release()))
+      val timeoutMs = capacityAcquireTimeout.toMillis
+      val available = capacityGate.availablePermits()
+      // Bug #57 — log only when contended (no permit available
+      // immediately) so the common uncontended path stays quiet,
+      // but a parking acquire surfaces in logs for diagnosis.
+      if (available <= 0) {
+        scribe.debug(s"Provider($providerKey) capacity gate contended (max=$maxConcurrent), waiting up to ${timeoutMs}ms")
+      }
+      val acquired = capacityGate.tryAcquire(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+      if (!acquired) {
+        scribe.warn(s"Provider($providerKey) capacity gate timed out after ${timeoutMs}ms (max=$maxConcurrent) — possible permit leak")
+        Task.error(new CapacityAcquireTimeoutException(maxConcurrent, capacityAcquireTimeout))
+      } else {
+        task.guarantee(Task(capacityGate.release()))
+      }
     }
 
   // ---- public entry points (final) ----
