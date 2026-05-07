@@ -76,7 +76,8 @@ object CoreSignals {
     summon[RW[ConversationCostUpdated]],
     summon[RW[WorkerAnswer]],
     summon[RW[ToolProgress]],
-    summon[RW[ConversationHistoryImported]]
+    summon[RW[ConversationHistoryImported]],
+    summon[RW[FrameworkWorkflowNotice]]
   )
 
   val all: List[RW[? <: Signal]] = events ++ deltas ++ notices

@@ -134,24 +134,47 @@ trait Provider {
    *
    * The stream terminates with a `Done` event (or `Error`).
    */
-  final def apply(request: ProviderRequest): Stream[ProviderEvent] =
+  final def apply(request: ProviderRequest): Stream[ProviderEvent] = {
+    // Bug #49 — gate the synchronous pre-flight pass via the
+    // capacity semaphore. `translate` includes provider-specific
+    // pre-flight HTTP work (`/apply-template`, `/tokenize`) that
+    // accumulates real latency on local backends; serializing it
+    // through the gate prevents the multi-second retry-stall
+    // pattern when concurrent agent turns each kick off their own
+    // advisory calls. The live chat-completions stream itself
+    // runs ungated — it's the long-running phase the gate isn't
+    // sized for, and the backend serializes its own slot use.
+    //
+    // Bug #50 — wrap the pre-flight pass in a framework-workflow
+    // Notice pulse so client UIs can render an activity indicator
+    // and apps can observe queued vs in-flight time. The
+    // chat-completions stream is intentionally outside the wrapper
+    // for the same reason it's outside the capacity gate: it's
+    // covered by per-message Delta + final Done events that
+    // already drive client rendering.
+    val convId = request match {
+      case c: ConversationRequest => Some(c.conversationId)
+      case _                      => None
+    }
     Stream.force(
-      // Bug #49 — gate the synchronous pre-flight pass via the
-      // capacity semaphore. `translate` includes provider-specific
-      // pre-flight HTTP work (`/apply-template`, `/tokenize`) that
-      // accumulates real latency on local backends; serializing it
-      // through the gate prevents the multi-second retry-stall
-      // pattern when concurrent agent turns each kick off their own
-      // advisory calls. The live chat-completions stream itself
-      // runs ungated — it's the long-running phase the gate isn't
-      // sized for, and the backend serializes its own slot use.
-      rateLimiter.acquire.flatMap(_ => withCapacity(translate(request))).map { providerCall =>
+      sigil.runAsFrameworkWorkflow(
+        workflowType = "preflight",
+        label = s"Rendering pre-flight for ${request.modelId.value}",
+        conversationId = convId
+      ) { step =>
+        rateLimiter.acquire.flatMap { _ =>
+          withCapacity(translate(request)).flatMap { providerCall =>
+            step("Validating request size").map(_ => providerCall)
+          }
+        }
+      }.map { providerCall =>
         preFlightGate(request, providerCall) match {
           case Right(safe)  => call(safe)
           case Left(reason) => Stream.force(Task.error(reason))
         }
       }
     )
+  }
 
   /** Pre-flight budget validation. Estimates the rendered request via
     * the provider's [[tokenizer]] and compares against the model's
