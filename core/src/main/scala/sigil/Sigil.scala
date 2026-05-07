@@ -3968,7 +3968,31 @@ trait Sigil {
             ensureSilentTurnReply(agent, convId, userVisibleSeen).flatMap(_ => releaseClaim(claimed))
           else newTriggersExist(agent, conv, sinceTimestamp = thisIterationStart).flatMap {
             case true if iteration < maxAgentIterations =>
-              runAgentLoop(agent, convId, claimed, iteration + 1, thisIterationStart, userVisibleSeen = userVisibleSeen)
+              // Bug #54 — emit per-iteration boundary state. Without
+              // these, a multi-iteration agent loop pins the
+              // consumer's state at `typing` (or whatever the last
+              // streaming activity was) for the whole outer-loop
+              // duration. Clients then can't render an accurate
+              // Stop button or per-turn UX.
+              //
+              // The pulses don't change the AgentState event's
+              // `state` (still Active — claim still held) — they
+              // mutate `activity` only, so the framework's claim-
+              // lock semantics are preserved. The next iteration
+              // runs in the same outer fiber.
+              publish(AgentStateDelta(
+                target = claimed._id,
+                conversationId = convId,
+                activity = Some(AgentActivity.Idle)
+              )).flatMap(_ =>
+                publish(AgentStateDelta(
+                  target = claimed._id,
+                  conversationId = convId,
+                  activity = Some(AgentActivity.Thinking)
+                ))
+              ).flatMap(_ =>
+                runAgentLoop(agent, convId, claimed, iteration + 1, thisIterationStart, userVisibleSeen = userVisibleSeen)
+              )
             case true =>
               // Cap hit — release the lock, then propagate as an error so the
               // calling fiber's failure handler sees it. A runaway loop is a
@@ -4054,12 +4078,20 @@ trait Sigil {
         conv.topics.headOption match {
           case None        => Task.unit
           case Some(topic) =>
+            // Bug #55 — stamp the agent's `modelId` so the synthetic
+            // placeholder carries the same metadata shape as real
+            // agent Messages. Without this, the per-message metadata
+            // strip on the consumer side falls back to "timestamp
+            // only" for tool-call-only iterations that ran out of
+            // triggers without producing a `respond`-family terminal
+            // call.
             publish(Message(
               participantId  = agent.id,
               conversationId = convId,
               topicId        = topic.id,
               content        = Vector(sigil.tool.model.ResponseContent.Text("(agent completed without a reply)")),
-              state          = EventState.Complete
+              state          = EventState.Complete,
+              modelId        = Some(agent.modelId)
             )).map(_ => ())
         }
     }
