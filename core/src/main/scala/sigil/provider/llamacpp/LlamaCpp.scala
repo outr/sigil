@@ -122,7 +122,8 @@ object LlamaCpp {
    * the legacy `n_ctx_train` path.
    */
   def loadModels(baseUrl: URL): Task[List[Model]] =
-    fetchRuntimeContext(baseUrl).flatMap { runtimeContext =>
+    fetchProps(baseUrl).flatMap { propsOpt =>
+      val runtimeContext = propsOpt.map(_.perSlotContext)
       HttpClient.url(baseUrl.withPath("/v1/models")).call[Json].map { json =>
         val normalized = json.filterOne(SnakeToCamelFilter)
         val data = normalized("data").asVector
@@ -130,12 +131,20 @@ object LlamaCpp {
       }
     }
 
-  /** Read the running server's `default_generation_settings.n_ctx` and
-    * `total_slots` from `/props`; returns the per-slot budget
-    * (`n_ctx / max(1, total_slots)`). Returns `None` when the endpoint
-    * is unreachable or the fields are missing — caller falls back to
-    * the model's training context. */
-  private def fetchRuntimeContext(baseUrl: URL): Task[Option[Long]] =
+  /** Subset of `/props` Sigil cares about: runtime context budget +
+    * concurrent-slot count. Bug #42 reads the context length;
+    * bug #49 adds `totalSlots` to drive `Provider.maxConcurrent`. */
+  case class RuntimeProps(nCtx: Long, totalSlots: Long) {
+    /** Per-slot context budget — the hard limit any single request
+      * can occupy. */
+    def perSlotContext: Long = math.max(1L, nCtx / math.max(1L, totalSlots))
+  }
+
+  /** Read the running server's `default_generation_settings.n_ctx`
+    * and `total_slots` from `/props`. Returns `None` when the
+    * endpoint is unreachable or the fields are missing — callers
+    * fall back to safe defaults. */
+  def fetchProps(baseUrl: URL): Task[Option[RuntimeProps]] =
     HttpClient.url(baseUrl.withPath("/props")).call[Json].map { json =>
       val nCtx = json.get("default_generation_settings")
         .flatMap(_.get("n_ctx"))
@@ -144,7 +153,7 @@ object LlamaCpp {
         .map(_.asLong)
         .filter(_ > 0)
         .getOrElse(1L)
-      nCtx.map(c => math.max(1L, c / math.max(1L, totalSlots)))
+      nCtx.map(c => RuntimeProps(nCtx = c, totalSlots = totalSlots))
     }.handleError(_ => Task.pure(None))
 
   private def modelNameFromId(id: String): String = {

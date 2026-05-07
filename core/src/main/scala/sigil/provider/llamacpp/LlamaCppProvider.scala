@@ -35,6 +35,17 @@ case class LlamaCppProvider(url: URL,
     * which let oversized requests slip past the gate. */
   override val tokenizer: _root_.sigil.tokenize.Tokenizer = LlamaCppTokenizer(url)
 
+  /** Bug #49 — capacity from llama.cpp's `total_slots`. Read at
+    * provider construction; falls back to 1 when `/props` is
+    * unreachable (single-slot is the safe assumption for an
+    * unknown deployment — `total_slots` only matters when it's
+    * greater than 1, and assuming 1 just means more work serializes
+    * client-side, which is correct for an unknown server). */
+  override val maxConcurrent: Int =
+    LlamaCpp.fetchProps(url).map(_.map(_.totalSlots.toInt).getOrElse(1))
+      .handleError(_ => Task.pure(1))
+      .sync()
+
   /** Bug #46 / #47 — backend-exact pre-flight estimate in a single
     * round-trip. Sends both `messages` and `tools` to
     * `POST /apply-template` so the rendered prompt includes every

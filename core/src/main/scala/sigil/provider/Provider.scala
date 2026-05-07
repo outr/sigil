@@ -87,6 +87,45 @@ trait Provider {
    * failure from happening, IF the app feeds it data. */
   def rateLimiter: RateLimiter = RateLimiter.NoOp
 
+  /** Maximum concurrent in-flight calls this provider can sensibly
+    * dispatch — the backend's slot count for local providers
+    * (llama.cpp's `total_slots`), `Int.MaxValue` (the default) for
+    * cloud providers whose binding constraint is rate-limit (RPM /
+    * TPM) rather than slot count.
+    *
+    * Bug #49 — exposed on the trait so consumers (UI, app-side
+    * dispatchers, observability) can read the capacity declaration.
+    * The auto-gating of `apply` against this value is deferred
+    * pending stream-lifecycle plumbing (see `withCapacity` /
+    * `capacityGate` for the building blocks; wiring without
+    * deadlock-on-stream-abandonment requires resource-aware stream
+    * combinators we don't have yet). */
+  def maxConcurrent: Int = Int.MaxValue
+
+  /** Per-provider semaphore enforcing [[maxConcurrent]]. Available
+    * for app-side wrapping today; the framework will wire `apply`
+    * through it once stream resource cleanup is robust enough to
+    * guarantee permit release on every termination shape. Lazy so
+    * subclasses' `maxConcurrent` overrides are honoured.
+    *
+    * Bug #49. */
+  final lazy val capacityGate: java.util.concurrent.Semaphore =
+    new java.util.concurrent.Semaphore(maxConcurrent, /* fair */ true)
+
+  /** Run a [[Task]] (NOT a stream) with a capacity-gate permit
+    * acquired from this provider. The permit releases on completion
+    * (success or failure) via `guarantee`. Use for finite advisory
+    * work that providers want to gate today (e.g.
+    * `LlamaCppTokenizer`'s `/tokenize` calls).
+    *
+    * Streaming work isn't covered here — see [[capacityGate]]
+    * directly + the stream's own finalize machinery. Bug #49. */
+  protected def withCapacity[A](task: Task[A]): Task[A] =
+    Task.defer {
+      capacityGate.acquire()
+      task.guarantee(Task(capacityGate.release()))
+    }
+
   // ---- public entry points (final) ----
 
   /**
