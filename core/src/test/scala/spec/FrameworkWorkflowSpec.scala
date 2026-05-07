@@ -74,10 +74,10 @@ class FrameworkWorkflowSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
     "emit intermediate Step phases when the body uses the step callback" in {
       captureNotices {
-        TestSigil.runAsFrameworkWorkflow("test-steps", "multi-step", None) { step =>
+        TestSigil.runAsFrameworkWorkflow("test-steps", "multi-step", None) { control =>
           for {
-            _ <- step("phase one")
-            _ <- step("phase two")
+            _ <- control.step("phase one")
+            _ <- control.step("phase two")
           } yield "ok"
         }
       }.map { case (result, notices) =>

@@ -112,7 +112,8 @@ object CoreTools {
       summon[RW[sigil.tool.model.CompleteTaskInput]],
       summon[RW[sigil.tool.output.ToolOutputGetInput]],
       summon[RW[sigil.tool.output.ToolOutputSearchInput]],
-      summon[RW[sigil.tool.output.ToolOutputSummaryInput]]
+      summon[RW[sigil.tool.output.ToolOutputSummaryInput]],
+      summon[RW[sigil.tool.core.CancelFrameworkWorkflowInput]]
     )
 
   val coreToolNames: List[sigil.tool.ToolName] = all.map(_.schema.name).toList

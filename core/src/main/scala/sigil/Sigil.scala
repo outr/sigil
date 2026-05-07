@@ -1962,35 +1962,68 @@ trait Sigil {
   final def runAsFrameworkWorkflow[A](workflowType: String,
                                       label: String,
                                       conversationId: Option[Id[Conversation]] = None)
-                                     (task: (String => Task[Unit]) => Task[A]): Task[A] = {
+                                     (task: FrameworkWorkflowControl => Task[A]): Task[A] = {
     import sigil.signal.{FrameworkWorkflowNotice, FrameworkWorkflowPhase}
     val workflowId = java.util.UUID.randomUUID().toString
     val started    = System.currentTimeMillis()
+    val token      = new CancellationToken(workflowId)
+    val record     = ActiveFrameworkWorkflow(workflowId, workflowType, label, conversationId, started, token)
     def emit(phase: FrameworkWorkflowPhase): Task[Unit] =
       publish(FrameworkWorkflowNotice(workflowId, workflowType, phase, conversationId))
     val stepCb: String => Task[Unit] = { stepLabel =>
-      emit(FrameworkWorkflowPhase.Step(stepLabel, System.currentTimeMillis() - started))
+      token.checkpoint.flatMap(_ => emit(FrameworkWorkflowPhase.Step(stepLabel, System.currentTimeMillis() - started)))
     }
+    val control = FrameworkWorkflowControl(stepCb, token)
     emit(FrameworkWorkflowPhase.Started(label)).flatMap { _ =>
-      task(stepCb).attempt.flatMap {
-        case scala.util.Success(value) =>
-          emit(FrameworkWorkflowPhase.Completed(System.currentTimeMillis() - started))
-            .map(_ => value)
-        case scala.util.Failure(err) =>
-          val reason = s"${err.getClass.getSimpleName}: ${Option(err.getMessage).getOrElse("")}"
-          emit(FrameworkWorkflowPhase.Failed(reason, System.currentTimeMillis() - started))
-            .flatMap(_ => Task.error(err))
+      Sigil.activeFrameworkWorkflows.put(workflowId, record)
+      task(control).attempt.flatMap { result =>
+        Sigil.activeFrameworkWorkflows.remove(workflowId)
+        result match {
+          case scala.util.Success(value) =>
+            emit(FrameworkWorkflowPhase.Completed(System.currentTimeMillis() - started))
+              .map(_ => value)
+          case scala.util.Failure(c: CancellationException) =>
+            emit(FrameworkWorkflowPhase.Failed(s"cancelled: ${c.reason}", System.currentTimeMillis() - started))
+              .flatMap(_ => Task.error(c))
+          case scala.util.Failure(err) =>
+            val reason = s"${err.getClass.getSimpleName}: ${Option(err.getMessage).getOrElse("")}"
+            emit(FrameworkWorkflowPhase.Failed(reason, System.currentTimeMillis() - started))
+              .flatMap(_ => Task.error(err))
+        }
       }
     }
   }
 
   /** Convenience overload: wrap a Task that doesn't need to emit
-    * intermediate `Step` Notices. Bug #50. */
+    * intermediate `Step` Notices and doesn't poll cancellation
+    * itself (the wrapper still aborts cleanly on cancellation
+    * before the task runs, but won't interrupt mid-execution).
+    * Bug #50 / #51. */
   final def runAsFrameworkWorkflow[A](workflowType: String,
                                       label: String,
                                       conversationId: Option[Id[Conversation]],
                                       task: Task[A]): Task[A] =
-    runAsFrameworkWorkflow(workflowType, label, conversationId)(_ => task)
+    runAsFrameworkWorkflow(workflowType, label, conversationId)(c => c.token.guard(task))
+
+  /** Snapshot list of every framework workflow currently in flight.
+    * Read-only; the records expose ids, type, label, conversation
+    * scope, start timestamp, and cancellation token. Used by
+    * `cancel_framework_workflow` and the activity-list surface.
+    * Bug #51. */
+  final def activeFrameworkWorkflows: List[ActiveFrameworkWorkflow] = {
+    import scala.jdk.CollectionConverters.*
+    Sigil.activeFrameworkWorkflows.values().asScala.toList.sortBy(_.startedAtMillis)
+  }
+
+  /** Cancel an in-flight framework workflow by id. Idempotent —
+    * cancelling a finished or already-cancelled workflow is a no-
+    * op. Returns whether this call flipped the flag (informational
+    * for the caller — the workflow's body still has to reach a
+    * checkpoint to honour it). Bug #51. */
+  final def cancelFrameworkWorkflow(workflowId: String, reason: String): Boolean =
+    Option(Sigil.activeFrameworkWorkflows.get(workflowId))
+      .map(_.cancellationToken.cancel(reason))
+      .getOrElse(false)
 
   /**
    * Inbound-Notice dispatch hook. Called by [[sigil.transport.SessionBridge]]
@@ -4661,4 +4694,13 @@ object Sigil {
       |
       |One statement maps to one memory. Do not split, merge, or infer beyond
       |what the statements explicitly say.""".stripMargin
+
+  /** JVM-wide registry of in-flight framework workflows, keyed by
+    * workflow id. `runAsFrameworkWorkflow` puts on Start and
+    * removes on Complete/Failed; `cancelFrameworkWorkflow` reads
+    * from here. Concurrent so multiple turns racing on different
+    * Sigil instances in the same JVM don't corrupt each other.
+    * Bug #51. */
+  private[sigil] val activeFrameworkWorkflows: java.util.concurrent.ConcurrentHashMap[String, ActiveFrameworkWorkflow] =
+    new java.util.concurrent.ConcurrentHashMap()
 }

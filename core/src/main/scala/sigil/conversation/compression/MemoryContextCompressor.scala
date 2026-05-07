@@ -60,12 +60,12 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
       workflowType = "compress",
       label = "Compressing conversation history",
       conversationId = Some(conversationId)
-    ) { step =>
+    ) { control =>
       frames.toList.flatMap { framesList =>
         val materialized = framesList.toVector
         if (materialized.isEmpty) Task.pure(None)
         else for {
-          _   <- step(s"Routing summarization model (${materialized.size} frames)")
+          _   <- control.step(s"Routing summarization model (${materialized.size} frames)")
           ctx <- loadContext(sigil, conversationId)
           transcript     = renderTranscript(materialized, ctx._1, ctx._2)
           estimatedInput = (tokenizer.count(transcript) +
@@ -82,7 +82,7 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
           spaceOpt <- if (extractFacts) sigil.compressionMemorySpace(conversationId) else Task.pure(None)
           available        = sigil.cache.find(summarizationModel).map(_.contextLength).getOrElse(0L) - reservedOutputTokens - promptOverheadTokens
           transcriptTokens = tokenizer.count(transcript).toLong
-          _ <- step("Extracting facts")
+          _ <- control.step("Extracting facts")
           _ <- spaceOpt match {
                  case Some(space) =>
                    if (available <= 0L || transcriptTokens <= available)
@@ -91,7 +91,7 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                      extractAndPersistChunked(sigil, summarizationModel, chain, materialized, ctx, conversationId, space, available)
                  case None => Task.unit
                }
-          _ <- step("Summarizing transcript")
+          _ <- control.step("Summarizing transcript")
           summary <- if (available <= 0L || transcriptTokens <= available)
                        summarize(sigil, summarizationModel, chain, transcript, conversationId)
                      else

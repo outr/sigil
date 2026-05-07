@@ -27,7 +27,7 @@ class InstructionsSpec extends AnyWordSpec with Matchers {
     "include the TOOLS discovery block" in {
       rendered should include ("TOOLS")
       rendered should include ("find_capability")
-      rendered should include ("discovered, not preloaded")
+      rendered should include ("discovery-first")
     }
   }
 
@@ -45,10 +45,10 @@ class InstructionsSpec extends AnyWordSpec with Matchers {
   }
 
   "Instructions.renderWithoutTools" should {
-    "drop the TOOLS block but keep the rest" in {
+    "drop the TOOLS discovery block but keep the rest" in {
       val r = Instructions().renderWithoutTools
-      r should not include ("TOOLS\n-")  // the discovery TOOLS section
-      r should not include ("find_capability")
+      // Discovery block's distinctive opening should be gone.
+      r should not include ("TOOLS — discovery-first")
       r should include ("SAFETY")
       r should include ("BEHAVIOR")
     }
