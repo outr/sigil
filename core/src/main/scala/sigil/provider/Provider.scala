@@ -87,39 +87,38 @@ trait Provider {
    * failure from happening, IF the app feeds it data. */
   def rateLimiter: RateLimiter = RateLimiter.NoOp
 
-  /** Maximum concurrent in-flight calls this provider can sensibly
-    * dispatch — the backend's slot count for local providers
+  /** Maximum concurrent in-flight pre-flight passes this provider
+    * dispatches. The backend's slot count for local providers
     * (llama.cpp's `total_slots`), `Int.MaxValue` (the default) for
     * cloud providers whose binding constraint is rate-limit (RPM /
     * TPM) rather than slot count.
     *
-    * Bug #49 — exposed on the trait so consumers (UI, app-side
-    * dispatchers, observability) can read the capacity declaration.
-    * The auto-gating of `apply` against this value is deferred
-    * pending stream-lifecycle plumbing (see `withCapacity` /
-    * `capacityGate` for the building blocks; wiring without
-    * deadlock-on-stream-abandonment requires resource-aware stream
-    * combinators we don't have yet). */
+    * Bug #49 — the framework gates [[apply]]'s pre-flight pass
+    * (which includes provider-specific HTTP work like
+    * `/apply-template`, `/tokenize`) through this cap so agents
+    * sharing a backend serialize advisory work instead of
+    * multiplying retry-stall latency. The streaming
+    * chat-completions phase itself runs ungated — it's a different
+    * shape (the cap isn't sized for long-running streams; the
+    * backend serializes its own slots).
+    *
+    * Live agent turns inherit pre-flight priority by virtue of
+    * acquiring the gate — advisory off-band tools (e.g. an
+    * arbitrary `/tokenize` call from a tool author) that want
+    * gating wrap themselves with [[withCapacity]] explicitly. */
   def maxConcurrent: Int = Int.MaxValue
 
-  /** Per-provider semaphore enforcing [[maxConcurrent]]. Available
-    * for app-side wrapping today; the framework will wire `apply`
-    * through it once stream resource cleanup is robust enough to
-    * guarantee permit release on every termination shape. Lazy so
-    * subclasses' `maxConcurrent` overrides are honoured.
-    *
-    * Bug #49. */
+  /** Per-provider fair semaphore enforcing [[maxConcurrent]]. Lazy
+    * so subclass `maxConcurrent` overrides take effect. Bug #49. */
   final lazy val capacityGate: java.util.concurrent.Semaphore =
     new java.util.concurrent.Semaphore(maxConcurrent, /* fair */ true)
 
-  /** Run a [[Task]] (NOT a stream) with a capacity-gate permit
-    * acquired from this provider. The permit releases on completion
-    * (success or failure) via `guarantee`. Use for finite advisory
-    * work that providers want to gate today (e.g.
-    * `LlamaCppTokenizer`'s `/tokenize` calls).
-    *
-    * Streaming work isn't covered here — see [[capacityGate]]
-    * directly + the stream's own finalize machinery. Bug #49. */
+  /** Run a [[Task]] with a capacity-gate permit acquired from this
+    * provider. The permit releases on completion (success or
+    * failure) via `guarantee`. Used by the framework to gate
+    * [[apply]]'s pre-flight pass; available to providers that want
+    * to gate their own advisory paths (e.g. wrapping a separate
+    * `/tokenize` call from outside `apply`'s flow). Bug #49. */
   protected def withCapacity[A](task: Task[A]): Task[A] =
     Task.defer {
       capacityGate.acquire()
@@ -136,12 +135,23 @@ trait Provider {
    * The stream terminates with a `Done` event (or `Error`).
    */
   final def apply(request: ProviderRequest): Stream[ProviderEvent] =
-    Stream.force(rateLimiter.acquire.flatMap(_ => translate(request)).map { providerCall =>
-      preFlightGate(request, providerCall) match {
-        case Right(safe)  => call(safe)
-        case Left(reason) => Stream.force(Task.error(reason))
+    Stream.force(
+      // Bug #49 — gate the synchronous pre-flight pass via the
+      // capacity semaphore. `translate` includes provider-specific
+      // pre-flight HTTP work (`/apply-template`, `/tokenize`) that
+      // accumulates real latency on local backends; serializing it
+      // through the gate prevents the multi-second retry-stall
+      // pattern when concurrent agent turns each kick off their own
+      // advisory calls. The live chat-completions stream itself
+      // runs ungated — it's the long-running phase the gate isn't
+      // sized for, and the backend serializes its own slot use.
+      rateLimiter.acquire.flatMap(_ => withCapacity(translate(request))).map { providerCall =>
+        preFlightGate(request, providerCall) match {
+          case Right(safe)  => call(safe)
+          case Left(reason) => Stream.force(Task.error(reason))
+        }
       }
-    })
+    )
 
   /** Pre-flight budget validation. Estimates the rendered request via
     * the provider's [[tokenizer]] and compares against the model's
