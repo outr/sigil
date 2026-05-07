@@ -28,6 +28,13 @@ case class LlamaCppProvider(url: URL,
 
   override protected def sigil: Sigil = sigilRef
 
+  /** Bug #45 — backend-exact tokenizer via llama.cpp's
+    * `POST /tokenize`. Falls back to the heuristic on transient
+    * failures so a degraded backend doesn't crash pre-flight. The
+    * heuristic under-counts JSON / chat-template content by ~7-15%
+    * which let oversized requests slip past the gate. */
+  override val tokenizer: _root_.sigil.tokenize.Tokenizer = LlamaCppTokenizer(url)
+
   /** Serialize the uniform [[ProviderCall]] to a llama.cpp / OpenAI-compatible
     * chat-completions request and run the streaming response through
     * [[SSELineParser]] + chunk parsing. */
