@@ -133,6 +133,17 @@ object Orchestrator {
     def activeToolName: Option[String] = activeCalls.lastOption.map(_._2.toolName)
     def activeToolInvokeId: Option[lightdb.id.Id[Event]] = activeCalls.lastOption.map(_._2.invokeId)
     var activeMessageId: Option[lightdb.id.Id[Event]] = None
+
+    /** Bug #55 — id of the most recently emitted user-visible Message
+      * for this turn (`role != MessageRole.Tool`). Used as the fallback
+      * target when [[ProviderEvent.Usage]] arrives but no streaming
+      * `activeMessageId` exists — for tool-call-only models (llama.cpp
+      * grammar-constrained `respond` invocations) the agent's
+      * user-visible Message is built inside the tool's `executeTyped`,
+      * so the streaming-text path never fires. Without this fallback
+      * the per-turn token usage would land nowhere and clients render
+      * `usage = (0,0,0)` on the agent's bubble. */
+    var lastUserVisibleMessageId: Option[lightdb.id.Id[Event]] = None
     var currentKind: Option[ContentKind] = None
     var currentArg: Option[String] = None
     /** Accumulated text for the current open content block. Flushed as a
@@ -229,6 +240,7 @@ object Orchestrator {
           case None =>
             val id = Event.id()
             state.activeMessageId = Some(id)
+            state.lastUserVisibleMessageId = Some(id)
             val msg = Message(
               participantId = caller,
               conversationId = convId,
@@ -333,7 +345,16 @@ object Orchestrator {
                     // ToolProgress pulses without the tool author
                     // having to thread the correlation id manually.
                     currentToolInvokeId = Some(invokeId),
-                    currentToolName     = Some(t.name)
+                    currentToolName     = Some(t.name),
+                    // Bug #55 — atomic content tools (respond,
+                    // respond_options, …) stamp `Message.modelId` from
+                    // here so per-message metadata strips show which
+                    // model produced the response. Without this, agent
+                    // Messages from tool-call-only models (llama.cpp's
+                    // grammar-constrained respond invocations) carried
+                    // `modelId = None` because no streaming
+                    // ContentBlockDelta path fired to attach it.
+                    modelId             = Some(request.modelId)
                   ), invokeId)).handleError { err =>
                     scribe.error(s"Atomic tool '$toolName' threw during execution", err)
                     Task.pure(Stream.emit[Signal](Message(
@@ -353,11 +374,28 @@ object Orchestrator {
                 )
               case None => Stream.empty
             }
-            Stream.emits(toolDeltaPrefix) ++ executed
+            // Bug #55 — record user-visible Message ids the atomic
+            // tool emitted so the orchestrator's Usage handler has a
+            // target when no streaming activeMessageId exists.
+            val tracked = executed.evalMap { sig =>
+              sig match {
+                case m: Message if m.role != MessageRole.Tool =>
+                  Task { state.lastUserVisibleMessageId = Some(m._id); sig }
+                case _ =>
+                  Task.pure(sig)
+              }
+            }
+            Stream.emits(toolDeltaPrefix) ++ tracked
         }
 
       case ProviderEvent.Usage(usage) =>
-        state.activeMessageId match {
+        // Bug #55 — fall back to the last user-visible Message id when
+        // no streaming activeMessageId exists. Tool-call-only models
+        // (llama.cpp's grammar-constrained respond invocations) build
+        // the agent's user-visible Message inside the tool's
+        // `executeTyped`, so the streaming-text path never fires; this
+        // fallback lets per-turn token usage land on that Message.
+        state.activeMessageId.orElse(state.lastUserVisibleMessageId) match {
           case Some(msgId) =>
             Stream.emits(List(MessageDelta(target = msgId, conversationId = convId, usage = Some(usage))))
           case None => Stream.empty

@@ -2,6 +2,7 @@ package sigil
 
 import lightdb.id.Id
 import sigil.conversation.{Conversation, TurnInput}
+import sigil.db.Model
 import sigil.event.Event
 import sigil.participant.ParticipantId
 import sigil.signal.ToolProgress
@@ -66,6 +67,15 @@ import sigil.tool.ToolName
  *                            the default `attribution` on
  *                            `ToolProgress` pulses so clients can
  *                            label the chip without an extra lookup.
+ * @param modelId             the id of the [[sigil.db.Model]] driving
+ *                            this turn — set by the orchestrator from
+ *                            the active [[sigil.provider.ProviderRequest.modelId]]
+ *                            so atomic content tools (`respond`,
+ *                            `respond_options`, …) can stamp their
+ *                            emitted [[sigil.event.Message]]s with
+ *                            the originating model. `None` outside a
+ *                            provider-driven turn (e.g. settled-effect
+ *                            callbacks, app-driven imports). Bug #55.
  *
  * Chain is runtime-only — never persisted on Events. Each invocation's caller
  * supplies it fresh.
@@ -78,7 +88,8 @@ case class TurnContext(sigil: Sigil,
                        currentMessageId: Option[Id[Event]] = None,
                        correlationId: String = TurnContext.freshCorrelationId(),
                        currentToolInvokeId: Option[Id[Event]] = None,
-                       currentToolName: Option[ToolName] = None) {
+                       currentToolName: Option[ToolName] = None,
+                       modelId: Option[Id[Model]] = None) {
 
   /**
    * The participant currently acting — `chain.last`.

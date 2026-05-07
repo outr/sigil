@@ -74,12 +74,23 @@ case class LlamaCppProvider(url: URL,
       url = url.withPath("/apply-template"),
       content = Some(StringContent(JsonFormatter.Compact(body), ContentType.`application/json`))
     )
-    val task: Task[Int] = HttpClient.modify(_ => req).call[Json].map { json =>
+    // Bug #54 — hard timeout so a stalled `/apply-template` call
+    // can't block the agent loop indefinitely. On timeout / error,
+    // fall through to the parent's piecewise estimator, which still
+    // produces a usable (less accurate) number from the tokenizer
+    // pass over individual sections.
+    val task: Task[Int] = HttpClient.modify(_ => req).timeout(estimateTimeout).call[Json].map { json =>
       val rendered = json.get("prompt").map(_.asString).getOrElse("")
       tokenizer.count(rendered)
     }.handleError(_ => Task.pure(super.estimateRequest(call)))
     task.sync()
   }
+
+  /** Hard wall-clock cap on `/apply-template`. Distinct from
+    * `streamTimeout` (which gates the chat-completions stream) —
+    * pre-flight estimate is single-roundtrip work that must fail
+    * fast on backend stall. Bug #54. */
+  protected def estimateTimeout: FiniteDuration = 5.seconds
 
   /** Serialize the uniform [[ProviderCall]] to a llama.cpp / OpenAI-compatible
     * chat-completions request and run the streaming response through

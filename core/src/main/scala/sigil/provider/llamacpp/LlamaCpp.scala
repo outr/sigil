@@ -145,7 +145,10 @@ object LlamaCpp {
     * endpoint is unreachable or the fields are missing — callers
     * fall back to safe defaults. */
   def fetchProps(baseUrl: URL): Task[Option[RuntimeProps]] =
-    HttpClient.url(baseUrl.withPath("/props")).call[Json].map { json =>
+    // Bug #54 — hard timeout so an unreachable backend can't block
+    // provider construction indefinitely. Falls through to `None` →
+    // `total_slots = 1` default, which is the safe assumption.
+    HttpClient.url(baseUrl.withPath("/props")).timeout(scala.concurrent.duration.FiniteDuration(5, "seconds")).call[Json].map { json =>
       val nCtx = json.get("default_generation_settings")
         .flatMap(_.get("n_ctx"))
         .map(_.asLong)

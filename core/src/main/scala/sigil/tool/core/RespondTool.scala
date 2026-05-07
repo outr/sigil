@@ -44,7 +44,8 @@ case object RespondTool extends TypedTool[RespondInput](
       participantId = context.caller,
       conversationId = context.conversation.id,
       topicId = context.conversation.currentTopicId,
-      content = blocks
+      content = blocks,
+      modelId = context.modelId
     )
     rapid.Stream.emits(List[Event](message))
   }
