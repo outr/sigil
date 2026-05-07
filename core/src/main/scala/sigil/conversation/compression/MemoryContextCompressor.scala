@@ -56,55 +56,54 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                         chain: List[ParticipantId],
                         frames: Stream[ContextFrame],
                         conversationId: Id[Conversation]): Task[Option[ContextSummary]] =
-    frames.toList.flatMap { framesList =>
-      val materialized = framesList.toVector
-      if (materialized.isEmpty) Task.pure(None)
-      else for {
-        ctx <- loadContext(sigil, conversationId)
-        // Bug #41 — estimate transcript size so the routed candidate
-        // is sized for the input.
-        transcript = renderTranscript(materialized, ctx._1, ctx._2)
-        estimatedInput = (tokenizer.count(transcript) +
-                          tokenizer.count(summarizationSystemPrompt) +
-                          tokenizer.count(extractionSystemPrompt) +
-                          promptOverheadTokens).toLong
-        // Bug #24 / #26 / #41 — route summarization through
-        // SummarizationWork sized for the input; fall back to the
-        // caller's model when no SummarizationWork candidate fits.
-        summarizationModel <- sigil.routedModelFor(
-                                SummarizationWork,
-                                chain,
-                                fallback = callerModelId,
-                                estimatedInputTokens = Some(estimatedInput),
-                                reservedOutputTokens = reservedOutputTokens
-                              ).handleError(_ => Task.pure(callerModelId))
-        spaceOpt <- if (extractFacts) sigil.compressionMemorySpace(conversationId) else Task.pure(None)
-        // Bug #41 — when input exceeds the picked model's window,
-        // chunk-and-merge for the summary path. Extraction stays
-        // single-shot (the extraction's per-fact output is naturally
-        // chunked; merging fact lists across chunks is straight
-        // concat).
-        available = sigil.cache.find(summarizationModel).map(_.contextLength).getOrElse(0L) - reservedOutputTokens - promptOverheadTokens
-        transcriptTokens = tokenizer.count(transcript).toLong
-        _ <- spaceOpt match {
-               case Some(space) =>
-                 if (available <= 0L || transcriptTokens <= available)
-                   extractAndPersist(sigil, summarizationModel, chain, transcript, conversationId, space)
-                 else
-                   extractAndPersistChunked(sigil, summarizationModel, chain, materialized, ctx, conversationId, space, available)
-               case None        => Task.unit
-             }
-        summary <- if (available <= 0L || transcriptTokens <= available)
-                     summarize(sigil, summarizationModel, chain, transcript, conversationId)
+    sigil.runAsFrameworkWorkflow(
+      workflowType = "compress",
+      label = "Compressing conversation history",
+      conversationId = Some(conversationId)
+    ) { step =>
+      frames.toList.flatMap { framesList =>
+        val materialized = framesList.toVector
+        if (materialized.isEmpty) Task.pure(None)
+        else for {
+          _   <- step(s"Routing summarization model (${materialized.size} frames)")
+          ctx <- loadContext(sigil, conversationId)
+          transcript     = renderTranscript(materialized, ctx._1, ctx._2)
+          estimatedInput = (tokenizer.count(transcript) +
+                              tokenizer.count(summarizationSystemPrompt) +
+                              tokenizer.count(extractionSystemPrompt) +
+                              promptOverheadTokens).toLong
+          summarizationModel <- sigil.routedModelFor(
+                                  SummarizationWork,
+                                  chain,
+                                  fallback = callerModelId,
+                                  estimatedInputTokens = Some(estimatedInput),
+                                  reservedOutputTokens = reservedOutputTokens
+                                ).handleError(_ => Task.pure(callerModelId))
+          spaceOpt <- if (extractFacts) sigil.compressionMemorySpace(conversationId) else Task.pure(None)
+          available        = sigil.cache.find(summarizationModel).map(_.contextLength).getOrElse(0L) - reservedOutputTokens - promptOverheadTokens
+          transcriptTokens = tokenizer.count(transcript).toLong
+          _ <- step("Extracting facts")
+          _ <- spaceOpt match {
+                 case Some(space) =>
+                   if (available <= 0L || transcriptTokens <= available)
+                     extractAndPersist(sigil, summarizationModel, chain, transcript, conversationId, space)
                    else
-                     SummaryOnlyCompressor(
-                       systemPrompt = summarizationSystemPrompt,
-                       renderTranscript = renderTranscript,
-                       tokenizer = tokenizer,
-                       reservedOutputTokens = reservedOutputTokens,
-                       promptOverheadTokens = promptOverheadTokens
-                     ).compress(sigil, summarizationModel, chain, rapid.Stream.emits(materialized), conversationId)
-      } yield summary
+                     extractAndPersistChunked(sigil, summarizationModel, chain, materialized, ctx, conversationId, space, available)
+                 case None => Task.unit
+               }
+          _ <- step("Summarizing transcript")
+          summary <- if (available <= 0L || transcriptTokens <= available)
+                       summarize(sigil, summarizationModel, chain, transcript, conversationId)
+                     else
+                       SummaryOnlyCompressor(
+                         systemPrompt = summarizationSystemPrompt,
+                         renderTranscript = renderTranscript,
+                         tokenizer = tokenizer,
+                         reservedOutputTokens = reservedOutputTokens,
+                         promptOverheadTokens = promptOverheadTokens
+                       ).compress(sigil, summarizationModel, chain, rapid.Stream.emits(materialized), conversationId)
+        } yield summary
+      }
     }
 
   /** Bug #41 — extraction with chunk-and-merge: for inputs bigger than

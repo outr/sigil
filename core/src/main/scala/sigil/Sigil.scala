@@ -1932,6 +1932,67 @@ trait Sigil {
     }
 
   /**
+   * Wrap a framework-internal Task with lifecycle Notices so client
+   * UIs can render a progress indicator for it. Bug #50.
+   *
+   * Emits a [[sigil.signal.FrameworkWorkflowNotice]] in three (or
+   * two) phases:
+   *   1. `Started(label)` — immediately on enter.
+   *   2. (optional) `Step(stepLabel, durationMs)` — emitted from
+   *      within `task` via the `step` callback handed to it.
+   *   3. `Completed(durationMs)` on success OR `Failed(reason,
+   *      durationMs)` on error.
+   *
+   * Notices are transient — broadcast through the SignalHub, NOT
+   * persisted to `db.events`. Pre-flight runs every turn; persisting
+   * a started/completed pair per pre-flight pollutes the event log
+   * with noise nothing reads later. Clients filter the Notice for
+   * activity-bar / latency-trace rendering and apply their own
+   * threshold ("don't paint sub-300ms workflows") client-side.
+   *
+   * `workflowType` is the broad category (`"preflight"`,
+   * `"compress"`, `"frame-load"`, …). Apps wrap their own
+   * framework-internal operations by calling this with their own
+   * type strings — the framework treats the field as opaque.
+   *
+   * `conversationId` scopes the workflow to a conversation when
+   * applicable (most common case); `None` for cross-conversation
+   * operations.
+   */
+  final def runAsFrameworkWorkflow[A](workflowType: String,
+                                      label: String,
+                                      conversationId: Option[Id[Conversation]] = None)
+                                     (task: (String => Task[Unit]) => Task[A]): Task[A] = {
+    import sigil.signal.{FrameworkWorkflowNotice, FrameworkWorkflowPhase}
+    val workflowId = java.util.UUID.randomUUID().toString
+    val started    = System.currentTimeMillis()
+    def emit(phase: FrameworkWorkflowPhase): Task[Unit] =
+      publish(FrameworkWorkflowNotice(workflowId, workflowType, phase, conversationId))
+    val stepCb: String => Task[Unit] = { stepLabel =>
+      emit(FrameworkWorkflowPhase.Step(stepLabel, System.currentTimeMillis() - started))
+    }
+    emit(FrameworkWorkflowPhase.Started(label)).flatMap { _ =>
+      task(stepCb).attempt.flatMap {
+        case scala.util.Success(value) =>
+          emit(FrameworkWorkflowPhase.Completed(System.currentTimeMillis() - started))
+            .map(_ => value)
+        case scala.util.Failure(err) =>
+          val reason = s"${err.getClass.getSimpleName}: ${Option(err.getMessage).getOrElse("")}"
+          emit(FrameworkWorkflowPhase.Failed(reason, System.currentTimeMillis() - started))
+            .flatMap(_ => Task.error(err))
+      }
+    }
+  }
+
+  /** Convenience overload: wrap a Task that doesn't need to emit
+    * intermediate `Step` Notices. Bug #50. */
+  final def runAsFrameworkWorkflow[A](workflowType: String,
+                                      label: String,
+                                      conversationId: Option[Id[Conversation]],
+                                      task: Task[A]): Task[A] =
+    runAsFrameworkWorkflow(workflowType, label, conversationId)(_ => task)
+
+  /**
    * Inbound-Notice dispatch hook. Called by [[sigil.transport.SessionBridge]]
    * (and any other Notice-aware ingress) for each Notice that arrives
    * from a client over the wire. Apps and modules override to handle
