@@ -34,6 +34,7 @@ case object RespondCardsTool extends TypedTool[RespondCardsInput](
       conversationId = context.conversation.id,
       topicId = context.conversation.currentTopicId,
       content = input.cards.map(c => c: sigil.tool.model.ResponseContent),
-      state = EventState.Complete
+      state = EventState.Complete,
+      modelId = context.modelId
     )))
 }

@@ -38,6 +38,7 @@ case object RespondCardTool extends TypedTool[RespondCardInput](
       conversationId = context.conversation.id,
       topicId = context.conversation.currentTopicId,
       content = Vector(input.card),
-      state = EventState.Complete
+      state = EventState.Complete,
+      modelId = context.modelId
     )))
 }

@@ -25,7 +25,8 @@ case object RespondFailureTool extends TypedTool[RespondFailureInput](
       conversationId = context.conversation.id,
       topicId = context.conversation.currentTopicId,
       content = Vector(block),
-      state = EventState.Complete
+      state = EventState.Complete,
+      modelId = context.modelId
     )))
   }
 }
