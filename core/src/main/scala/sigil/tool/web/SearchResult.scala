@@ -2,10 +2,17 @@ package sigil.tool.web
 
 import fabric.rw.*
 
-/** Single search result. `snippet` is a short excerpt the search
-  * provider returns; `score` is a relevance signal when the
-  * provider supplies one (1.0 by default). */
+/** Single search result from a [[SearchProvider]].
+  *
+  * `snippet` is the short excerpt the backend returns; `score` is a
+  * relevance signal (some backends emit it, others don't, hence
+  * `Option`). `rawContent` is the full page-text body when the
+  * backend supplies it (Tavily's `raw_content`, Serper's full-page
+  * fetch); useful as input to downstream summarization without
+  * a follow-up fetch.
+  */
 case class SearchResult(title: String,
                         url: String,
                         snippet: String,
-                        score: Double = 1.0) derives RW
+                        score: Option[Double] = None,
+                        rawContent: Option[String] = None) derives RW
