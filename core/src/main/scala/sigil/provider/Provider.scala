@@ -213,18 +213,23 @@ trait Provider {
     * the JSON-formatted parameter schema. Override for providers with
     * extra per-tool metadata (Anthropic's `cache_control`, OpenAI's
     * `strict` flag, etc.) — the framework's default already counts
-    * the schema body which is the dominant cost. */
+    * the schema body which is the dominant cost.
+    *
+    * Bug #47 — concatenates the per-tool wire bytes into ONE
+    * tokenizer call instead of three (name / description / schema).
+    * For providers whose tokenizer makes an HTTP round-trip
+    * (`LlamaCppTokenizer`), this drops the per-tool HTTP cost from
+    * 3 to 1 — material when the agent has a dozen tools. */
   protected def estimateToolBytes(tool: Tool, tok: Tokenizer): Int = {
-    val name        = tok.count(tool.schema.name.value)
-    val description = tok.count(tool.descriptionFor(ConversationMode, sigil))
+    val name        = tool.schema.name.value
+    val description = tool.descriptionFor(ConversationMode, sigil)
     val schemaJson  = fabric.io.JsonFormatter.Compact(
       _root_.sigil.tool.DefinitionToSchema(tool.schema.input)
     )
-    val schema      = tok.count(schemaJson)
     // Wrapper overhead: `{"type":"function","name":"...","description":"...","parameters":{...}}`
     // — keys + braces + colons. ~10 tokens depending on tokenizer.
     val wrapper     = 12
-    name + description + schema + wrapper
+    tok.count(s"$name\n$description\n$schemaJson") + wrapper
   }
 
   /** Emergency-shed: trim tool roster (cap descriptions or drop

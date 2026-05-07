@@ -35,16 +35,29 @@ case class LlamaCppProvider(url: URL,
     * which let oversized requests slip past the gate. */
   override val tokenizer: _root_.sigil.tokenize.Tokenizer = LlamaCppTokenizer(url)
 
-  /** Bug #46 — backend-exact pre-flight estimate. Calls
-    * `POST /apply-template` to produce the chat-template-rendered
-    * prompt (which captures every glue token between messages —
-    * `<|turn|>`, `<|think|>`, role markers — that piecewise summing
-    * misses), then tokenizes the rendered string. Adds the tool-roster
-    * cost via the framework's existing `estimateRoster` (the roster
-    * doesn't go through the chat template). Falls back to the
-    * piecewise default on transient `/apply-template` failures. */
+  /** Bug #46 / #47 — backend-exact pre-flight estimate in a single
+    * round-trip. Sends both `messages` and `tools` to
+    * `POST /apply-template` so the rendered prompt includes every
+    * inline tool-declaration block the chat template emits (gemma:
+    * `<|tool>declaration:...<tool|>`; qwen / llama: model-specific).
+    * One subsequent `/tokenize` call against the whole rendered
+    * string produces an exact estimate.
+    *
+    * Cost: 2 HTTP round-trips per pre-flight regardless of how many
+    * tools the agent has. Pre-#47 the roster pass alone made
+    * 3-per-tool tokenizer calls (~30 round-trips for a 10-tool
+    * agent), each susceptible to spice connection-pool stale-reuse
+    * resets that triggered 1-second retry stalls. Collapsing to one
+    * call eliminates the cumulative latency and the reset surface
+    * area.
+    *
+    * Falls back to the piecewise default on `/apply-template`
+    * failure — caller still gets an estimate, just less accurate. */
   override protected def estimateRequest(call: ProviderCall): Int = {
-    val body = obj("messages" -> arr(renderMessagesArray(call)*))
+    val body = obj(
+      "messages" -> arr(renderMessagesArray(call)*),
+      "tools"    -> arr(renderToolsArray(call)*)
+    )
     val req = HttpRequest(
       method = HttpMethod.Post,
       url = url.withPath("/apply-template"),
@@ -52,7 +65,7 @@ case class LlamaCppProvider(url: URL,
     )
     val task: Task[Int] = HttpClient.modify(_ => req).call[Json].map { json =>
       val rendered = json.get("prompt").map(_.asString).getOrElse("")
-      tokenizer.count(rendered) + estimateRoster(call.tools, tokenizer)
+      tokenizer.count(rendered)
     }.handleError(_ => Task.pure(super.estimateRequest(call)))
     task.sync()
   }
@@ -118,6 +131,26 @@ case class LlamaCppProvider(url: URL,
     Vector(systemMsg) ++ withUserAnchor
   }
 
+  /** Render the wire `tools` array. Extracted so `estimateRequest`
+    * (bug #46 / #47) can ship the identical array to
+    * `/apply-template` for backend-exact pre-flight tokenization
+    * — gemma-class chat templates emit tool-declaration blocks
+    * inline in the rendered prompt, so passing both messages and
+    * tools to `/apply-template` collapses the entire pre-flight
+    * estimate into a single HTTP round-trip. */
+  private def renderToolsArray(input: ProviderCall): Vector[Json] =
+    input.tools.map { t =>
+      val s = t.schema
+      obj(
+        "type" -> str("function"),
+        "function" -> obj(
+          "name"        -> str(s.name.value),
+          "description" -> str(renderDescription(t, input.currentMode)),
+          "parameters"  -> DefinitionToSchema(s.input)
+        )
+      )
+    }
+
   private def buildBody(input: ProviderCall): Json = {
     val modelName = stripProviderPrefix(input.modelId.value)
     val finalMessages = renderMessagesArray(input)
@@ -130,17 +163,7 @@ case class LlamaCppProvider(url: URL,
     // on the Scala types (e.g. `RespondInput.content` must start with
     // `▶<TYPE>\n`). `ToolInputValidator` re-checks post-decode for
     // safety but the generation-time enforcement is the real win.
-    val toolsArr = input.tools.map { t =>
-      val s = t.schema
-      obj(
-        "type" -> str("function"),
-        "function" -> obj(
-          "name"        -> str(s.name.value),
-          "description" -> str(renderDescription(t, input.currentMode)),
-          "parameters"  -> DefinitionToSchema(s.input)
-        )
-      )
-    }
+    val toolsArr = renderToolsArray(input)
 
     // Qwen3 toggles thinking via chat_template_kwargs.enable_thinking.
     // On when the caller sets `effort`; off otherwise (default keeps
