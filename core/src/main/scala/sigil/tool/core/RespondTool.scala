@@ -20,12 +20,17 @@ import sigil.tool.model.{MarkdownContentParser, RespondInput}
 case object RespondTool extends TypedTool[RespondInput](
   name = ToolName("respond"),
   description =
-    """Send a user-facing reply. Plain text output is dropped — every textual response must route
-      |through this tool. (This is about HOW you reply, not WHEN — for action requests, prefer
-      |`find_capability` first.)
+    """Deliver text to the user. Use ONLY when:
+      |  (a) the user is chatting or asking a question you can answer from your own knowledge, OR
+      |  (b) you've already executed the requested action via another tool and are reporting the outcome.
+      |
+      |DO NOT use `respond` as a substitute for an action you haven't run. If the user asked you
+      |to DO anything — wait, fetch, save, send, run, edit, look up, etc. — your first call must
+      |be `find_capability`. `respond` is the final step after the action completes, not a way to
+      |skip the action.
       |
       |- `topicLabel` — 3-6 words. Fresh label when the user starts a new subject; keep the current
-      |  label when following up; use a prior label exactly when the user returns to a previous topic.
+      |  label when following up; reuse a prior label when the user returns to a previous topic.
       |- `topicSummary` — 1-2 sentences.
       |- `content` — markdown.
       |

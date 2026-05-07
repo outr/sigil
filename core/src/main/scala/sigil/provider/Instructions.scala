@@ -121,21 +121,48 @@ object Instructions {
       |- Ask for clarification only when a request is genuinely ambiguous, not to confirm obvious intent.""".stripMargin
 
   /**
-   * Default tool-discovery framing. Establishes at the system-prompt
-   * level — not just the tool description — that most capabilities
-   * are discovered, not preloaded. Without this, the model's
-   * assistant prior wins against `find_capability`'s tool-description
-   * "CALL THIS FIRST" instruction and the agent falls into the
-   * apologetic "I'm just an AI assistant" template instead of trying
-   * to discover the tool that would handle the request.
+   * Default tool-discovery framing. Bug #48 — establishes
+   * discovery-first as the framework's CORE ideology, not a tip.
+   *
+   * Triage framing (1 / 2 / 3) is what finally moves smaller
+   * quantised models off the "I'll just respond" default. The
+   * earlier softer phrasings positioned `find_capability` as
+   * appropriate "for specialized work", which the model read as a
+   * narrow case it could route around for short prompts like
+   * "wait 200ms then respond done" — splitting the action half
+   * away and answering only the final-reply half via `respond`.
+   *
+   * Three load-bearing rules:
+   *   - "Even ONE word of action means action" — closes the
+   *     "this seems trivial enough to fake" loophole.
+   *   - "If the user bundles an action AND a final reply, the action
+   *     half is still an action" — closes the "wait 200ms then
+   *     respond done" loophole specifically.
+   *   - "When in doubt, choose action" — biases the model toward
+   *     discovery; the cost of an unnecessary `find_capability` is
+   *     one extra turn, the cost of skipping is silently degrading
+   *     the user's task.
    */
   val DefaultToolsGuidance: String =
-    """TOOLS
-      |- Most of your capabilities are discovered, not preloaded. Your immediate tool list is small (`find_capability`, `respond`, `stop`, …); the catalog also contains specialized tools, modes, and skills that surface only when you search for them.
-      |- If `change_mode` is in your immediate roster, its description lists every available mode. If any listed mode matches the user's task, call `change_mode` directly with that mode name — that is the most precise route.
-      |- For specialized work outside any listed mode (custom tools, file manipulation, search, multi-step automation, etc.), call `find_capability` FIRST to discover the right tool/mode.
-      |- For simple chat, Q&A you can answer from your knowledge, or follow-ups in the current mode, `respond` is fine — no need to discover.
-      |- The flow for action requests when nothing in your immediate roster fits: `find_capability("X-related keywords")` → review matches → call returned tool / `change_mode` to switch into the matched mode → only then produce content.""".stripMargin
+    """TOOLS — discovery-first is the framework's CORE ideology. Internalize this.
+      |
+      |The catalog is large. Your visible roster (`find_capability`, `respond`, `stop`, …) is intentionally tiny. Almost every action the user asks for has a dedicated tool — your job is to find it, not to fake it through `respond`.
+      |
+      |Triage every user message into one of these:
+      |
+      |1. The user asked you to DO something — wait, fetch, save, look up, send, run, edit, search, schedule, pause, sleep, calculate, anything action-shaped. Even ONE word of action means action.
+      |   → FIRST CALL: `find_capability` with relevant keywords. ALWAYS. No exceptions. Do not use `respond` as a shortcut. Do not assume the action isn't supported — the catalog almost always has it.
+      |   → If the user's request bundles an action AND a final reply ("wait 200ms then respond done", "fetch X then summarize", "save Y then confirm"), the action half is still an action. find_capability comes first.
+      |
+      |2. The user is chatting / asking a knowledge question / following up in the current mode and no action is needed.
+      |   → `respond` with the answer.
+      |
+      |3. The user has indicated the conversation is over.
+      |   → `stop`.
+      |
+      |When in doubt between 1 and 2, choose 1. The cost of an unnecessary `find_capability` is one extra turn; the cost of skipping discovery is silently degrading the user's task.
+      |
+      |If `change_mode` is in your immediate roster, its description lists every available mode. If a listed mode matches the user's task, call `change_mode` directly — that's the most precise route (a Mode is a pre-curated find_capability result).""".stripMargin
 
   /**
    * Pure-discovery variant of the TOOLS guidance — used when [[ToolPolicy.PureDiscovery]]
@@ -167,8 +194,9 @@ object Instructions {
    * Suppress with `Instructions(toolsTrailer = "")`.
    */
   val DefaultToolsTrailer: String =
-    """REMINDER: every reply MUST be a tool call. Plain text output is dropped silently by
-      |the framework — wrap your output in whichever tool fits the situation.""".stripMargin
+    """REMINDER: every reply MUST be a tool call. For ACTIONS (anything the user asked you to DO),
+      |the first call is `find_capability`; `respond` comes after the action runs, not instead of it.
+      |Plain text output is dropped silently — wrap your output in whichever tool fits.""".stripMargin
 
   // -- back-compat aliases --
   // Older code referenced `SafetyGuidance` / `BehaviorGuidance` / `DefaultCore` directly.

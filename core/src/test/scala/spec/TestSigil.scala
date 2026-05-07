@@ -113,8 +113,16 @@ object TestSigil extends Sigil {
   private val defaultVectorIndex: VectorIndex = NoOpVectorIndex
   private val defaultCompressionSpace: Option[SpaceId] = None
   private val defaultPutInformation: Information => Unit = _ => ()
+  // Mirror the framework default — use the StandardContextCurator so
+  // dispatcher / conversation tests that publish a user Message and let
+  // the agent fiber pick up `framesFor` actually see the user's content
+  // in `TurnInput.frames`. The prior empty-TurnInput default silently
+  // hid every published user message from the LLM (the LlamaCppProvider
+  // injected its `(begin conversation)` placeholder), masking real
+  // model behaviour with placeholder behaviour.
   private val defaultCurate: (Id[Conversation], Id[Model], List[ParticipantId]) => Task[TurnInput] =
-    (convId, _, _) => Task.pure(TurnInput(conversationId = convId))
+    (convId, modelId, chain) =>
+      sigil.conversation.compression.StandardContextCurator(TestSigil).curate(convId, modelId, chain)
   // Inherit Sigil's framework default — `StandardMemoryExtractor`
   // wired to `compressionMemorySpace` — so test JVMs exercise the
   // primary extractor path. When `compressionSpaceRef` is None

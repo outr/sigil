@@ -16,8 +16,14 @@ import sigil.tool.{DiscoveryRequest, ToolExample, ToolName, TypedTool}
 case object FindCapabilityTool extends TypedTool[FindCapabilityInput](
   name = ToolName("find_capability"),
   description =
-    """CALL THIS FIRST when the user asks you to DO something not in your current tool roster. Most
-      |capabilities are discovered, not preloaded. Don't say something is unsupported without calling this.
+    """ALWAYS call this FIRST when the user asks you to DO anything — wait, fetch, save, send,
+      |run, edit, search, schedule, look up, anything action-shaped. The catalog is large; the
+      |right tool almost always exists. Do not assume an action is unsupported and do not
+      |substitute `respond` for one — call this and check.
+      |
+      |Even short or seemingly trivial requests count. "wait 200ms then respond done" is an
+      |action (the wait); "fetch X and summarize" is an action (the fetch); the final reply is
+      |the LAST step, not a substitute for the action.
       |
       |Returns matches across every kind of capability:
       |  - Tools — call the matched name directly on your next turn.
@@ -27,8 +33,8 @@ case object FindCapabilityTool extends TypedTool[FindCapabilityInput](
       |    prefer the mode-entry path; modes are designed end-to-end for their work shape.
       |
       |Matches are valid for ONE next turn — act on a match (call the tool, or call
-      |change_mode for a Mode) then, or they're cleared. If no matches, you may tell the user
-      |it isn't available.
+      |change_mode for a Mode) then, or they're cleared. If the search truly returns nothing,
+      |only THEN may you tell the user it isn't available.
       |
       |`keywords` — space-separated lowercase terms; multi-word queries match better
       |(e.g. "send slack channel message" not just "slack").""".stripMargin,
