@@ -117,18 +117,32 @@ trait Provider {
     val limit = sigil.cache.find(request.modelId).map(_.contextLength.toInt).getOrElse(Int.MaxValue)
     if (limit == Int.MaxValue) Right(providerCall) // no model record — can't validate; trust the curator
     else {
-      val tok = tokenizer
-      def estimateOf(c: ProviderCall): Int =
-        tok.count(c.system) + c.messages.iterator.map(estimateMessage(_, tok)).sum + estimateRoster(c.tools, tok)
-
-      val initial = estimateOf(providerCall)
+      val initial = estimateRequest(providerCall)
       if (initial <= limit) Right(providerCall)
       else {
-        val shed = emergencyShed(providerCall, limit, tok, estimateOf)
-        if (estimateOf(shed) <= limit) Right(shed)
-        else Left(new RequestOverBudgetException(estimateOf(shed), limit, request.modelId))
+        val shed = emergencyShed(providerCall, limit, tokenizer, estimateRequest)
+        if (estimateRequest(shed) <= limit) Right(shed)
+        else Left(new RequestOverBudgetException(estimateRequest(shed), limit, request.modelId))
       }
     }
+  }
+
+  /** Estimate the wire-rendered token count for `call`. Bug #46 —
+    * exposed as a `protected` hook so providers whose wire is built
+    * by composing a chat template (every chat-completions-style
+    * provider) can override with an exact backend-rendered count
+    * (e.g. `LlamaCppProvider` calls `/apply-template` + `/tokenize`).
+    *
+    * Default: piecewise sum of system + per-message + roster. Correct
+    * within ~7-15% for chat-template providers; the gap is the
+    * template glue between messages that piecewise summing misses.
+    * Providers with large context windows tolerate the gap; tight
+    * `n_ctx` configs don't, and override accordingly. */
+  protected def estimateRequest(call: ProviderCall): Int = {
+    val tok = tokenizer
+    tok.count(call.system) +
+      call.messages.iterator.map(estimateMessage(_, tok)).sum +
+      estimateRoster(call.tools, tok)
   }
 
   /** Best-effort token count for a single [[ProviderMessage]] as it

@@ -35,6 +35,28 @@ case class LlamaCppProvider(url: URL,
     * which let oversized requests slip past the gate. */
   override val tokenizer: _root_.sigil.tokenize.Tokenizer = LlamaCppTokenizer(url)
 
+  /** Bug #46 — backend-exact pre-flight estimate. Calls
+    * `POST /apply-template` to produce the chat-template-rendered
+    * prompt (which captures every glue token between messages —
+    * `<|turn|>`, `<|think|>`, role markers — that piecewise summing
+    * misses), then tokenizes the rendered string. Adds the tool-roster
+    * cost via the framework's existing `estimateRoster` (the roster
+    * doesn't go through the chat template). Falls back to the
+    * piecewise default on transient `/apply-template` failures. */
+  override protected def estimateRequest(call: ProviderCall): Int = {
+    val body = obj("messages" -> arr(renderMessagesArray(call)*))
+    val req = HttpRequest(
+      method = HttpMethod.Post,
+      url = url.withPath("/apply-template"),
+      content = Some(StringContent(JsonFormatter.Compact(body), ContentType.`application/json`))
+    )
+    val task: Task[Int] = HttpClient.modify(_ => req).call[Json].map { json =>
+      val rendered = json.get("prompt").map(_.asString).getOrElse("")
+      tokenizer.count(rendered) + estimateRoster(call.tools, tokenizer)
+    }.handleError(_ => Task.pure(super.estimateRequest(call)))
+    task.sync()
+  }
+
   /** Serialize the uniform [[ProviderCall]] to a llama.cpp / OpenAI-compatible
     * chat-completions request and run the streaming response through
     * [[SSELineParser]] + chunk parsing. */
@@ -74,21 +96,13 @@ case class LlamaCppProvider(url: URL,
 
   // ---- request body construction ----
 
-  private def buildBody(input: ProviderCall): Json = {
-    val modelName = stripProviderPrefix(input.modelId.value)
-
-    // Collapse any leading-System tail of `input.messages` into the
-    // framework's `input.system` BEFORE rendering. Greet-on-join turns
-    // typically arrive with `input.messages` consisting only of
-    // ContextFrame.System entries (TopicChange / ModeChange history,
-    // role descriptions). Without this collapse the placeholder-user
-    // injection below ends up between the framework system and the
-    // remaining System frames, yielding `[system, user, System1,
-    // System2, ...]` which Qwen3.5's chat template rejects with
-    // "System message must be at the beginning". `foldMidArraySystems`
-    // (in `renderMessages`) still handles the other case — System
-    // frames that appear AFTER non-System content during a live
-    // conversation (mid-array TopicChange settles).
+  /** Render the wire `messages` array exactly as `buildBody` produces
+    * it — leading-system fold, mid-array system fold via
+    * `foldMidArraySystems`, placeholder-user injection. Extracted so
+    * `estimateRequest` can ship the identical array to
+    * `/apply-template` for backend-exact pre-flight tokenization
+    * (bug #46). */
+  private def renderMessagesArray(input: ProviderCall): Vector[Json] = {
     val (leadingSystem, nonLeading) = input.messages.span {
       case _: ProviderMessage.System => true
       case _ => false
@@ -98,20 +112,15 @@ case class LlamaCppProvider(url: URL,
     }).filter(_.nonEmpty).mkString("\n\n")
     val systemMsg = obj("role" -> str("system"), "content" -> str(combinedSystem))
     val rendered = renderMessages(nonLeading)
-
-    // Some llama.cpp chat templates (notably Qwen3.5) enforce a
-    // minimum-one-user-message invariant — the Jinja template raises
-    // "No user query found in messages" when the messages array has
-    // only system/assistant entries. The greet-on-join turn is the
-    // legitimate case: the agent is introducing itself before any
-    // user input, so by construction there's no user content to
-    // surface. Inject a synthetic placeholder so the template's
-    // required-user-anchor is satisfied. The agent's role
-    // descriptions / skill text drive the actual greeting content;
-    // this placeholder is just appeasing Jinja.
     val withUserAnchor =
       if (rendered.exists(m => m.get("role").exists(_.asString == "user"))) rendered
       else placeholderUserMessage +: rendered
+    Vector(systemMsg) ++ withUserAnchor
+  }
+
+  private def buildBody(input: ProviderCall): Json = {
+    val modelName = stripProviderPrefix(input.modelId.value)
+    val finalMessages = renderMessagesArray(input)
 
     // llama.cpp's chat-completions endpoint translates the FULL JSON
     // Schema into a GBNF grammar — including `pattern`, `format`,
@@ -143,7 +152,7 @@ case class LlamaCppProvider(url: URL,
     val thinkingEnabled = input.generationSettings.effort.isDefined
     val baseFields = Vector[(String, Json)](
       "model" -> str(modelName),
-      "messages" -> arr((Vector(systemMsg) ++ withUserAnchor)*),
+      "messages" -> arr(finalMessages*),
       "stream" -> bool(true),
       // Emit a final chunk with token usage before [DONE]
       "stream_options" -> obj("include_usage" -> bool(true)),
