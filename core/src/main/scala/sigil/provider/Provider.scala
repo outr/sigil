@@ -720,6 +720,22 @@ trait Provider {
       }
     }
 
+    // Bug #63 — when this turn was fired by `greetsOnJoin`'s
+    // greeting flow, append a clear instruction so the model
+    // doesn't have to guess from the empty trigger stream
+    // whether this is a moment to introduce itself or to stay
+    // silent. Without this hint, the model picks `respond` vs
+    // `no_response` stochastically, breaking the user contract
+    // implied by `greetsOnJoin = true`. The hint is rendered
+    // last so it sits within the model's recency-biased
+    // attention.
+    if (c.isGreeting) {
+      sb.append("\n== Greeting turn ==\n")
+      sb.append("This is a fresh conversation. Call `respond` with a brief introduction — ")
+      sb.append("state your role and offer to help. Do NOT call `no_response` or `find_capability` ")
+      sb.append("on this turn; the user expects a greeting, not silence or discovery.\n")
+    }
+
     sb.toString
   }
 
