@@ -43,4 +43,5 @@ case class ToolResults(schemas: List[ToolSchema],
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
+  override def withConversationId(conversationId: Id[sigil.conversation.Conversation]): Event = copy(conversationId = conversationId)
 }

@@ -47,38 +47,52 @@ case class StandardContextCurator(sigil: Sigil,
 
   override def curate(conversationId: Id[Conversation],
                       modelId: Id[Model],
-                      chain: List[ParticipantId]): Task[TurnInput] = {
-    val elide: Set[String] = sigil.staticTools.iterator
-      .collect { case t if t.resultTtl.contains(0) => t.name.value }
-      .toSet
-    for {
-      rawFrames     <- sigil.framesFor(conversationId)
-      visibleFrames = rawFrames.filter(f => sigil.visibilityAllows(f.visibility, chain.lastOption.orNull))
-      optimizedFrames = optimizer.optimize(visibleFrames, elide, chain.headOption)
-      blockResult <- blockExtractor.extract(sigil, optimizedFrames)
-      memoryResult <- memoryRetriever.retrieve(sigil, conversationId, blockResult.frames, chain)
-      projections <- loadProjections(conversationId, chain)
-      tentative = TurnInput(
-        conversationId = conversationId,
-        frames = blockResult.frames,
-        participantProjections = projections,
-        criticalMemories = memoryResult.criticalMemories,
-        memories = memoryResult.memories,
-        information = blockResult.information
-      )
-      modelOpt <- modelFor(modelId)
-      shed <- modelOpt match {
-        case Some(model) =>
-          budgetResolve(model, tentative, modelId, chain, memoryResult, blockResult.information)
-        case None =>
-          Task.pure(tentative)
-      }
-      result <- modelOpt match {
-        case Some(model) => attachBudgetWarning(shed, model, memoryResult, modelId, chain, conversationId)
-        case None        => Task.pure(shed)
-      }
-    } yield result
-  }
+                      chain: List[ParticipantId]): Task[TurnInput] =
+    sigil.runAsFrameworkWorkflow(
+      workflowType = "curate",
+      label = "Building turn context",
+      conversationId = Some(conversationId)
+    ) { control =>
+      // Bug #60 — visibility for the in-loop work between user turn
+      // arrival and chat/completions dispatch. Curate fires every
+      // turn; on a fresh conversation it's sub-second (the Notice
+      // flickers — fine), after a bulk import it's the user-
+      // perceptible window the activity bar needs to surface.
+      val elide: Set[String] = sigil.staticTools.iterator
+        .collect { case t if t.resultTtl.contains(0) => t.name.value }
+        .toSet
+      for {
+        _             <- control.step("Loading frames")
+        rawFrames     <- sigil.framesFor(conversationId)
+        visibleFrames = rawFrames.filter(f => sigil.visibilityAllows(f.visibility, chain.lastOption.orNull))
+        optimizedFrames = optimizer.optimize(visibleFrames, elide, chain.headOption)
+        _             <- control.step(s"Extracting blocks (${optimizedFrames.size} frames)")
+        blockResult   <- blockExtractor.extract(sigil, optimizedFrames)
+        _             <- control.step("Retrieving memories")
+        memoryResult  <- memoryRetriever.retrieve(sigil, conversationId, blockResult.frames, chain)
+        projections   <- loadProjections(conversationId, chain)
+        tentative     = TurnInput(
+          conversationId = conversationId,
+          frames = blockResult.frames,
+          participantProjections = projections,
+          criticalMemories = memoryResult.criticalMemories,
+          memories = memoryResult.memories,
+          information = blockResult.information
+        )
+        modelOpt      <- modelFor(modelId)
+        _             <- control.step("Resolving token budget")
+        shed          <- modelOpt match {
+          case Some(model) =>
+            budgetResolve(model, tentative, modelId, chain, memoryResult, blockResult.information)
+          case None =>
+            Task.pure(tentative)
+        }
+        result        <- modelOpt match {
+          case Some(model) => attachBudgetWarning(shed, model, memoryResult, modelId, chain, conversationId)
+          case None        => Task.pure(shed)
+        }
+      } yield result
+    }
 
   /** Snapshot every chain participant's projection from the
     * persistent collection. Empty when none recorded yet. */

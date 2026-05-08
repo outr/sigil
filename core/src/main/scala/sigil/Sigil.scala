@@ -1841,11 +1841,29 @@ trait Sigil {
    */
   final def publishHistorical(events: Seq[sigil.event.Event],
                               conversationId: Id[Conversation]): Task[Unit] =
-    if (events.isEmpty)
-      Task {
-        hub.emit(sigil.signal.ConversationHistoryImported(conversationId, 0))
-        ()
-      }
+    publishHistoricalSilent(events, conversationId).flatMap(_ =>
+      notifyHistoryImported(conversationId, events.size)
+    )
+
+  /**
+   * Persist + project a batch of historical events WITHOUT firing the
+   * [[sigil.signal.ConversationHistoryImported]] refresh Notice.
+   *
+   * Used by long-running imports that progressively persist chunks
+   * into a staging conversation: the workflow can call this many
+   * times during processing (each chunk lands in DB silently — no
+   * subscriber sees per-chunk refresh churn), then call
+   * [[notifyHistoryImported]] exactly once at the end (typically
+   * after [[mergeStagingIntoMain]] flips the events to the real
+   * conversation).
+   *
+   * Apps doing one-shot imports (no staging step) should keep
+   * calling [[publishHistorical]] — that's the convenience wrapper
+   * that pairs Silent + Notify in a single call.
+   */
+  final def publishHistoricalSilent(events: Seq[sigil.event.Event],
+                                    conversationId: Id[Conversation]): Task[Unit] =
+    if (events.isEmpty) Task.unit
     else {
       // Inline contextFrame on every imported event before persisting
       // so the bulk-import path matches the publish-time pipeline's
@@ -1864,12 +1882,22 @@ trait Sigil {
       for {
         _ <- persistAll
         _ <- coalescedProjectionFor(conversationId, events)
-        // Frames are sourced live from `db.events` — no view to rebuild post-publishHistorical.
-        _ <- Task {
-               hub.emit(sigil.signal.ConversationHistoryImported(conversationId, events.size))
-               ()
-             }
+        // Frames are sourced live from `db.events` — no view to rebuild post-publishHistoricalSilent.
       } yield ()
+    }
+
+  /**
+   * Emit the [[sigil.signal.ConversationHistoryImported]] refresh
+   * Notice for `conversationId`. Idempotent — safe to call from
+   * cancel-handlers that aren't sure whether the import made
+   * progress. Pair with [[publishHistoricalSilent]] for chunked
+   * progressive imports; the convenience [[publishHistorical]]
+   * already wraps both steps for one-shot imports.
+   */
+  final def notifyHistoryImported(conversationId: Id[Conversation], totalEventCount: Int): Task[Unit] =
+    Task {
+      hub.emit(sigil.signal.ConversationHistoryImported(conversationId, totalEventCount))
+      ()
     }
 
   /** Coalesced [[Conversation]] row update for a bulk import: applies
@@ -3623,6 +3651,115 @@ trait Sigil {
     Task.pure(None)
 
   /**
+   * Open a staging conversation that buffers events for a
+   * long-running import workflow. The staging conv is a regular
+   * [[Conversation]] row with `stagingFor = Some(target)` —
+   * persisted records (events, memories, summaries) addressed to
+   * its id are durable but logically isolated from the target
+   * conversation until [[mergeStagingIntoMain]] flips the
+   * conversationId references. On cancel / crash, the staging
+   * conv plus its records are reaped by
+   * [[OrphanStagingConversationSweep]] (or proactively cleaned via
+   * [[deleteStagingConversation]]).
+   *
+   * Idempotent on `_id`. Apps typically construct the staging id
+   * up front (e.g. `s"import-staging-${Unique()}"`) so the
+   * workflow's run state can reference it.
+   */
+  def createStagingConversation(stagingId: Id[Conversation],
+                                stagingFor: Id[Conversation]): Task[Conversation] = {
+    val staging = Conversation(
+      _id        = stagingId,
+      topics     = Nil,
+      stagingFor = Some(stagingFor)
+    )
+    withDB(_.conversations.transaction(_.upsert(staging)))
+  }
+
+  /**
+   * Atomically commit a staging conversation's records into its
+   * target. All [[sigil.event.Event]]s, [[sigil.conversation.ContextMemory]]s,
+   * and [[sigil.conversation.ContextSummary]]s with
+   * `conversationId = staging` are rewritten to reference `target`,
+   * the staging conversation row is deleted, and one
+   * [[sigil.signal.ConversationHistoryImported]] Notice fires
+   * against `target` so consumers do their single refresh.
+   *
+   * Uses lightdb's `tx.upsert(stream)` for each record type — one
+   * call per store handles batching, indices, and the WAL. Returns
+   * the number of events flipped (informational; memories /
+   * summaries also moved but aren't reflected in the count).
+   */
+  def mergeStagingIntoMain(staging: Id[Conversation],
+                           target: Id[Conversation]): Task[Int] = {
+    // Event store has no conversationId index today, so use a
+    // streaming `tx.stream.filter` rather than `tx.query.filter`.
+    // For large event stores this is a full-table scan; the merge
+    // is one-shot per import, so an index could be added later if
+    // profiling shows it's load-bearing.
+    val rewriteEvents: Task[Int] = withDB(_.events.transaction { tx =>
+      val rewritten = tx.stream
+        .filter(_.conversationId == staging)
+        .map(e => e.withConversationId(target))
+      tx.upsert(rewritten)
+    })
+    val rewriteMemories: Task[Int] = withDB(_.memories.transaction { tx =>
+      val rewritten = tx.query.filter(_.conversationId === Some(staging)).stream
+        .map(m => m.copy(conversationId = Some(target)))
+      tx.upsert(rewritten)
+    })
+    val rewriteSummaries: Task[Int] = withDB(_.summaries.transaction { tx =>
+      val rewritten = tx.query.filter(_.conversationId === staging).stream
+        .map(s => s.copy(conversationId = target))
+      tx.upsert(rewritten)
+    })
+    for {
+      eventCount <- rewriteEvents
+      _          <- rewriteMemories
+      _          <- rewriteSummaries
+      _          <- withDB(_.conversations.transaction(_.delete(staging)))
+      _          <- notifyHistoryImported(target, eventCount)
+    } yield eventCount
+  }
+
+  /**
+   * Drop a staging conversation and every record that references
+   * it, without merging into a target. Used by explicit cancel
+   * paths and by [[OrphanStagingConversationSweep]] for crash
+   * recovery. Deletes events, memories, and summaries addressed
+   * to the staging id, then drops the conversation row. Vector-
+   * index entries for deleted memories are NOT explicitly evicted
+   * — the next embed/search cycle drops stale points by id-misses
+   * (matches existing `deleteConversation` semantics).
+   *
+   * No Notice fires — the staging conv was never visible to
+   * subscribers, so there's nothing to refresh.
+   */
+  def deleteStagingConversation(staging: Id[Conversation]): Task[Unit] =
+    for {
+      _ <- withDB { db =>
+             db.events.transaction { tx =>
+               // No conversationId index on Event; stream-scan + filter.
+               val ids = tx.stream.filter(_.conversationId == staging).map(_._id)
+               ids.evalMap(id => tx.delete(id)).drain
+             }
+           }
+      _ <- withDB { db =>
+             db.memories.transaction { tx =>
+               val ids = tx.query.filter(_.conversationId === Some(staging)).stream.map(_._id)
+               ids.evalMap(id => tx.delete(id)).drain
+             }
+           }
+      _ <- withDB { db =>
+             db.summaries.transaction { tx =>
+               val ids = tx.query.filter(_.conversationId === staging).stream.map(_._id)
+               ids.evalMap(id => tx.delete(id)).drain
+             }
+           }
+      _ <- withDB(_.conversations.transaction(_.delete(staging)))
+    } yield ()
+
+  /**
    * Hard-delete a conversation and every record that references it —
    * the conversation row itself, every Event, the ConversationView
    * projection, and every Topic. The deletion is best-effort and
@@ -4427,7 +4564,24 @@ trait Sigil {
    * }}}
    */
   def maintenanceTasks: List[sigil.maintenance.MaintenanceTask] =
-    List(sigil.maintenance.StoredFileExpirationSweep(storedFileExpirationInterval))
+    List(
+      sigil.maintenance.StoredFileExpirationSweep(storedFileExpirationInterval),
+      sigil.maintenance.OrphanStagingConversationSweep(orphanStagingSweepInterval, orphanStagingCutoff)
+    )
+
+  /** Cadence for [[sigil.maintenance.OrphanStagingConversationSweep]] —
+    * how often the framework reaps abandoned staging conversations
+    * left behind by crashed / killed import workflows. Default: 1
+    * hour. */
+  def orphanStagingSweepInterval: scala.concurrent.duration.FiniteDuration =
+    scala.concurrent.duration.DurationInt(1).hour
+
+  /** Age threshold a staging conversation must exceed before the
+    * orphan sweep deletes it. Generous default (24h) so legit
+    * long-running imports finish without false-reaping; apps
+    * running unusually long imports override. */
+  def orphanStagingCutoff: scala.concurrent.duration.FiniteDuration =
+    scala.concurrent.duration.DurationInt(24).hours
 
   /** Cadence for [[sigil.maintenance.StoredFileExpirationSweep]] —
     * how often the framework reclaims expired

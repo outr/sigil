@@ -82,6 +82,7 @@ case class Conversation(topics: List[TopicEntry],
                         clearedAt: Option[Timestamp] = None,
                         cost: BigDecimal = BigDecimal(0),
                         parentConversationId: Option[Id[Conversation]] = None,
+                        stagingFor: Option[Id[Conversation]] = None,
                         archived: Boolean = false,
                         created: Timestamp = Timestamp(),
                         modified: Timestamp = Timestamp(),
@@ -121,4 +122,13 @@ object Conversation extends RecordDocumentModel[Conversation] with JsonConversio
   implicit override def rw: RW[Conversation] = RW.gen
 
   override def id(value: String = Unique()): Id[Conversation] = Id(value)
+
+  /** Index on `stagingFor` so the orphan-staging maintenance sweep
+    * can scan staging conversations cheaply, and apps can list
+    * "imports in progress for conversation X." */
+  val stagingFor: I[Option[Id[Conversation]]] = field.index(_.stagingFor)
+
+  /** Index on `created` so the orphan-staging sweep can age-out
+    * abandoned imports without a full table scan. */
+  val createdAt: I[Long] = field.index("createdAt", _.created.value)
 }

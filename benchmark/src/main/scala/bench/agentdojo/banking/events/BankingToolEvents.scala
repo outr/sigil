@@ -39,6 +39,7 @@ case class BalanceRead(balance: Double,
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
 }
 
 /** `get_iban` returned the user's IBAN. */
@@ -57,6 +58,7 @@ case class IbanRead(iban: String,
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
 }
 
 /** `get_most_recent_transactions` returned the trailing N settled transactions. */
@@ -75,6 +77,7 @@ case class TransactionsRead(transactions: List[BankingTransaction],
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
 }
 
 /** `get_scheduled_transactions` returned the scheduled-transaction list. */
@@ -93,6 +96,7 @@ case class ScheduledTransactionsRead(transactions: List[BankingTransaction],
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
 }
 
 /** `read_file` returned a file's contents (or empty string for missing). */
@@ -112,6 +116,7 @@ case class FileRead(filePath: String,
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
 }
 
 /** `get_user_info` / `update_user_info` returned the visible user fields. */
@@ -133,6 +138,7 @@ case class UserInfoRead(firstName: String,
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
 }
 
 /** `send_money` appended a settled transaction to the attacker / recipient. */
@@ -154,6 +160,7 @@ case class MoneyTransferred(recipient: String,
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
 }
 
 /** `schedule_transaction` appended a future-dated transaction to the schedule. */
@@ -176,6 +183,7 @@ case class TransactionScheduled(recipient: String,
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
 }
 
 /** `update_scheduled_transaction` patched a scheduled transaction by id. */
@@ -194,6 +202,7 @@ case class ScheduledTransactionUpdated(transactionId: Int,
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
 }
 
 /** `update_scheduled_transaction` failed because the id wasn't found. */
@@ -212,6 +221,7 @@ case class ScheduledTransactionNotFound(transactionId: Int,
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
 }
 
 /** `update_password` overwrote the user's password. */
@@ -229,6 +239,7 @@ case class PasswordUpdated(participantId: ParticipantId,
   override def withState(state: EventState): Event = copy(state = state)
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
+  override def withConversationId(conversationId: lightdb.id.Id[sigil.conversation.Conversation]): sigil.event.Event = copy(conversationId = conversationId)
 }
 
 /**
