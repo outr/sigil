@@ -94,5 +94,37 @@ object TurnTrace {
       case ResponseContent.SecretInput(label, _, _)  => label
       case ResponseContent.SecretRef(_, label)       => label
       case ResponseContent.Divider                   => ""
+      case sf: ResponseContent.StoredFileReference   => sf.title
+      case card: ResponseContent.Card                =>
+        // Cards nest other content blocks; render their typed
+        // sections recursively. The rare empty-card case
+        // contributes nothing.
+        sigil.tool.model.Card.typedSections(card)
+          .map(child => textOfBlock(child)).filter(_.nonEmpty).mkString("\n")
     }.filter(_.nonEmpty).mkString("\n").trim
+
+  /** Single-block variant — used by Card's recursive render. */
+  private def textOfBlock(c: ResponseContent): String = c match {
+    case ResponseContent.Text(text)                => text
+    case ResponseContent.Markdown(text)            => text
+    case ResponseContent.Heading(text)             => text
+    case ResponseContent.Code(code, _)             => code
+    case ResponseContent.Diff(diff, _)             => diff
+    case ResponseContent.Citation(source, exc, _)  => exc.fold(source)(e => s"$source: $e")
+    case ResponseContent.ItemList(items, _)        => items.mkString("\n")
+    case ResponseContent.Table(headers, rows)      => (headers :: rows).map(_.mkString(" | ")).mkString("\n")
+    case ResponseContent.Link(url, label)          => s"$label ($url)"
+    case ResponseContent.Image(url, alt)           => alt.fold(url.toString)(a => s"$a ($url)")
+    case ResponseContent.Field(label, value, _)    => s"$label: $value"
+    case ResponseContent.Options(prompt, opts, _)  => s"$prompt\n" + opts.map(o => s"${o.label}: ${o.value}").mkString("\n")
+    case ResponseContent.Failure(reason, _)        => reason
+    case ResponseContent.TextInput(label, _, _, _) => label
+    case ResponseContent.SecretInput(label, _, _)  => label
+    case ResponseContent.SecretRef(_, label)       => label
+    case ResponseContent.Divider                   => ""
+    case sf: ResponseContent.StoredFileReference   => sf.title
+    case card: ResponseContent.Card                =>
+      sigil.tool.model.Card.typedSections(card)
+        .map(child => textOfBlock(child)).filter(_.nonEmpty).mkString("\n")
+  }
 }

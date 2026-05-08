@@ -113,10 +113,11 @@ class NewsArticleDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   override protected def beforeAll(): Unit = {
     super.beforeAll()
-    skipReason.foreach(_ => return)  // skip setup
-    fixture.start().sync()
-    providerSelection.foreach { case (_, providerTask) =>
-      TestBrowserSigil.setProvider(providerTask)
+    if (skipReason.isEmpty) {
+      fixture.start().sync()
+      providerSelection.foreach { case (_, providerTask) =>
+        TestBrowserSigil.setProvider(providerTask)
+      }
     }
   }
 
