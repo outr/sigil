@@ -2603,6 +2603,7 @@ trait Sigil {
         publish(sigil.signal.ReadStateDelta(
           target         = stateId,
           conversationId = conversationId,
+          participantId  = participantId,
           lastReadAt     = lastReadAt
         ))
       case None    =>
