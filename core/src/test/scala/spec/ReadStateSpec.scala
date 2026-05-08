@@ -89,8 +89,14 @@ class ReadStateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         listed <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         // Second call emitted a Delta, not a fresh Event.
-        signals.collect { case d: ReadStateDelta => d } should have size 1
-        signals.collect { case _: ReadState     => () } shouldBe empty
+        val deltas = signals.collect { case d: ReadStateDelta => d }
+        deltas should have size 1
+        signals.collect { case _: ReadState => () } shouldBe empty
+        // Bug #66 — Delta carries participantId so consumers can
+        // route per-participant without re-resolving the parent.
+        deltas.head.participantId shouldBe TestUser
+        deltas.head.conversationId shouldBe conv._id
+        deltas.head.lastReadAt shouldBe second
         // Still exactly ONE ReadState row at the deterministic
         // id — Delta UPDATED the existing row, didn't insert.
         val expectedId = ReadState.idFor(conv._id, TestUser)
