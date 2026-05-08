@@ -1304,7 +1304,8 @@ trait Sigil {
         tools = tools,
         builtInTools = agent.builtInTools ++ context.conversation.currentMode.builtInTools,
         chain = effectiveChain,
-        roles = rolesResolved
+        roles = rolesResolved,
+        isGreeting = context.isGreeting
       )
 
       val typingEmitted = new java.util.concurrent.atomic.AtomicBoolean(false)
@@ -1757,6 +1758,7 @@ trait Sigil {
         Task { hub.emit(resolved); () }
       }
     case _ =>
+      validateEventInvariants(signal).flatMap { _ =>
       applyInboundTransforms(signal).flatMap { resolved =>
         for {
           _ <- withDB(_.apply(resolved))
@@ -1774,6 +1776,32 @@ trait Sigil {
           _ <- applySettledEffects(resolved)
         } yield ()
       }
+      }
+  }
+
+  /** Validate Event invariants before persistence. Bug #64 —
+    * fail-loud at the write boundary so a malformed event never
+    * reaches the DB (and never poisons subsequent reads via
+    * `FrameBuilder`'s recovery path). The Throwable's stack
+    * trace points directly at the caller that bypassed the
+    * invariant — diagnostically useful in a way the read-side
+    * throw never was.
+    *
+    * Currently checks: every `MessageRole.Tool` event must
+    * carry `origin` pointing to its parent ToolInvoke. Apps
+    * with custom Event subtypes can extend the validation by
+    * overriding this hook. */
+  protected def validateEventInvariants(signal: Signal): Task[Unit] = signal match {
+    case e: sigil.event.Event
+      if e.role == sigil.event.MessageRole.Tool && e.origin.isEmpty =>
+      Task.error(new IllegalStateException(
+        s"Refusing to publish ${e.getClass.getSimpleName} with role=Tool but no `origin`. " +
+          s"Every Tool-role event MUST carry `origin` pointing to its parent ToolInvoke. " +
+          s"Event id=${e._id.value}; participantId=${e.participantId.value}; " +
+          s"conversationId=${e.conversationId.value}. " +
+          s"Caller stack trace identifies the emission site that bypassed origin-stamping."
+      ))
+    case _ => Task.unit
   }
 
   /** When a published [[Signal]] settles an Event to
@@ -1864,7 +1892,7 @@ trait Sigil {
   final def publishHistoricalSilent(events: Seq[sigil.event.Event],
                                     conversationId: Id[Conversation]): Task[Unit] =
     if (events.isEmpty) Task.unit
-    else {
+    else Task.sequence(events.toList.map(e => validateEventInvariants(e))).flatMap { _ =>
       // Inline contextFrame on every imported event before persisting
       // so the bulk-import path matches the publish-time pipeline's
       // settle-time inlining (bug #26). Events that are still Active
@@ -4134,7 +4162,7 @@ trait Sigil {
     // by reading the server log for missing exit lines. The cost
     // of these scribe.debug calls is negligible compared to the
     // turn's actual work; volume is ~3 lines per iteration.
-    scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration enter")
+    scribe.info(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration enter")
     // A Stop may have landed before this iteration even starts; short-
     // circuit if so (graceful = "don't start another iteration"; force
     // = "same, plus the in-flight stream below won't run"). Either way,
@@ -4156,10 +4184,10 @@ trait Sigil {
         // decays — suggestions live for exactly ONE turn; an agent that
         // doesn't call what it discovered loses it.
         projectionFor(agent.id, convId).map(_.suggestedTools).flatMap { suggestedSnapshot =>
-          scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext start")
-          buildContext(agent, conv, sinceTimestamp = sinceTimestamp, claimedId = claimed._id).flatMap {
+          scribe.info(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext start")
+          buildContext(agent, conv, sinceTimestamp = sinceTimestamp, claimedId = claimed._id, isGreeting = greeting && iteration == 1).flatMap {
             case (ctx, triggers) =>
-              scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext done; dispatching agent.process")
+              scribe.info(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext done; dispatching agent.process")
               // Wrap the agent's signal stream with a force-stop check so a
               // Stop(force=true) mid-iteration terminates the stream promptly.
               // Greeting mode (only on iteration == 1): dispatch only behaviors
@@ -4195,7 +4223,7 @@ trait Sigil {
                 .drain
           }.flatMap(_ => decaySuggestedTools(convId, agent.id, suggestedSnapshot))
         }.flatMap { _ =>
-          scribe.debug(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration drain done")
+          scribe.info(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration drain done")
           // After the iteration drains, check stop flags before anything
           // else — a Stop that fired mid-stream means exit now, don't
           // continue looping even if there are new triggers.
@@ -4371,7 +4399,8 @@ trait Sigil {
   private final def buildContext(agent: AgentParticipant,
                                  conv: Conversation,
                                  sinceTimestamp: Timestamp,
-                                 claimedId: Id[Event]): Task[(TurnContext, Stream[Event])] =
+                                 claimedId: Id[Event],
+                                 isGreeting: Boolean = false): Task[(TurnContext, Stream[Event])] =
     for {
       triggerEvents <- withDB(_.events.transaction(_.list)).map { all =>
         all.view
@@ -4390,7 +4419,8 @@ trait Sigil {
         chain = chain,
         conversation = conv,
         turnInput = input,
-        currentAgentStateId = Some(claimedId)
+        currentAgentStateId = Some(claimedId),
+        isGreeting = isGreeting
       )
       (ctx, triggers)
     }

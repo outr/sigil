@@ -78,19 +78,38 @@ object FrameBuilder {
           val payload = stripEventBoilerplate(Event.rw.read(other))
           JsonFormatter.Compact(payload)
       }
-      val callId = event.origin.getOrElse {
-        throw new IllegalStateException(
-          s"FrameBuilder: ${event.getClass.getSimpleName} has role=MessageRole.Tool but no `origin` " +
-            s"set. Every Tool-role event MUST carry `origin` pointing to its parent ToolInvoke. " +
-            s"Event id=${event._id.value}; participantId=${event.participantId.value}."
-        )
+      // Bug #64 — recover at read. A Tool-role event without
+      // `origin` violates the framework's invariant; the
+      // write-side validation gate (Sigil.publish + family)
+      // rejects fresh emissions, but historical events from
+      // before the gate landed (or from app code that bypassed
+      // publish) still exist in `db.events`. Throwing here
+      // permanently bricked any conversation containing one
+      // such event — every subsequent turn re-traversed the
+      // event log and re-threw. Now we log + emit a synthetic
+      // Agents-only Text frame so the agent reads "[skipped
+      // malformed event]" and the conversation continues.
+      event.origin match {
+        case Some(callId) =>
+          return Some(ContextFrame.ToolResult(
+            callId = callId,
+            content = content,
+            sourceEventId = event._id,
+            visibility = event.visibility
+          ))
+        case None =>
+          scribe.warn(
+            s"FrameBuilder skipping malformed Tool-role ${event.getClass.getSimpleName} " +
+              s"id=${event._id.value} participantId=${event.participantId.value} — no `origin`. " +
+              s"Surfacing as a synthetic agents-only frame so the conversation continues."
+          )
+          return Some(ContextFrame.Text(
+            content       = s"[framework: skipped malformed Tool-role event ${event._id.value} (no origin)]",
+            participantId = event.participantId,
+            sourceEventId = event._id,
+            visibility    = sigil.event.MessageVisibility.Agents
+          ))
       }
-      return Some(ContextFrame.ToolResult(
-        callId = callId,
-        content = content,
-        sourceEventId = event._id,
-        visibility = event.visibility
-      ))
     }
 
     event match {

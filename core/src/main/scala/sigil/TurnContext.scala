@@ -89,7 +89,8 @@ case class TurnContext(sigil: Sigil,
                        correlationId: String = TurnContext.freshCorrelationId(),
                        currentToolInvokeId: Option[Id[Event]] = None,
                        currentToolName: Option[ToolName] = None,
-                       modelId: Option[Id[Model]] = None) {
+                       modelId: Option[Id[Model]] = None,
+                       isGreeting: Boolean = false) {
 
   /**
    * The participant currently acting — `chain.last`.
