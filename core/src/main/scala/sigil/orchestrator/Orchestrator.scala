@@ -575,11 +575,34 @@ object Orchestrator {
         // active ToolInvoke if one is open (the typical case — the
         // provider's error came mid-tool-call); otherwise fall back
         // to None and accept that this branch hits the framework's
-        // missing-origin throw downstream. In practice
-        // ProviderEvent.Error always arrives with an active invoke
-        // (validator failures, malformed tool args), so the fallback
-        // path is unreachable.
+        // missing-origin throw downstream.
+        //
+        // Bug #67 — the "in practice unreachable" fallback IS
+        // reachable: pre-flight `/apply-template` / `/tokenize` /
+        // capacity-gate failures fire `ProviderEvent.Error` BEFORE
+        // any tool call has been issued (and thus before
+        // `activeToolInvokeId` / `lastSettledInvokeId` exist).
+        // Bug #64's write-side validation correctly refused the
+        // origin-less Tool-role Message, killing the iteration.
+        // Synthesize a stub ToolInvoke so the agent sees the
+        // error in its next iteration's context — same pattern
+        // the plain-text-reply diagnostic above uses.
         val errorOrigin = state.activeToolInvokeId.orElse(state.lastSettledInvokeId)
+        val (preludeSignals, originId) = errorOrigin match {
+          case Some(parent) => (Nil, parent)
+          case None =>
+            val syntheticInvokeId = Event.id()
+            val syntheticInvoke = ToolInvoke(
+              toolName       = ToolName("_provider_error"),
+              participantId  = caller,
+              conversationId = convId,
+              topicId        = topicId,
+              _id            = syntheticInvokeId,
+              state          = EventState.Complete,
+              internal       = true
+            )
+            (List[Signal](syntheticInvoke), syntheticInvokeId)
+        }
         val errorMessage = Message(
           participantId  = caller,
           conversationId = convId,
@@ -588,9 +611,9 @@ object Orchestrator {
           content        = Vector(ResponseContent.Text(s"Provider error: $msg")),
           state          = EventState.Complete,
           visibility     = MessageVisibility.Agents,
-          origin         = errorOrigin
+          origin         = Some(originId)
         )
-        Stream.emits(orphanSettle :+ (errorMessage: Signal))
+        Stream.emits(orphanSettle ++ preludeSignals :+ (errorMessage: Signal))
     }
   }
 
