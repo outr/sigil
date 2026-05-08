@@ -144,6 +144,16 @@ object FrameBuilder {
         ))
 
       case _: AgentState | _: Stop                       => None
+      // Bug #61 — Reaction is UI signal, not curator-visible
+      // context. Reactions persist as durable events but never
+      // render into the prompt; agents that care query the event
+      // log explicitly.
+      case _: sigil.event.Reaction                       => None
+      // Bug #62 — same rationale: read receipts are UI signal,
+      // not prompt context. The ReadState row is per-(conv,
+      // participant) state for delivery indicators, never seen
+      // by the curator.
+      case _: sigil.event.ReadState                      => None
       case _: sigil.event.ControlPlaneEvent              => None
 
       case other =>

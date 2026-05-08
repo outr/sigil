@@ -2544,6 +2544,95 @@ trait Sigil {
       proj => proj.copy(extraContext = proj.extraContext - key)
     )
 
+  /** Convenience: advance a participant's last-read cursor in
+    * `conversationId` to a specific event's server-stamped
+    * timestamp. The framework looks up the event's authoritative
+    * timestamp — clients never specify a wall-clock time, so
+    * client-clock drift is moot. Bug #62.
+    *
+    * No-op when `readThrough` doesn't resolve (stale id, deleted
+    * event). Idempotent: calling twice with the same id is
+    * cheap. */
+  def markRead(conversationId: Id[Conversation],
+               participantId: ParticipantId,
+               readThrough: Id[sigil.event.Event]): Task[Unit] =
+    withDB(_.events.transaction(_.get(readThrough))).flatMap {
+      case None    => Task.unit
+      case Some(e) => markRead(conversationId, participantId, e.timestamp)
+    }
+
+  /** Direct-timestamp overload for the rare case where a caller
+    * already has a server-authoritative `Timestamp` in hand
+    * (replay tooling, batch catch-up scripts, etc.). Most code
+    * should use the event-id overload above — that's the path
+    * that's safe against client clock drift. Bug #62. */
+  def markRead(conversationId: Id[Conversation],
+               participantId: ParticipantId,
+               lastReadAt: lightdb.time.Timestamp): Task[Unit] = {
+    val stateId = sigil.event.ReadState.idFor(conversationId, participantId)
+    withDB(_.events.transaction(_.get(stateId))).flatMap {
+      case Some(_) =>
+        publish(sigil.signal.ReadStateDelta(
+          target         = stateId,
+          conversationId = conversationId,
+          lastReadAt     = lastReadAt
+        ))
+      case None    =>
+        // First read for this `(conv, participant)` — insert the
+        // ReadState row. Subsequent advances mutate via
+        // ReadStateDelta (no new event row).
+        withDB(_.conversations.transaction(_.get(conversationId))).flatMap {
+          case None       => Task.unit
+          case Some(conv) =>
+            publish(sigil.event.ReadState(
+              participantId  = participantId,
+              conversationId = conversationId,
+              topicId        = conv.currentTopicId,
+              lastReadAt     = lastReadAt,
+              _id            = stateId
+            ))
+        }
+    }
+  }
+
+  /** Read the current `lastReadAt` cursor for `(conversationId,
+    * participantId)`. `None` if the participant has never marked
+    * read in this conversation. Bug #62. */
+  def readStateFor(conversationId: Id[Conversation],
+                   participantId: ParticipantId): Task[Option[sigil.event.ReadState]] = {
+    val stateId = sigil.event.ReadState.idFor(conversationId, participantId)
+    withDB(_.events.transaction(_.get(stateId))).map {
+      case Some(r: sigil.event.ReadState) => Some(r)
+      case _                              => None
+    }
+  }
+
+  /** Convenience: publish a [[sigil.event.Reaction]] event for the
+    * given message. `removed = false` means "I'm reacting now",
+    * `removed = true` means "I'm taking my reaction back." Last-
+    * write-wins per `(messageId, participantId, emoji)` — consumers
+    * reduce the event tail to find the current state.
+    *
+    * No-ops if the conversation isn't found (caller's `conversationId`
+    * was stale). Bug #61. */
+  def react(conversationId: Id[Conversation],
+            participantId: ParticipantId,
+            messageId: Id[sigil.event.Event],
+            emoji: String,
+            removed: Boolean = false): Task[Unit] =
+    withDB(_.conversations.transaction(_.get(conversationId))).flatMap {
+      case None => Task.unit
+      case Some(conv) =>
+        publish(sigil.event.Reaction(
+          participantId  = participantId,
+          conversationId = conversationId,
+          topicId        = conv.currentTopicId,
+          messageId      = messageId,
+          emoji          = emoji,
+          removed        = removed
+        ))
+    }
+
   /** Convenience: publish a [[Stop]] event for the conversation. Lets
     * UI layers (stop button) and programmatic callers issue stops
     * without reconstructing the event by hand. For LLM-initiated stops
