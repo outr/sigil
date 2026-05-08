@@ -101,16 +101,19 @@ final case class SigilJobStep(input: JobStepInput,
   }
 
   private def runPrompt(host: Sigil, workflow: Workflow, prompt: String): Task[Json] = {
-    // Bug #65 — step's `modelId` falls back to the workflow's
-    // `defaultModelId` when not set. Lets workflow authors pin
-    // the model once at creation rather than threading it
-    // through every step's input.
+    // Bug #65 — step's `modelId` falls back to a workflow-level
+    // default. The default is sourced from the workflow's
+    // `variables` map under [[SigilWorkflowVariables.DefaultModelId]]
+    // ("__defaultModelId"). Lets workflow authors pin the model
+    // once at workflow creation rather than threading it through
+    // every step's input. Reads from the existing Strider
+    // variables surface — no Strider schema change required.
     val resolved = input.modelId.map(_.trim).filter(_.nonEmpty)
-      .orElse(workflow.defaultModelId.map(_.trim).filter(_.nonEmpty))
+      .orElse(SigilWorkflowVariables.defaultModelIdOf(workflow))
     resolved match {
       case None =>
         Task.error(new RuntimeException(
-          s"Workflow step '${input.id}' has a prompt but no `modelId` (and no `defaultModelId` on the workflow). Set one of them to the model the prompt should run against."
+          s"Workflow step '${input.id}' has a prompt but no `modelId` (and no `${SigilWorkflowVariables.DefaultModelId}` variable on the workflow). Set one of them to the model the prompt should run against."
         ))
       case Some(s) =>
         val modelId = Id[Model](s)

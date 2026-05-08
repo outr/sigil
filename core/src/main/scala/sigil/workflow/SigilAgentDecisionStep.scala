@@ -68,13 +68,14 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
     val host = WorkflowHost.get
     // Bug #65 — `input.modelId` is required on AgentDecisionStepInput
     // by construction, but if it's empty (legacy data, hand-built
-    // step with placeholder), fall back to the workflow's
-    // `defaultModelId`. Lets workflow authors pin the model once
-    // at workflow creation rather than threading it through every
-    // worker delegation.
+    // step with placeholder), fall back to the workflow-level
+    // default sourced from `workflow.variables` under
+    // [[SigilWorkflowVariables.DefaultModelId]]. Lets workflow
+    // authors pin the model once at workflow creation rather
+    // than threading it through every worker delegation.
     val resolvedModelId =
       Some(input.modelId.trim).filter(_.nonEmpty)
-        .orElse(workflow.defaultModelId.map(_.trim).filter(_.nonEmpty))
+        .orElse(SigilWorkflowVariables.defaultModelIdOf(workflow))
         .getOrElse(input.modelId)
     val modelId = Id[Model](resolvedModelId)
 

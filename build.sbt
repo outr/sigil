@@ -29,7 +29,7 @@ val bsp4jVersion: String = "2.2.0-M4.TEST"
 
 val lsp4jDebugVersion: String = "1.0.0"
 
-val striderVersion: String = "1.0.4-SNAPSHOT"
+val striderVersion: String = "1.0.3"
 
 val jtokkitVersion: String = "1.1.0"
 
@@ -43,6 +43,17 @@ ThisBuild / scalacOptions ++= Seq(
 ThisBuild / javaOptions ++= Seq("-Xmx16G", "-Xss4m", "-XX:MaxMetaspaceSize=2g")
 
 ThisBuild / evictionErrorLevel := Level.Info
+
+// sbt 1.12.x's `lintUnused` check flags `Compile / doc / fork` +
+// `Compile / doc / javaOptions` as "unused" because they don't
+// participate in any auto-running task — they're consumed only
+// when `publishLocal` triggers `doc`. The keys ARE used; sbt's
+// lint just can't trace the dependency. Silence the noise without
+// disabling the lint globally.
+Global / excludeLintKeys ++= Set(
+  Compile / doc / fork,
+  Compile / doc / javaOptions
+)
 
 // Scaladoc 3's `[[ ]]` link resolver doesn't follow imports the way
 // older scaladoc did — it warns on every short-name link to a type

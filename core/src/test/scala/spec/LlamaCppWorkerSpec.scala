@@ -93,7 +93,7 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
   private def isReachable: Boolean =
     scala.util.Try {
-      val url  = new java.net.URL(TestSigil.llamaCppHost.toString)
+      val url  = java.net.URI.create(TestSigil.llamaCppHost.toString).toURL
       val conn = url.openConnection().asInstanceOf[java.net.HttpURLConnection]
       conn.setConnectTimeout(2000)
       conn.setReadTimeout(2000)

@@ -72,18 +72,14 @@ case object SwitchModelTool extends TypedTool[SwitchModelInput](
           case Some(byId) => assign(byId, ctx)
           case None =>
             saved.filter(_.label.equalsIgnoreCase(rawQuery)) match {
-              case List(single) => assign(single, ctx)
-              case multiple if multiple.nonEmpty =>
-                Task.pure(disambiguateStrategies(rawQuery, multiple, ctx))
               case Nil =>
                 fuzzyStrategyMatch(rawQuery, saved) match {
+                  case Nil          => createAdHoc(rawQuery, ctx)  // Treat as a model-id ad-hoc switch.
                   case List(single) => assign(single, ctx)
-                  case multiple if multiple.nonEmpty =>
-                    Task.pure(disambiguateStrategies(rawQuery, multiple, ctx))
-                  case Nil =>
-                    // Treat as a model-id ad-hoc switch.
-                    createAdHoc(rawQuery, ctx)
+                  case multiple     => Task.pure(disambiguateStrategies(rawQuery, multiple, ctx))
                 }
+              case List(single) => assign(single, ctx)
+              case multiple     => Task.pure(disambiguateStrategies(rawQuery, multiple, ctx))
             }
         }
       }
