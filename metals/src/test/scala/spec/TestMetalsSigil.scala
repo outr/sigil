@@ -86,8 +86,16 @@ object TestMetalsSigil extends Sigil with MetalsSigil {
   def setIdleTimeout(ms: Long): Unit = idleTimeoutRef.set(ms)
   override def metalsIdleTimeoutMs: Long = idleTimeoutRef.get()
 
+  /** Per-test launcher override. Default is `fake-metals.sh`
+    * (writes mcp.json + sleeps); specs swap to other fixtures
+    * (e.g. one that exits without writing mcp.json) to exercise
+    * the failure paths in `waitForReady`. */
+  private val launcherRef: AtomicReference[List[String]] = new AtomicReference(defaultLauncher)
+  def setLauncher(parts: List[String]): Unit = launcherRef.set(parts)
+  override def metalsLauncher: List[String] = launcherRef.get()
+
   /** Point at the fake-metals.sh fixture from `src/test/resources`. */
-  override def metalsLauncher: List[String] = {
+  private def defaultLauncher: List[String] = {
     val cwd = java.nio.file.Path.of("metals/src/test/resources/fake-metals.sh").toAbsolutePath.normalize
     List(cwd.toString)
   }
