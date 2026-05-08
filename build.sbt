@@ -17,7 +17,7 @@ val scalatestVersion: String = "3.2.20"
 
 val scalapassVersion: String = "1.4.1"
 
-val awsS3Version: String = "2.43.2"
+val awsS3Version: String = "2.44.4"
 
 val robobrowserVersion: String = "2.3.2"
 
