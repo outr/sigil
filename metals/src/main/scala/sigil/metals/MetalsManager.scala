@@ -50,12 +50,16 @@ import scala.concurrent.duration.*
 final class MetalsManager(host: MetalsSigil) {
 
   /** Per-workspace state. `workspaceKey` is the
-    * [[MetalsWorkspaceKey]]-derived `metals-<hash>` server name. */
+    * [[MetalsWorkspaceKey]]-derived `metals-<hash>` server name.
+    * `drainer` is the thread copying the subprocess's stdout into
+    * `tailRef` (kept so failure-path snapshotting can briefly join
+    * it after the subprocess exits, ensuring the tail isn't empty). */
   private final case class Entry(workspace: Path,
                                  workspaceKey: String,
                                  process: Process,
                                  @volatile var endpoint: Option[String],
-                                 @volatile var lastUsedMs: Long)
+                                 @volatile var lastUsedMs: Long,
+                                 drainer: Thread)
 
   /** Keyed by canonical workspace path string. */
   private val entries: ConcurrentHashMap[String, Entry] = new ConcurrentHashMap()
@@ -63,12 +67,8 @@ final class MetalsManager(host: MetalsSigil) {
   private val started: AtomicBoolean = new AtomicBoolean(false)
   private val stopped: AtomicBoolean = new AtomicBoolean(false)
 
-  /** Time the manager waits for `.metals/mcp.json` to appear after
-    * spawning Metals. Beyond this, [[ensureRunning]] gives up,
-    * tears down the subprocess, and reports failure. */
-  private val SpawnTimeoutMs: Long = 30L * 1000L
-
-  /** Watcher / reaper poll cadence. */
+  /** Watcher / reaper poll cadence. Also drives the spawn-rendezvous
+    * loop's idle pulse. */
   private val PollIntervalMs: Long = 200L
 
   /**
@@ -155,55 +155,121 @@ final class MetalsManager(host: MetalsSigil) {
       ))
     } else {
       ensureBackgroundFibers()
-      val pb = new ProcessBuilder(host.metalsLauncher*)
-        .directory(workspace.toFile)
-        .redirectErrorStream(true)
-      try {
-        val process = pb.start()
-        // Drain stdout on a daemon so the subprocess buffer never
-        // back-pressures Metals into hanging.
-        startDrainerThread(process, name)
-        waitForRendezvous(workspace, process).flatMap {
-          case None =>
-            // Timeout — Metals didn't write the rendezvous file.
-            // Kill the subprocess and surface a clear error.
-            process.destroy()
-            if (process.isAlive) process.destroyForcibly()
-            Task.error(new RuntimeException(
-              s"MetalsManager: $name didn't write .metals/mcp.json within ${SpawnTimeoutMs}ms"
-            ))
-          case Some(endpoint) =>
-            val entry = Entry(
-              workspace    = workspace,
-              workspaceKey = name,
-              process      = process,
-              endpoint     = Some(endpoint),
-              lastUsedMs   = System.currentTimeMillis()
-            )
-            entries.put(key, entry)
-            host.mcpManager.addConfig(serverConfigFor(name, endpoint, workspace))
-              .map(_ => name)
+      // Bug #68 — wrap startup in a `runAsFrameworkWorkflow` so the
+      // activity bar shows what's happening (replaces the silent
+      // 30s deadline with subprocess-monitored progress). The
+      // workflow's CancellationToken kills the subprocess if a
+      // user invokes `cancel_framework_workflow`.
+      host.runAsFrameworkWorkflow(
+        workflowType   = "metals-startup",
+        label          = s"Starting Metals for ${workspace.getFileName}",
+        conversationId = None
+      ) { control =>
+        Task.defer {
+          val pb = new ProcessBuilder(host.metalsLauncher*)
+            .directory(workspace.toFile)
+            .redirectErrorStream(true)
+          val processOpt = scala.util.Try(pb.start()).toEither
+          processOpt match {
+            case Left(t) =>
+              Task.error(new RuntimeException(
+                s"MetalsManager: failed to launch Metals (${host.metalsLauncher.mkString(" ")}) for $workspace: ${t.getMessage}",
+                t
+              ))
+            case Right(process) =>
+              val nowMs = System.currentTimeMillis()
+              val tail = new java.util.concurrent.LinkedBlockingDeque[String](OutputTailLimit)
+              val drainer = startDrainerThread(process, name, tail = tail)
+              // Provisional entry so the watcher / reaper see the
+              // subprocess immediately. `endpoint = None` signals
+              // "starting"; downstream callers (status surface,
+              // McpManager) can render "starting up" instead of
+              // "missing".
+              val entry = Entry(
+                workspace    = workspace,
+                workspaceKey = name,
+                process      = process,
+                endpoint     = None,
+                lastUsedMs   = nowMs,
+                drainer      = drainer
+              )
+              entries.put(key, entry)
+              control.step("Metals subprocess spawned; waiting for endpoint")
+                .flatMap(_ => waitForReady(entry, control, tail))
+          }
         }
-      } catch {
-        case t: Throwable =>
-          Task.error(new RuntimeException(
-            s"MetalsManager: failed to launch Metals (${host.metalsLauncher.mkString(" ")}) for $workspace: ${t.getMessage}",
-            t
-          ))
       }
     }
   }
 
-  private def waitForRendezvous(workspace: Path, process: Process): Task[Option[String]] = Task {
-    val deadline = System.currentTimeMillis() + SpawnTimeoutMs
-    var endpoint: Option[String] = None
-    while (endpoint.isEmpty && System.currentTimeMillis() < deadline && process.isAlive) {
-      MetalsRendezvous.read(workspace) match {
-        case Some(ep) => endpoint = Some(ep.url)
-        case None     => Thread.sleep(PollIntervalMs)
+  /** Bounded buffer holding the most recent stdout lines so a
+    * failure can surface a useful tail in its diagnostic instead
+    * of an opaque "didn't start" message. */
+  private val OutputTailLimit: Int = 50
+
+  /** Monitor the subprocess until ONE of:
+    *   - `.metals/mcp.json` lands → register McpServerConfig +
+    *     resolve with the workspace name.
+    *   - subprocess exits before mcp.json → fail with the exit
+    *     code + captured stdout tail.
+    *   - workflow cancellation token fires → kill the subprocess
+    *     and fail with the cancellation reason.
+    *
+    * No wall-clock deadline, no stuck-detection threshold. The
+    * framework trusts the subprocess: if it's alive, it's
+    * working. The user-perceived "this is taking too long" case
+    * is handled by `cancel_framework_workflow` — the workflow
+    * surfaces in the activity bar with progress notices, the
+    * user cancels, the cancellation token kills the subprocess.
+    * Bug #68. */
+  private def waitForReady(entry: Entry,
+                           control: sigil.FrameworkWorkflowControl,
+                           tail: java.util.concurrent.LinkedBlockingDeque[String]): Task[String] = {
+    def loop: Task[String] = Task.defer {
+      if (control.token.isCancelled) {
+        killSubprocess(entry)
+        entries.remove(entry.workspace.toAbsolutePath.normalize.toString)
+        Task.error(new sigil.CancellationException(
+          workflowId = control.token.workflowId,
+          reason     = control.token.reason
+        ))
+      } else if (!entry.process.isAlive) {
+        // Subprocess exited before mcp.json appeared — fail with
+        // exit code + recent output for the diagnostic. Briefly
+        // join the drainer thread so any buffered stdout is in
+        // the tail snapshot before we render it.
+        val exitCode = scala.util.Try(entry.process.exitValue()).getOrElse(-1)
+        try entry.drainer.join(500L) catch { case _: InterruptedException => () }
+        val tailSnap = drainTail(tail)
+        entries.remove(entry.workspace.toAbsolutePath.normalize.toString)
+        Task.error(new RuntimeException(
+          s"MetalsManager: ${entry.workspaceKey} exited (code=$exitCode) before writing .metals/mcp.json. " +
+            s"Recent output:\n$tailSnap"
+        ))
+      } else {
+        MetalsRendezvous.read(entry.workspace) match {
+          case Some(ep) =>
+            entry.endpoint = Some(ep.url)
+            control.step(s"Metals registered endpoint: ${ep.url}").flatMap { _ =>
+              host.mcpManager.addConfig(serverConfigFor(entry.workspaceKey, ep.url, entry.workspace))
+                .map(_ => entry.workspaceKey)
+            }
+          case None =>
+            Task.sleep(PollIntervalMs.millis).flatMap(_ => loop)
+        }
       }
     }
-    endpoint
+    loop
+  }
+
+  private def drainTail(tail: java.util.concurrent.LinkedBlockingDeque[String]): String = {
+    import scala.jdk.CollectionConverters.*
+    tail.iterator().asScala.toList.takeRight(OutputTailLimit).mkString("\n")
+  }
+
+  private def killSubprocess(entry: Entry): Unit = {
+    if (entry.process.isAlive) entry.process.destroy()
+    if (entry.process.isAlive) entry.process.destroyForcibly()
   }
 
   private def serverConfigFor(name: String, endpoint: String, workspace: Path): McpServerConfig = {
@@ -301,7 +367,9 @@ final class MetalsManager(host: MetalsSigil) {
     }
   }
 
-  private def startDrainerThread(process: Process, label: String): Unit = {
+  private def startDrainerThread(process: Process,
+                                  label: String,
+                                  tail: java.util.concurrent.LinkedBlockingDeque[String]): Thread = {
     val t = new Thread(() => {
       val reader = new java.io.BufferedReader(
         new java.io.InputStreamReader(process.getInputStream, java.nio.charset.StandardCharsets.UTF_8)
@@ -309,8 +377,11 @@ final class MetalsManager(host: MetalsSigil) {
       try {
         var line = reader.readLine()
         while (line != null) {
-          // Tag every line so multi-Metals deployments stay legible.
           scribe.info(s"[$label] $line")
+          if (!tail.offer(line)) {
+            tail.pollFirst()
+            tail.offer(line)
+          }
           line = reader.readLine()
         }
       } catch { case _: Throwable => () }
@@ -320,6 +391,7 @@ final class MetalsManager(host: MetalsSigil) {
     }, s"sigil-metals-drainer-$label")
     t.setDaemon(true)
     t.start()
+    t
   }
 }
 
