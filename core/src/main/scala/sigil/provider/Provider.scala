@@ -147,7 +147,7 @@ trait Provider {
       // immediately) so the common uncontended path stays quiet,
       // but a parking acquire surfaces in logs for diagnosis.
       if (available <= 0) {
-        scribe.debug(s"Provider($providerKey) capacity gate contended (max=$maxConcurrent), waiting up to ${timeoutMs}ms")
+        scribe.info(s"Provider($providerKey) capacity gate contended (max=$maxConcurrent), waiting up to ${timeoutMs}ms")
       }
       val acquired = capacityGate.tryAcquire(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
       if (!acquired) {
@@ -360,14 +360,89 @@ trait Provider {
       current = current.copy(tools = trimmed)
     }
 
-    // Last-resort — drop oldest frames one at a time until fits or
-    // we hit the bottom. Critical memories live in `system`, not
-    // `messages`, so dropping messages never touches them.
-    while (estimateOf(current) > limit && current.messages.nonEmpty) {
-      current = current.copy(messages = current.messages.tail)
+    // Stage 5 — drop oldest messages until fits. Critical memories
+    // live in `system`, not `messages`, so dropping messages never
+    // touches them.
+    //
+    // Bug #59 — the original loop called `estimateOf` on every
+    // single one-message drop. For providers whose `estimateOf`
+    // makes an HTTP round-trip against the full residual message
+    // list (`LlamaCppProvider` hitting `/apply-template` +
+    // `/tokenize`), shedding K messages cost K HTTP round-trips
+    // and O(K²) bandwidth. After a bulk import, K = thousands and
+    // the loop melted the backend.
+    //
+    // Replaced with a prefix-scan over a local heuristic
+    // tokenizer's per-message estimate, then ONE `estimateOf`
+    // confirmation, with the original per-step loop as the
+    // convergence step for the residual.
+    if (estimateOf(current) > limit && current.messages.nonEmpty) {
+      current = bulkDropMessages(current, limit, tok, estimateOf)
+      // Convergence step — at most a handful of iterations after
+      // the bulk drop's heuristic-based jump.
+      while (estimateOf(current) > limit && current.messages.nonEmpty) {
+        current = current.copy(messages = current.messages.tail)
+      }
     }
 
     current
+  }
+
+  /** Bulk-drop oldest messages from the call using a local
+    * heuristic to compute the drop count, sized so the post-drop
+    * message bytes fit under `limit` minus the system-prompt
+    * overhead. Local-only — no HTTP round-trips even when the
+    * provider's `tokenizer` would. Returns the trimmed call;
+    * caller follows up with one `estimateOf` confirmation. Bug #59. */
+  private def bulkDropMessages(call: ProviderCall,
+                               limit: Int,
+                               tok: Tokenizer,
+                               estimateOf: ProviderCall => Int): ProviderCall = {
+    val msgs    = call.messages
+    val perMsg: Vector[Int] = msgs.map(m => _root_.sigil.tokenize.HeuristicTokenizer.count(renderMessageForHeuristic(m)))
+    val msgSum: Int = perMsg.sum
+    // Approximate the system-prompt + tool-roster overhead the
+    // provider's own estimateOf will add on top of the messages.
+    // Take the difference between the wire estimate and the
+    // heuristic message-bytes — what's left is overhead we can't
+    // shed by trimming messages.
+    val totalEst = estimateOf(call)
+    val overhead = math.max(0, totalEst - msgSum)
+    // Conservative 5% margin so the post-drop confirm doesn't
+    // trip the per-step convergence loop just because the
+    // heuristic underestimated by a few tokens.
+    val margin     = (limit * 0.05).toInt
+    val msgBudget  = math.max(0, limit - overhead - margin)
+    val needToShed = math.max(0, msgSum - msgBudget)
+    if (needToShed <= 0) call
+    else {
+      // Walk perMsg from the front, summing, until the prefix
+      // sum reaches `needToShed`. That's the number of oldest
+      // messages we can drop without crossing the budget.
+      val cum = perMsg.scanLeft(0)(_ + _)
+      val idx = cum.indices.find(i => cum(i) >= needToShed).getOrElse(perMsg.size)
+      val k   = math.min(idx, msgs.size)
+      call.copy(messages = msgs.drop(k))
+    }
+  }
+
+  /** Best-effort textual rendering of a [[ProviderMessage]] for
+    * the local heuristic tokenizer's per-message estimate. Bug #59
+    * — exact wire-byte fidelity isn't needed here since the
+    * caller follows up with `estimateOf` confirmation; this only
+    * has to be a stable proxy for relative message size. */
+  private def renderMessageForHeuristic(m: ProviderMessage): String = m match {
+    case ProviderMessage.System(c)            => c
+    case ProviderMessage.User(blocks)         => blocks.iterator.map {
+      case t: MessageContent.Text  => t.text
+      case _                       => ""
+    }.mkString("\n")
+    case ProviderMessage.Assistant(c, calls)  =>
+      val callsText = calls.iterator.map(tc => s"${tc.name}:${tc.argsJson}").mkString("\n")
+      s"$c\n$callsText"
+    case ProviderMessage.ToolResult(_, c)     => c
+    case ProviderMessage.Reasoning(_, summary, encryptedContent) =>
+      summary.mkString("\n") + encryptedContent.getOrElse("")
   }
 
   /**

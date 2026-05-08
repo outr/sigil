@@ -72,6 +72,14 @@ trait Event extends Signal with Document[Event] {
   def withState(state: EventState): Event
 
   /**
+   * Returns a copy of this event with its `conversationId` replaced.
+   * Used by [[sigil.Sigil.mergeStagingIntoMain]] to flip events from
+   * a staging conversation to its target. Each concrete Event
+   * implements via its own `copy(conversationId = conversationId)`.
+   */
+  def withConversationId(conversationId: Id[Conversation]): Event
+
+  /**
    * The Event that caused this one, when known — forms a parent chain
    * back to a conversational root (typically a user [[Message]]). The
    * orchestrator stamps this for tool-emitted events; agent flows
