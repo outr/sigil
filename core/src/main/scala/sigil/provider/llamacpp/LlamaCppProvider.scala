@@ -33,7 +33,8 @@ case class LlamaCppProvider(url: URL,
     * failures so a degraded backend doesn't crash pre-flight. The
     * heuristic under-counts JSON / chat-template content by ~7-15%
     * which let oversized requests slip past the gate. */
-  override val tokenizer: _root_.sigil.tokenize.Tokenizer = LlamaCppTokenizer(url)
+  override val tokenizer: _root_.sigil.tokenize.Tokenizer =
+    LlamaCppTokenizer(url, interceptor = sigilRef.wireInterceptor)
 
   /** Bug #49 — capacity from llama.cpp's `total_slots`. Read at
     * provider construction; falls back to 1 when `/props` is
@@ -89,6 +90,7 @@ case class LlamaCppProvider(url: URL,
     // acquire hits a stale connection; one 100ms-delay retry
     // recovers cleanly without padding the wall-clock cost.
     val task: Task[Int] = HttpClient.modify(_ => req)
+      .interceptor(sigilRef.wireInterceptor)
       .timeout(estimateTimeout)
       .retryManager(spice.http.client.RetryManager.simple(retries = 1, delay = 100.millis, warnRetries = false))
       .call[Json].map { json =>

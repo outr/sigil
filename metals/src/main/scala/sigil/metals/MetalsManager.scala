@@ -310,7 +310,7 @@ final class MetalsManager(host: MetalsSigil) {
         var line = reader.readLine()
         while (line != null) {
           // Tag every line so multi-Metals deployments stay legible.
-          scribe.debug(s"[$label] $line")
+          scribe.info(s"[$label] $line")
           line = reader.readLine()
         }
       } catch { case _: Throwable => () }

@@ -5,6 +5,7 @@ import fabric.rw.valueRW
 import rapid.Task
 import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
 import spice.http.client.{HttpClient, RetryManager}
+import spice.http.client.intercept.Interceptor
 import spice.http.{HttpMethod, HttpRequest}
 import spice.http.content.StringContent
 import spice.net.{ContentType, URL}
@@ -53,7 +54,8 @@ final case class LlamaCppTokenizer(baseUrl: URL,
                                    requestTimeout: FiniteDuration = 5.seconds,
                                    cacheSize: Int = 4096,
                                    breakerThreshold: Int = 3,
-                                   breakerCooldown: FiniteDuration = 30.seconds) extends Tokenizer {
+                                   breakerCooldown: FiniteDuration = 30.seconds,
+                                   interceptor: Interceptor = Interceptor.empty) extends Tokenizer {
 
   private val cache: java.util.LinkedHashMap[String, Int] =
     new java.util.LinkedHashMap[String, Int](cacheSize, 0.75f, true) {
@@ -118,6 +120,7 @@ final case class LlamaCppTokenizer(baseUrl: URL,
       content = Some(StringContent(fabric.io.JsonFormatter.Compact(body), ContentType.`application/json`))
     ).withHeader("Connection", "close")
     HttpClient.modify(_ => req)
+      .interceptor(interceptor)
       .timeout(requestTimeout)
       // Bug #56 — single fast retry on transient stale-pool failure;
       // skipping retries entirely loses to legit transient blips,
