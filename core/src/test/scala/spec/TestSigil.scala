@@ -154,9 +154,16 @@ object TestSigil extends Sigil {
     (_: List[ParticipantId]) => Task.pure(Set.empty[SpaceId])
   )
   private val memoryClassifierModelRef = new AtomicReference[Option[Id[Model]]](None)
-  private val resolveProviderStrategyRef = new AtomicReference[SpaceId => Task[Option[sigil.provider.ProviderStrategy]]](
-    (_: SpaceId) => Task.pure(None)
-  )
+  // The default for resolveProviderStrategy delegates to the
+  // framework's real flow (storage + lookup through
+  // providerStrategies / providerAssignments). Specs that need to
+  // inject a fake strategy call `setResolveProviderStrategy(...)`;
+  // specs that just want the real persistence flow (e.g.
+  // `ProviderStrategySpec`) get it without ceremony. The `Option`
+  // models "use override" (`Some`) vs "use framework default"
+  // (`None`), with `reset()` reverting to `None`.
+  private val resolveProviderStrategyRef =
+    new AtomicReference[Option[SpaceId => Task[Option[sigil.provider.ProviderStrategy]]]](None)
 
   // ---- hook overrides delegate to refs ----
 
@@ -195,7 +202,10 @@ object TestSigil extends Sigil {
     accessibleSpacesRef.get().apply(chain)
 
   override def resolveProviderStrategy(space: SpaceId): Task[Option[sigil.provider.ProviderStrategy]] =
-    resolveProviderStrategyRef.get().apply(space)
+    resolveProviderStrategyRef.get() match {
+      case Some(fn) => fn.apply(space)
+      case None     => super.resolveProviderStrategy(space)
+    }
 
   override def memoryClassifierModel: Option[Id[Model]] = memoryClassifierModelRef.get()
 
@@ -251,7 +261,7 @@ object TestSigil extends Sigil {
     * wire a custom strategy here. Default returns `None` (no
     * strategy → routedModelFor falls back to its `fallback` arg). */
   def setResolveProviderStrategy(f: SpaceId => Task[Option[sigil.provider.ProviderStrategy]]): Unit =
-    resolveProviderStrategyRef.set(f)
+    resolveProviderStrategyRef.set(Some(f))
 
   /** Reset every mutable hook to its default. Call from `beforeEach`
     * (or inline at the start of a test) to guarantee isolation from
@@ -269,7 +279,7 @@ object TestSigil extends Sigil {
     locationForRef.set(defaultLocationFor)
     geocoderRef.set(defaultGeocoder)
     memoryClassifierModelRef.set(None)
-    resolveProviderStrategyRef.set((_: SpaceId) => Task.pure(None))
+    resolveProviderStrategyRef.set(None)
     accessibleSpacesRef.set((_: List[ParticipantId]) => Task.pure(Set.empty[SpaceId]))
   }
 

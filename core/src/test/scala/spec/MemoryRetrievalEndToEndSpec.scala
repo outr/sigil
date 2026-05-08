@@ -90,19 +90,23 @@ class MemoryRetrievalEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with 
         spaceId = MemoryTestSpace
       )).sync()
 
-      // Build a view whose only frame is the user's question. Crucially
-      // the question shares NO word stems with the stored fact except
-      // the shared token "color" — the retriever still has to lean on
-      // the embedder's similarity to surface it.
+      // Persist the conversation + the user's question Message so
+      // the curator's `framesFor(convId)` (DB-backed since bug #26)
+      // returns a single Text frame for the question. The question
+      // shares NO word stems with the stored fact except the shared
+      // token "color" — the retriever still has to lean on the
+      // embedder's similarity to surface the memory.
       val question = "What is my favorite color?"
-      val view = ConversationView(
+      TestSigil.withDB(_.conversations.transaction(_.upsert(
+        Conversation(_id = convId, topics = List(TestTopicEntry))
+      ))).sync()
+      TestSigil.publish(sigil.event.Message(
+        participantId  = TestUser,
         conversationId = convId,
-        frames = Vector(ContextFrame.Text(
-          content = question,
-          participantId = TestUser,
-          sourceEventId = Id[Event]("q-1")
-        ))
-      )
+        topicId        = TestTopicEntry.id,
+        content        = Vector(sigil.tool.model.ResponseContent.Text(question)),
+        state          = sigil.signal.EventState.Complete
+      )).sync()
 
       val curator = StandardContextCurator(
         sigil = TestSigil,
@@ -113,7 +117,7 @@ class MemoryRetrievalEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with 
         budget = Percentage(0.8)
       )
 
-      curator.curate(view.conversationId, modelId, chain = List(TestUser, TestAgent)).flatMap { turnInput =>
+      curator.curate(convId, modelId, chain = List(TestUser, TestAgent)).flatMap { turnInput =>
         withClue(s"retrieved ids: ${turnInput.memories.map(_.value).mkString(",")}") {
           turnInput.memories should contain(persistedMemory._id)
         }
