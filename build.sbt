@@ -107,13 +107,13 @@ lazy val core = (project in file("core"))
     // run serially so they take turns acquiring the RocksDB lock.
     // ForkOptions().withEnvVars(sys.env) forwards the parent shell's env vars
     // so SIGIL_LLAMACPP_HOST etc. reach the forked JVM.
-    Test / testGrouping := Def.uncached((Test / definedTests).value.map { test =>
+    Test / testGrouping := (Test / definedTests).value.map { test =>
       Tests.Group(
         name = test.name,
         tests = Seq(test),
         runPolicy = Tests.SubProcess(ForkOptions().withEnvVars(sys.env))
       )
-    })
+    }
   )
 
 lazy val secrets = (project in file("secrets"))
@@ -129,13 +129,13 @@ lazy val secrets = (project in file("secrets"))
     fork := true,
     Test / parallelExecution := false,
     Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
-    Test / testGrouping := Def.uncached((Test / definedTests).value.map { test =>
+    Test / testGrouping := (Test / definedTests).value.map { test =>
       Tests.Group(
         name = test.name,
         tests = Seq(test),
         runPolicy = Tests.SubProcess(ForkOptions())
       )
-    })
+    }
   )
 
 lazy val script = (project in file("script"))
@@ -153,13 +153,13 @@ lazy val script = (project in file("script"))
     fork := true,
     Test / parallelExecution := false,
     Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
-    Test / testGrouping := Def.uncached((Test / definedTests).value.map { test =>
+    Test / testGrouping := (Test / definedTests).value.map { test =>
       Tests.Group(
         name = test.name,
         tests = Seq(test),
         runPolicy = Tests.SubProcess(ForkOptions())
       )
-    })
+    }
   )
 
 lazy val mcp = (project in file("mcp"))
@@ -174,13 +174,13 @@ lazy val mcp = (project in file("mcp"))
     fork := true,
     Test / parallelExecution := false,
     Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
-    Test / testGrouping := Def.uncached((Test / definedTests).value.map { test =>
+    Test / testGrouping := (Test / definedTests).value.map { test =>
       Tests.Group(
         name = test.name,
         tests = Seq(test),
         runPolicy = Tests.SubProcess(ForkOptions())
       )
-    })
+    }
   )
 
 lazy val metals = (project in file("metals"))
@@ -195,13 +195,13 @@ lazy val metals = (project in file("metals"))
     fork := true,
     Test / parallelExecution := false,
     Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
-    Test / testGrouping := Def.uncached((Test / definedTests).value.map { test =>
+    Test / testGrouping := (Test / definedTests).value.map { test =>
       Tests.Group(
         name = test.name,
         tests = Seq(test),
         runPolicy = Tests.SubProcess(ForkOptions())
       )
-    })
+    }
   )
 
 lazy val tooling = (project in file("tooling"))
@@ -224,13 +224,13 @@ lazy val tooling = (project in file("tooling"))
     fork := true,
     Test / parallelExecution := false,
     Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
-    Test / testGrouping := Def.uncached((Test / definedTests).value.map { test =>
+    Test / testGrouping := (Test / definedTests).value.map { test =>
       Tests.Group(
         name = test.name,
         tests = Seq(test),
         runPolicy = Tests.SubProcess(ForkOptions())
       )
-    })
+    }
   )
 
 lazy val debug = (project in file("debug"))
@@ -251,13 +251,13 @@ lazy val debug = (project in file("debug"))
     fork := true,
     Test / parallelExecution := false,
     Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
-    Test / testGrouping := Def.uncached((Test / definedTests).value.map { test =>
+    Test / testGrouping := (Test / definedTests).value.map { test =>
       Tests.Group(
         name = test.name,
         tests = Seq(test),
         runPolicy = Tests.SubProcess(ForkOptions())
       )
-    })
+    }
   )
 
 /**
@@ -299,13 +299,13 @@ lazy val browser = (project in file("browser"))
     fork := true,
     Test / parallelExecution := false,
     Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
-    Test / testGrouping := Def.uncached((Test / definedTests).value.map { test =>
+    Test / testGrouping := (Test / definedTests).value.map { test =>
       Tests.Group(
         name = test.name,
         tests = Seq(test),
         runPolicy = Tests.SubProcess(ForkOptions())
       )
-    })
+    }
   )
 
 lazy val benchmark = project
