@@ -80,7 +80,7 @@ class OrchestratorSilentTurnSpec extends AsyncWordSpec with AsyncTaskSpec with M
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
         ProviderEvent.ToolCallComplete(callId,
-          RespondInput(topicLabel = "Test", topicSummary = "Test summary", content = "Done.")),
+          RespondInput(topicLabel = "Test", topicSummary = "Test summary", content = "Done.", endsTurn = true)),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }

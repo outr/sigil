@@ -75,7 +75,7 @@ class AgentLoopIterationBoundarySpec extends AsyncWordSpec with AsyncTaskSpec wi
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
             ProviderEvent.ToolCallComplete(
               callId,
-              RespondInput(topicLabel = "Test", topicSummary = "Iteration boundary repro", content = "Hi.")
+              RespondInput(topicLabel = "Test", topicSummary = "Iteration boundary repro", content = "Hi.", endsTurn = true)
             ),
             ProviderEvent.Done(StopReason.Complete)
           )

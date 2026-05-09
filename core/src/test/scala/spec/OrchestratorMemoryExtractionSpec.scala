@@ -85,7 +85,8 @@ class OrchestratorMemoryExtractionSpec extends AsyncWordSpec with AsyncTaskSpec 
         ProviderEvent.ToolCallComplete(callId, RespondInput(
           topicLabel = "Greeting",
           topicSummary = "A simple greeting.",
-          content = "Hello world"
+          content = "Hello world",
+          endsTurn = true
         )),
         ProviderEvent.Done(StopReason.ToolCall)
       ))

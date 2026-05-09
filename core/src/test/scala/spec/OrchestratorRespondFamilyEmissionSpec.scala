@@ -51,7 +51,7 @@ class OrchestratorRespondFamilyEmissionSpec extends AsyncWordSpec with AsyncTask
         ProviderEvent.ContentBlockDelta(callId, "Hello, world."),
         ProviderEvent.ToolCallComplete(
           callId,
-          RespondInput(topicLabel = "Greeting", topicSummary = "A friendly hello", content = "Hello, world.")
+          RespondInput(topicLabel = "Greeting", topicSummary = "A friendly hello", content = "Hello, world.", endsTurn = true)
         ),
         ProviderEvent.Done(StopReason.Complete)
       ))

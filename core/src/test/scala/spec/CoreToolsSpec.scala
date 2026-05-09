@@ -50,7 +50,8 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val input = RespondInput(
         topicLabel = "Refactoring Notes",
         topicSummary = "Notes on refactoring strategies.",
-        content = "Hello!"
+        content = "Hello!",
+        endsTurn = true
       )
       val events = RespondTool
         .execute(input, turnContextFor(convId))

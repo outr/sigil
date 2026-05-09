@@ -4158,6 +4158,13 @@ trait Sigil {
     // don't re-appear as triggers next time.
     val thisIterationStart = Timestamp(Nowish())
     val stopFlag = Option(stopFlags.get(claimed._id))
+    // Bug #74 — flips when a `respond` settles with `endsTurn = false`
+    // (a progress / status update). The post-drain decision below
+    // iterates the loop without waiting for new triggers, so the
+    // agent picks up its own respond Message in the next iteration's
+    // history and continues working. Per-iteration scope (the next
+    // iteration starts with its own fresh AtomicBoolean).
+    val agentRequestedContinue = new java.util.concurrent.atomic.AtomicBoolean(false)
     // Bug #57 — diagnostic logging at iteration boundaries so a
     // future repro of "agent parks at thinking" can be localised
     // by reading the server log for missing exit lines. The cost
@@ -4210,14 +4217,37 @@ trait Sigil {
               // placeholder Message. We watch the ToolInvoke (which
               // carries `toolName`) and remember matching invoke ids,
               // then flip the flag on their settle delta.
-              val activeUserVisibleInvokes = new java.util.concurrent.ConcurrentHashMap[Id[Event], Boolean]()
+              // Map invoke id → tool name so we can distinguish `respond`
+              // from the other user-visible-terminal names when the
+              // settle delta lands (bug #74's `endsTurn` lever applies
+              // to `respond` specifically).
+              val activeUserVisibleInvokes = new java.util.concurrent.ConcurrentHashMap[Id[Event], String]()
               interruptible
                 .evalTap {
                   case ti: ToolInvoke if Orchestrator.UserVisibleTerminalTools.contains(ti.toolName.value) =>
-                    Task { activeUserVisibleInvokes.put(ti._id, true); () }
+                    Task { activeUserVisibleInvokes.put(ti._id, ti.toolName.value); () }
                   case td: ToolDelta if td.state.contains(EventState.Complete)
                                      && activeUserVisibleInvokes.containsKey(td.target) =>
-                    Task { userVisibleSeen.set(true); () }
+                    Task {
+                      userVisibleSeen.set(true)
+                      // Bug #74 — `respond(endsTurn = false)` keeps the
+                      // turn open. The settled delta carries the parsed
+                      // input; flip the continue flag when it's a
+                      // RespondInput with endsTurn = false. Anything
+                      // else (the other respond_* tools, no_response,
+                      // unparseable input) leaves the flag false and
+                      // the loop falls through to its normal end-of-
+                      // turn check.
+                      val toolName = activeUserVisibleInvokes.get(td.target)
+                      if (toolName == "respond") {
+                        td.input match {
+                          case Some(r: sigil.tool.model.RespondInput) if !r.endsTurn =>
+                            agentRequestedContinue.set(true)
+                          case _ => ()
+                        }
+                      }
+                      ()
+                    }
                   case _ => Task.unit
                 }
                 .evalTap(publish)
@@ -4230,7 +4260,16 @@ trait Sigil {
           // continue looping even if there are new triggers.
           if (stopFlag.exists(_.requested))
             ensureSilentTurnReply(agent, convId, userVisibleSeen).flatMap(_ => releaseClaim(claimed))
-          else newTriggersExist(agent, conv, sinceTimestamp = thisIterationStart).flatMap {
+          else {
+            // Bug #74 — `respond(endsTurn = false)` continues the
+            // loop without waiting for an external trigger. The
+            // agent's own progress respond IS the signal to keep
+            // going; the next iteration will see it in history and
+            // proceed with the announced work.
+            val shouldIterate: Task[Boolean] =
+              if (agentRequestedContinue.get()) Task.pure(true)
+              else newTriggersExist(agent, conv, sinceTimestamp = thisIterationStart)
+            shouldIterate.flatMap {
             case true if iteration < maxAgentIterations =>
               // Bug #54 — emit per-iteration boundary state. Without
               // these, a multi-iteration agent loop pins the
@@ -4269,6 +4308,7 @@ trait Sigil {
                       s"in conversation ${conv._id.value}; check LLM behavior or raise the cap."))))
             case false =>
               ensureSilentTurnReply(agent, convId, userVisibleSeen).flatMap(_ => releaseClaim(claimed))
+            }
           }
         }
     }.handleError { t =>

@@ -122,7 +122,8 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val input = RespondInput(
         content = "scripted",
         topicLabel = "Existing Thread",
-        topicSummary = "Same thread."
+        topicSummary = "Same thread.",
+        endsTurn = true
       )
       runScenario("Existing Thread", "Current thread summary", Nil, input, classifierKind = None,
                   suffix = "same-label").map { case (signals, _, _) =>
@@ -136,7 +137,8 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val input = RespondInput(
         content = "back to GIL",
         topicLabel = "Python GIL",
-        topicSummary = "Returning to the GIL topic."
+        topicSummary = "Returning to the GIL topic.",
+        endsTurn = true
       )
       runScenario("Cooking", "Culinary discussion.", List(priorEntry), input, classifierKind = None,
                   suffix = "exact-return").map { case (signals, current, _) =>
@@ -157,7 +159,8 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val input = RespondInput(
         content = "scripted",
         topicLabel = "Python GIL and I/O",
-        topicSummary = "Effect of GIL on I/O-bound Python code."
+        topicSummary = "Effect of GIL on I/O-bound Python code.",
+        endsTurn = true
       )
       runScenario("Python GIL", "Python's Global Interpreter Lock.", Nil, input,
                   classifierKind = Some("NoChange"), suffix = "cls-nochange").map { case (signals, _, _) =>
@@ -169,7 +172,8 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val input = RespondInput(
         content = "scripted",
         topicLabel = "Python GIL",
-        topicSummary = "Python's Global Interpreter Lock and threading."
+        topicSummary = "Python's Global Interpreter Lock and threading.",
+        endsTurn = true
       )
       runScenario("Python Programming", "General Python.", Nil, input,
                   classifierKind = Some("Refine"), suffix = "cls-refine").flatMap {
@@ -192,7 +196,8 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val input = RespondInput(
         content = "scripted",
         topicLabel = "TypeScript Generics",
-        topicSummary = "TypeScript's generic type parameterization."
+        topicSummary = "TypeScript's generic type parameterization.",
+        endsTurn = true
       )
       runScenario("Roman Empire", "Roman history.", Nil, input,
                   classifierKind = Some("New"), suffix = "cls-new").flatMap {
@@ -219,7 +224,8 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val input = RespondInput(
         content = "scripted",
         topicLabel = "GIL and NumPy",
-        topicSummary = "GIL implications for NumPy."
+        topicSummary = "GIL implications for NumPy.",
+        endsTurn = true
       )
       runScenario("Cooking", "Culinary topic.", List(priorEntry), input,
                   classifierKind = Some("Python GIL"), suffix = "cls-return").map {
@@ -238,7 +244,8 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val input = RespondInput(
         content = "scripted",
         topicLabel = "Unrelated Label",
-        topicSummary = "Something."
+        topicSummary = "Something.",
+        endsTurn = true
       )
       runScenario("Current", "Current summary.", Nil, input,
                   classifierKind = None, suffix = "cls-fail").map { case (signals, _, _) =>
@@ -252,7 +259,8 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val input = RespondInput(
         content = "scripted",
         topicLabel = "New Subject",
-        topicSummary = "A new subject."
+        topicSummary = "A new subject.",
+        endsTurn = true
       )
       runScenario("Original", "Original summary.", Nil, input,
                   classifierKind = Some("New"), suffix = "msg-topicid").map {

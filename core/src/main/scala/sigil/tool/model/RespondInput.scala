@@ -42,8 +42,21 @@ import sigil.tool.ToolInput
  * the framework, language, file, identifier, concept — generic keywords
  * (`"task"`, `"help"`, `"code"`) match nothing usefully. Aim for 5–10
  * keywords. Empty list is fine when no relevant memories are expected.
+ *
+ * `endsTurn` — REQUIRED. `true` when this respond is your COMPLETE
+ * reply for this turn (the work is done, the user has the final
+ * answer). `false` when you intend to continue working on this turn
+ * after the user sees this message — e.g. status updates like
+ * "Let me check…", "Reading the auth files now…", "Found 47 matches;
+ * narrowing to admin/…". With `endsTurn = false` the framework
+ * iterates the loop again immediately so you can run more tools;
+ * the respond's content shows the user a progress pulse rather than
+ * a permanent reply. No default — the agent makes the decision
+ * explicitly every turn so "Let me X…" announcements never
+ * accidentally end the turn before the work happens.
  */
 case class RespondInput(topicLabel: String,
                         topicSummary: String,
                         content: String,
+                        endsTurn: Boolean,
                         keywords: List[String] = Nil) extends ToolInput derives RW
