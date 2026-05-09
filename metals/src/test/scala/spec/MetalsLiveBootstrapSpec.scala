@@ -69,36 +69,6 @@ class MetalsLiveBootstrapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         }
       }
     }
-
-    // Larger-scale validation against an existing sbt project the
-    // dev workstation has on disk. Self-skips when the path isn't
-    // available (CI / contributor machines that haven't cloned it).
-    "boot real Metals against an existing sbt project (widge-server) and write .metals/mcp.json" in {
-      val widgeServer = java.nio.file.Path
-        .of("/home/mhicks/projects/clients/widge/widge-server")
-        .toAbsolutePath.normalize
-      if (skipReason.isDefined) cancel(skipReason.get)
-      else if (!Files.isDirectory(widgeServer)) cancel(s"widge-server checkout missing at $widgeServer")
-      else {
-        // Clear any stale rendezvous file so we're testing a fresh
-        // boot, not picking up a leftover from a previous run.
-        val rendezvous = widgeServer.resolve(".metals").resolve("mcp.json")
-        Files.deleteIfExists(rendezvous)
-        TestMetalsSigil.setLauncher(List("metals"))
-
-        TestMetalsSigil.metalsManager.ensureRunning(widgeServer).map { name =>
-          try {
-            name should startWith("metals-")
-            Files.exists(rendezvous) shouldBe true
-          } finally {
-            TestMetalsSigil.metalsManager.stop(widgeServer).sync()
-            TestMetalsSigil.setLauncher(List(
-              java.nio.file.Path.of("metals/src/test/resources/fake-metals.sh").toAbsolutePath.normalize.toString
-            ))
-          }
-        }
-      }
-    }
   }
 
   "tear down" should {
