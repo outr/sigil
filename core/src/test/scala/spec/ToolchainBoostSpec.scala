@@ -94,15 +94,23 @@ class ToolchainBoostSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     }
 
     "lift the lsp-tagged tool above the generic when `lsp` is active" in {
-      activeRef.set(Set("lsp"))
-      TestSigil.findCapabilities(request(Set("lsp"))).map { matches =>
-        val tools = matches.filter(_.capabilityType.toString.toLowerCase.contains("tool"))
-        val grepScore = tools.find(_.name == "grep_like").map(_.score).getOrElse(0.0)
-        val lspScore  = tools.find(_.name == "lsp_like_diagnostics").map(_.score).getOrElse(0.0)
-        // The lsp-tagged tool gets +toolchainBoost; should clear the
-        // generic by ~that amount.
-        lspScore should be > grepScore
-        (lspScore - grepScore) should be >= (TestSigil.toolchainBoost - 1.0)
+      // Capture lsp score WITHOUT the boost first.
+      activeRef.set(Set.empty)
+      TestSigil.findCapabilities(request(Set.empty)).flatMap { unboosted =>
+        val unboostedLsp = unboosted
+          .find(_.name == "lsp_like_diagnostics").map(_.score).getOrElse(0.0)
+        // Now switch the toolchain on and re-run.
+        activeRef.set(Set("lsp"))
+        TestSigil.findCapabilities(request(Set("lsp"))).map { matches =>
+          val tools = matches.filter(_.capabilityType.toString.toLowerCase.contains("tool"))
+          val grepScore = tools.find(_.name == "grep_like").map(_.score).getOrElse(0.0)
+          val lspScore  = tools.find(_.name == "lsp_like_diagnostics").map(_.score).getOrElse(0.0)
+          // 1) The boost lifts the lsp tool above the generic.
+          lspScore should be > grepScore
+          // 2) The boost adds exactly `toolchainBoost` to the lsp
+          //    tool's score (commensurate scale post-#90).
+          (lspScore - unboostedLsp) shouldBe TestSigil.toolchainBoost
+        }
       }
     }
 
