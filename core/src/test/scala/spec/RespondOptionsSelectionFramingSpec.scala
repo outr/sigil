@@ -87,6 +87,54 @@ class RespondOptionsSelectionFramingSpec extends AsyncWordSpec with AsyncTaskSpe
       }
     }
 
+    "populate Message.optionSelection so chat views can render selections distinctly (bug #73)" in {
+      val opts = ResponseContent.Options(
+        prompt        = "What would you like to set up for this workspace?",
+        options       = List(
+          SelectOption("Start Metals (Scala LSP)", "start_metals", description = Some("Boot the Scala language server.")),
+          SelectOption("Skip", "skip")
+        ),
+        allowMultiple = false
+      )
+      driveOptionsThenReply(opts, "start_metals").map { stored =>
+        val sel = stored.optionSelection.getOrElse(fail("optionSelection should be set after a successful selection match"))
+        sel.prompt shouldBe "What would you like to set up for this workspace?"
+        sel.selectedOptions.map(_.value) shouldBe List("start_metals")
+        sel.selectedOptions.head.label shouldBe "Start Metals (Scala LSP)"
+        sel.selectedOptions.head.description shouldBe Some("Boot the Scala language server.")
+        // Parent points at the agent's respond_options Message; chat views
+        // can use it to link the selection back to its prompt.
+        sel.parentOptionsEventId.value should not be empty
+      }
+    }
+
+    "carry every selected option through to optionSelection on multi-select" in {
+      val opts = ResponseContent.Options(
+        prompt = "Found admin services. Want to look at them all at once?",
+        options = List(
+          SelectOption("Read admin", "read-admin"),
+          SelectOption("Check routes", "check-routes"),
+          SelectOption("Compare features", "compare-features")
+        ),
+        allowMultiple = true
+      )
+      driveOptionsThenReply(opts, "read-admin, check-routes, compare-features").map { stored =>
+        val sel = stored.optionSelection.getOrElse(fail("optionSelection should be set"))
+        sel.selectedOptions.map(_.value) shouldBe List("read-admin", "check-routes", "compare-features")
+      }
+    }
+
+    "leave optionSelection empty on a free-form reply that doesn't match any option" in {
+      val opts = ResponseContent.Options(
+        prompt        = "Should I commit this change?",
+        options       = List(SelectOption("Yes", "yes"), SelectOption("No", "no")),
+        allowMultiple = false
+      )
+      driveOptionsThenReply(opts, "Actually, hold off — I want to review the diff first.").map { stored =>
+        stored.optionSelection shouldBe None
+      }
+    }
+
     "rewrite a multi-select comma-separated reply to a multi-bullet framing" in {
       val opts = ResponseContent.Options(
         prompt = "Found admin services. Want to look at them all at once?",
