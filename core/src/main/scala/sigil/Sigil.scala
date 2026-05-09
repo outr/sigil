@@ -1350,9 +1350,16 @@ trait Sigil {
       } yield (p, t, modelId, genSettings, rolesResolved)
 
     Stream.force(resolved.map { case (provider, tools, modelId, genSettings, rolesResolved) =>
+      // Bug #91 — stamp the registry's canonical id on outbound
+      // requests when one is known. Settled Messages then carry the
+      // prefixed form (`openai/gpt-5.5`) that the cost projection
+      // and OpenRouter-derived catalog lookups expect, so we don't
+      // depend on the tolerant fallback at every read site. No-op
+      // when the candidate's id isn't in the registry.
+      val canonicalModelId = cache.canonicalIdFor(modelId)
       val request = ConversationRequest(
         conversationId = context.conversation.id,
-        modelId = modelId,
+        modelId = canonicalModelId,
         instructions = agent.instructions,
         turnInput = context.turnInput,
         currentMode = context.conversation.currentMode,
@@ -3451,8 +3458,13 @@ trait Sigil {
     * [[sigil.signal.ConversationCostUpdated]] Notice carrying the new
     * running total + the per-Message delta. */
   private final def applyMessageCostToConversation(m: Message): Task[Unit] = {
+    // Bug #91 — `findTolerant` lets a Message stamped with a bare id
+    // (`gpt-5.5`) match a registry entry indexed by its prefixed id
+    // (`openai/gpt-5.5`). Without it, every cost projection on a
+    // bare-id Message silently misses and the conversation's running
+    // total stays at zero.
     val deltaOpt: Option[BigDecimal] = m.modelId.flatMap { mid =>
-      cache.find(mid).map { model =>
+      cache.findTolerant(mid).map { model =>
         val pricing = model.pricing
         val u = m.usage
         pricing.prompt * u.promptTokens + pricing.completion * u.completionTokens
