@@ -12,6 +12,7 @@ import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
 import sigil.information.Information
 import sigil.mcp.McpCollections
 import sigil.metals.MetalsSigil
+import sigil.tooling.ToolingCollections
 import sigil.participant.{Participant, ParticipantId}
 import sigil.provider.Provider
 import sigil.signal.Signal
@@ -22,12 +23,18 @@ import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicReference
 
 /** Concrete DB for the metals-module tests — `SigilDB` plus
-  * [[McpCollections]] (transitively required by [[MetalsSigil]]). */
+  * [[McpCollections]] (transitively required by [[MetalsSigil]])
+  * plus [[ToolingCollections]] so [[MetalsSigil.writeLspServerConfigForMetals]]
+  * (sigil bug #88) actually persists. Without this, the runtime
+  * pattern-match in `writeLspServerConfigForMetals` falls through
+  * to a no-op and bug #93's lsp4j launcher path is uncovered in
+  * tests. */
 class TestMetalsDB(directory: Option[Path],
                    storeManager: CollectionManager,
                    upgrades: List[DatabaseUpgrade] = Nil)
   extends SigilDB(directory, storeManager, upgrades)
     with McpCollections
+    with ToolingCollections
 
 /** Test fixture for the `sigil-metals` spec.
   *
