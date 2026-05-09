@@ -679,6 +679,16 @@ object Orchestrator {
       }
   }
 
+  /** Public alias for [[executeAtomic]] — exposes the consent +
+    * precondition gates the agent loop runs before dispatching a
+    * tool's `execute`, so apps and specs can drive the same path
+    * without going through a full provider round-trip. */
+  def dispatchAtomic(tool: Tool,
+                     input: ToolInput,
+                     context: TurnContext,
+                     originatingInvokeId: Id[Event]): Stream[Signal] =
+    executeAtomic(tool, input, context, originatingInvokeId)
+
   /** Dispatches an atomic tool's `execute` and forwards its events as
     * signals. Each event the tool emits is followed by a
     * `StateDelta(Complete)` so the uniform Active → Complete lifecycle
@@ -699,19 +709,81 @@ object Orchestrator {
     // FrameBuilder pairs by parent rather than by scan, and multiple
     // Tool events from one executeTyped all pair to the same call.
     //
-    // Fast path: tools without preconditions construct their stream
-    // synchronously — preserves bug #49's behaviour (sync throws in
-    // `tool.execute` are caught by the outer `Task(...).handleError`
-    // at the dispatch site so the surrounding stream survives).
-    // Wrapping the fast path in `Stream.force(Task...)` would convert
-    // sync throws into async stream errors and slide past that
-    // handler. Slow path (preconditions present) accepts that small
-    // shift in error semantics — the tradeoff for declarable gates.
-    if (tool.preconditions.isEmpty) runExecute(tool, input, context, originatingInvokeId)
-    else Stream.force(preflightOutcome(tool, context, originatingInvokeId).map {
-      case Right(()) => runExecute(tool, input, context, originatingInvokeId)
-      case Left(blockedSignals) => Stream.emits(blockedSignals)
+    // Fast path: tools without preconditions / consent declared can
+    // construct their stream synchronously — preserves bug #49's
+    // behaviour (sync throws in `tool.execute` are caught by the
+    // outer `Task(...).handleError` at the dispatch site so the
+    // surrounding stream survives). Wrapping the fast path in
+    // `Stream.force(Task...)` would convert sync throws into async
+    // stream errors and slide past that handler. Slow path
+    // (preconditions or consent gate) accepts that small shift in
+    // error semantics — the tradeoff for declarable gates.
+    if (tool.preconditions.isEmpty && !tool.requiresUserConsent)
+      runExecute(tool, input, context, originatingInvokeId)
+    else Stream.force(consentOutcome(tool, context, originatingInvokeId).flatMap {
+      case Left(blockedSignals) => Task.pure(Stream.emits(blockedSignals))
+      case Right(()) =>
+        if (tool.preconditions.isEmpty) Task.pure(runExecute(tool, input, context, originatingInvokeId))
+        else preflightOutcome(tool, context, originatingInvokeId).map {
+          case Right(()) => runExecute(tool, input, context, originatingInvokeId)
+          case Left(blockedSignals) => Stream.emits(blockedSignals)
+        }
     })
+  }
+
+  /** Bug #83 — verify a [[sigil.event.ToolApproval]] exists before
+    * dispatching a tool whose `requiresUserConsent` flag is set.
+    * Returns `Right(())` to proceed; `Left(signals)` to short-
+    * circuit dispatch with a Tool-role refusal Message that the
+    * agent reads on its next iteration.
+    *
+    * Three outcomes:
+    *   - tool doesn't require consent → `Right(())`, fast path
+    *   - approved record exists → `Right(())`, proceed
+    *   - declined record exists → `Left(refusal-with-decline-reason)`
+    *   - no record exists → `Left(refusal-prompting-record_consent)` */
+  private def consentOutcome(tool: Tool,
+                             context: TurnContext,
+                             originatingInvokeId: Id[Event]): Task[Either[List[Signal], Unit]] =
+    if (!tool.requiresUserConsent) Task.pure(Right(()))
+    else context.sigil.latestToolApproval(tool.name, context.conversation._id).map {
+      case Some(approval) if approval.approved => Right(())
+      case Some(declined) =>
+        val reason = declined.reason.map(r => s" — $r").getOrElse("")
+        val body =
+          s"""Tool `${tool.name.value}` cannot run — user previously declined this action$reason.
+             |
+             |If the user's intent has changed, ask them again (e.g. via `respond_options`) and
+             |record the new decision with `record_consent("${tool.name.value}", approved=true,
+             |reason="...")` before retrying.""".stripMargin
+        Left(refusalSignals(body, context, originatingInvokeId))
+      case None =>
+        val body =
+          s"""Tool `${tool.name.value}` requires user consent before running.
+             |
+             |Ask the user (typically via `respond_options` listing this action), wait for the
+             |reply, then call `record_consent("${tool.name.value}", approved=true, reason="...")`
+             |and retry the tool. The framework refuses to dispatch consent-gated tools without
+             |a `ToolApproval` record in this conversation.""".stripMargin
+        Left(refusalSignals(body, context, originatingInvokeId))
+    }
+
+  private def refusalSignals(body: String,
+                              context: TurnContext,
+                              originatingInvokeId: Id[Event]): List[Signal] = {
+    val msg = Message(
+      participantId  = context.caller,
+      conversationId = context.conversation.id,
+      topicId        = context.conversation.currentTopicId,
+      content        = Vector(ResponseContent.Failure(body, recoverable = true)),
+      role           = MessageRole.Tool,
+      state          = EventState.Complete,
+      origin         = Some(originatingInvokeId)
+    )
+    List[Signal](
+      msg,
+      StateDelta(target = msg._id, conversationId = msg.conversationId, state = EventState.Complete)
+    )
   }
 
   /** Tool execution path — emit each event with origin-stamping +

@@ -10,7 +10,7 @@ import sigil.tool.context.{
   UnpinMemoryInput, UnpinMemoryTool
 }
 import sigil.tool.model.{
-  ChangeModeInput, NoResponseInput, RespondCardInput, RespondCardsInput,
+  ChangeModeInput, NoResponseInput, RecordConsentInput, RespondCardInput, RespondCardsInput,
   RespondFailureInput, RespondFieldInput, RespondInput, RespondOptionsInput, StopInput
 }
 import sigil.tool.skill.{ActivateSkillInput, ActivateSkillTool}
@@ -81,7 +81,8 @@ object CoreTools {
       RespondFailureTool,
       NoResponseTool,
       FindCapabilityTool,
-      StopTool
+      StopTool,
+      RecordConsentTool
     )
 
   /** The ToolInput RWs for polymorphic registration. Sigil registers these
@@ -101,6 +102,7 @@ object CoreTools {
       summon[RW[RespondFailureInput]],
       summon[RW[ChangeModeInput]],
       summon[RW[NoResponseInput]],
+      summon[RW[RecordConsentInput]],
       summon[RW[FindCapabilityInput]],
       summon[RW[StopInput]],
       summon[RW[ActivateSkillInput]],
