@@ -168,6 +168,13 @@ object TestSigil extends Sigil {
     new AtomicReference[Option[ToolFinder]](None)
   private val activeToolchainsHookRef =
     new AtomicReference[Option[Id[Conversation] => Task[Set[String]]]](None)
+  /** Per-spec override of the framework's `reservedTopicLabels` set.
+    * Some(set) — return that set as the override; None — use the
+    * framework default. Used by ReservedTopicLabelsSpec to exercise
+    * apps adding the agent's display name to the reserved set
+    * without permanently mutating shared TestSigil state. */
+  val reservedTopicLabelsOverride =
+    new AtomicReference[Option[Set[String]]](None)
 
   // ---- hook overrides delegate to refs ----
 
@@ -220,6 +227,9 @@ object TestSigil extends Sigil {
     }
 
   override def memoryClassifierModel: Option[Id[Model]] = memoryClassifierModelRef.get()
+
+  override def reservedTopicLabels: Set[String] =
+    reservedTopicLabelsOverride.get().getOrElse(super.reservedTopicLabels)
 
   // ---- setters (per-test overrides) ----
 
