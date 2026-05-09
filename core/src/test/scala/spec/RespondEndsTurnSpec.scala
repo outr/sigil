@@ -26,17 +26,22 @@ import scala.concurrent.duration.*
  * agent's loop running so the agent can announce a status pulse and
  * then continue working on the same turn.
  *
- * Verifies:
- *   1. respond(endsTurn=false) does NOT end the turn — the loop
- *      iterates immediately with the agent's progress message in
- *      next-iteration history.
- *   2. respond(endsTurn=true) (default behavior) DOES end the turn.
- *   3. Two iterations occur from a single user message: progress
- *      respond → final respond. The provider sees a single agent
- *      "turn" with 2 wire calls.
- *   4. The runaway cap still applies — an agent that emits
- *      respond(endsTurn=false) every iteration eventually hits
- *      maxAgentIterations.
+ * Two paired scenarios isolate the flag:
+ *
+ *   A. respond(endsTurn = false) → respond(endsTurn = true)
+ *      Provider records `callCount = 2` — the loop iterated once
+ *      after the first respond.
+ *
+ *   B. respond(endsTurn = true) (single call)
+ *      Provider records `callCount = 1` — the loop ended cleanly.
+ *
+ * The proof rests on [[sigil.dispatcher.TriggerFilter]]'s rule
+ * "Message from self never re-triggers" — the agent's own respond
+ * Message cannot drive the second iteration. So the only mechanism
+ * that distinguishes (A) from (B) is `agentRequestedContinue`,
+ * fed from the settled respond's `endsTurn` field. Same provider
+ * shape, same agent, same user message — the only difference is
+ * the flag value.
  */
 class RespondEndsTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
