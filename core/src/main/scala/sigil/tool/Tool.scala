@@ -123,6 +123,24 @@ trait Tool extends RecordDocument[Tool] {
     * `Some(0)` by default. */
   def resultTtl: Option[Int] = None
 
+  /** When `true`, the framework refuses to dispatch this tool until
+    * a [[sigil.event.ToolApproval]] record exists for `(toolName,
+    * conversationId)` in `db.events`. The agent records consent via
+    * [[sigil.tool.core.RecordConsentTool]] after observing the
+    * user's reply — typically through a `respond_options` round-
+    * trip the agent designs to fit the conversation. Sigil bug #83.
+    *
+    * First-call-per-conversation semantics: a single approved
+    * record covers subsequent calls in the same conversation.
+    * `approved = false` is sticky — refusal sticks until the agent
+    * records a fresh approval.
+    *
+    * Apps opt in per-tool — most tools don't need this. Setup-
+    * shaped, destructive, expensive, or external-effecting tools
+    * usually do (file imports, mass deletes, payments, third-party
+    * API calls). Default `false` preserves the no-gate fast path. */
+  def requiresUserConsent: Boolean = false
+
   /** The description the LLM sees, given runtime context (active
     * mode + the live `Sigil`). Default returns the static
     * [[description]]; tools whose documentation depends on runtime

@@ -2468,6 +2468,24 @@ trait Sigil {
       case None    => ParticipantProjection.empty(participantId, conversationId)
     }
 
+  /** Most-recent [[sigil.event.ToolApproval]] for `(toolName,
+    * conversationId)`, or `None` when the agent hasn't recorded a
+    * decision yet. Sigil bug #83 — the orchestrator's consent gate
+    * reads this before dispatching a `requiresUserConsent` tool;
+    * apps can also call directly to surface "is this tool approved
+    * in this conversation?" UX. */
+  def latestToolApproval(toolName: sigil.tool.ToolName,
+                         conversationId: Id[Conversation]): Task[Option[sigil.event.ToolApproval]] =
+    withDB(_.events.transaction(_.list)).map { events =>
+      events.iterator
+        .collect { case ta: sigil.event.ToolApproval => ta }
+        .filter(_.conversationId == conversationId)
+        .filter(_.toolName == toolName)
+        .toList
+        .sortBy(_.timestamp.value)
+        .lastOption
+    }
+
   /** Materialize the rolling-window frames for a conversation by querying
     * `db.events` for Complete events with a non-empty
     * [[Event.contextFrame]], honoring the conversation's `clearedAt`
