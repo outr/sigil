@@ -857,6 +857,46 @@ trait Provider {
       )
     }
 
+    mergeAdjacentAssistantContent(out.result())
+  }
+
+  /** Bug #74 — merge consecutive content-only `ProviderMessage.Assistant`
+    * entries into a single message whose content is the run joined with
+    * `\n\n`. OpenAI-compatible providers (incl. llama.cpp) reject two
+    * adjacent `role=assistant` content messages with HTTP 400 ("Cannot
+    * have 2 or more assistant messages at the end of the list"); the
+    * canonical multi-respond turn (`endsTurn = false` followed by a
+    * settling `endsTurn = true` respond) produces exactly that shape.
+    *
+    * Only content-only assistants merge — tool-call assistant messages
+    * pass through untouched (they're paired with their `tool` result
+    * messages and provider wire formats accept them). */
+  private def mergeAdjacentAssistantContent(messages: Vector[ProviderMessage]): Vector[ProviderMessage] = {
+    val out = Vector.newBuilder[ProviderMessage]
+    var pending: Option[ProviderMessage.Assistant] = None
+    val joiner = "\n\n"
+
+    def flush(): Unit = {
+      pending.foreach(out += _)
+      pending = None
+    }
+
+    messages.foreach {
+      case a: ProviderMessage.Assistant if a.toolCalls.isEmpty =>
+        pending match {
+          case Some(prev) =>
+            pending = Some(ProviderMessage.Assistant(
+              content   = prev.content + joiner + a.content,
+              toolCalls = Nil
+            ))
+          case None =>
+            pending = Some(a)
+        }
+      case other =>
+        flush()
+        out += other
+    }
+    flush()
     out.result()
   }
 
