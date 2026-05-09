@@ -33,6 +33,18 @@ case object RespondTool extends TypedTool[RespondInput](
       |  label when following up; reuse a prior label when the user returns to a previous topic.
       |- `topicSummary` — 1-2 sentences.
       |- `content` — markdown.
+      |- `endsTurn` (optional, default `true`) — `true` when this respond is your COMPLETE reply
+      |  for this turn (the work is done, the user has the final answer). Set `false` only when
+      |  you intend to continue working on this turn after the user sees this message — e.g.
+      |  status updates like "Let me check…", "Reading the auth files now…", "Found 47 matches;
+      |  narrowing to admin/…". With `endsTurn = false` the framework iterates the loop again
+      |  immediately so you can run more tools; the respond's content shows the user a progress
+      |  pulse rather than a permanent reply.
+      |
+      |  Use `endsTurn = false` ONLY if your very next iteration will actually do the announced
+      |  work. Don't promise follow-up that won't happen — the user reads "Let me check…" and
+      |  expects results, not silence. If you don't have a concrete next step, finish the turn
+      |  cleanly with `endsTurn = true`.
       |
       |For interactive choices, labeled key/value cards, or failure signals: use `respond_options`,
       |`respond_field`, `respond_failure`.""".stripMargin,

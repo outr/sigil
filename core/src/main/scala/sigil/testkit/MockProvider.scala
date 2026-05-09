@@ -21,7 +21,8 @@ import scala.jdk.CollectionConverters.*
  *   val mock = MockProvider(
  *     sigil = TestSigil,
  *     responses = List(
- *       MockProvider.Script.toolCall(CallId("c1"), "respond", RespondInput("Hi!")),
+ *       MockProvider.Script.toolCall(CallId("c1"), "respond",
+ *         RespondInput("Greeting", "Hi!", "Hello, world.", endsTurn = true)),
  *       MockProvider.Script.text("Done.")
  *     )
  *   )

@@ -54,7 +54,7 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
         participantId = TestUser,
         conversationId = Conversation.id("c1"),
         topicId = TestTopicId,
-        input = Some(RespondInput(topicLabel = "Chat", topicSummary = "Casual chat.", content = "hi"))
+        input = Some(RespondInput(topicLabel = "Chat", topicSummary = "Casual chat.", content = "hi", endsTurn = true))
       )
       val restored = roundTripSignal(original)
       restored shouldBe a[ToolInvoke]
@@ -147,7 +147,8 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
       val original: ToolInput = RespondInput(
         topicLabel = "Greetings",
         topicSummary = "A friendly greeting exchange.",
-        content = "hello"
+        content = "hello",
+        endsTurn = true
       )
       val restored = roundTripToolInput(original)
       restored shouldBe a[RespondInput]

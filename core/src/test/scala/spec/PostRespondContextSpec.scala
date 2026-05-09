@@ -79,7 +79,7 @@ class PostRespondContextSpec extends AsyncWordSpec with AsyncTaskSpec with Match
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
             ProviderEvent.ToolCallComplete(
               callId,
-              RespondInput(topicLabel = "Overview", topicSummary = "Project overview", content = "Here's an overview.")
+              RespondInput(topicLabel = "Overview", topicSummary = "Project overview", content = "Here's an overview.", endsTurn = true)
             ),
             ProviderEvent.Done(StopReason.Complete)
           )

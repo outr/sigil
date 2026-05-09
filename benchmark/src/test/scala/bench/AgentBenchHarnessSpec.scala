@@ -75,7 +75,7 @@ class AgentBenchHarnessSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       ProviderEvent.ContentBlockStart(cid, "Text", arg = None),
       ProviderEvent.ContentBlockDelta(cid, content),
       ProviderEvent.ToolCallComplete(cid,
-        RespondInput(topicLabel = TestTopicEntry.label, topicSummary = TestTopicEntry.summary, content = content)),
+        RespondInput(topicLabel = TestTopicEntry.label, topicSummary = TestTopicEntry.summary, content = content, endsTurn = true)),
       ProviderEvent.Done(StopReason.Complete)
     )
   }
