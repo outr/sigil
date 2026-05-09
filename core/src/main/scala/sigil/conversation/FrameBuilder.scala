@@ -141,16 +141,19 @@ object FrameBuilder {
           visibility = mc.visibility
         ))
 
-      case tc: TopicChange =>
-        val content = tc.kind match {
-          case TopicChangeKind.Switch(_)             => s"Topic switched to: ${tc.newLabel}"
-          case TopicChangeKind.Rename(previousLabel) => s"Topic renamed: $previousLabel → ${tc.newLabel}"
-        }
-        Some(ContextFrame.System(
-          content = content,
-          sourceEventId = tc._id,
-          visibility = tc.visibility
-        ))
+      // Bug #74 — TopicChange is metadata, not conversation history.
+      // The system prompt's "Current topic:" / "Previous topics:"
+      // section already conveys current and prior labels; injecting a
+      // mid-conversation `[system: Topic switched to: …]` frame is
+      // pure noise AND becomes load-bearing when consecutive agent
+      // Messages from a multi-respond turn (endsTurn = false → loop
+      // iterates → another respond) cause the LlamaCpp provider's
+      // mid-array system folding to prepend the topic-shift text into
+      // the second assistant message, producing two consecutive
+      // role=assistant entries that OpenAI-compatible providers
+      // reject with HTTP 400. UI consumers still see TopicChange via
+      // `signals` for breadcrumb / sidebar display.
+      case _: TopicChange => None
 
       case r: Reasoning =>
         Some(ContextFrame.Reasoning(
@@ -308,16 +311,8 @@ object FrameBuilder {
           visibility = mc.visibility
         )
 
-      case tc: TopicChange =>
-        val content = tc.kind match {
-          case TopicChangeKind.Switch(_)            => s"Topic switched to: ${tc.newLabel}"
-          case TopicChangeKind.Rename(previousLabel) => s"Topic renamed: $previousLabel → ${tc.newLabel}"
-        }
-        existing :+ ContextFrame.System(
-          content = content,
-          sourceEventId = tc._id,
-          visibility = tc.visibility
-        )
+      // Bug #74 — TopicChange skips frame-emission; see `computeFrame`.
+      case _: TopicChange => existing
 
       case r: Reasoning =>
         // Provider-internal reasoning items — surfaced as a frame so
