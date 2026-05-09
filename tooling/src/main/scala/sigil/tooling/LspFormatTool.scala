@@ -34,6 +34,7 @@ final class LspFormatTool(val manager: LspManager) extends TypedOutputTool[LspFo
       |FormattingOptions to the server; many servers honor only the project's
       |configured formatter and ignore these.
       |Writes the formatted result back to disk; returns `{filePath, editsApplied}`.""".stripMargin,
+  keywords = Set("lsp", "format", "prettify", "indent", "beautify", "reformat", "style"),
   examples = List(
     ToolExample(
       "format a Scala file",

@@ -24,6 +24,7 @@ final class BspOutputPathsTool(val manager: BspManager) extends TypedOutputTool[
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin,
+  keywords = Set("bsp", "output", "output paths", "classpath", "build output"),
   examples = List(
     ToolExample(
       "list output paths",

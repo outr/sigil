@@ -24,6 +24,7 @@ final class BspSourcesTool(val manager: BspManager) extends TypedOutputTool[BspS
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.
       |Returns each target's source items as `{uri, kind: "dir"|"file", generated}`.""".stripMargin,
+  keywords = Set("bsp", "sources", "source files", "list sources", "target sources"),
   examples = List(
     ToolExample(
       "list sources for every target",

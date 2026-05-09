@@ -164,6 +164,10 @@ object TestSigil extends Sigil {
   // (`None`), with `reset()` reverting to `None`.
   private val resolveProviderStrategyRef =
     new AtomicReference[Option[SpaceId => Task[Option[sigil.provider.ProviderStrategy]]]](None)
+  private val toolFinderRef =
+    new AtomicReference[Option[ToolFinder]](None)
+  private val activeToolchainsHookRef =
+    new AtomicReference[Option[Id[Conversation] => Task[Set[String]]]](None)
 
   // ---- hook overrides delegate to refs ----
 
@@ -207,6 +211,14 @@ object TestSigil extends Sigil {
       case None     => super.resolveProviderStrategy(space)
     }
 
+  override def findTools: ToolFinder = toolFinderRef.get().getOrElse(super.findTools)
+
+  override def activeToolchains(conversationId: Id[Conversation]): Task[Set[String]] =
+    activeToolchainsHookRef.get() match {
+      case Some(fn) => fn.apply(conversationId)
+      case None     => super.activeToolchains(conversationId)
+    }
+
   override def memoryClassifierModel: Option[Id[Model]] = memoryClassifierModelRef.get()
 
   // ---- setters (per-test overrides) ----
@@ -214,6 +226,23 @@ object TestSigil extends Sigil {
   def setProvider(p: => Task[Provider]): Unit = providerRef.set(() => p)
   def setEmbeddingProvider(p: EmbeddingProvider): Unit = embeddingProviderRef.set(p)
   def setVectorIndex(v: VectorIndex): Unit = vectorIndexRef.set(v)
+
+  /** Per-test ToolFinder override — specs that need a synthetic
+    * tool catalog (consent gate, toolchain boost, etc.) install
+    * one without touching the persisted DB tools. `None` reverts
+    * to the framework default (DbToolFinder over the static
+    * roster). */
+  def setToolFinder(f: ToolFinder): Unit = toolFinderRef.set(Some(f))
+  def clearToolFinder(): Unit = toolFinderRef.set(None)
+
+  /** Per-test [[Sigil.activeToolchains]] override — specs that
+    * exercise the toolchain-boost ranker (#85) wire which
+    * toolchains are "active" without spawning a real Metals /
+    * BSP / etc. session. `None` reverts to the framework
+    * default `Set.empty`. */
+  def setActiveToolchainsHook(f: Id[Conversation] => Task[Set[String]]): Unit =
+    activeToolchainsHookRef.set(Some(f))
+  def clearActiveToolchainsHook(): Unit = activeToolchainsHookRef.set(None)
   def setCompressionSpace(s: Option[SpaceId]): Unit = compressionSpaceRef.set(s)
 
   /** Install a callback invoked on every `putInformation` call — specs

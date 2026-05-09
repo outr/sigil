@@ -41,6 +41,11 @@ final class LspDiagnosticsTool(val manager: LspManager) extends TypedOutputTool[
       |diagnostics after opening the file. Pass 0 to read the existing snapshot only.
       |
       |Returns `{filePath, diagnostics: [{range:{start, end}, severity, message, code, source}]}`.""".stripMargin,
+  keywords = Set(
+    "lsp", "language", "diagnostics", "errors", "warnings", "problems",
+    "lint", "compile-check", "analyze", "examine", "inspect", "review",
+    "evaluate", "what's broken", "issues", "semantic"
+  ),
   examples = List(
     ToolExample(
       "scala diagnostics for a single file",

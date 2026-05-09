@@ -24,6 +24,7 @@ final class LspCodeLensTool(val manager: LspManager) extends TypedOutputTool[Lsp
       |
       |`languageId` + `filePath` identify the document.
       |Returns each lens's position, optional title, and whether it carries a runnable command.""".stripMargin,
+  keywords = Set("lsp", "code lens", "lens", "inline action", "above-line action"),
   examples = List(
     ToolExample(
       "list lenses on a Scala file",

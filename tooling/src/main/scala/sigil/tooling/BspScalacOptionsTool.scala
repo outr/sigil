@@ -24,6 +24,7 @@ final class BspScalacOptionsTool(val manager: BspManager) extends TypedOutputToo
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin,
+  keywords = Set("bsp", "scalac", "scalac options", "compiler options", "compile flags", "scala"),
   examples = List(
     ToolExample(
       "list scalac options",

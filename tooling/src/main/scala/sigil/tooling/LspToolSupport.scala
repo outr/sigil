@@ -18,9 +18,18 @@ import java.nio.file.{Files, Paths}
  * indexed, run a single RPC, format the response. This trait
  * collapses that into [[withSession]] and [[withOpenDocument]] so
  * the per-tool body is just "call session.X, format the result."
+ *
+ * Sigil bug #85 — sets `toolchain = Some("lsp")` on every mixed-in
+ * tool so [[sigil.Sigil.findCapabilities]]'s ranker can boost their
+ * score when the conversation has an LSP runtime active (Metals
+ * running, ts-server attached, …). Apps register `"lsp"` in their
+ * [[sigil.Sigil.activeToolchains]] response when an LSP session is
+ * live for the conversation's workspace.
  */
-trait LspToolSupport {
+trait LspToolSupport extends sigil.tool.Tool {
   protected def manager: LspManager
+
+  override def toolchain: Option[String] = Some("lsp")
 
   /** Run `body` against a session for `languageId` rooted appropriately
     * for `filePath`. Wraps every error path (no config / spawn failure

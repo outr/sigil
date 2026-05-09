@@ -29,6 +29,7 @@ final class BspScalaTestClassesTool(val manager: BspManager) extends TypedOutput
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.
       |Returns each target's test framework + class names.""".stripMargin,
+  keywords = Set("bsp", "test classes", "tests", "scala", "find tests", "test suite"),
   examples = List(
     ToolExample(
       "list test classes",

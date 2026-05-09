@@ -24,6 +24,7 @@ final class BspInverseSourcesTool(val manager: BspManager) extends TypedOutputTo
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`filePath` is the absolute source path.""".stripMargin,
+  keywords = Set("bsp", "inverse sources", "target for file", "which target", "owning target"),
   examples = List(
     ToolExample(
       "find which target owns a file",

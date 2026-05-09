@@ -34,6 +34,7 @@ final class LspRenameTool(val manager: LspManager) extends TypedOutputTool[LspRe
       |`line` + `character` (0-based) point at the symbol to rename.
       |`newName` is the replacement identifier.
       |Returns `Applied(newName, filesChanged)` / `PartialFailure(newName, filesChanged)` / `NoEdits`.""".stripMargin,
+  keywords = Set("lsp", "rename", "refactor", "rename symbol", "rename across project"),
   examples = List(
     ToolExample(
       "rename a method",

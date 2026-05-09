@@ -20,6 +20,7 @@ final class BspReloadTool(val manager: BspManager) extends TypedOutputTool[BspRe
     """Reload the build server's project model (after build-file edits).
       |
       |`projectRoot` selects the persisted BspBuildConfig.""".stripMargin,
+  keywords = Set("bsp", "reload", "refresh", "rebuild", "reinitialise", "rescan"),
   examples = List(
     ToolExample(
       "reload after editing build.sbt",

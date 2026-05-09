@@ -26,6 +26,7 @@ final class LspPrepareRenameTool(val manager: LspManager) extends TypedOutputToo
       |`languageId` + `filePath` identify the document.
       |`line` + `character` (0-based) point at the candidate symbol.
       |Returns `Renameable(range)` when yes, `NotRenameable` when no.""".stripMargin,
+  keywords = Set("lsp", "rename", "refactor", "can rename", "renameable", "prepare"),
   examples = List(
     ToolExample(
       "check before renaming",

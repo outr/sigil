@@ -33,6 +33,7 @@ final class LspSignatureHelpTool(val manager: LspManager) extends TypedOutputToo
       |inside the parens of a function call).
       |Returns `{signatures: [{label, documentation, parameters}], activeSignature, activeParameter}`.
       |`activeParameter` is `-1` when no parameter is active or signatures is empty.""".stripMargin,
+  keywords = Set("lsp", "signature", "parameters", "args", "arguments", "what does take", "function signature"),
   examples = List(
     ToolExample(
       "scala signature help inside a method call",

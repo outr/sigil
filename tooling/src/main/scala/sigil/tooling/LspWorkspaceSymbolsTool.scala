@@ -32,6 +32,12 @@ final class LspWorkspaceSymbolsTool(val manager: LspManager) extends TypedOutput
       |`query` is the search string — fuzzy / substring depending on server config.
       |`maxResults` (default 100) caps the response.
       |Returns `{query, items: [{kind, name, container, uri, position}], totalCount, truncated}`.""".stripMargin,
+  keywords = Set(
+    "lsp", "workspace", "symbols", "find symbol", "search",
+    "class", "method", "function", "signature", "structure",
+    "examine", "inspect", "analyze", "explore", "browse",
+    "code", "codebase", "semantic", "index", "catalog"
+  ),
   examples = List(
     ToolExample(
       "find symbols matching 'Provider'",

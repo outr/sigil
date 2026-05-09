@@ -447,11 +447,16 @@ trait Sigil {
    */
   def findCapabilities(request: sigil.tool.DiscoveryRequest): rapid.Task[List[sigil.tool.discovery.CapabilityMatch]] = {
     import sigil.tool.discovery.{CapabilityMatch, CapabilityStatus, CapabilityType}
+    val activeChainsTask: rapid.Task[Set[String]] = request.conversationId match {
+      case Some(convId) => activeToolchains(convId)
+      case None         => rapid.Task.pure(Set.empty[String])
+    }
     for {
       rawTools <- findTools(request)
       tools    = rawTools
         .filter(t => sigil.tool.DiscoveryFilter.passesPolicy(t, request.mode.tools))
         .filter(t => !t.requiresAccessibleSpaces || request.callerSpaces.nonEmpty)
+      activeChains <- activeChainsTask
       modes    <- findModes(request)
       skills   <- findSkills(request)
       memories <- findCapabilitiesMemories(request)
@@ -459,11 +464,18 @@ trait Sigil {
       val toolMatches = tools.zipWithIndex.map { case (t, i) =>
         // Tool ranking comes from the finder; we approximate a score
         // from the order it returned (highest first, decreasing).
+        // Bug #85 — when the tool's `toolchain` is in this
+        // conversation's active set, add a flat `toolchainBoost` so
+        // language-runtime-backed tools (lsp_*, bsp_* when Metals is
+        // running) outrank generic verbs (grep, glob, execute_script)
+        // for inspection-shaped queries.
+        val baseScore = (tools.size - i).toDouble
+        val boost     = if (t.toolchain.exists(activeChains.contains)) toolchainBoost else 0.0
         CapabilityMatch(
           name = t.name.value,
           description = t.description,
           capabilityType = CapabilityType.Tool,
-          score = (tools.size - i).toDouble,
+          score = baseScore + boost,
           status = CapabilityStatus.Ready
         )
       }
@@ -587,6 +599,33 @@ trait Sigil {
     * (fail-closed). */
   def accessibleSpaces(chain: List[ParticipantId]): Task[Set[SpaceId]] =
     Task.pure(Set.empty)
+
+  /** Toolchains attached to `conversationId` — when a tool's
+    * [[sigil.tool.Tool.toolchain]] matches a name in this set,
+    * [[findCapabilities]]'s ranker adds [[toolchainBoost]] to its
+    * score. Sigil bug #85.
+    *
+    * Apps register active toolchains as conversations attach
+    * runtimes:
+    *   - `MetalsSigil` returns `Set("lsp", "bsp")` when Metals is
+    *     running for the conversation's workspace.
+    *   - Apps wiring TypeScript LSP would return `Set("ts-server")`
+    *     for conversations bound to a JS/TS workspace.
+    *   - Apps not exposing language runtimes leave the default
+    *     `Set.empty` and tools rank purely by keyword score.
+    *
+    * Default empty — no contextual boost without app opt-in. */
+  def activeToolchains(conversationId: Id[Conversation]): Task[Set[String]] =
+    Task.pure(Set.empty)
+
+  /** Score boost added to a tool's [[findCapabilities]] result when
+    * its [[sigil.tool.Tool.toolchain]] is in
+    * [[activeToolchains]]. Default `10.0` — large enough to lift
+    * LSP/BSP tools above generic verbs (grep, glob, execute_script
+    * cluster around 7-10), small enough that a tool with no
+    * keyword match doesn't displace a strong direct match. Apps
+    * tune by override. Sigil bug #85. */
+  def toolchainBoost: Double = 10.0
 
   /** Persist a user-created tool. Typical call site: an app's agent
     * flow that dynamically generates a `ScriptTool(...)` with the

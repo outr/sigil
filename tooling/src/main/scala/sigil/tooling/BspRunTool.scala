@@ -30,6 +30,7 @@ final class BspRunTool(val manager: BspManager) extends TypedOutputTool[BspRunIn
       |`target` is the target URI to run.
       |`arguments` (optional) flows through to the running program.
       |Returns `{status, targetCount: 1, stdout, stderr}` where status is `OK` / `ERROR` / `CANCELLED`.""".stripMargin,
+  keywords = Set("bsp", "run", "execute", "main", "launch", "start"),
   examples = List(
     ToolExample(
       "run a main class",

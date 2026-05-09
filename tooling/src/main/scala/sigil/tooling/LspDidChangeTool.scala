@@ -29,6 +29,7 @@ final class LspDidChangeTool(val manager: LspManager) extends TypedOutputTool[Ls
       |`languageId` selects the persisted LspServerConfig.
       |`filePath` is the absolute path; the server's open-document state for the URI is
       |refreshed with `text` and the document version is bumped.""".stripMargin,
+  keywords = Set("lsp", "did change", "edit", "change", "modify", "document update", "notify edit"),
   examples = List(
     ToolExample(
       "refresh after editing a Scala file",
