@@ -1,9 +1,10 @@
 package sigil.tool.core
 
 import sigil.TurnContext
-import sigil.event.{Event, ToolApproval}
+import sigil.event.{Event, Message, MessageRole, ToolApproval}
+import sigil.signal.EventState
 import sigil.tool.{ToolExample, ToolName, TypedTool}
-import sigil.tool.model.RecordConsentInput
+import sigil.tool.model.{RecordConsentInput, ResponseContent}
 
 /**
  * Records the user's consent decision for a `requiresUserConsent`
@@ -65,13 +66,39 @@ case object RecordConsentTool extends TypedTool[RecordConsentInput](
     )
   )
 ) {
-  override protected def executeTyped(input: RecordConsentInput, ctx: TurnContext): rapid.Stream[Event] =
-    rapid.Stream.emit[Event](ToolApproval(
+  override protected def executeTyped(input: RecordConsentInput, ctx: TurnContext): rapid.Stream[Event] = {
+    val approval = ToolApproval(
       toolName       = ToolName(input.toolName),
       approved       = input.approved,
       reason         = input.reason,
       participantId  = ctx.caller,
       conversationId = ctx.conversation.id,
       topicId        = ctx.conversation.currentTopicId
-    ))
+    )
+    // Bug #84 — emit a Tool-role confirmation Message alongside
+    // the durable ToolApproval so the orchestrator's
+    // function_call ↔ function_call_output pairing stays
+    // intact. Without this, OpenAI's Responses API rejects the
+    // next turn with "No tool output found for function call X"
+    // because the agent's `record_consent` ToolInvoke has no
+    // matching Tool-role result. ToolApproval alone is a
+    // ControlPlaneEvent — durable but doesn't render to a
+    // ToolResult frame.
+    val verdict = if (input.approved) "approved" else "declined"
+    val confirmationText = input.reason match {
+      case Some(reason) if reason.nonEmpty =>
+        s"Consent recorded: `${input.toolName}` $verdict — $reason"
+      case _ =>
+        s"Consent recorded: `${input.toolName}` $verdict"
+    }
+    val confirmation = Message(
+      participantId  = ctx.caller,
+      conversationId = ctx.conversation.id,
+      topicId        = ctx.conversation.currentTopicId,
+      content        = Vector(ResponseContent.Text(confirmationText)),
+      role           = MessageRole.Tool,
+      state          = EventState.Complete
+    )
+    rapid.Stream.emits(List[Event](approval, confirmation))
+  }
 }

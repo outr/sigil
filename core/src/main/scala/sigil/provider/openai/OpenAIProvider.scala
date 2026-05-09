@@ -208,9 +208,19 @@ case class OpenAIProvider(apiKey: String,
 
   /** Render framework-neutral [[ProviderMessage]]s into Responses API
     * input items. Each item carries a `role` + a `content` array of
-    * typed blocks. */
+    * typed blocks.
+    *
+    * Bug #84 — passes the result through [[ensureFunctionCallsPaired]]
+    * before returning. The OpenAI Responses API rejects requests
+    * whose `input` array contains a `function_call` without a
+    * matching `function_call_output`; the framework's upstream emit
+    * paths usually pair them, but tools that emit only
+    * ControlPlaneEvents (no `MessageRole.Tool` payload) leave gaps.
+    * The pass synthesizes a placeholder output for each unmatched
+    * call so the wire request stays well-formed even when an
+    * upstream tool author misses the contract. */
   private def renderInput(messages: Vector[ProviderMessage]): Vector[Json] =
-    messages.flatMap {
+    ensureFunctionCallsPaired(messages.flatMap {
       case ProviderMessage.System(content) =>
         // System frames mid-conversation: Responses API takes a
         // top-level `instructions`, but that's a single string. For
@@ -277,7 +287,50 @@ case class OpenAIProvider(apiKey: String,
         )
         val encryptedField = encryptedContent.toVector.map("encrypted_content" -> str(_))
         Vector(obj((baseFields ++ encryptedField)*))
+    })
+
+  /** Walk the rendered Responses API input items and synthesize a
+    * placeholder `function_call_output` for any `function_call`
+    * that doesn't already have a matching one in the array. Bug
+    * #84 — the API rejects with HTTP 400 ("No tool output found
+    * for function call X") otherwise, and the resulting agent
+    * loop terminates mid-turn.
+    *
+    * Synthetic outputs are inserted IMMEDIATELY after the
+    * orphan function_call so position semantics (each output
+    * follows its call) hold for any downstream consumer. The
+    * placeholder text is diagnostic so upstream emit-path bugs
+    * surface instead of being silently papered over. */
+  private def ensureFunctionCallsPaired(items: Vector[Json]): Vector[Json] = {
+    import scala.collection.mutable
+    val outputCallIds: Set[String] = items.iterator.flatMap { it =>
+      it.get("type").map(_.asString) match {
+        case Some("function_call_output") => it.get("call_id").map(_.asString)
+        case _                            => None
+      }
+    }.toSet
+    val out = mutable.ArrayBuffer.empty[Json]
+    items.foreach { it =>
+      out += it
+      val isCall = it.get("type").map(_.asString).contains("function_call")
+      if (isCall) {
+        it.get("call_id").map(_.asString) match {
+          case Some(cid) if !outputCallIds.contains(cid) =>
+            out += obj(
+              "type"    -> str("function_call_output"),
+              "call_id" -> str(cid),
+              "output"  -> str(
+                "(framework synthesized this placeholder because no MessageRole.Tool event " +
+                  "was emitted for this call_id. This is a bug in the tool's executeTyped — " +
+                  "please report it.)"
+              )
+            )
+          case _ => ()
+        }
+      }
     }
+    out.toVector
+  }
 
   /** Render custom functions + built-in tools into the Responses
     * `tools` array. Each item is a top-level object with a `type`
