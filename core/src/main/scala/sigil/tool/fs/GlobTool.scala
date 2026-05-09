@@ -19,6 +19,10 @@ final class GlobTool(context: FileSystemContext)
     ),
     keywords = Set("glob", "find", "list", "files", "pattern")
   ) {
+  // Bug #86 — generic primitive: ranks below domain-specific
+  // tools when both match a query.
+  override def preferIfNoBetter: Boolean = true
+
   override protected def executeTyped(input: GlobInput, ctx: TurnContext): Task[GlobOutput] =
     WorkspacePathResolver.resolve(ctx, input.basePath).flatMap { base =>
       context.listFiles(base, input.pattern, input.maxResults).map { paths =>

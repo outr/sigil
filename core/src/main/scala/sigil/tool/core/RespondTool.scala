@@ -29,8 +29,16 @@ case object RespondTool extends TypedTool[RespondInput](
       |be `find_capability`. `respond` is the final step after the action completes, not a way to
       |skip the action.
       |
-      |- `topicLabel` — 3-6 words. Fresh label when the user starts a new subject; keep the current
-      |  label when following up; reuse a prior label when the user returns to a previous topic.
+      |- `topicLabel` — 3-6 words describing what the CONVERSATION IS ABOUT, not who you are. Fresh
+      |  label when the user starts a new subject; keep the current label when following up; reuse a
+      |  prior label when the user returns to a previous topic.
+      |
+      |  Do NOT use your own name (`Sage`, `Claude`, `Assistant`), the conversation's app name, or
+      |  generic catch-alls (`Chat`, `Help`) as `topicLabel` — they describe the agent, not the
+      |  topic. If the user's first message is a greeting with no actual task yet, use `Greeting`
+      |  or `Initial setup` and let the next user turn drive the real topic. Reserved labels stick
+      |  to the conversation forever and pollute the topic-shift classifier on every later turn —
+      |  pick a real subject as soon as one exists.
       |- `topicSummary` — 1-2 sentences.
       |- `content` — markdown.
       |- `endsTurn` (optional, default `true`) — `true` when this respond is your COMPLETE reply

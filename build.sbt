@@ -195,7 +195,7 @@ lazy val mcp = (project in file("mcp"))
   )
 
 lazy val metals = (project in file("metals"))
-  .dependsOn(core % "compile->compile;test->test", mcp)
+  .dependsOn(core % "compile->compile;test->test", mcp, tooling)
   .settings(docNoLinkWarnings *)
   .settings(
     name := "sigil-metals",

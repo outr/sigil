@@ -28,6 +28,10 @@ final class ReadFileTool(context: FileSystemContext)
     ),
     keywords = Set("file", "read", "open", "cat", "view")
   ) {
+  // Bug #86 — generic primitive: ranks below domain-specific
+  // tools when both match a query.
+  override def preferIfNoBetter: Boolean = true
+
   override protected def executeTyped(input: ReadFileInput, ctx: TurnContext): Task[ReadFileOutput] =
     WorkspacePathResolver.resolve(ctx, input.filePath).flatMap(operate(input, _))
 
