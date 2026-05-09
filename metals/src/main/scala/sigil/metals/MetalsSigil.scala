@@ -74,6 +74,25 @@ trait MetalsSigil extends Sigil with McpSigil {
   def metalsIdleTimeoutMs: Long = 15L * 60L * 1000L
 
   /**
+   * Build the [[org.eclipse.lsp4j.services.LanguageClient]] used to
+   * drive the Metals subprocess. Default returns a
+   * [[MetalsLanguageClient]] which auto-responds "Import build" to
+   * sbt-detection prompts and routes `window/logMessage` /
+   * `window/showMessage` into the supplied per-line callback (so
+   * Metals' streaming progress reaches the chat chip via
+   * [[sigil.event.ToolLog]] events).
+   *
+   * Apps that want different behavior (custom action choice for
+   * non-sbt workspaces, additional capability declarations, etc.)
+   * subclass [[MetalsLanguageClient]] and override here.
+   */
+  def metalsLanguageClient(label: String,
+                           onLogLine: java.util.concurrent.atomic.AtomicReference[
+                             Option[String => rapid.Task[Unit]]
+                           ]): org.eclipse.lsp4j.services.LanguageClient =
+    new MetalsLanguageClient(label, onLogLine)
+
+  /**
    * The single per-Sigil Metals manager. Lazy so the reaper /
    * watcher fibers only spin up if a Metals-touching code path
    * actually accesses it.

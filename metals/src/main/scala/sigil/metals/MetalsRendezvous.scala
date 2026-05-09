@@ -6,16 +6,24 @@ import java.nio.file.{Files, Path}
 
 /**
  * Parses `.metals/mcp.json` — Metals' rendezvous file for the MCP
- * server it spawns. The shape is one of:
+ * server it spawns. Three known shapes (Metals 1.6+ writes the
+ * nested form; flat shapes are kept for fixture-driven tests + as
+ * a fallback if Metals' on-disk format ever changes back):
  *
  * {{{
- *   { "port": 12345 }                           // localhost binding (current convention)
- *   { "url":  "http://localhost:12345/mcp" }    // explicit URL fallback
+ *   // Metals 1.6+ NoClient layout (real binary)
+ *   { "servers": { "<projectName>-metals": { "url": "http://localhost:12345/mcp" } } }
+ *
+ *   // Flat URL
+ *   { "url":  "http://localhost:12345/mcp" }
+ *
+ *   // Legacy port-only
+ *   { "port": 12345 }
  * }}}
  *
  * Returns `None` when the file doesn't exist or its contents don't
- * resolve to either shape — the watcher then keeps polling until
- * Metals finishes startup (typically a couple of seconds).
+ * resolve to any recognized shape — the watcher then keeps polling
+ * until Metals finishes startup.
  */
 object MetalsRendezvous {
 
@@ -35,9 +43,14 @@ object MetalsRendezvous {
       try {
         val raw = Files.readString(file)
         val json = JsonParser(raw)
-        json.get("url").map(_.asString).map(Endpoint.apply).orElse {
-          json.get("port").map(_.asInt).map(p => Endpoint(s"http://127.0.0.1:$p/mcp"))
-        }
+        // Metals 1.6+ shape: `{servers: {<name>: {url: ...}}}`. Pick
+        // the first server entry's url — there's typically one.
+        val nested = json.get("servers").flatMap { servers =>
+          servers.asObj.value.values.flatMap(_.get("url").map(_.asString)).headOption
+        }.map(Endpoint.apply)
+        nested
+          .orElse(json.get("url").map(_.asString).map(Endpoint.apply))
+          .orElse(json.get("port").map(_.asInt).map(p => Endpoint(s"http://127.0.0.1:$p/mcp")))
       } catch {
         case _: Throwable => None
       }

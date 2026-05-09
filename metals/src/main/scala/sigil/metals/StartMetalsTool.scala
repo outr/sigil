@@ -46,7 +46,13 @@ final class StartMetalsTool extends TypedTool[StartMetalsInput](
               isError = true
             )))
           case Some(mm) =>
-            mm.ensureRunning(workspace).map { name =>
+            // Bug #69 — fan Metals' stdout into the chat chip via
+            // `ToolLog` events. The callback runs on the drainer
+            // thread; `context.toolLog` pairs each line to this
+            // tool's ToolInvoke via `currentToolInvokeId`.
+            val onLogLine: String => Task[Unit] =
+              line => context.toolLog(line)
+            mm.ensureRunning(workspace, onLogLine = Some(onLogLine)).map { name =>
               Stream.emit[Event](reply(
                 context,
                 s"Metals running for $workspace (server name: $name)"
