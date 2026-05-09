@@ -42,6 +42,17 @@ class ExecuteScriptTool(executor: ScriptExecutor,
   extends TypedTool[ScriptInput](
     name = name,
     description = description,
+    keywords = Set(
+      // Bug #82 — without these, keyword-rank pointed agents at the
+      // persistent CRUD variants (`create_script_tool`,
+      // `update_script_tool`) when "execute"/"evaluate"/"run script"
+      // queries should have surfaced this ad-hoc tool first. The
+      // ad-hoc / one-off / inspect terms disambiguate against
+      // create_script_tool (which is for persistent registration).
+      "execute", "run", "evaluate", "eval", "script",
+      "scala", "compute", "ad-hoc", "adhoc", "inspect",
+      "one-off", "calculate"
+    ),
     examples = List(
       ToolExample(
         "Compute a derived value",

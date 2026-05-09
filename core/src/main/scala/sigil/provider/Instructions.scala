@@ -163,7 +163,9 @@ object Instructions {
       |
       |When in doubt between 1 and 2, choose 1. The cost of an unnecessary `find_capability` is one extra turn; the cost of skipping discovery is silently degrading the user's task.
       |
-      |If `change_mode` is in your immediate roster, its description lists every available mode. If a listed mode matches the user's task, call `change_mode` directly — that's the most precise route (a Mode is a pre-curated find_capability result).""".stripMargin
+      |If `change_mode` is in your immediate roster, its description lists every available mode. If a listed mode matches the user's task, call `change_mode` directly — that's the most precise route (a Mode is a pre-curated find_capability result).
+      |
+      |After `change_mode` succeeds, your visible roster is FRESH. Do NOT call `find_capability` again before invoking a tool — the new mode's tools are now directly callable. Pick a tool from the roster and run it. Only re-search if you've actually called a roster tool and it returned a structural failure (`RequiresSetup`, `NotApplicable`, missing precondition). Re-searching after `change_mode` without trying the roster first burns iterations on discovery the framework just handed you.""".stripMargin
 
   /**
    * Pure-discovery variant of the TOOLS guidance — used when [[ToolPolicy.PureDiscovery]]
