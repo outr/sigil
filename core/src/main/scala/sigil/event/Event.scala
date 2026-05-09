@@ -27,6 +27,26 @@ trait Event extends Signal with Document[Event] {
   def participantId: ParticipantId
   def conversationId: Id[Conversation]
   def topicId: Id[Topic]
+  /**
+   * Server-canonical 0-based index of this event's `topicId` in the
+   * conversation's topic stack at emission time. Bug #80 — exposes a
+   * stable ordinal handle so clients can paint per-topic
+   * visualisations (colour strips, dividers, "topic N" badges)
+   * without hashing `topicId.value` (collision-prone) or walking the
+   * full TopicChange history (work duplication).
+   *
+   * Populated by [[sigil.pipeline.TopicIndexCanonicalizingTransform]]
+   * at `Sigil.publish` time from
+   * `conversation.topics.indexWhere(_.id == topicId)`. Inbound events
+   * that arrive with a stale or made-up index get overwritten — the
+   * server is the single source of truth.
+   *
+   * Default `0` covers the bootstrap topic and synthetic events
+   * constructed in tests. The canonicalizer overwrites whatever the
+   * caller passed when it knows the conversation's actual topic
+   * stack.
+   */
+  def topicIndex: Int
   def timestamp: Timestamp
   def state: EventState
 

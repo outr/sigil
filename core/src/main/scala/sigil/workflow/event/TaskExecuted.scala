@@ -31,6 +31,7 @@ import sigil.signal.EventState
 case class TaskExecuted(participantId: ParticipantId,
                         conversationId: Id[Conversation],
                         topicId: Id[Topic],
+                        topicIndex: Int = 0,
                         taskId: String,
                         roleName: String,
                         summary: String,

@@ -23,6 +23,7 @@ import sigil.signal.EventState
 case class ScriptResult(participantId: ParticipantId,
                         conversationId: Id[Conversation],
                         topicId: Id[Topic],
+                        topicIndex: Int = 0,
                         output: Option[String] = None,
                         error: Option[String] = None,
                         durationMs: Long = 0L,

@@ -18,6 +18,7 @@ import sigil.signal.EventState
 case class WorkflowRunStarted(participantId: ParticipantId,
                               conversationId: Id[Conversation],
                               topicId: Id[Topic],
+                              topicIndex: Int = 0,
                               workflowId: String,
                               workflowName: String,
                               runId: String,

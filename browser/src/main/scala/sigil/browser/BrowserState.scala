@@ -32,6 +32,7 @@ import sigil.storage.StoredFile
 case class BrowserState(participantId: ParticipantId,
                         conversationId: Id[Conversation],
                         topicId: Id[Topic],
+                        topicIndex: Int = 0,
                         timestamp: Timestamp = Timestamp(Nowish()),
                         url: Option[String] = None,
                         title: Option[String] = None,

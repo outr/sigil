@@ -35,6 +35,7 @@ import sigil.signal.EventState
 case class Stop(participantId: ParticipantId,
                 conversationId: Id[Conversation],
                 topicId: Id[Topic],
+                topicIndex: Int = 0,
                 targetParticipantId: Option[ParticipantId] = None,
                 force: Boolean = false,
                 reason: Option[String] = None,

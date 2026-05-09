@@ -53,6 +53,7 @@ import sigil.tool.model.ResponseContent
 case class Message(participantId: ParticipantId,
                    conversationId: Id[Conversation],
                    topicId: Id[Topic],
+                   topicIndex: Int = 0,
                    content: Vector[ResponseContent] = Vector.empty,
                    usage: TokenUsage = TokenUsage(0, 0, 0),
                    modelId: Option[Id[Model]] = None,

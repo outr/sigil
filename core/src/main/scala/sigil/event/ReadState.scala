@@ -38,6 +38,7 @@ import sigil.signal.EventState
 case class ReadState(participantId: ParticipantId,
                      conversationId: Id[Conversation],
                      topicId: Id[Topic],
+                     topicIndex: Int = 0,
                      lastReadAt: Timestamp,
                      state: EventState = EventState.Active,
                      timestamp: Timestamp = Timestamp(Nowish()),
