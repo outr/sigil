@@ -17,6 +17,7 @@ import sigil.signal.EventState
 case class WorkflowStepCompleted(participantId: ParticipantId,
                                  conversationId: Id[Conversation],
                                  topicId: Id[Topic],
+                                 topicIndex: Int = 0,
                                  workflowId: String,
                                  runId: String,
                                  stepId: String,
