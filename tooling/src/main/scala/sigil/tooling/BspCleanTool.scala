@@ -21,6 +21,7 @@ final class BspCleanTool(val manager: BspManager) extends TypedOutputTool[BspCle
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty cleans every workspace target.""".stripMargin,
+  keywords = Set("bsp", "clean", "clean cache", "clear build", "wipe build", "reset"),
   examples = List(
     ToolExample(
       "clean every target",

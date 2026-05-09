@@ -33,6 +33,11 @@ final class LspGotoDefinitionTool(val manager: LspManager) extends TypedOutputTo
       |`languageId` selects the persisted LspServerConfig.
       |`filePath` + `line` + `character` (0-based) point at any character inside the identifier.
       |Returns `[{uri, filePath, range:{start, end}}]` — empty when no definition found.""".stripMargin,
+  keywords = Set(
+    "lsp", "definition", "definitions", "where defined", "declaration",
+    "jump-to", "goto", "go to", "find symbol", "examine", "inspect",
+    "navigate", "source", "semantic", "symbol"
+  ),
   examples = List(
     ToolExample(
       "scala goto-def at line 42 col 12",

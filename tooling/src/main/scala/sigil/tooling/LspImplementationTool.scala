@@ -28,6 +28,7 @@ final class LspImplementationTool(val manager: LspManager) extends TypedOutputTo
       |`languageId` + `filePath` identify the source document.
       |`line` + `character` (0-based) point at the abstract symbol.
       |Returns `[{uri, filePath, range}]`.""".stripMargin,
+  keywords = Set("lsp", "implementation", "implementations", "who implements", "concrete", "examine", "inspect"),
   examples = List(
     ToolExample(
       "find all overrides of an abstract method",

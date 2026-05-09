@@ -99,6 +99,32 @@ trait MetalsSigil extends Sigil with McpSigil {
    */
   final lazy val metalsManager: MetalsManager = new MetalsManager(this)
 
+  /**
+   * Sigil bug #85 — when Metals is running for the conversation's
+   * workspace, surface `lsp` + `bsp` toolchains so
+   * [[sigil.Sigil.findCapabilities]] boosts LSP / BSP tools above
+   * generic verbs (grep, glob, execute_script) for inspection-
+   * shaped queries. Apps with workspaces NOT bound to Metals
+   * fall through to the framework default `Set.empty`.
+   *
+   * Resolves the workspace via [[metalsWorkspace]]; checks
+   * [[MetalsManager.status]] for an alive process whose endpoint
+   * is registered. Falls through with `Set.empty` if none of
+   * those resolve — the boost is opt-in by Metals being
+   * actually present.
+   */
+  override def activeToolchains(conversationId: lightdb.id.Id[Conversation]): rapid.Task[Set[String]] = {
+    metalsWorkspace(conversationId).flatMap {
+      case None => super.activeToolchains(conversationId)
+      case Some(workspace) =>
+        metalsManager.status.map { entries =>
+          val canonical = workspace.toAbsolutePath.normalize
+          val active = entries.exists(e => e.workspace == canonical && e.alive && e.endpoint.isDefined)
+          if (active) Set("lsp", "bsp") else Set.empty[String]
+        }
+    }
+  }
+
   /** Hook into Sigil's static-tool list so the lifecycle tools
     * are discoverable via the standard `find_capability` flow.
     * Apps that don't want them surfaced override

@@ -33,6 +33,7 @@ final class LspInlayHintsTool(val manager: LspManager) extends TypedOutputTool[L
       |`startLine`/`startCharacter`/`endLine`/`endCharacter` (0-based) bound the range;
       |defaults to the whole file.
       |Each item: `{kind, position, label}` where kind is `type` / `param` / `hint`.""".stripMargin,
+  keywords = Set("lsp", "inlay", "hints", "type annotation", "parameter hint", "type hint"),
   examples = List(
     ToolExample(
       "scala inlay hints for the whole file",

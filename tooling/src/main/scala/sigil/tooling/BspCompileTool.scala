@@ -27,6 +27,11 @@ final class BspCompileTool(val manager: BspManager) extends TypedOutputTool[BspC
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is a list of target URIs; empty compiles every workspace target.
       |Returns `{projectRoot, status, targetCount, diagnostics: [{filePath, range, severity, message, code, source}]}`.""".stripMargin,
+  keywords = Set(
+    "bsp", "compile", "build", "type-check", "verify",
+    "errors", "warnings", "compile-check", "examine", "inspect",
+    "analyze", "review"
+  ),
   examples = List(
     ToolExample(
       "compile all targets in a project",

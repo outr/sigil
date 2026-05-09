@@ -18,9 +18,16 @@ import sigil.tool.model.ResponseContent
  * to a list of [[BuildTargetIdentifier]]s, fetching from the server
  * if necessary. Tools fold this into their pipeline so the
  * "compile / test all targets" shorthand works.
+ *
+ * Sigil bug #85 — sets `toolchain = Some("bsp")` on every mixed-in
+ * tool so apps that register `"bsp"` in [[sigil.Sigil.activeToolchains]]
+ * (Metals running for a Scala project, etc.) get the build-server
+ * tools ranked above generic verbs for inspection-shaped queries.
  */
-trait BspToolSupport {
+trait BspToolSupport extends sigil.tool.Tool {
   protected def manager: BspManager
+
+  override def toolchain: Option[String] = Some("bsp")
 
   protected def withSession(projectRoot: String, context: TurnContext)
                            (body: BspSession => Task[String]): Stream[Event] = {

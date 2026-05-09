@@ -22,6 +22,7 @@ final class LspFoldingRangeTool(val manager: LspManager) extends TypedOutputTool
       |
       |`languageId` + `filePath` identify the document.
       |Returns each fold's `kind` (`region` / `comment` / `imports`), 1-based start/end lines.""".stripMargin,
+  keywords = Set("lsp", "fold", "folding", "collapse", "sections", "regions", "code structure"),
   examples = List(
     ToolExample(
       "outline foldable regions of a Scala file",

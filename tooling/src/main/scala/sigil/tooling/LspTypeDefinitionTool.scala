@@ -29,6 +29,7 @@ final class LspTypeDefinitionTool(val manager: LspManager) extends TypedOutputTo
       |`line` + `character` (0-based) point at the symbol whose type to look up.
       |Distinct from `lsp_goto_definition`, which finds the symbol itself.
       |Returns `[{uri, filePath, range}]`.""".stripMargin,
+  keywords = Set("lsp", "type definition", "type", "where defined", "type declaration", "examine", "inspect"),
   examples = List(
     ToolExample(
       "find the type of a value",

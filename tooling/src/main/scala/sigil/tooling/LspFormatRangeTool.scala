@@ -35,6 +35,7 @@ final class LspFormatRangeTool(val manager: LspManager) extends TypedOutputTool[
       |`startLine`/`startCharacter`/`endLine`/`endCharacter` (0-based) define the range.
       |`tabSize` and `insertSpaces` are passed as FormattingOptions.
       |Writes the formatted result back to disk; returns `{filePath, editsApplied}`.""".stripMargin,
+  keywords = Set("lsp", "format", "format range", "prettify", "indent", "beautify", "selection"),
   examples = List(
     ToolExample(
       "format a single method body",

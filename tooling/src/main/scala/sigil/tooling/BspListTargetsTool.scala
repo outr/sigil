@@ -21,6 +21,7 @@ final class BspListTargetsTool(val manager: BspManager) extends TypedOutputTool[
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |Returns each target's URI, display name, language tags, and capabilities (canCompile / canTest / canRun / canDebug).""".stripMargin,
+  keywords = Set("bsp", "targets", "list targets", "build targets", "modules", "examine", "inspect"),
   examples = List(
     ToolExample(
       "list targets in a project",

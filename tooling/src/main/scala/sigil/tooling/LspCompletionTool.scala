@@ -33,6 +33,7 @@ final class LspCompletionTool(val manager: LspManager) extends TypedOutputTool[L
       |`filePath` + `line` + `character` (0-based) point at the cursor location.
       |`maxResults` (default 50) caps the response so large catalogs don't flood context.
       |Returns `{filePath, items: [{label, kind, detail}], totalCount, truncated}`.""".stripMargin,
+  keywords = Set("lsp", "completion", "complete", "autocomplete", "suggest", "suggestion", "intellisense"),
   examples = List(
     ToolExample(
       "scala completion at a method-call position",

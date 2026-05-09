@@ -24,6 +24,7 @@ final class LspDocumentLinkTool(val manager: LspManager) extends TypedOutputTool
       |
       |`languageId` + `filePath` identify the document.
       |Each entry shows the link's start position and target URI (when resolved).""".stripMargin,
+  keywords = Set("lsp", "links", "document link", "hyperlink", "navigate"),
   examples = List(
     ToolExample(
       "list links in a Markdown file",

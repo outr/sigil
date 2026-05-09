@@ -68,7 +68,8 @@ case object FindCapabilityTool extends TypedTool[FindCapabilityInput](
           keywords = FindCapabilityTool.normaliseKeywords(input.keywords),
           chain = context.chain,
           mode = context.conversation.currentMode,
-          callerSpaces = spaces
+          callerSpaces = spaces,
+          conversationId = Some(context.conversation.id)
         )
         context.sigil.findCapabilities(request).map { matches =>
           val results = CapabilityResults(

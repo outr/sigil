@@ -27,6 +27,7 @@ final class BspDependencyModulesTool(val manager: BspManager) extends TypedOutpu
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin,
+  keywords = Set("bsp", "dependencies", "deps", "modules", "library deps"),
   examples = List(
     ToolExample(
       "list dependency modules",

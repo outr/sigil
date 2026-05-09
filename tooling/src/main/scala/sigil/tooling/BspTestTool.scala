@@ -29,6 +29,7 @@ final class BspTestTool(val manager: BspManager) extends TypedOutputTool[BspTest
       |`targets` (optional) is the list of target URIs; empty tests every target with the test capability.
       |`arguments` (optional) flows through to the test runner.
       |Returns `{status, targetCount, stdout, stderr}` where status is `OK` / `ERROR` / `CANCELLED` / `NO_TARGETS`.""".stripMargin,
+  keywords = Set("bsp", "test", "run tests", "unit test", "execute tests", "verify"),
   examples = List(
     ToolExample(
       "run a single sbt suite",

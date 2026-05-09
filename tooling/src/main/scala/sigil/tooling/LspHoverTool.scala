@@ -31,6 +31,7 @@ final class LspHoverTool(val manager: LspManager) extends TypedOutputTool[LspHov
       |`languageId` selects the persisted LspServerConfig.
       |`filePath` + `line` + `character` (0-based) point at any character inside the symbol.
       |Returns `Option[{contents, kind, range?}]` — `None` if the server has no hover info there.""".stripMargin,
+  keywords = Set("lsp", "hover", "type", "type info", "info", "what is", "signature", "docs", "documentation", "explain"),
   examples = List(
     ToolExample(
       "scala hover on a symbol",

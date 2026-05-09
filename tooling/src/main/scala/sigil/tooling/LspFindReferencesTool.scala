@@ -39,6 +39,11 @@ final class LspFindReferencesTool(val manager: LspManager) extends TypedOutputTo
       |`maxResults` (default 200) — caps the response.
       |
       |Returns `{locations: [{uri, filePath, range}], truncated}`.""".stripMargin,
+  keywords = Set(
+    "lsp", "references", "usages", "callers", "who calls", "find usage",
+    "examine", "inspect", "analyze", "review", "uses",
+    "where used", "find symbol", "semantic"
+  ),
   examples = List(
     ToolExample(
       "find references to a method",

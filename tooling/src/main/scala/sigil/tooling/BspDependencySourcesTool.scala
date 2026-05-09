@@ -24,6 +24,7 @@ final class BspDependencySourcesTool(val manager: BspManager) extends TypedOutpu
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin,
+  keywords = Set("bsp", "dependency sources", "library sources", "deps source", "external sources"),
   examples = List(
     ToolExample(
       "list dependency sources",

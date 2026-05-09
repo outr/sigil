@@ -141,6 +141,24 @@ trait Tool extends RecordDocument[Tool] {
     * API calls). Default `false` preserves the no-gate fast path. */
   def requiresUserConsent: Boolean = false
 
+  /** Optional toolchain identifier — when the conversation has the
+    * named toolchain active (per [[sigil.Sigil.activeToolchains]]),
+    * `find_capability`'s ranker boosts this tool's score by
+    * [[sigil.Sigil.toolchainBoost]]. Empty (the default) means no
+    * contextual boost. Sigil bug #85.
+    *
+    * Examples: `Some("lsp")` for LSP-backed tools (lsp_definitions,
+    * lsp_diagnostics, …), `Some("bsp")` for build-server tools
+    * (bsp_compile, bsp_test, …). Apps wire their own toolchain
+    * names — `Some("ts-server")`, `Some("pyright")`, etc. — and
+    * surface them via [[sigil.Sigil.activeToolchains]] when the
+    * underlying runtime is attached to a conversation.
+    *
+    * The boost is what makes inspection-shaped queries land on
+    * Metals' lsp_diagnostics ahead of generic ripgrep when Metals
+    * is running for the conversation's workspace. */
+  def toolchain: Option[String] = None
+
   /** The description the LLM sees, given runtime context (active
     * mode + the live `Sigil`). Default returns the static
     * [[description]]; tools whose documentation depends on runtime

@@ -24,6 +24,7 @@ final class BspScalaMainClassesTool(val manager: BspManager) extends TypedOutput
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin,
+  keywords = Set("bsp", "main classes", "main", "entry points", "scala", "runnable"),
   examples = List(
     ToolExample(
       "list main classes",

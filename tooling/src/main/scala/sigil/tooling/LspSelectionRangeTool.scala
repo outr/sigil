@@ -36,6 +36,7 @@ final class LspSelectionRangeTool(val manager: LspManager) extends TypedOutputTo
       |`languageId` + `filePath` identify the document.
       |`positions` is the list of (line, character) pairs (0-based).
       |Returns `{filePath, chains: [{ranges: [innermost, ..., outermost]}]}` — one chain per input position.""".stripMargin,
+  keywords = Set("lsp", "selection", "expand selection", "smart selection"),
   examples = List(
     ToolExample(
       "expand selection at one position",

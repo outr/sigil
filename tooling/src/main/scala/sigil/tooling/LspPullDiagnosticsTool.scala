@@ -35,6 +35,11 @@ final class LspPullDiagnosticsTool(val manager: LspManager) extends TypedOutputT
       |`languageId` + `filePath` identify the document.
       |Returns `{filePath, diagnostics: [...]}`. Servers without pull-model support fall back to
       |a push-snapshot.""".stripMargin,
+  keywords = Set(
+    "lsp", "diagnostics", "errors", "warnings", "problems", "lint",
+    "analyze", "examine", "inspect", "review", "what's broken",
+    "fresh", "sync", "synchronous"
+  ),
   examples = List(
     ToolExample(
       "pull diagnostics for a single file",
