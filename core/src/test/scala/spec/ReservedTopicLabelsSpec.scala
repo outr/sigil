@@ -124,6 +124,35 @@ class ReservedTopicLabelsSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       }
     }
 
+    "force New when classifier returns a reserved label, even if a prior with that label survived (#92)" in {
+      // Apps may add the agent's display name (e.g. "Sage") to
+      // `reservedTopicLabels`. We override the registry directly
+      // for the test to simulate that.
+      val customReserved = TestSigil.reservedTopicLabels + "Sage"
+      val originalReserved = TestSigil.reservedTopicLabels
+      TestSigil.reservedTopicLabelsOverride.set(Some(customReserved))
+      val provider = new CapturingClassifierProvider("Sage")
+      TestSigil.setProvider(Task.pure(provider))
+
+      val priors = List(reservedPrior("Compiler bug"))
+      TestSigil.classifyTopicShift(
+        modelId         = modelId,
+        chain           = List(TestUser, TestAgent),
+        current         = current,
+        priors          = priors,
+        proposedLabel   = "Workspace setup refinement",
+        proposedSummary = "Tightening up the workspace.",
+        userMessage     = "Hi Sage, can we refine the workspace?"
+      ).map { result =>
+        TestSigil.reservedTopicLabelsOverride.set(None)
+        // Sage is a reserved label; classifier output forced to New.
+        result shouldBe TopicShiftResult.New
+        // The classifier prompt should also NOT contain the agent
+        // name verbatim — sanitised on the way in.
+        provider.capturedUserPrompt.get() should not include "Sage"
+      }
+    }
+
     "still match against non-reserved priors when classifier returns one of them" in {
       val provider = new CapturingClassifierProvider("Compiler bug")
       TestSigil.setProvider(Task.pure(provider))

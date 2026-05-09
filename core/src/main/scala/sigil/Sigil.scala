@@ -3584,12 +3584,24 @@ trait Sigil {
                          userMessage: String): Task[TopicShiftResult] = {
     // Bug #89 — strip reserved labels (agent name, "Greeting",
     // "Initial setup", etc.) from the prior list before the
-    // classifier sees them. Otherwise an early seed topic that
-    // happens to be the agent's own name pulls every subsequent
-    // turn back to it via "<prior label>" matching, freezing the
-    // topic indicator at a catch-all forever.
+    // classifier sees them. The `priors` parameter is the
+    // conversation's persisted topic history (orchestrator passes
+    // `request.previousTopics`). Filtering at the classifier
+    // boundary stops an early seed topic that happens to be the
+    // agent's own name from pulling every subsequent turn back to
+    // it via "<prior label>" matching.
     val reservedLowered = reservedTopicLabels.map(_.toLowerCase)
     val filteredPriors = priors.filterNot(p => reservedLowered.contains(p.label.toLowerCase))
+    // Bug #92 — also redact reserved-label substrings from the user
+    // message before the classifier sees it. Anthropic + similar
+    // providers don't grammar-constrain tool args, so the model can
+    // hallucinate a `kind` straight from the user text it just read
+    // ("Hi Sage" → kind="Sage"). Replacing the substrings shields
+    // the classifier from echoing agent-name leakage as a topic
+    // verdict. Match is case-insensitive, whole-word.
+    val sanitizedUserMessage = reservedTopicLabels.foldLeft(userMessage) { (acc, term) =>
+      acc.replaceAll(s"(?i)\\b${java.util.regex.Pattern.quote(term)}\\b", "[reserved]")
+    }
     val priorsBlock =
       if (filteredPriors.isEmpty) "  (none)"
       else filteredPriors.map(p => s"  - \"${p.label}\" — ${p.summary}").mkString("\n")
@@ -3601,7 +3613,7 @@ trait Sigil {
         |  - <prior label> — same subject as one of the prior topics. The user is returning.
         |  - "New"      — genuinely different from Current and all priors.""".stripMargin
     val userPrompt =
-      s"""User just said: ${quote(userMessage)}
+      s"""User just said: ${quote(sanitizedUserMessage)}
          |
          |Current topic:
          |  - "${current.label}" — ${current.summary}
@@ -3641,14 +3653,26 @@ trait Sigil {
         case "Refine"   => TopicShiftResult.Refine
         case "New"      => TopicShiftResult.New
         case other      =>
-          // Bug #89 — Return must hit a prior that survived the
-          // reserved-label filter. If somehow the classifier
-          // returned a label that was filtered out (or never
-          // existed), fall back to "New" rather than NoChange so
-          // the new topic actually gets recorded.
-          filteredPriors.find(_.label == other)
-            .map(TopicShiftResult.Return(_))
-            .getOrElse(TopicShiftResult.New)
+          // Bug #92 — defensive validator. If the classifier returns
+          // a reserved label (agent name etc.) it must NOT be a Return
+          // target even when it accidentally matches a persisted prior;
+          // force `New` and log so future drift is observable.
+          if (reservedLowered.contains(other.toLowerCase)) {
+            scribe.warn(s"classifyTopicShift: model returned reserved label '$other' as kind — forcing New")
+            TopicShiftResult.New
+          } else {
+            // Bug #89 — Return must hit a prior that survived the
+            // reserved-label filter. If somehow the classifier
+            // returned a label that was filtered out (or never
+            // existed), fall back to "New" rather than NoChange so
+            // the new topic actually gets recorded.
+            filteredPriors.find(_.label == other)
+              .map(TopicShiftResult.Return(_))
+              .getOrElse {
+                scribe.warn(s"classifyTopicShift: out-of-enum kind '$other' (priors=${filteredPriors.map(_.label).mkString(",")}) — falling back to New")
+                TopicShiftResult.New
+              }
+          }
       }
     }.handleError { e =>
       Task {
