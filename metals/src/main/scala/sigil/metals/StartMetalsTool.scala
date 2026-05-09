@@ -52,11 +52,20 @@ final class StartMetalsTool extends TypedTool[StartMetalsInput](
             // tool's ToolInvoke via `currentToolInvokeId`.
             val onLogLine: String => Task[Unit] =
               line => context.toolLog(line)
-            mm.ensureRunning(workspace, onLogLine = Some(onLogLine)).map { name =>
-              Stream.emit[Event](reply(
-                context,
-                s"Metals running for $workspace (server name: $name)"
-              ))
+            mm.ensureRunning(workspace, onLogLine = Some(onLogLine)).flatMap { name =>
+              // Bug #88 — also write LspServerConfig("scala") so
+              // the framework's generic lsp_* tools find Metals as
+              // their backend. No-op for apps without
+              // ToolingCollections in their DB.
+              metalsHost(sigil).map(_.writeLspServerConfigForMetals(workspace))
+                .getOrElse(Task.unit)
+                .handleError { t =>
+                  Task(scribe.warn(s"start_metals: LspServerConfig upsert for 'scala' failed: ${t.getMessage}"))
+                }
+                .map(_ => Stream.emit[Event](reply(
+                  context,
+                  s"Metals running for $workspace (server name: $name)"
+                )))
             }.handleError { t =>
               Task.pure(Stream.emit[Event](reply(
                 context,
@@ -66,5 +75,11 @@ final class StartMetalsTool extends TypedTool[StartMetalsInput](
             }
         }
     })
+  }
+
+  /** Returns the [[MetalsSigil]] handle when the host mixes it in. */
+  private def metalsHost(host: _root_.sigil.Sigil): Option[MetalsSigil] = host match {
+    case ms: MetalsSigil => Some(ms)
+    case _               => None
   }
 }

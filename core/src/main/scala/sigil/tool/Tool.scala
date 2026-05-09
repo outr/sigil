@@ -159,6 +159,24 @@ trait Tool extends RecordDocument[Tool] {
     * is running for the conversation's workspace. */
   def toolchain: Option[String] = None
 
+  /** When `true`, [[sigil.Sigil.findCapabilities]]'s ranker
+    * subtracts [[sigil.Sigil.preferIfNoBetterPenalty]] from this
+    * tool's score so it sits below domain-specific tools when both
+    * match the query. Generic primitives (`grep`, `glob`, `bash`,
+    * `read_file`, `execute_script`) opt in — the agent should pick
+    * them only when nothing more specific applies. Sigil bug #86.
+    *
+    * Stays findable: the penalty is small enough that a
+    * generic-only match still ranks higher than no match. When no
+    * domain-specific tool is in the result set (e.g. the project
+    * has no LSP backend running), generic tools are still the
+    * top result.
+    *
+    * Default `false` preserves rank for tools whose primary purpose
+    * is what they do — `respond`, `change_mode`, `start_metals`,
+    * etc. — those don't need the penalty. */
+  def preferIfNoBetter: Boolean = false
+
   /** The description the LLM sees, given runtime context (active
     * mode + the live `Sigil`). Default returns the static
     * [[description]]; tools whose documentation depends on runtime

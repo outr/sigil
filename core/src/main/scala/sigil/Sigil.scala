@@ -464,18 +464,21 @@ trait Sigil {
       val toolMatches = tools.zipWithIndex.map { case (t, i) =>
         // Tool ranking comes from the finder; we approximate a score
         // from the order it returned (highest first, decreasing).
-        // Bug #85 — when the tool's `toolchain` is in this
-        // conversation's active set, add a flat `toolchainBoost` so
-        // language-runtime-backed tools (lsp_*, bsp_* when Metals is
-        // running) outrank generic verbs (grep, glob, execute_script)
-        // for inspection-shaped queries.
-        val baseScore = (tools.size - i).toDouble
-        val boost     = if (t.toolchain.exists(activeChains.contains)) toolchainBoost else 0.0
+        // Bug #85 — toolchain boost: language-runtime-backed tools
+        // (lsp_*, bsp_* when Metals is running) outrank generic
+        // verbs for inspection-shaped queries.
+        // Bug #86 — generic primitives (grep, glob, bash, …) opt
+        // into a penalty that drops them below domain-specific
+        // tools. They stay findable when no domain-specific tool
+        // matches; they just stop winning ties.
+        val baseScore   = (tools.size - i).toDouble
+        val boost       = if (t.toolchain.exists(activeChains.contains)) toolchainBoost else 0.0
+        val penalty     = if (t.preferIfNoBetter) preferIfNoBetterPenalty else 0.0
         CapabilityMatch(
           name = t.name.value,
           description = t.description,
           capabilityType = CapabilityType.Tool,
-          score = baseScore + boost,
+          score = baseScore + boost - penalty,
           status = CapabilityStatus.Ready
         )
       }
@@ -626,6 +629,16 @@ trait Sigil {
     * keyword match doesn't displace a strong direct match. Apps
     * tune by override. Sigil bug #85. */
   def toolchainBoost: Double = 10.0
+
+  /** Score penalty subtracted from a tool's [[findCapabilities]]
+    * result when [[sigil.tool.Tool.preferIfNoBetter]] is set.
+    * Generic primitives (grep, glob, bash, …) get nudged below
+    * domain-specific tools that ranker score them as ties. Default
+    * `3.0` — large enough to push grep below LSP for "examine code"
+    * queries, small enough that a generic-only match still ranks
+    * positive (no domain match → grep is still the top result).
+    * Sigil bug #86. */
+  def preferIfNoBetterPenalty: Double = 3.0
 
   /** Persist a user-created tool. Typical call site: an app's agent
     * flow that dynamically generates a `ScriptTool(...)` with the
@@ -3534,6 +3547,16 @@ trait Sigil {
    * If the classifier call fails (provider error, no tool call), falls
    * back to `NoChange` — the safe default that preserves state.
    */
+  /** Topic labels the classifier should NEVER match against as
+    * "<prior label>" — generic catch-alls (agent's own name, app
+    * name, "Greeting", "Initial setup", "Chat", "Help") that
+    * would otherwise pull every subsequent turn back to them via
+    * the prior-match path. Apps that brand the agent override and
+    * include the agent's display name. Sigil bug #89. */
+  def reservedTopicLabels: Set[String] = Set(
+    "greeting", "initial setup", "chat", "help", "assistant", "conversation"
+  )
+
   def classifyTopicShift(modelId: Id[Model],
                          chain: List[ParticipantId],
                          current: TopicEntry,
@@ -3541,9 +3564,17 @@ trait Sigil {
                          proposedLabel: String,
                          proposedSummary: String,
                          userMessage: String): Task[TopicShiftResult] = {
+    // Bug #89 — strip reserved labels (agent name, "Greeting",
+    // "Initial setup", etc.) from the prior list before the
+    // classifier sees them. Otherwise an early seed topic that
+    // happens to be the agent's own name pulls every subsequent
+    // turn back to it via "<prior label>" matching, freezing the
+    // topic indicator at a catch-all forever.
+    val reservedLowered = reservedTopicLabels.map(_.toLowerCase)
+    val filteredPriors = priors.filterNot(p => reservedLowered.contains(p.label.toLowerCase))
     val priorsBlock =
-      if (priors.isEmpty) "  (none)"
-      else priors.map(p => s"  - \"${p.label}\" — ${p.summary}").mkString("\n")
+      if (filteredPriors.isEmpty) "  (none)"
+      else filteredPriors.map(p => s"  - \"${p.label}\" — ${p.summary}").mkString("\n")
     val systemPrompt =
       """You categorize how a proposed topic relates to a conversation's existing topics.
         |Pick exactly one value from the enum:
@@ -3564,7 +3595,7 @@ trait Sigil {
          |  - "$proposedLabel" — $proposedSummary
          |
          |Pick exactly one value from the enum.""".stripMargin
-    val tool = new TopicClassifierTool(priors.map(_.label))
+    val tool = new TopicClassifierTool(filteredPriors.map(_.label))
     // Sampling settings are baseline `temperature = 0.0` (deterministic
     // classification) — but only when the model supports it. GPT-5 +
     // reasoning-only families (o1, o3, …) hard-reject `temperature`,
@@ -3592,9 +3623,14 @@ trait Sigil {
         case "Refine"   => TopicShiftResult.Refine
         case "New"      => TopicShiftResult.New
         case other      =>
-          priors.find(_.label == other)
+          // Bug #89 — Return must hit a prior that survived the
+          // reserved-label filter. If somehow the classifier
+          // returned a label that was filtered out (or never
+          // existed), fall back to "New" rather than NoChange so
+          // the new topic actually gets recorded.
+          filteredPriors.find(_.label == other)
             .map(TopicShiftResult.Return(_))
-            .getOrElse(TopicShiftResult.NoChange)
+            .getOrElse(TopicShiftResult.New)
       }
     }.handleError { e =>
       Task {

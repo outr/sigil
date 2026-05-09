@@ -176,6 +176,19 @@ object Orchestrator {
       * iteration reads and can self-correct from. */
     val plainTextBuffer: StringBuilder = new StringBuilder
     var sawAnyToolCall: Boolean = false
+
+    /** Bug #87 — keys (toolName + canonical args JSON) of atomic tool
+      * calls already dispatched this turn. When the model emits
+      * multiple `function_call`s in one completion that share a key
+      * (parallel hedging on a deterministic-failure tool, e.g. a
+      * `requiresUserConsent` tool retried in parallel), the
+      * duplicates are routed to a synthesized Tool-role result
+      * pointing at the first dispatch instead of executing the same
+      * (tool, args) N times. Wire shape stays well-formed —
+      * `function_call` ↔ `function_call_output` pairing is satisfied
+      * for every call_id; the underlying execution happens once. */
+    val dispatchedKeys: scala.collection.mutable.Map[String, lightdb.id.Id[Event]] =
+      scala.collection.mutable.Map.empty
   }
 
   private def translate(event: ProviderEvent,
@@ -320,6 +333,39 @@ object Orchestrator {
           case None =>
             // Atomic path — run execute and forward resulting Events.
             //
+            // Bug #87 — dedupe identical (toolName + canonical args
+            // JSON) calls within the same completion. When the model
+            // emits N parallel function_calls that share a key
+            // (parallel hedging, or the same retry hitting both a
+            // generic and specific path), execute the work once and
+            // route the duplicates to a synthesized Tool-role
+            // pointer Message paired to their own ToolInvoke. Wire
+            // shape stays well-formed; the underlying tool runs once.
+            val toolName = active.toolName
+            val argsKey = canonicalArgsKey(toolName, input)
+            state.dispatchedKeys.get(argsKey) match {
+              case Some(firstInvokeId) =>
+                val dupeMsg = Message(
+                  participantId  = caller,
+                  conversationId = convId,
+                  topicId        = topicId,
+                  role           = MessageRole.Tool,
+                  content        = Vector(ResponseContent.Text(
+                    s"(deduplicated: identical `$toolName` call already dispatched in this completion " +
+                      s"as ${firstInvokeId.value}; see that result)"
+                  )),
+                  state          = EventState.Complete,
+                  visibility     = MessageVisibility.Agents,
+                  origin         = Some(invokeId)
+                )
+                return Stream.emits(toolDeltaPrefix ::: List[Signal](
+                  dupeMsg,
+                  StateDelta(target = dupeMsg._id, conversationId = convId, state = EventState.Complete)
+                ))
+              case None =>
+                state.dispatchedKeys(argsKey) = invokeId
+            }
+            //
             // Bug #49 — wrap stream construction in `Task(...).handleError`
             // so a tool that throws during `tool.execute` (synchronously,
             // at stream construction OR on first pull) surfaces as a
@@ -331,7 +377,6 @@ object Orchestrator {
             // stream materialization to Task evaluation, where
             // `handleError` can catch and substitute.
             val tool = toolsByName.get(active.toolName)
-            val toolName = active.toolName
             val executed: Stream[Signal] = tool match {
               case Some(t) =>
                 Stream.force(
@@ -988,6 +1033,18 @@ object Orchestrator {
 
   private def kindOf(name: String): ContentKind =
     scala.util.Try(ContentKind.valueOf(name)).getOrElse(ContentKind.Text)
+
+  /** Bug #87 — canonical key for (toolName, args) so the
+    * orchestrator can detect duplicate parallel calls in a single
+    * completion. Falls back to `toString` for robustness — if
+    * fabric's RW path throws on a particular ToolInput shape, the
+    * dedupe just doesn't fire for that call rather than crashing. */
+  private def canonicalArgsKey(toolName: String, input: sigil.tool.ToolInput): String = {
+    val argsJson =
+      try fabric.io.JsonFormatter.Compact(summon[fabric.rw.RW[sigil.tool.ToolInput]].read(input))
+      catch { case _: Throwable => input.toString }
+    s"$toolName:$argsJson"
+  }
 
   /**
    * Emit a `MessageDelta` with `MessageContentDelta(complete = true, delta = full

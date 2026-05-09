@@ -25,6 +25,11 @@ final class GrepTool(context: FileSystemContext)
     ),
     keywords = Set("grep", "search", "regex", "find", "match", "lines")
   ) {
+  // Bug #86 — generic primitive: ranks below domain-specific tools
+  // (LSP/BSP, typed inspectors) when both match a query, but stays
+  // findable when nothing more specific applies.
+  override def preferIfNoBetter: Boolean = true
+
   override protected def executeTyped(input: GrepInput, ctx: TurnContext): Task[GrepOutput] =
     WorkspacePathResolver.resolve(ctx, input.path).flatMap { base =>
       context.searchFiles(base, input.pattern, input.glob, input.maxMatches, input.contextLines).map { matches =>

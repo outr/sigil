@@ -27,6 +27,10 @@ final class BashTool(context: FileSystemContext)
     ),
     keywords = Set("bash", "shell", "command", "exec", "run", "sh")
   ) {
+  // Bug #86 — generic primitive: ranks below domain-specific
+  // tools when both match a query.
+  override def preferIfNoBetter: Boolean = true
+
   override protected def executeTyped(input: BashInput, ctx: TurnContext): Task[BashOutput] =
     // `workingDir` resolves against the conversation's workspace
     // when supplied; when omitted, the workspace itself becomes

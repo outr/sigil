@@ -72,6 +72,10 @@ class ExecuteScriptTool(executor: ScriptExecutor,
       case None          => description
     }
 
+  // Bug #86 — generic primitive: ranks below domain-specific
+  // tools when both match a query.
+  override def preferIfNoBetter: Boolean = true
+
   override protected def executeTyped(input: ScriptInput, context: TurnContext): Stream[Event] = {
     val started = System.currentTimeMillis()
     // Bug #67 — wrap the whole construction in an outer `Task.defer`
