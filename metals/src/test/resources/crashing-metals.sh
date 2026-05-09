@@ -4,7 +4,13 @@
 # `MetalsManager.waitForReady` surfaces a clear diagnostic (exit
 # code + recent stdout tail) instead of waiting forever.
 set -euo pipefail
-echo "[bloop] starting up"
-echo "[bloop] resolving dependencies"
-echo "[bloop] FATAL: simulated crash"
+# stderr — that's where real Metals writes fatal errors and
+# what `MetalsManager.startStderrDrainer` captures into the
+# tail buffer for the failure diagnostic. With
+# `redirectErrorStream(false)` (required so the LSP wire on
+# stdout stays parseable), stdout messages would be consumed
+# by the lsp4j launcher and never make it to the diagnostic.
+echo "[bloop] starting up" >&2
+echo "[bloop] resolving dependencies" >&2
+echo "[bloop] FATAL: simulated crash" >&2
 exit 7

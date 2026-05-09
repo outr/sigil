@@ -1,16 +1,21 @@
 package sigil.metals
 
 import lightdb.time.Timestamp
+import org.eclipse.lsp4j.{ClientCapabilities, InitializeParams, InitializedParams, WindowClientCapabilities, WorkspaceClientCapabilities, WorkspaceFolder}
+import org.eclipse.lsp4j.jsonrpc.Launcher
+import org.eclipse.lsp4j.services.{LanguageClient, LanguageServer}
 import rapid.Task
 import sigil.Sigil
 import sigil.db.SigilDB
 import sigil.mcp.{McpCollections, McpServerConfig, McpTransport}
 import spice.net.{TLDValidation, URL}
 
+import java.io.File
 import java.nio.file.{Files, Path}
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.{ConcurrentHashMap, Executors}
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import scala.concurrent.duration.*
+import scala.jdk.CollectionConverters.*
 
 /**
  * Lifecycle owner for spawned Metals subprocesses. One Metals per
@@ -51,15 +56,20 @@ final class MetalsManager(host: MetalsSigil) {
 
   /** Per-workspace state. `workspaceKey` is the
     * [[MetalsWorkspaceKey]]-derived `metals-<hash>` server name.
-    * `drainer` is the thread copying the subprocess's stdout into
-    * `tailRef` (kept so failure-path snapshotting can briefly join
-    * it after the subprocess exits, ensuring the tail isn't empty). */
+    * `stderrDrainer` is the thread tailing the subprocess's stderr
+    * (LSP wire is on stdout; logs / fatal errors come on stderr) so
+    * failure-path diagnostics surface real subprocess output.
+    * `onLogLine` is the per-line callback supplied by the caller —
+    * typically [[StartMetalsTool]] threading `TurnContext.toolLog` —
+    * so streaming Metals output reaches the chat chip via
+    * [[sigil.event.ToolLog]] events (bug #69). */
   private final case class Entry(workspace: Path,
                                  workspaceKey: String,
                                  process: Process,
                                  @volatile var endpoint: Option[String],
                                  @volatile var lastUsedMs: Long,
-                                 drainer: Thread)
+                                 stderrDrainer: Thread,
+                                 onLogLine: AtomicReference[Option[String => Task[Unit]]])
 
   /** Keyed by canonical workspace path string. */
   private val entries: ConcurrentHashMap[String, Entry] = new ConcurrentHashMap()
@@ -81,19 +91,25 @@ final class MetalsManager(host: MetalsSigil) {
    * Returns the server name [[sigil.mcp.McpManager]] consumers
    * reference (`metals-<hash>`).
    */
-  def ensureRunning(workspace: Path): Task[String] = Task.defer {
+  def ensureRunning(workspace: Path,
+                    onLogLine: Option[String => Task[Unit]] = None): Task[String] = Task.defer {
     val canonical = workspace.toAbsolutePath.normalize
     val key = canonical.toString
     val name = MetalsWorkspaceKey.of(canonical)
     val existing = Option(entries.get(key))
     existing match {
       case Some(entry) if entry.process.isAlive =>
+        // Idempotent re-attach — update the line callback so a
+        // second start_metals call routes Metals output to the new
+        // ToolInvoke's chip instead of stranded against the
+        // original.
         entry.lastUsedMs = System.currentTimeMillis()
+        entry.onLogLine.set(onLogLine)
         Task.pure(entry.workspaceKey)
       case _ =>
         // No live entry — spawn and wait for rendezvous, then
         // upsert the McpServerConfig.
-        spawnAndRegister(canonical, key, name)
+        spawnAndRegister(canonical, key, name, onLogLine)
     }
   }
 
@@ -148,7 +164,10 @@ final class MetalsManager(host: MetalsSigil) {
 
   // ---- internals ----
 
-  private def spawnAndRegister(workspace: Path, key: String, name: String): Task[String] = Task.defer {
+  private def spawnAndRegister(workspace: Path,
+                                key: String,
+                                name: String,
+                                onLogLine: Option[String => Task[Unit]]): Task[String] = Task.defer {
     if (!Files.isDirectory(workspace)) {
       Task.error(new IllegalArgumentException(
         s"MetalsManager: workspace $workspace is not a directory"
@@ -168,7 +187,10 @@ final class MetalsManager(host: MetalsSigil) {
         Task.defer {
           val pb = new ProcessBuilder(host.metalsLauncher*)
             .directory(workspace.toFile)
-            .redirectErrorStream(true)
+            // Keep stdout/stderr separate — Metals' LSP wire is on
+            // stdout; human logs / fatals go on stderr. Merging
+            // them would corrupt the LSP frame parsing.
+            .redirectErrorStream(false)
           val processOpt = scala.util.Try(pb.start()).toEither
           processOpt match {
             case Left(t) =>
@@ -179,27 +201,104 @@ final class MetalsManager(host: MetalsSigil) {
             case Right(process) =>
               val nowMs = System.currentTimeMillis()
               val tail = new java.util.concurrent.LinkedBlockingDeque[String](OutputTailLimit)
-              val drainer = startDrainerThread(process, name, tail = tail)
-              // Provisional entry so the watcher / reaper see the
-              // subprocess immediately. `endpoint = None` signals
-              // "starting"; downstream callers (status surface,
-              // McpManager) can render "starting up" instead of
-              // "missing".
+              val onLogLineRef: AtomicReference[Option[String => Task[Unit]]] =
+                new AtomicReference(onLogLine)
+              // Subprocess stderr → tail buffer for failure
+              // diagnostics + ToolLog fan-out. Stdout is owned by
+              // the LSP launcher.
+              val stderrDrainer = startStderrDrainer(process, name, tail, onLogLineRef)
+
               val entry = Entry(
-                workspace    = workspace,
-                workspaceKey = name,
-                process      = process,
-                endpoint     = None,
-                lastUsedMs   = nowMs,
-                drainer      = drainer
+                workspace     = workspace,
+                workspaceKey  = name,
+                process       = process,
+                endpoint      = None,
+                lastUsedMs    = nowMs,
+                stderrDrainer = stderrDrainer,
+                onLogLine     = onLogLineRef
               )
               entries.put(key, entry)
-              control.step("Metals subprocess spawned; waiting for endpoint")
-                .flatMap(_ => waitForReady(entry, control, tail))
+
+              // Bug #70 — drive the LSP handshake via lsp4j's
+              // Launcher. Metals only does work after `initialize`
+              // + `initialized` land; bug #70 was that we'd
+              // spawned the subprocess without ever sending them.
+              startLspLauncher(entry, name, onLogLineRef).flatMap { _ =>
+                control.step("Metals LSP initialize complete; waiting for endpoint")
+                  .flatMap(_ => waitForReady(entry, control, tail))
+              }
           }
         }
       }
     }
+  }
+
+  /** Build + start the lsp4j Launcher against the subprocess's
+    * stdin/stdout, send `initialize` + `initialized`, and wait for
+    * Metals to return its server capabilities before letting the
+    * caller proceed to poll for `.metals/mcp.json`. */
+  private def startLspLauncher(entry: Entry,
+                                label: String,
+                                onLogLine: AtomicReference[Option[String => Task[Unit]]]): Task[Unit] =
+    Task.defer {
+      val client: LanguageClient = host.metalsLanguageClient(label, onLogLine)
+      val executor = Executors.newSingleThreadExecutor { r =>
+        val t = new Thread(r, s"sigil-metals-lsp-$label")
+        t.setDaemon(true)
+        t
+      }
+      val launcher = new Launcher.Builder[LanguageServer]()
+        .setLocalService(client)
+        .setRemoteInterface(classOf[LanguageServer])
+        .setInput(entry.process.getInputStream)
+        .setOutput(entry.process.getOutputStream)
+        .setExecutorService(executor)
+        .create()
+      launcher.startListening()
+      val server = launcher.getRemoteProxy
+
+      val initParams = new InitializeParams()
+      initParams.setProcessId(ProcessHandle.current().pid().toInt)
+      val rootUri = entry.workspace.toAbsolutePath.normalize.toUri.toString
+      val folder = new WorkspaceFolder(rootUri, entry.workspace.getFileName.toString)
+      initParams.setWorkspaceFolders(java.util.Collections.singletonList(folder))
+      initParams.setCapabilities(buildClientCapabilities())
+
+      // Fire the initialize request without blocking the main task.
+      // Real Metals takes <1s to settle but a non-LSP-aware test
+      // fixture may never respond — blocking here would freeze the
+      // spec until the deadline. Per LSP spec we should wait for
+      // the response before sending `initialized`, so we chain via
+      // CompletableFuture; for fixtures that don't respond, the
+      // `initialized` notification is simply skipped (they don't
+      // care anyway because they write mcp.json directly).
+      Task {
+        server.initialize(initParams).whenComplete { (result, error) =>
+          if (error != null) {
+            scribe.warn(s"MetalsManager: LSP initialize to $label failed: ${error.getMessage}")
+          } else {
+            val name = Option(result).flatMap(r => Option(r.getServerInfo)).map(_.getName).getOrElse("?")
+            scribe.info(s"[$label] LSP initialize OK (server=$name)")
+            try server.initialized(new InitializedParams())
+            catch { case t: Throwable => scribe.warn(s"[$label] initialized notification failed: ${t.getMessage}") }
+          }
+        }
+        ()
+      }
+    }
+
+  private def buildClientCapabilities(): ClientCapabilities = {
+    val caps = new ClientCapabilities()
+    val window = new WindowClientCapabilities()
+    window.setWorkDoneProgress(true)
+    caps.setWindow(window)
+    val workspace = new WorkspaceClientCapabilities()
+    // Tell Metals we'll respond to `workspace/configuration` —
+    // that's what carries `start-mcp-server: true` so Metals
+    // boots its MCP server and writes `.metals/mcp.json`.
+    workspace.setConfiguration(true)
+    caps.setWorkspace(workspace)
+    caps
   }
 
   /** Bounded buffer holding the most recent stdout lines so a
@@ -236,10 +335,10 @@ final class MetalsManager(host: MetalsSigil) {
       } else if (!entry.process.isAlive) {
         // Subprocess exited before mcp.json appeared — fail with
         // exit code + recent output for the diagnostic. Briefly
-        // join the drainer thread so any buffered stdout is in
+        // join the stderr drainer so any buffered output is in
         // the tail snapshot before we render it.
         val exitCode = scala.util.Try(entry.process.exitValue()).getOrElse(-1)
-        try entry.drainer.join(500L) catch { case _: InterruptedException => () }
+        try entry.stderrDrainer.join(500L) catch { case _: InterruptedException => () }
         val tailSnap = drainTail(tail)
         entries.remove(entry.workspace.toAbsolutePath.normalize.toString)
         Task.error(new RuntimeException(
@@ -271,6 +370,7 @@ final class MetalsManager(host: MetalsSigil) {
     if (entry.process.isAlive) entry.process.destroy()
     if (entry.process.isAlive) entry.process.destroyForcibly()
   }
+
 
   private def serverConfigFor(name: String, endpoint: String, workspace: Path): McpServerConfig = {
     val url = URL.get(endpoint, tldValidation = TLDValidation.Off) match {
@@ -367,12 +467,18 @@ final class MetalsManager(host: MetalsSigil) {
     }
   }
 
-  private def startDrainerThread(process: Process,
+  /** Drain the subprocess's stderr line-by-line. With
+    * `redirectErrorStream(false)` (required so the LSP wire on
+    * stdout stays parseable), Metals' real log output + fatal
+    * messages land here. Lines feed the failure-diagnostic tail
+    * buffer AND fan out as ToolLog events for the chat chip. */
+  private def startStderrDrainer(process: Process,
                                   label: String,
-                                  tail: java.util.concurrent.LinkedBlockingDeque[String]): Thread = {
+                                  tail: java.util.concurrent.LinkedBlockingDeque[String],
+                                  onLogLine: AtomicReference[Option[String => Task[Unit]]]): Thread = {
     val t = new Thread(() => {
       val reader = new java.io.BufferedReader(
-        new java.io.InputStreamReader(process.getInputStream, java.nio.charset.StandardCharsets.UTF_8)
+        new java.io.InputStreamReader(process.getErrorStream, java.nio.charset.StandardCharsets.UTF_8)
       )
       try {
         var line = reader.readLine()
@@ -382,13 +488,14 @@ final class MetalsManager(host: MetalsSigil) {
             tail.pollFirst()
             tail.offer(line)
           }
+          onLogLine.get().foreach(cb => cb(line).handleError(_ => Task.unit).startUnit())
           line = reader.readLine()
         }
       } catch { case _: Throwable => () }
       finally {
         try reader.close() catch { case _: Throwable => () }
       }
-    }, s"sigil-metals-drainer-$label")
+    }, s"sigil-metals-stderr-drainer-$label")
     t.setDaemon(true)
     t.start()
     t

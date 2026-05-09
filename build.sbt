@@ -200,6 +200,11 @@ lazy val metals = (project in file("metals"))
   .settings(
     name := "sigil-metals",
     libraryDependencies ++= Seq(
+      // LSP4J — Metals is an LSP server; we drive the handshake +
+      // auto-respond to `window/showMessageRequest` (sigil bug #70)
+      // and route `window/logMessage` into ToolLog events (#69).
+      "org.eclipse.lsp4j" % "org.eclipse.lsp4j" % lsp4jVersion,
+      "org.eclipse.lsp4j" % "org.eclipse.lsp4j.jsonrpc" % lsp4jVersion,
       "org.scalatest" %% "scalatest" % scalatestVersion % Test,
       "com.outr" %% "rapid-test" % rapidVersion % Test
     ),

@@ -1,0 +1,158 @@
+package sigil.metals
+
+import com.google.gson.JsonObject
+import org.eclipse.lsp4j.*
+import org.eclipse.lsp4j.services.LanguageClient
+import rapid.Task
+
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.atomic.AtomicReference
+import scala.jdk.CollectionConverters.*
+
+/**
+ * `LanguageClient` Sigil installs against the Metals subprocess. Two
+ * jobs:
+ *
+ *  1. **Auto-respond to `window/showMessageRequest`** so Metals doesn't
+ *     sit forever waiting for a human (sigil bug #70). Real Metals
+ *     fires this when it detects a build tool — "New sbt workspace
+ *     detected, would you like to import the build?" with actions
+ *     `[Import build, Not now, Don't show again]`. Without a response,
+ *     Metals never runs `bloopInstall`, never indexes, never writes
+ *     `.metals/mcp.json`. The default action is "Import build" (the
+ *     first one) so build setup proceeds; apps that want different
+ *     behavior subclass.
+ *
+ *  2. **Route `window/logMessage` + `window/showMessage` into the
+ *     `onLogLine` callback** so Metals' streaming progress reaches
+ *     the chat chip via [[sigil.event.ToolLog]] events (sigil bug
+ *     #69). The callback is supplied per-spawn by [[MetalsManager]]
+ *     and updated on idempotent re-attaches.
+ *
+ * Other LSP requests/notifications are no-ops — Sigil isn't running
+ * a real editor; we don't render diagnostics, code lenses, etc. Apps
+ * that want them subclass [[MetalsLanguageClient]] and override the
+ * relevant methods.
+ */
+final class MetalsLanguageClient(label: String,
+                                  onLogLine: AtomicReference[Option[String => Task[Unit]]])
+  extends LanguageClient {
+
+  /** Action title to pick when Metals fires `showMessageRequest`.
+    * Default is the first declared action — for sbt projects this
+    * is "Import build", which kicks off `bloopInstall`. */
+  private def preferredAction(params: ShowMessageRequestParams): String = {
+    val actions = Option(params.getActions).map(_.iterator()).filter(_.hasNext)
+    actions.map(_.next().getTitle).getOrElse("Import build")
+  }
+
+  override def showMessageRequest(params: ShowMessageRequestParams): CompletableFuture[MessageActionItem] = {
+    val title = preferredAction(params)
+    val item = new MessageActionItem(title)
+    scribe.info(s"[$label] showMessageRequest -> $title (message: ${params.getMessage})")
+    publishLine(s"[metals] $title (in response to: ${params.getMessage})")
+    CompletableFuture.completedFuture(item)
+  }
+
+  override def showMessage(params: MessageParams): Unit = {
+    scribe.info(s"[$label] showMessage[${params.getType}] ${params.getMessage}")
+    publishLine(s"[metals] ${params.getMessage}")
+  }
+
+  override def logMessage(params: MessageParams): Unit = {
+    scribe.info(s"[$label] logMessage[${params.getType}] ${params.getMessage}")
+    publishLine(params.getMessage)
+  }
+
+  override def telemetryEvent(params: Object): Unit = ()
+
+  override def publishDiagnostics(params: PublishDiagnosticsParams): Unit = ()
+
+  // Explicitly override the LSP `default` methods. Without these
+  // overrides, lsp4j's `AnnotationUtil.findRpcMethods` reflection
+  // scan throws "Duplicate RPC method workspace/configuration"
+  // when our Scala class extends `LanguageClient` — the Scala
+  // compiler emits synthetic forwarders alongside the inherited
+  // defaults, and the scan double-counts.
+  //
+  // Metals requests this with section = "metals" right after
+  // `initialized`. The response drives `UserConfiguration` —
+  // crucially `start-mcp-server: true` is what makes Metals
+  // start its MCP server and write `.metals/mcp.json`. Without
+  // it, Metals indexes the workspace but never exposes the MCP
+  // endpoint Sigil needs to connect to.
+  override def configuration(params: ConfigurationParams): CompletableFuture[java.util.List[Object]] = {
+    val items = Option(params.getItems).map(_.asScala.toList).getOrElse(Nil)
+    val results: java.util.List[Object] = items.map { item =>
+      Option(item.getSection) match {
+        case Some("metals") => userConfigJson(): Object
+        case _              => new JsonObject(): Object
+      }
+    }.asJava
+    CompletableFuture.completedFuture(results)
+  }
+
+  /** JSON config Metals reads via `workspace/configuration`.
+    * `start-mcp-server: true` enables the MCP endpoint we need.
+    * Subclasses override [[mcpClientName]] to identify which
+    * client variant the on-disk `.metals/mcp.json` is tagged
+    * with. */
+  private def userConfigJson(): JsonObject = {
+    val obj = new JsonObject()
+    obj.addProperty("start-mcp-server", true)
+    obj.addProperty("mcp-client", mcpClientName)
+    obj
+  }
+
+  /** Identifier Metals stamps into `.metals/mcp.json` so per-client
+    * config files (Cursor, Claude Desktop, …) don't collide.
+    * Default `"sigil"` — Metals supports an opaque string here. */
+  protected def mcpClientName: String = "sigil"
+
+  override def workspaceFolders(): CompletableFuture[java.util.List[WorkspaceFolder]] =
+    CompletableFuture.completedFuture(java.util.Collections.emptyList())
+
+  override def registerCapability(params: RegistrationParams): CompletableFuture[Void] =
+    CompletableFuture.completedFuture(null)
+
+  override def unregisterCapability(params: UnregistrationParams): CompletableFuture[Void] =
+    CompletableFuture.completedFuture(null)
+
+  override def showDocument(params: ShowDocumentParams): CompletableFuture[ShowDocumentResult] =
+    CompletableFuture.completedFuture(new ShowDocumentResult(false))
+
+  override def logTrace(params: LogTraceParams): Unit = ()
+
+  override def refreshSemanticTokens(): CompletableFuture[Void] = CompletableFuture.completedFuture(null)
+  override def refreshCodeLenses():    CompletableFuture[Void] = CompletableFuture.completedFuture(null)
+  override def refreshInlayHints():    CompletableFuture[Void] = CompletableFuture.completedFuture(null)
+  override def refreshInlineValues():  CompletableFuture[Void] = CompletableFuture.completedFuture(null)
+  override def refreshDiagnostics():   CompletableFuture[Void] = CompletableFuture.completedFuture(null)
+  override def refreshFoldingRanges(): CompletableFuture[Void] = CompletableFuture.completedFuture(null)
+  override def refreshTextDocumentContent(params: TextDocumentContentRefreshParams): CompletableFuture[Void] =
+    CompletableFuture.completedFuture(null)
+
+  override def applyEdit(params: ApplyWorkspaceEditParams): CompletableFuture[ApplyWorkspaceEditResponse] =
+    CompletableFuture.completedFuture(new ApplyWorkspaceEditResponse(false))
+
+  override def createProgress(params: WorkDoneProgressCreateParams): CompletableFuture[Void] =
+    CompletableFuture.completedFuture(null)
+
+  override def notifyProgress(params: ProgressParams): Unit = {
+    val notification = params.getValue
+    if (notification != null && notification.isLeft) {
+      val wd = notification.getLeft
+      val msg = wd match {
+        case b: WorkDoneProgressBegin  => Option(b.getTitle).orElse(Option(b.getMessage))
+        case r: WorkDoneProgressReport => Option(r.getMessage)
+        case _: WorkDoneProgressEnd    => None
+        case _                         => None
+      }
+      msg.foreach(m => publishLine(s"[metals] $m"))
+    }
+  }
+
+  private def publishLine(line: String): Unit = {
+    onLogLine.get().foreach(cb => cb(line).handleError(_ => Task.unit).startUnit())
+  }
+}
