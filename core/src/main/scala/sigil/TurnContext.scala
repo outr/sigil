@@ -3,7 +3,7 @@ package sigil
 import lightdb.id.Id
 import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.Model
-import sigil.event.Event
+import sigil.event.{Event, LogLevel, ToolLog}
 import sigil.participant.ParticipantId
 import sigil.signal.ToolProgress
 import sigil.tool.ToolName
@@ -128,6 +128,36 @@ case class TurnContext(sigil: Sigil,
           message        = message,
           percent        = percent,
           attribution    = currentToolName
+        )).map(_ => ())
+    }
+
+  /**
+   * Emit one [[ToolLog]] line for the currently-dispatching tool.
+   * Bug #69 — paired to the parent [[sigil.event.ToolInvoke]] via
+   * `currentToolInvokeId`; consumers render the tail of paired
+   * logs in the per-tool chip while the call is running.
+   *
+   * Distinct from [[reportProgress]]: progress carries one
+   * replacement status per chip (transient Notice); ToolLog is
+   * append-only (durable Event) so the full streaming output
+   * survives reload + replay. Use progress for "where am I in the
+   * task?" and toolLog for "what is the underlying process
+   * actually doing right now?".
+   *
+   * No-op outside a tool dispatch — there's no parent ToolInvoke
+   * to pair to.
+   */
+  def toolLog(content: String, level: LogLevel = LogLevel.Info): rapid.Task[Unit] =
+    currentToolInvokeId match {
+      case None => rapid.Task.unit
+      case Some(invokeId) =>
+        sigil.publish(ToolLog(
+          content        = content,
+          level          = level,
+          participantId  = caller,
+          conversationId = conversation.id,
+          topicId        = conversation.currentTopicId,
+          origin         = Some(invokeId)
         )).map(_ => ())
     }
 }
