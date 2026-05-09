@@ -35,6 +35,38 @@ final class ModelRegistry(cachePath: Option[Path] = None) {
   /** Resolve by full id (`<provider>/<model>`). */
   def find(modelId: Id[Model]): Option[Model] = ref.get.get(modelId)
 
+  /** Resolve by id with a bare-form fallback. Tries exact match first;
+    * on miss, walks the registry for an entry whose id ends with
+    * `"/$raw"` (the prefixed-with-provider form OpenRouter populates
+    * when an app stamps the bare model name on a Message — common
+    * because apps configure candidates as `Model.id("gpt-5.5")` while
+    * the catalog ships `Model.id("openai/gpt-5.5")`).
+    *
+    * Bug #91 — without this fallback the cost projection silently
+    * misses on every Message stamped with a bare id.
+    *
+    * Hot-path safe: exact match takes the AtomicReference dereference
+    * + map lookup; only a miss pays the linear walk.
+    */
+  def findTolerant(modelId: Id[Model]): Option[Model] = {
+    val direct = ref.get.get(modelId)
+    if (direct.isDefined) direct
+    else {
+      val raw = modelId.value
+      val suffix = s"/$raw"
+      ref.get.values.find(m => m._id.value == raw || m._id.value.endsWith(suffix))
+    }
+  }
+
+  /** The registry's canonical id for `modelId`, when known. Returns
+    * the input unchanged when nothing in the registry matches. Useful
+    * at write boundaries (Provider stamping the modelId onto outgoing
+    * Messages) so future events carry the prefixed form and don't
+    * need the [[findTolerant]] fallback at projection time.
+    */
+  def canonicalIdFor(modelId: Id[Model]): Id[Model] =
+    findTolerant(modelId).map(_._id).getOrElse(modelId)
+
   /** Filtered listing. Empty filters return everything; supplying
     * `provider`/`model` narrows by exact match (case-insensitive,
     * matching `Model.id`'s lowercase normalization). */

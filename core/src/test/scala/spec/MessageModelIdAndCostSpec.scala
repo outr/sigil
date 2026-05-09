@@ -179,6 +179,42 @@ class MessageModelIdAndCostSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       }
     }
 
+    "resolve a bare modelId against the prefixed registry entry (#91)" in {
+      // Message stamps `cost-spec-model` (bare); registry indexes
+      // `test/cost-spec-model` (prefixed). Pre-#91 cache.find missed
+      // and the projection silently zeroed the cost.
+      val convId = Conversation.id(s"cost-bare-${rapid.Unique()}")
+      val bareId = Id[Model]("cost-spec-model")
+      val msg = settledMessage(convId, prompt = 80, completion = 40, modelId = Some(bareId))
+
+      val expectedDelta = pricing.prompt * 80 + pricing.completion * 40
+
+      val recorded = new ConcurrentLinkedQueue[Signal]()
+      @volatile var running = true
+      TestSigil.signals
+        .takeWhile(_ => running)
+        .evalMap(s => Task { recorded.add(s); () })
+        .drain
+        .startUnit()
+
+      for {
+        _ <- Task.sleep(100.millis)
+        _ <- seedConversation(convId)
+        _ <- TestSigil.publish(msg)
+        _ <- Task.sleep(150.millis)
+        loaded <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
+      } yield {
+        running = false
+        import scala.jdk.CollectionConverters.*
+        val notices = recorded.iterator().asScala
+          .collect { case n: ConversationCostUpdated if n.conversationId == convId => n }
+          .toList
+        loaded.map(_.cost) shouldBe Some(expectedDelta)
+        notices should have size 1
+        notices.head.delta shouldBe expectedDelta
+      }
+    }
+
     "leave cost at zero when the model is unknown to the registry" in {
       val convId = Conversation.id(s"cost-unknown-model-${rapid.Unique()}")
       val unknown = Model.id("test", "not-in-registry")
