@@ -461,9 +461,15 @@ trait Sigil {
       skills   <- findSkills(request)
       memories <- findCapabilitiesMemories(request)
     } yield {
-      val toolMatches = tools.zipWithIndex.map { case (t, i) =>
-        // Tool ranking comes from the finder; we approximate a score
-        // from the order it returned (highest first, decreasing).
+      val toolMatches = tools.map { t =>
+        // Bug #90 — score tools on the same absolute scale as modes
+        // (DiscoveryFilter.score: 10 exact-name, 8 curated-keyword,
+        // 6 name-part, 5 substring + 2 desc-substring per query
+        // term). The previous position-derived score (tools.size − i)
+        // capped at maxResults and could not compete with mode
+        // scores, which routinely reach 15-40. Result: tools were
+        // sorted below modes for any query that matched a mode's
+        // keywords, even when a tool was the actual best answer.
         // Bug #85 — toolchain boost: language-runtime-backed tools
         // (lsp_*, bsp_* when Metals is running) outrank generic
         // verbs for inspection-shaped queries.
@@ -471,7 +477,7 @@ trait Sigil {
         // into a penalty that drops them below domain-specific
         // tools. They stay findable when no domain-specific tool
         // matches; they just stop winning ties.
-        val baseScore   = (tools.size - i).toDouble
+        val baseScore   = sigil.tool.DiscoveryFilter.score(t, request.keywords)
         val boost       = if (t.toolchain.exists(activeChains.contains)) toolchainBoost else 0.0
         val penalty     = if (t.preferIfNoBetter) preferIfNoBetterPenalty else 0.0
         CapabilityMatch(
