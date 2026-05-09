@@ -39,19 +39,35 @@ final class MetalsLanguageClient(label: String,
   extends LanguageClient {
 
   /** Action title to pick when Metals fires `showMessageRequest`.
-    * Default is the first declared action — for sbt projects this
-    * is "Import build", which kicks off `bloopInstall`. */
-  private def preferredAction(params: ShowMessageRequestParams): String = {
-    val actions = Option(params.getActions).map(_.iterator()).filter(_.hasNext)
-    actions.map(_.next().getTitle).getOrElse("Import build")
+    * Restricted to known-safe initialisation actions — picking the
+    * first action blindly opens browsers (Metals Doctor: "More
+    * information") and starts ancillary HTTP servers ("Http server
+    * is required ... Start") that have nothing to do with importing
+    * the build. Returns `null` for prompts that lack a recognised
+    * action so Metals dismisses them quietly.
+    *
+    * Apps that want a different policy subclass and override. */
+  protected def preferredAction(params: ShowMessageRequestParams): Option[String] = {
+    val actions = Option(params.getActions).map(_.asScala.toList.map(_.getTitle)).getOrElse(Nil)
+    actions.find(MetalsLanguageClient.SafeAutoResponseTitles.contains)
   }
 
   override def showMessageRequest(params: ShowMessageRequestParams): CompletableFuture[MessageActionItem] = {
-    val title = preferredAction(params)
-    val item = new MessageActionItem(title)
-    scribe.info(s"[$label] showMessageRequest -> $title (message: ${params.getMessage})")
-    publishLine(s"[metals] $title (in response to: ${params.getMessage})")
-    CompletableFuture.completedFuture(item)
+    val msg = Option(params.getMessage).getOrElse("")
+    preferredAction(params) match {
+      case Some(title) =>
+        val item = new MessageActionItem(title)
+        scribe.info(s"[$label] showMessageRequest -> $title (message: $msg)")
+        publishLine(s"[metals] $title (in response to: $msg)")
+        CompletableFuture.completedFuture(item)
+      case None =>
+        scribe.info(s"[$label] showMessageRequest -> dismissed (message: $msg)")
+        // Returning null is the LSP-spec way to say "no selection" /
+        // "user dismissed". Metals then drops the prompt without
+        // taking any of its actions. Avoids the browser-spam that
+        // happens when "More information" is the first action.
+        CompletableFuture.completedFuture(null)
+    }
   }
 
   override def showMessage(params: MessageParams): Unit = {
@@ -155,4 +171,18 @@ final class MetalsLanguageClient(label: String,
   private def publishLine(line: String): Unit = {
     onLogLine.get().foreach(cb => cb(line).handleError(_ => Task.unit).startUnit())
   }
+}
+
+object MetalsLanguageClient {
+  /** Action titles we'll pick when Metals prompts. Initialisation
+    * actions only — the build-import path has to run for indexing
+    * to complete. Excludes "More information" (opens doctor in
+    * browser), "Start" (HTTP server prompt), "Goto location"
+    * (anything pointing at a URL), and similar UI-side actions
+    * that have no value for an automated agent. */
+  val SafeAutoResponseTitles: Set[String] = Set(
+    "Import build",
+    "Import changes",
+    "Don't show again"
+  )
 }

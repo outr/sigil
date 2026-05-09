@@ -2,8 +2,8 @@ package spec
 
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
-import rapid.AsyncTaskSpec
-import sigil.tooling.{LspManager, LspServerConfig}
+import rapid.{AsyncTaskSpec, Task}
+import sigil.tooling.{LspManager, LspServerConfig, LspSession, PermissiveWorkspaceEditApplier, SymbolHit}
 
 import java.nio.file.{Files, Path, StandardOpenOption}
 import scala.concurrent.duration.*
@@ -47,6 +47,22 @@ class MetalsLiveBootstrapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     if (!metalsOnPath) Some("`metals` binary not on PATH (install via coursier: cs install metals)")
     else               None
 
+  /** Repeatedly query workspace symbols until at least one hit
+    * comes back or the deadline expires. Metals returns an empty
+    * list while indexing is still in progress; non-empty once
+    * Bloop's classpath is available. */
+  private def pollWorkspaceSymbols(session: LspSession,
+                                   query: String,
+                                   deadlineMs: Long,
+                                   pollMs: Long = 2000L): Task[List[SymbolHit]] = {
+    val deadline = System.currentTimeMillis() + deadlineMs
+    def loop: Task[List[SymbolHit]] = session.workspaceSymbols(query).flatMap { hits =>
+      if (hits.nonEmpty || System.currentTimeMillis() > deadline) Task.pure(hits)
+      else Task.sleep(FiniteDuration(pollMs, "millis")).flatMap(_ => loop)
+    }
+    loop
+  }
+
   "MetalsManager live (bug #70 + #69)" should {
 
     "boot real Metals against a generated sbt Hello World and write .metals/mcp.json" in {
@@ -71,42 +87,103 @@ class MetalsLiveBootstrapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       }
     }
 
-    /** Sigil bug #93 reproducer in real-Metals shape. After
-      * [[sigil.metals.StartMetalsTool]] writes the LspServerConfig
-      * (bug #88), an `lsp_*` tool call goes through
-      * [[LspManager.session]] which spawns a fresh Metals
-      * subprocess and constructs an lsp4j launcher around an
-      * [[sigil.tooling.LspRecordingClient]]. Pre-#93 the launcher
-      * threw `Duplicate RPC method workspace/configuration` at
-      * construction. This spec exercises the whole chain against
-      * a real Metals binary. */
-    "drive an lsp4j launcher against real Metals via LspManager (bug #93)" in {
+    /** Drive the full lsp_* path against real Metals: spawn,
+      * index, query, modify, verify on disk. Covers sigil bug #93
+      * (LspRecordingClient launcher construction with the lsp4j
+      * default-method scan) AND the realistic agent flow that
+      * follows it — `lsp_workspace_symbols` → `lsp_hover` →
+      * `lsp_rename` → file changed.
+      *
+      * Goes through the LSP-direct path only. [[LspRecordingClient]]
+      * auto-responds to safe initialisation prompts ("Import build")
+      * so a fresh sbt project can complete its Bloop import without
+      * a parallel MetalsManager. */
+    "drive Metals end-to-end: workspace symbols, hover, rename → file mutated (bug #93)" in {
       if (skipReason.isDefined) cancel(skipReason.get)
       else {
         val workspace = MetalsHelloWorldProject.materialize()
         TestMetalsSigil.setLauncher(List("metals"))
-        val manager = new LspManager(TestMetalsSigil)
+        val manager = new LspManager(TestMetalsSigil, PermissiveWorkspaceEditApplier)
+        val mainPath = workspace.resolve("src/main/scala/Main.scala")
+        val mainUri = mainPath.toUri.toString
 
-        TestMetalsSigil.metalsManager.ensureRunning(workspace).flatMap { _ =>
-          // Bug #88 — the same auto-write StartMetalsTool performs
-          // when an agent calls `start_metals`.
-          TestMetalsSigil.writeLspServerConfigForMetals(workspace).flatMap { _ =>
-            TestMetalsSigil.withDB(_.lspServers.transaction(_.get(LspServerConfig.idFor("scala")))).flatMap { persisted =>
-              // Bug #93 — drive `LspManager.session` against the
-              // persisted config. This is what `lsp_workspace_symbols`
-              // does internally; pre-fix the launcher construction
-              // threw before the LSP handshake even started.
-              manager.session("scala", workspace.toAbsolutePath.normalize.toString).map { session =>
-                persisted.map(_.languageId) shouldBe Some("scala")
-                session should not be null
-              }
-            }
-          }
-        }.map { result =>
+        def checkpoint(name: String): Task[Unit] = Task(scribe.info(s"[live-spec] $name"))
+
+        val flow = for {
+          _        <- checkpoint("writing LspServerConfig")
+          _        <- TestMetalsSigil.writeLspServerConfigForMetals(workspace)
+          persisted <- TestMetalsSigil.withDB(_.lspServers.transaction(_.get(LspServerConfig.idFor("scala"))))
+
+          // 1. LspManager spawns Metals against the fresh sbt
+          //    workspace. Pre-#93 the launcher threw at
+          //    construction; post-#93 the session opens.
+          //    LspRecordingClient auto-answers "Import build" so
+          //    Metals can do its initial Bloop import.
+          _        <- checkpoint("opening LspManager.session")
+          session  <- manager.session("scala", workspace.toAbsolutePath.normalize.toString)
+          _        <- checkpoint("session opened; reading Main.scala")
+
+          // 3. Open Main.scala so document-bound queries (hover,
+          //    rename) target a known buffer.
+          mainText <- Task(Files.readString(mainPath))
+          _        <- session.didOpen(mainUri, "scala", mainText)
+          _        <- checkpoint("didOpen sent; polling workspace symbols")
+
+          // 4. Wait until Metals can answer queries against the
+          //    indexed workspace. Polling — fresh indexing fires
+          //    progress tokens, but the more reliable signal is
+          //    "workspace/symbol returns hits for a known symbol".
+          symbols  <- pollWorkspaceSymbols(session, "Main", deadlineMs = 4.minutes.toMillis)
+          _        <- checkpoint(s"workspaceSymbols returned ${symbols.size} hits; calling hover")
+
+          // 5. Hover at the position of `main` in
+          //    `def main(args...)` — line 1 char 6 (0-indexed,
+          //    after two-space indent and "def ").
+          hover    <- session.hover(mainUri, line = 1, character = 6)
+          _        <- checkpoint(s"hover returned ${hover.isDefined}; calling rename")
+
+          // 6. Rename `Main` (line 0 char 7, after "object ").
+          edit     <- session.rename(mainUri, line = 0, character = 7, newName = "MainRenamed")
+          _        <- checkpoint(s"rename returned ${edit.isDefined}; finalising")
+        } yield {
+          // ---- assertions ----
+
+          // Bug #88: LspServerConfig persisted.
+          persisted.map(_.languageId) shouldBe Some("scala")
+          // Bug #93: launcher constructed, session is live.
+          session should not be null
+
+          // Real introspection: workspace symbols returns at least
+          // one hit naming `Main`.
+          symbols.map(_.name) should contain("Main")
+
+          // Real navigation: hover returns content the agent
+          // could surface.
+          hover shouldBe defined
+          hover.flatMap(h => Option(h.getContents)) shouldBe defined
+
+          // Real modification: rename produced a WorkspaceEdit;
+          // apply it through the permissive applier and verify the
+          // rename actually mutated the workspace. Metals renames
+          // the file alongside the symbol when the symbol's name
+          // matches the filename, so we check both: the old path
+          // is gone, the new path exists, the content references
+          // `MainRenamed`.
+          edit shouldBe defined
+          val applied = PermissiveWorkspaceEditApplier.apply(edit.get)
+          applied shouldBe true
+          val renamedPath = workspace.resolve("src/main/scala/MainRenamed.scala")
+          Files.exists(mainPath) shouldBe false
+          Files.exists(renamedPath) shouldBe true
+          val updated = Files.readString(renamedPath)
+          updated should include("object MainRenamed")
+          updated should not include "object Main "
+        }
+
+        flow.map { result =>
           try result
           finally {
             manager.shutdownAll().sync()
-            TestMetalsSigil.metalsManager.stop(workspace).sync()
             TestMetalsSigil.setLauncher(List(
               java.nio.file.Path.of("metals/src/test/resources/fake-metals.sh").toAbsolutePath.normalize.toString
             ))

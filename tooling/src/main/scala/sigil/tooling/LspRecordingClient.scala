@@ -32,8 +32,26 @@ final class LspRecordingClient(applier: WorkspaceEditApplier) extends LanguageCl
 
   override def telemetryEvent(params: Object): Unit = ()
   override def showMessage(params: MessageParams): Unit = ()
-  override def showMessageRequest(params: ShowMessageRequestParams): CompletableFuture[MessageActionItem] =
-    CompletableFuture.completedFuture(null)
+
+  /** Auto-pick known-safe initialisation actions so prompted servers
+    * (Metals detecting an sbt project, JDTLS asking about which
+    * JDK, …) can complete their setup without a human. Returns
+    * `null` (= dismiss) for everything else; blindly picking the
+    * first action opens browsers (Metals' "More information" →
+    * Doctor URL) and starts ancillary HTTP servers, which have no
+    * value for an automated agent.
+    *
+    * Apps that want a different policy subclass and override. */
+  override def showMessageRequest(params: ShowMessageRequestParams): CompletableFuture[MessageActionItem] = {
+    import scala.jdk.CollectionConverters.*
+    val actions = Option(params.getActions).map(_.asScala.toList.map(_.getTitle)).getOrElse(Nil)
+    val item = actions
+      .find(LspRecordingClient.SafeAutoResponseTitles.contains)
+      .map(t => new MessageActionItem(t))
+      .orNull
+    CompletableFuture.completedFuture(item)
+  }
+
   override def logMessage(params: MessageParams): Unit = ()
 
   // Explicit overrides for every default method declared on
@@ -106,4 +124,16 @@ final class LspRecordingClient(applier: WorkspaceEditApplier) extends LanguageCl
     if (token == null) ""
     else if (token.isLeft) token.getLeft
     else token.getRight.toString
+}
+
+object LspRecordingClient {
+  /** Action titles auto-picked from showMessageRequest prompts.
+    * Only initialisation actions — picking "More information" or
+    * "Start" (HTTP server prompts) opens browsers and spawns
+    * ancillary services unrelated to the agent's task. */
+  val SafeAutoResponseTitles: Set[String] = Set(
+    "Import build",
+    "Import changes",
+    "Don't show again"
+  )
 }
