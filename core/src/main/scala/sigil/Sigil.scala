@@ -31,7 +31,7 @@ import sigil.orchestrator.Orchestrator
 import sigil.provider.{ConversationMode, ConversationRequest, Mode, ProviderStrategy, ToolPolicy, WorkType}
 import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
-import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect, MessageIndexingEffect, RedactLocationTransform, SettledEffect, SignalHub, ViewerTransform}
+import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect, MessageIndexingEffect, RedactLocationTransform, RespondOptionsSelectionFramingTransform, SettledEffect, SignalHub, ViewerTransform}
 import sigil.render.{ContentRenderer, HtmlRenderer, MarkdownRenderer, PlainTextRenderer, SlackMrkdwnRenderer}
 import sigil.provider.Provider
 import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, Signal, ToolDelta}
@@ -1462,7 +1462,7 @@ trait Sigil {
    * `inlineContentThreshold = Long.MaxValue`.
    */
   def inboundTransforms: List[InboundTransform] =
-    List(LocationCaptureTransform, ContentExternalizationTransform)
+    List(LocationCaptureTransform, ContentExternalizationTransform, RespondOptionsSelectionFramingTransform)
 
   /**
    * Bytes — content blocks larger than this get pushed to the
