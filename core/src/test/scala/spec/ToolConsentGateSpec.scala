@@ -135,11 +135,14 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       for {
         conv <- newConv("approved")
         ctx = turnContextFor(conv)
-        // Agent records consent.
-        _ <- RecordConsentTool.execute(
-              RecordConsentInput(toolName = GatedTool.name.value, approved = true,
-                reason = Some("user said yes")), ctx).toList
-              .flatMap(events => Task.sequence(events.map(TestSigil.publish)))
+        // Drive record_consent through dispatchAtomic so the
+        // orchestrator stamps `origin` on the Tool-role
+        // confirmation Message (#84). Direct `execute` bypasses
+        // origin-stamping and trips the framework's #64 invariant.
+        recordSignals <- dispatch(RecordConsentTool,
+                          RecordConsentInput(toolName = GatedTool.name.value, approved = true,
+                            reason = Some("user said yes")), ctx)
+        _ <- Task.sequence(recordSignals.collect { case ev: Event => TestSigil.publish(ev) })
         // Now dispatch the gated tool.
         signals <- dispatch(GatedTool, GatedInput("hello"), ctx)
       } yield {
@@ -157,10 +160,10 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       for {
         conv <- newConv("declined")
         ctx = turnContextFor(conv)
-        _ <- RecordConsentTool.execute(
-              RecordConsentInput(toolName = GatedTool.name.value, approved = false,
-                reason = Some("user explicitly declined import")), ctx).toList
-              .flatMap(events => Task.sequence(events.map(TestSigil.publish)))
+        recordSignals <- dispatch(RecordConsentTool,
+                          RecordConsentInput(toolName = GatedTool.name.value, approved = false,
+                            reason = Some("user explicitly declined import")), ctx)
+        _ <- Task.sequence(recordSignals.collect { case ev: Event => TestSigil.publish(ev) })
         signals <- dispatch(GatedTool, GatedInput("nope"), ctx)
       } yield {
         invocations.get() shouldBe 0
