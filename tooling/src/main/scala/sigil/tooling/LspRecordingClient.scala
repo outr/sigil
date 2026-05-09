@@ -36,6 +36,41 @@ final class LspRecordingClient(applier: WorkspaceEditApplier) extends LanguageCl
     CompletableFuture.completedFuture(null)
   override def logMessage(params: MessageParams): Unit = ()
 
+  // Explicit overrides for every default method declared on
+  // [[LanguageClient]]. Sigil bug #93 — without these, lsp4j's
+  // `AnnotationUtil.findRpcMethods` reflection scan throws
+  // "Duplicate RPC method workspace/configuration" (and the
+  // analogous error for the other defaults) when our Scala 3
+  // subclass is registered as a local service. The Scala compiler
+  // emits synthetic forwarders alongside the inherited defaults
+  // and the scan double-counts. Same fix as
+  // [[sigil.metals.MetalsLanguageClient]].
+  override def configuration(params: ConfigurationParams): CompletableFuture[java.util.List[Object]] =
+    CompletableFuture.completedFuture(java.util.Collections.emptyList[Object]())
+
+  override def workspaceFolders(): CompletableFuture[java.util.List[WorkspaceFolder]] =
+    CompletableFuture.completedFuture(java.util.Collections.emptyList())
+
+  override def registerCapability(params: RegistrationParams): CompletableFuture[Void] =
+    CompletableFuture.completedFuture(null)
+
+  override def unregisterCapability(params: UnregistrationParams): CompletableFuture[Void] =
+    CompletableFuture.completedFuture(null)
+
+  override def showDocument(params: ShowDocumentParams): CompletableFuture[ShowDocumentResult] =
+    CompletableFuture.completedFuture(new ShowDocumentResult(false))
+
+  override def logTrace(params: LogTraceParams): Unit = ()
+
+  override def refreshSemanticTokens(): CompletableFuture[Void] = CompletableFuture.completedFuture(null)
+  override def refreshCodeLenses():    CompletableFuture[Void] = CompletableFuture.completedFuture(null)
+  override def refreshInlayHints():    CompletableFuture[Void] = CompletableFuture.completedFuture(null)
+  override def refreshInlineValues():  CompletableFuture[Void] = CompletableFuture.completedFuture(null)
+  override def refreshDiagnostics():   CompletableFuture[Void] = CompletableFuture.completedFuture(null)
+  override def refreshFoldingRanges(): CompletableFuture[Void] = CompletableFuture.completedFuture(null)
+  override def refreshTextDocumentContent(params: TextDocumentContentRefreshParams): CompletableFuture[Void] =
+    CompletableFuture.completedFuture(null)
+
   override def applyEdit(params: ApplyWorkspaceEditParams): CompletableFuture[ApplyWorkspaceEditResponse] = {
     val f = new CompletableFuture[ApplyWorkspaceEditResponse]()
     try {
