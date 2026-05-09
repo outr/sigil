@@ -3,6 +3,7 @@ package spec
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
+import sigil.tooling.{LspManager, LspServerConfig}
 
 import java.nio.file.{Files, Path, StandardOpenOption}
 import scala.concurrent.duration.*
@@ -60,6 +61,51 @@ class MetalsLiveBootstrapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
             name should startWith("metals-")
             Files.exists(rendezvous) shouldBe true
           } finally {
+            TestMetalsSigil.metalsManager.stop(workspace).sync()
+            TestMetalsSigil.setLauncher(List(
+              java.nio.file.Path.of("metals/src/test/resources/fake-metals.sh").toAbsolutePath.normalize.toString
+            ))
+            MetalsHelloWorldProject.cleanup(workspace)
+          }
+        }
+      }
+    }
+
+    /** Sigil bug #93 reproducer in real-Metals shape. After
+      * [[sigil.metals.StartMetalsTool]] writes the LspServerConfig
+      * (bug #88), an `lsp_*` tool call goes through
+      * [[LspManager.session]] which spawns a fresh Metals
+      * subprocess and constructs an lsp4j launcher around an
+      * [[sigil.tooling.LspRecordingClient]]. Pre-#93 the launcher
+      * threw `Duplicate RPC method workspace/configuration` at
+      * construction. This spec exercises the whole chain against
+      * a real Metals binary. */
+    "drive an lsp4j launcher against real Metals via LspManager (bug #93)" in {
+      if (skipReason.isDefined) cancel(skipReason.get)
+      else {
+        val workspace = MetalsHelloWorldProject.materialize()
+        TestMetalsSigil.setLauncher(List("metals"))
+        val manager = new LspManager(TestMetalsSigil)
+
+        TestMetalsSigil.metalsManager.ensureRunning(workspace).flatMap { _ =>
+          // Bug #88 — the same auto-write StartMetalsTool performs
+          // when an agent calls `start_metals`.
+          TestMetalsSigil.writeLspServerConfigForMetals(workspace).flatMap { _ =>
+            TestMetalsSigil.withDB(_.lspServers.transaction(_.get(LspServerConfig.idFor("scala")))).flatMap { persisted =>
+              // Bug #93 — drive `LspManager.session` against the
+              // persisted config. This is what `lsp_workspace_symbols`
+              // does internally; pre-fix the launcher construction
+              // threw before the LSP handshake even started.
+              manager.session("scala", workspace.toAbsolutePath.normalize.toString).map { session =>
+                persisted.map(_.languageId) shouldBe Some("scala")
+                session should not be null
+              }
+            }
+          }
+        }.map { result =>
+          try result
+          finally {
+            manager.shutdownAll().sync()
             TestMetalsSigil.metalsManager.stop(workspace).sync()
             TestMetalsSigil.setLauncher(List(
               java.nio.file.Path.of("metals/src/test/resources/fake-metals.sh").toAbsolutePath.normalize.toString
