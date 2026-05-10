@@ -35,7 +35,10 @@ import scala.util.Success
 case class DeepSeekProvider(apiKey: String,
                             sigilRef: Sigil,
                             baseUrl: URL = url"https://api.deepseek.com",
-                            streamTimeout: FiniteDuration = 120.seconds) extends Provider {
+                            /** Per-read idle timeout for the SSE stream. Fires
+                              * only when no bytes arrive for the duration —
+                              * slow-but-working streams keep going. */
+                            tokenIdleTimeout: FiniteDuration = 120.seconds) extends Provider {
   override def `type`: ProviderType = ProviderType.DeepSeek
   override val providerKey: String = DeepSeek.Provider
   override protected def sigil: Sigil = sigilRef
@@ -46,11 +49,10 @@ case class DeepSeekProvider(apiKey: String,
       for {
         raw         <- httpRequestFor(input)
         intercepted <- sigilRef.wireInterceptor.before(raw)
-        lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(streamTimeout).streamLines()
+        lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLines()
       } yield {
-        // Bug #77 — overall stream-lifetime deadline; see OpenAIProvider rationale.
         _root_.sigil.provider.debug.StreamWireInterceptor.attach(
-          lines.timeout(streamTimeout), sigilRef.wireInterceptor, intercepted
+          lines, sigilRef.wireInterceptor, intercepted
         ) { line =>
           Stream.emits(parseLine(line, state))
         }
