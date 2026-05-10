@@ -2,6 +2,7 @@ package sigil.tooling
 
 import ch.epfl.scala.bsp4j.*
 
+import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.{ConcurrentHashMap, ConcurrentLinkedQueue}
 import scala.jdk.CollectionConverters.*
 
@@ -45,6 +46,31 @@ class BspRecordingBuildClient extends BuildClient {
     * when `onBuildTaskFinish` arrives for the matching id. */
   val activeTasks: ConcurrentHashMap[String, java.lang.Object] = new ConcurrentHashMap()
 
+  /** Per-call status callback. The active BSP tool (via
+    * [[BspToolSupport.withSession]] / `withSessionTyped`) installs a
+    * `Some(handler)` that publishes [[sigil.event.ToolProgress]] for
+    * the chip; cleared back to `None` on exit. Routes BSP-server
+    * progress (log messages, task start/progress/finish) so long
+    * builds surface live status instead of looking frozen.
+    *
+    * Thread-safe; the callback is invoked synchronously from the
+    * BSP4J notification thread, so handlers should be cheap and
+    * return quickly (typically just a `Task.startUnit` of a
+    * `ctx.reportProgress` call). */
+  private val statusCallback: AtomicReference[Option[String => Unit]] =
+    new AtomicReference(None)
+
+  /** Install (or clear with `None`) the status-update callback for
+    * the currently-running tool. Thread-safe; replacement is
+    * atomic. */
+  def setStatusCallback(cb: Option[String => Unit]): Unit =
+    statusCallback.set(cb)
+
+  private def emitStatus(message: String): Unit = {
+    val trimmed = Option(message).getOrElse("").trim
+    if (trimmed.nonEmpty) statusCallback.get().foreach(_.apply(trimmed))
+  }
+
   /** Snapshot the current diagnostics map. Useful for tools that
     * want to show what the server has flagged after a compile. */
   def diagnosticsSnapshot: Map[String, List[Diagnostic]] =
@@ -77,22 +103,43 @@ class BspRecordingBuildClient extends BuildClient {
 
   // ---- BuildClient overrides ----
 
-  override def onBuildShowMessage(params: ShowMessageParams): Unit = ()
+  override def onBuildShowMessage(params: ShowMessageParams): Unit =
+    emitStatus(Option(params.getMessage).getOrElse(""))
 
   override def onBuildLogMessage(params: LogMessageParams): Unit = {
-    logs.offer(params); ()
+    logs.offer(params)
+    emitStatus(Option(params.getMessage).getOrElse(""))
   }
 
   override def onBuildTaskStart(params: TaskStartParams): Unit = {
     Option(params.getTaskId).map(_.getId).foreach(id => activeTasks.put(id, params))
+    emitStatus(Option(params.getMessage).getOrElse(""))
   }
 
   override def onBuildTaskProgress(params: TaskProgressParams): Unit = {
     Option(params.getTaskId).map(_.getId).foreach(id => activeTasks.put(id, params))
+    val msg = Option(params.getMessage).getOrElse("")
+    val total = params.getTotal
+    val progress = params.getProgress
+    val withPct =
+      if (total != null && total > 0L && progress != null) {
+        val pct = math.round(progress.toDouble / total.toDouble * 100).toInt
+        if (msg.isEmpty) s"$pct%" else s"$msg ($pct%)"
+      } else msg
+    emitStatus(withPct)
   }
 
   override def onBuildTaskFinish(params: TaskFinishParams): Unit = {
     Option(params.getTaskId).map(_.getId).foreach(id => activeTasks.remove(id))
+    val msg = Option(params.getMessage).getOrElse("")
+    val statusName = Option(params.getStatus).map(_.toString).getOrElse("")
+    val combined = (msg, statusName) match {
+      case ("", "")   => ""
+      case ("", s)    => s
+      case (m, "")    => m
+      case (m, s)     => s"$m ($s)"
+    }
+    emitStatus(combined)
   }
 
   override def onBuildPublishDiagnostics(params: PublishDiagnosticsParams): Unit = {

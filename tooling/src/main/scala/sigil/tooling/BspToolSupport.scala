@@ -32,12 +32,26 @@ trait BspToolSupport extends sigil.tool.Tool {
   protected def withSession(projectRoot: String, context: TurnContext)
                            (body: BspSession => Task[String]): Stream[Event] = {
     val task = manager.session(projectRoot).flatMap { session =>
-      body(session).map(text => reply(context, text, isError = false))
+      installProgressCallback(session, context)
+      body(session)
+        .map(text => reply(context, text, isError = false))
+        .guarantee(Task(session.client.setStatusCallback(None)))
     }.handleError { e =>
       Task.pure(reply(context, s"BSP error: ${e.getMessage}", isError = true))
     }
     Stream.force(task.map(Stream.emit))
   }
+
+  /** Route BSP-server notifications (log lines, taskStart /
+    * taskProgress / taskFinish, showMessage) through the active
+    * tool's [[sigil.signal.ToolProgress]] channel. The callback is
+    * installed for the duration of `body` and cleared on exit so
+    * concurrent tool calls in the same session don't see stale
+    * text. */
+  private def installProgressCallback(session: BspSession, context: TurnContext): Unit =
+    session.client.setStatusCallback(Some(text =>
+      context.reportProgress(text).handleError(_ => Task.unit).startUnit()
+    ))
 
   /** Resolve a user-supplied target list — empty means "everything
     * in the workspace". The server roundtrip is only paid when the
@@ -66,6 +80,8 @@ trait BspToolSupport extends sigil.tool.Tool {
                                          context: TurnContext,
                                          onError: String => Output)
                                         (body: BspSession => Task[Output]): Task[Output] =
-    manager.session(projectRoot).flatMap(body)
-      .handleError(e => Task.pure(onError(s"BSP error: ${e.getMessage}")))
+    manager.session(projectRoot).flatMap { session =>
+      installProgressCallback(session, context)
+      body(session).guarantee(Task(session.client.setStatusCallback(None)))
+    }.handleError(e => Task.pure(onError(s"BSP error: ${e.getMessage}")))
 }

@@ -50,7 +50,13 @@ final class LspRecordingClient(applier: WorkspaceEditApplier) extends LanguageCl
     diagnostics.put(params.getUri, params.getDiagnostics)
 
   override def telemetryEvent(params: Object): Unit = ()
-  override def showMessage(params: MessageParams): Unit = ()
+
+  /** `window/showMessage` — server-pushed user-visible status (e.g.
+    * "Importing build…"). Routes the text through the per-call
+    * status callback so the active tool's chip surfaces the
+    * message; no-op when nothing's listening. */
+  override def showMessage(params: MessageParams): Unit =
+    routeStatus(Option(params).flatMap(p => Option(p.getMessage)).getOrElse(""))
 
   /** Auto-pick known-safe initialisation actions so prompted servers
     * (Metals detecting an sbt project, JDTLS asking about which
@@ -71,7 +77,12 @@ final class LspRecordingClient(applier: WorkspaceEditApplier) extends LanguageCl
     CompletableFuture.completedFuture(item)
   }
 
-  override def logMessage(params: MessageParams): Unit = ()
+  /** `window/logMessage` — server log output. Routed through the
+    * status callback so log lines from the LSP server surface in
+    * the running tool's chip (e.g. Metals' "Indexing scala
+    * sources" / "Compiling N files"). */
+  override def logMessage(params: MessageParams): Unit =
+    routeStatus(Option(params).flatMap(p => Option(p.getMessage)).getOrElse(""))
 
   // Explicit overrides for every default method declared on
   // [[LanguageClient]]. Sigil bug #93 — without these, lsp4j's
@@ -118,7 +129,7 @@ final class LspRecordingClient(applier: WorkspaceEditApplier) extends LanguageCl
         Option(obj.get("text")).flatMap(t => Option(t.getAsString)).getOrElse("")
       case _ => ""
     }
-    if (text.nonEmpty) statusCallback.get().foreach(_.apply(text))
+    routeStatus(text)
   }
 
   override def logTrace(params: LogTraceParams): Unit = ()
@@ -152,15 +163,50 @@ final class LspRecordingClient(applier: WorkspaceEditApplier) extends LanguageCl
     CompletableFuture.completedFuture(null)
   }
 
+  /** `$/progress` — LSP 3.15+ structured progress. WorkDoneProgress
+    * `Begin` carries the operation title + optional initial message;
+    * `Report` carries an updated message and optional percentage;
+    * `End` clears the token. All three route their text (with the
+    * percentage appended when present) through the per-call status
+    * callback so the running tool's chip surfaces server-side
+    * progress like "Indexing scala sources (38%)". */
   override def notifyProgress(params: ProgressParams): Unit = {
     val token = tokenString(params.getToken)
     val notification = params.getValue
     if (notification != null && notification.isLeft) {
       val wd = notification.getLeft
-      if (wd.isInstanceOf[WorkDoneProgressEnd]) {
-        progressTokens.remove(token)
+      wd match {
+        case begin: WorkDoneProgressBegin =>
+          val title = Option(begin.getTitle).getOrElse("")
+          val msg   = Option(begin.getMessage).filter(_.nonEmpty)
+          routeStatus(formatProgress(title, msg, Option(begin.getPercentage).map(_.intValue)))
+        case report: WorkDoneProgressReport =>
+          val msg = Option(report.getMessage).getOrElse("")
+          routeStatus(formatProgress(msg, None, Option(report.getPercentage).map(_.intValue)))
+        case end: WorkDoneProgressEnd =>
+          val msg = Option(end.getMessage).getOrElse("")
+          if (msg.nonEmpty) routeStatus(msg)
+          progressTokens.remove(token)
+        case _ => ()
       }
     }
+  }
+
+  private def formatProgress(primary: String, secondary: Option[String], percentage: Option[Int]): String = {
+    val parts = scala.collection.mutable.ListBuffer.empty[String]
+    if (primary.nonEmpty) parts += primary
+    secondary.filter(_.nonEmpty).foreach(parts += _)
+    val text = parts.mkString(" — ")
+    percentage match {
+      case Some(p) if p >= 0 && text.nonEmpty => s"$text ($p%)"
+      case Some(p) if p >= 0                  => s"$p%"
+      case _                                  => text
+    }
+  }
+
+  private def routeStatus(text: String): Unit = {
+    val trimmed = Option(text).getOrElse("").trim
+    if (trimmed.nonEmpty) statusCallback.get().foreach(_.apply(trimmed))
   }
 
   private def tokenString(token: LspEither[String, Integer]): String =
