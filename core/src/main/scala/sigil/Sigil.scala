@@ -2462,6 +2462,17 @@ trait Sigil {
     * when `releaseClaim` completes (successfully or via error). */
   private final val stopFlags: ConcurrentHashMap[Id[Event], StopFlag] = new ConcurrentHashMap()
 
+  /** Per-claim progress-checkpoint state. Keyed by the AgentState id
+    * that owns the claim. Carries the prior checkpoint's `currentStatus`
+    * (anchor for the next checkpoint's "did things change?" question)
+    * and the count of consecutive `meaningfulProgress = false`
+    * checkpoints — the framework intervenes when the count reaches
+    * [[consecutiveNoProgressLimit]]. Populated on first checkpoint;
+    * cleared on `releaseClaim`. */
+  private final case class CheckpointState(@volatile var lastStatus: Option[String],
+                                            @volatile var noProgressStreak: Int)
+  private final val checkpointStates: ConcurrentHashMap[Id[Event], CheckpointState] = new ConcurrentHashMap()
+
   /** On a [[Stop]] event, set the matching flag(s): one specific agent if
     * `targetParticipantId` is set, else every agent in the conversation.
     * Also logs the stop (with `reason`, if supplied) so operators can see
@@ -4320,12 +4331,31 @@ trait Sigil {
    *   - if none, transition to Idle/Complete and release
    */
   /** Hard cap on dispatcher self-loop iterations within a single AgentState
-    * claim. Prevents an LLM that keeps calling non-terminal tools (e.g. only
-    * `change_mode`, never `respond`) from looping forever. Reaching the cap
-    * raises [[AgentRunawayException]] in the runAgent fiber after releasing
-    * the AgentState claim — it's a real failure, not a normal exit. Apps
-    * can override. */
-  protected def maxAgentIterations: Int = 10
+    * claim. Generous default — the primary stuck-detection mechanism is the
+    * delta-based progress checkpoint (see [[progressCheckpointInterval]] +
+    * [[consecutiveNoProgressLimit]]), which fires well before this ceiling
+    * for any real loop. The cap exists as a runaway-cost safety net for
+    * pathological cases where the checkpoint itself misbehaves; reaching
+    * it raises [[AgentRunawayException]] in the runAgent fiber after
+    * releasing the AgentState claim. Apps tighten or relax per their
+    * cost / latency tolerance. */
+  protected def maxAgentIterations: Int = 200
+
+  /** Iterations between progress checkpoints. Every Nth iteration the
+    * framework runs an out-of-band reflection turn that compares the
+    * current task state against the prior checkpoint's status and
+    * decides whether to continue / intervene / ask the user. Default
+    * 15 — long enough to amortise the extra LLM call across real
+    * work, short enough to catch sustained loops within ~30
+    * iterations. Set to 0 to disable checkpointing. */
+  protected def progressCheckpointInterval: Int = 15
+
+  /** Number of consecutive `meaningfulProgress = false` checkpoints
+    * required before the framework intervenes with a synthetic
+    * respond asking the user for guidance. Default 2. Setting to 1
+    * is aggressive (any single "no progress" report stops the
+    * loop); higher values give the agent more rope. */
+  protected def consecutiveNoProgressLimit: Int = 2
 
   private final def runAgent(agent: AgentParticipant,
                              conv: Conversation,
@@ -4505,9 +4535,28 @@ trait Sigil {
                   conversationId = convId,
                   activity = Some(AgentActivity.Thinking)
                 ))
-              ).flatMap(_ =>
-                runAgentLoop(agent, convId, claimed, iteration + 1, thisIterationStart, userVisibleSeen = userVisibleSeen)
-              )
+              ).flatMap { _ =>
+                // Run the progress checkpoint at the boundary if this
+                // is a checkpoint iteration. The helper returns
+                // Some(message) when the agent reports being stuck
+                // for `consecutiveNoProgressLimit` consecutive
+                // checkpoints OR when it explicitly asks the user
+                // for guidance — in either case we publish the
+                // synthetic respond and end the loop instead of
+                // recursing.
+                val nextIteration = iteration + 1
+                val checkpointTask: Task[Option[Message]] =
+                  if (progressCheckpointInterval > 0 && nextIteration % progressCheckpointInterval == 0)
+                    runProgressCheckpoint(agent, convId, claimed, nextIteration)
+                  else
+                    Task.pure(None)
+                checkpointTask.flatMap {
+                  case Some(intervention) =>
+                    publish(intervention).flatMap(_ => releaseClaim(claimed))
+                  case None =>
+                    runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart, userVisibleSeen = userVisibleSeen)
+                }
+              }
             case true =>
               // Cap hit — release the lock, then propagate as an error so the
               // calling fiber's failure handler sees it. A runaway loop is a
@@ -4535,6 +4584,99 @@ trait Sigil {
       publishFailureMessage(agent, convId, t).handleError(_ => Task.unit)
         .flatMap(_ => releaseClaim(claimed).handleError(_ => Task.unit))
         .flatMap(_ => Task.error(t))
+    }
+  }
+
+  /** Outcome of a progress checkpoint dispatch. `None` means continue
+    * the agent loop normally; `Some(message)` means terminate the loop
+    * after publishing this respond Message (the framework intervened
+    * because the agent reported being stuck or asked the user for
+    * guidance). */
+  private final def runProgressCheckpoint(agent: AgentParticipant,
+                                          convId: Id[Conversation],
+                                          claimed: AgentState,
+                                          iteration: Int): Task[Option[Message]] = Task.defer {
+    if (progressCheckpointInterval <= 0) Task.pure(None)
+    else {
+      val state = checkpointStates.computeIfAbsent(claimed._id,
+        _ => CheckpointState(lastStatus = None, noProgressStreak = 0))
+      val priorStatus = state.lastStatus
+      val priorBlock = priorStatus match {
+        case Some(s) => s"At your last checkpoint you said: \"$s\"\n\n"
+        case None    => ""
+      }
+      val systemPrompt =
+        """You are reflecting on your own progress on a task. Compare the current state of the work
+          |against the prior status anchor (if any). Be honest: if your status looks identical to
+          |the prior status, set meaningfulProgress = false so the framework can intervene.""".stripMargin
+      val userPrompt =
+        s"""${priorBlock}You are now ${iteration} iteration(s) into this task.
+           |
+           |Look at what you've done since ${if (priorStatus.isDefined) "that point" else "the start"}.
+           |Pick a one-line currentStatus describing where things stand RIGHT NOW. Set
+           |meaningfulProgress = true ONLY when you're substantively further than the prior status.
+           |One-line remainingSteps for what's left. Empty stuckOn unless you genuinely can't
+           |proceed. shouldAskUser = true ONLY if the user must clarify something.""".stripMargin
+      sigil.tool.consult.ConsultTool.invoke[sigil.tool.consult.ProgressReflectionInput](
+        sigil              = this,
+        modelId            = agent.modelId,
+        chain              = List(agent.id),
+        systemPrompt       = systemPrompt,
+        userPrompt         = userPrompt,
+        tool               = sigil.tool.consult.ProgressReflectionTool,
+        generationSettings = sigil.provider.GenerationSettings(maxOutputTokens = Some(200))
+      ).flatMap {
+        case None         => Task.pure(None)  // checkpoint-call failed; let the loop continue
+        case Some(report) =>
+          // Persist the checkpoint event so the chain is replayable.
+          withDB(_.conversations.transaction(_.get(convId))).flatMap { convOpt =>
+            val topicId = convOpt.flatMap(_.topics.lastOption.map(_.id))
+              .getOrElse(_root_.sigil.conversation.Topic.id("__no_topic__"))
+            val checkpoint = sigil.event.ProgressCheckpoint(
+              participantId        = agent.id,
+              conversationId       = convId,
+              topicId              = topicId,
+              iterationCount       = iteration,
+              prevCheckpointStatus = priorStatus,
+              currentStatus        = report.currentStatus,
+              meaningfulProgress   = report.meaningfulProgress,
+              remainingSteps       = report.remainingSteps,
+              stuckOn              = report.stuckOn,
+              shouldAskUser        = report.shouldAskUser
+            )
+            publish(checkpoint).flatMap { _ =>
+              // Update side-state for the next checkpoint comparison.
+              state.lastStatus = Some(report.currentStatus)
+              if (!report.meaningfulProgress) {
+                state.noProgressStreak = state.noProgressStreak + 1
+              } else {
+                state.noProgressStreak = 0
+              }
+              val stuck = state.noProgressStreak >= consecutiveNoProgressLimit
+              if (report.shouldAskUser || stuck) {
+                val reason =
+                  if (report.shouldAskUser)
+                    s"I need clarification before I can continue. ${report.stuckOn.getOrElse("")}".trim
+                  else
+                    s"I've been working on this for $iteration turns and haven't made meaningful " +
+                      s"progress since: \"${priorStatus.getOrElse(report.currentStatus)}\". " +
+                      s"${report.stuckOn.map(s => s"I'm stuck on: $s. ").getOrElse("")}" +
+                      "How would you like me to proceed?"
+                Task.pure(Some(Message(
+                  participantId  = agent.id,
+                  conversationId = convId,
+                  topicId        = topicId,
+                  content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(reason)),
+                  state          = EventState.Complete,
+                  role           = MessageRole.Standard
+                )))
+              } else Task.pure(None)
+            }
+          }
+      }.handleError { e =>
+        Task(scribe.warn(s"runProgressCheckpoint failed for ${agent.id.value}/${convId.value} iter=$iteration: ${e.getMessage}"))
+          .map(_ => None)
+      }
     }
   }
 
@@ -4640,6 +4782,7 @@ trait Sigil {
     // claim.
     val cleanup = Task {
       stopFlags.remove(claimed._id)
+      checkpointStates.remove(claimed._id)
       ()
     }
     publish(AgentStateDelta(
