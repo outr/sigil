@@ -24,10 +24,4 @@ enum StoredFileCategory derives RW {
     * payload. Persistent (the originating Message references them
     * forever). */
   case ExternalizedContent
-
-  /** Per-tool-call output written by the framework when a tool's
-    * emission exceeds [[sigil.Sigil.contentExternalizationThreshold]].
-    * Carries `expiresAt` so the [[sigil.maintenance.StoredFileExpirationSweep]]
-    * task reclaims the storage after the configured retention. */
-  case ToolOutput
 }

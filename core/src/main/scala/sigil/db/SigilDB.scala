@@ -14,6 +14,7 @@ import sigil.skill.Skill
 import sigil.spatial.GeocodingCache
 import sigil.storage.StoredFile
 import sigil.tool.Tool
+import sigil.tool.output.ToolOutputNode
 import sigil.viewer.ViewerState
 
 import java.nio.file.Path
@@ -64,6 +65,12 @@ abstract class SigilDB(override val directory: Option[Path],
   val viewerStates: S[ViewerState, ViewerState.type] = store(ViewerState).withCache(CacheConfig.lru(500))()
   val conversationToolOverlays: S[ConversationToolOverlay, ConversationToolOverlay.type] =
     store(ConversationToolOverlay).withCache(CacheConfig.lru(500))()
+  /** Per-row paginated tool output — drained from each
+    * [[sigil.tool.output.PaginatedTool]]'s `Stream[Node[A]]` and
+    * read back by `next_page` / `query_tool_output`. Rows carry
+    * an `expiresAt` and get swept by
+    * [[sigil.maintenance.ToolOutputExpirationSweep]]. */
+  val toolOutputs: S[ToolOutputNode, ToolOutputNode.type] = store(ToolOutputNode)()
 
   override def upgrades: List[DatabaseUpgrade] = appUpgrades
 

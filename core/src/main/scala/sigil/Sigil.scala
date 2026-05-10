@@ -762,40 +762,6 @@ trait Sigil {
     }
   }
 
-  /** Bug #9 phase 4 — write a tool's full payload to the
-    * `Category.ToolOutput` slice of `SigilDB.storedFiles` with the
-    * configured retention window applied to `expiresAt`. Used by
-    * tools that want to externalize oversized output (typed JSON,
-    * raw text logs, etc.) and emit only a summary inline.
-    *
-    * Caller resolves the [[SpaceId]] (typically the conversation's
-    * `space` so multi-tenant scoping holds) and supplies a
-    * `contentType` (`"application/json"` for typed structured
-    * payloads, `"text/plain"` for raw transcripts, etc.). The
-    * returned [[sigil.storage.StoredFile]]'s `_id` is what goes
-    * into `ToolResults.outputId`.
-    *
-    * `expiresAt` defaults to `now + toolOutputRetention`; apps that
-    * want explicit per-call retention pass an absolute Timestamp. */
-  def storeToolOutput(space: SpaceId,
-                      data: Array[Byte],
-                      contentType: String = "application/octet-stream",
-                      metadata: Map[String, String] = Map.empty,
-                      expiresAt: Option[lightdb.time.Timestamp] = None): Task[sigil.storage.StoredFile] = {
-    val effectiveExpiresAt = expiresAt.orElse {
-      val now = lightdb.time.Timestamp().value
-      Some(lightdb.time.Timestamp(now + toolOutputRetention.toMillis))
-    }
-    storeBytes(
-      space       = space,
-      data        = data,
-      contentType = contentType,
-      metadata    = metadata,
-      category    = sigil.storage.StoredFileCategory.ToolOutput,
-      expiresAt   = effectiveExpiresAt
-    )
-  }
-
   /** Read bytes by id with authz. Returns `None` if the file doesn't
     * exist OR the caller's `accessibleSpaces` doesn't include the
     * file's space. Mirroring `find_capability`'s fail-closed
@@ -4193,6 +4159,14 @@ trait Sigil {
                }
              }
            }
+      _ <- withDB { db =>
+             db.toolOutputs.transaction { tx =>
+               tx.list.flatMap { all =>
+                 val targets = all.filter(_.conversationId == conversationId)
+                 Task.sequence(targets.map(n => tx.delete(n._id))).unit
+               }
+             }
+           }
     } yield ()
 
   /**
@@ -5216,6 +5190,7 @@ trait Sigil {
   def maintenanceTasks: List[sigil.maintenance.MaintenanceTask] =
     List(
       sigil.maintenance.StoredFileExpirationSweep(storedFileExpirationInterval),
+      sigil.maintenance.ToolOutputExpirationSweep(toolOutputExpirationInterval),
       sigil.maintenance.OrphanStagingConversationSweep(orphanStagingSweepInterval, orphanStagingCutoff)
     )
 
@@ -5235,21 +5210,22 @@ trait Sigil {
 
   /** Cadence for [[sigil.maintenance.StoredFileExpirationSweep]] —
     * how often the framework reclaims expired
-    * [[sigil.storage.StoredFile]] records (chiefly the
-    * `Category.ToolOutput` entries written by Bug #9's
-    * externalization path). Default: 1 hour. Apps with stricter
-    * retention windows or larger volumes override. */
+    * [[sigil.storage.StoredFile]] records (TTL'd user attachments
+    * and externalized message-content blocks past their retention
+    * window). Default: 1 hour. Apps with stricter retention or
+    * larger volumes override. */
   def storedFileExpirationInterval: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.DurationInt(1).hour
 
-  /** Default retention window applied to a newly-written
-    * `StoredFileCategory.ToolOutput` record's `expiresAt`. Apps
-    * shorten / lengthen as policy dictates; downstream consumers
-    * with explicit "review later" UIs can override per-call by
-    * writing through [[Sigil.storeBytes]] directly with a custom
-    * `expiresAt`. Default: 24 hours. */
-  def toolOutputRetention: scala.concurrent.duration.FiniteDuration =
-    scala.concurrent.duration.DurationInt(24).hours
+  /** Cadence for [[sigil.maintenance.ToolOutputExpirationSweep]] —
+    * how often the framework reclaims expired
+    * [[sigil.tool.output.ToolOutputNode]] rows. Default: 15
+    * minutes. The default per-row TTL is 30 minutes (set on
+    * [[sigil.tool.output.PaginatedTool.rowTtl]]) so the sweep
+    * runs about twice per TTL window — fine grained enough that
+    * reclaimed storage doesn't grow unboundedly between sweeps. */
+  def toolOutputExpirationInterval: scala.concurrent.duration.FiniteDuration =
+    scala.concurrent.duration.DurationInt(15).minutes
 
   /**
    * One-shot sweep — deletes every memory with `expiresAt` set and

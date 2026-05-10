@@ -8,8 +8,8 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
 import sigil.event.{Message, ToolResults}
-import sigil.tool.fs.{BashTool, DeleteFileTool, EditFileTool, FileSystemContext, GlobTool, GrepTool, LocalFileSystemContext, ReadFileTool, WriteFileTool}
-import sigil.tool.model.{BashInput, BashOutput, DeleteFileInput, DeleteFileOutput, EditFileInput, EditFileOutput, GlobInput, GlobOutput, GrepInput, GrepOutput, ReadFileInput, ReadFileOutput, ResponseContent, WriteFileInput, WriteFileOutput}
+import sigil.tool.fs.{DeleteFileTool, EditFileTool, FileSystemContext, LocalFileSystemContext, ReadFileTool, WriteFileTool}
+import sigil.tool.model.{DeleteFileInput, DeleteFileOutput, EditFileInput, EditFileOutput, ReadFileInput, ReadFileOutput, ResponseContent, WriteFileInput, WriteFileOutput}
 
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
@@ -208,49 +208,9 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     }
   }
 
-  "GlobTool" should {
-    "list files matching a pattern" in withTempDir { (ctx, _) =>
-      val tc = turnContext()
-      for {
-        _    <- new WriteFileTool(ctx).execute(WriteFileInput("a.scala", "x"), tc).toList
-        _    <- new WriteFileTool(ctx).execute(WriteFileInput("b.scala", "x"), tc).toList
-        _    <- new WriteFileTool(ctx).execute(WriteFileInput("c.txt", "x"), tc).toList
-        out  <- new GlobTool(ctx).execute(GlobInput(basePath = ".", pattern = "*.scala"), tc).toList
-      } yield {
-        typed[GlobOutput](out).paths.toSet shouldBe Set("a.scala", "b.scala")
-      }
-    }
-  }
-
-  "GrepTool" should {
-    "find regex matches with line numbers" in withTempDir { (ctx, _) =>
-      val tc = turnContext()
-      for {
-        _    <- new WriteFileTool(ctx).execute(WriteFileInput("notes.md", "alpha\nbeta\nALPHA"), tc).toList
-        out  <- new GrepTool(ctx).execute(GrepInput(path = ".", pattern = "(?i)alpha"), tc).toList
-      } yield {
-        typed[GrepOutput](out).matches.map(_.lineNumber).toSet shouldBe Set(1, 3)
-      }
-    }
-  }
-
-  "BashTool" should {
-    "execute a shell command and capture stdout" in withTempDir { (ctx, _) =>
-      val tc = turnContext()
-      new BashTool(ctx).execute(BashInput("echo sigil-bash"), tc).toList.map { events =>
-        val payload = typed[BashOutput](events)
-        payload.stdout.trim shouldBe "sigil-bash"
-        payload.exitCode shouldBe 0
-      }
-    }
-
-    "report a non-zero exit code" in withTempDir { (ctx, _) =>
-      val tc = turnContext()
-      new BashTool(ctx).execute(BashInput("exit 42"), tc).toList.map { events =>
-        typed[BashOutput](events).exitCode shouldBe 42
-      }
-    }
-  }
+  // Grep / Glob / Bash now stream into the paginated tool-output
+  // collection; their end-to-end coverage moved to
+  // [[PaginatedToolsSpec]].
 
   "tear down" should {
     "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)

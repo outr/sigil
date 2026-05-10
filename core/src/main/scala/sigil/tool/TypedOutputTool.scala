@@ -25,20 +25,15 @@ import scala.reflect.ClassTag
  * still publishes the inner `ToolInvoke` / `ToolResults` events so
  * the audit trail is preserved.
  *
- * Auto-externalization: when the rendered JSON exceeds
- * `Sigil.inlineContentThreshold`, the framework writes the payload
- * to `Category.ToolOutput` (Bug #9 phase 4) and emits a `ToolResults`
- * with `outputId` set + a synthesized inline summary. Tool authors
- * don't think about size; structured payloads under the threshold
- * ride inline, oversized ones externalize automatically.
- *
- * Coexists with [[TypedTool]] (untyped-output legacy) and the raw
- * [[Tool]] base. New tools with structured output use this; tools
- * whose result is fire-and-forget effect or rendered text stay on
- * the legacy shape.
- *
- * Tool authors override [[summarize]] for richer summaries when the
- * payload externalizes; the default truncates the JSON rendering.
+ * Bulk-result tools (grep, glob, bash, etc.) that may produce
+ * arbitrarily large output use [[sigil.tool.output.PaginatedTool]]
+ * instead — paginated tree storage with `next_page` /
+ * `query_tool_output` navigation. `TypedOutputTool` is for tools
+ * whose typed result is bounded by construction (typically a
+ * single record or a small fixed-shape struct). When a
+ * `TypedOutputTool`'s rendered JSON exceeds
+ * `Sigil.inlineContentThreshold` the framework truncates inline
+ * with a hint — no externalization, no pointer indirection.
  */
 abstract class TypedOutputTool[In <: ToolInput, Out](
   override val name: ToolName,
@@ -84,19 +79,21 @@ abstract class TypedOutputTool[In <: ToolInput, Out](
 
   /** Glue — implements the [[Tool]] trait's `Stream[Event]` contract
     * by running `executeTyped` and wrapping the typed result into a
-    * `ToolResults` event. Auto-externalizes when the rendered JSON
-    * exceeds the host's `inlineContentThreshold`. */
+    * `ToolResults` event. Inline-truncates with a hint when the
+    * rendered JSON exceeds `Sigil.inlineContentThreshold` — tools
+    * whose output may legitimately be huge should use
+    * [[sigil.tool.output.PaginatedTool]] instead. */
   final override def execute(input: ToolInput, context: TurnContext): Stream[Event] = {
     if (!ct.runtimeClass.isInstance(input)) Stream.empty
     else {
       val typedInput = input.asInstanceOf[In]
       Stream.force(
-        executeTyped(typedInput, context).flatMap { output =>
+        executeTyped(typedInput, context).map { output =>
           val typedJson = outputRW.read(output)
-          val rendered = JsonFormatter.Compact(typedJson)
+          val rendered  = JsonFormatter.Compact(typedJson)
           val threshold = context.sigil.inlineContentThreshold
-          if (rendered.length.toLong <= threshold) Task.pure(emitInline(typedJson, context))
-          else externalize(output, rendered, context)
+          if (rendered.length.toLong <= threshold) emitInline(typedJson, context)
+          else emitTruncated(output, rendered, threshold, context)
         }
       )
     }
@@ -114,32 +111,28 @@ abstract class TypedOutputTool[In <: ToolInput, Out](
       role           = MessageRole.Tool
     ))
 
-  private def externalize(output: Out, rendered: String, context: TurnContext): Task[Stream[Event]] = {
-    val bytes = rendered.getBytes("UTF-8")
-    // Reuse the per-tool space for tenanting — same default as
-    // ContentExternalizationTransform: GlobalSpace unless the app
-    // overrides Sigil.externalizationSpace at the message level.
-    // Tool output isn't a Message, so we route through the tool's
-    // declared space (apps that need tighter scoping override the
-    // tool's `space` field directly).
-    val targetSpace: SpaceId = space
-    context.sigil.storeToolOutput(
-      space       = targetSpace,
-      data        = bytes,
-      contentType = "application/json"
-    ).map { stored =>
-      Stream.emit[Event](ToolResults(
-        schemas        = Nil,
-        participantId  = context.caller,
-        conversationId = context.conversation.id,
-        topicId        = context.conversation.currentTopicId,
-        outcome        = ToolOutcome.Success,
-        summary        = Some(summarize(output, rendered)),
-        outputId       = Some(stored._id),
-        typed          = None,
-        state          = EventState.Complete,
-        role           = MessageRole.Tool
-      ))
-    }
+  /** When the rendered JSON exceeds the inline threshold, emit a
+    * truncated `summary` text alongside the typed JSON (still
+    * present) so the agent reads a concrete hint and can refine
+    * its inputs. Tools that need full-size streaming should
+    * migrate to [[sigil.tool.output.PaginatedTool]] — that path
+    * paginates rather than truncates. */
+  private def emitTruncated(output: Out, rendered: String, threshold: Long, context: TurnContext): Stream[Event] = {
+    val typedJson = outputRW.read(output)
+    val hint =
+      s"${name.value}: result is ${rendered.length} bytes (threshold $threshold). " +
+        "Truncated inline. Refine inputs to narrow the output, or — for tools that naturally " +
+        "produce large bulk output — migrate the tool to PaginatedTool so the result paginates."
+    Stream.emit[Event](ToolResults(
+      schemas        = Nil,
+      participantId  = context.caller,
+      conversationId = context.conversation.id,
+      topicId        = context.conversation.currentTopicId,
+      outcome        = ToolOutcome.Success,
+      typed          = Some(typedJson),
+      summary        = Some(summarize(output, rendered) + "\n\n" + hint),
+      state          = EventState.Complete,
+      role           = MessageRole.Tool
+    ))
   }
 }

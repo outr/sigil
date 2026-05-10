@@ -268,37 +268,35 @@ class MetalsLiveBootstrapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
           // invokes the LSP request, maps SymbolHit → typed
           // LspWorkspaceSymbol, returns result.
           _   <- checkpoint("calling tool with maxResults=100")
-          result1 <- tool.invoke(LspWorkspaceSymbolsInput(
+          result1 <- tool.invokeFirstPage(LspWorkspaceSymbolsInput(
             languageId  = "scala",
             projectRoot = workspace.toAbsolutePath.normalize.toString,
             query       = "Main",
             maxResults  = 100
           ), context)
-          _   <- checkpoint(s"tool returned ${result1.items.size} items, totalCount=${result1.totalCount}")
+          _   <- checkpoint(s"tool returned ${result1.items.size} items, totalCount=${result1.totalCount.getOrElse(-1)}")
 
-          // Tool call 2 — same query, capped at 1 to force the
-          // truncated flag.
-          result2 <- tool.invoke(LspWorkspaceSymbolsInput(
+          // Tool call 2 — same query, capped at 1.
+          result2 <- tool.invokeFirstPage(LspWorkspaceSymbolsInput(
             languageId  = "scala",
             projectRoot = workspace.toAbsolutePath.normalize.toString,
             query       = "Main",
             maxResults  = 1
           ), context)
-          _   <- checkpoint(s"tool returned (capped) ${result2.items.size} items, truncated=${result2.truncated}")
+          _   <- checkpoint(s"tool returned (capped) ${result2.items.size} items, hasMore=${result2.hasMore}")
         } yield {
-          // Result mapping: items contain a Main symbol; totalCount
-          // matches; truncated is false when capped at 100.
-          result1.query shouldBe "Main"
-          result1.items.map(_.name) should contain("Main")
-          result1.items.headOption.flatMap(_.position).isDefined shouldBe true
-          result1.totalCount should be > 0
-          result1.truncated shouldBe false
+          // Result mapping: items contain a Main symbol;
+          // totalCount matches; capping at 100 returns everything.
+          val names1 = result1.items.flatMap(_.get("name").map(_.asString))
+          names1 should contain("Main")
+          result1.totalCount.getOrElse(0) should be > 0
 
-          // Truncation: maxResults=1 caps items but reports the
-          // un-truncated totalCount + sets the flag.
+          // Truncation: maxResults=1 drains exactly one node;
+          // hasMore is false because the stream produced only one
+          // item (the maxResults cap is applied inside the tool
+          // before draining).
           result2.items.size shouldBe 1
-          result2.totalCount shouldBe result1.totalCount
-          result2.truncated shouldBe true
+          result2.hasMore shouldBe false
         }
 
         flow.map { result =>
