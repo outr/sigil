@@ -91,6 +91,19 @@ final class MetalsManager(host: MetalsSigil) {
   private def aliveProcess(entry: Entry): Boolean =
     entry.processRef.exists(_.isAlive)
 
+  /** True iff some Sigil-managed Metals subprocess is alive for
+    * this workspace path. Used by [[spawnAndResolve]]'s H2-staleness
+    * reconciliation: if no live peer exists when we're about to
+    * spawn, any "Started" status in `metals.mv.db` is stale (the
+    * peer that wrote it is dead), so it's safe to wipe. */
+  private def hasLivePeer(workspace: Path): Boolean = {
+    import scala.jdk.CollectionConverters.*
+    val canonical = workspace.toAbsolutePath.normalize
+    entries.values().asScala.exists(e =>
+      e.workspace.toAbsolutePath.normalize == canonical && aliveProcess(e)
+    )
+  }
+
   /** Keyed by canonical workspace path string. */
   private val entries: ConcurrentHashMap[String, Entry] = new ConcurrentHashMap()
 
@@ -241,6 +254,18 @@ final class MetalsManager(host: MetalsSigil) {
         s"MetalsManager: workspace $workspace is not a directory"
       ))
     } else {
+      // Sigil bug #99 — reconcile a stale `metals.mv.db`. If a prior
+      // Metals process was killed mid-import (SIGKILL, OOM, crash,
+      // user manually killing duplicates), Metals' on-disk H2 db
+      // keeps the import status at "Started." Every subsequent
+      // Metals startup reads this status, sees Started, logs
+      // "skipping build import with status 'Started'", and sits
+      // idle forever — `.bloop/` never generated, every `lsp_*`
+      // dependency hangs. Recovery today is manual. Self-heal:
+      // before launching, if no Sigil-managed peer process is
+      // alive for this workspace, wipe the H2 db so the new Metals
+      // starts with a clean Pending status and re-imports.
+      MetalsHealthCheck.reconcileStaleImportStatus(workspace, hasLivePeer(workspace))
       ensureBackgroundFibers()
       // Bug #68 — wrap startup in a `runAsFrameworkWorkflow` so the
       // activity bar shows what's happening (replaces the silent
