@@ -235,7 +235,28 @@ class MetalsLiveBootstrapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         TestMetalsSigil.setLauncher(List(metalsBinary.get))
         val manager = new LspManager(TestMetalsSigil, PermissiveWorkspaceEditApplier)
         val tool = new LspWorkspaceSymbolsTool(manager)
-        val context = LspWorkspaceSymbolsTestContext.build()
+
+        // TurnContext is required by the tool's API signature but
+        // LspWorkspaceSymbolsTool never reads any of its fields —
+        // `withSessionTyped` flows it through opaquely, then resolves
+        // the real LspServerConfig + Metals session via the LspManager
+        // (which DOES hit real persisted state). Construct it inline
+        // so it isn't disguised as a separate "fixture factory."
+        val convId = Conversation.id(s"lsp-tool-spec-${rapid.Unique()}")
+        val conversation = Conversation(
+          topics = List(TopicEntry(
+            id      = sigil.conversation.Topic.id(s"topic-${rapid.Unique()}"),
+            label   = "spec",
+            summary = "spec"
+          )),
+          _id = convId
+        )
+        val context = sigil.TurnContext(
+          sigil        = TestMetalsSigil,
+          chain        = List(LspToolCallerId(s"caller-${rapid.Unique()}")),
+          conversation = conversation,
+          turnInput    = TurnInput(conversationId = convId)
+        )
 
         def checkpoint(name: String): Task[Unit] = Task(scribe.info(s"[live-spec/tool] $name"))
 
@@ -299,28 +320,10 @@ class MetalsLiveBootstrapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   }
 }
 
-/** Builds the minimal [[TurnContext]] the LSP tools need.
-  * `lsp_workspace_symbols` doesn't read any context fields beyond
-  * what `withSessionTyped` threads through (and that flow ignores
-  * `context` entirely once the session is resolved), so a stub
-  * conversation + empty turn input + a dummy chain is enough. */
-private case class TestParticipantId(value: String) extends ParticipantId
-
-private object LspWorkspaceSymbolsTestContext {
-  def build(): sigil.TurnContext = {
-    val convId = Conversation.id(s"lsp-tool-spec-${rapid.Unique()}")
-    val topicId = sigil.conversation.Topic.id(s"topic-${rapid.Unique()}")
-    val initialTopic = TopicEntry(id = topicId, label = "spec", summary = "spec")
-    val conversation = Conversation(topics = List(initialTopic), _id = convId)
-    val chain: List[ParticipantId] = List(TestParticipantId(s"user-${rapid.Unique()}"))
-    sigil.TurnContext(
-      sigil        = TestMetalsSigil,
-      chain        = chain,
-      conversation = conversation,
-      turnInput    = TurnInput(conversationId = convId)
-    )
-  }
-}
+/** Test-only ParticipantId for the LSP-tool live spec's chain.
+  * The LSP tools never read the chain, so this carries no
+  * meaningful identity — it just satisfies the TurnContext API. */
+private case class LspToolCallerId(value: String) extends ParticipantId
 
 /** Materialises a minimal sbt Hello World project in a fresh temp
   * directory so the live spec has a real build for Metals to index
