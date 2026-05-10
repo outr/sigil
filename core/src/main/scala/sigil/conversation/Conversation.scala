@@ -84,6 +84,13 @@ case class Conversation(topics: List[TopicEntry],
                         parentConversationId: Option[Id[Conversation]] = None,
                         stagingFor: Option[Id[Conversation]] = None,
                         archived: Boolean = false,
+                        /** Conversation-level pinned model — when set, every LLM
+                          * dispatch in the conversation (agent turns AND framework
+                          * auxiliary calls — classifier, memory extractor, curate
+                          * compression) routes to this model, overriding mode-
+                          * driven strategy selection and space-level strategy
+                          * assignment. Cleared via the `unpin_model` tool. */
+                        pinnedModelId: Option[lightdb.id.Id[sigil.db.Model]] = None,
                         created: Timestamp = Timestamp(),
                         modified: Timestamp = Timestamp(),
                         _id: Id[Conversation] = Conversation.id())
