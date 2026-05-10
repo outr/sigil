@@ -3,7 +3,7 @@ package bench.contextprofile
 import sigil.conversation.{ActiveSkillSlot, ParticipantProjection, SkillSource}
 import sigil.provider.{ConversationMode, Mode, ToolPolicy}
 import sigil.role.Role
-import sigil.tool.core.{ChangeModeTool, FindCapabilityTool, RespondTool, StopTool}
+import sigil.tool.core.{ChangeModeTool, FindCapabilityTool, RespondTool, CancelTool}
 
 /**
  * Phase 0 — mode-switch profile. Agent alternates between a Coding mode
@@ -46,7 +46,7 @@ object ModeSwitchBench {
 
   def main(args: Array[String]): Unit = {
     val turns = 30
-    val tools = Vector[sigil.tool.Tool](RespondTool, FindCapabilityTool, StopTool, ChangeModeTool)
+    val tools = Vector[sigil.tool.Tool](RespondTool, FindCapabilityTool, CancelTool, ChangeModeTool)
 
     val profiles = (1 to turns).map { n =>
       val mode: Mode = if ((n / 5) % 2 == 0) ConversationMode else CodingMode

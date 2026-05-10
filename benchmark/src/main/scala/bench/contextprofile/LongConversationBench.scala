@@ -1,7 +1,7 @@
 package bench.contextprofile
 
 import sigil.conversation.ContextFrame
-import sigil.tool.core.{FindCapabilityTool, RespondTool, StopTool}
+import sigil.tool.core.{FindCapabilityTool, RespondTool, CancelTool}
 
 /**
  * Phase 0 — long conversation profile. Synthesizes a 50-turn back-and-forth
@@ -16,7 +16,7 @@ object LongConversationBench {
 
   def main(args: Array[String]): Unit = {
     val turns = 50
-    val tools = Vector[sigil.tool.Tool](RespondTool, FindCapabilityTool, StopTool)
+    val tools = Vector[sigil.tool.Tool](RespondTool, FindCapabilityTool, CancelTool)
 
     // Build cumulative frame list: each turn adds [userMessage, agentRespond].
     val framesByTurn: Vector[Vector[ContextFrame]] = (1 to turns).scanLeft(Vector.empty[ContextFrame]) {

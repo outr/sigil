@@ -2,7 +2,7 @@ package bench.contextprofile
 
 import sigil.conversation.{ContextFrame, ParticipantProjection}
 import sigil.tool.{Tool, ToolName}
-import sigil.tool.core.{FindCapabilityTool, RespondTool, StopTool}
+import sigil.tool.core.{FindCapabilityTool, RespondTool, CancelTool}
 
 /**
  * Phase 0 — tool-heavy profile. Agent has 25 fake tools registered
@@ -52,7 +52,7 @@ object ToolHeavyBench {
   def main(args: Array[String]): Unit = {
     val turns = 30
     val toolRoster: Vector[Tool] =
-      Vector(RespondTool, FindCapabilityTool, StopTool) ++ fakeTools(25)
+      Vector(RespondTool, FindCapabilityTool, CancelTool) ++ fakeTools(25)
 
     // Each turn is: user msg → find_capability → ToolResult → tool_5 call → ToolResult → respond.
     val framesByTurn: Vector[Vector[ContextFrame]] = {

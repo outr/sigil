@@ -1,6 +1,6 @@
 package bench.contextprofile
 
-import sigil.tool.core.{FindCapabilityTool, RespondTool, StopTool}
+import sigil.tool.core.{FindCapabilityTool, RespondTool, CancelTool}
 
 /**
  * Phase 0 — memory-heavy profile. Conversation has 100 critical memories
@@ -15,7 +15,7 @@ object MemoryHeavyBench {
 
   def main(args: Array[String]): Unit = {
     val turns = 30
-    val tools = Vector[sigil.tool.Tool](RespondTool, FindCapabilityTool, StopTool)
+    val tools = Vector[sigil.tool.Tool](RespondTool, FindCapabilityTool, CancelTool)
 
     val criticalMemories = (1 to 100).iterator.map { i =>
       ProfilerHarness.critical(

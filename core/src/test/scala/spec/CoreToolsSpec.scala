@@ -10,10 +10,10 @@ import sigil.conversation.{ConversationView, Conversation, Topic, TurnInput}
 import sigil.event.{Message, Stop, TopicChange}
 import sigil.information.Information
 import sigil.signal.EventState
-import sigil.tool.core.{RespondTool, StopTool}
+import sigil.tool.core.{RespondTool, CancelTool}
 import sigil.tool.discovery.CapabilityType
 import sigil.tool.util.LookupTool
-import sigil.tool.model.{LookupInput, RespondInput, StopInput}
+import sigil.tool.model.{LookupInput, RespondInput, CancelInput}
 
 /**
  * Round-trip coverage for framework tools where direct `execute` semantics
@@ -66,12 +66,12 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     }
   }
 
-  "StopTool" should {
+  "CancelTool" should {
     "emit an Active Stop event with the submitted target + force + reason (orchestrator settles via StateDelta)" in {
       val convId = freshConversationId("stop-targeted")
-      val events = StopTool
+      val events = CancelTool
         .execute(
-          StopInput(targetParticipantId = Some(TestAgent), force = true, reason = Some("too risky")),
+          CancelInput(targetParticipantId = Some(TestAgent), force = true, reason = Some("too risky")),
           turnContextFor(convId)
         )
         .toList
@@ -90,8 +90,8 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "default to graceful (force=false) and broadcast (target=None) when inputs omitted" in {
       val convId = freshConversationId("stop-graceful-all")
-      val events = StopTool
-        .execute(StopInput(), turnContextFor(convId))
+      val events = CancelTool
+        .execute(CancelInput(), turnContextFor(convId))
         .toList
       events.map { list =>
         list should have size 1
