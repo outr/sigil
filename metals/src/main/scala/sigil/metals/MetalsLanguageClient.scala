@@ -2,6 +2,7 @@ package sigil.metals
 
 import com.google.gson.JsonObject
 import org.eclipse.lsp4j.*
+import org.eclipse.lsp4j.jsonrpc.services.JsonNotification
 import org.eclipse.lsp4j.services.LanguageClient
 import rapid.Task
 
@@ -35,7 +36,9 @@ import scala.jdk.CollectionConverters.*
  * relevant methods.
  */
 final class MetalsLanguageClient(label: String,
-                                  onLogLine: AtomicReference[Option[String => Task[Unit]]])
+                                  onLogLine: AtomicReference[Option[String => Task[Unit]]],
+                                  onStatus: AtomicReference[Option[String => Task[Unit]]] =
+                                    new AtomicReference(None))
   extends LanguageClient {
 
   /** Action title to pick when Metals fires `showMessageRequest`.
@@ -170,6 +173,23 @@ final class MetalsLanguageClient(label: String,
 
   private def publishLine(line: String): Unit = {
     onLogLine.get().foreach(cb => cb(line).handleError(_ => Task.unit).startUnit())
+  }
+
+  /** Metals' progress-pulse notification (sigil bug #98). Routes the
+    * `text` field through `onStatus` so the in-flight tool's chip
+    * (typically `start_metals`) can surface what Metals is actually
+    * doing — "indexing scala/java sources", "compiling 47 files",
+    * etc. Without this handler lsp4j's GenericEndpoint logs an
+    * "Unsupported notification method: metals/status" warning and
+    * the progress pulse is dropped. */
+  @JsonNotification("metals/status")
+  def metalsStatus(params: Object): Unit = {
+    val text = params match {
+      case obj: JsonObject =>
+        Option(obj.get("text")).flatMap(t => Option(t.getAsString)).getOrElse("")
+      case _ => ""
+    }
+    if (text.nonEmpty) onStatus.get().foreach(cb => cb(text).handleError(_ => Task.unit).startUnit())
   }
 }
 

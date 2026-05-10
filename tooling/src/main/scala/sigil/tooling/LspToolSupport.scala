@@ -112,8 +112,22 @@ trait LspToolSupport extends sigil.tool.Tool {
       case Some(config) =>
         val root = manager.resolveRoot(filePath, config.rootMarkers)
         val uri = new File(filePath).toURI.toString
-        manager.session(languageId, root).flatMap(body(_, uri, root))
-          .handleError(e => Task.pure(onError(s"LSP error: ${e.getMessage}")))
+        manager.session(languageId, root).flatMap { session =>
+          // Bug #98 — register a status callback so server-extension
+          // progress (Metals' `metals/status`, etc.) surfaces in the
+          // tool's chip via `ctx.reportProgress`. Cleared on body
+          // exit so other concurrent calls don't see stale text.
+          session.setStatusCallback(Some(text =>
+            context.reportProgress(text).handleError(_ => Task.unit).startUnit()
+          ))
+          body(session, uri, root).map { result =>
+            session.setStatusCallback(None)
+            result
+          }.handleError { t =>
+            session.setStatusCallback(None)
+            Task.error(t)
+          }
+        }.handleError(e => Task.pure(onError(s"LSP error: ${e.getMessage}")))
     }
 
   /** Typed variant of [[withOpenDocument]] for `TypedOutputTool[I, O]`

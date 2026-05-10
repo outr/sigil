@@ -57,7 +57,18 @@ final class StartMetalsTool extends TypedTool[StartMetalsInput](
             // tool's ToolInvoke via `currentToolInvokeId`.
             val onLogLine: String => Task[Unit] =
               line => context.toolLog(line)
-            mm.ensureRunning(workspace, onLogLine = Some(onLogLine)).flatMap { name =>
+            // Bug #98 — Metals' `metals/status` notifications
+            // ("indexing scala/java sources", "compiling 47
+            // files") flow into the chip's progressMessage so the
+            // user sees what Metals is doing during the multi-
+            // minute build-import + index window.
+            val onStatus: String => Task[Unit] =
+              text => context.reportProgress(text)
+            // Initial pulse so the chip isn't blank during the
+            // 1-3 second window before Metals' first
+            // `metals/status` notification arrives.
+            context.reportProgress(s"Spawning Metals for ${workspace.getFileName}…").flatMap { _ =>
+            mm.ensureRunning(workspace, onLogLine = Some(onLogLine), onStatus = Some(onStatus)).flatMap { name =>
               // Bug #88 — also write LspServerConfig("scala") so
               // the framework's generic lsp_* tools find Metals as
               // their backend. No-op for apps without
@@ -92,6 +103,7 @@ final class StartMetalsTool extends TypedTool[StartMetalsInput](
                 s"start_metals failed: ${t.getMessage}",
                 isError = true
               )))
+            }
             }
         }
     })
