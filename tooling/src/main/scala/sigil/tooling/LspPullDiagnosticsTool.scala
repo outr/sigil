@@ -38,7 +38,8 @@ final class LspPullDiagnosticsTool(val manager: LspManager) extends TypedOutputT
   keywords = Set(
     "lsp", "diagnostics", "errors", "warnings", "problems", "lint",
     "analyze", "examine", "inspect", "review", "what's broken",
-    "fresh", "sync", "synchronous"
+    "fresh", "sync", "synchronous",
+    "scala", "type", "fix", "code", "language"
   ),
   examples = List(
     ToolExample(

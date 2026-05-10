@@ -44,7 +44,8 @@ final class LspDiagnosticsTool(val manager: LspManager) extends TypedOutputTool[
   keywords = Set(
     "lsp", "language", "diagnostics", "errors", "warnings", "problems",
     "lint", "compile-check", "analyze", "examine", "inspect", "review",
-    "evaluate", "what's broken", "issues", "semantic"
+    "evaluate", "what's broken", "issues", "semantic",
+    "scala", "type", "fix", "code"
   ),
   examples = List(
     ToolExample(

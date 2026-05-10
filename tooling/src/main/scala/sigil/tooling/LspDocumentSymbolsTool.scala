@@ -33,10 +33,10 @@ final class LspDocumentSymbolsTool(val manager: LspManager) extends TypedOutputT
       |`languageId` + `filePath` identify the document.
       |Returns `{filePath, entries: [{kind, name, position, depth}]}` — `depth = 0` is top-level.""".stripMargin,
   keywords = Set(
-    "lsp", "document", "symbols", "outline", "structure",
+    "lsp", "document", "symbols", "symbol", "outline", "structure",
     "what's in this file", "classes", "methods", "members",
     "examine", "inspect", "analyze", "review", "explore",
-    "code", "semantic"
+    "code", "semantic", "scala", "language", "navigate"
   ),
   examples = List(
     ToolExample(

@@ -42,7 +42,8 @@ final class LspFindReferencesTool(val manager: LspManager) extends TypedOutputTo
   keywords = Set(
     "lsp", "references", "usages", "callers", "who calls", "find usage",
     "examine", "inspect", "analyze", "review", "uses",
-    "where used", "find symbol", "semantic"
+    "where used", "find symbol", "semantic",
+    "scala", "language", "code", "navigate"
   ),
   examples = List(
     ToolExample(

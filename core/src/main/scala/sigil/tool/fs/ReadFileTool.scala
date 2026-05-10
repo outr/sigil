@@ -26,7 +26,10 @@ final class ReadFileTool(context: FileSystemContext)
       ToolExample("Read first 100 lines", ReadFileInput(filePath = "data.log", limit = Some(100))),
       ToolExample("Read lines 200-300", ReadFileInput(filePath = "data.log", offset = Some(200), limit = Some(100)))
     ),
-    keywords = Set("file", "read", "open", "cat", "view")
+    keywords = Set(
+      "file", "read", "open", "cat", "view",
+      "contents", "source", "examine", "inspect", "load", "show"
+    )
   ) {
   // Bug #86 — generic primitive: ranks below domain-specific
   // tools when both match a query.

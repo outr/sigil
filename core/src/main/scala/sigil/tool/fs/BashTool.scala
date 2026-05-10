@@ -25,7 +25,10 @@ final class BashTool(context: FileSystemContext)
       ToolExample("List a directory", BashInput(command = "ls -la /tmp")),
       ToolExample("Run a build with custom timeout", BashInput(command = "cargo build --release", timeoutMs = Some(600000L)))
     ),
-    keywords = Set("bash", "shell", "command", "exec", "run", "sh")
+    keywords = Set(
+      "bash", "shell", "command", "exec", "run", "sh",
+      "script", "terminal", "execute", "invoke", "system"
+    )
   ) {
   // Bug #86 — generic primitive: ranks below domain-specific
   // tools when both match a query.

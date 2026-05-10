@@ -23,7 +23,10 @@ final class GrepTool(context: FileSystemContext)
       ToolExample("Find TODOs in Scala source", GrepInput(path = "src", pattern = "TODO", glob = Some("**/*.scala"))),
       ToolExample("Find function definition with context", GrepInput(path = ".", pattern = "def myFunction", contextLines = 2))
     ),
-    keywords = Set("grep", "search", "regex", "find", "match", "lines")
+    keywords = Set(
+      "grep", "search", "regex", "find", "match", "lines",
+      "lookup", "ripgrep", "rg", "code", "text", "files", "pattern"
+    )
   ) {
   // Bug #86 — generic primitive: ranks below domain-specific tools
   // (LSP/BSP, typed inspectors) when both match a query, but stays

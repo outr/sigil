@@ -17,7 +17,10 @@ final class GlobTool(context: FileSystemContext)
       ToolExample("Scala sources under src", GlobInput(basePath = "src", pattern = "**/*.scala")),
       ToolExample("Top-level docs", GlobInput(basePath = ".", pattern = "*.md"))
     ),
-    keywords = Set("glob", "find", "list", "files", "pattern")
+    keywords = Set(
+      "glob", "find", "list", "files", "pattern",
+      "directory", "tree", "match", "wildcard", "path", "discover"
+    )
   ) {
   // Bug #86 — generic primitive: ranks below domain-specific
   // tools when both match a query.
