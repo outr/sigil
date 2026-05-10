@@ -44,6 +44,14 @@ final class LspSession(val config: LspServerConfig,
   def cachedCodeActions(uri: String): List[LspEither[Command, CodeAction]] =
     Option(lastCodeActions.get(uri)).getOrElse(Nil)
 
+  /** Install (or clear with `None`) a per-call status callback. The
+    * client routes server-extension status notifications (Metals'
+    * `metals/status` etc.) into this callback so the active tool's
+    * chip can surface live progress. Sigil bug #98 — typically wired
+    * by [[LspToolSupport.withSessionTyped]] around the tool body. */
+  def setStatusCallback(cb: Option[String => Unit]): Unit =
+    client.setStatusCallback(cb)
+
   def touch(): Unit = lastUseAt.set(System.currentTimeMillis())
   def idleSince: Long = lastUseAt.get()
 

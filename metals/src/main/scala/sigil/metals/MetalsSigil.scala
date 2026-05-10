@@ -89,8 +89,12 @@ trait MetalsSigil extends Sigil with McpSigil {
   def metalsLanguageClient(label: String,
                            onLogLine: java.util.concurrent.atomic.AtomicReference[
                              Option[String => rapid.Task[Unit]]
-                           ]): org.eclipse.lsp4j.services.LanguageClient =
-    new MetalsLanguageClient(label, onLogLine)
+                           ],
+                           onStatus: java.util.concurrent.atomic.AtomicReference[
+                             Option[String => rapid.Task[Unit]]
+                           ] = new java.util.concurrent.atomic.AtomicReference(None)
+                          ): org.eclipse.lsp4j.services.LanguageClient =
+    new MetalsLanguageClient(label, onLogLine, onStatus)
 
   /**
    * The single per-Sigil Metals manager. Lazy so the reaper /

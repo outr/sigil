@@ -82,6 +82,7 @@ final class MetalsManager(host: MetalsSigil) {
                                  @volatile var lastUsedMs: Long,
                                  @volatile var stderrDrainerRef: Option[Thread],
                                  onLogLine: AtomicReference[Option[String => Task[Unit]]],
+                                 onStatus: AtomicReference[Option[String => Task[Unit]]],
                                  ready: CompletableFuture[String])
 
   /** True iff the entry's subprocess has been spawned and is still
@@ -117,7 +118,8 @@ final class MetalsManager(host: MetalsSigil) {
    * reference (`metals-<hash>`).
    */
   def ensureRunning(workspace: Path,
-                    onLogLine: Option[String => Task[Unit]] = None): Task[String] = Task.defer {
+                    onLogLine: Option[String => Task[Unit]] = None,
+                    onStatus: Option[String => Task[Unit]] = None): Task[String] = Task.defer {
     val canonical = workspace.toAbsolutePath.normalize
     val key = canonical.toString
     val name = MetalsWorkspaceKey.of(canonical)
@@ -146,6 +148,7 @@ final class MetalsManager(host: MetalsSigil) {
         lastUsedMs       = System.currentTimeMillis(),
         stderrDrainerRef = None,
         onLogLine        = new AtomicReference(onLogLine),
+        onStatus         = new AtomicReference(onStatus),
         ready            = new CompletableFuture[String]()
       )
       ownerSentinel.set(placeholder)
@@ -163,11 +166,12 @@ final class MetalsManager(host: MetalsSigil) {
         Task.error(t)
       }
     } else {
-      // Existing entry — refresh the line callback so this caller's
+      // Existing entry — refresh both callbacks so this caller's
       // chip receives Metals output going forward, then await
       // rendezvous (no-op if already settled).
       entry.lastUsedMs = System.currentTimeMillis()
       entry.onLogLine.set(onLogLine)
+      entry.onStatus.set(onStatus)
       fromCompletableFuture(entry.ready)
     }
   }
@@ -277,7 +281,7 @@ final class MetalsManager(host: MetalsSigil) {
               // Launcher. Metals only does work after `initialize`
               // + `initialized` land; bug #70 was that we'd
               // spawned the subprocess without ever sending them.
-              startLspLauncher(entry, name, entry.onLogLine).flatMap { _ =>
+              startLspLauncher(entry, name, entry.onLogLine, entry.onStatus).flatMap { _ =>
                 control.step("Metals LSP initialize complete; waiting for endpoint")
                   .flatMap(_ => waitForReady(entry, control, tail))
                   .map { workspaceKey =>
@@ -314,7 +318,8 @@ final class MetalsManager(host: MetalsSigil) {
     * caller proceed to poll for `.metals/mcp.json`. */
   private def startLspLauncher(entry: Entry,
                                 label: String,
-                                onLogLine: AtomicReference[Option[String => Task[Unit]]]): Task[Unit] =
+                                onLogLine: AtomicReference[Option[String => Task[Unit]]],
+                                onStatus: AtomicReference[Option[String => Task[Unit]]]): Task[Unit] =
     Task.defer {
       // Caller (spawnAndResolve) populates entry.processRef before
       // invoking this method; treat the absence as a programmer
@@ -322,7 +327,7 @@ final class MetalsManager(host: MetalsSigil) {
       val process = entry.processRef.getOrElse(throw new IllegalStateException(
         s"MetalsManager.startLspLauncher: entry ${entry.workspaceKey} has no live process"
       ))
-      val client: LanguageClient = host.metalsLanguageClient(label, onLogLine)
+      val client: LanguageClient = host.metalsLanguageClient(label, onLogLine, onStatus)
       val executor = Executors.newSingleThreadExecutor { r =>
         val t = new Thread(r, s"sigil-metals-lsp-$label")
         t.setDaemon(true)
