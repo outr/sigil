@@ -18,7 +18,12 @@ import sigil.tool.{Tool, ToolName}
  * unauthorized callers.
  */
 object ProviderTools {
-  val all: List[Tool] = List(SwitchModelTool, ListProviderStrategiesTool)
+  val all: List[Tool] = List(
+    SwitchModelTool,
+    ListProviderStrategiesTool,
+    CurrentModelTool,
+    ListModelsTool
+  )
 
   val toolNames: List[ToolName] = all.map(_.name)
 }

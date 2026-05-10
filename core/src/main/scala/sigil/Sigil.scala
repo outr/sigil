@@ -990,6 +990,51 @@ trait Sigil {
         withDB(_.providerStrategies.transaction(_.get(strategyId))).map(_.map(materializeStrategy))
     }
 
+  /** The model id stamped on the most recent agent [[Message]] in
+    * `conversationId`, when one exists. Reads `Message.modelId`
+    * (populated by the orchestrator at settle-time from the resolved
+    * `ConversationRequest.modelId`), so a mid-conversation pin /
+    * strategy swap is reflected here.
+    *
+    * `None` for fresh conversations and for conversations where the
+    * orchestrator hasn't yet stamped any agent Message (e.g. the
+    * agent's only emissions so far are tool results). */
+  def lastUsedModel(conversationId: Id[Conversation]): Task[Option[Id[Model]]] =
+    withDB(_.events.transaction(_.list)).map { events =>
+      events.iterator
+        .collect { case m: sigil.event.Message if m.conversationId == conversationId => m }
+        .filter(_.modelId.isDefined)
+        .toList
+        .sortBy(-_.timestamp.value)
+        .headOption
+        .flatMap(_.modelId)
+    }
+
+  /** Resolve the model id this conversation would dispatch to on the
+    * next turn — the same lookup chain `runAgentTurn` uses, exposed as
+    * a read-only helper for introspection (e.g. [[CurrentModelTool]]).
+    * Order: [[sigil.conversation.Conversation.pinnedModelId]] →
+    * [[sigil.provider.Mode.strategyId]] →
+    * [[resolveProviderStrategy]] for the conversation's space → first
+    * candidate for the conversation's effective work type. Returns
+    * `None` when no resolution layer applies (a deeply un-configured
+    * Sigil where dispatch would itself error). */
+  def currentModelFor(conversation: sigil.conversation.Conversation): Task[Option[Id[Model]]] = {
+    val workType = conversation.currentMode.workType.getOrElse(sigil.provider.ConversationWork)
+    conversation.pinnedModelId match {
+      case Some(pinned) => Task.pure(Some(pinned))
+      case None =>
+        conversation.currentMode.strategyId match {
+          case Some(modeStrategyId) =>
+            withDB(_.providerStrategies.transaction(_.get(modeStrategyId)))
+              .map(_.map(materializeStrategy).flatMap(_.availableCandidates(workType).headOption.map(_.modelId)))
+          case None =>
+            resolveProviderStrategy(conversation.space)
+              .map(_.flatMap(_.availableCandidates(workType).headOption.map(_.modelId)))
+        }
+    }
+  }
+
   /** Default record → strategy materializer. Override to swap in a
     * custom [[sigil.provider.ProviderStrategy]] (round-robin,
     * cost-aware routing, etc.) using the persisted record as a
