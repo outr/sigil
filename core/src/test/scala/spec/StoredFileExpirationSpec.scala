@@ -34,7 +34,7 @@ class StoredFileExpirationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "report `isExpired` accurately based on the current clock" in {
       val past = sigil.storage.StoredFile(
         space = TestSpace, path = "p1", contentType = "text/plain", size = 1,
-        category = StoredFileCategory.ToolOutput, expiresAt = Some(msAgo(1000))
+        category = StoredFileCategory.ExternalizedContent, expiresAt = Some(msAgo(1000))
       )
       val future = past.copy(expiresAt = Some(msAhead(60_000)))
       val never  = past.copy(expiresAt = None)
@@ -51,15 +51,15 @@ class StoredFileExpirationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         attachment <- TestSigil.storeBytes(TestSpace, "userdata".getBytes, "text/plain",
                                            category = StoredFileCategory.UserAttachment)
         toolFresh  <- TestSigil.storeBytes(TestSpace, "fresh-output".getBytes, "text/plain",
-                                           category = StoredFileCategory.ToolOutput,
+                                           category = StoredFileCategory.ExternalizedContent,
                                            expiresAt = Some(msAhead(60_000)))
         toolStale  <- TestSigil.storeBytes(TestSpace, "stale-output".getBytes, "text/plain",
-                                           category = StoredFileCategory.ToolOutput,
+                                           category = StoredFileCategory.ExternalizedContent,
                                            expiresAt = Some(msAgo(1000)))
         userOnly   <- TestSigil.listStoredFiles(TestUser, categories = Some(Set(StoredFileCategory.UserAttachment)))
-        toolDefault <- TestSigil.listStoredFiles(TestUser, categories = Some(Set(StoredFileCategory.ToolOutput)))
+        toolDefault <- TestSigil.listStoredFiles(TestUser, categories = Some(Set(StoredFileCategory.ExternalizedContent)))
         toolWithExpired <- TestSigil.listStoredFiles(TestUser,
-                                                     categories = Some(Set(StoredFileCategory.ToolOutput)),
+                                                     categories = Some(Set(StoredFileCategory.ExternalizedContent)),
                                                      includeExpired = true)
       } yield {
         userOnly.map(_.fileId).toSet shouldBe Set(attachment._id)
@@ -74,10 +74,10 @@ class StoredFileExpirationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val sweep = StoredFileExpirationSweep(interval = 1.hour)
       for {
         fresh    <- TestSigil.storeBytes(TestSpace, "fresh".getBytes, "text/plain",
-                                         category = StoredFileCategory.ToolOutput,
+                                         category = StoredFileCategory.ExternalizedContent,
                                          expiresAt = Some(msAhead(60_000)))
         stale    <- TestSigil.storeBytes(TestSpace, "stale".getBytes, "text/plain",
-                                         category = StoredFileCategory.ToolOutput,
+                                         category = StoredFileCategory.ExternalizedContent,
                                          expiresAt = Some(msAgo(1000)))
         persist  <- TestSigil.storeBytes(TestSpace, "persist".getBytes, "text/plain",
                                          category = StoredFileCategory.UserAttachment,

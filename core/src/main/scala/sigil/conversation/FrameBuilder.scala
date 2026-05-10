@@ -66,12 +66,6 @@ object FrameBuilder {
             case ResponseContent.Link(url, label)   => s"$label $url"
             case other                              => other.toString
           }.mkString("\n")
-        case tr: ToolResults if tr.outputId.isDefined =>
-          val pointer = s"[output externalized: outputId=${tr.outputId.get.value} — call `tool_output_get` to read]"
-          tr.summary match {
-            case Some(s) if s.nonEmpty => s + "\n" + pointer
-            case _                     => pointer
-          }
         case tr: ToolResults if tr.typed.isDefined =>
           JsonFormatter.Compact(tr.typed.get)
         case other =>
@@ -229,17 +223,6 @@ object FrameBuilder {
             case ResponseContent.Link(url, label)   => s"$label $url"
             case other                              => other.toString
           }.mkString("\n")
-        case tr: ToolResults if tr.outputId.isDefined =>
-          // Bug #9 phase 4 — when the tool's full payload was
-          // externalized to a `Category.ToolOutput` StoredFile, fold
-          // only the inline summary into the agent's context. The
-          // agent reaches the full payload via `tool_output_get`
-          // (Phase 5).
-          val pointer = s"[output externalized: outputId=${tr.outputId.get.value} — call `tool_output_get` to read]"
-          tr.summary match {
-            case Some(s) if s.nonEmpty => s + "\n" + pointer
-            case _                     => pointer
-          }
         case tr: ToolResults if tr.typed.isDefined =>
           // Typed-output tool (TypedOutputTool[I, O]) — fold the
           // structured JSON directly so the agent's view is the

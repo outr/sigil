@@ -1,46 +1,73 @@
 package sigil.tool.fs
 
-import rapid.Task
+import rapid.{Stream, Task}
 import sigil.TurnContext
-import sigil.tool.model.{GrepInput, GrepOutput}
-import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
+import sigil.tool.model.GrepInput
+import sigil.tool.output.{Node, PaginatedTool}
+import sigil.tool.{ToolExample, ToolName}
 
 /**
- * Search files under a path for a regex pattern. `glob` (optional)
- * restricts the file set; `contextLines` adds before/after context.
- * Emits a typed [[GrepOutput]] carrying the structured match list
- * — agents iterate `matches` and pattern-match on `filePath` /
- * `lineNumber` without parsing JSON.
+ * Search files under a path for a regex pattern. Tree-shaped
+ * paginated output:
+ *   - top-level nodes are [[GrepNode.FileMatch]] records (one
+ *     per file with at least one hit)
+ *   - each file node carries `hasChildren = true`; expanding it
+ *     via `next_page` returns its [[GrepNode.LineMatch]] children
+ *
+ * Replaces the prior typed-blob shape — bulk grep no longer
+ * externalizes to a per-call pointer that the agent has to
+ * navigate via `tool_output_get`. The first page of files lands
+ * inline; the rest paginate via [[sigil.tool.output.NextPageTool]].
  */
-final class GrepTool(context: FileSystemContext)
-  extends TypedOutputTool[GrepInput, GrepOutput](
-    name = ToolName("grep"),
-    description =
-      """Search files under `path` for a regex pattern. `glob` optionally restricts the file set;
-        |`contextLines` adds surrounding-context output to each match. Returns
-        |`{matches: [{filePath, lineNumber, content, contextBefore, contextAfter}], count}`.""".stripMargin,
-    examples = List(
-      ToolExample("Find TODOs in Scala source", GrepInput(path = "src", pattern = "TODO", glob = Some("**/*.scala"))),
-      ToolExample("Find function definition with context", GrepInput(path = ".", pattern = "def myFunction", contextLines = 2))
-    ),
-    keywords = Set(
-      "grep", "search", "regex", "find", "match", "lines",
-      "lookup", "ripgrep", "rg", "code", "text", "files", "pattern",
-      "scan", "look", "occurrence", "string"
-    )
-  ) {
+final class GrepTool(context: FileSystemContext) extends PaginatedTool[GrepInput, GrepNode](
+  name = ToolName("grep"),
+  description =
+    """Search files under `path` for a regex pattern. `glob` optionally restricts the file set;
+      |`contextLines` adds surrounding-context lines to each match.
+      |
+      |Returns a paginated tree: the top-level page lists files (one node per file with
+      |at least one match, with `matchCount`). Expand a file's matches with `next_page`
+      |against the file node's `_id` (carried in the prior page's `nodeIds`).""".stripMargin,
+  examples = List(
+    ToolExample("Find TODOs in Scala source", GrepInput(path = "src", pattern = "TODO", glob = Some("**/*.scala"))),
+    ToolExample("Find function definition with context", GrepInput(path = ".", pattern = "def myFunction", contextLines = 2))
+  ),
+  keywords = Set(
+    "grep", "search", "regex", "find", "match", "lines",
+    "lookup", "ripgrep", "rg", "code", "text", "files", "pattern",
+    "scan", "look", "occurrence", "string"
+  )
+) {
   // Bug #86 — generic primitive: ranks below domain-specific tools
   // (LSP/BSP, typed inspectors) when both match a query, but stays
   // findable when nothing more specific applies.
   override def preferIfNoBetter: Boolean = true
 
-  override protected def executeTyped(input: GrepInput, ctx: TurnContext): Task[GrepOutput] =
-    WorkspacePathResolver.resolve(ctx, input.path).flatMap { base =>
-      context.searchFiles(base, input.pattern, input.glob, input.maxMatches, input.contextLines).map { matches =>
-        GrepOutput(matches = matches.toList, count = matches.size)
+  override protected def executeStream(input: GrepInput, ctx: TurnContext): Stream[Node[GrepNode]] =
+    Stream.force(
+      WorkspacePathResolver.resolve(ctx, input.path).flatMap { base =>
+        context.searchFiles(base, input.pattern, input.glob, input.maxMatches, input.contextLines).map { matches =>
+          // Group by file. Each file becomes a top-level Node with
+          // its line-matches as child Nodes (lazy children stream
+          // built from the grouped list).
+          val byFile = matches.groupBy(_.filePath).toList.sortBy(_._1)
+          Stream.fromIterator(Task.pure(byFile.iterator.map { case (filePath, fileMatches) =>
+            val children = Stream.fromIterator(Task.pure(
+              fileMatches.iterator.map { m =>
+                Node.leaf[GrepNode](GrepNode.LineMatch(
+                  lineNumber    = m.lineNumber,
+                  content       = m.content,
+                  contextBefore = m.contextBefore,
+                  contextAfter  = m.contextAfter
+                ))
+              }
+            ))
+            Node.parent[GrepNode](
+              payload  = GrepNode.FileMatch(filePath = filePath, matchCount = fileMatches.size),
+              children = children
+            )
+          }))
+        }
       }
-    }
-
-  override protected def summarize(out: GrepOutput, jsonRendered: String): String =
-    s"[grep ${out.count} match(es) — externalized; call tool_output_get to read]"
+    )
 }

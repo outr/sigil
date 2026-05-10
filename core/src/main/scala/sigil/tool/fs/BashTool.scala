@@ -1,58 +1,54 @@
 package sigil.tool.fs
 
-import rapid.Task
+import rapid.{Stream, Task}
 import sigil.TurnContext
-import sigil.tool.model.{BashInput, BashOutput}
-import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
+import sigil.tool.model.BashInput
+import sigil.tool.output.{Node, PaginatedTool}
+import sigil.tool.{ToolExample, ToolName}
 
 /**
- * Execute a shell command via the [[FileSystemContext]]. Emits a
- * typed [[BashOutput]] carrying `stdout`, `stderr`, and `exitCode`
- * — agents pattern-match on the exit code or slice the streams
- * directly via [[TypedOutputTool.invoke]], no JSON parsing
- * required.
+ * Execute a shell command via the [[FileSystemContext]]. Paginated
+ * output:
+ *   - stdout lines surface as [[BashLine.Stdout]] nodes in arrival order
+ *   - stderr lines as [[BashLine.Stderr]] nodes
+ *   - the process's exit code lands as a single trailing [[BashLine.Exit]] node
  *
  * Apps that want sandboxing pass a `LocalFileSystemContext(basePath)`
  * that confines the command's working directory.
  */
-final class BashTool(context: FileSystemContext)
-  extends TypedOutputTool[BashInput, BashOutput](
-    name = ToolName("bash"),
-    description =
-      """Execute a shell command (via `bash -c`). Optional `workingDir` sets the cwd; `timeoutMs` defaults to
-        |120 s. Returns `{stdout, stderr, exitCode}`. Output is truncated to ~100KB per stream.""".stripMargin,
-    examples = List(
-      ToolExample("List a directory", BashInput(command = "ls -la /tmp")),
-      ToolExample("Run a build with custom timeout", BashInput(command = "cargo build --release", timeoutMs = Some(600000L)))
-    ),
-    keywords = Set(
-      "bash", "shell", "command", "exec", "run", "sh",
-      "script", "terminal", "execute", "invoke", "system",
-      "cli", "process", "spawn", "subprocess"
-    )
-  ) {
+final class BashTool(context: FileSystemContext) extends PaginatedTool[BashInput, BashLine](
+  name = ToolName("bash"),
+  description =
+    """Execute a shell command (via `bash -c`). Optional `workingDir` sets the cwd; `timeoutMs` defaults
+      |to 120 s. Output paginates: stdout lines first (in arrival order), then stderr, then a single
+      |Exit row carrying the exit code. The first page lands inline; subsequent pages via `next_page`.""".stripMargin,
+  examples = List(
+    ToolExample("List a directory", BashInput(command = "ls -la /tmp")),
+    ToolExample("Run a build with custom timeout", BashInput(command = "cargo build --release", timeoutMs = Some(600000L)))
+  ),
+  keywords = Set(
+    "bash", "shell", "command", "exec", "run", "sh",
+    "script", "terminal", "execute", "invoke", "system",
+    "cli", "process", "spawn", "subprocess"
+  )
+) {
   // Bug #86 — generic primitive: ranks below domain-specific
   // tools when both match a query.
   override def preferIfNoBetter: Boolean = true
 
-  override protected def executeTyped(input: BashInput, ctx: TurnContext): Task[BashOutput] =
-    // `workingDir` resolves against the conversation's workspace
-    // when supplied; when omitted, the workspace itself becomes
-    // the cwd so commands like `bash "ls"` operate on the right
-    // project. Apps without a workspace fall through to JVM cwd
-    // (existing behavior).
-    WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
-      context.executeCommand(input.command, dir, input.timeoutMs.getOrElse(120000L)).map { r =>
-        BashOutput(stdout = r.stdout, stderr = r.stderr, exitCode = r.exitCode)
+  override protected def executeStream(input: BashInput, ctx: TurnContext): Stream[Node[BashLine]] =
+    Stream.force(
+      WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
+        context.executeCommand(input.command, dir, input.timeoutMs.getOrElse(120000L)).map { r =>
+          val stdoutLines =
+            if (r.stdout.isEmpty) Iterator.empty
+            else r.stdout.split('\n').iterator.map(l => Node.leaf[BashLine](BashLine.Stdout(l)))
+          val stderrLines =
+            if (r.stderr.isEmpty) Iterator.empty
+            else r.stderr.split('\n').iterator.map(l => Node.leaf[BashLine](BashLine.Stderr(l)))
+          val exitNode = Iterator.single(Node.leaf[BashLine](BashLine.Exit(r.exitCode)))
+          Stream.fromIterator(Task.pure(stdoutLines ++ stderrLines ++ exitNode))
+        }
       }
-    }
-
-  /** Compact summary for the externalization path — show exit code
-    * and a few lines of stdout. Most bash commands fit under the
-    * threshold and ride inline; long builds spill to a StoredFile
-    * with this summary visible to the agent. */
-  override protected def summarize(out: BashOutput, jsonRendered: String): String = {
-    val streamPreview = out.stdout.take(200).replaceAll("\n", " ").trim
-    s"[bash exit=${out.exitCode}, stdout starts: ${streamPreview}…]"
-  }
+    )
 }
