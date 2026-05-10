@@ -513,6 +513,24 @@ trait Provider {
       val agentId = c.chain.lastOption
       val toolChoice =
         if (c.tools.isEmpty) ToolChoice.None else ToolChoice.Required
+      // Adaptive max_tokens — when the paraphrase detector has
+      // flagged a planning-without-acting loop on this turn (signal
+      // lives in `turnInput.extraContext`), cap the per-call
+      // generation budget so a degenerate model can't run all the
+      // way to its default `maxOutputTokens` producing kilobytes of
+      // repeated text. Damage bounded; the agent's next iteration
+      // reads the loop diagnostic and can self-correct.
+      val gen =
+        if (c.turnInput.extraContext.exists { case (k, _) =>
+              k.value == _root_.sigil.conversation.compression.ParaphraseLoopDetector.ContextKeyValue
+            }) {
+          val cap: Int = Provider.ParaphraseLoopMaxOutputTokensCap
+          val tightened: Option[Int] = c.generationSettings.maxOutputTokens match {
+            case Some(existing) => Some(math.min(existing, cap))
+            case None           => Some(cap)
+          }
+          c.generationSettings.copy(maxOutputTokens = tightened)
+        } else c.generationSettings
       val providerCall = ProviderCall(
         modelId = c.modelId,
         system = renderSystem(c, resolved),
@@ -520,7 +538,7 @@ trait Provider {
         tools = c.tools,
         builtInTools = c.builtInTools,
         toolChoice = toolChoice,
-        generationSettings = c.generationSettings,
+        generationSettings = gen,
         currentMode = c.currentMode
       )
       // Diagnostic profiling — gated on `Sigil.profileWireRequests`
@@ -945,4 +963,17 @@ trait Provider {
     flush()
     out.result()
   }
+}
+
+object Provider {
+
+  /** Adaptive `max_tokens` cap applied when the paraphrase loop
+    * detector has flagged this turn — bounds the damage when a
+    * degenerate model is about to retry the same content. Default
+    * 500 is informed by the live wire-log scenario where
+    * `qwen3.6-35b` produced ~200k chars of repeated output before
+    * hitting `max_tokens = 4096`. Smaller cap means the next
+    * iteration sees the failure quickly and can self-correct via
+    * the Failure-block diagnostic the orchestrator emits. */
+  val ParaphraseLoopMaxOutputTokensCap: Int = 500
 }

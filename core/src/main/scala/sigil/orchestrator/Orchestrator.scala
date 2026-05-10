@@ -7,7 +7,7 @@ import sigil.Sigil
 import sigil.conversation.{ContextFrame, Conversation, Topic, TopicShiftResult}
 import sigil.event.{Event, Message, MessageRole, MessageVisibility, Reasoning, TopicChange, TopicChangeKind, ToolInvoke}
 import sigil.participant.ParticipantId
-import sigil.provider.{CallId, ConversationRequest, Provider, ProviderEvent}
+import sigil.provider.{CallId, ConversationRequest, Provider, ProviderEvent, StopReason}
 import sigil.signal.{MessageContentDelta, ContentKind, EventState, ImageDelta, MessageDelta, Signal, StateDelta, ToolDelta}
 import sigil.tool.model.{MarkdownContentParser, RespondInput, ResponseContent}
 import sigil.tool.ToolName
@@ -541,7 +541,7 @@ object Orchestrator {
             }
         }
 
-      case ProviderEvent.Done(_)                          =>
+      case ProviderEvent.Done(stopReason)                 =>
         // Settle any in-flight tool call before terminating. If the
         // provider stream ends between `ToolCallStart` and
         // `ToolCallComplete` (token-budget cutoff, network drop, mid-args
@@ -549,6 +549,44 @@ object Orchestrator {
         // `state=Active` in the events store forever, and clients reading
         // that state believe the agent is still working.
         val closeOrphan = settleOrphanToolInvoke(state, convId)
+        // Detect token-level repetition loops — the model hit
+        // max_tokens AND the accumulated text is dominated by a
+        // single repeated sentence. Surface as a Failure-block
+        // Tool-role Message so the next agent iteration sees the
+        // diagnostic and self-corrects rather than reading the
+        // 200k-char tail back into the prompt.
+        val degenerateDiagnostic: List[Signal] = stopReason match {
+          case StopReason.MaxTokens =>
+            val text = state.turnBuffer.toString
+            _root_.sigil.provider.DegenerateContentDetector.Default.detect(text) match {
+              case Some(hit) =>
+                scribe.warn(s"orchestrator: degenerate generation detected (${hit.occurrences}/${hit.totalSentences} sentences " +
+                  s"= ${math.round(hit.share * 100)}% repetition) in conversation $convId — emitting Failure diagnostic")
+                val syntheticInvokeId = Event.id()
+                val syntheticInvoke = ToolInvoke(
+                  toolName       = ToolName("_degenerate_generation"),
+                  participantId  = caller,
+                  conversationId = convId,
+                  topicId        = topicId,
+                  _id            = syntheticInvokeId,
+                  state          = EventState.Complete,
+                  internal       = true
+                )
+                val diagnostic = Message(
+                  participantId  = caller,
+                  conversationId = convId,
+                  topicId        = topicId,
+                  role           = MessageRole.Tool,
+                  content        = Vector(ResponseContent.Failure(reason = hit.renderDiagnostic(text.length), recoverable = true)),
+                  state          = EventState.Complete,
+                  visibility     = MessageVisibility.Agents,
+                  origin         = Some(syntheticInvokeId)
+                )
+                List[Signal](syntheticInvoke, diagnostic)
+              case None => Nil
+            }
+          case _ => Nil
+        }
         if (!state.extractorFired) {
           state.extractorFired = true
           fireMemoryExtractor(sigil, request, state).startUnit()
@@ -607,7 +645,7 @@ object Orchestrator {
             )
             List[Signal](syntheticInvoke, diagnosticMessage)
           } else Nil
-        Stream.emits(closeOrphan ++ plainTextDiagnostic)
+        Stream.emits(closeOrphan ++ plainTextDiagnostic ++ degenerateDiagnostic)
       case ProviderEvent.Error(msg)                       =>
         // Bug #50 — surface the provider/validator failure as a
         // Tool-role Message so the agent's next iteration sees a
