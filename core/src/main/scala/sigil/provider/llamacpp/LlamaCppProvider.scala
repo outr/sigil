@@ -22,7 +22,14 @@ import scala.util.Success
 case class LlamaCppProvider(url: URL,
                             override val models: List[Model],
                             sigilRef: Sigil,
-                            streamTimeout: FiniteDuration = 120.seconds) extends Provider {
+                            /** Per-read idle timeout for the SSE stream. spice's
+                              * okhttp client wires this through to okhttp's
+                              * `readTimeout`, which fires only when NO bytes
+                              * arrive for the duration. Slow-but-working models
+                              * (tokens trickling steadily) keep streaming
+                              * indefinitely; genuinely stuck streams fail
+                              * within `tokenIdleTimeout`. Default 120s. */
+                            tokenIdleTimeout: FiniteDuration = 120.seconds) extends Provider {
   override def `type`: ProviderType = ProviderType.LlamaCpp
   override val providerKey: String = LlamaCpp.Provider
 
@@ -100,10 +107,10 @@ case class LlamaCppProvider(url: URL,
     task.sync()
   }
 
-  /** Hard wall-clock cap on `/apply-template`. Distinct from
-    * `streamTimeout` (which gates the chat-completions stream) —
-    * pre-flight estimate is single-roundtrip work that must fail
-    * fast on backend stall. Bug #54. */
+  /** Hard wall-clock cap on `/apply-template`. Pre-flight estimate
+    * is single-roundtrip work that must fail fast on backend
+    * stall — distinct from the streaming chat-completions path
+    * (which uses the per-read idle timeout). */
   protected def estimateTimeout: FiniteDuration = 5.seconds
 
   /** Serialize the uniform [[ProviderCall]] to a llama.cpp / OpenAI-compatible
@@ -115,15 +122,15 @@ case class LlamaCppProvider(url: URL,
       for {
         raw         <- httpRequestFor(input)
         intercepted <- sigilRef.wireInterceptor.before(raw)
-        lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(streamTimeout).streamLines()
+        lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLines()
       } yield {
-        // Bug #77 — overall stream-lifetime deadline; see OpenAIProvider rationale.
-        // Wire-interceptor capture: tap the stream to accumulate the full SSE
-        // body and dispatch Success/Failure to `.after()` based on whether the
-        // stream completed cleanly or raised. Spice's `streamLines()` would
-        // otherwise bypass the interceptor chain entirely.
+        // okhttp's per-read timeout (configured via HttpClient.timeout)
+        // already errors the stream when no bytes arrive for
+        // `tokenIdleTimeout` — slow-but-working models keep streaming;
+        // genuinely stuck streams fail naturally. No additional
+        // wall-clock kill at the rapid-Stream layer.
         _root_.sigil.provider.debug.StreamWireInterceptor.attach(
-          lines.timeout(streamTimeout), sigilRef.wireInterceptor, intercepted
+          lines, sigilRef.wireInterceptor, intercepted
         ) { line =>
           Stream.emits(parseLine(line, state))
         }

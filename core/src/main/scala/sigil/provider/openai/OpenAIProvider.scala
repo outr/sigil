@@ -46,7 +46,13 @@ import scala.util.Success
 case class OpenAIProvider(apiKey: String,
                           sigilRef: Sigil,
                           baseUrl: URL = url"https://api.openai.com",
-                          streamTimeout: FiniteDuration = 120.seconds) extends Provider {
+                          /** Per-read idle timeout for the SSE stream. Wired
+                            * through to okhttp's `readTimeout` — fires only
+                            * when no bytes arrive for the duration. Slow-but-
+                            * working models stream as long as their tokens
+                            * keep flowing; genuinely stalled streams fail
+                            * within `tokenIdleTimeout`. */
+                          tokenIdleTimeout: FiniteDuration = 120.seconds) extends Provider {
   override def `type`: ProviderType = ProviderType.OpenAI
   override val providerKey: String = OpenAI.Provider
   override protected def sigil: Sigil = sigilRef
@@ -64,17 +70,13 @@ case class OpenAIProvider(apiKey: String,
       for {
         raw         <- httpRequestFor(input)
         intercepted <- sigilRef.wireInterceptor.before(raw)
-        lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(streamTimeout).streamLines()
+        lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLines()
       } yield {
-        // Bug #77 — enforce an overall stream-lifetime deadline at our
-        // level. Spice's `.timeout(streamTimeout)` configures Netty's
-        // per-poll timer, which keepalives from upstream (OpenAI's SSE
-        // `: keepalive` lines, periodic empty newlines) keep resetting —
-        // a stream that produces only keepalives never reaches netty's
-        // idle timeout and hangs the agent loop indefinitely. rapid's
-        // `Stream.timeout` checks a wall-clock deadline before every
-        // pull, so accumulated time across keepalives DOES trip it.
-        StreamWireInterceptor.attach(lines.timeout(streamTimeout), sigilRef.wireInterceptor, intercepted) { line =>
+        // okhttp's per-read timeout (configured via HttpClient.timeout)
+        // catches genuine network stalls — fires when no bytes arrive
+        // for `tokenIdleTimeout`. Slow-but-working streams keep going
+        // as long as their tokens flow.
+        StreamWireInterceptor.attach(lines, sigilRef.wireInterceptor, intercepted) { line =>
           Stream.emits(parseLine(line, state))
         }
       }

@@ -35,7 +35,10 @@ import scala.util.Success
 case class AnthropicProvider(apiKey: String,
                              sigilRef: Sigil,
                              baseUrl: URL = url"https://api.anthropic.com",
-                             streamTimeout: FiniteDuration = 120.seconds) extends Provider {
+                             /** Per-read idle timeout for the SSE stream. Fires
+                               * only when no bytes arrive for the duration —
+                               * slow-but-working streams keep going. */
+                             tokenIdleTimeout: FiniteDuration = 120.seconds) extends Provider {
   override def `type`: ProviderType = ProviderType.Anthropic
   override val providerKey: String = Anthropic.Provider
   override protected def sigil: Sigil = sigilRef
@@ -53,14 +56,13 @@ case class AnthropicProvider(apiKey: String,
       for {
         raw         <- httpRequestFor(input)
         intercepted <- sigilRef.wireInterceptor.before(raw)
-        lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(streamTimeout).streamLines()
+        lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLines()
       } yield {
-        // Bug #77 — overall stream-lifetime deadline; see OpenAIProvider
-        // for the rationale (keepalives keep netty's per-poll timer alive
-        // indefinitely; rapid's `Stream.timeout` is wall-clock-based and
-        // catches the stuck-but-trickling case).
+        // okhttp's per-read timeout already catches network stalls
+        // (no bytes for the duration); slow-but-working streams keep
+        // going as long as tokens flow.
         _root_.sigil.provider.debug.StreamWireInterceptor.attach(
-          lines.timeout(streamTimeout), sigilRef.wireInterceptor, intercepted
+          lines, sigilRef.wireInterceptor, intercepted
         ) { line =>
           Stream.emits(parseLine(line, state))
         }
