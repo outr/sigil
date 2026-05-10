@@ -22,9 +22,22 @@ object DiscoveryFilter {
 
   /** Mode + space affinity — independent of keyword matching. Used by
     * [[DbToolFinder]] as a post-filter on the Lucene-ranked results
-    * (Lucene handles keyword scoring; affinity is policy). */
+    * (Lucene handles keyword scoring; affinity is policy).
+    *
+    * Sigil bug #95 — `tool.modes.isEmpty` means "no mode preference;
+    * always discoverable." This makes [[sigil.tool.Tool.modes]] an
+    * **opt-in restriction**, not an opt-in inclusion. Tools that
+    * don't care about modes (most of them — `grep`, `read_file`,
+    * `lsp_*`, `bsp_*`) leave the field empty and stay discoverable
+    * under any mode whose policy is `Standard`/`Active`/`…`. Tools
+    * that should be mode-restricted explicitly populate `modes`
+    * with the discriminator(s) they want to be visible under.
+    *
+    * Space affinity: a tool whose `space` is [[sigil.GlobalSpace]]
+    * is visible to every caller; otherwise the caller's accessible
+    * spaces must include the tool's space. */
   def passesAffinity(tool: Tool, request: DiscoveryRequest): Boolean = {
-    val passesModeAffinity  = tool.modes.contains(request.mode.id)
+    val passesModeAffinity  = tool.modes.isEmpty || tool.modes.contains(request.mode.id)
     val passesSpaceAffinity = tool.space == sigil.GlobalSpace || request.callerSpaces.contains(tool.space)
     passesModeAffinity && passesSpaceAffinity
   }
