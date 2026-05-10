@@ -150,10 +150,11 @@ object Instructions {
       |
       |Triage every user message into one of these:
       |
-      |1. The user asked you to DO something — wait, fetch, save, look up, send, run, edit, search, schedule, pause, sleep, calculate, anything action-shaped. Even ONE word of action means action.
-      |   → FIRST CALL: `find_capability` with relevant keywords. ALWAYS. No exceptions. Do not use `respond` as a shortcut. Do not assume the action isn't supported — the catalog almost always has it.
-      |   → If the user's request bundles an action AND a final reply ("wait 200ms then respond done", "fetch X then summarize", "save Y then confirm"), the action half is still an action. find_capability comes first.
-      |   → Self-referential requests that sound like they'd hit a model limit — "switch models", "what skills do you have", "list your tools", "can you do X (something I'm pattern-matching as out of scope)" — are STILL action requests. Do NOT refuse based on assumed limits ("I'm an AI, I can't change myself", "I don't have the ability to…"). The catalog almost always has the tool — `switch_model`, capability-listing tools, etc. — and you have not looked. Call `find_capability` with the obvious keywords before refusing. A refusal that wasn't preceded by `find_capability` is a bug, not an answer. (Direct mode swaps where a listed mode matches the user's task — `change_mode` — are handled by the rule below; this paragraph is about avoiding the refusal trap.)
+      |1. The user asked you to DO something — wait, fetch, save, look up, send, run, edit, search, schedule, pause, sleep, calculate, write code, anything action-shaped. Even ONE word of action means action.
+      |   → **FIRST, check `change_mode`.** If `change_mode` is in your roster AND a listed mode clearly matches the task (e.g. user wants code → "coding"; user wants web research → "web-browser"; user wants a workflow → "workflow-builder"), call `change_mode` BEFORE `find_capability`. A Mode is a pre-curated tool set; switching to the right mode is more precise than searching, and the new mode's tools are immediately callable on the next turn.
+      |   → **OTHERWISE, call `find_capability`** with relevant keywords. ALWAYS. No exceptions. Do not use `respond` as a shortcut. Do not assume the action isn't supported — the catalog almost always has it.
+      |   → If the user's request bundles an action AND a final reply ("wait 200ms then respond done", "fetch X then summarize", "save Y then confirm"), the action half is still an action. The change_mode / find_capability decision above comes first.
+      |   → Self-referential requests that sound like they'd hit a model limit — "switch models", "what skills do you have", "list your tools", "can you do X (something I'm pattern-matching as out of scope)" — are STILL action requests. Do NOT refuse based on assumed limits ("I'm an AI, I can't change myself", "I don't have the ability to…"). The catalog almost always has the tool — `switch_model`, capability-listing tools, etc. — and you have not looked. Call `find_capability` with the obvious keywords before refusing. A refusal that wasn't preceded by `find_capability` is a bug, not an answer.
       |
       |2. The user is chatting / asking a knowledge question / following up in the current mode and no action is needed.
       |   → `respond` with the answer.
@@ -162,8 +163,6 @@ object Instructions {
       |   → `stop`.
       |
       |When in doubt between 1 and 2, choose 1. The cost of an unnecessary `find_capability` is one extra turn; the cost of skipping discovery is silently degrading the user's task.
-      |
-      |If `change_mode` is in your immediate roster, its description lists every available mode. If a listed mode matches the user's task, call `change_mode` directly — that's the most precise route (a Mode is a pre-curated find_capability result).
       |
       |After `change_mode` succeeds, your visible roster is FRESH. Do NOT call `find_capability` again before invoking a tool — the new mode's tools are now directly callable. Pick a tool from the roster and run it. Only re-search if you've actually called a roster tool and it returned a structural failure (`RequiresSetup`, `NotApplicable`, missing precondition). Re-searching after `change_mode` without trying the roster first burns iterations on discovery the framework just handed you.
       |
@@ -200,8 +199,9 @@ object Instructions {
    */
   val DefaultToolsTrailer: String =
     """REMINDER: every reply MUST be a tool call. For ACTIONS (anything the user asked you to DO),
-      |the first call is `find_capability`; `respond` comes after the action runs, not instead of it.
-      |Plain text output is dropped silently — wrap your output in whichever tool fits.""".stripMargin
+      |route per the triage above (`change_mode` first when a listed mode matches; otherwise
+      |`find_capability`). `respond` comes after the action runs, not instead of it. Plain text
+      |output is dropped silently — wrap your output in whichever tool fits.""".stripMargin
 
   // -- back-compat aliases --
   // Older code referenced `SafetyGuidance` / `BehaviorGuidance` / `DefaultCore` directly.
