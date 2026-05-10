@@ -188,11 +188,9 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   "CreateScriptToolTool" should {
     "persist a new tool, emit a single Message(Tool) carrying confirmation + schema, and auto-pop to ConversationMode" in {
-      // Bugs #68 / #69 — replaces the previous [ack, ToolResults] two-event
-      // cascade. Now: ONE Message(Tool) with the full info inline + a
+      // ONE Message(Tool) with the full create info inline + a
       // ModeChange(Standard) that auto-pops the agent back to
-      // ConversationMode so the tool's `modes = Set(ConversationMode.id)`
-      // matches the next find_capability's mode-affinity filter.
+      // ConversationMode after a successful create.
       TestScriptSigil.resetSpaceResolver()
       val context = ctx("create")
       val input = CreateScriptToolInput(

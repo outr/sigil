@@ -5,7 +5,7 @@ import lightdb.id.Id
 import sigil.{GlobalSpace, SpaceId, TurnContext}
 import sigil.event.Event
 import sigil.participant.ParticipantId
-import sigil.provider.{ConversationMode, Mode}
+import sigil.provider.Mode
 
 import scala.reflect.ClassTag
 
@@ -21,7 +21,7 @@ abstract class TypedTool[In <: ToolInput](
   override val name: ToolName,
   override val description: String,
   override val examples: List[ToolExample] = Nil,
-  override val modes: Set[Id[Mode]] = Set(ConversationMode.id),
+  override val modes: Set[Id[Mode]] = Set.empty,
   override val space: SpaceId = GlobalSpace,
   override val keywords: Set[String] = Set.empty,
   override val createdBy: Option[ParticipantId] = None

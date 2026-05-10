@@ -151,8 +151,8 @@ object Instructions {
       |Triage every user message into one of these:
       |
       |1. The user asked you to DO something — wait, fetch, save, look up, send, run, edit, search, write code, anything action-shaped. Even ONE word of action means action.
-      |   → If `change_mode` is in your roster AND a listed mode matches the task (coding work → "coding", web research → "web-browser"), call `change_mode` FIRST. A Mode is a pre-curated tool set, more precise than searching.
-      |   → Otherwise call `find_capability` with relevant keywords. ALWAYS. No exceptions. Don't substitute `respond` for an action you haven't run.
+      |   → Call `find_capability` FIRST with keywords describing the task. Most tools (filesystem, LSP, BSP, memory, web fetch, MCP) are universally discoverable — they surface from `find_capability` regardless of the active mode. Try the current mode before switching.
+      |   → Only call `change_mode` when discovery surfaces a Mode-typed match (not a Tool match) for the task, or when you've tried a discovered tool and it returned `RequiresSetup` pointing at a mode-bundled skill. A Mode is for skill / persona shifts, not for unlocking tools — most tools are already unlocked.
       |   → Self-referential requests ("switch models", "what skills do you have", anything you're pattern-matching as out-of-scope) are STILL action requests. Don't refuse based on assumed limits — the catalog usually has the tool. A refusal not preceded by `find_capability` is a bug.
       |
       |2. The user is chatting / asking a knowledge question / following up in the current mode and no action is needed.

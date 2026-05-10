@@ -89,7 +89,7 @@ object TurnTrace {
       case ResponseContent.Field(label, value, _)    => s"$label: $value"
       case ResponseContent.Options(prompt, opts, _)  =>
         s"$prompt\n" + opts.map(o => s"${o.label}: ${o.value}").mkString("\n")
-      case ResponseContent.Failure(reason, _)        => reason
+      case ResponseContent.Failure(reason, _, _)        => reason
       case ResponseContent.TextInput(label, _, _, _) => label
       case ResponseContent.SecretInput(label, _, _)  => label
       case ResponseContent.SecretRef(_, label)       => label
@@ -117,7 +117,7 @@ object TurnTrace {
     case ResponseContent.Image(url, alt)           => alt.fold(url.toString)(a => s"$a ($url)")
     case ResponseContent.Field(label, value, _)    => s"$label: $value"
     case ResponseContent.Options(prompt, opts, _)  => s"$prompt\n" + opts.map(o => s"${o.label}: ${o.value}").mkString("\n")
-    case ResponseContent.Failure(reason, _)        => reason
+    case ResponseContent.Failure(reason, _, _)        => reason
     case ResponseContent.TextInput(label, _, _, _) => label
     case ResponseContent.SecretInput(label, _, _)  => label
     case ResponseContent.SecretRef(_, label)       => label

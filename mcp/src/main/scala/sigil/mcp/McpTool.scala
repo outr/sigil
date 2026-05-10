@@ -9,7 +9,7 @@ import rapid.Stream
 import sigil.{SpaceId, TurnContext}
 import sigil.event.{Event, Message, MessageVisibility, MessageRole}
 import sigil.participant.{AgentParticipantId, ParticipantId}
-import sigil.provider.{ConversationMode, Mode}
+import sigil.provider.Mode
 import sigil.signal.EventState
 import sigil.tool.{JsonInput, JsonSchemaToDefinition, Tool, ToolExample, ToolInput, ToolName, ToolSchema}
 import sigil.tool.model.ResponseContent
@@ -37,7 +37,7 @@ final class McpTool(manager: McpManager,
     JsonSchemaToDefinition(definition.inputSchema)
 
   override def kind: sigil.tool.ToolKind = McpKind
-  override val modes: Set[Id[Mode]] = Set(ConversationMode.id)
+  override val modes: Set[Id[Mode]] = Set.empty
   override val space: SpaceId = serverConfig.space
   override val keywords: Set[String] = Set("mcp", serverConfig.name)
   override val examples: List[ToolExample] = Nil
