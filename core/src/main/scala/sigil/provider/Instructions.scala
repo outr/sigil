@@ -167,6 +167,11 @@ object Instructions {
       |
       |**`find_capability` results are RANKED by relevance.** The top match is the framework's recommendation for your query — not a buffet to scroll through. Default to invoking the rank-1 tool unless its description makes it clearly inappropriate. Do NOT scroll past LSP/BSP/typed/domain-specific tools to pick a generic primitive (`grep`, `glob`, `bash`, `read_file`, `execute_script`) just because you're more familiar with it. The ranked tool is at the top because the framework knows it's the better answer for the query you typed; trust the rank. Generic primitives are scored to sit BELOW the domain-specific tool when both apply — that's not a rendering quirk, it's the framework telling you "use the typed tool when available."
       |
+      |**TURN-FLOW DISCIPLINE.** Three tools end your turn — pick the right one for the situation:
+      |  - `respond` — you have something to deliver to the user. The conversation is in a settled state from your side.
+      |  - `no_response` — you have no message but you're done. Silent housekeeping (a settled internal classification, a tool-only chain with no user-facing output).
+      |  - `cancel` — the turn should be abandoned. Use ONLY when the user has explicitly halted you, or you've hit an unrecoverable failure. NEVER use `cancel` to "pause", "transition", "end this step", or "wait for results" — those are not what `cancel` does. There IS no pausing or waiting between tool calls; just call the next tool directly. If `cancel`'s reason reads like a transition ("starting X", "need to fetch Y", "next step"), the framework refuses it and asks you to pick `respond` / `no_response` / the actual next tool.
+      |
       |**Tool failures carry structured context.** When a tool result is a `Failure` block with `errorContext`, read `classification` to pick a response shape:
       |  - `UserInputError` — fix the args and retry, or explain to the user what input shape is needed.
       |  - `TransientError` — retry once before giving up.
@@ -178,14 +183,14 @@ object Instructions {
   /**
    * Pure-discovery variant of the TOOLS guidance — used when [[ToolPolicy.PureDiscovery]]
    * has stripped the respond family from the immediate roster. The model sees only
-   * `find_capability`, `stop`, plus any explicit Active tools — so the prompt teaches
+   * `find_capability`, `cancel`, plus any explicit Active tools — so the prompt teaches
    * it to discover `respond` itself rather than expecting it in the roster.
    */
   val PureDiscoveryToolsGuidance: String =
     """TOOLS
-      |- You operate in pure-discovery mode. Your immediate tool list is intentionally minimal (`find_capability`, `stop`, plus any tools your mode/role explicitly added). The full capability catalog — including the user-facing reply tool `respond`, focused modes (coding, planning, …), and specialized tools — is reachable only via `find_capability`.
+      |- You operate in pure-discovery mode. Your immediate tool list is intentionally minimal (`find_capability`, `cancel`, plus any tools your mode/role explicitly added). The full capability catalog — including the user-facing reply tool `respond`, focused modes (coding, planning, …), and specialized tools — is reachable only via `find_capability`.
       |- To produce ANY user-facing reply, you MUST first call `find_capability` with relevant keywords (e.g. `find_capability("respond")` for a plain reply, or keywords describing the task). The returned matches will surface `respond` (and other reply variants), which then become callable on the next turn.
-      |- Do NOT call `stop` unless the user has indicated the conversation is over — `stop` ends the turn without delivering anything to the user. The right path for "I should answer this" is `find_capability` → call the discovered reply tool.
+      |- Do NOT call `cancel` unless the user has explicitly halted you or you've hit an unrecoverable failure — `cancel` is for cancellation, NOT for ending a normal turn or transitioning between steps. The right path for "I should answer this" is `find_capability` → call the discovered reply tool.
       |- For specialized work (code, scripts, plans, workflows, etc.), `find_capability` will surface a focused mode — call `change_mode` to switch into it before producing content.
       |- Do NOT answer from memory. Every reply path routes through `find_capability` first.""".stripMargin
 

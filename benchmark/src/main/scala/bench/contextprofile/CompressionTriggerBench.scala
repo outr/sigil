@@ -1,6 +1,6 @@
 package bench.contextprofile
 
-import sigil.tool.core.{FindCapabilityTool, RespondTool, StopTool}
+import sigil.tool.core.{FindCapabilityTool, RespondTool, CancelTool}
 
 /**
  * Phase 0 — compression-trigger profile. Same shape as
@@ -20,7 +20,7 @@ object CompressionTriggerBench {
 
   def main(args: Array[String]): Unit = {
     val turns = 40
-    val tools = Vector[sigil.tool.Tool](RespondTool, FindCapabilityTool, StopTool)
+    val tools = Vector[sigil.tool.Tool](RespondTool, FindCapabilityTool, CancelTool)
 
     val cumulativeFrames = scala.collection.mutable.ArrayBuffer.empty[Vector[sigil.conversation.ContextFrame]]
     var current = Vector.empty[sigil.conversation.ContextFrame]

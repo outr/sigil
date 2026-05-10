@@ -1284,15 +1284,15 @@ trait Sigil {
                          suggested: List[sigil.tool.ToolName],
                          overlays: List[ToolPolicy] = Nil): List[sigil.tool.ToolName] = {
     import sigil.tool.core.{
-      ChangeModeTool, FindCapabilityTool, NoResponseTool, RespondTool,
-      RespondFailureTool, RespondFieldTool, RespondOptionsTool, StopTool
+      CancelTool, ChangeModeTool, FindCapabilityTool, NoResponseTool, RespondTool,
+      RespondFailureTool, RespondFieldTool, RespondOptionsTool
     }
     import sigil.tool.skill.ActivateSkillTool
     val fullEssentials = List(
       RespondTool, RespondOptionsTool, RespondFieldTool, RespondFailureTool,
-      NoResponseTool, StopTool
+      NoResponseTool, CancelTool
     ).map(_.schema.name)
-    val pureDiscoveryEssentials = List(StopTool.schema.name)
+    val pureDiscoveryEssentials = List(CancelTool.schema.name)
 
     case class PolicyState(extras: List[sigil.tool.ToolName],
                            includesFindCapability: Boolean,
@@ -1337,7 +1337,7 @@ trait Sigil {
       ChangeModeTool.schema.name        -> 0,
       FindCapabilityTool.schema.name    -> 1,
       ActivateSkillTool.schema.name     -> 2,
-      StopTool.schema.name              -> 100,
+      CancelTool.schema.name              -> 100,
       RespondTool.schema.name           -> 101,
       RespondOptionsTool.schema.name    -> 102,
       RespondFieldTool.schema.name      -> 103,
@@ -2881,7 +2881,7 @@ trait Sigil {
   /** Convenience: publish a [[Stop]] event for the conversation. Lets
     * UI layers (stop button) and programmatic callers issue stops
     * without reconstructing the event by hand. For LLM-initiated stops
-    * use [[sigil.tool.core.StopTool]] instead. */
+    * use [[sigil.tool.core.CancelTool]] instead. */
   def stop(conversationId: Id[Conversation],
            requestedBy: ParticipantId,
            targetParticipantId: Option[ParticipantId] = None,

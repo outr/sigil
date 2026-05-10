@@ -23,7 +23,7 @@ import sigil.signal.EventState
  *     mid-flight. Use sparingly; cleanest for "monitor stops peer
  *     attempting destructive action" scenarios.
  *
- * Emitted via [[sigil.tool.core.StopTool]] (for LLM-initiated stops) or
+ * Emitted via [[sigil.tool.core.CancelTool]] (for LLM-initiated stops) or
  * directly through [[sigil.Sigil.publish]] (for UI-initiated stops). Not
  * a trigger — agents do not wake on a `Stop`; it's a control signal
  * consumed by the dispatcher.

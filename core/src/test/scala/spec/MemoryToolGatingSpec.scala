@@ -72,7 +72,7 @@ class MemoryToolGatingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "be false for non-memory framework tools" in Task {
       sigil.tool.core.RespondTool.requiresAccessibleSpaces shouldBe false
       sigil.tool.core.NoResponseTool.requiresAccessibleSpaces shouldBe false
-      sigil.tool.core.StopTool.requiresAccessibleSpaces shouldBe false
+      sigil.tool.core.CancelTool.requiresAccessibleSpaces shouldBe false
       sigil.tool.core.FindCapabilityTool.requiresAccessibleSpaces shouldBe false
     }
   }

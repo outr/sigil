@@ -10,8 +10,8 @@ import sigil.tool.context.{
   UnpinMemoryInput, UnpinMemoryTool
 }
 import sigil.tool.model.{
-  ChangeModeInput, NoResponseInput, RecordConsentInput, RespondCardInput, RespondCardsInput,
-  RespondFailureInput, RespondFieldInput, RespondInput, RespondOptionsInput, StopInput
+  CancelInput, ChangeModeInput, NoResponseInput, RecordConsentInput, RespondCardInput, RespondCardsInput,
+  RespondFailureInput, RespondFieldInput, RespondInput, RespondOptionsInput
 }
 import sigil.tool.skill.{ActivateSkillInput, ActivateSkillTool}
 
@@ -33,7 +33,7 @@ import sigil.tool.skill.{ActivateSkillInput, ActivateSkillTool}
  * `respond_failure`) that emit a single `Message` carrying the
  * structured block.
  *
- * Plus essentials: `no_response`, `find_capability`, `stop`.
+ * Plus essentials: `no_response`, `find_capability`, `cancel`.
  *
  * **NOT in `all` by default** (each is shipped in core but apps opt
  * in by adding to their own `staticTools` / `toolNames`):
@@ -81,7 +81,7 @@ object CoreTools {
       RespondFailureTool,
       NoResponseTool,
       FindCapabilityTool,
-      StopTool,
+      CancelTool,
       RecordConsentTool
     )
 
@@ -104,7 +104,7 @@ object CoreTools {
       summon[RW[NoResponseInput]],
       summon[RW[RecordConsentInput]],
       summon[RW[FindCapabilityInput]],
-      summon[RW[StopInput]],
+      summon[RW[CancelInput]],
       summon[RW[ActivateSkillInput]],
       summon[RW[ListMemoriesInput]],
       summon[RW[PinMemoryInput]],
