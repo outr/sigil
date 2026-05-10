@@ -7,6 +7,7 @@ import sigil.conversation.{ContextFrame, ContextKey, ContextMemory, ContextSumma
 import sigil.db.Model
 import sigil.information.InformationSummary
 import sigil.participant.ParticipantId
+import sigil.conversation.compression.extract.{MemoryExtractor, NoOpMemoryExtractor}
 import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
 
 /**
@@ -40,6 +41,16 @@ case class StandardContextCurator(sigil: Sigil,
                                   blockExtractor: BlockExtractor = NoOpBlockExtractor,
                                   memoryRetriever: MemoryRetriever = NoOpMemoryRetriever,
                                   compressor: ContextCompressor = NoOpContextCompressor,
+                                  /** Run over the about-to-be-shed slice in stage 3
+                                    * (frame compression) BEFORE the slice gets
+                                    * collapsed into a summary. Captures durable
+                                    * facts hidden inside older frames so they
+                                    * survive the lossy compression. Fires on a
+                                    * background fiber — failures are logged but
+                                    * don't block the curator pipeline. Default
+                                    * NoOp; wire a concrete extractor (typically
+                                    * [[StandardMemoryExtractor]]) to enable. */
+                                  compressionExtractor: MemoryExtractor = NoOpMemoryExtractor,
                                   budget: ContextBudget = Percentage(0.8),
                                   keepMinimum: Int = 4,
                                   tokenizer: Tokenizer = HeuristicTokenizer,
@@ -186,6 +197,13 @@ case class StandardContextCurator(sigil: Sigil,
         else math.max(keepMinimum, kept.size / 2)
       val (older, newer) = kept.splitAt(kept.size - keep)
       val toSummarize = droppedSoFar ++ older
+      // Fire compression-time extraction over the shed slice on a
+      // background fiber. Captures durable facts before the slice
+      // is collapsed into a lossy summary; failures don't block.
+      compressionExtractor.extractFromFrames(sigil, conversationId, modelId, chain, older)
+        .handleError { e =>
+          Task(scribe.warn(s"compressionExtractor failed for $conversationId: ${e.getMessage}")).map(_ => Nil)
+        }.startUnit()
       compressor.compress(sigil, modelId, chain, rapid.Stream.emits(toSummarize), conversationId).flatMap {
         case Some(summary) =>
           shedFramesIteratively(
