@@ -54,7 +54,18 @@ case class StandardContextCurator(sigil: Sigil,
                                   budget: ContextBudget = Percentage(0.8),
                                   keepMinimum: Int = 4,
                                   tokenizer: Tokenizer = HeuristicTokenizer,
-                                  pinnedShareWarningThreshold: Double = 0.20) extends ContextCurator {
+                                  pinnedShareWarningThreshold: Double = 0.20,
+                                  /** Optional detector for the
+                                    * "paraphrase without action" failure
+                                    * mode. When set and a pattern fires,
+                                    * an observation is injected into the
+                                    * next turn's `TurnInput.extraContext`
+                                    * under [[ParaphraseLoopDetector.ContextKeyValue]]
+                                    * so the model sees the loop and can
+                                    * self-correct rather than being
+                                    * silently cleaned up. Default `None`
+                                    * — opt-in. */
+                                  paraphraseDetector: Option[ParaphraseLoopDetector] = None) extends ContextCurator {
 
   override def curate(conversationId: Id[Conversation],
                       modelId: Id[Model],
@@ -82,13 +93,16 @@ case class StandardContextCurator(sigil: Sigil,
         _             <- control.step("Retrieving memories")
         memoryResult  <- memoryRetriever.retrieve(sigil, conversationId, blockResult.frames, chain)
         projections   <- loadProjections(conversationId, chain)
-        tentative     = TurnInput(
-          conversationId = conversationId,
-          frames = blockResult.frames,
-          participantProjections = projections,
-          criticalMemories = memoryResult.criticalMemories,
-          memories = memoryResult.memories,
-          information = blockResult.information
+        tentative     = injectParaphraseObservation(
+          TurnInput(
+            conversationId = conversationId,
+            frames = blockResult.frames,
+            participantProjections = projections,
+            criticalMemories = memoryResult.criticalMemories,
+            memories = memoryResult.memories,
+            information = blockResult.information
+          ),
+          chain
         )
         modelOpt      <- modelFor(modelId)
         _             <- control.step("Resolving token budget")
@@ -314,4 +328,25 @@ case class StandardContextCurator(sigil: Sigil,
 
   private def modelFor(modelId: Id[Model]): Task[Option[Model]] =
     Task.pure(sigil.cache.find(modelId))
+
+  /** Run [[paraphraseDetector]] over the turn's frame history; on a
+    * hit, append the observation to `extraContext` under
+    * [[ParaphraseLoopDetector.ContextKeyValue]]. No-op when the
+    * detector is not configured or the chain has no agent
+    * participant the detector can scope to. */
+  private def injectParaphraseObservation(turn: TurnInput, chain: List[ParticipantId]): TurnInput =
+    paraphraseDetector match {
+      case None => turn
+      case Some(detector) =>
+        chain.lastOption match {
+          case None => turn
+          case Some(agentId) =>
+            detector.detect(turn.frames, agentId) match {
+              case None          => turn
+              case Some(pattern) =>
+                turn.copy(extraContext = turn.extraContext +
+                  (_root_.sigil.conversation.ContextKey(ParaphraseLoopDetector.ContextKeyValue) -> pattern.render()))
+            }
+        }
+    }
 }
