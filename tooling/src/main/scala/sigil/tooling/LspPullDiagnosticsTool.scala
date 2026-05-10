@@ -53,15 +53,30 @@ final class LspPullDiagnosticsTool(val manager: LspManager) extends TypedOutputT
       input.languageId, input.filePath, context,
       onError = msg => throw new RuntimeException(msg)
     ) { (session, uri) =>
-      session.pullDiagnostics(uri).map { report =>
-        val items = report match {
-          case Some(r) if r.isLeft => Option(r.getLeft.getItems).map(_.asScala.toList).getOrElse(Nil)
-          case _                   => Nil
+      // Sigil bug #100 — gate the pull request on the server's
+      // advertised capability. LSP 3.17 says clients MUST NOT call
+      // `textDocument/diagnostic` unless the server's
+      // `serverCapabilities.diagnosticProvider` is set during
+      // `initialize`. Metals (and many production servers) implement
+      // only the legacy push flow via `publishDiagnostics`; calling
+      // pull against them returns `MethodNotFound`. When the server
+      // doesn't advertise pull, fall back to the push-cache
+      // [[LspSession.diagnosticsFor]] populated by the recording
+      // client's notification handler — agents get a synchronous
+      // answer either way.
+      val serverSupportsPull = Option(session.serverCapabilities.getDiagnosticProvider).isDefined
+      val task: Task[List[LspDiagnostic]] =
+        if (serverSupportsPull) {
+          session.pullDiagnostics(uri).map { report =>
+            val items = report match {
+              case Some(r) if r.isLeft => Option(r.getLeft.getItems).map(_.asScala.toList).getOrElse(Nil)
+              case _                   => Nil
+            }
+            items.map(LspDiagnostic.fromLsp4j(input.filePath, _))
+          }
+        } else {
+          Task(session.diagnosticsFor(uri).map(LspDiagnostic.fromLsp4j(input.filePath, _)))
         }
-        LspDiagnosticsResult(
-          filePath    = input.filePath,
-          diagnostics = items.map(LspDiagnostic.fromLsp4j(input.filePath, _))
-        )
-      }
+      task.map(diags => LspDiagnosticsResult(filePath = input.filePath, diagnostics = diags))
     }
 }
