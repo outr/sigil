@@ -25,9 +25,17 @@ import sigil.tool.model.ChangeModeInput
 case object ChangeModeTool extends TypedTool[ChangeModeInput](
   name = ToolName("change_mode"),
   description =
-    """Switch operating mode. Call BEFORE starting a task that belongs to a different mode — e.g.
-      |in conversation mode and the user asks for code → call change_mode("coding") first, then
-      |code on the next turn. `mode` is the target's stable name from the available-modes list below.""".stripMargin
+    """Switch operating mode. Call BEFORE find_capability when a listed mode clearly matches the
+      |user's task — a Mode is a pre-curated tool set, more precise than a free-form search.
+      |
+      |Examples:
+      |  - User asks for code → `change_mode("coding")` (or whichever target mode is listed below).
+      |  - User wants web research → `change_mode("web-browser")`.
+      |  - User wants to build a workflow → `change_mode("workflow-builder")`.
+      |
+      |After change_mode succeeds, the new mode's tools are directly callable on the next turn —
+      |do NOT then call `find_capability`. `mode` is the target's stable name from the
+      |available-modes list below.""".stripMargin
 ) {
   // ModeChange Events update Conversation.currentMode and the system
   // prompt's "Current mode" line. The verbose ToolResults pair is
