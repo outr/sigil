@@ -451,10 +451,23 @@ trait Sigil {
       case Some(convId) => activeToolchains(convId)
       case None         => rapid.Task.pure(Set.empty[String])
     }
+    // Bug #97 — fold conversation overlay policies into the discovery
+    // policy filter. A tool either has to pass the active mode's
+    // policy OR be permitted by some overlay's policy (e.g. an
+    // `Active(metals/lsp/bsp tool names)` overlay installed by
+    // `start_metals`).
+    val overlayPoliciesTask: rapid.Task[List[ToolPolicy]] = request.conversationId match {
+      case Some(convId) => conversationToolOverlays(convId).map(_.map(_.policy))
+      case None         => rapid.Task.pure(Nil)
+    }
     for {
-      rawTools <- findTools(request)
-      tools    = rawTools
-        .filter(t => sigil.tool.DiscoveryFilter.passesPolicy(t, request.mode.tools))
+      rawTools         <- findTools(request)
+      overlayPolicies  <- overlayPoliciesTask
+      tools             = rawTools
+        .filter { t =>
+          sigil.tool.DiscoveryFilter.passesPolicy(t, request.mode.tools) ||
+            overlayPolicies.exists(p => sigil.tool.DiscoveryFilter.passesPolicy(t, p))
+        }
         .filter(t => !t.requiresAccessibleSpaces || request.callerSpaces.nonEmpty)
       activeChains <- activeChainsTask
       modes    <- findModes(request)
@@ -652,6 +665,39 @@ trait Sigil {
     * stored tool. */
   def createTool(tool: sigil.tool.Tool): Task[sigil.tool.Tool] =
     withDB(_.tools.transaction(_.upsert(tool)))
+
+  // -- conversation tool overlays (#97) --
+
+  /** Per-conversation [[ToolPolicy]] overlays — additive on top of the
+    * mode + role policies already folded into the agent's effective
+    * roster. When `start_metals` succeeds, it installs an
+    * `Active(metals/lsp/bsp tool names)` overlay so subsequent turns
+    * can call those tools directly without a `find_capability`
+    * round-trip. Also applied to `findCapabilities` so the same tools
+    * remain visible to keyword discovery.
+    *
+    * Default reads from `db.conversationToolOverlays`. Apps that
+    * want transient (non-persisted) overlays override this and the
+    * mutation hooks in tandem. */
+  def conversationToolOverlays(conversationId: Id[Conversation]): Task[List[sigil.conversation.ConversationToolOverlay]] =
+    withDB(_.conversationToolOverlays.transaction { tx =>
+      tx.query
+        .filter(_ => sigil.conversation.ConversationToolOverlay.conversationId === conversationId)
+        .toList
+    }).map(_.toList.sortBy(_.installedAt.value))
+
+  /** Install (or upsert) a conversation-scoped tool overlay. Keyed
+    * by `(conversationId, source)`; calling twice with the same
+    * source replaces the prior policy. */
+  def addConversationToolOverlay(overlay: sigil.conversation.ConversationToolOverlay): Task[sigil.conversation.ConversationToolOverlay] = {
+    val withId = overlay.copy(_id = sigil.conversation.ConversationToolOverlay.idFor(overlay.conversationId, overlay.source))
+    withDB(_.conversationToolOverlays.transaction(_.upsert(withId)))
+  }
+
+  /** Remove the overlay installed for `(conversationId, source)`.
+    * No-op when nothing matches. */
+  def removeConversationToolOverlay(conversationId: Id[Conversation], source: String): Task[Unit] =
+    withDB(_.conversationToolOverlays.transaction(_.delete(sigil.conversation.ConversationToolOverlay.idFor(conversationId, source)))).unit
 
   // -- storage --
 
@@ -1180,7 +1226,8 @@ trait Sigil {
    */
   def effectiveToolNames(agent: AgentParticipant,
                          mode: Mode,
-                         suggested: List[sigil.tool.ToolName]): List[sigil.tool.ToolName] = {
+                         suggested: List[sigil.tool.ToolName],
+                         overlays: List[ToolPolicy] = Nil): List[sigil.tool.ToolName] = {
     import sigil.tool.core.{
       ChangeModeTool, FindCapabilityTool, NoResponseTool, RespondTool,
       RespondFailureTool, RespondFieldTool, RespondOptionsTool, StopTool
@@ -1208,7 +1255,12 @@ trait Sigil {
       case ToolPolicy.Scoped(_)        => s
     }
 
-    val state = apply(apply(initial, agent.tools), mode.tools)
+    // Bug #97 — fold conversation overlays last so they're additive
+    // on top of the agent + mode policies. `Active(names)` from
+    // `start_metals` adds those names; `Exclusive` / `None` from a
+    // user-installed overlay can also restrict, mirroring the
+    // mode-side semantics.
+    val state = overlays.foldLeft(apply(apply(initial, agent.tools), mode.tools))(apply)
     val essentials     = if (state.pureDiscovery) pureDiscoveryEssentials else fullEssentials
     val findCapability = if (state.includesFindCapability) List(FindCapabilityTool.schema.name) else Nil
     val baseline       = if (state.includesBaseline) agent.toolNames else Nil
@@ -1290,7 +1342,6 @@ trait Sigil {
                            context: TurnContext): Stream[Signal] = {
     val effectiveChain = context.chain.filterNot(_ == agent.id) :+ agent.id
     val suggested      = context.turnInput.projectionFor(agent.id).suggestedTools
-    val effectiveNames = effectiveToolNames(agent, context.conversation.currentMode, suggested).distinct
 
     // Strategy resolution: Mode override beats space-level
     // assignment beats agent's pinned modelId. The strategy returns
@@ -1322,6 +1373,14 @@ trait Sigil {
         strategyOpt <- strategyTask
         chosen       = strategyOpt.flatMap(_.availableCandidates(effectiveWorkType).headOption)
         modelId      = chosen.map(_.modelId).getOrElse(agent.modelId)
+        // Bug #97 — fold conversation overlays into the effective
+        // tool roster. `start_metals` etc. install Active(names) so
+        // the LSP/BSP/metals tools are present in subsequent turns
+        // without a `find_capability` round-trip.
+        overlays    <- conversationToolOverlays(context.conversation.id)
+        effectiveNames = effectiveToolNames(
+          agent, context.conversation.currentMode, suggested, overlays.map(_.policy)
+        ).distinct
         // Per-candidate `settings` overlays the agent's
         // generationSettings. The framework keeps the agent's settings
         // as the base — the candidate's settings take precedence on

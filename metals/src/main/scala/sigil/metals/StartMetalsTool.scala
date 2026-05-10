@@ -28,7 +28,12 @@ final class StartMetalsTool extends TypedTool[StartMetalsInput](
     """Start the Metals (Scala LSP) MCP server for this conversation's workspace. Once running,
       |Metals' tools (find-symbol, compile, test, etc.) become discoverable via find_capability.
       |Idempotent — calling a second time just keeps the existing subprocess alive.""".stripMargin,
-  examples = List(ToolExample("start metals here", StartMetalsInput()))
+  examples = List(ToolExample("start metals here", StartMetalsInput())),
+  keywords = Set(
+    "metals", "start", "scala", "lsp", "language",
+    "compile", "indexing", "spawn", "boot", "enable",
+    "code", "tooling", "ide"
+  )
 ) {
   import MetalsToolSupport.*
 
@@ -57,11 +62,26 @@ final class StartMetalsTool extends TypedTool[StartMetalsInput](
               // the framework's generic lsp_* tools find Metals as
               // their backend. No-op for apps without
               // ToolingCollections in their DB.
-              metalsHost(sigil).map(_.writeLspServerConfigForMetals(workspace))
+              val lspConfigWrite = metalsHost(sigil).map(_.writeLspServerConfigForMetals(workspace))
                 .getOrElse(Task.unit)
                 .handleError { t =>
                   Task(scribe.warn(s"start_metals: LspServerConfig upsert for 'scala' failed: ${t.getMessage}"))
                 }
+              // Bug #97 — pin the LSP/BSP/metals_* tool family to
+              // this conversation so subsequent turns can call
+              // them directly without a `find_capability` round-
+              // trip. `stop_metals` removes the overlay.
+              val overlayInstall = sigil.addConversationToolOverlay(
+                _root_.sigil.conversation.ConversationToolOverlay(
+                  conversationId = context.conversation.id,
+                  source         = MetalsBoostedToolNames.OverlaySource,
+                  policy         = _root_.sigil.provider.ToolPolicy.Active(MetalsBoostedToolNames.all)
+                )
+              ).handleError { t =>
+                Task(scribe.warn(s"start_metals: ConversationToolOverlay install failed: ${t.getMessage}"))
+              }
+              lspConfigWrite
+                .flatMap(_ => overlayInstall)
                 .map(_ => Stream.emit[Event](reply(
                   context,
                   s"Metals running for $workspace (server name: $name)"

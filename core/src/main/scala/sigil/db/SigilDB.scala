@@ -6,7 +6,7 @@ import lightdb.id.Id
 import lightdb.store.CollectionManager
 import lightdb.upgrade.DatabaseUpgrade
 import rapid.Task
-import sigil.conversation.{ContextMemory, ContextSummary, Conversation, EncodedContext, ParticipantProjection, Topic}
+import sigil.conversation.{ContextMemory, ContextSummary, Conversation, ConversationToolOverlay, EncodedContext, ParticipantProjection, Topic}
 import sigil.event.Event
 import sigil.signal.{Delta, Signal}
 import sigil.provider.{ProviderConfig, ProviderStrategyRecord, SpaceProviderAssignment}
@@ -62,6 +62,8 @@ abstract class SigilDB(override val directory: Option[Path],
   val providerStrategies: S[ProviderStrategyRecord, ProviderStrategyRecord.type] = store(ProviderStrategyRecord)()
   val providerAssignments: S[SpaceProviderAssignment, SpaceProviderAssignment.type] = store(SpaceProviderAssignment)()
   val viewerStates: S[ViewerState, ViewerState.type] = store(ViewerState).withCache(CacheConfig.lru(500))()
+  val conversationToolOverlays: S[ConversationToolOverlay, ConversationToolOverlay.type] =
+    store(ConversationToolOverlay).withCache(CacheConfig.lru(500))()
 
   override def upgrades: List[DatabaseUpgrade] = appUpgrades
 

@@ -23,7 +23,11 @@ final class StopMetalsTool extends TypedTool[StopMetalsInput](
     """Stop the Metals (Scala LSP) MCP server for this conversation's workspace.
       |Tears down the subprocess and removes its McpServerConfig.
       |No-op if Metals isn't running for the workspace.""".stripMargin,
-  examples = List(ToolExample("stop metals", StopMetalsInput()))
+  examples = List(ToolExample("stop metals", StopMetalsInput())),
+  keywords = Set(
+    "metals", "stop", "scala", "lsp", "shutdown",
+    "kill", "terminate", "disable", "teardown", "tooling"
+  )
 ) {
   import MetalsToolSupport.*
 
@@ -41,11 +45,21 @@ final class StopMetalsTool extends TypedTool[StopMetalsInput](
               isError = true
             )))
           case Some(mm) =>
-            mm.stop(workspace).map { stopped =>
-              val msg =
-                if (stopped) s"Metals stopped for $workspace."
-                else s"No Metals running for $workspace — nothing to stop."
-              Stream.emit[Event](reply(context, msg))
+            mm.stop(workspace).flatMap { stopped =>
+              // Bug #97 — symmetric remove of the conversation
+              // overlay installed by `start_metals`. No-op when
+              // nothing was installed.
+              sigil.removeConversationToolOverlay(
+                context.conversation.id,
+                MetalsBoostedToolNames.OverlaySource
+              ).handleError { t =>
+                Task(scribe.warn(s"stop_metals: ConversationToolOverlay remove failed: ${t.getMessage}"))
+              }.map { _ =>
+                val msg =
+                  if (stopped) s"Metals stopped for $workspace."
+                  else s"No Metals running for $workspace — nothing to stop."
+                Stream.emit[Event](reply(context, msg))
+              }
             }
         }
     })
