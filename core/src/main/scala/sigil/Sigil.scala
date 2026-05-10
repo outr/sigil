@@ -493,11 +493,14 @@ trait Sigil {
         val baseScore   = sigil.tool.DiscoveryFilter.score(t, request.keywords)
         val boost       = if (t.toolchain.exists(activeChains.contains)) toolchainBoost else 0.0
         val penalty     = if (t.preferIfNoBetter) preferIfNoBetterPenalty else 0.0
+        // Exact-name match outranks every other signal so a literal
+        // tool-name query always returns that tool first.
+        val nameMatch   = if (t.name.value.equalsIgnoreCase(request.keywords.trim)) exactNameBoost else 0.0
         CapabilityMatch(
           name = t.name.value,
           description = t.description,
           capabilityType = CapabilityType.Tool,
-          score = baseScore + boost - penalty,
+          score = baseScore + boost - penalty + nameMatch,
           status = CapabilityStatus.Ready
         )
       }
@@ -658,6 +661,13 @@ trait Sigil {
     * positive (no domain match → grep is still the top result).
     * Sigil bug #86. */
   def preferIfNoBetterPenalty: Double = 3.0
+
+  /** Score added when a tool's name exactly matches the
+    * (case-insensitive) keywords query. Defaults to 100.0 — large
+    * enough that an exact-name match always outranks any
+    * description-derived ranking, so a query for the literal tool
+    * name reliably returns that tool first. */
+  def exactNameBoost: Double = 100.0
 
   /** Persist a user-created tool. Typical call site: an app's agent
     * flow that dynamically generates a `ScriptTool(...)` with the

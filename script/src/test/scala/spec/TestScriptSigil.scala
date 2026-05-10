@@ -39,7 +39,14 @@ object TestScriptSigil extends Sigil with ScriptSigil {
   override protected def participantIds: List[RW[? <: ParticipantId]] =
     List(RW.static(TestScriptUser), RW.static(TestScriptAgent))
 
-  override val findTools: ToolFinder = InMemoryToolFinder(Nil)
+  // Default to an empty in-memory finder for tests that don't need
+  // discovery; per-test specs swap to a DB-backed finder via
+  // `setToolFinder` when they exercise findCapabilities ranking.
+  private val toolFinderRef: AtomicReference[ToolFinder] =
+    new AtomicReference(InMemoryToolFinder(Nil))
+  override def findTools: ToolFinder = toolFinderRef.get()
+  def setToolFinder(f: ToolFinder): Unit = toolFinderRef.set(f)
+  def resetToolFinder(): Unit = toolFinderRef.set(InMemoryToolFinder(Nil))
   override def staticTools: List[Tool] = Nil
 
   override def curate(conversationId: lightdb.id.Id[Conversation],

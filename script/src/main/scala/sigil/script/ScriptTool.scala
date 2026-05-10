@@ -9,7 +9,7 @@ import rapid.{Stream, Task}
 import sigil.{SpaceId, TurnContext}
 import sigil.event.Event
 import sigil.participant.ParticipantId
-import sigil.provider.{ConversationMode, Mode}
+import sigil.provider.Mode
 import sigil.tool.{JsonInput, Tool, ToolExample, ToolInput, ToolName}
 
 /**
@@ -36,7 +36,10 @@ case class ScriptTool(name: ToolName,
                       parameters: Definition,
                       override val space: SpaceId,
                       override val keywords: Set[String] = Set.empty,
-                      override val modes: Set[Id[Mode]] = Set(ConversationMode.id),
+                      // Empty default — newly-created script tools are
+                      // discoverable from any mode. Apps that want
+                      // per-mode gating override at construction.
+                      override val modes: Set[Id[Mode]] = Set.empty,
                       override val examples: List[ToolExample] = Nil,
                       override val createdBy: Option[ParticipantId] = None,
                       override val created: Timestamp = Timestamp(Nowish()),
