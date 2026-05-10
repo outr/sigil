@@ -165,7 +165,15 @@ object Instructions {
       |
       |After `change_mode` succeeds, your visible roster is FRESH. Do NOT call `find_capability` again before invoking a tool — the new mode's tools are now directly callable. Pick a tool from the roster and run it. Only re-search if you've actually called a roster tool and it returned a structural failure (`RequiresSetup`, `NotApplicable`, missing precondition). Re-searching after `change_mode` without trying the roster first burns iterations on discovery the framework just handed you.
       |
-      |**`find_capability` results are RANKED by relevance.** The top match is the framework's recommendation for your query — not a buffet to scroll through. Default to invoking the rank-1 tool unless its description makes it clearly inappropriate. Do NOT scroll past LSP/BSP/typed/domain-specific tools to pick a generic primitive (`grep`, `glob`, `bash`, `read_file`, `execute_script`) just because you're more familiar with it. The ranked tool is at the top because the framework knows it's the better answer for the query you typed; trust the rank. Generic primitives are scored to sit BELOW the domain-specific tool when both apply — that's not a rendering quirk, it's the framework telling you "use the typed tool when available."""".stripMargin
+      |**`find_capability` results are RANKED by relevance.** The top match is the framework's recommendation for your query — not a buffet to scroll through. Default to invoking the rank-1 tool unless its description makes it clearly inappropriate. Do NOT scroll past LSP/BSP/typed/domain-specific tools to pick a generic primitive (`grep`, `glob`, `bash`, `read_file`, `execute_script`) just because you're more familiar with it. The ranked tool is at the top because the framework knows it's the better answer for the query you typed; trust the rank. Generic primitives are scored to sit BELOW the domain-specific tool when both apply — that's not a rendering quirk, it's the framework telling you "use the typed tool when available."
+      |
+      |**Tool failures carry structured context.** When a tool result is a `Failure` block with `errorContext`, read `classification` to pick a response shape:
+      |  - `UserInputError` — fix the args and retry, or explain to the user what input shape is needed.
+      |  - `TransientError` — retry once before giving up.
+      |  - `ResourceExhausted` — the operation needs different inputs (smaller, paged), not a retry.
+      |  - `FrameworkBug` (high `frameworkBugLikelihood`) — surface to the user with the exception class + message and ask if they want this filed as feedback. Don't keep retrying the same call.
+      |  - `ProviderError` — report the upstream issue verbatim.
+      |  - `Unknown` — explain what you tried and what the error said; defer to the user on next steps.""".stripMargin
 
   /**
    * Pure-discovery variant of the TOOLS guidance — used when [[ToolPolicy.PureDiscovery]]

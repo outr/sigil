@@ -122,7 +122,7 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
           case m: Message if m.role == MessageRole.Tool => m
         }.getOrElse(fail("expected Tool-role refusal Message"))
         val text = refusal.content.collect {
-          case ResponseContent.Failure(b, _) => b
+          case ResponseContent.Failure(b, _, _) => b
           case ResponseContent.Text(t)       => t
         }.mkString("\n")
         text should include("requires user consent")
@@ -171,7 +171,7 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
           case m: Message if m.role == MessageRole.Tool => m
         }.getOrElse(fail("expected refusal"))
         val text = refusal.content.collect {
-          case ResponseContent.Failure(b, _) => b
+          case ResponseContent.Failure(b, _, _) => b
           case ResponseContent.Text(t)       => t
         }.mkString("\n")
         text should include("previously declined")

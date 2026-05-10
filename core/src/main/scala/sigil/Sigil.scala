@@ -4557,13 +4557,15 @@ trait Sigil {
           val reason = Option(t.getMessage).filter(_.nonEmpty)
             .map(m => s"${t.getClass.getSimpleName}: $m")
             .getOrElse(t.getClass.getSimpleName)
+          val ec = sigil.event.ErrorContext.classify(t)
           publish(Message(
             participantId  = agent.id,
             conversationId = convId,
             topicId        = topic.id,
             content        = Vector(sigil.tool.model.ResponseContent.Failure(
-              reason      = reason,
-              recoverable = false
+              reason       = reason,
+              recoverable  = false,
+              errorContext = Some(ec)
             )),
             state          = EventState.Complete,
             role           = MessageRole.Standard
