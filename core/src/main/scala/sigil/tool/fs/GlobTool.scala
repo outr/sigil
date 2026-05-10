@@ -19,7 +19,8 @@ final class GlobTool(context: FileSystemContext)
     ),
     keywords = Set(
       "glob", "find", "list", "files", "pattern",
-      "directory", "tree", "match", "wildcard", "path", "discover"
+      "directory", "tree", "match", "wildcard", "path", "discover",
+      "ls", "look", "browse", "enumerate"
     )
   ) {
   // Bug #86 — generic primitive: ranks below domain-specific

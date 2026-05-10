@@ -27,7 +27,8 @@ final class BashTool(context: FileSystemContext)
     ),
     keywords = Set(
       "bash", "shell", "command", "exec", "run", "sh",
-      "script", "terminal", "execute", "invoke", "system"
+      "script", "terminal", "execute", "invoke", "system",
+      "cli", "process", "spawn", "subprocess"
     )
   ) {
   // Bug #86 — generic primitive: ranks below domain-specific
