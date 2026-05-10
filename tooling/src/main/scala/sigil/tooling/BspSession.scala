@@ -7,6 +7,7 @@ import rapid.Task
 import java.io.File
 import java.util.concurrent.{CompletableFuture, Executors}
 import java.util.concurrent.atomic.AtomicLong
+import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import scala.jdk.CollectionConverters.*
 
 /**
@@ -34,52 +35,76 @@ final class BspSession(val config: BspBuildConfig,
   def touch(): Unit = lastUseAt.set(System.currentTimeMillis())
   def idleSince: Long = lastUseAt.get()
 
+  /** Default silence window for BSP requests. BSP queries vary
+    * wildly in duration — `dependencyModules` on a cold cache can
+    * legitimately take minutes; `workspaceBuildTargets` is fast.
+    * The window is generous; the client's `lastActivityAtMillis`
+    * (progress notifications, log lines) keeps long-but-working
+    * operations from tripping it. */
+  protected def defaultSilenceWindow: FiniteDuration = 5.minutes
+
+  /** Wrap a BSP request in [[DurableJsonRpc.issueDurable]] so a
+    * lost JSON-RPC response is recovered via idempotent retry
+    * rather than stranding the calling Task forever (see bug
+    * notes in [[JsonRpcTransportException]]). All BSP queries
+    * Sigil performs are idempotent — the retry just re-asks the
+    * server for the (cached) result. */
+  protected def issueDurable[T](operation: String,
+                                silenceWindow: FiniteDuration = defaultSilenceWindow)
+                               (makeRequest: () => CompletableFuture[T]): Task[T] =
+    DurableJsonRpc.issueDurable(
+      operation     = operation,
+      silenceWindow = silenceWindow
+    )(activitySource = () => client.lastActivityAtMillis)(makeRequest)
+
   // ---- target discovery ----
 
   def workspaceBuildTargets: Task[List[BuildTarget]] = Task.defer {
     touch()
-    BspSession.fromFuture(server.workspaceBuildTargets()).map(_.getTargets.asScala.toList)
+    issueDurable("workspace/buildTargets")(() => server.workspaceBuildTargets())
+      .map(_.getTargets.asScala.toList)
   }
 
   def reload: Task[Unit] = Task.defer {
     touch()
-    BspSession.fromFuture(server.workspaceReload()).map(_ => ())
+    issueDurable("workspace/reload")(() => server.workspaceReload()).map(_ => ())
   }
 
   def sources(targets: List[BuildTargetIdentifier]): Task[List[SourcesItem]] = Task.defer {
     touch()
-    BspSession.fromFuture(server.buildTargetSources(new SourcesParams(targets.asJava))).map(_.getItems.asScala.toList)
+    issueDurable("buildTarget/sources")(() => server.buildTargetSources(new SourcesParams(targets.asJava)))
+      .map(_.getItems.asScala.toList)
   }
 
   def inverseSources(uri: String): Task[List[BuildTargetIdentifier]] = Task.defer {
     touch()
     val td = new TextDocumentIdentifier(uri)
-    BspSession.fromFuture(server.buildTargetInverseSources(new InverseSourcesParams(td))).map { result =>
+    issueDurable("buildTarget/inverseSources")(() => server.buildTargetInverseSources(new InverseSourcesParams(td))).map { result =>
       Option(result.getTargets).map(_.asScala.toList).getOrElse(Nil)
     }
   }
 
   def dependencySources(targets: List[BuildTargetIdentifier]): Task[List[DependencySourcesItem]] = Task.defer {
     touch()
-    BspSession.fromFuture(server.buildTargetDependencySources(new DependencySourcesParams(targets.asJava)))
+    issueDurable("buildTarget/dependencySources")(() => server.buildTargetDependencySources(new DependencySourcesParams(targets.asJava)))
       .map(_.getItems.asScala.toList)
   }
 
   def dependencyModules(targets: List[BuildTargetIdentifier]): Task[List[DependencyModulesItem]] = Task.defer {
     touch()
-    BspSession.fromFuture(server.buildTargetDependencyModules(new DependencyModulesParams(targets.asJava)))
+    issueDurable("buildTarget/dependencyModules")(() => server.buildTargetDependencyModules(new DependencyModulesParams(targets.asJava)))
       .map(_.getItems.asScala.toList)
   }
 
   def resources(targets: List[BuildTargetIdentifier]): Task[List[ResourcesItem]] = Task.defer {
     touch()
-    BspSession.fromFuture(server.buildTargetResources(new ResourcesParams(targets.asJava)))
+    issueDurable("buildTarget/resources")(() => server.buildTargetResources(new ResourcesParams(targets.asJava)))
       .map(_.getItems.asScala.toList)
   }
 
   def outputPaths(targets: List[BuildTargetIdentifier]): Task[List[OutputPathsItem]] = Task.defer {
     touch()
-    BspSession.fromFuture(server.buildTargetOutputPaths(new OutputPathsParams(targets.asJava)))
+    issueDurable("buildTarget/outputPaths")(() => server.buildTargetOutputPaths(new OutputPathsParams(targets.asJava)))
       .map(_.getItems.asScala.toList)
   }
 
@@ -87,7 +112,7 @@ final class BspSession(val config: BspBuildConfig,
 
   def compile(targets: List[BuildTargetIdentifier]): Task[CompileResult] = Task.defer {
     touch()
-    BspSession.fromFuture(server.buildTargetCompile(new CompileParams(targets.asJava)))
+    issueDurable("buildTarget/compile")(() => server.buildTargetCompile(new CompileParams(targets.asJava)))
   }
 
   def test(targets: List[BuildTargetIdentifier],
@@ -95,7 +120,7 @@ final class BspSession(val config: BspBuildConfig,
     touch()
     val params = new TestParams(targets.asJava)
     if (arguments.nonEmpty) params.setArguments(arguments.asJava)
-    BspSession.fromFuture(server.buildTargetTest(params))
+    issueDurable("buildTarget/test")(() => server.buildTargetTest(params))
   }
 
   def run(target: BuildTargetIdentifier,
@@ -103,19 +128,19 @@ final class BspSession(val config: BspBuildConfig,
     touch()
     val params = new RunParams(target)
     if (arguments.nonEmpty) params.setArguments(arguments.asJava)
-    BspSession.fromFuture(server.buildTargetRun(params))
+    issueDurable("buildTarget/run")(() => server.buildTargetRun(params))
   }
 
   def cleanCache(targets: List[BuildTargetIdentifier]): Task[CleanCacheResult] = Task.defer {
     touch()
-    BspSession.fromFuture(server.buildTargetCleanCache(new CleanCacheParams(targets.asJava)))
+    issueDurable("buildTarget/cleanCache")(() => server.buildTargetCleanCache(new CleanCacheParams(targets.asJava)))
   }
 
   // ---- Scala-specific ----
 
   def scalacOptions(targets: List[BuildTargetIdentifier]): Task[List[ScalacOptionsItem]] = Task.defer {
     touch()
-    BspSession.fromFuture(server.buildTargetScalacOptions(new ScalacOptionsParams(targets.asJava)))
+    issueDurable("buildTarget/scalacOptions")(() => server.buildTargetScalacOptions(new ScalacOptionsParams(targets.asJava)))
       .map(_.getItems.asScala.toList)
   }
 
@@ -127,14 +152,14 @@ final class BspSession(val config: BspBuildConfig,
   @annotation.nowarn("cat=deprecation")
   def scalaTestClasses(targets: List[BuildTargetIdentifier]): Task[List[ScalaTestClassesItem]] = Task.defer {
     touch()
-    BspSession.fromFuture(server.buildTargetScalaTestClasses(new ScalaTestClassesParams(targets.asJava)))
+    issueDurable("buildTarget/scalaTestClasses")(() => server.buildTargetScalaTestClasses(new ScalaTestClassesParams(targets.asJava)))
       .map(_.getItems.asScala.toList)
   }
 
   @annotation.nowarn("cat=deprecation")
   def scalaMainClasses(targets: List[BuildTargetIdentifier]): Task[List[ScalaMainClassesItem]] = Task.defer {
     touch()
-    BspSession.fromFuture(server.buildTargetScalaMainClasses(new ScalaMainClassesParams(targets.asJava)))
+    issueDurable("buildTarget/scalaMainClasses")(() => server.buildTargetScalaMainClasses(new ScalaMainClassesParams(targets.asJava)))
       .map(_.getItems.asScala.toList)
   }
 
@@ -142,13 +167,13 @@ final class BspSession(val config: BspBuildConfig,
 
   def jvmTestEnvironment(targets: List[BuildTargetIdentifier]): Task[List[JvmEnvironmentItem]] = Task.defer {
     touch()
-    BspSession.fromFuture(server.buildTargetJvmTestEnvironment(new JvmTestEnvironmentParams(targets.asJava)))
+    issueDurable("buildTarget/jvmTestEnvironment")(() => server.buildTargetJvmTestEnvironment(new JvmTestEnvironmentParams(targets.asJava)))
       .map(_.getItems.asScala.toList)
   }
 
   def jvmRunEnvironment(targets: List[BuildTargetIdentifier]): Task[List[JvmEnvironmentItem]] = Task.defer {
     touch()
-    BspSession.fromFuture(server.buildTargetJvmRunEnvironment(new JvmRunEnvironmentParams(targets.asJava)))
+    issueDurable("buildTarget/jvmRunEnvironment")(() => server.buildTargetJvmRunEnvironment(new JvmRunEnvironmentParams(targets.asJava)))
       .map(_.getItems.asScala.toList)
   }
 

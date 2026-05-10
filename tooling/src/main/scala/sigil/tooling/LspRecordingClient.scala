@@ -7,7 +7,7 @@ import org.eclipse.lsp4j.jsonrpc.services.JsonNotification
 import org.eclipse.lsp4j.services.{LanguageClient, LanguageServer}
 
 import java.util.concurrent.{CompletableFuture, ConcurrentHashMap}
-import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.{AtomicLong, AtomicReference}
 
 /**
  * `LanguageClient` impl that captures the things agents care about:
@@ -44,10 +44,23 @@ final class LspRecordingClient(applier: WorkspaceEditApplier) extends LanguageCl
   def setStatusCallback(cb: Option[String => Unit]): Unit =
     statusCallback.set(cb)
 
+  /** Wall-clock millis of the most recent server activity (any
+    * notification or diagnostic). Read by
+    * [[DurableJsonRpc.issueDurable]] to reset the silence-window
+    * detector — a long operation that's reporting progress isn't
+    * stuck. Updated by every notification handler. */
+  private val lastActivityAt: AtomicLong = new AtomicLong(System.currentTimeMillis())
+
+  def lastActivityAtMillis: Long = lastActivityAt.get()
+
+  private def markActivity(): Unit = lastActivityAt.set(System.currentTimeMillis())
+
   def connect(s: LanguageServer): Unit = serverRef.set(s)
 
-  override def publishDiagnostics(params: PublishDiagnosticsParams): Unit =
+  override def publishDiagnostics(params: PublishDiagnosticsParams): Unit = {
+    markActivity()
     diagnostics.put(params.getUri, params.getDiagnostics)
+  }
 
   override def telemetryEvent(params: Object): Unit = ()
 
@@ -158,6 +171,7 @@ final class LspRecordingClient(applier: WorkspaceEditApplier) extends LanguageCl
   }
 
   override def createProgress(params: WorkDoneProgressCreateParams): CompletableFuture[Void] = {
+    markActivity()
     val token = tokenString(params.getToken)
     progressTokens.put(token, java.lang.Boolean.TRUE)
     CompletableFuture.completedFuture(null)
@@ -205,6 +219,7 @@ final class LspRecordingClient(applier: WorkspaceEditApplier) extends LanguageCl
   }
 
   private def routeStatus(text: String): Unit = {
+    markActivity()
     val trimmed = Option(text).getOrElse("").trim
     if (trimmed.nonEmpty) statusCallback.get().foreach(_.apply(trimmed))
   }
