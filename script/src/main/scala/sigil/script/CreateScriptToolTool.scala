@@ -136,14 +136,12 @@ case object CreateScriptToolTool extends TypedTool[CreateScriptToolInput](
               role           = MessageRole.Tool,
               visibility     = MessageVisibility.Agents
             )
-            // Bug #68 (Concern A) — auto-pop back to conversation
-            // mode after a successful create. Without this the agent
-            // stays in `script-authoring`, the new tool's
-            // `modes = Set(ConversationMode.id)` doesn't match the
-            // current mode, and `find_capability` can't surface it
-            // (mode-affinity filter rejects it). The mode-pop is
-            // emitted as `MessageRole.Standard` so it doesn't compete
-            // with `ack` for the tool-result pairing slot.
+            // Auto-pop back to conversation mode after a successful
+            // create — the agent's intent in script-authoring was to
+            // build the tool, and the user typically wants to use it
+            // back in conversation. Emitted as MessageRole.Standard
+            // so it doesn't compete with `ack` for the tool-result
+            // pairing slot.
             val modePop = ModeChange(
               mode           = ConversationMode,
               reason         = Some(s"auto-pop after create_script_tool '${stored.name.value}'"),

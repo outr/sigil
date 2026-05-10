@@ -7,7 +7,7 @@ import lightdb.time.Timestamp
 import sigil.{GlobalSpace, Sigil, SpaceId, TurnContext}
 import sigil.event.Event
 import sigil.participant.ParticipantId
-import sigil.provider.{ConversationMode, Mode}
+import sigil.provider.Mode
 
 /**
  * A capability available to agents at runtime. Persisted in
@@ -44,7 +44,19 @@ trait Tool extends RecordDocument[Tool] {
     * to scope which records the user sees. */
   def kind: ToolKind = BuiltinKind
 
-  def modes: Set[Id[Mode]] = Set(ConversationMode.id)
+  /** The set of [[Mode]] discriminators this tool is discoverable in.
+    * Empty (the default) means **universally discoverable** — surfaces in
+    * `find_capability` regardless of which mode the conversation is in.
+    *
+    * Tools that legitimately want mode-gated discovery (e.g. a
+    * `WebBrowserMode`-only screenshot tool, or skill-bound tools that
+    * make no sense outside their mode) opt in by listing the
+    * mode discriminator(s) here. Most tools — filesystem, LSP, BSP,
+    * memory, web fetch, MCP — leave it empty.
+    *
+    * The reference filter [[DiscoveryFilter.passesAffinity]] honors
+    * the empty-as-universal contract. */
+  def modes: Set[Id[Mode]] = Set.empty
 
   /** The single [[SpaceId]] this tool is visible under. Defaults to
     * [[GlobalSpace]] — visible to every caller. Tools scoped to a
