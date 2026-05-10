@@ -30,7 +30,17 @@ final class LspSession(val config: LspServerConfig,
                        val projectRoot: String,
                        process: Process,
                        server: LanguageServer,
-                       client: LspRecordingClient) {
+                       client: LspRecordingClient,
+                       /** The server's capabilities snapshot from `initialize`'s
+                         * response. Tools consult this BEFORE issuing optional
+                         * LSP requests (`textDocument/diagnostic` / pull
+                         * diagnostics, code lens, inlay hints, etc.) so they
+                         * fall back to alternative protocols when the server
+                         * doesn't advertise support. Sigil bug #100 — pre-fix
+                         * `LspPullDiagnosticsTool` called the pull method
+                         * unconditionally and Metals (which only supports the
+                         * legacy push flow) returned `MethodNotFound`. */
+                       val serverCapabilities: ServerCapabilities) {
 
   private val lastUseAt: AtomicLong = new AtomicLong(System.currentTimeMillis())
   private val versions: ConcurrentHashMap[String, AtomicLong] = new ConcurrentHashMap()
@@ -360,9 +370,16 @@ object LspSession {
     initParams.setWorkspaceFolders(java.util.Collections.singletonList(workspaceFolder))
     initParams.setCapabilities(buildClientCapabilities())
 
-    fromFuture(server.initialize(initParams)).map { _ =>
+    fromFuture(server.initialize(initParams)).map { initResult =>
       server.initialized(new InitializedParams())
-      new LspSession(config, projectRoot, process, server, client)
+      // Capture serverCapabilities so capability-gated tools (pull
+      // diagnostics, etc.) can check support before issuing the
+      // request. Some servers return null capabilities — fall back
+      // to a fresh empty ServerCapabilities so call-site `Option(...)`
+      // accessors stay null-safe.
+      val caps = Option(initResult).flatMap(r => Option(r.getCapabilities))
+        .getOrElse(new ServerCapabilities())
+      new LspSession(config, projectRoot, process, server, client, caps)
     }
   }
 
