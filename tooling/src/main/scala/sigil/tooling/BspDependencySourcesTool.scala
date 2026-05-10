@@ -36,7 +36,7 @@ final class BspDependencySourcesTool(val manager: BspManager) extends TypedOutpu
                                       context: TurnContext): Task[BspDependencySourcesResult] =
     withSessionTyped[BspDependencySourcesResult](
       input.projectRoot, context,
-      onError = msg => throw new RuntimeException(msg)
+      onError = _ => BspDependencySourcesResult(input.projectRoot, Nil)
     ) { session =>
       targetsFromInput(session, input.targets).flatMap { targets =>
         if (targets.isEmpty) Task.pure(BspDependencySourcesResult(input.projectRoot, Nil))

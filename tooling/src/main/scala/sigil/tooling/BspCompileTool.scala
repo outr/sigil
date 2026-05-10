@@ -44,7 +44,7 @@ final class BspCompileTool(val manager: BspManager) extends TypedOutputTool[BspC
   override protected def executeTyped(input: BspCompileInput, context: TurnContext): Task[BspCompileResult] =
     withSessionTyped[BspCompileResult](
       input.projectRoot, context,
-      onError = msg => throw new RuntimeException(msg)
+      onError = msg => BspCompileResult(input.projectRoot, "ERROR", 0, Nil)
     ) { session =>
       targetsFromInput(session, input.targets).flatMap { targets =>
         if (targets.isEmpty) {

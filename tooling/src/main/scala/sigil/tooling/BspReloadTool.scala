@@ -31,7 +31,7 @@ final class BspReloadTool(val manager: BspManager) extends TypedOutputTool[BspRe
   override protected def executeTyped(input: BspReloadInput, context: TurnContext): Task[BspReloadResult] =
     withSessionTyped[BspReloadResult](
       input.projectRoot, context,
-      onError = msg => throw new RuntimeException(msg)
+      onError = _ => BspReloadResult(input.projectRoot)
     ) { session =>
       session.reload.map(_ => BspReloadResult(input.projectRoot))
     }

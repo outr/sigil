@@ -39,7 +39,7 @@ final class BspInverseSourcesTool(val manager: BspManager) extends TypedOutputTo
                                       context: TurnContext): Task[BspInverseSourcesResult] =
     withSessionTyped[BspInverseSourcesResult](
       input.projectRoot, context,
-      onError = msg => throw new RuntimeException(msg)
+      onError = _ => BspInverseSourcesResult(input.projectRoot, input.filePath, Nil)
     ) { session =>
       val uri = new File(input.filePath).toURI.toString
       session.inverseSources(uri).map { targets =>

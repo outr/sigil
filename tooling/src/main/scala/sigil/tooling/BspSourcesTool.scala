@@ -38,7 +38,7 @@ final class BspSourcesTool(val manager: BspManager) extends TypedOutputTool[BspS
   override protected def executeTyped(input: BspSourcesInput, context: TurnContext): Task[BspSourcesResult] =
     withSessionTyped[BspSourcesResult](
       input.projectRoot, context,
-      onError = msg => throw new RuntimeException(msg)
+      onError = _ => BspSourcesResult(input.projectRoot, Nil)
     ) { session =>
       targetsFromInput(session, input.targets).flatMap { targets =>
         if (targets.isEmpty) Task.pure(BspSourcesResult(input.projectRoot, Nil))
