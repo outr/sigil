@@ -12,7 +12,7 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
-import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, EncodedContext, FrameBuilder, MemorySource, MemoryStatus, ParticipantProjection, SkillSource, Topic, TopicEntry, TopicShiftResult, TurnInput, UpsertMemoryResult}
+import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, EncodedContext, FrameBuilder, MemorySource, MemoryStatus, ParticipantProjection, ProgressContext, SkillSource, Topic, TopicEntry, TopicShiftResult, TurnInput, UpsertMemoryResult}
 import sigil.SpaceId
 import sigil.cache.ModelRegistry
 import sigil.controller.OpenRouter
@@ -4646,23 +4646,15 @@ trait Sigil {
       val state = checkpointStates.computeIfAbsent(claimed._id,
         _ => CheckpointState(lastStatus = None, noProgressStreak = 0))
       val priorStatus = state.lastStatus
-      val priorBlock = priorStatus match {
-        case Some(s) => s"At your last checkpoint you said: \"$s\"\n\n"
-        case None    => ""
-      }
-      val systemPrompt =
-        """You are reflecting on your own progress on a task. Compare the current state of the work
-          |against the prior status anchor (if any). Be honest: if your status looks identical to
-          |the prior status, set meaningfulProgress = false so the framework can intervene.""".stripMargin
-      val userPrompt =
-        s"""${priorBlock}You are now ${iteration} iteration(s) into this task.
-           |
-           |Look at what you've done since ${if (priorStatus.isDefined) "that point" else "the start"}.
-           |Pick a one-line currentStatus describing where things stand RIGHT NOW. Set
-           |meaningfulProgress = true ONLY when you're substantively further than the prior status.
-           |One-line remainingSteps for what's left. Empty stuckOn unless you genuinely can't
-           |proceed. shouldAskUser = true ONLY if the user must clarify something.""".stripMargin
-      sigil.tool.consult.ConsultTool.invoke[sigil.tool.consult.ProgressReflectionInput](
+      loadProgressContext(convId, agent.id).flatMap { ctx =>
+        val systemPrompt =
+          """You are reflecting on the agent's progress on a specific user task. Given the
+            |user's request, the tool history since that request, and the prior checkpoint
+            |status, assess whether meaningful progress has been made. Be honest: if your
+            |current status looks identical to the prior status, set meaningfulProgress = false
+            |so the framework can intervene.""".stripMargin
+        val userPrompt = renderCheckpointPrompt(ctx, priorStatus, iteration)
+        sigil.tool.consult.ConsultTool.invoke[sigil.tool.consult.ProgressReflectionInput](
         sigil              = this,
         modelId            = agent.modelId,
         chain              = List(agent.id),
@@ -4722,7 +4714,103 @@ trait Sigil {
         Task(scribe.warn(s"runProgressCheckpoint failed for ${agent.id.value}/${convId.value} iter=$iteration: ${e.getMessage}"))
           .map(_ => None)
       }
+      }
     }
+  }
+
+  /** Load the context the reflection prompt needs: the user's most
+    * recent substantive Message + the agent's tool-call history
+    * since that message. Best-effort — failures fall through to
+    * empty context rather than aborting the checkpoint. */
+  private final def loadProgressContext(convId: Id[Conversation],
+                                        agentId: ParticipantId): Task[ProgressContext] =
+    withDB(_.events.transaction(_.list)).map { all =>
+      val convEvents = all.iterator
+        .collect { case e: Event if e.conversationId == convId => e }
+        .toList
+        .sortBy(_.timestamp.value)
+      // The most recent user Message — non-agent participant, Standard role.
+      val userMsg = convEvents.reverseIterator.collectFirst {
+        case m: Message
+          if !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId] &&
+             m.role == MessageRole.Standard &&
+             m.content.nonEmpty =>
+          m
+      }
+      val task: Option[String] = userMsg.map(m => textOfContent(m.content))
+      // Tool calls + agent responds since the user message.
+      val cutoff = userMsg.map(_.timestamp.value).getOrElse(0L)
+      val historyEntries = scala.collection.mutable.ListBuffer.empty[String]
+      // Group by callId so a ToolInvoke + ToolResults pair render as one line.
+      val invokesById = convEvents.collect {
+        case ti: sigil.event.ToolInvoke if ti.timestamp.value > cutoff && ti.participantId == agentId => ti
+      }
+      val resultsByOrigin = convEvents.collect {
+        case tr: sigil.event.ToolResults if tr.timestamp.value > cutoff && tr.origin.isDefined => tr.origin.get -> tr
+      }.toMap
+      val sortedInvokes = invokesById.sortBy(_.timestamp.value).take(20)  // cap the history
+      sortedInvokes.foreach { ti =>
+        val tail = resultsByOrigin.get(ti._id) match {
+          case Some(_) => "OK"
+          case None    => "(no result yet)"
+        }
+        historyEntries += s"${ti.toolName.value} → $tail"
+      }
+      // Agent's own respond Messages count too — they're the "let me X" drafts.
+      val agentResponds = convEvents.collect {
+        case m: Message
+          if m.timestamp.value > cutoff &&
+             m.participantId == agentId &&
+             m.role == MessageRole.Standard &&
+             m.content.nonEmpty =>
+          textOfContent(m.content)
+      }
+      if (agentResponds.size >= 2)
+        historyEntries += s"respond × ${agentResponds.size} (latest: \"${snippet(agentResponds.last, 80)}\")"
+      else
+        agentResponds.foreach(r => historyEntries += s"respond → \"${snippet(r, 80)}\"")
+      ProgressContext(userTask = task, toolHistory = historyEntries.toList)
+    }.handleError(_ => Task.pure(ProgressContext(None, Nil)))
+
+  /** Concatenate textual ResponseContent blocks; used to derive a
+    * one-line view of a Message for the reflection prompt. */
+  private final def textOfContent(blocks: Vector[_root_.sigil.tool.model.ResponseContent]): String =
+    blocks.collect {
+      case _root_.sigil.tool.model.ResponseContent.Text(t)     => t
+      case _root_.sigil.tool.model.ResponseContent.Markdown(t) => t
+    }.mkString(" ").trim
+
+  private final def snippet(s: String, maxLen: Int): String =
+    if (s.length <= maxLen) s else s.take(maxLen) + "…"
+
+  /** Stitch the user task + tool history + prior checkpoint status
+    * into the reflection prompt. Pure helper — useful to apps that
+    * want to surface the same context shape to a custom reflection
+    * tool, and to specs verifying the prompt structure. */
+  def renderCheckpointPrompt(ctx: ProgressContext,
+                             priorStatus: Option[String],
+                             iteration: Int): String = {
+    val taskBlock = ctx.userTask match {
+      case Some(t) => s"The user's request:\n\"$t\"\n\n"
+      case None    => "The user's request: (no recent substantive user message found)\n\n"
+    }
+    val historyBlock = ctx.toolHistory match {
+      case Nil => "What you've done since: (no tool calls yet)\n\n"
+      case list =>
+        val numbered = list.zipWithIndex.map { case (line, i) => s"  ${i + 1}. $line" }.mkString("\n")
+        s"What you've done since:\n$numbered\n\n"
+    }
+    val priorBlock = priorStatus match {
+      case Some(s) => s"Prior checkpoint status: \"$s\"\n\n"
+      case None    => "Prior checkpoint status: (first checkpoint)\n\n"
+    }
+    val ask =
+      s"You are at iteration $iteration. " +
+        s"Pick a one-line currentStatus describing where things stand RIGHT NOW. Set " +
+        s"meaningfulProgress = true ONLY when you're substantively further than the prior status. " +
+        s"One-line remainingSteps for what's left. Empty stuckOn unless you genuinely can't proceed. " +
+        s"shouldAskUser = true ONLY if the user must clarify something."
+    taskBlock + historyBlock + priorBlock + ask
   }
 
   /** Publish a `Failure`-content Message into the conversation when
