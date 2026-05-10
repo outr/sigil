@@ -25,7 +25,8 @@ final class GrepTool(context: FileSystemContext)
     ),
     keywords = Set(
       "grep", "search", "regex", "find", "match", "lines",
-      "lookup", "ripgrep", "rg", "code", "text", "files", "pattern"
+      "lookup", "ripgrep", "rg", "code", "text", "files", "pattern",
+      "scan", "look", "occurrence", "string"
     )
   ) {
   // Bug #86 — generic primitive: ranks below domain-specific tools

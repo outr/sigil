@@ -28,7 +28,8 @@ final class ReadFileTool(context: FileSystemContext)
     ),
     keywords = Set(
       "file", "read", "open", "cat", "view",
-      "contents", "source", "examine", "inspect", "load", "show"
+      "contents", "source", "examine", "inspect", "load", "show",
+      "code", "text", "lines", "display", "fetch", "look"
     )
   ) {
   // Bug #86 — generic primitive: ranks below domain-specific
