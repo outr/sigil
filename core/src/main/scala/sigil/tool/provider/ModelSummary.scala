@@ -21,6 +21,7 @@ import fabric.rw.*
 case class ModelSummary(id: String,
                         provider: String,
                         model: String,
+                        displayName: Option[String],
                         contextLength: Long,
                         description: String,
                         pricing: ModelPricingSummary) derives RW
@@ -38,6 +39,7 @@ object ModelSummary {
     id            = m._id.value,
     provider      = m.provider,
     model         = m.model,
+    displayName   = m.displayName,
     contextLength = m.contextLength,
     description   = m.description,
     pricing       = ModelPricingSummary(m.pricing.prompt, m.pricing.completion)

@@ -19,11 +19,17 @@ object OpenRouter {
           .filterOne(SnakeToCamelFilter)("data")
           .asVector
         vector.map { json =>
+          // OpenRouter's `name` field is the friendly label
+          // ("GPT-5.5", "Claude Opus 4.7", …). Mirror it into
+          // `displayName` so clients always have a UI-ready label
+          // without falling back to the raw id tail.
+          val displayNameJson: Json = json.get("name") match {
+            case Some(n) => obj("displayName" -> n)
+            case None    => obj()
+          }
           json
-            .merge(
-              obj(
-                "_id" -> json("id")
-              ))
+            .merge(obj("_id" -> json("id")))
+            .merge(displayNameJson)
             .as[Model]
         }.toList
       }

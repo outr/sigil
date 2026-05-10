@@ -58,6 +58,7 @@ object LlamaCpp {
   def toModel(entry: Entry, runtimeContextOverride: Option[Long] = None): Model = {
     val name = modelNameFromId(entry.id)
     val id = Id[Model](s"$Provider/${name.toLowerCase}")
+    val display = displayNameFromBasename(name)
     val contextLength: Long =
       runtimeContextOverride
         .orElse(entry.meta.flatMap(_.nCtxTrain))
@@ -67,6 +68,7 @@ object LlamaCpp {
       canonicalSlug = s"$Provider/$name",
       huggingFaceId = "",
       name = name,
+      displayName = display,
       description = describe(entry),
       contextLength = contextLength,
       architecture = ModelArchitecture(
@@ -162,6 +164,35 @@ object LlamaCpp {
   private def modelNameFromId(id: String): String = {
     val basename = id.split('/').last.split('\\').last
     if (basename.toLowerCase.endsWith(".gguf")) basename.dropRight(5) else basename
+  }
+
+  /** Heuristic friendly name for a llama.cpp model loaded from a gguf
+    * basename. Drops common quantization suffixes (`-iq4_xs`,
+    * `-q4_k_m`, `-q5_k_s`, `-bf16`, `-f16`, `-f32`), collapses
+    * vendor-prefix duplicates (`qwen_qwen3.6-...` → `qwen3.6-...`),
+    * replaces underscores with spaces, and title-cases the first
+    * letter. Returns `None` when the cleanup yields an empty string.
+    *
+    * Always best-effort — apps that need a guaranteed pretty label
+    * override the LlamaCpp seed (or post-process via their own model
+    * registry override). */
+  def displayNameFromBasename(basename: String): Option[String] = {
+    val quantPattern =
+      raw"(?i)[-_](iq?\d+([-_][xkmlsq0-9]+)*|q\d+([-_][kmsxlqf0-9]+)*|bf16|f16|f32)$$".r
+    val trimmed = quantPattern.replaceAllIn(basename, "")
+    val deduped = {
+      // Collapse "vendor_vendor-rest" → "vendor-rest" (case-insensitive).
+      val underscore = trimmed.indexOf('_')
+      if (underscore <= 0) trimmed
+      else {
+        val head = trimmed.substring(0, underscore)
+        val tail = trimmed.substring(underscore + 1)
+        if (tail.toLowerCase.startsWith(head.toLowerCase)) tail else trimmed
+      }
+    }
+    val spaced = deduped.replace('_', ' ').trim
+    if (spaced.isEmpty) None
+    else Some(spaced.head.toUpper.toString + spaced.tail)
   }
 
   private def describe(entry: Entry): String = {
