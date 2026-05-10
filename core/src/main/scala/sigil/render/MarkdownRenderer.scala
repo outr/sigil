@@ -43,7 +43,7 @@ object MarkdownRenderer extends ContentRenderer[String] {
     case ResponseContent.Options(prompt, opts, _) =>
       val items = opts.map(o => s"- **${o.label}** — ${o.value}").mkString("\n")
       s"$prompt\n\n$items"
-    case ResponseContent.Failure(reason, recoverable) =>
+    case ResponseContent.Failure(reason, recoverable, _) =>
       val tag = if (recoverable) "Failure (recoverable)" else "Failure"
       s"**$tag:** $reason"
     case ResponseContent.TextInput(label, _, placeholder, default) =>

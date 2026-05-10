@@ -42,7 +42,7 @@ object SlackMrkdwnRenderer extends ContentRenderer[String] {
     case ResponseContent.Options(prompt, opts, _) =>
       val items = opts.map(o => s"• *${o.label}* — ${o.value}").mkString("\n")
       s"$prompt\n$items"
-    case ResponseContent.Failure(reason, recoverable) =>
+    case ResponseContent.Failure(reason, recoverable, _) =>
       val tag = if (recoverable) ":warning: Failure (recoverable)" else ":x: Failure"
       s"*$tag:* $reason"
     case ResponseContent.TextInput(label, _, placeholder, default) =>

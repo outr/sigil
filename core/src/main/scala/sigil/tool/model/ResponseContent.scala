@@ -115,8 +115,18 @@ enum ResponseContent derives RW {
    * `recoverable = true` indicates the failure may succeed on retry (transient
    * issues like network errors). `false` indicates the failure is permanent
    * for this request (missing permissions, unsupported input, etc.).
+   *
+   * `errorContext` carries structured metadata when the framework caught
+   * an exception at the tool boundary — exception class, classification
+   * (UserInputError / TransientError / FrameworkBug / …), top stack
+   * frames, optional suggestion. The agent reads `classification` to pick
+   * a response shape (retry / fix args / report to user / file as
+   * feedback) and surfaces the structured details when the user might
+   * want to know what went wrong.
    */
-  case Failure(reason: String, recoverable: Boolean = false)
+  case Failure(reason: String,
+               recoverable: Boolean = false,
+               errorContext: Option[sigil.event.ErrorContext] = None)
 
   /**
    * Typed text-input form field. Renders a single-line text field
