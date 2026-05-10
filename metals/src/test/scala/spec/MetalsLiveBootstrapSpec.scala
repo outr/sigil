@@ -3,7 +3,9 @@ package spec
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
-import sigil.tooling.{LspManager, LspServerConfig, LspSession, PermissiveWorkspaceEditApplier, SymbolHit}
+import sigil.conversation.{Conversation, TopicEntry, TurnInput}
+import sigil.participant.ParticipantId
+import sigil.tooling.{LspManager, LspServerConfig, LspSession, LspWorkspaceSymbolsInput, LspWorkspaceSymbolsTool, PermissiveWorkspaceEditApplier, SymbolHit}
 
 import java.nio.file.{Files, Path, StandardOpenOption}
 import scala.concurrent.duration.*
@@ -38,14 +40,31 @@ class MetalsLiveBootstrapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
   override implicit val testTimeout: FiniteDuration = 8.minutes
 
-  private val metalsOnPath: Boolean = {
-    val pb = new ProcessBuilder("which", "metals").redirectErrorStream(true)
-    scala.util.Try(pb.start().waitFor()).toOption.contains(0)
+  /** Resolve the Metals binary across the launch shapes the test
+    * harness might land in. `sbt test` from an interactive shell
+    * inherits the user's PATH and `which metals` works. CI's sbt
+    * fork frequently has a stripped PATH — fall back to the
+    * standard Coursier install paths so the live spec runs
+    * automatically anywhere Metals is installed. */
+  private val metalsBinary: Option[String] = {
+    val whichExit = scala.util.Try {
+      new ProcessBuilder("which", "metals").redirectErrorStream(true).start().waitFor()
+    }.toOption
+    if (whichExit.contains(0)) Some("metals")
+    else {
+      val home = sys.props.getOrElse("user.home", "")
+      val candidates = List(
+        s"$home/.local/share/coursier/bin/metals",
+        s"$home/.local/bin/metals",
+        "/usr/local/bin/metals"
+      )
+      candidates.find(p => Files.isExecutable(Path.of(p)))
+    }
   }
 
   private val skipReason: Option[String] =
-    if (!metalsOnPath) Some("`metals` binary not on PATH (install via coursier: cs install metals)")
-    else               None
+    if (metalsBinary.isEmpty) Some("`metals` binary not found (install via coursier: cs install metals)")
+    else                      None
 
   /** Repeatedly query workspace symbols until at least one hit
     * comes back or the deadline expires. Metals returns an empty
@@ -69,7 +88,7 @@ class MetalsLiveBootstrapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       if (skipReason.isDefined) cancel(skipReason.get)
       else {
         val workspace = MetalsHelloWorldProject.materialize()
-        TestMetalsSigil.setLauncher(List("metals"))
+        TestMetalsSigil.setLauncher(List(metalsBinary.get))
 
         TestMetalsSigil.metalsManager.ensureRunning(workspace).map { name =>
           try {
@@ -102,7 +121,7 @@ class MetalsLiveBootstrapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       if (skipReason.isDefined) cancel(skipReason.get)
       else {
         val workspace = MetalsHelloWorldProject.materialize()
-        TestMetalsSigil.setLauncher(List("metals"))
+        TestMetalsSigil.setLauncher(List(metalsBinary.get))
         val manager = new LspManager(TestMetalsSigil, PermissiveWorkspaceEditApplier)
         val mainPath = workspace.resolve("src/main/scala/Main.scala")
         val mainUri = mainPath.toUri.toString
@@ -192,10 +211,114 @@ class MetalsLiveBootstrapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         }
       }
     }
+
+    /** Drive the agent-facing `lsp_workspace_symbols` tool through
+      * its real executeTyped path (rather than calling the
+      * underlying [[LspSession.workspaceSymbols]] directly). This
+      * exercises the full chain that hangs in production:
+      *
+      *   1. `LspToolSupport.withSessionTyped` → looks up the
+      *      persisted [[LspServerConfig]].
+      *   2. `LspManager.session` → spawns Metals (or attaches to a
+      *      running session — sigil bug #94's idempotency).
+      *   3. `LspSession.workspaceSymbols` → the actual LSP request.
+      *   4. Result mapping → [[LspWorkspaceSymbolsResult]] with
+      *      `items`, `totalCount`, `truncated`.
+      *
+      * Plus a `maxResults = 1` variant to verify the truncation
+      * flag fires correctly for over-cap result sets.
+      */
+    "drive lsp_workspace_symbols tool end-to-end (maps result + sets truncated)" in {
+      if (skipReason.isDefined) cancel(skipReason.get)
+      else {
+        val workspace = MetalsHelloWorldProject.materialize()
+        TestMetalsSigil.setLauncher(List(metalsBinary.get))
+        val manager = new LspManager(TestMetalsSigil, PermissiveWorkspaceEditApplier)
+        val tool = new LspWorkspaceSymbolsTool(manager)
+        val context = LspWorkspaceSymbolsTestContext.build()
+
+        def checkpoint(name: String): Task[Unit] = Task(scribe.info(s"[live-spec/tool] $name"))
+
+        val flow = for {
+          _   <- checkpoint("writing LspServerConfig")
+          _   <- TestMetalsSigil.writeLspServerConfigForMetals(workspace)
+
+          // Tool call 1 — wide query. Tool resolves the session,
+          // invokes the LSP request, maps SymbolHit → typed
+          // LspWorkspaceSymbol, returns result.
+          _   <- checkpoint("calling tool with maxResults=100")
+          result1 <- tool.invoke(LspWorkspaceSymbolsInput(
+            languageId  = "scala",
+            projectRoot = workspace.toAbsolutePath.normalize.toString,
+            query       = "Main",
+            maxResults  = 100
+          ), context)
+          _   <- checkpoint(s"tool returned ${result1.items.size} items, totalCount=${result1.totalCount}")
+
+          // Tool call 2 — same query, capped at 1 to force the
+          // truncated flag.
+          result2 <- tool.invoke(LspWorkspaceSymbolsInput(
+            languageId  = "scala",
+            projectRoot = workspace.toAbsolutePath.normalize.toString,
+            query       = "Main",
+            maxResults  = 1
+          ), context)
+          _   <- checkpoint(s"tool returned (capped) ${result2.items.size} items, truncated=${result2.truncated}")
+        } yield {
+          // Result mapping: items contain a Main symbol; totalCount
+          // matches; truncated is false when capped at 100.
+          result1.query shouldBe "Main"
+          result1.items.map(_.name) should contain("Main")
+          result1.items.headOption.flatMap(_.position).isDefined shouldBe true
+          result1.totalCount should be > 0
+          result1.truncated shouldBe false
+
+          // Truncation: maxResults=1 caps items but reports the
+          // un-truncated totalCount + sets the flag.
+          result2.items.size shouldBe 1
+          result2.totalCount shouldBe result1.totalCount
+          result2.truncated shouldBe true
+        }
+
+        flow.map { result =>
+          try result
+          finally {
+            manager.shutdownAll().sync()
+            TestMetalsSigil.setLauncher(List(
+              java.nio.file.Path.of("metals/src/test/resources/fake-metals.sh").toAbsolutePath.normalize.toString
+            ))
+            MetalsHelloWorldProject.cleanup(workspace)
+          }
+        }
+      }
+    }
   }
 
   "tear down" should {
     "dispose TestMetalsSigil" in TestMetalsSigil.shutdown.map(_ => succeed)
+  }
+}
+
+/** Builds the minimal [[TurnContext]] the LSP tools need.
+  * `lsp_workspace_symbols` doesn't read any context fields beyond
+  * what `withSessionTyped` threads through (and that flow ignores
+  * `context` entirely once the session is resolved), so a stub
+  * conversation + empty turn input + a dummy chain is enough. */
+private case class TestParticipantId(value: String) extends ParticipantId
+
+private object LspWorkspaceSymbolsTestContext {
+  def build(): sigil.TurnContext = {
+    val convId = Conversation.id(s"lsp-tool-spec-${rapid.Unique()}")
+    val topicId = sigil.conversation.Topic.id(s"topic-${rapid.Unique()}")
+    val initialTopic = TopicEntry(id = topicId, label = "spec", summary = "spec")
+    val conversation = Conversation(topics = List(initialTopic), _id = convId)
+    val chain: List[ParticipantId] = List(TestParticipantId(s"user-${rapid.Unique()}"))
+    sigil.TurnContext(
+      sigil        = TestMetalsSigil,
+      chain        = chain,
+      conversation = conversation,
+      turnInput    = TurnInput(conversationId = convId)
+    )
   }
 }
 
