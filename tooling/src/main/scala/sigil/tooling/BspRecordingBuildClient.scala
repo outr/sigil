@@ -2,7 +2,7 @@ package sigil.tooling
 
 import ch.epfl.scala.bsp4j.*
 
-import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.{AtomicLong, AtomicReference}
 import java.util.concurrent.{ConcurrentHashMap, ConcurrentLinkedQueue}
 import scala.jdk.CollectionConverters.*
 
@@ -71,6 +71,19 @@ class BspRecordingBuildClient extends BuildClient {
     if (trimmed.nonEmpty) statusCallback.get().foreach(_.apply(trimmed))
   }
 
+  /** Wall-clock millis of the most recent incoming server activity
+    * (any notification or diagnostic). Read by
+    * [[DurableJsonRpc.issueDurable]] to reset the silence window —
+    * a long operation that's actively reporting progress isn't
+    * stuck. Updated by every notification handler. */
+  private val lastActivityAt: AtomicLong = new AtomicLong(System.currentTimeMillis())
+
+  /** Accessor for [[DurableJsonRpc.issueDurable]]. Returns the wall-
+    * clock millis of the most recent server-side activity. */
+  def lastActivityAtMillis: Long = lastActivityAt.get()
+
+  private def markActivity(): Unit = lastActivityAt.set(System.currentTimeMillis())
+
   /** Snapshot the current diagnostics map. Useful for tools that
     * want to show what the server has flagged after a compile. */
   def diagnosticsSnapshot: Map[String, List[Diagnostic]] =
@@ -103,20 +116,25 @@ class BspRecordingBuildClient extends BuildClient {
 
   // ---- BuildClient overrides ----
 
-  override def onBuildShowMessage(params: ShowMessageParams): Unit =
+  override def onBuildShowMessage(params: ShowMessageParams): Unit = {
+    markActivity()
     emitStatus(Option(params.getMessage).getOrElse(""))
+  }
 
   override def onBuildLogMessage(params: LogMessageParams): Unit = {
+    markActivity()
     logs.offer(params)
     emitStatus(Option(params.getMessage).getOrElse(""))
   }
 
   override def onBuildTaskStart(params: TaskStartParams): Unit = {
+    markActivity()
     Option(params.getTaskId).map(_.getId).foreach(id => activeTasks.put(id, params))
     emitStatus(Option(params.getMessage).getOrElse(""))
   }
 
   override def onBuildTaskProgress(params: TaskProgressParams): Unit = {
+    markActivity()
     Option(params.getTaskId).map(_.getId).foreach(id => activeTasks.put(id, params))
     val msg = Option(params.getMessage).getOrElse("")
     val total = params.getTotal
@@ -130,6 +148,7 @@ class BspRecordingBuildClient extends BuildClient {
   }
 
   override def onBuildTaskFinish(params: TaskFinishParams): Unit = {
+    markActivity()
     Option(params.getTaskId).map(_.getId).foreach(id => activeTasks.remove(id))
     val msg = Option(params.getMessage).getOrElse("")
     val statusName = Option(params.getStatus).map(_.toString).getOrElse("")
@@ -143,17 +162,20 @@ class BspRecordingBuildClient extends BuildClient {
   }
 
   override def onBuildPublishDiagnostics(params: PublishDiagnosticsParams): Unit = {
+    markActivity()
     val uri = params.getTextDocument.getUri
     diagnostics.put(uri, params.getDiagnostics)
   }
 
-  override def onBuildTargetDidChange(params: DidChangeBuildTarget): Unit = ()
+  override def onBuildTargetDidChange(params: DidChangeBuildTarget): Unit = markActivity()
 
   override def onRunPrintStdout(params: PrintParams): Unit = {
+    markActivity()
     runStdout.offer(params); ()
   }
 
   override def onRunPrintStderr(params: PrintParams): Unit = {
+    markActivity()
     runStderr.offer(params); ()
   }
 }

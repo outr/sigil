@@ -65,6 +65,30 @@ final class LspSession(val config: LspServerConfig,
   def touch(): Unit = lastUseAt.set(System.currentTimeMillis())
   def idleSince: Long = lastUseAt.get()
 
+  /** Default silence window for LSP requests. LSP queries are
+    * typically fast (sub-second for completion, definition, hover,
+    * etc.); the 60-second default covers slow cases like workspace
+    * symbols on a cold index. Long operations are protected from
+    * tripping the detector by the recording client's
+    * `lastActivityAtMillis` — any incoming progress notification
+    * or log message resets the clock. */
+  protected def defaultSilenceWindow: scala.concurrent.duration.FiniteDuration =
+    scala.concurrent.duration.DurationInt(60).seconds
+
+  /** Wrap an LSP request in [[DurableJsonRpc.issueDurable]] so a
+    * lost JSON-RPC response is recovered via idempotent retry
+    * rather than stranding the calling Task forever (bug
+    * [[JsonRpcTransportException]] notes). LSP queries Sigil
+    * performs are idempotent — the retry re-asks for the cached
+    * result. */
+  protected def issueDurable[T](operation: String,
+                                silenceWindow: scala.concurrent.duration.FiniteDuration = defaultSilenceWindow)
+                               (makeRequest: () => CompletableFuture[T]): Task[T] =
+    DurableJsonRpc.issueDurable(
+      operation     = operation,
+      silenceWindow = silenceWindow
+    )(activitySource = () => client.lastActivityAtMillis)(makeRequest)
+
   /** Get the next document version for a URI; first access seeds at 1. */
   private def nextVersion(uri: String): Int =
     versions.computeIfAbsent(uri, _ => new AtomicLong(0L)).incrementAndGet().toInt
@@ -149,26 +173,26 @@ final class LspSession(val config: LspServerConfig,
   def gotoDefinition(uri: String, line: Int, character: Int): Task[List[Location]] = Task.defer {
     touch()
     val params = new DefinitionParams(new TextDocumentIdentifier(uri), new Position(line, character))
-    LspSession.fromFuture(server.getTextDocumentService.definition(params)).map(LspSession.flattenLocations)
+    issueDurable("textDocument/definition")(() => server.getTextDocumentService.definition(params)).map(LspSession.flattenLocations)
   }
 
   def typeDefinition(uri: String, line: Int, character: Int): Task[List[Location]] = Task.defer {
     touch()
     val params = new TypeDefinitionParams(new TextDocumentIdentifier(uri), new Position(line, character))
-    LspSession.fromFuture(server.getTextDocumentService.typeDefinition(params)).map(LspSession.flattenLocations)
+    issueDurable("textDocument/typeDefinition")(() => server.getTextDocumentService.typeDefinition(params)).map(LspSession.flattenLocations)
   }
 
   def implementation(uri: String, line: Int, character: Int): Task[List[Location]] = Task.defer {
     touch()
     val params = new ImplementationParams(new TextDocumentIdentifier(uri), new Position(line, character))
-    LspSession.fromFuture(server.getTextDocumentService.implementation(params)).map(LspSession.flattenLocations)
+    issueDurable("textDocument/implementation")(() => server.getTextDocumentService.implementation(params)).map(LspSession.flattenLocations)
   }
 
   def references(uri: String, line: Int, character: Int, includeDeclaration: Boolean = true): Task[List[Location]] = Task.defer {
     touch()
     val ctx = new ReferenceContext(includeDeclaration)
     val params = new ReferenceParams(new TextDocumentIdentifier(uri), new Position(line, character), ctx)
-    LspSession.fromFuture(server.getTextDocumentService.references(params)).map { result =>
+    issueDurable("textDocument/references")(() => server.getTextDocumentService.references(params)).map { result =>
       if (result == null) Nil else result.asScala.toList
     }
   }
@@ -176,7 +200,7 @@ final class LspSession(val config: LspServerConfig,
   def documentSymbols(uri: String): Task[List[LspEither[SymbolInformation, DocumentSymbol]]] = Task.defer {
     touch()
     val params = new DocumentSymbolParams(new TextDocumentIdentifier(uri))
-    LspSession.fromFuture(server.getTextDocumentService.documentSymbol(params)).map { result =>
+    issueDurable("textDocument/documentSymbol")(() => server.getTextDocumentService.documentSymbol(params)).map { result =>
       if (result == null) Nil else result.asScala.toList
     }
   }
@@ -184,7 +208,7 @@ final class LspSession(val config: LspServerConfig,
   def workspaceSymbols(query: String): Task[List[SymbolHit]] = Task.defer {
     touch()
     val params = new WorkspaceSymbolParams(query)
-    LspSession.fromFuture(server.getWorkspaceService.symbol(params)).map { either =>
+    issueDurable("workspace/symbol")(() => server.getWorkspaceService.symbol(params)).map { either =>
       if (either == null) Nil
       else if (either.isLeft) either.getLeft.asScala.toList.map(SymbolHit.fromSymbolInformation)
       else either.getRight.asScala.toList.map(SymbolHit.fromWorkspaceSymbol)
@@ -194,19 +218,19 @@ final class LspSession(val config: LspServerConfig,
   def hover(uri: String, line: Int, character: Int): Task[Option[Hover]] = Task.defer {
     touch()
     val params = new HoverParams(new TextDocumentIdentifier(uri), new Position(line, character))
-    LspSession.fromFuture(server.getTextDocumentService.hover(params)).map(Option(_))
+    issueDurable("textDocument/hover")(() => server.getTextDocumentService.hover(params)).map(Option(_))
   }
 
   def signatureHelp(uri: String, line: Int, character: Int): Task[Option[SignatureHelp]] = Task.defer {
     touch()
     val params = new SignatureHelpParams(new TextDocumentIdentifier(uri), new Position(line, character))
-    LspSession.fromFuture(server.getTextDocumentService.signatureHelp(params)).map(Option(_))
+    issueDurable("textDocument/signatureHelp")(() => server.getTextDocumentService.signatureHelp(params)).map(Option(_))
   }
 
   def completion(uri: String, line: Int, character: Int): Task[List[CompletionItem]] = Task.defer {
     touch()
     val params = new CompletionParams(new TextDocumentIdentifier(uri), new Position(line, character))
-    LspSession.fromFuture(server.getTextDocumentService.completion(params)).map { either =>
+    issueDurable("textDocument/completion")(() => server.getTextDocumentService.completion(params)).map { either =>
       if (either == null) Nil
       else if (either.isLeft) either.getLeft.asScala.toList
       else Option(either.getRight.getItems).map(_.asScala.toList).getOrElse(Nil)
@@ -215,7 +239,7 @@ final class LspSession(val config: LspServerConfig,
 
   def resolveCompletionItem(item: CompletionItem): Task[CompletionItem] = Task.defer {
     touch()
-    LspSession.fromFuture(server.getTextDocumentService.resolveCompletionItem(item))
+    issueDurable("textDocument/resolveCompletionItem")(() => server.getTextDocumentService.resolveCompletionItem(item))
   }
 
   def codeAction(uri: String,
@@ -225,7 +249,7 @@ final class LspSession(val config: LspServerConfig,
     val ctx = new CodeActionContext(diagnosticsFor(uri).asJava)
     if (onlyKinds.nonEmpty) ctx.setOnly(onlyKinds.asJava)
     val params = new CodeActionParams(new TextDocumentIdentifier(uri), range, ctx)
-    LspSession.fromFuture(server.getTextDocumentService.codeAction(params)).map { result =>
+    issueDurable("textDocument/codeAction")(() => server.getTextDocumentService.codeAction(params)).map { result =>
       val list = if (result == null) Nil else result.asScala.toList
       lastCodeActions.put(uri, list)
       list
@@ -234,19 +258,19 @@ final class LspSession(val config: LspServerConfig,
 
   def resolveCodeAction(action: CodeAction): Task[CodeAction] = Task.defer {
     touch()
-    LspSession.fromFuture(server.getTextDocumentService.resolveCodeAction(action))
+    issueDurable("textDocument/resolveCodeAction")(() => server.getTextDocumentService.resolveCodeAction(action))
   }
 
   def executeCommand(command: String, arguments: List[Object] = Nil): Task[Object] = Task.defer {
     touch()
     val params = new ExecuteCommandParams(command, arguments.asJava)
-    LspSession.fromFuture(server.getWorkspaceService.executeCommand(params))
+    issueDurable("workspace/executeCommand")(() => server.getWorkspaceService.executeCommand(params))
   }
 
   def formatting(uri: String, options: FormattingOptions): Task[List[TextEdit]] = Task.defer {
     touch()
     val params = new DocumentFormattingParams(new TextDocumentIdentifier(uri), options)
-    LspSession.fromFuture(server.getTextDocumentService.formatting(params)).map { result =>
+    issueDurable("textDocument/formatting")(() => server.getTextDocumentService.formatting(params)).map { result =>
       if (result == null) Nil else result.asScala.toList
     }
   }
@@ -254,7 +278,7 @@ final class LspSession(val config: LspServerConfig,
   def rangeFormatting(uri: String, range: Range, options: FormattingOptions): Task[List[TextEdit]] = Task.defer {
     touch()
     val params = new DocumentRangeFormattingParams(new TextDocumentIdentifier(uri), options, range)
-    LspSession.fromFuture(server.getTextDocumentService.rangeFormatting(params)).map { result =>
+    issueDurable("textDocument/rangeFormatting")(() => server.getTextDocumentService.rangeFormatting(params)).map { result =>
       if (result == null) Nil else result.asScala.toList
     }
   }
@@ -262,13 +286,13 @@ final class LspSession(val config: LspServerConfig,
   def rename(uri: String, line: Int, character: Int, newName: String): Task[Option[WorkspaceEdit]] = Task.defer {
     touch()
     val params = new RenameParams(new TextDocumentIdentifier(uri), new Position(line, character), newName)
-    LspSession.fromFuture(server.getTextDocumentService.rename(params)).map(Option(_))
+    issueDurable("textDocument/rename")(() => server.getTextDocumentService.rename(params)).map(Option(_))
   }
 
   def prepareRename(uri: String, line: Int, character: Int): Task[Option[Range]] = Task.defer {
     touch()
     val params = new PrepareRenameParams(new TextDocumentIdentifier(uri), new Position(line, character))
-    LspSession.fromFuture(server.getTextDocumentService.prepareRename(params)).map { either =>
+    issueDurable("textDocument/prepareRename")(() => server.getTextDocumentService.prepareRename(params)).map { either =>
       Option(either).flatMap { e =>
         // PrepareRenameResult shapes: Range | { range, placeholder } | { defaultBehavior }
         if (e.isFirst) Some(e.getFirst)
@@ -281,7 +305,7 @@ final class LspSession(val config: LspServerConfig,
   def foldingRange(uri: String): Task[List[FoldingRange]] = Task.defer {
     touch()
     val params = new FoldingRangeRequestParams(new TextDocumentIdentifier(uri))
-    LspSession.fromFuture(server.getTextDocumentService.foldingRange(params)).map { result =>
+    issueDurable("textDocument/foldingRange")(() => server.getTextDocumentService.foldingRange(params)).map { result =>
       if (result == null) Nil else result.asScala.toList
     }
   }
@@ -289,7 +313,7 @@ final class LspSession(val config: LspServerConfig,
   def selectionRange(uri: String, positions: List[Position]): Task[List[SelectionRange]] = Task.defer {
     touch()
     val params = new SelectionRangeParams(new TextDocumentIdentifier(uri), positions.asJava)
-    LspSession.fromFuture(server.getTextDocumentService.selectionRange(params)).map { result =>
+    issueDurable("textDocument/selectionRange")(() => server.getTextDocumentService.selectionRange(params)).map { result =>
       if (result == null) Nil else result.asScala.toList
     }
   }
@@ -297,13 +321,13 @@ final class LspSession(val config: LspServerConfig,
   def pullDiagnostics(uri: String): Task[Option[DocumentDiagnosticReport]] = Task.defer {
     touch()
     val params = new DocumentDiagnosticParams(new TextDocumentIdentifier(uri))
-    LspSession.fromFuture(server.getTextDocumentService.diagnostic(params)).map(Option(_))
+    issueDurable("textDocument/diagnostic")(() => server.getTextDocumentService.diagnostic(params)).map(Option(_))
   }
 
   def inlayHints(uri: String, range: Range): Task[List[InlayHint]] = Task.defer {
     touch()
     val params = new InlayHintParams(new TextDocumentIdentifier(uri), range)
-    LspSession.fromFuture(server.getTextDocumentService.inlayHint(params)).map { result =>
+    issueDurable("textDocument/inlayHint")(() => server.getTextDocumentService.inlayHint(params)).map { result =>
       if (result == null) Nil else result.asScala.toList
     }
   }
@@ -311,7 +335,7 @@ final class LspSession(val config: LspServerConfig,
   def codeLens(uri: String): Task[List[CodeLens]] = Task.defer {
     touch()
     val params = new CodeLensParams(new TextDocumentIdentifier(uri))
-    LspSession.fromFuture(server.getTextDocumentService.codeLens(params)).map { result =>
+    issueDurable("textDocument/codeLens")(() => server.getTextDocumentService.codeLens(params)).map { result =>
       if (result == null) Nil else result.asScala.toList
     }
   }
@@ -319,7 +343,7 @@ final class LspSession(val config: LspServerConfig,
   def documentLinks(uri: String): Task[List[DocumentLink]] = Task.defer {
     touch()
     val params = new DocumentLinkParams(new TextDocumentIdentifier(uri))
-    LspSession.fromFuture(server.getTextDocumentService.documentLink(params)).map { result =>
+    issueDurable("textDocument/documentLink")(() => server.getTextDocumentService.documentLink(params)).map { result =>
       if (result == null) Nil else result.asScala.toList
     }
   }
