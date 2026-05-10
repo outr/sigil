@@ -91,7 +91,20 @@ case object CreateScriptToolTool extends TypedTool[CreateScriptToolInput](
             keywords    = input.keywords,
             createdBy   = Some(context.caller)
           )
-          context.sigil.createTool(tool).map { stored =>
+          context.sigil.createTool(tool).flatMap { stored =>
+            // Pin the just-created tool to this conversation as
+            // Active so the agent's next turn's roster includes it
+            // directly — no find_capability round-trip needed.
+            val overlayTask = context.sigil.addConversationToolOverlay(
+              _root_.sigil.conversation.ConversationToolOverlay(
+                conversationId = context.conversation.id,
+                source         = s"create_script_tool:${stored.name.value}",
+                policy         = _root_.sigil.provider.ToolPolicy.Active(List(stored.name))
+              )
+            ).handleError { t =>
+              Task(scribe.warn(s"create_script_tool: ConversationToolOverlay install failed: ${t.getMessage}"))
+            }
+            overlayTask.map { _ =>
             // Bugs #68 / #69 — emit ONE Message(Tool) carrying the
             // confirmation, the schema, and a literal invocation hint
             // so the agent can call the tool back without an extra
@@ -108,9 +121,9 @@ case object CreateScriptToolTool extends TypedTool[CreateScriptToolInput](
             text.append(s"  name: ${stored.name.value}\n")
             text.append(s"  arguments matching this schema:\n")
             text.append(schemaJson).append("\n\n")
-            text.append("Note: the tool defaults to `conversation` mode affinity. The framework now\n")
-            text.append("auto-pops your mode back to `conversation` so `find_capability` will surface\n")
-            text.append("this tool by name on the next turn.\n\n")
+            text.append("The tool is pinned to this conversation — call it directly on your next turn;\n")
+            text.append("no `find_capability` round-trip needed. Mode is auto-popped back to\n")
+            text.append("`conversation` so the response flow continues normally.\n\n")
             text.append("Authoring follow-ups (available in `script-authoring` mode):\n")
             text.append("  - update_script_tool — modify code, description, or parameters\n")
             text.append("  - delete_script_tool — remove the tool\n")
@@ -140,6 +153,7 @@ case object CreateScriptToolTool extends TypedTool[CreateScriptToolInput](
               role           = MessageRole.Standard
             )
             Stream.emits[Event](List(ack, modePop))
+            }
           }
         }.handleError { e =>
           Task.pure(Stream.emit[Event](errorReply(context, s"Failed to create tool: ${e.getMessage}")))
