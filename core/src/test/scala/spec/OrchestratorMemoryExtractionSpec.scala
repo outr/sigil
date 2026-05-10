@@ -34,7 +34,7 @@ class OrchestratorMemoryExtractionSpec extends AsyncWordSpec with AsyncTaskSpec 
     huggingFaceId = "",
     name = "Test Orch Extract Model",
     description = "",
-    contextLength = 1000L,
+    contextLength = 4096L,
     architecture = ModelArchitecture(
       modality = "text->text",
       inputModalities = List("text"),
@@ -43,7 +43,7 @@ class OrchestratorMemoryExtractionSpec extends AsyncWordSpec with AsyncTaskSpec 
       instructType = None
     ),
     pricing = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
-    topProvider = ModelTopProvider(contextLength = Some(1000L), maxCompletionTokens = None, isModerated = false),
+    topProvider = ModelTopProvider(contextLength = Some(4096L), maxCompletionTokens = None, isModerated = false),
     perRequestLimits = None,
     supportedParameters = Set.empty,
     knowledgeCutoff = None,
