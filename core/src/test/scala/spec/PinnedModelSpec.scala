@@ -32,6 +32,28 @@ class PinnedModelSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   private val pinnedModelId = Model.id("test", "pinned-fixture")
 
+  // Seed the registry with the fixture model so PinModelTool's
+  // resolver accepts the id rather than refusing it as unresolvable.
+  TestSigil.cache.replace(List(sigil.db.Model(
+    canonicalSlug        = "test/pinned-fixture",
+    huggingFaceId        = "",
+    name                 = "pinned-fixture",
+    description          = "PinnedModelSpec fixture",
+    contextLength        = 32_000,
+    architecture         = sigil.db.ModelArchitecture("text->text", List("text"), List("text"), "Unknown", None),
+    pricing              = sigil.db.ModelPricing(BigDecimal(0), BigDecimal(0), None, None),
+    topProvider          = sigil.db.ModelTopProvider(Some(32_000L), Some(8_192L), false),
+    perRequestLimits     = None,
+    supportedParameters  = Set("temperature"),
+    defaultParameters    = sigil.db.ModelDefaultParameters(),
+    knowledgeCutoff      = None,
+    expirationDate       = None,
+    links                = sigil.db.ModelLinks(""),
+    created              = lightdb.time.Timestamp(),
+    modified             = lightdb.time.Timestamp(),
+    _id                  = pinnedModelId
+  ))).sync()
+
   private def freshConversation(): Task[Conversation] = {
     val convId = Conversation.id(s"pin-${rapid.Unique()}")
     val topic = Topic(

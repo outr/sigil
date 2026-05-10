@@ -1,11 +1,9 @@
 package sigil.tool.provider
 
 import fabric.rw.*
-import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.{Stream, Task}
 import sigil.TurnContext
-import sigil.db.Model
 import sigil.event.{Event, Message, MessageRole, MessageVisibility}
 import sigil.signal.EventState
 import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
@@ -41,17 +39,26 @@ case object PinModelTool extends TypedTool[PinModelInput](
     "model", "llm", "use"
   )
 ) {
-  override protected def executeTyped(input: PinModelInput, ctx: TurnContext): Stream[Event] = {
-    val modelId: Id[Model] = Id(input.modelId)
+  override protected def executeTyped(input: PinModelInput, ctx: TurnContext): Stream[Event] =
     Stream.force(
-      ctx.sigil.withDB(_.conversations.transaction(_.modify(ctx.conversation.id) {
-        case None       => Task.pure(None)
-        case Some(conv) => Task.pure(Some(conv.copy(pinnedModelId = Some(modelId), modified = Timestamp())))
-      })).map { _ =>
-        Stream.emit[Event](reply(ctx, s"Pinned to '${input.modelId}'. Every LLM call in this conversation will use this model until `unpin_model` is called."))
+      ModelResolution.resolve(input.modelId, ctx).flatMap {
+        case ModelResolutionResult.Unresolved(_, guidance) =>
+          Task.pure(Stream.emit[Event](reply(ctx, guidance)))
+        case ModelResolutionResult.Resolved(modelId, via) =>
+          val noteVia = via match {
+            case ModelResolutionResult.Resolution.Alias     => s" (resolved alias '${input.modelId}' → ${modelId.value})"
+            case ModelResolutionResult.Resolution.BareModel => s" (interpreted '${input.modelId}' as ${modelId.value})"
+            case ModelResolutionResult.Resolution.ExactId   => ""
+          }
+          ctx.sigil.withDB(_.conversations.transaction(_.modify(ctx.conversation.id) {
+            case None       => Task.pure(None)
+            case Some(conv) => Task.pure(Some(conv.copy(pinnedModelId = Some(modelId), modified = Timestamp())))
+          })).map { _ =>
+            Stream.emit[Event](reply(ctx,
+              s"Pinned to '${modelId.value}'$noteVia. Every LLM call in this conversation will use this model until `unpin_model` is called."))
+          }
       }
     )
-  }
 
   private def reply(ctx: TurnContext, text: String): Message = Message(
     participantId  = ctx.caller,

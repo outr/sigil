@@ -147,10 +147,18 @@ class CurrentModelToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       }
     }
 
-    "leave the registry summary empty for a pin to an unregistered id" in {
+    "leave the registry summary empty when the persisted pin id isn't in the catalog" in {
+      // PinModelTool refuses unregistered ids; bypass to write the
+      // pin directly. Exercises current_model's resilience when an
+      // older persisted pin no longer matches a catalog entry (e.g.
+      // provider rotated the model name).
+      val phantomId = lightdb.id.Id[Model]("phantom/unknown")
       for {
         conv <- freshConversation()
-        _    <- PinModelTool.execute(PinModelInput("phantom/unknown"), ctx(conv)).toList
+        _    <- TestSigil.withDB(_.conversations.transaction(_.modify(conv.id) {
+          case None    => Task.pure(None)
+          case Some(c) => Task.pure(Some(c.copy(pinnedModelId = Some(phantomId))))
+        })).unit
         reloaded <- reloadConv(conv)
         out  <- CurrentModelTool.invoke(CurrentModelInput(), ctx(reloaded))
       } yield {
