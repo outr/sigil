@@ -60,21 +60,24 @@ case object SwitchModelTool extends TypedTool[SwitchModelInput](
     val q = rawQuery.toLowerCase
     val convSpace = ctx.conversation.space
     if (q.isEmpty)
-      Task.pure(reply(ctx, "switch_model: query is required (model id, strategy label, or 'auto')."))
+      Task.pure(reply(ctx, "switch_model: query is required (model id, alias, strategy label, or 'auto')."))
     else if (q == "auto" || q == "default" || q == "automatic")
       ctx.sigil.unassignProviderStrategy(convSpace, ctx.chain).map { _ =>
         reply(ctx, "Reverted to automatic model selection — agent's pinned model will be used.")
       }
     else
       ctx.sigil.listProviderStrategies(convSpace, ctx.chain).flatMap { saved =>
-        // Try strategy match first (id, then label). Then model-id ad-hoc.
+        // Saved-strategy match first (id, then label, then fuzzy).
+        // Only fall through to model-id resolution when no strategy
+        // matches — saved strategies have priority because the
+        // operator chose those specifically.
         saved.find(_._id.value == rawQuery) match {
           case Some(byId) => assign(byId, ctx)
           case None =>
             saved.filter(_.label.equalsIgnoreCase(rawQuery)) match {
               case Nil =>
                 fuzzyStrategyMatch(rawQuery, saved) match {
-                  case Nil          => createAdHoc(rawQuery, ctx)  // Treat as a model-id ad-hoc switch.
+                  case Nil          => createAdHocOrRefuse(rawQuery, ctx)
                   case List(single) => assign(single, ctx)
                   case multiple     => Task.pure(disambiguateStrategies(rawQuery, multiple, ctx))
                 }
@@ -85,23 +88,43 @@ case object SwitchModelTool extends TypedTool[SwitchModelInput](
       }
   }
 
+  /** Resolve a non-strategy input to a registered model id via the
+    * shared [[ModelResolution]] chain (alias → exact id → bare-model
+    * lookup). Refuses with the resolver's guidance message when none
+    * matches — eliminates the prior silent-fallthrough that stamped
+    * phantom modelIds and routed to llama by accident. */
+  private def createAdHocOrRefuse(rawQuery: String, ctx: TurnContext): Task[Message] =
+    ModelResolution.resolve(rawQuery, ctx).flatMap {
+      case ModelResolutionResult.Unresolved(_, guidance) =>
+        Task.pure(reply(ctx, guidance))
+      case ModelResolutionResult.Resolved(modelId, via) =>
+        val noteVia = via match {
+          case ModelResolutionResult.Resolution.Alias     => s" (resolved alias '$rawQuery' → ${modelId.value})"
+          case ModelResolutionResult.Resolution.BareModel => s" (interpreted '$rawQuery' as ${modelId.value})"
+          case ModelResolutionResult.Resolution.ExactId   => ""
+        }
+        createAdHoc(modelId, rawQuery, noteVia, ctx)
+    }
+
   private def assign(record: ProviderStrategyRecord, ctx: TurnContext): Task[Message] =
     ctx.sigil.assignProviderStrategy(ctx.conversation.space, record._id, ctx.chain).map { _ =>
       reply(ctx, s"Switched to strategy '${record.label}' (id=${record._id.value}).")
     }
 
-  private def createAdHoc(modelIdRaw: String, ctx: TurnContext): Task[Message] = {
-    val modelId: Id[Model] = Id(modelIdRaw)
+  private def createAdHoc(modelId: Id[Model],
+                          rawQuery: String,
+                          noteVia: String,
+                          ctx: TurnContext): Task[Message] = {
     val record = ProviderStrategyRecord(
       space = ctx.conversation.space,
-      label = s"Override: $modelIdRaw",
+      label = s"Override: ${modelId.value}",
       defaultCandidates = List(ModelCandidate(modelId)),
       metadata = Map("kind" -> "ad-hoc-override", "createdBy" -> ctx.caller.value)
     )
     for {
       saved <- ctx.sigil.saveProviderStrategy(record)
       _     <- ctx.sigil.assignProviderStrategy(ctx.conversation.space, saved._id, ctx.chain)
-    } yield reply(ctx, s"Switching to '$modelIdRaw'. The next message will use that model.")
+    } yield reply(ctx, s"Switching to '${modelId.value}'$noteVia. The next message will use that model.")
   }
 
   private def fuzzyStrategyMatch(query: String,
