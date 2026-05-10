@@ -99,25 +99,31 @@ class LocalFileSystemContext(basePath: Option[Path] = None) extends FileSystemCo
     val stream      = Files.walk(base)
     try {
       stream.iterator().asScala
+        .filter(p => !isInExcludedDir(base, p))
         .filter(Files.isRegularFile(_))
         .filter(p => globMatcher.forall(m => m.matches(p.getFileName) || m.matches(base.relativize(p))))
         .takeWhile(_ => results.size < maxMatches)
         .foreach { path =>
-          if (!isBinary(path)) {
-            val lines = Files.readAllLines(path, StandardCharsets.UTF_8).asScala.toList
-            lines.zipWithIndex.foreach { case (line, idx) =>
-              if (regex.matcher(line).find() && results.size < maxMatches) {
-                val before = lines.slice(Math.max(0, idx - contextLines), idx)
-                val after  = lines.slice(idx + 1, Math.min(lines.size, idx + 1 + contextLines))
-                results += GrepMatch(
-                  filePath      = base.relativize(path).toString,
-                  lineNumber    = idx + 1,
-                  content       = line,
-                  contextBefore = before,
-                  contextAfter  = after
-                )
+          try {
+            if (!isBinary(path)) {
+              val lines = readLinesLenient(path)
+              lines.zipWithIndex.foreach { case (line, idx) =>
+                if (regex.matcher(line).find() && results.size < maxMatches) {
+                  val before = lines.slice(Math.max(0, idx - contextLines), idx)
+                  val after  = lines.slice(idx + 1, Math.min(lines.size, idx + 1 + contextLines))
+                  results += GrepMatch(
+                    filePath      = base.relativize(path).toString,
+                    lineNumber    = idx + 1,
+                    content       = line,
+                    contextBefore = before,
+                    contextAfter  = after
+                  )
+                }
               }
             }
+          } catch {
+            case t: Throwable =>
+              scribe.warn(s"grep: skipping ${base.relativize(path)} — ${t.getClass.getSimpleName}: ${t.getMessage}")
           }
         }
     } finally stream.close()
@@ -200,8 +206,54 @@ class LocalFileSystemContext(basePath: Option[Path] = None) extends FileSystemCo
   }
 
   private def isBinary(path: Path): Boolean = {
-    val bytes = Files.readAllBytes(path).take(8192)
-    bytes.exists(_ == 0)
+    try {
+      val in = Files.newInputStream(path)
+      try {
+        val bytes = in.readNBytes(8192)
+        bytes.exists(_ == 0)
+      } finally in.close()
+    } catch {
+      case _: Throwable => true  // unreadable → treat as non-text; skip
+    }
+  }
+
+  /** Skip directories that almost always contain binary cache
+    * artifacts (compiled bytecode, build-server indexes, package
+    * manager state, version-control metadata). Apps that legitimately
+    * need to grep these subclass and override [[searchFiles]]. */
+  private val excludedDirNames: Set[String] = Set(
+    ".git", ".metals", ".bloop", ".idea", ".vscode",
+    "target", "node_modules", "dist", "build", "out",
+    ".venv", "venv", "__pycache__", ".gradle", ".mvn"
+  )
+
+  private def isInExcludedDir(base: Path, path: Path): Boolean =
+    scala.util.Try(base.relativize(path)).toOption.exists { rel =>
+      import scala.jdk.CollectionConverters.*
+      rel.iterator().asScala.exists(seg => excludedDirNames.contains(seg.toString))
+    }
+
+  /** Read a file's lines via a UTF-8 decoder configured to REPLACE
+    * malformed sequences with U+FFFD instead of throwing. Survives
+    * Windows-1252 / iso-8859-1 / mixed-encoding text files at the
+    * cost of an occasional `?` character in the result — acceptable
+    * for grep, where the caller is matching a regex, not handing the
+    * bytes back unchanged. */
+  private def readLinesLenient(path: Path): List[String] = {
+    val decoder = StandardCharsets.UTF_8.newDecoder()
+      .onMalformedInput(java.nio.charset.CodingErrorAction.REPLACE)
+      .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPLACE)
+    val in = Files.newInputStream(path)
+    try {
+      val reader = new java.io.BufferedReader(new java.io.InputStreamReader(in, decoder))
+      val buf = scala.collection.mutable.ListBuffer.empty[String]
+      var line = reader.readLine()
+      while (line != null) {
+        buf += line
+        line = reader.readLine()
+      }
+      buf.toList
+    } finally in.close()
   }
 }
 
