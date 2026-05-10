@@ -33,10 +33,11 @@ final class LspWorkspaceSymbolsTool(val manager: LspManager) extends TypedOutput
       |`maxResults` (default 100) caps the response.
       |Returns `{query, items: [{kind, name, container, uri, position}], totalCount, truncated}`.""".stripMargin,
   keywords = Set(
-    "lsp", "workspace", "symbols", "find symbol", "search",
-    "class", "method", "function", "signature", "structure",
-    "examine", "inspect", "analyze", "explore", "browse",
-    "code", "codebase", "semantic", "index", "catalog"
+    "lsp", "workspace", "symbols", "symbol", "find symbol", "search",
+    "class", "method", "function", "definition", "signature", "structure",
+    "examine", "inspect", "analyze", "explore", "browse", "lookup",
+    "code", "codebase", "semantic", "index", "catalog",
+    "scala", "language", "navigate", "project"
   ),
   examples = List(
     ToolExample(

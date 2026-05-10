@@ -22,7 +22,11 @@ final class MetalsStatusTool extends TypedTool[MetalsStatusInput](
   description =
     """List every workspace currently backed by a Metals subprocess. Reports the workspace path,
       |MCP endpoint URL, alive flag, and milliseconds since the last touch (so you can see which
-      |sessions are about to be reaped by the idle sweeper).""".stripMargin
+      |sessions are about to be reaped by the idle sweeper).""".stripMargin,
+  keywords = Set(
+    "metals", "status", "health", "indexing", "ready",
+    "scala", "compile", "subprocess", "running", "lsp"
+  )
 ) {
   import MetalsToolSupport.*
 

@@ -30,7 +30,9 @@ final class BspCompileTool(val manager: BspManager) extends TypedOutputTool[BspC
   keywords = Set(
     "bsp", "compile", "build", "type-check", "verify",
     "errors", "warnings", "compile-check", "examine", "inspect",
-    "analyze", "review"
+    "analyze", "review",
+    "scala", "sbt", "project", "targets", "evaluate", "validate",
+    "rebuild", "diagnostics", "fix"
   ),
   examples = List(
     ToolExample(

@@ -36,7 +36,8 @@ final class LspGotoDefinitionTool(val manager: LspManager) extends TypedOutputTo
   keywords = Set(
     "lsp", "definition", "definitions", "where defined", "declaration",
     "jump-to", "goto", "go to", "find symbol", "examine", "inspect",
-    "navigate", "source", "semantic", "symbol"
+    "navigate", "source", "semantic", "symbol",
+    "scala", "language", "code"
   ),
   examples = List(
     ToolExample(
