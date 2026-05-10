@@ -35,7 +35,7 @@ final class BspListTargetsTool(val manager: BspManager) extends TypedOutputTool[
   override protected def executeTyped(input: BspListTargetsInput, context: TurnContext): Task[BspListTargetsResult] =
     withSessionTyped[BspListTargetsResult](
       input.projectRoot, context,
-      onError = msg => throw new RuntimeException(msg)
+      onError = _ => BspListTargetsResult(input.projectRoot, Nil)
     ) { session =>
       session.workspaceBuildTargets.map { targets =>
         BspListTargetsResult(

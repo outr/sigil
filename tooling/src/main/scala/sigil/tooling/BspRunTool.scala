@@ -45,7 +45,7 @@ final class BspRunTool(val manager: BspManager) extends TypedOutputTool[BspRunIn
   override protected def executeTyped(input: BspRunInput, context: TurnContext): Task[BspExecResult] =
     withSessionTyped[BspExecResult](
       input.projectRoot, context,
-      onError = msg => throw new RuntimeException(msg)
+      onError = msg => BspExecResult(input.projectRoot, "ERROR", 0, "", msg)
     ) { session =>
       session.client.drainRunOutput()
       session.run(new BuildTargetIdentifier(input.target), input.arguments).map { result =>

@@ -41,7 +41,7 @@ final class BspScalaTestClassesTool(val manager: BspManager) extends TypedOutput
                                       context: TurnContext): Task[BspTestClassesResult] =
     withSessionTyped[BspTestClassesResult](
       input.projectRoot, context,
-      onError = msg => throw new RuntimeException(msg)
+      onError = _ => BspTestClassesResult(input.projectRoot, Nil)
     ) { session =>
       targetsFromInput(session, input.targets).flatMap { targets =>
         if (targets.isEmpty) Task.pure(BspTestClassesResult(input.projectRoot, Nil))

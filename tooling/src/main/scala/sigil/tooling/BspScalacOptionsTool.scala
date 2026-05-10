@@ -36,7 +36,7 @@ final class BspScalacOptionsTool(val manager: BspManager) extends TypedOutputToo
                                       context: TurnContext): Task[BspScalacOptionsResult] =
     withSessionTyped[BspScalacOptionsResult](
       input.projectRoot, context,
-      onError = msg => throw new RuntimeException(msg)
+      onError = _ => BspScalacOptionsResult(input.projectRoot, Nil)
     ) { session =>
       targetsFromInput(session, input.targets).flatMap { targets =>
         if (targets.isEmpty) Task.pure(BspScalacOptionsResult(input.projectRoot, Nil))

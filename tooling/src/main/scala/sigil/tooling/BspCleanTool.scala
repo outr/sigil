@@ -32,7 +32,7 @@ final class BspCleanTool(val manager: BspManager) extends TypedOutputTool[BspCle
   override protected def executeTyped(input: BspCleanInput, context: TurnContext): Task[BspCleanResult] =
     withSessionTyped[BspCleanResult](
       input.projectRoot, context,
-      onError = msg => throw new RuntimeException(msg)
+      onError = _ => BspCleanResult(input.projectRoot, 0, cleaned = false)
     ) { session =>
       targetsFromInput(session, input.targets).flatMap { targets =>
         if (targets.isEmpty) Task.pure(BspCleanResult(input.projectRoot, 0, cleaned = false))

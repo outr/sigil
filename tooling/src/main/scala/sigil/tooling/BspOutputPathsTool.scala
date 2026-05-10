@@ -36,7 +36,7 @@ final class BspOutputPathsTool(val manager: BspManager) extends TypedOutputTool[
                                       context: TurnContext): Task[BspOutputPathsResult] =
     withSessionTyped[BspOutputPathsResult](
       input.projectRoot, context,
-      onError = msg => throw new RuntimeException(msg)
+      onError = _ => BspOutputPathsResult(input.projectRoot, Nil)
     ) { session =>
       targetsFromInput(session, input.targets).flatMap { targets =>
         if (targets.isEmpty) Task.pure(BspOutputPathsResult(input.projectRoot, Nil))
