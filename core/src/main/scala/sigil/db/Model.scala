@@ -11,7 +11,15 @@ import lightdb.time.Timestamp
  *
  * @param canonicalSlug       Upstream canonical slug, typically including a version suffix.
  * @param huggingFaceId       Hugging Face repository id when the model is mirrored there; empty if none.
- * @param name                Human-readable display name.
+ * @param name                Canonical name as the upstream catalog publishes it.
+ *                            Typically the model-id tail or the LLM operator's chosen label;
+ *                            apps preferring a friendlier UI label should read [[displayName]]
+ *                            instead and fall back to this field when `displayName` is empty.
+ * @param displayName         Friendly UI label suitable for chat-list metadata / model picker.
+ *                            OpenRouter populates from its `name` field (e.g. `"GPT-5.5"`);
+ *                            LlamaCpp leaves `None` by default (apps wire concrete formatters
+ *                            in their LlamaCpp seed when they want a friendlier label than
+ *                            the raw gguf basename).
  * @param description         Long-form marketing/description text.
  * @param contextLength       Maximum combined input+output context window, in tokens.
  * @param architecture        Modality and tokenizer metadata.
@@ -30,6 +38,7 @@ import lightdb.time.Timestamp
 case class Model(canonicalSlug: String,
                  huggingFaceId: String,
                  name: String,
+                 displayName: Option[String] = None,
                  description: String,
                  contextLength: Long,
                  architecture: ModelArchitecture,

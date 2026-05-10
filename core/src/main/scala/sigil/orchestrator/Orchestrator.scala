@@ -202,6 +202,11 @@ object Orchestrator {
     }
     val convId = request.conversationId
     val topicId = request.currentTopic.id
+    // Resolve once per turn — cheap registry lookup, used at every
+    // Message-creation site below so clients render a UI-friendly
+    // label without maintaining their own model cache.
+    val modelDisplayName: Option[String] =
+      sigil.cache.findTolerant(request.modelId).flatMap(_.displayName)
 
     event match {
       case ProviderEvent.ToolCallStart(callId, toolName) =>
@@ -260,6 +265,7 @@ object Orchestrator {
               topicId = topicId,
               content = Vector.empty,
               modelId = Some(request.modelId),
+              modelDisplayName = modelDisplayName,
               _id = id,
               state = EventState.Active
             )
@@ -498,6 +504,7 @@ object Orchestrator {
                   topicId = topicId,
                   content = Vector(ResponseContent.Image(url = url)),
                   modelId = Some(request.modelId),
+                  modelDisplayName = modelDisplayName,
                   state = EventState.Active
                 )
                 state.imageMessageIds = state.imageMessageIds + (callId.value -> message._id)
@@ -527,6 +534,7 @@ object Orchestrator {
                     topicId = topicId,
                     content = Vector(ResponseContent.Image(url = url)),
                     modelId = Some(request.modelId),
+                    modelDisplayName = modelDisplayName,
                     state = EventState.Complete
                   )
                 ))

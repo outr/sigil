@@ -49,6 +49,13 @@ import sigil.tool.model.ResponseContent
  * Messages the framework synthesizes (user input, tool results,
  * diagnostics, image-only outputs without a token cost). Drives the
  * per-conversation `Conversation.cost` projection.
+ *
+ * `modelDisplayName` is the friendly UI label corresponding to
+ * `modelId`, stamped at the same emission point from the model
+ * registry's [[sigil.db.Model.displayName]]. Wire convenience so
+ * clients don't have to materialize a model cache to render
+ * `"GPT-5.5"` rather than `"openai/gpt-5.5"`. `None` when `modelId`
+ * is unset or when the registry entry has no displayName populated.
  */
 case class Message(participantId: ParticipantId,
                    conversationId: Id[Conversation],
@@ -57,6 +64,7 @@ case class Message(participantId: ParticipantId,
                    content: Vector[ResponseContent] = Vector.empty,
                    usage: TokenUsage = TokenUsage(0, 0, 0),
                    modelId: Option[Id[Model]] = None,
+                   modelDisplayName: Option[String] = None,
                    state: EventState = EventState.Active,
                    timestamp: Timestamp = Timestamp(Nowish()),
                    location: Option[Place] = None,
