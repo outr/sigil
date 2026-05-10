@@ -1361,12 +1361,20 @@ trait Sigil {
     // override `runAgentTurn` (or override `resolveProviderStrategy`
     // to return a custom strategy that itself encapsulates retry).
     val strategyTask: Task[Option[ProviderStrategy]] =
-      context.conversation.currentMode.strategyId match {
-        case Some(modeStrategyId) =>
-          withDB(_.providerStrategies.transaction(_.get(modeStrategyId)))
-            .map(_.map(materializeStrategy))
+      context.conversation.pinnedModelId match {
+        // Conversation-level pin wins over mode and space strategies —
+        // pinned means the user explicitly chose this model for every
+        // dispatch in the conversation.
+        case Some(pinnedId) =>
+          Task.pure(Some(ProviderStrategy.single(pinnedId)))
         case None =>
-          resolveProviderStrategy(context.conversation.space)
+          context.conversation.currentMode.strategyId match {
+            case Some(modeStrategyId) =>
+              withDB(_.providerStrategies.transaction(_.get(modeStrategyId)))
+                .map(_.map(materializeStrategy))
+            case None =>
+              resolveProviderStrategy(context.conversation.space)
+          }
       }
 
     // Mode-overrides-agent for work-type routing: a mode that intrinsically
