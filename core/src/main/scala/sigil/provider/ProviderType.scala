@@ -10,4 +10,5 @@ enum ProviderType derives RW {
   case Groq
   case Mistral
   case LlamaCpp
+  case DigitalOcean
 }

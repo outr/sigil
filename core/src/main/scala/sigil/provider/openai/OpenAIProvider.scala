@@ -52,10 +52,28 @@ case class OpenAIProvider(apiKey: String,
                             * working models stream as long as their tokens
                             * keep flowing; genuinely stalled streams fail
                             * within `tokenIdleTimeout`. */
-                          tokenIdleTimeout: FiniteDuration = 120.seconds) extends Provider {
-  override def `type`: ProviderType = ProviderType.OpenAI
-  override val providerKey: String = OpenAI.Provider
+                          tokenIdleTimeout: FiniteDuration = 120.seconds,
+                          /** Override the provider's identity when targeting an
+                            * OpenAI-Responses-compatible endpoint at a different
+                            * vendor (DigitalOcean Inference, Azure-style mirrors).
+                            * The vendor's `Authorization: Bearer` auth, request
+                            * shape, and SSE grammar match OpenAI's, but cost
+                            * tracking + model-registry namespacing should track
+                            * the actual host. Defaults: OpenAI. */
+                          providerType: ProviderType = ProviderType.OpenAI,
+                          providerNamespace: String = OpenAI.Provider) extends Provider {
+  override def `type`: ProviderType = providerType
+  override val providerKey: String = providerNamespace
   override protected def sigil: Sigil = sigilRef
+
+  /** Strip the provider's namespace prefix from a Sigil-shaped model id
+    * (`<provider>/<model>` → `<model>`). Uses `providerNamespace` so a
+    * DigitalOcean-configured instance strips `digitalocean/` rather than
+    * `openai/`. */
+  private def stripNamespacePrefix(sigilModelId: String): String = {
+    val prefix = s"$providerNamespace/"
+    if (sigilModelId.startsWith(prefix)) sigilModelId.drop(prefix.length) else sigilModelId
+  }
 
   /** OpenAI Chat Completions / Responses use the cl100k_base /
     * o200k_base BPE tokenizer. cl100k is the safe default — accurate
@@ -111,7 +129,7 @@ case class OpenAIProvider(apiKey: String,
     * `image_generation.partial_image` events progressively followed by
     * `image_generation.completed`. */
   private def buildImagesBody(input: ProviderCall): Json = {
-    val modelName = OpenAI.stripProviderPrefix(input.modelId.value)
+    val modelName = stripNamespacePrefix(input.modelId.value)
     val prompt = extractImagePrompt(input)
     obj(
       "model" -> str(modelName),
@@ -138,7 +156,7 @@ case class OpenAIProvider(apiKey: String,
   // ---- request body construction ----
 
   private def buildBody(input: ProviderCall): Json = {
-    val modelName = OpenAI.stripProviderPrefix(input.modelId.value)
+    val modelName = stripNamespacePrefix(input.modelId.value)
     // When `previousResponseId` is set, the Responses API already has
     // the prior turn's input + outputs server-side. Drop the head of
     // the rendered messages by the message count that was sent the
