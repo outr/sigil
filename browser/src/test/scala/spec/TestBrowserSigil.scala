@@ -96,10 +96,17 @@ object TestBrowserSigil extends Sigil with BrowserSigil {
   override def accessibleSpaces(chain: List[ParticipantId]): Task[Set[SpaceId]] =
     accessibleSpacesRef.get().apply(chain)
 
+  // Mirror the framework default — StandardContextCurator builds
+  // TurnInput frames from db.events. Without this the curator returned
+  // an empty TurnInput, the user's published Message never made it to
+  // the provider's `messages`, and OpenAI's Responses API rejected the
+  // empty `input: []` with HTTP 400. NewsArticleDetectionSpec then sat
+  // through its 5-minute polling deadline waiting for an agent reply
+  // that would never come.
   override def curate(conversationId: lightdb.id.Id[sigil.conversation.Conversation],
                       modelId: lightdb.id.Id[Model],
                       chain: List[ParticipantId]): Task[TurnInput] =
-    Task.pure(TurnInput(conversationId = conversationId))
+    sigil.conversation.compression.StandardContextCurator(this).curate(conversationId, modelId, chain)
 
   override def getInformation(id: lightdb.id.Id[Information]): Task[Option[Information]] = Task.pure(None)
   override def putInformation(information: Information): Task[Unit] = Task.unit
