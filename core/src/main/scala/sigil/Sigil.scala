@@ -28,7 +28,7 @@ import sigil.dispatcher.{StopFlag, TriggerFilter}
 import sigil.event.{AgentState, CapabilityResults, Event, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, ToolResults, TopicChange, TopicChangeKind}
 import sigil.role.Role
 import sigil.orchestrator.Orchestrator
-import sigil.provider.{ConversationMode, ConversationRequest, Mode, ProviderStrategy, ToolPolicy, WorkType}
+import sigil.provider.{Complexity, ConversationMode, ConversationRequest, Mode, ProviderStrategy, ToolPolicy, WorkType}
 import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
 import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect, MessageIndexingEffect, RedactLocationTransform, RespondOptionsSelectionFramingTransform, SettledEffect, SignalHub, TopicIndexCanonicalizingTransform, ViewerTransform}
@@ -976,6 +976,126 @@ trait Sigil {
         .flatMap(_.modelId)
     }
 
+  // ---- Bug #128 — per-message routing state ----
+
+  /** Per-conversation routing snapshot — what (WorkType, Complexity)
+    * the strategy resolved for the current user turn, plus an
+    * escalation counter. Refreshed when a new user Message arrives.
+    * Lives in-memory; lost on JVM restart (re-computed automatically
+    * on the next turn). */
+  private final case class RoutingState(userMessageId: Id[Event],
+                                        workType: WorkType,
+                                        complexity: Complexity,
+                                        escalations: Int)
+
+  private val routingCache: java.util.concurrent.ConcurrentHashMap[Id[Conversation], RoutingState] =
+    new java.util.concurrent.ConcurrentHashMap()
+
+  /** When `true`, the iteration-cap soft-stop (sigil bug #125) auto-
+    * bumps complexity one tier up for the forced-synthesis turn —
+    * giving the recovery attempt the strongest available reasoning
+    * in the chain. Logged via scribe. Default `false` to preserve
+    * cost ceilings for apps that don't want auto-escalation. */
+  def escalateOnCapHit: Boolean = false
+
+  /** Classify the user's latest message for this conversation,
+    * caching the result for the lifetime of that user turn. Returns
+    * `(WorkType, Complexity)` — the routing key the framework
+    * matches against [[ModelCandidate.supportedComplexity]] when
+    * picking a candidate.
+    *
+    * Skip gates (cheapest-first):
+    *   - Strategy didn't supply [[ProviderStrategy.inferWorkType]] /
+    *     [[ProviderStrategy.inferComplexity]] → use `defaultWorkType`
+    *     / `Complexity.Medium`.
+    *   - Strategy's [[ProviderStrategy.workTypeMatters]] /
+    *     [[ProviderStrategy.complexityMatters]] is false → skip the
+    *     classifier; outcome can't change the candidate.
+    *
+    * On classifier failure (network, unparsable response, etc.) the
+    * routing falls back to defaults rather than blocking the turn.
+    *
+    * Cached result is invalidated when a new user Message arrives —
+    * the cache lookup compares against the latest user-message id and
+    * re-classifies on mismatch.
+    */
+  def classifyForRoute(strategy: ProviderStrategy,
+                       defaultWorkType: WorkType,
+                       conversation: sigil.conversation.Conversation,
+                       userMessage: Option[sigil.event.Message],
+                       turnContext: sigil.TurnContext): Task[(WorkType, Complexity)] = {
+    val userMsg = userMessage
+    val userText = userMsg.flatMap(_.content.collect {
+      case ResponseContent.Text(t)     => t
+      case ResponseContent.Markdown(t) => t
+    }.headOption).getOrElse("")
+    val msgId = userMsg.map(_._id).getOrElse(Event.id())
+    val cached = Option(routingCache.get(conversation._id))
+
+    cached match {
+      case Some(state) if state.userMessageId == msgId =>
+        // Cache hit — same user turn; share the classification across
+        // all agent iterations in this turn.
+        Task.pure((state.workType, state.complexity))
+      case _ =>
+        // Cache miss — fresh user turn, classify.
+        val wtTask: Task[WorkType] =
+          if (strategy.shouldClassifyWorkType && userText.nonEmpty)
+            strategy.inferWorkType.get.apply(userText, turnContext)
+              .handleError { e =>
+                scribe.warn(s"inferWorkType failed (${e.getClass.getSimpleName}: ${e.getMessage}) — falling back to ${defaultWorkType}")
+                Task.pure(defaultWorkType)
+              }
+          else Task.pure(defaultWorkType)
+        wtTask.flatMap { wt =>
+          val cxTask: Task[Complexity] =
+            if (strategy.shouldClassifyComplexity(wt) && userText.nonEmpty)
+              strategy.inferComplexity.get.apply(userText, turnContext)
+                .handleError { e =>
+                  scribe.warn(s"inferComplexity failed (${e.getClass.getSimpleName}: ${e.getMessage}) — falling back to Medium")
+                  Task.pure(Complexity.Medium)
+                }
+            else Task.pure(Complexity.Medium)
+          cxTask.map { cx =>
+            routingCache.put(conversation._id, RoutingState(msgId, wt, cx, escalations = 0))
+            (wt, cx)
+          }
+        }
+    }
+  }
+
+  /** Bump the cached complexity tier one step up for the current
+    * user turn — what [[sigil.tool.core.RequestEscalationTool]] calls
+    * when the agent realizes mid-turn that the task is harder than
+    * the classifier's initial assessment. Returns `(newTier, bumped)`:
+    *
+    *   - `bumped = true` means the tier actually moved (Low → Medium
+    *     or Medium → High);
+    *   - `bumped = false` means we were already at High (clamp) or
+    *     the routing cache was empty (no classifier had run; nothing
+    *     to bump). */
+  def requestEscalation(conversationId: Id[Conversation], reason: String): Task[(Complexity, Boolean)] = Task {
+    val state = routingCache.get(conversationId)
+    if (state == null) (Complexity.Medium, false)
+    else {
+      val next = Complexity.bumpUp(state.complexity)
+      val bumped = next != state.complexity
+      val updated = state.copy(complexity = next, escalations = state.escalations + 1)
+      routingCache.put(conversationId, updated)
+      scribe.info(s"requestEscalation conv=${conversationId.value} from=${state.complexity} to=$next bumped=$bumped reason=$reason")
+      (next, bumped)
+    }
+  }
+
+  /** Internal hook for the cap-hit forced-synthesis path. Bumps the
+    * cached tier when [[escalateOnCapHit]] is true; no-op otherwise.
+    * The bumped tier flows through the next candidate-resolution
+    * call (the forced-synthesis turn) so the recovery attempt runs
+    * against a more capable model. */
+  protected[sigil] def escalateForCapHit(conversationId: Id[Conversation]): Task[Unit] =
+    if (!escalateOnCapHit) Task.unit
+    else requestEscalation(conversationId, reason = "iteration-cap forced synthesis").map(_ => ())
+
   /** Resolve the model id this conversation would dispatch to on the
     * next turn — the same lookup chain `runAgentTurn` uses, exposed as
     * a read-only helper for introspection (e.g. [[CurrentModelTool]]).
@@ -1397,10 +1517,31 @@ trait Sigil {
     val effectiveWorkType: WorkType =
       context.conversation.currentMode.workType.getOrElse(agent.workType)
 
+    // Bug #128 — find the latest user-authored Message; classify
+    // (WorkType, Complexity) per user turn when the strategy opted
+    // in. Cached by `Sigil.classifyForRoute` so multiple agent
+    // iterations within one user turn share the round-trip.
+    val latestUserMessage: Task[Option[sigil.event.Message]] =
+      withDB(_.events.transaction(_.list)).map { evs =>
+        evs.iterator
+          .collect { case m: sigil.event.Message if m.conversationId == context.conversation._id => m }
+          .filter(m => !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId])
+          .filter(_.role == sigil.event.MessageRole.Standard)
+          .toList
+          .sortBy(-_.timestamp.value)
+          .headOption
+      }.handleError(_ => Task.pure(None))
+
     val resolved: Task[(Provider, Vector[Tool], Id[Model], GenerationSettings, List[sigil.role.Role])] =
       for {
         strategyOpt <- strategyTask
-        chosen       = strategyOpt.flatMap(_.availableCandidates(effectiveWorkType).headOption)
+        userMsg     <- latestUserMessage
+        (routedWorkType, complexity) <- strategyOpt match {
+          case Some(strategy) => classifyForRoute(strategy, effectiveWorkType, context.conversation, userMsg, context)
+          case None           => Task.pure((effectiveWorkType, Complexity.Medium))
+        }
+        chosen       = strategyOpt.flatMap(_.availableCandidates(routedWorkType)
+          .find(_.supportedComplexity.contains(complexity)))
         modelId      = chosen.map(_.modelId).getOrElse(agent.modelId)
         // Bug #97 — fold conversation overlays into the effective
         // tool roster. `start_metals` etc. install Active(names) so
@@ -4807,15 +4948,22 @@ trait Sigil {
                 origin         = Some(capInvokeId)
               )
               publish(capInvoke).flatMap(_ => publish(capDiagnostic)).flatMap { _ =>
-                runAgentLoop(
-                  agent                  = agent,
-                  convId                 = convId,
-                  claimed                = claimed,
-                  iteration              = iteration + 1,
-                  sinceTimestamp         = thisIterationStart,
-                  greeting               = false,
-                  userVisibleSeen        = userVisibleSeen,
-                  forceResponseSynthesis = true
+                // Bug #128 composition — when `escalateOnCapHit` is on,
+                // bump the cached complexity tier one step up before
+                // the forced-synthesis turn. The recovery attempt then
+                // resolves to whichever model in the chain supports
+                // the elevated tier. No-op when the flag is off.
+                escalateForCapHit(convId).flatMap(_ =>
+                  runAgentLoop(
+                    agent                  = agent,
+                    convId                 = convId,
+                    claimed                = claimed,
+                    iteration              = iteration + 1,
+                    sinceTimestamp         = thisIterationStart,
+                    greeting               = false,
+                    userVisibleSeen        = userVisibleSeen,
+                    forceResponseSynthesis = true
+                  )
                 )
               }
             case true =>
