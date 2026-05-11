@@ -248,6 +248,19 @@ object TestSigil extends Sigil {
   def setMaxAgentIterations(n: Int): Unit = maxAgentIterationsRef.set(Some(n))
   def resetMaxAgentIterations(): Unit     = maxAgentIterationsRef.set(None)
 
+  /** Per-test override for the progress-checkpoint cadence (sigil
+    * bug #133). Specs exercising the stall-intervention forced-
+    * synthesis path lower this to 1-2 iterations so the checkpoint
+    * fires within a reasonable test window without driving the
+    * default 15-iteration cadence. `resetProgressCheckpointInterval`
+    * reverts to the framework default. */
+  private val progressCheckpointIntervalRef =
+    new java.util.concurrent.atomic.AtomicReference[Option[Int]](None)
+  override def progressCheckpointInterval: Int =
+    progressCheckpointIntervalRef.get().getOrElse(super.progressCheckpointInterval)
+  def setProgressCheckpointInterval(n: Int): Unit = progressCheckpointIntervalRef.set(Some(n))
+  def resetProgressCheckpointInterval(): Unit     = progressCheckpointIntervalRef.set(None)
+
   /** Per-test ToolFinder override — specs that need a synthetic
     * tool catalog (consent gate, toolchain boost, etc.) install
     * one without touching the persisted DB tools. `None` reverts
