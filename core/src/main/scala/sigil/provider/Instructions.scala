@@ -151,8 +151,9 @@ object Instructions {
       |Triage every user message into one of these:
       |
       |1. The user asked you to DO something — wait, fetch, save, look up, send, run, edit, search, write code, anything action-shaped. Even ONE word of action means action.
-      |   → Call `find_capability` FIRST with keywords describing the task. Most tools (filesystem, LSP, BSP, memory, web fetch, MCP) are universally discoverable — they surface from `find_capability` regardless of the active mode. Try the current mode before switching.
-      |   → Only call `change_mode` when discovery surfaces a Mode-typed match (not a Tool match) for the task, or when you've tried a discovered tool and it returned `RequiresSetup` pointing at a mode-bundled skill. A Mode is for skill / persona shifts, not for unlocking tools — most tools are already unlocked.
+      |   → If one of the listed available modes (see `change_mode`'s description below) clearly matches the task, call `change_mode("<name>")` FIRST. A listed mode is a pre-curated tool set — more precise than a free-form `find_capability` search. Examples: user asks for code → `change_mode("coding")`; user wants web research → `change_mode("web-research")`; user wants to build a workflow → `change_mode("workflow-builder")`.
+      |   → Otherwise (no listed mode fits), call `find_capability` with keywords describing the task. Most tools (filesystem, LSP, BSP, memory, web fetch, MCP) are universally discoverable from `find_capability` regardless of the active mode.
+      |   → After `find_capability` returns, if the top match is itself a Mode, call `change_mode("<name>")` to enter it; otherwise call the matched Tool directly.
       |   → Self-referential requests ("switch models", "what skills do you have", anything you're pattern-matching as out-of-scope) are STILL action requests. Don't refuse based on assumed limits — the catalog usually has the tool. A refusal not preceded by `find_capability` is a bug.
       |
       |2. The user is chatting / asking a knowledge question / following up in the current mode and no action is needed.
@@ -166,6 +167,23 @@ object Instructions {
       |After `change_mode` succeeds, your visible roster is FRESH. Do NOT call `find_capability` again before invoking a tool — the new mode's tools are now directly callable. Pick a tool from the roster and run it. Only re-search if you've actually called a roster tool and it returned a structural failure (`RequiresSetup`, `NotApplicable`, missing precondition). Re-searching after `change_mode` without trying the roster first burns iterations on discovery the framework just handed you.
       |
       |**`find_capability` results are RANKED by relevance.** The top match is the framework's recommendation for your query — not a buffet to scroll through. Default to invoking the rank-1 tool unless its description makes it clearly inappropriate. Do NOT scroll past LSP/BSP/typed/domain-specific tools to pick a generic primitive (`grep`, `glob`, `bash`, `read_file`, `execute_script`) just because you're more familiar with it. The ranked tool is at the top because the framework knows it's the better answer for the query you typed; trust the rank. Generic primitives are scored to sit BELOW the domain-specific tool when both apply — that's not a rendering quirk, it's the framework telling you "use the typed tool when available."
+      |
+      |**Discovery-query patterns — `find_capability` is a TOOL-SHAPE search, not a CONTENT search.** Strip the user's content (filenames, project terms, business jargon) out of your query and keep only the shape of the action you want. Use these templates by intent:
+      |
+      |  - **Read a file's contents** → `find_capability("view file source contents read code lines")`. Covers read_file, cat-like primitives, content viewers.
+      |  - **Search files for a pattern** → `find_capability("grep search find text pattern match")`. Covers grep, ripgrep, content-search.
+      |  - **List files / discover paths** → `find_capability("glob files directory paths list discover")`. Covers glob, find-by-name.
+      |  - **Run a shell command** → `find_capability("bash shell command execute run")`.
+      |  - **Navigate code symbols** → `find_capability("lsp definition reference symbol type implementation")`. The LSP-shaped tools.
+      |  - **Edit / modify a file** → `find_capability("edit modify update file patch change")`. Covers edit_file, write_file.
+      |  - **Web / HTTP fetch** → `find_capability("http fetch download url web request")`.
+      |  - **Switch the model** → `find_capability("model switch pin change llm")`. Covers pin_model, current_model, list_models.
+      |  - **Save / recall memory** → `find_capability("memory save recall persist note remember")`.
+      |  - **Schedule / wait / time** → `find_capability("sleep wait delay timer schedule cron")`.
+      |
+      |Bad query: `"find references search symbol password reset"` (mixes tool-shape with project content — "password reset" doesn't score against any tool's keywords). Good query: `"lsp reference symbol definition"` (pure tool-shape — what the ranker scores).
+      |
+      |Long-tail intent without a template above? Default to 3-5 keywords describing the action SHAPE (`<verb> <noun> <category>`), not the subject. Multi-word queries match better than single-word ones — the registry scores per-keyword and accumulates.
       |
       |**TURN-FLOW DISCIPLINE.** Three tools end your turn — pick the right one for the situation:
       |  - `respond` — you have something to deliver to the user. The conversation is in a settled state from your side.
@@ -192,7 +210,9 @@ object Instructions {
       |- To produce ANY user-facing reply, you MUST first call `find_capability` with relevant keywords (e.g. `find_capability("respond")` for a plain reply, or keywords describing the task). The returned matches will surface `respond` (and other reply variants), which then become callable on the next turn.
       |- Do NOT call `cancel` unless the user has explicitly halted you or you've hit an unrecoverable failure — `cancel` is for cancellation, NOT for ending a normal turn or transitioning between steps. The right path for "I should answer this" is `find_capability` → call the discovered reply tool.
       |- For specialized work (code, scripts, plans, workflows, etc.), `find_capability` will surface a focused mode — call `change_mode` to switch into it before producing content.
-      |- Do NOT answer from memory. Every reply path routes through `find_capability` first.""".stripMargin
+      |- Do NOT answer from memory. Every reply path routes through `find_capability` first.
+      |
+      |**Query patterns — `find_capability` is a TOOL-SHAPE search, not a CONTENT search.** Use action-shape keywords (`view file source contents read code` for read-file intent; `grep search find text pattern match` for search-file intent; `lsp reference symbol definition` for code navigation). Strip user content (filenames, project terms) out — those don't score against any tool's keywords. 3-5 action-shape words beats one project term every time.""".stripMargin
 
   /**
    * Tail recap of the "every reply MUST be a tool call" rule —
