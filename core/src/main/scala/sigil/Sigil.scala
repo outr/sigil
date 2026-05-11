@@ -2775,7 +2775,19 @@ trait Sigil {
           val toolNames = cr.matches.collect {
             case m if m.capabilityType == sigil.tool.discovery.CapabilityType.Tool => sigil.tool.ToolName(m.name)
           }
-          proj.copy(suggestedTools = toolNames)
+          val now = Timestamp()
+          val updatedDiscovered =
+            if (cr.query.isEmpty) proj.discoveredCapabilities
+            else proj.discoveredCapabilities.updatedWith(cr.query) {
+              case Some(existing) => Some(existing.copy(matches = toolNames, lastSeen = now))
+              case None           => Some(_root_.sigil.conversation.DiscoveredCapability(
+                matches = toolNames, firstSeen = now, lastSeen = now
+              ))
+            }
+          proj.copy(
+            suggestedTools         = toolNames,
+            discoveredCapabilities = updatedDiscovered
+          )
         }
       case _ => Task.unit
     }
@@ -4673,6 +4685,14 @@ trait Sigil {
     * is aggressive (any single "no progress" report stops the
     * loop); higher values give the agent more rope. */
   protected def consecutiveNoProgressLimit: Int = 2
+
+  /** Cap on `discoveredCapabilities` entries surfaced in the
+    * agent's prompt — keeps the prompt bounded even on long-running
+    * conversations that have searched many queries. The cap is
+    * over the *map* (one entry per distinct query); each entry's
+    * matches list is already bounded by `find_capability`'s
+    * page size. Apps override to tune the prompt budget. */
+  def discoveredCapabilitiesPromptCap: Int = 25
 
   private final def runAgent(agent: AgentParticipant,
                              conv: Conversation,
