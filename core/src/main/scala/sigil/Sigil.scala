@@ -2977,6 +2977,36 @@ trait Sigil {
       proj => proj.copy(extraContext = proj.extraContext - key)
     )
 
+  /** Cache a provider's per-(agent, conversation) server-side state
+    * handle. OpenAI's Responses API populates this on every settle so
+    * the next turn can pass `previous_response_id` and ship only the
+    * delta input. `messageCount` is the rendered-message count at the
+    * time of capture — the next call trims that many from the head
+    * before sending. */
+  def setProviderResponseState(conversationId: Id[Conversation],
+                               participantId: ParticipantId,
+                               responseId: String,
+                               messageCount: Int): Task[Unit] =
+    updateProjection(conversationId, participantId)(
+      proj => proj.copy(
+        latestProviderResponseId = Some(responseId),
+        latestProviderResponseMessageCount = Some(messageCount)
+      )
+    )
+
+  /** Forget the cached provider response state for an (agent, conversation)
+    * pair. Fires when the upstream API rejects `previous_response_id`
+    * (`previous_response_not_found` — the id expired). Next turn falls
+    * back to the full-transcript request shape. */
+  def clearProviderResponseState(conversationId: Id[Conversation],
+                                 participantId: ParticipantId): Task[Unit] =
+    updateProjection(conversationId, participantId)(
+      proj => proj.copy(
+        latestProviderResponseId = None,
+        latestProviderResponseMessageCount = None
+      )
+    )
+
   /** Convenience: advance a participant's last-read cursor in
     * `conversationId` to a specific event's server-stamped
     * timestamp. The framework looks up the event's authoritative

@@ -525,6 +525,19 @@ object Orchestrator {
       case ProviderEvent.ServerToolStart(_, _, _)         => Stream.empty
       case ProviderEvent.ServerToolComplete(_, _)         => Stream.empty
 
+      case ProviderEvent.ResponseStateCaptured(maybeId, messageCount) =>
+        // Persist the provider's server-side state handle on the
+        // agent's projection. The next turn reads it back as
+        // `ProviderCall.previousResponseId` + `priorMessageCount`,
+        // chains via `previous_response_id`, and ships only the delta.
+        // `None` here means the provider invalidated the cache —
+        // typically `previous_response_not_found` on an expired id.
+        val persist: Task[Unit] = maybeId match {
+          case Some(id) => sigil.setProviderResponseState(convId, caller, id, messageCount)
+          case None     => sigil.clearProviderResponseState(convId, caller)
+        }
+        Stream.force(persist.handleError(_ => Task.unit).map(_ => Stream.empty[Signal]))
+
       case ProviderEvent.ReasoningItem(providerItemId, summary, encryptedContent) =>
         // Bug #61 — persist the provider's reasoning state so subsequent
         // turns can replay it. Visibility scoped to the originating

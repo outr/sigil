@@ -49,6 +49,18 @@ enum ProviderEvent derives RW {
   case Done(stopReason: StopReason)
   case Error(message: String)
 
+  /** A provider captured a server-side state handle for the just-
+    * settled call. Today only OpenAI's Responses API emits this —
+    * `responseId` is the `response.id` from the SSE `response.created`
+    * event, `messageCount` is the count of rendered messages this call
+    * sent so the next turn can skip them and reference the prior state
+    * via `previous_response_id`. The orchestrator persists the pair on
+    * the agent's ParticipantProjection. `responseId = None` means
+    * "invalidate any cached state" — fires when the API rejected a
+    * `previous_response_id` (expired upstream) so the next turn falls
+    * back to the full-transcript shape. */
+  case ResponseStateCaptured(responseId: Option[String], messageCount: Int)
+
   /** Provider-internal reasoning state (bug #61 — OpenAI Responses
     * API `reasoning` output items). The orchestrator translates this
     * into a persisted [[sigil.event.Reasoning]] event so subsequent
@@ -77,5 +89,6 @@ enum ProviderEvent derives RW {
       case Done(stopReason) => s"Done(${stopReason.toString})"
       case Error(message) => s"Error($message)"
       case ReasoningItem(id, summary, _) => s"ReasoningItem($id, summaryLines=${summary.size})"
+      case ResponseStateCaptured(id, count) => s"ResponseStateCaptured(${id.getOrElse("<invalidated>")}, count=$count)"
     }
 }
