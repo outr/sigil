@@ -60,6 +60,11 @@ class RespondEndsTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
       Task.error(new UnsupportedOperationException("no wire"))
     override def call(input: ProviderCall): Stream[ProviderEvent] = {
+      // Only count primary agent-loop calls (the agent's full tool
+      // roster contains `respond`); skip classifier subcalls that
+      // ride through after RespondTool fires `Sigil.resolveTopicShift`.
+      val isPrimary = input.tools.exists(_.name.value == "respond")
+      if (!isPrimary) return Stream.empty
       val n = callCount.incrementAndGet()
       val callId = CallId(s"call-$n")
       val payload =
@@ -172,6 +177,11 @@ class RespondEndsTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
           Task.error(new UnsupportedOperationException("no wire"))
         override def call(input: ProviderCall): Stream[ProviderEvent] = {
+          // Only count primary agent-loop calls (full tool roster
+          // contains `respond`); skip classifier subcalls fired by
+          // RespondTool's topic resolution.
+          val isPrimary = input.tools.exists(_.name.value == "respond")
+          if (!isPrimary) return Stream.empty
           callCount.incrementAndGet()
           val callId = CallId("only-call")
           Stream.emits(List(
