@@ -4,11 +4,12 @@ import fabric.io.JsonFormatter
 import lightdb.id.Id
 import rapid.{Stream, Task}
 import sigil.TurnContext
+import sigil.browser.WebBrowserMode
 import sigil.browser.{BrowserScript, BrowserSigil, CookieJar}
 import sigil.event.{Event, Message, MessageRole, MessageVisibility}
 import sigil.signal.EventState
-import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, ToolExample, ToolName, TypedTool}
 import sigil.tool.model.ResponseContent
+import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, ToolExample, ToolName, TypedTool}
 
 /**
  * Persist a new [[BrowserScript]] under the framework's policy-
@@ -38,6 +39,7 @@ case object CreateBrowserScriptTool extends TypedTool[CreateBrowserScriptInput](
       |pin the tool under a specific space — the active Sigil's `browserScriptSpace` policy
       |decides whether to honor it.""".stripMargin,
   examples = Nil,
+  modes = Set(WebBrowserMode.id),
   keywords = Set("create", "browser", "script", "automate", "record", "save", "replay")
 ) {
 

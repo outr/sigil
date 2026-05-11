@@ -3,12 +3,13 @@ package sigil.browser.tool
 import fabric.io.JsonFormatter
 import fabric.{arr, num, obj, str}
 import rapid.{Stream, Task}
-import sigil.{GlobalSpace, TurnContext}
 import sigil.browser.BrowserScript
+import sigil.browser.WebBrowserMode
 import sigil.event.{Event, Message, MessageRole, MessageVisibility}
 import sigil.signal.EventState
-import sigil.tool.{ToolName, TypedTool}
 import sigil.tool.model.ResponseContent
+import sigil.tool.{ToolName, TypedTool}
+import sigil.{GlobalSpace, TurnContext}
 
 /** List every [[BrowserScript]] the caller's `accessibleSpaces`
   * authorizes them to see (plus any in [[GlobalSpace]]). Returns a
@@ -18,6 +19,7 @@ case object ListBrowserScriptsTool extends TypedTool[ListBrowserScriptsInput](
   name = ToolName("list_browser_scripts"),
   description =
     "List browser-script tools accessible to the caller (filtered by space scoping).",
+  modes = Set(WebBrowserMode.id),
   keywords = Set("list", "browser", "scripts", "browse", "find")
 ) {
   override protected def executeTyped(input: ListBrowserScriptsInput,

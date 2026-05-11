@@ -4,6 +4,7 @@ import fabric.{obj, str}
 import rapid.Stream
 import robobrowser.select.Selector
 import sigil.TurnContext
+import sigil.browser.WebBrowserMode
 import sigil.event.Event
 import sigil.tool.{ToolExample, ToolName, TypedTool}
 
@@ -17,6 +18,7 @@ final class BrowserClickTool extends TypedTool[BrowserClickInput](
     ToolExample("Click a button", BrowserClickInput(selector = "button.submit")),
     ToolExample("Click a link", BrowserClickInput(selector = "a.next-page"))
   ),
+  modes = Set(WebBrowserMode.id),
   keywords = Set("browser", "click", "tap", "interact", "button")
 ) {
   override protected def executeTyped(input: BrowserClickInput, ctx: TurnContext): Stream[Event] =

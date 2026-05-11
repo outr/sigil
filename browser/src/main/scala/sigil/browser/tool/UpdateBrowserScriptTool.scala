@@ -5,12 +5,13 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import rapid.{Stream, Task}
-import sigil.{GlobalSpace, TurnContext}
+import sigil.browser.WebBrowserMode
 import sigil.browser.{BrowserScript, CookieJar}
 import sigil.event.{Event, Message, MessageRole, MessageVisibility}
 import sigil.signal.EventState
-import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, ToolName, TypedTool}
 import sigil.tool.model.ResponseContent
+import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, ToolName, TypedTool}
+import sigil.{GlobalSpace, TurnContext}
 
 /**
  * Update an existing [[BrowserScript]] in place. Identified by
@@ -24,6 +25,7 @@ case object UpdateBrowserScriptTool extends TypedTool[UpdateBrowserScriptInput](
     """Update an existing browser-script tool's description, parameters, steps, keywords, or
       |cookie-jar reference. Identified by `name`; omitted fields keep their stored value.
       |The tool's space is fixed at creation.""".stripMargin,
+  modes = Set(WebBrowserMode.id),
   keywords = Set("update", "edit", "modify", "browser", "script")
 ) {
   override protected def executeTyped(input: UpdateBrowserScriptInput,

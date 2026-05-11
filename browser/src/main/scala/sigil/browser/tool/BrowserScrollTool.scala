@@ -3,6 +3,7 @@ package sigil.browser.tool
 import fabric.{obj, str}
 import rapid.Stream
 import sigil.TurnContext
+import sigil.browser.WebBrowserMode
 import sigil.event.Event
 import sigil.tool.{ToolExample, ToolName, TypedTool}
 
@@ -17,6 +18,7 @@ final class BrowserScrollTool extends TypedTool[BrowserScrollInput](
     ToolExample("Jump to the top", BrowserScrollInput(direction = "up", amount = "top")),
     ToolExample("Jump to the bottom", BrowserScrollInput(direction = "down", amount = "bottom"))
   ),
+  modes = Set(WebBrowserMode.id),
   keywords = Set("browser", "scroll", "viewport")
 ) {
 
