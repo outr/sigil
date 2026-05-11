@@ -279,7 +279,7 @@ case class StandardContextCurator(sigil: Sigil,
     }.toSet
   }
 
-  private def extractIds(content: String, needle: String): Iterator[String] = {
+  private[compression] def extractIds(content: String, needle: String): Iterator[String] = {
     if (!content.contains(needle)) Iterator.empty
     else {
       val out = List.newBuilder[String]
@@ -288,7 +288,15 @@ case class StandardContextCurator(sigil: Sigil,
         val start = idx + needle.length
         val end = content.indexOf(']', start)
         if (end > start) out += content.substring(start, end)
-        idx = content.indexOf(needle, end + 1)
+        // Advance past the current match's prefix regardless of
+        // whether a closing `]` was found. The previous formulation
+        // (`content.indexOf(needle, end + 1)`) reduced to
+        // `content.indexOf(needle, 0)` when `end == -1` and re-matched
+        // the same unterminated reference forever — bricked the
+        // curator for any conversation whose frame content contained
+        // `Information[` without a closing bracket (user-pasted text,
+        // imported transcript fragments).
+        idx = content.indexOf(needle, start)
       }
       out.result().iterator
     }
