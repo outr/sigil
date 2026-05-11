@@ -23,14 +23,26 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   // `change_mode`, since it's opt-in for multi-mode apps); we add
   // ChangeModeTool here so the multi-mode "switch modes" assertion has
   // a real `change_mode` tool to surface to the model.
-  protected def coreTools: Vector[Tool] = CoreTools.all :+ ChangeModeTool
+  // ChangeModeTool prepended (not appended) so it precedes `respond`
+  // and the rest of CoreTools in the rendered roster — small / quantised
+  // models have a real tool-position bias and pick the first relevant
+  // tool they see. `Sigil.effectiveToolNames` puts change_mode at
+  // priority 0 in production; the test fixture mirrors that ordering.
+  protected def coreTools: Vector[Tool] = ChangeModeTool +: CoreTools.all
 
   protected def supportsThinking: Boolean = true
 
   protected def request(message: String,
                         currentMode: Mode = ConversationMode,
                         generationSettings: GenerationSettings =
-                          GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0))): Task[List[ProviderEvent]] = provider.flatMap { p =>
+                          // 1500 (was 200) — accommodates reasoning models
+                          // (Qwen3.6-A3B, DeepSeek-R1) that burn output
+                          // tokens on internal thinking before emitting
+                          // the structured tool call, even when the chat
+                          // template hints `enable_thinking: false`. 200
+                          // cut these models off mid-think and the
+                          // expected tool call never landed.
+                          GenerationSettings(maxOutputTokens = Some(1500), temperature = Some(0.0))): Task[List[ProviderEvent]] = provider.flatMap { p =>
     val conversationId = Conversation.id("test-conversation")
     val userMessage = Message(
       participantId = TestUser,
