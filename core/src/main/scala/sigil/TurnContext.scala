@@ -90,7 +90,14 @@ case class TurnContext(sigil: Sigil,
                        currentToolInvokeId: Option[Id[Event]] = None,
                        currentToolName: Option[ToolName] = None,
                        modelId: Option[Id[Model]] = None,
-                       isGreeting: Boolean = false) {
+                       isGreeting: Boolean = false,
+                       /** Sigil bug #125 — when `true`, the framework forces
+                         * the provider's `tool_choice` to `respond` for this
+                         * turn so the model can't pick another tool. Set by
+                         * the iteration-cap soft-stop path to synthesise a
+                         * reply from the agent's gathered context rather than
+                         * discarding it via [[sigil.AgentRunawayException]]. */
+                       forceResponseSynthesis: Boolean = false) {
 
   /**
    * The participant currently acting — `chain.last`.

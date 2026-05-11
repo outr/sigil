@@ -80,16 +80,24 @@ case class GoogleProvider(apiKey: String,
 
     val toolFields: Vector[(String, Json)] =
       if (toolsArr.isEmpty) Vector.empty
-      else Vector(
-        "tools" -> arr(toolsArr*),
-        "toolConfig" -> obj("functionCallingConfig" -> obj(
-          "mode" -> str(input.toolChoice match {
-            case ToolChoice.None     => "NONE"
-            case ToolChoice.Auto     => "AUTO"
-            case ToolChoice.Required => "ANY"
-          })
-        ))
-      )
+      else {
+        val functionCallingConfig: Json = input.toolChoice match {
+          case ToolChoice.None     => obj("mode" -> str("NONE"))
+          case ToolChoice.Auto     => obj("mode" -> str("AUTO"))
+          case ToolChoice.Required => obj("mode" -> str("ANY"))
+          case ToolChoice.Specific(name) =>
+            // Gemini: pin to a single function via `mode = "ANY"` +
+            // `allowedFunctionNames` restricting the surface to one.
+            obj(
+              "mode"                 -> str("ANY"),
+              "allowedFunctionNames" -> arr(str(name.value))
+            )
+        }
+        Vector(
+          "tools" -> arr(toolsArr*),
+          "toolConfig" -> obj("functionCallingConfig" -> functionCallingConfig)
+        )
+      }
 
     val gen = input.generationSettings
     val genConfig = Vector.newBuilder[(String, Json)]

@@ -45,5 +45,11 @@ case class ConversationRequest(conversationId: Id[Conversation],
                                chain: List[ParticipantId] = Nil,
                                roles: List[sigil.role.Role] = Nil,
                                isGreeting: Boolean = false,
+                               /** Sigil bug #125 — when `true`, the framework
+                                 * forces the provider's tool_choice to
+                                 * `respond` so the model must synthesize a
+                                 * reply on this turn. Set by the iteration-cap
+                                 * soft-stop path. */
+                               forceResponseSynthesis: Boolean = false,
                                requestId: Id[ProviderRequest] = Id())
   extends ProviderRequest
