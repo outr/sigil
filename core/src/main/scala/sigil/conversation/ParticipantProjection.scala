@@ -53,6 +53,19 @@ case class ParticipantProjection(participantId: ParticipantId,
                                    * re-discover tools it's already seen. Aged out after
                                    * [[sigil.Sigil.discoveredCapabilityTtl]] turns. */
                                  discoveredCapabilities: Map[String, DiscoveredCapability] = Map.empty,
+                                 /** Per-conversation cache of the most recent provider-
+                                   * side response id. Today only OpenAI's Responses API
+                                   * uses it — `previous_response_id` chains the prior
+                                   * turn's server-side state so the next request can
+                                   * ship only the delta (new user input + tool outputs)
+                                   * rather than the full transcript. `latestProviderResponseMessageCount`
+                                   * is the rendered-message count that produced the
+                                   * cached id; on the next turn the provider drops that
+                                   * many messages from the head before sending. Both
+                                   * fields are cleared together on `previous_response_not_found`
+                                   * (the id expired upstream). */
+                                 latestProviderResponseId: Option[String] = None,
+                                 latestProviderResponseMessageCount: Option[Int] = None,
                                  extraContext: Map[ContextKey, String] = Map.empty,
                                  created: Timestamp = Timestamp(),
                                  modified: Timestamp = Timestamp(),

@@ -511,6 +511,27 @@ trait Provider {
   private def translateConversation(c: ConversationRequest): Task[ProviderCall] =
     resolveReferences(c.turnInput).flatMap { resolved =>
       val agentId = c.chain.lastOption
+      // Load the prior provider-response handle from the agent's
+      // projection (today only OpenAI's Responses API uses it). Falls
+      // back to (None, None) when no projection exists yet or no
+      // agent is in the chain.
+      val priorStateTask: Task[(Option[String], Option[Int])] = agentId match {
+        case Some(pid) =>
+          sigil.projectionFor(pid, c.conversationId).map { proj =>
+            (proj.latestProviderResponseId, proj.latestProviderResponseMessageCount)
+          }
+        case None => Task.pure((None, None))
+      }
+      priorStateTask.flatMap { case (prevId, prevCount) =>
+        translateConversationCore(c, resolved, agentId, prevId, prevCount)
+      }
+    }
+
+  private def translateConversationCore(c: ConversationRequest,
+                                        resolved: ResolvedReferences,
+                                        agentId: Option[ParticipantId],
+                                        previousResponseId: Option[String],
+                                        priorMessageCount: Option[Int]): Task[ProviderCall] = {
       val toolChoice: ToolChoice =
         if (c.tools.isEmpty) ToolChoice.None
         else if (c.forceResponseSynthesis) ToolChoice.Specific(_root_.sigil.tool.core.RespondTool.schema.name)
@@ -554,7 +575,11 @@ trait Provider {
         builtInTools = c.builtInTools,
         toolChoice = toolChoice,
         generationSettings = gen,
-        currentMode = c.currentMode
+        currentMode = c.currentMode,
+        conversationId = Some(c.conversationId),
+        agentId = agentId,
+        previousResponseId = previousResponseId,
+        priorMessageCount = priorMessageCount
       )
       // Diagnostic profiling — gated on `Sigil.profileWireRequests`
       // (default on; apps override to false to skip). Runs the

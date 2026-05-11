@@ -1,7 +1,9 @@
 package sigil.provider
 
 import lightdb.id.Id
+import sigil.conversation.Conversation
 import sigil.db.Model
+import sigil.participant.ParticipantId
 import sigil.tool.{Tool, ToolInput}
 
 /**
@@ -38,4 +40,18 @@ case class ProviderCall(modelId: Id[Model],
                         builtInTools: Set[BuiltInTool],
                         toolChoice: ToolChoice,
                         generationSettings: GenerationSettings,
-                        currentMode: Mode = ConversationMode)
+                        currentMode: Mode = ConversationMode,
+                        /** Conversation + agent identity threaded through so providers
+                          * with server-side conversation state (OpenAI Responses'
+                          * `previous_response_id`, Anthropic prompt caching) can key
+                          * their per-(agent, conversation) state. `None` for one-shot
+                          * requests. */
+                        conversationId: Option[Id[Conversation]] = None,
+                        agentId: Option[ParticipantId] = None,
+                        /** Prior response id captured from the same (agent, conversation)
+                          * pair's most recent turn. When set, OpenAI's Responses provider
+                          * adds `previous_response_id` to the request and trims the head
+                          * of `messages` by `priorMessageCount` so the wire body carries
+                          * only the delta since that response. Other providers ignore. */
+                        previousResponseId: Option[String] = None,
+                        priorMessageCount: Option[Int] = None)

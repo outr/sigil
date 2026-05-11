@@ -66,6 +66,7 @@ case class OpenAIProvider(apiKey: String,
 
   override def call(input: ProviderCall): Stream[ProviderEvent] = {
     val state = new StreamState(new ToolCallAccumulator(input.tools))
+    state.sentMessageCount = input.messages.size
     Stream.force(
       for {
         raw         <- httpRequestFor(input)
@@ -138,14 +139,27 @@ case class OpenAIProvider(apiKey: String,
 
   private def buildBody(input: ProviderCall): Json = {
     val modelName = OpenAI.stripProviderPrefix(input.modelId.value)
-    val inputItems = renderInput(input.messages)
+    // When `previousResponseId` is set, the Responses API already has
+    // the prior turn's input + outputs server-side. Drop the head of
+    // the rendered messages by the message count that was sent the
+    // last time we captured a response id — only the delta (new user
+    // input, new function_call_output) needs to ship. The upstream
+    // request is dramatically smaller and the model's prefix-cache
+    // hit rate jumps because every turn carries only the new tail.
+    val trimmed = input.previousResponseId match {
+      case Some(_) =>
+        val drop = math.min(input.priorMessageCount.getOrElse(0), input.messages.size)
+        input.messages.drop(drop)
+      case None => input.messages
+    }
+    val inputItems = renderInput(trimmed)
     val toolsArr = renderTools(input)
 
     val baseFields = Vector[(String, Json)](
       "model" -> str(modelName),
       "input" -> arr(inputItems*),
       "stream" -> bool(true)
-    )
+    ) ++ input.previousResponseId.toVector.map("previous_response_id" -> str(_))
     val instructionsField: Vector[(String, Json)] =
       if (input.system.isEmpty) Vector.empty
       else Vector("instructions" -> str(input.system))
@@ -426,6 +440,13 @@ case class OpenAIProvider(apiKey: String,
   private def parseEvent(json: Json, state: StreamState): Vector[ProviderEvent] = {
     val eventType = json.get("type").map(_.asString).getOrElse("")
     eventType match {
+      case "response.created" =>
+        // The server-side state handle for this turn. Stashed on the
+        // stream state; emitted as `ResponseStateCaptured` when the
+        // stream settles at `response.completed`.
+        json.get("response").flatMap(_.get("id")).map(_.asString).foreach(state.responseId = _)
+        Vector.empty
+
       case "response.output_item.added" =>
         parseOutputItemAdded(json, state)
 
@@ -578,13 +599,34 @@ case class OpenAIProvider(apiKey: String,
             case Some("incomplete") => StopReason.MaxTokens
             case _                  => StopReason.Complete
           }
-        completes ++ citationFooter ++ usageEv :+ ProviderEvent.Done(stopReason)
+        // The captured `response.id` becomes the next turn's
+        // `previous_response_id`. The recorded `messageCount` is the
+        // rendered-count this call sent plus the count of output items
+        // the response produced — the next turn drops that many
+        // messages so only the post-response delta (newly-emitted
+        // tool results, fresh user input) lands on the wire.
+        val nextDropCount = state.sentMessageCount + state.outputItemCount
+        val responseStateEv: Vector[ProviderEvent] =
+          if (state.responseId.nonEmpty)
+            Vector(ProviderEvent.ResponseStateCaptured(Some(state.responseId), nextDropCount))
+          else
+            Vector.empty
+        completes ++ citationFooter ++ usageEv ++ responseStateEv :+ ProviderEvent.Done(stopReason)
 
       case "response.error" | "error" =>
         val msg = json.get("error").flatMap(_.get("message")).map(_.asString)
           .orElse(json.get("message").map(_.asString))
           .getOrElse("unknown error")
-        Vector(ProviderEvent.Error(msg))
+        val code = json.get("error").flatMap(_.get("code")).map(_.asString).getOrElse("")
+        // OpenAI rotates response ids ~30 days; expired ids return
+        // `previous_response_not_found`. Emit a clear-cache marker so
+        // the next turn falls back to the full-transcript shape.
+        val invalidationEv: Vector[ProviderEvent] =
+          if (code == "previous_response_not_found" || msg.contains("previous_response_not_found"))
+            Vector(ProviderEvent.ResponseStateCaptured(None, 0))
+          else
+            Vector.empty
+        invalidationEv :+ ProviderEvent.Error(msg)
 
       // Direct `/v1/images/generations` streaming events (gpt-image-* models).
       // Same ProviderEvent vocabulary as the built-in tool path so apps render
@@ -623,6 +665,7 @@ case class OpenAIProvider(apiKey: String,
     val index = json.get("output_index").map(_.asInt).getOrElse(state.nextIndex)
     state.itemIndex = index
     state.nextIndex = math.max(state.nextIndex, index + 1)
+    state.outputItemCount += 1
 
     itemType match {
       case "function_call" =>
@@ -690,6 +733,21 @@ case class OpenAIProvider(apiKey: String,
     var nextIndex: Int = 0
     var pendingDone: Option[StopReason] = None
     var sawFunctionCall: Boolean = false
+    /** Server-side state handle captured from `response.created`. Empty
+      * until the SSE delivers it; used at `response.completed` to emit
+      * `ResponseStateCaptured` so the framework can persist it for the
+      * next turn's `previous_response_id`. */
+    var responseId: String = ""
+    /** Full rendered message count for this call (pre-trim) — set by
+      * `call` before the stream starts. The next-turn drop count is
+      * `sentMessageCount + outputItemCount` so iter N+1 trims both
+      * the items we already sent AND the items the response added
+      * (each output_item.added becomes a frame on the framework side
+      * once the response settles). */
+    var sentMessageCount: Int = 0
+    /** Number of output items the response produced — incremented on
+      * every `response.output_item.added`. */
+    var outputItemCount: Int = 0
     /** Annotations gathered from `response.output_text.annotation.added`
       * events (web-search citations). Emitted at `response.completed`
       * as a trailing markdown footer so the URLs reach the user
