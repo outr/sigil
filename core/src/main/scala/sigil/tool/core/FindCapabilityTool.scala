@@ -94,10 +94,11 @@ case object FindCapabilityTool extends TypedTool[FindCapabilityInput](
         )
         context.sigil.findCapabilities(request).map { matches =>
           val results = CapabilityResults(
-            matches = matches,
-            participantId = context.caller,
+            matches        = matches,
+            participantId  = context.caller,
             conversationId = context.conversation.id,
-            topicId = context.conversation.currentTopicId
+            topicId        = context.conversation.currentTopicId,
+            query          = request.keywords
           )
           rapid.Stream.emits(List(results))
         }

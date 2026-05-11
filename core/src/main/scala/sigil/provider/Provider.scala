@@ -739,6 +739,28 @@ trait Provider {
       suggestedTools.foreach(t => sb.append(s"- $t\n"))
     }
 
+    // Tools the agent has already discovered via `find_capability`
+    // earlier in this conversation. Surfaces the per-query history
+    // so the agent invokes a known tool directly instead of
+    // re-running discovery. Cap keeps the prompt bounded.
+    val discovered = chain
+      .flatMap(id => turn.projectionFor(id).discoveredCapabilities.toList)
+      .sortBy(-_._2.lastSeen.value)
+      .take(sigil.discoveredCapabilitiesPromptCap)
+    if (discovered.nonEmpty) {
+      sb.append("\n== Capabilities you've already discovered (this conversation) ==\n")
+      discovered.foreach { case (query, dc) =>
+        val matches = dc.matches.map(_.value)
+        if (matches.nonEmpty) {
+          sb.append(s"- `find_capability($query)` → ${matches.mkString(", ")}\n")
+        }
+      }
+      sb.append(
+        "If your current task needs one of these tools, invoke it directly. " +
+          "Do NOT re-search via `find_capability` for tools you've already discovered this conversation.\n"
+      )
+    }
+
     if (turn.extraContext.nonEmpty) {
       sb.append("\n== Conversation context ==\n")
       turn.extraContext.foreach { case (k, v) => sb.append(s"- ${k.value}: $v\n") }
