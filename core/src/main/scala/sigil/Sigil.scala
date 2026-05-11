@@ -3752,8 +3752,19 @@ trait Sigil {
     // provider layer also filters as a safety net; gating here too
     // means the framework doesn't emit a parameter it knows the
     // model will reject.
+    //
+    // `maxOutputTokens = 512` — the classifier's actual output is a
+    // single tool call with a one-field arg (≤ ~20 tokens). The
+    // budget covers thinking models (Qwen3.6, DeepSeek-R1, o-series)
+    // that burn output tokens on internal reasoning before emitting
+    // the structured tool_call, even with `enable_thinking: false`
+    // hints — some templates leak reasoning regardless. 50 tokens
+    // (the prior default) cut these models off mid-think and the
+    // classifier returned `finish_reason: length` with no tool call
+    // → ConsultTool returned None → topic resolution silently
+    // defaulted to NoChange.
     val classifierSettings = {
-      val base = GenerationSettings(maxOutputTokens = Some(50))
+      val base = GenerationSettings(maxOutputTokens = Some(512))
       if (supportsParameter(modelId, "temperature")) base.copy(temperature = Some(0.0))
       else base
     }
