@@ -54,13 +54,22 @@ object DigitalOcean {
       val models = rows.toList.flatMap { row =>
         row.get("id").map(_.asString).filter(_.nonEmpty).map { modelId =>
           val canonical = s"$Provider/$modelId"
+          // DO's list endpoint populates `context_length` and
+          // `max_output_tokens` on the chat-capable models (absent on
+          // embedding / image / TTS / video models). Read them through
+          // when present so the framework's pre-flight gate has real
+          // numbers; fall back to 0 when missing — apps that care
+          // override post-merge with their own pricing / context data.
+          val contextLength = row.get("context_length").map(_.asLong).getOrElse(0L)
+          val maxOutput    = row.get("max_output_tokens").map(_.asLong)
+          val ownedBy      = row.get("owned_by").map(_.asString).getOrElse("")
           Model(
             canonicalSlug       = canonical,
             huggingFaceId       = "",
             name                = modelId,
             displayName         = Some(modelId),
-            description         = "",
-            contextLength       = 0L,
+            description         = if (ownedBy.nonEmpty) s"owned_by=$ownedBy" else "",
+            contextLength       = contextLength,
             architecture        = ModelArchitecture(
               modality         = "text->text",
               inputModalities  = List("text"),
@@ -75,8 +84,8 @@ object DigitalOcean {
               inputCacheRead = None
             ),
             topProvider         = ModelTopProvider(
-              contextLength       = None,
-              maxCompletionTokens = None,
+              contextLength       = if (contextLength > 0) Some(contextLength) else None,
+              maxCompletionTokens = maxOutput,
               isModerated         = false
             ),
             perRequestLimits    = None,
