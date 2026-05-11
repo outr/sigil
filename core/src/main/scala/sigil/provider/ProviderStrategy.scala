@@ -1,6 +1,8 @@
 package sigil.provider
 
 import lightdb.id.Id
+import rapid.Task
+import sigil.TurnContext
 import sigil.db.Model
 
 import java.time.Instant
@@ -48,9 +50,62 @@ trait ProviderStrategy {
     * minus those still in cooldown. The runtime uses this rather
     * than `candidates` directly when picking a candidate to call. */
   def availableCandidates(workType: WorkType): List[ModelCandidate] = candidates(workType)
+
+  /** Bug #128 — per-message [[WorkType]] inference. `None` means
+    * the strategy doesn't classify per message; the framework falls
+    * back to `mode.workType`. Apps that want intelligent routing wire
+    * a cheap classifier (typically a small local model). Returns
+    * `None` from `ProviderStrategy.single`; routed strategies expose
+    * the value set at construction. */
+  def inferWorkType: Option[ProviderStrategy.InferWorkType] = None
+
+  /** Bug #128 — per-message [[Complexity]] inference. Mirror of
+    * [[inferWorkType]]; `None` means the framework defaults to
+    * `Complexity.Medium` for every turn. */
+  def inferComplexity: Option[ProviderStrategy.InferComplexity] = None
+
+  /** True when at least one [[WorkType]] chain differs from another
+    * (or from default). When every chain is identical, classifying
+    * workType can't change the candidate list — skip the classifier
+    * call. Precomputed at construction; O(1) at turn time. */
+  def workTypeMatters: Boolean = false
+
+  /** True when at least one chain reachable from this strategy has
+    * candidates with differing [[ModelCandidate.supportedComplexity]]
+    * sets. When every candidate supports the same tiers, complexity
+    * classification can't filter anything. Precomputed at
+    * construction; cheap to check per-chain at turn time. */
+  def complexityMatters(workType: WorkType): Boolean = false
+
+  /** Should the framework run the workType classifier for this
+    * turn? Composes [[inferWorkType]]'s availability with the
+    * cheap-cost [[workTypeMatters]] gate. */
+  final def shouldClassifyWorkType: Boolean =
+    inferWorkType.isDefined && workTypeMatters
+
+  /** Should the framework run the complexity classifier for this
+    * turn? Composes [[inferComplexity]]'s availability with a per-
+    * chain check — classifying complexity only matters if the
+    * resolved chain has candidates with differing
+    * `supportedComplexity` sets. */
+  final def shouldClassifyComplexity(workType: WorkType): Boolean =
+    inferComplexity.isDefined && complexityMatters(workType)
 }
 
 object ProviderStrategy {
+
+  /** Bug #128 — classifier callback for per-message [[WorkType]]
+    * inference. Receives the user's latest message text plus the
+    * full TurnContext (chain, conversation, modelId fallbacks);
+    * returns the classified WorkType. Apps wire a `ConsultTool.invoke`
+    * against a cheap local model with a structured-output schema. */
+  type InferWorkType = (String, TurnContext) => Task[WorkType]
+
+  /** Bug #128 — classifier callback for per-message [[Complexity]]
+    * inference. Mirror of [[InferWorkType]]; same call shape, returns
+    * the tier. Apps typically combine both signals into one classifier
+    * round-trip to save tokens. */
+  type InferComplexity = (String, TurnContext) => Task[Complexity]
 
   /** Pin a single model across every work type. No fallback,
     * no cooldown, no per-work-type routing — what the `switch_model`
@@ -63,11 +118,22 @@ object ProviderStrategy {
     * by `WorkType.value`; missing keys fall through to `default`.
     * Cooldown tracking lives on the returned instance — apps reusing
     * the same strategy across many calls get failure-aware routing
-    * without extra wiring. */
+    * without extra wiring.
+    *
+    * Bug #128 — opt-in per-message routing: pass `inferWorkType` /
+    * `inferComplexity` callbacks to enable classifier-driven
+    * candidate selection. The strategy precomputes
+    * [[ProviderStrategy.workTypeMatters]] /
+    * [[ProviderStrategy.complexityMatters]] from the routes table so
+    * classifier round-trips happen only when their outcome can
+    * actually shape the resolved candidate. Default `None` for both
+    * preserves today's behavior (mode.workType + Complexity.Medium). */
   def routed(default: List[ModelCandidate],
              routes: Map[WorkType, List[ModelCandidate]] = Map.empty,
-             errorClassifier: ErrorClassifier = ErrorClassifier.Default): ProviderStrategy =
-    new RoutedStrategy(default, routes, errorClassifier)
+             errorClassifier: ErrorClassifier = ErrorClassifier.Default,
+             inferWorkType: Option[InferWorkType] = None,
+             inferComplexity: Option[InferComplexity] = None): ProviderStrategy =
+    new RoutedStrategy(default, routes, errorClassifier, inferWorkType, inferComplexity)
 }
 
 /** Single-model strategy — every work type returns the same one-element list. */
@@ -80,12 +146,28 @@ private final class SingleModelStrategy(modelId: Id[Model],
 /** Routed strategy — per-work-type chains with cooldown bookkeeping. */
 private final class RoutedStrategy(default: List[ModelCandidate],
                                    routes: Map[WorkType, List[ModelCandidate]],
-                                   override val errorClassifier: ErrorClassifier) extends ProviderStrategy {
+                                   override val errorClassifier: ErrorClassifier,
+                                   override val inferWorkType: Option[ProviderStrategy.InferWorkType],
+                                   override val inferComplexity: Option[ProviderStrategy.InferComplexity])
+  extends ProviderStrategy {
 
   private val cooldowns: ConcurrentHashMap[Id[Model], Instant] = new ConcurrentHashMap[Id[Model], Instant]()
 
+  /** Bug #128 — precomputed: true when at least one chain differs
+    * from another (or from default). When every chain is identical,
+    * classifying workType can't change the candidate list. */
+  override val workTypeMatters: Boolean = {
+    val allChains: Set[List[ModelCandidate]] = routes.values.toSet + default
+    allChains.size > 1
+  }
+
   override def candidates(workType: WorkType): List[ModelCandidate] =
     routes.getOrElse(workType, default)
+
+  override def complexityMatters(workType: WorkType): Boolean = {
+    val chain = candidates(workType)
+    chain.map(_.supportedComplexity).distinct.size > 1
+  }
 
   override def reportFailure(modelId: Id[Model], workType: WorkType): Unit = {
     candidates(workType).find(_.modelId == modelId).foreach { c =>
