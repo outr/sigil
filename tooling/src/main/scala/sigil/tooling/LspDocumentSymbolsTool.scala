@@ -44,7 +44,7 @@ final class LspDocumentSymbolsTool(val manager: LspManager) extends TypedOutputT
       LspDocumentSymbolsInput(languageId = "scala", filePath = "/abs/path/Foo.scala")
     )
   )
-) with LspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override protected def executeTyped(input: LspDocumentSymbolsInput,
                                       context: TurnContext): Task[LspDocumentSymbolsResult] =
     withOpenDocumentTyped[LspDocumentSymbolsResult](

@@ -27,7 +27,7 @@ final class GitLogTool(context: FileSystemContext)
       ToolExample("Commits since last Friday",  GitLogInput(since = Some("last friday"), includeBody = true))
     ),
     keywords = Set("git", "log", "history", "commits", "blame")
-  ) {
+  ) with sigil.tool.ReadOnlyExternalTool {
   override protected def executeTyped(input: GitLogInput, ctx: TurnContext): Stream[Event] = Stream.force(
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val limit  = input.limit.getOrElse(20)

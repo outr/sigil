@@ -46,7 +46,7 @@ final class EditFileTool(context: FileSystemContext)
       )
     ),
     keywords = Set("file", "edit", "modify", "replace", "rewrite", "patch")
-  ) {
+  ) with sigil.tool.DestructiveExternalTool {
   override protected def executeTyped(input: EditFileInput, ctx: TurnContext): Task[EditFileOutput] =
     WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>
       context.readFile(resolved).flatMap { content =>

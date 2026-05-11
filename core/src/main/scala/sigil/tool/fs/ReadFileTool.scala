@@ -31,7 +31,7 @@ final class ReadFileTool(context: FileSystemContext)
       "contents", "source", "examine", "inspect", "load", "show",
       "code", "text", "lines", "display", "fetch", "look"
     )
-  ) {
+  ) with sigil.tool.ReadOnlyExternalTool {
   // Bug #86 — generic primitive: ranks below domain-specific
   // tools when both match a query.
   override def preferIfNoBetter: Boolean = true

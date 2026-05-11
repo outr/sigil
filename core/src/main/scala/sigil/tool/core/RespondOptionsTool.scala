@@ -75,7 +75,7 @@ case object RespondOptionsTool extends TypedTool[RespondOptionsInput](
       )
     )
   )
-) {
+) with RespondFamilyTool {
   override protected def executeTyped(input: RespondOptionsInput, context: TurnContext): rapid.Stream[Event] = {
     val block = ResponseContent.Options(
       prompt = input.prompt,

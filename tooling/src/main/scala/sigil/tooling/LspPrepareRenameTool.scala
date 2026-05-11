@@ -33,7 +33,7 @@ final class LspPrepareRenameTool(val manager: LspManager) extends TypedOutputToo
       LspPrepareRenameInput(languageId = "scala", filePath = "/abs/path/Foo.scala", line = 10, character = 7)
     )
   )
-) with LspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override protected def executeTyped(input: LspPrepareRenameInput, context: TurnContext): Task[LspPrepareRenameResult] =
     withOpenDocumentTyped[LspPrepareRenameResult](
       input.languageId, input.filePath, context,

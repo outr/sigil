@@ -37,7 +37,7 @@ final class GrepTool(context: FileSystemContext) extends PaginatedTool[GrepInput
     "lookup", "ripgrep", "rg", "code", "text", "files", "pattern",
     "scan", "look", "occurrence", "string"
   )
-) {
+) with sigil.tool.ReadOnlyExternalTool {
   // Bug #86 — generic primitive: ranks below domain-specific tools
   // (LSP/BSP, typed inspectors) when both match a query, but stays
   // findable when nothing more specific applies.

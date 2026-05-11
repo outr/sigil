@@ -31,7 +31,7 @@ final class BspResourcesTool(val manager: BspManager) extends TypedOutputTool[Bs
       BspResourcesInput(projectRoot = "/abs/path/myproject")
     )
   )
-) with BspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
   override protected def executeTyped(input: BspResourcesInput, context: TurnContext): Task[BspResourcesResult] =
     withSessionTyped[BspResourcesResult](
       input.projectRoot, context,

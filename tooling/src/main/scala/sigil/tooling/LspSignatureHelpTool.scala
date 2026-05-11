@@ -40,7 +40,7 @@ final class LspSignatureHelpTool(val manager: LspManager) extends TypedOutputToo
       LspSignatureHelpInput(languageId = "scala", filePath = "/abs/path/Foo.scala", line = 10, character = 7)
     )
   )
-) with LspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override protected def executeTyped(input: LspSignatureHelpInput, context: TurnContext): Task[LspSignatureHelpResult] =
     withOpenDocumentTyped[LspSignatureHelpResult](
       input.languageId, input.filePath, context,

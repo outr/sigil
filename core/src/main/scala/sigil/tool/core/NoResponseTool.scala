@@ -30,7 +30,7 @@ case object NoResponseTool extends TypedTool[NoResponseInput](
       |agent"). If you have something to SAY to the user — even a refusal or apology — call
       |`respond` instead; user-directed prose stuffed into `reason` is auto-promoted to a
       |respond and will trigger a warning.""".stripMargin
-) {
+) with RespondFamilyTool {
   override protected def executeTyped(input: NoResponseInput, context: TurnContext): rapid.Stream[Event] =
     input.reason match {
       case Some(reason) if isUserDirectedProse(reason) =>

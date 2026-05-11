@@ -18,7 +18,7 @@ final class DeleteFileTool(context: FileSystemContext)
       ToolExample("Remove a temp file", DeleteFileInput(filePath = "/tmp/scratch.txt"))
     ),
     keywords = Set("file", "delete", "remove", "rm", "unlink")
-  ) {
+  ) with sigil.tool.DestructiveExternalTool {
   override protected def executeTyped(input: DeleteFileInput, ctx: TurnContext): Task[DeleteFileOutput] =
     WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>
       context.deleteFile(resolved).map(existed => DeleteFileOutput(deleted = existed))

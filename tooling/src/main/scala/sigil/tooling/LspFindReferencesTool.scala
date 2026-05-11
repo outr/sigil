@@ -54,7 +54,7 @@ final class LspFindReferencesTool(val manager: LspManager) extends TypedOutputTo
       )
     )
   )
-) with LspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override protected def executeTyped(input: LspFindReferencesInput, context: TurnContext): Task[LspFindReferencesOutput] =
     withOpenDocumentTyped[LspFindReferencesOutput](
       input.languageId, input.filePath, context,

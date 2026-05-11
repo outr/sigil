@@ -41,7 +41,7 @@ final class BspRunTool(val manager: BspManager) extends TypedOutputTool[BspRunIn
       )
     )
   )
-) with BspToolSupport {
+) with sigil.tool.DestructiveExternalTool with BspToolSupport {
   override protected def executeTyped(input: BspRunInput, context: TurnContext): Task[BspExecResult] =
     withSessionTyped[BspExecResult](
       input.projectRoot, context,

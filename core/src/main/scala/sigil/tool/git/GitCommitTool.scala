@@ -27,7 +27,7 @@ final class GitCommitTool(context: FileSystemContext)
       ToolExample("Commit specific paths",      GitCommitInput(message = "Add config", paths = Some(List("config/app.yaml"))))
     ),
     keywords = Set("git", "commit", "save", "checkpoint")
-  ) {
+  ) with sigil.tool.DestructiveExternalTool {
   override protected def executeTyped(input: GitCommitInput, ctx: TurnContext): Stream[Event] = Stream.force(
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val pathsToStage = input.paths.getOrElse(Nil)

@@ -40,7 +40,7 @@ final class BspCompileTool(val manager: BspManager) extends TypedOutputTool[BspC
       BspCompileInput(projectRoot = "/abs/path/myproject")
     )
   )
-) with BspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
   override protected def executeTyped(input: BspCompileInput, context: TurnContext): Task[BspCompileResult] =
     withSessionTyped[BspCompileResult](
       input.projectRoot, context,

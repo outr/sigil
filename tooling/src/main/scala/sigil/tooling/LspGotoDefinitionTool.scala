@@ -45,7 +45,7 @@ final class LspGotoDefinitionTool(val manager: LspManager) extends TypedOutputTo
       LspGotoDefinitionInput(languageId = "scala", filePath = "/abs/path/Foo.scala", line = 42, character = 12)
     )
   )
-) with LspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override protected def executeTyped(input: LspGotoDefinitionInput, context: TurnContext): Task[List[LspLocation]] =
     withOpenDocumentTyped[List[LspLocation]](
       input.languageId, input.filePath, context,

@@ -31,7 +31,7 @@ final class BashTool(context: FileSystemContext) extends PaginatedTool[BashInput
     "script", "terminal", "execute", "invoke", "system",
     "cli", "process", "spawn", "subprocess"
   )
-) {
+) with sigil.tool.DestructiveExternalTool {
   // Bug #86 — generic primitive: ranks below domain-specific
   // tools when both match a query.
   override def preferIfNoBetter: Boolean = true

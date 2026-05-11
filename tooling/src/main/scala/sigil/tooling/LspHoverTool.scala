@@ -38,7 +38,7 @@ final class LspHoverTool(val manager: LspManager) extends TypedOutputTool[LspHov
       LspHoverInput(languageId = "scala", filePath = "/abs/path/Foo.scala", line = 10, character = 5)
     )
   )
-) with LspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override protected def executeTyped(input: LspHoverInput, context: TurnContext): Task[Option[LspHover]] =
     withOpenDocumentTyped[Option[LspHover]](
       input.languageId, input.filePath, context,

@@ -30,7 +30,7 @@ final class WebFetchTool(timeout: FiniteDuration = 30.seconds)
       ToolExample("Fetch a small JSON endpoint", WebFetchInput(url = "https://api.example.com/status", maxLength = Some(8192)))
     ),
     keywords = Set("web", "fetch", "http", "url", "download", "page", "browse")
-  ) {
+  ) with sigil.tool.NetworkReadOnlyTool {
   override protected def executeTyped(input: WebFetchInput, ctx: TurnContext): Stream[Event] = Stream.force(
     HttpClient
       .url(URL.parse(input.url))

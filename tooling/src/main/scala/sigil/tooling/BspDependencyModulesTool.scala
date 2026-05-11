@@ -37,7 +37,7 @@ final class BspDependencyModulesTool(val manager: BspManager) extends TypedOutpu
       BspDependencyModulesInput(projectRoot = "/abs/path/myproject")
     )
   )
-) with BspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
   override protected def executeTyped(input: BspDependencyModulesInput,
                                       context: TurnContext): Task[BspDependencyModulesResult] = {
     val cacheKey = BspDependencyModulesTool.cacheKeyFor(input.projectRoot, input.targets)

@@ -53,7 +53,7 @@ final class LspDiagnosticsTool(val manager: LspManager) extends TypedOutputTool[
       LspDiagnosticsInput(languageId = "scala", filePath = "/abs/path/to/Foo.scala")
     )
   )
-) with LspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override protected def executeTyped(input: LspDiagnosticsInput, context: TurnContext): Task[LspDiagnosticsResult] =
     withOpenDocumentTyped[LspDiagnosticsResult](
       input.languageId, input.filePath, context,

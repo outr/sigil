@@ -31,7 +31,7 @@ final class BspDependencySourcesTool(val manager: BspManager) extends TypedOutpu
       BspDependencySourcesInput(projectRoot = "/abs/path/myproject")
     )
   )
-) with BspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
   override protected def executeTyped(input: BspDependencySourcesInput,
                                       context: TurnContext): Task[BspDependencySourcesResult] =
     withSessionTyped[BspDependencySourcesResult](

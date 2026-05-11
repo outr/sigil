@@ -47,7 +47,7 @@ final class LspPullDiagnosticsTool(val manager: LspManager) extends TypedOutputT
       LspPullDiagnosticsInput(languageId = "scala", filePath = "/abs/path/Foo.scala")
     )
   )
-) with LspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override protected def executeTyped(input: LspPullDiagnosticsInput, context: TurnContext): Task[LspDiagnosticsResult] =
     withOpenDocumentTyped[LspDiagnosticsResult](
       input.languageId, input.filePath, context,

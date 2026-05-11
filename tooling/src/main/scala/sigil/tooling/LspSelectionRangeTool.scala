@@ -46,7 +46,7 @@ final class LspSelectionRangeTool(val manager: LspManager) extends TypedOutputTo
       )
     )
   )
-) with LspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override protected def executeTyped(input: LspSelectionRangeInput, context: TurnContext): Task[LspSelectionRangeResult] =
     withOpenDocumentTyped[LspSelectionRangeResult](
       input.languageId, input.filePath, context,

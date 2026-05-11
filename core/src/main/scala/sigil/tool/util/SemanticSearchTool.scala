@@ -36,7 +36,7 @@ case object SemanticSearchTool extends TypedOutputTool[SemanticSearchInput, Sema
       SemanticSearchInput(query = "deploy target", includeHistory = true))
   ),
   keywords = Set("semantic", "search", "memory", "recall", "remember", "find", "vector", "similarity", "rag")
-) {
+) with sigil.tool.ReadOnlyInternalTool {
   override protected def executeTyped(input: SemanticSearchInput, ctx: TurnContext): Task[SemanticSearchOutput] =
     resolveSpaces(input, ctx).flatMap { spaces =>
       if (spaces.isEmpty)

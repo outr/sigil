@@ -476,7 +476,7 @@ case class LlamaCppProvider(url: URL,
   }
 
   private def renderDescription(tool: Tool, mode: Mode): String = {
-    val base = tool.descriptionFor(mode, sigil)
+    val base = tool.wireDescription(mode, sigil)
     if (tool.examples.isEmpty) base
     else {
       val rendered = tool.examples.map { e =>

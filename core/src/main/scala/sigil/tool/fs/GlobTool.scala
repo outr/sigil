@@ -24,7 +24,7 @@ final class GlobTool(context: FileSystemContext) extends PaginatedTool[GlobInput
     "directory", "tree", "match", "wildcard", "path", "discover",
     "ls", "look", "browse", "enumerate"
   )
-) {
+) with sigil.tool.ReadOnlyExternalTool {
   // Bug #86 — generic primitive: ranks below domain-specific
   // tools when both match a query.
   override def preferIfNoBetter: Boolean = true
