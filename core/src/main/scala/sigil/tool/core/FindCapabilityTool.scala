@@ -16,10 +16,13 @@ import sigil.tool.{DiscoveryRequest, ToolExample, ToolName, TypedTool}
 case object FindCapabilityTool extends TypedTool[FindCapabilityInput](
   name = ToolName("find_capability"),
   description =
-    """ALWAYS call this FIRST when the user asks you to DO anything — wait, fetch, save, send,
-      |run, edit, search, schedule, look up, anything action-shaped. The catalog is large; the
-      |right tool almost always exists. Do not assume an action is unsupported and do not
-      |substitute `respond` for one — call this and check.
+    """Call this when the user asks you to DO anything — wait, fetch, save, send, run, edit,
+      |search, schedule, look up, anything action-shaped — AND no listed available mode obviously
+      |matches the task. When a listed mode does match (e.g. user asks for code and `coding` is
+      |listed), call `change_mode("<name>")` first instead; the mode is a pre-curated tool set
+      |that's more precise than this free-form search. For everything else, call this — the
+      |catalog is large and the right tool almost always exists. Do not assume an action is
+      |unsupported and do not substitute `respond` for one.
       |
       |Even short or seemingly trivial requests count. "wait 200ms then respond done" is an
       |action (the wait); "fetch X and summarize" is an action (the fetch); the final reply is
@@ -37,7 +40,25 @@ case object FindCapabilityTool extends TypedTool[FindCapabilityInput](
       |only THEN may you tell the user it isn't available.
       |
       |`keywords` — space-separated lowercase terms; multi-word queries match better
-      |(e.g. "send slack channel message" not just "slack").""".stripMargin,
+      |(e.g. "send slack channel message" not just "slack"). This is a TOOL-SHAPE search,
+      |not a CONTENT search — strip the user's content (filenames, project terms,
+      |business jargon) and keep only the shape of the action you want.
+      |
+      |Discovery-query templates by intent (use as anchors for unfamiliar intents):
+      |  - Read a file's contents → "view file source contents read code lines"
+      |  - Search files for a pattern → "grep search find text pattern match"
+      |  - List files / discover paths → "glob files directory paths list discover"
+      |  - Run a shell command → "bash shell command execute run"
+      |  - Navigate code symbols → "lsp definition reference symbol type implementation"
+      |  - Edit / modify a file → "edit modify update file patch change"
+      |  - Web / HTTP fetch → "http fetch download url web request"
+      |  - Switch the model → "model switch pin change llm"
+      |  - Save / recall memory → "memory save recall persist note remember"
+      |  - Schedule / wait / time → "sleep wait delay timer schedule cron"
+      |
+      |"find references search symbol password reset" is worse than "lsp reference
+      |symbol definition" — the second is pure tool-shape; "password reset" was project
+      |content that didn't score against any tool's keywords.""".stripMargin,
   examples = List(
     ToolExample("Send a message",          FindCapabilityInput("send slack channel message")),
     ToolExample("Pause / wait / sleep",    FindCapabilityInput("sleep wait delay pause")),
