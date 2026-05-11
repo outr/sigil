@@ -1665,6 +1665,25 @@ trait Sigil {
    */
   def geocoder: Geocoder = NoOpGeocoder
 
+  /**
+   * Recognises refusal language in an agent's `respond.content`
+   * (sigil bug #126). When the detector fires AND no
+   * `find_capability` call exists in the conversation tail since
+   * the last user-authored Message, the orchestrator suppresses
+   * the respond emission and substitutes a Tool-role `Failure`
+   * the agent reads on its next iteration, prompting it to
+   * actually consult the catalog before refusing.
+   *
+   * Default: [[sigil.provider.RefusalDetector.Default]] — a
+   * conservative regex set tuned against the wire-log scenario
+   * the bug was filed from. Apps where refusal is a valid
+   * outcome (moderation flows, sandbox executors) override with
+   * [[sigil.provider.RefusalDetector.Never]] or a custom
+   * implementation.
+   */
+  def refusalDetector: sigil.provider.RefusalDetector =
+    sigil.provider.RefusalDetector.Default
+
   // -- outbound / per-viewer pipeline --
 
   /**

@@ -339,104 +339,137 @@ object Orchestrator {
           case None =>
             // Atomic path — run execute and forward resulting Events.
             //
-            // Bug #87 — dedupe identical (toolName + canonical args
-            // JSON) calls within the same completion. When the model
-            // emits N parallel function_calls that share a key
-            // (parallel hedging, or the same retry hitting both a
-            // generic and specific path), execute the work once and
-            // route the duplicates to a synthesized Tool-role
-            // pointer Message paired to their own ToolInvoke. Wire
-            // shape stays well-formed; the underlying tool runs once.
-            val toolName = active.toolName
-            val argsKey = canonicalArgsKey(toolName, input)
-            state.dispatchedKeys.get(argsKey) match {
-              case Some(firstInvokeId) =>
-                val dupeMsg = Message(
-                  participantId  = caller,
-                  conversationId = convId,
-                  topicId        = topicId,
-                  role           = MessageRole.Tool,
-                  content        = Vector(ResponseContent.Text(
-                    s"(deduplicated: identical `$toolName` call already dispatched in this completion " +
-                      s"as ${firstInvokeId.value}; see that result)"
-                  )),
-                  state          = EventState.Complete,
-                  visibility     = MessageVisibility.Agents,
-                  origin         = Some(invokeId)
-                )
-                return Stream.emits(toolDeltaPrefix ::: List[Signal](
-                  dupeMsg,
-                  StateDelta(target = dupeMsg._id, conversationId = convId, state = EventState.Complete)
-                ))
-              case None =>
-                state.dispatchedKeys(argsKey) = invokeId
-            }
+            // Bug #126 — refusal-challenge intercept for atomic
+            // `respond` calls. If the content reads as a refusal AND
+            // no `find_capability` was called since the last
+            // user-authored Message AND we haven't already
+            // challenged this turn, suppress `executeAtomic` (the
+            // respond never publishes) and emit a synthetic
+            // `_refusal_challenge` ToolInvoke + Tool-role `Failure`
+            // paired to it. The Failure becomes a trigger for the
+            // next agent iteration; the agent re-runs with explicit
+            // instructions to consult the catalog before refusing.
             //
-            // Bug #49 — wrap stream construction in `Task(...).handleError`
-            // so a tool that throws during `tool.execute` (synchronously,
-            // at stream construction OR on first pull) surfaces as a
-            // failure Message instead of tearing down the surrounding
-            // stream. Without the wrap, the throw propagated through
-            // `++ executed` and dropped BOTH the toolDelta AND any
-            // ToolResults — agent saw the user's tool chip stuck at
-            // "input pending" with no follow-up. `Stream.force` defers
-            // stream materialization to Task evaluation, where
-            // `handleError` can catch and substitute.
-            val tool = toolsByName.get(active.toolName)
-            val executed: Stream[Signal] = tool match {
-              case Some(t) =>
-                Stream.force(
-                  Task(executeAtomic(t, input, TurnContext(
-                    sigil = sigil,
-                    chain = request.chain,
-                    conversation = conversation,
-                    turnInput = request.turnInput,
-                    // Bug #7 — stamp the dispatching tool's invoke id +
-                    // name so `TurnContext.reportProgress` can publish
-                    // ToolProgress pulses without the tool author
-                    // having to thread the correlation id manually.
-                    currentToolInvokeId = Some(invokeId),
-                    currentToolName     = Some(t.name),
-                    // Bug #55 — atomic content tools (respond,
-                    // respond_options, …) stamp `Message.modelId` from
-                    // here so per-message metadata strips show which
-                    // model produced the response. Without this, agent
-                    // Messages from tool-call-only models (llama.cpp's
-                    // grammar-constrained respond invocations) carried
-                    // `modelId = None` because no streaming
-                    // ContentBlockDelta path fired to attach it.
-                    modelId             = Some(request.modelId)
-                  ), invokeId)).handleError { err =>
-                    scribe.error(s"Atomic tool '$toolName' threw during execution", err)
-                    Task.pure(Stream.emit[Signal](Message(
-                      participantId  = caller,
-                      conversationId = convId,
-                      topicId        = topicId,
-                      role           = MessageRole.Tool,
-                      content        = Vector(ResponseContent.Text(
-                        s"Tool '$toolName' execution failed: ${err.getClass.getSimpleName}: ${err.getMessage}"
-                      )),
-                      state          = EventState.Complete,
-                      visibility     = MessageVisibility.Agents,
-                      // Bug #69 — Tool-role events MUST carry origin.
-                      origin         = Some(invokeId)
-                    )))
-                  }
-                )
-              case None => Stream.empty
+            // Loop safety: `refusalChallengeOutcome` returns `None`
+            // once a prior `_refusal_challenge` is already on the
+            // conversation tail since the last user msg, so the
+            // framework challenges at most once per user turn — if
+            // the agent re-emits a refusal after the reminder, the
+            // refusal passes through (that IS the answer).
+            def proceedWithAtomicDispatch(): Stream[Signal] = {
+              // Bug #87 — dedupe identical (toolName + canonical args
+              // JSON) calls within the same completion. When the model
+              // emits N parallel function_calls that share a key
+              // (parallel hedging, or the same retry hitting both a
+              // generic and specific path), execute the work once and
+              // route the duplicates to a synthesized Tool-role
+              // pointer Message paired to their own ToolInvoke. Wire
+              // shape stays well-formed; the underlying tool runs once.
+              val toolName = active.toolName
+              val argsKey = canonicalArgsKey(toolName, input)
+              state.dispatchedKeys.get(argsKey) match {
+                case Some(firstInvokeId) =>
+                  val dupeMsg = Message(
+                    participantId  = caller,
+                    conversationId = convId,
+                    topicId        = topicId,
+                    role           = MessageRole.Tool,
+                    content        = Vector(ResponseContent.Text(
+                      s"(deduplicated: identical `$toolName` call already dispatched in this completion " +
+                        s"as ${firstInvokeId.value}; see that result)"
+                    )),
+                    state          = EventState.Complete,
+                    visibility     = MessageVisibility.Agents,
+                    origin         = Some(invokeId)
+                  )
+                  return Stream.emits(toolDeltaPrefix ::: List[Signal](
+                    dupeMsg,
+                    StateDelta(target = dupeMsg._id, conversationId = convId, state = EventState.Complete)
+                  ))
+                case None =>
+                  state.dispatchedKeys(argsKey) = invokeId
+              }
+              //
+              // Bug #49 — wrap stream construction in `Task(...).handleError`
+              // so a tool that throws during `tool.execute` (synchronously,
+              // at stream construction OR on first pull) surfaces as a
+              // failure Message instead of tearing down the surrounding
+              // stream. Without the wrap, the throw propagated through
+              // `++ executed` and dropped BOTH the toolDelta AND any
+              // ToolResults — agent saw the user's tool chip stuck at
+              // "input pending" with no follow-up. `Stream.force` defers
+              // stream materialization to Task evaluation, where
+              // `handleError` can catch and substitute.
+              val tool = toolsByName.get(active.toolName)
+              val executed: Stream[Signal] = tool match {
+                case Some(t) =>
+                  Stream.force(
+                    Task(executeAtomic(t, input, TurnContext(
+                      sigil = sigil,
+                      chain = request.chain,
+                      conversation = conversation,
+                      turnInput = request.turnInput,
+                      // Bug #7 — stamp the dispatching tool's invoke id +
+                      // name so `TurnContext.reportProgress` can publish
+                      // ToolProgress pulses without the tool author
+                      // having to thread the correlation id manually.
+                      currentToolInvokeId = Some(invokeId),
+                      currentToolName     = Some(t.name),
+                      // Bug #55 — atomic content tools (respond,
+                      // respond_options, …) stamp `Message.modelId` from
+                      // here so per-message metadata strips show which
+                      // model produced the response. Without this, agent
+                      // Messages from tool-call-only models (llama.cpp's
+                      // grammar-constrained respond invocations) carried
+                      // `modelId = None` because no streaming
+                      // ContentBlockDelta path fired to attach it.
+                      modelId             = Some(request.modelId)
+                    ), invokeId)).handleError { err =>
+                      scribe.error(s"Atomic tool '$toolName' threw during execution", err)
+                      Task.pure(Stream.emit[Signal](Message(
+                        participantId  = caller,
+                        conversationId = convId,
+                        topicId        = topicId,
+                        role           = MessageRole.Tool,
+                        content        = Vector(ResponseContent.Text(
+                          s"Tool '$toolName' execution failed: ${err.getClass.getSimpleName}: ${err.getMessage}"
+                        )),
+                        state          = EventState.Complete,
+                        visibility     = MessageVisibility.Agents,
+                        // Bug #69 — Tool-role events MUST carry origin.
+                        origin         = Some(invokeId)
+                      )))
+                    }
+                  )
+                case None => Stream.empty
+              }
+              // Bug #55 — record user-visible Message ids the atomic
+              // tool emitted so the orchestrator's Usage handler has a
+              // target when no streaming activeMessageId exists.
+              val tracked = executed.evalMap { sig =>
+                sig match {
+                  case m: Message if m.role != MessageRole.Tool =>
+                    Task { state.lastUserVisibleMessageId = Some(m._id); sig }
+                  case _ =>
+                    Task.pure(sig)
+                }
+              }
+              Stream.emits(toolDeltaPrefix) ++ tracked
             }
-            // Bug #55 — record user-visible Message ids the atomic
-            // tool emitted so the orchestrator's Usage handler has a
-            // target when no streaming activeMessageId exists.
-            val tracked = executed.evalMap { sig =>
-              sig match {
-                case m: Message if m.role != MessageRole.Tool =>
-                  Task { state.lastUserVisibleMessageId = Some(m._id); sig }
+
+            if (active.toolName == "respond") {
+              input match {
+                case r: RespondInput =>
+                  return Stream.force(refusalChallengeOutcome(sigil, r.content, convId, caller, topicId).map {
+                    case Some(challengeSignals) =>
+                      Stream.emits(toolDeltaPrefix ::: challengeSignals)
+                    case None =>
+                      proceedWithAtomicDispatch()
+                  })
                 case _ =>
-                  Task.pure(sig)
               }
             }
-            Stream.emits(toolDeltaPrefix) ++ tracked
+            proceedWithAtomicDispatch()
         }
 
       case ProviderEvent.Usage(usage) =>
@@ -779,6 +812,99 @@ object Orchestrator {
     }
     state.activeCalls.clear()
     closes
+  }
+
+  /** Bug #126 — decide whether an atomic `respond` should be
+    * suppressed and replaced with a refusal-challenge diagnostic.
+    *
+    * Returns:
+    *   - `Some(signals)` when the content reads as a refusal AND
+    *     the agent didn't consult `find_capability` since the last
+    *     user-authored Message AND we haven't already challenged
+    *     this user turn. The signals are a synthetic
+    *     `_refusal_challenge` ToolInvoke + a paired Tool-role
+    *     `Failure` Message the agent reads on its next iteration.
+    *   - `None` when the content isn't a refusal, when the agent
+    *     DID call `find_capability` (an informed refusal is valid),
+    *     or when a prior `_refusal_challenge` is already on the
+    *     tail (loop-safety — challenge once, then step aside).
+    *
+    * Apps tune the refusal-detection itself via
+    * [[sigil.Sigil.refusalDetector]] — e.g. apps where refusal is
+    * a legitimate outcome plug in [[RefusalDetector.Never]] to
+    * disable the intercept entirely.
+    */
+  private def refusalChallengeOutcome(sigil: Sigil,
+                                      content: String,
+                                      convId: lightdb.id.Id[Conversation],
+                                      caller: ParticipantId,
+                                      topicId: lightdb.id.Id[Topic]): Task[Option[List[Signal]]] = {
+    if (!sigil.refusalDetector.isRefusal(content)) Task.pure(None)
+    else sigil.withDB(_.events.transaction(_.list)).map { allEvents =>
+      val convEvents = allEvents
+        .filter(_.conversationId == convId)
+        .sortBy(_.timestamp.value)
+      // "Last user message" = most recent non-agent participantId on
+      // a Message event. Agent-only conversations (delegated workers
+      // with no human in the chain) skip the challenge — no user
+      // intent to defend against.
+      val lastUserIdx = convEvents.lastIndexWhere {
+        case m: Message => !m.participantId.isInstanceOf[_root_.sigil.participant.AgentParticipantId]
+        case _          => false
+      }
+      if (lastUserIdx < 0) None
+      else {
+        val tail = convEvents.drop(lastUserIdx + 1)
+        val discoveryAttempted = tail.exists {
+          case ti: ToolInvoke if ti.toolName.value == "find_capability" => true
+          case _                                                        => false
+        }
+        val alreadyChallenged = tail.exists {
+          case ti: ToolInvoke if ti.toolName.value == "_refusal_challenge" => true
+          case _                                                           => false
+        }
+        if (discoveryAttempted || alreadyChallenged) None
+        else Some(buildRefusalChallengeSignals(caller, convId, topicId))
+      }
+    }
+  }
+
+  /** Construct the (synthetic-invoke, Failure-message) pair the
+    * orchestrator emits when [[refusalChallengeOutcome]] fires. The
+    * invoke's `_refusal_challenge` name doubles as the marker
+    * `refusalChallengeOutcome` walks for on subsequent iterations
+    * to enforce the once-per-user-turn limit. */
+  private def buildRefusalChallengeSignals(caller: ParticipantId,
+                                           convId: lightdb.id.Id[Conversation],
+                                           topicId: lightdb.id.Id[Topic]): List[Signal] = {
+    val syntheticInvokeId = Event.id()
+    val syntheticInvoke = ToolInvoke(
+      toolName       = ToolName("_refusal_challenge"),
+      participantId  = caller,
+      conversationId = convId,
+      topicId        = topicId,
+      _id            = syntheticInvokeId,
+      state          = EventState.Complete,
+      internal       = true
+    )
+    val reason =
+      "Your previous `respond` refused the user without first calling `find_capability` (see the " +
+        "system prompt — a refusal not preceded by `find_capability` is a bug). The tool catalog " +
+        "likely contains capabilities you haven't discovered. Call `find_capability` with keywords " +
+        "describing what the user asked, review the matches, then decide whether to refuse based on " +
+        "what discovery actually returns. If no relevant capability surfaces, refuse with the " +
+        "specifics of what you searched and what wasn't there."
+    val diagnostic = Message(
+      participantId  = caller,
+      conversationId = convId,
+      topicId        = topicId,
+      role           = MessageRole.Tool,
+      content        = Vector(ResponseContent.Failure(reason = reason, recoverable = true)),
+      state          = EventState.Complete,
+      visibility     = MessageVisibility.Agents,
+      origin         = Some(syntheticInvokeId)
+    )
+    List[Signal](syntheticInvoke, diagnostic)
   }
 
   /**
