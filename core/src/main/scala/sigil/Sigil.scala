@@ -1096,6 +1096,40 @@ trait Sigil {
     if (!escalateOnCapHit) Task.unit
     else requestEscalation(conversationId, reason = "iteration-cap forced synthesis").map(_ => ())
 
+  /** Emit a [[sigil.event.RouteResolved]] event capturing the
+    * per-turn routing decision. Includes the classifier output (or
+    * `None` when the framework defaulted), the candidate chain
+    * considered, which candidate won, and per-candidate skip
+    * reasons. Best-effort: emission failures are swallowed so a
+    * forensic-channel hiccup never blocks the turn itself. */
+  private final def publishRouteResolved(agentId: ParticipantId,
+                                         conversation: Conversation,
+                                         userMessage: Option[sigil.event.Message],
+                                         strategyOpt: Option[ProviderStrategy],
+                                         inferredWorkType: WorkType,
+                                         effectiveWorkType: WorkType,
+                                         complexity: Complexity,
+                                         candidateChain: List[Id[Model]],
+                                         chosenModelId: Id[Model],
+                                         skipReasons: Map[Id[Model], String]): Task[Unit] = {
+    val classifierFired = strategyOpt.exists(_.shouldClassifyWorkType) ||
+      strategyOpt.exists(_.shouldClassifyComplexity(inferredWorkType))
+    val event = sigil.event.RouteResolved(
+      participantId       = agentId,
+      conversationId      = conversation._id,
+      topicId             = conversation.currentTopicId,
+      userMessageId       = userMessage.map(_._id),
+      inferredWorkType    = if (strategyOpt.exists(_.shouldClassifyWorkType)) Some(inferredWorkType) else None,
+      inferredComplexity  = if (strategyOpt.exists(_.shouldClassifyComplexity(inferredWorkType))) Some(complexity) else None,
+      candidateChain      = candidateChain,
+      chosenModelId       = chosenModelId,
+      skipReasons         = skipReasons,
+      classifierLatencyMs = None,
+      escalationCount     = Option(routingCache.get(conversation._id)).map(_.escalations).getOrElse(0)
+    )
+    publish(event).map(_ => ()).handleError(_ => Task.unit)
+  }
+
   /** Resolve the model id this conversation would dispatch to on the
     * next turn — the same lookup chain `runAgentTurn` uses, exposed as
     * a read-only helper for introspection (e.g. [[CurrentModelTool]]).
@@ -1540,9 +1574,25 @@ trait Sigil {
           case Some(strategy) => classifyForRoute(strategy, effectiveWorkType, context.conversation, userMsg, context)
           case None           => Task.pure((effectiveWorkType, Complexity.Medium))
         }
-        chosen       = strategyOpt.flatMap(_.availableCandidates(routedWorkType)
-          .find(_.supportedComplexity.contains(complexity)))
+        candidateChain = strategyOpt.toList.flatMap(_.availableCandidates(routedWorkType))
+        skipReasons    = candidateChain.iterator.collect {
+          case c if !c.supportedComplexity.contains(complexity) =>
+            c.modelId -> s"supportedComplexity does not include $complexity"
+        }.toMap
+        chosen       = candidateChain.find(_.supportedComplexity.contains(complexity))
         modelId      = chosen.map(_.modelId).getOrElse(agent.modelId)
+        _ <- publishRouteResolved(
+               agentId            = agent.id,
+               conversation       = context.conversation,
+               userMessage        = userMsg,
+               strategyOpt        = strategyOpt,
+               inferredWorkType   = routedWorkType,
+               effectiveWorkType  = effectiveWorkType,
+               complexity         = complexity,
+               candidateChain     = candidateChain.map(_.modelId),
+               chosenModelId      = modelId,
+               skipReasons        = skipReasons
+             )
         // Bug #97 — fold conversation overlays into the effective
         // tool roster. `start_metals` etc. install Active(names) so
         // the LSP/BSP/metals tools are present in subsequent turns
