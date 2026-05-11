@@ -42,9 +42,16 @@ class ProcessToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   }
 
   private def extractJson(events: List[sigil.event.Event]): fabric.Json = {
-    events.collectFirst { case m: Message =>
-      m.content.collectFirst { case ResponseContent.Text(t) => t }
-    }.flatten.map(JsonParser(_)).getOrElse(fabric.Obj.empty)
+    // Bug #134 — FsToolEmit now emits ToolResults with the typed
+    // payload in `typed`. Prefer the structured field; fall back to
+    // the legacy Message-Text path for any tool still on the old shape.
+    events.collectFirst { case tr: sigil.event.ToolResults if tr.typed.isDefined => tr.typed.get }
+      .orElse(
+        events.collectFirst { case m: Message =>
+          m.content.collectFirst { case ResponseContent.Text(t) => t }
+        }.flatten.map(JsonParser(_))
+      )
+      .getOrElse(fabric.Obj.empty)
   }
 
   private def handleOf(json: fabric.Json): String = json.get("handle").map(_.asString).getOrElse("")
