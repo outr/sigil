@@ -54,6 +54,22 @@ case class StandardContextCurator(sigil: Sigil,
                                   budget: ContextBudget = Percentage(0.8),
                                   keepMinimum: Int = 4,
                                   tokenizer: Tokenizer = HeuristicTokenizer,
+                                  /** Token counter used in the multi-stage `budgetResolve`
+                                    * shed. Defaults to [[HeuristicTokenizer]] regardless of
+                                    * what `tokenizer` is — budget math runs over the full
+                                    * frame vector (50K+ frames on bulk-imported
+                                    * conversations) and gets re-run on the survivors of
+                                    * every shed stage. A network-backed `tokenizer`
+                                    * (`LlamaCppTokenizer` etc.) plugged here would issue
+                                    * one HTTP round-trip per unique text per pass — fine
+                                    * on a 50-frame chat, multi-minute hangs on a 50K-frame
+                                    * import. The heuristic is in-memory, instant, and
+                                    * conservative (over-counts ~7-15% which the right
+                                    * asymmetry for a pre-flight gate). Apps that genuinely
+                                    * need wire-exact budget math override this explicitly;
+                                    * everyone else benefits from the cheap default even if
+                                    * they wire a network tokenizer for other paths. */
+                                  budgetTokenizer: Tokenizer = HeuristicTokenizer,
                                   pinnedShareWarningThreshold: Double = 0.20,
                                   /** Optional detector for the
                                     * "paraphrase without action" failure
@@ -144,7 +160,7 @@ case class StandardContextCurator(sigil: Sigil,
             memories = if (t.memories.isEmpty) Vector.empty else resolvedRetrieved,
             summaries = summariesArg,
             information = t.information,
-            tokenizer = tokenizer
+            tokenizer = budgetTokenizer
           )
 
         val frames = tentative.frames
