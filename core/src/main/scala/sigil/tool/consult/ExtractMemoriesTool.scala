@@ -28,16 +28,25 @@ case object ExtractMemoriesTool extends TypedTool[ExtractMemoriesInput](
       |For each fact, return:
       |  - `content` — the full fact text, self-contained (quote identifiers by name).
       |  - `label`   — short human-readable label (e.g. "Preferred language").
-      |  - `key`     — OPTIONAL stable, dot-separated identifier (e.g. "user.preferred_language",
-      |                 "project.deploy_target"). Supply when the fact represents a durable
-      |                 identity slot whose value may change over time — same key across
-      |                 conversations enables versioning. Omit for one-shot facts.
+      |  - `key`     — stable, dot-separated identifier (e.g. "user.preferred_language",
+      |                "project.deploy_target", "user.name", "user.location"). ALWAYS supply
+      |                a key for facts that represent a durable identity slot whose value
+      |                may change over time — name, location, preference, theme, language,
+      |                deploy target, contact info, decisions, commitments. The same key
+      |                across conversations enables versioning. Only omit for one-shot
+      |                facts that genuinely have no identity-slot semantics (rare).
       |  - `tags`    — optional categorization tokens (e.g. ["preference", "language"]).
       |
       |Include only facts that future agents will genuinely need:
-      |  - identifiers, names, numbers, URLs explicitly stated
-      |  - preferences, decisions, and commitments
-      |  - constraints and requirements ("must be X", "cannot exceed Y")
+      |  - identifiers, names, numbers, URLs explicitly stated → KEY REQUIRED
+      |  - preferences, decisions, and commitments → KEY REQUIRED
+      |  - constraints and requirements ("must be X", "cannot exceed Y") → KEY REQUIRED
+      |
+      |Examples of well-formed keys:
+      |  - user.name, user.location, user.role
+      |  - user.preferred_language, user.preferred_theme, user.preferred_editor
+      |  - project.deploy_target, project.repo_url
+      |  - contact.email, contact.slack_handle
       |
       |Do NOT include:
       |  - intermediate reasoning, small-talk, acknowledgements

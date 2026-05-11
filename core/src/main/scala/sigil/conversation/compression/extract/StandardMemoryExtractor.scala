@@ -7,6 +7,7 @@ import sigil.conversation.{ContextMemory, Conversation, MemorySource, MemoryStat
 import sigil.SpaceId
 import sigil.db.Model
 import sigil.participant.ParticipantId
+import sigil.provider.GenerationSettings
 import sigil.tool.consult.{ConsultTool, ExtractMemoriesInput, ExtractMemoriesTool}
 
 /**
@@ -55,13 +56,28 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
              |USER: $userMessage
              |
              |AGENT: $agentResponse""".stripMargin
+        // `maxOutputTokens = 1500` — extractor returns a list of
+        // structured memories (typically 1-5 entries). On reasoning
+        // models (Qwen3.6, DeepSeek-R1, o-series) the response burns
+        // tokens on internal thinking before emitting the structured
+        // tool call; the provider's default (often 512-1024) cut the
+        // call off before the keys / tags filled in, producing
+        // skeletal records with `key = None` across the board. 1500
+        // covers the worst-case thinking budget while staying well
+        // under any model's context window.
+        val extractorSettings = {
+          val base = GenerationSettings(maxOutputTokens = Some(1500))
+          if (sigil.supportsParameter(modelId, "temperature")) base.copy(temperature = Some(0.0))
+          else base
+        }
         ConsultTool.invoke[ExtractMemoriesInput](
           sigil = sigil,
           modelId = modelId,
           chain = chain,
           systemPrompt = systemPrompt,
           userPrompt = userPrompt,
-          tool = ExtractMemoriesTool
+          tool = ExtractMemoriesTool,
+          generationSettings = extractorSettings
         ).flatMap {
           case None => Task.pure(Nil)
           case Some(result) =>
