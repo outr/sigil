@@ -533,10 +533,23 @@ trait Provider {
           }
           c.generationSettings.copy(maxOutputTokens = tightened)
         } else c.generationSettings
+      // Bug #132 — agent-initiated turns (greeting / scheduled / autonomous
+      // / worker-spawn) reach this code path with no user message in the
+      // conversation history → `renderFrames` returns empty → providers
+      // emit an empty `input` / `messages` array → OpenAI Responses,
+      // Anthropic Messages, and Google generateContent all reject with
+      // HTTP 400 (each requires non-empty input). Synthesize a single
+      // user-role placeholder so the wire shape is always well-formed.
+      // The placeholder is request-only — never persists to events; the
+      // agent's emitted reply is what gets stored.
+      val rendered = renderFrames(c.turnInput.frames, agentId)
+      val messages =
+        if (rendered.nonEmpty) rendered
+        else Vector(ProviderMessage.User(Provider.AgentInitiatedTurnTrigger))
       val providerCall = ProviderCall(
         modelId = c.modelId,
         system = renderSystem(c, resolved),
-        messages = renderFrames(c.turnInput.frames, agentId),
+        messages = messages,
         tools = c.tools,
         builtInTools = c.builtInTools,
         toolChoice = toolChoice,
@@ -978,4 +991,18 @@ object Provider {
     * iteration sees the failure quickly and can self-correct via
     * the Failure-block diagnostic the orchestrator emits. */
   val ParaphraseLoopMaxOutputTokensCap: Int = 500
+
+  /** Bug #132 — synthetic user message used when an agent-initiated
+    * turn (greeting / scheduled / autonomous wake-up / worker spawn)
+    * reaches the provider with no user message in the conversation
+    * history. Every provider's API (OpenAI Responses, Anthropic
+    * Messages, Google generateContent) requires non-empty input;
+    * without this placeholder the request would be rejected with
+    * HTTP 400 ("input must be provided"). The placeholder rides the
+    * request only — never persists to the conversation event store.
+    * The agent's emitted reply is what gets stored. Tagged so a
+    * model that pattern-matches the trigger knows it's responding
+    * to a framework-initiated turn rather than user input. */
+  val AgentInitiatedTurnTrigger: String =
+    "(agent-initiated turn — no user input yet; produce your greeting or scheduled output)"
 }

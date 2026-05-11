@@ -40,4 +40,17 @@ case class OneShotRequest(modelId: Id[Model],
                           builtInTools: Set[BuiltInTool] = Set.empty,
                           chain: List[ParticipantId] = Nil,
                           requestId: Id[ProviderRequest] = Id())
-  extends ProviderRequest
+  extends ProviderRequest {
+
+  // Bug #132 — catch the misuse at the construction site rather than
+  // at the wire boundary. An all-empty OneShotRequest produces a
+  // `ProviderMessage.User("")` after translation — technically a
+  // single message, but semantically broken: the model sees a fully
+  // empty user turn and either refuses, hallucinates, or burns
+  // reasoning tokens on nothing. Require at least one input field.
+  require(
+    userPrompt.nonEmpty || userContent.nonEmpty,
+    "OneShotRequest requires non-empty userPrompt OR non-empty userContent — " +
+      "empty inputs produce malformed provider requests."
+  )
+}
