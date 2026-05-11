@@ -153,6 +153,121 @@ class StallDetectorSpec extends AnyWordSpec with Matchers {
     }
   }
 
+  "StallDetector — low-information streak heuristic" should {
+
+    // Three confirmation greps over the same files — distinct
+    // inputs, every result lists mostly the same hits with one
+    // new line. The agent has stopped learning new facts.
+    "fire on 3 consecutive grep results with high payload overlap" in {
+      def hit(path: String, line: Int, m: String): Json =
+        obj("path" -> str(path), "line" -> num(line), "match" -> str(m))
+      val sharedHits = List(
+        hit("AdminUsersService.scala", 142, "def resetPassword(userId: UserId, newPassword: Password)"),
+        hit("AdminUsersService.scala", 178, "case object PasswordResetSuccessful extends PasswordResetResult"),
+        hit("AuthController.scala",     78, "post(\"/password-reset\") { passwordResetForm =>"),
+        hit("PasswordResetService.scala", 34, "override def resetPassword(id: UserId): Future[Unit]")
+      )
+      val tail = List(
+        record("grep", TestInput("password reset"), 1000L,
+          Arr((sharedHits ++ List(hit("UserRoutes.scala", 12, "post path password-reset"))).toVector)),
+        record("grep", TestInput("resetPassword"),  2000L,
+          Arr((sharedHits ++ List(hit("UserMailer.scala", 56, "sendPasswordResetEmail(user)"))).toVector)),
+        record("grep", TestInput("reset"),          3000L,
+          Arr((sharedHits ++ List(hit("AdminAudit.scala", 21, "audit('password.reset', userId)"))).toVector))
+      )
+      val sig = StallDetector.evaluate(tail)
+      sig.detected shouldBe true
+      sig.reason.get should include("overlapping data")
+      sig.reason.get should include("grep")
+    }
+
+    "fire across heterogeneous tools when their outputs share most atoms" in {
+      // Different tools (grep + read_file) returning the same
+      // tokens — agent has the auth files' contents, keeps
+      // re-confirming them.
+      val authText = "object AuthService def login user password sealed sealed trait LoginResult"
+      val tail = List(
+        record("grep",      TestInput("login"),       1000L, arr(str(authText))),
+        record("read_file", TestInput("Auth.scala"),  2000L, obj("content" -> str(authText))),
+        record("grep",      TestInput("LoginResult"), 3000L, arr(str(authText + " sealed")))
+      )
+      val sig = StallDetector.evaluate(tail)
+      sig.detected shouldBe true
+      sig.reason.get should include("overlapping data")
+    }
+
+    "NOT fire on truly distinct exploration across the codebase" in {
+      val tail = List(
+        record("grep",      TestInput("password reset"), 1000L, arr(
+          obj("path" -> str("AdminUsersService.scala"), "match" -> str("def resetPassword"))
+        )),
+        record("grep",      TestInput("tracing config"), 2000L, arr(
+          obj("path" -> str("Telemetry.scala"), "match" -> str("OpenTelemetrySdk"))
+        )),
+        record("grep",      TestInput("billing webhook"), 3000L, arr(
+          obj("path" -> str("StripeWebhook.scala"), "match" -> str("InvoicePaid event handler"))
+        ))
+      )
+      StallDetector.evaluate(tail).detected shouldBe false
+    }
+
+    "NOT fire on small payloads even when they trivially overlap" in {
+      // Tiny success-flag outputs (below minAtoms) — overlap
+      // arithmetic would say Jaccard=1, but the heuristic skips
+      // them because there's no real content to compare. Use
+      // distinct tool names so identical-streak (which can
+      // collapse on inputFingerprint when the static RW for the
+      // ToolInput subtype writes only the discriminator) can't
+      // fire either.
+      val tail = List(
+        record("save_note",  TestInput("a"), 1000L, obj("written" -> num(1))),
+        record("flag_item",  TestInput("b"), 2000L, obj("written" -> num(1))),
+        record("update_tag", TestInput("c"), 3000L, obj("written" -> num(1)))
+      )
+      StallDetector.evaluate(tail).detected shouldBe false
+    }
+
+    "NOT fire when only 2 consecutive non-empty overlapping outputs exist (below threshold)" in {
+      def hits(path: String): Json = arr(
+        obj("path" -> str(path), "match" -> str("def loginUser"))
+      )
+      val tail = List(
+        record("grep", TestInput("loginUser"), 1000L, hits("AuthA.scala")),
+        record("grep", TestInput("LoginUser"), 2000L, hits("AuthA.scala"))
+      )
+      StallDetector.evaluate(tail).detected shouldBe false
+    }
+  }
+
+  "StallDetector — atom helpers" should {
+
+    "tokenize text into normalised set, dropping short tokens" in {
+      StallDetector.textAtoms("Hello, World! It's the AuthService.") shouldBe Set(
+        "hello", "world", "the", "authservice"
+      )
+    }
+
+    "atomize a JSON array of objects into the union of all leaf tokens" in {
+      val j = arr(
+        obj("path" -> str("AdminUsersService.scala"), "n" -> num(3)),
+        obj("path" -> str("AuthController.scala"),    "n" -> num(7))
+      )
+      val atoms = StallDetector.jsonAtoms(j)
+      atoms should contain("adminusersservice")
+      atoms should contain("scala")
+      atoms should contain("authcontroller")
+      atoms should contain("3")
+      atoms should contain("7")
+    }
+
+    "compute Jaccard for two atom sets" in {
+      StallDetector.jaccard(Set("a", "b", "c"), Set("a", "b", "c")) shouldBe 1.0
+      StallDetector.jaccard(Set("a", "b"),      Set("b", "c"))      shouldBe 1.0 / 3.0 +- 0.0001
+      StallDetector.jaccard(Set.empty,          Set.empty)          shouldBe 1.0
+      StallDetector.jaccard(Set("a"),           Set.empty)          shouldBe 0.0
+    }
+  }
+
   "StallDetector.evaluate" should {
 
     "return Empty when the tail is empty" in {

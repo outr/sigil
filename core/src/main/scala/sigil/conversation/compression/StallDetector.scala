@@ -1,6 +1,6 @@
 package sigil.conversation.compression
 
-import fabric.{Arr, Json, Obj, Null, Str}
+import fabric.{Arr, Bool, Json, NumDec, NumInt, Obj, Null, Str}
 import fabric.rw.*
 import sigil.event.{Message, ToolInvoke, ToolResults}
 import sigil.tool.model.ResponseContent
@@ -14,7 +14,7 @@ import sigil.tool.model.ResponseContent
  * looping identical tool calls that return identical empty
  * payloads (sigil bug #124's wire-log scenario).
  *
- * Two complementary heuristics:
+ * Three complementary heuristics, fired in narrowest-first order:
  *
  *   1. **Identical-call streak** — three or more consecutive
  *      tool calls with the same `(toolName, inputJson)` pair AND
@@ -28,8 +28,17 @@ import sigil.tool.model.ResponseContent
  *      whose content collapses to whitespace). The calls may be
  *      distinct, but no information is flowing back.
  *
- * Returns the first signal that fires (identical-streak is
- * narrower; empty-streak is broader). Pure function — no IO, no
+ *   3. **Low-information streak** — three or more consecutive
+ *      non-empty tool outputs whose atomized payloads have high
+ *      pairwise Jaccard overlap (≥ `lowInfoJaccard`, default
+ *      0.7). Inputs may differ, tool names may differ, payloads
+ *      are individually non-empty — but the agent is producing
+ *      mostly the same set of facts over and over. Catches the
+ *      "confirmation grep" failure mode: the agent has enough
+ *      to answer, keeps re-querying for facts already in hand.
+ *
+ * Returns the first signal that fires (identical → empty →
+ * low-info, ordered by specificity). Pure function — no IO, no
  * state — so it tests in isolation from the agent loop.
  */
 object StallDetector {
@@ -40,6 +49,19 @@ object StallDetector {
     * `Sigil.stallDetector*` knobs. */
   val DefaultIdenticalThreshold: Int = 3
   val DefaultEmptyThreshold: Int     = 4
+  val DefaultLowInfoThreshold: Int   = 3
+
+  /** Minimum pairwise Jaccard between consecutive non-empty
+    * outputs for the low-information heuristic to count them as
+    * overlapping. 0.7 = at least 70 % of the atomized payload
+    * tokens shared. */
+  val DefaultLowInfoJaccard: Double = 0.7
+
+  /** Minimum atoms per output before the low-information
+    * heuristic considers a pair. Below this, a single shared
+    * token trips false positives — tiny outputs (`{"ok":true}`
+    * style success markers) overlap trivially. */
+  val DefaultLowInfoMinAtoms: Int = 5
 
   /** Result of evaluating the tail. `reason` is non-empty when
     * `detected = true`; the reflector folds it into the
@@ -65,14 +87,23 @@ object StallDetector {
                               resultMessage: Option[Message])
 
   /** Evaluate the tail of recent calls. Returns a positive signal
-    * as soon as either heuristic fires; otherwise `Signal.Empty`. */
+    * as soon as any heuristic fires (narrowest first); otherwise
+    * `Signal.Empty`. */
   def evaluate(tail: List[CallRecord],
                identicalThreshold: Int = DefaultIdenticalThreshold,
-               emptyThreshold: Int = DefaultEmptyThreshold): Signal = {
+               emptyThreshold: Int = DefaultEmptyThreshold,
+               lowInfoThreshold: Int = DefaultLowInfoThreshold,
+               lowInfoJaccard: Double = DefaultLowInfoJaccard,
+               lowInfoMinAtoms: Int = DefaultLowInfoMinAtoms): Signal = {
     if (tail.isEmpty) Signal.Empty
     else {
       val identical = identicalStreak(tail, identicalThreshold)
-      if (identical.detected) identical else emptyStreak(tail, emptyThreshold)
+      if (identical.detected) identical
+      else {
+        val empty = emptyStreak(tail, emptyThreshold)
+        if (empty.detected) empty
+        else lowInformationStreak(tail, lowInfoThreshold, lowInfoJaccard, lowInfoMinAtoms)
+      }
     }
   }
 
@@ -126,6 +157,109 @@ object StallDetector {
       if (run >= threshold) emitEmptySignal(run, distinctNames.toList) else Signal.Empty
     }
   }
+
+  /** Heuristic 3 — the agent's last N non-empty outputs share
+    * most of their atomized payload across consecutive pairs.
+    * Catches "you have enough to answer, you're now just
+    * confirming" patterns that #124's identical / empty
+    * heuristics miss when each call's input genuinely differs
+    * (slight keyword variations on grep, follow-up reads on the
+    * same file, etc.). */
+  def lowInformationStreak(tail: List[CallRecord],
+                           threshold: Int,
+                           jaccardThreshold: Double,
+                           minAtoms: Int): Signal = {
+    if (tail.size < threshold) Signal.Empty
+    else {
+      // Walk tail-first, pick the most-recent N non-empty calls
+      // each with at least `minAtoms` worth of payload. Below
+      // `minAtoms` we don't have enough signal to compare —
+      // tiny success-flag outputs (`{"ok":true}`) trivially
+      // overlap and produce false positives.
+      val recent = tail.reverseIterator
+        .filterNot(isEmpty)
+        .map(r => r -> outputAtoms(r))
+        .filter { case (_, atoms) => atoms.size >= minAtoms }
+        .take(threshold)
+        .toList
+      if (recent.size < threshold) Signal.Empty
+      else {
+        // Every consecutive pair must have Jaccard ≥ threshold.
+        // Pairs(0,1) + Pairs(1,2) for threshold=3.
+        val pairs = recent.sliding(2).toList.collect {
+          case (_, a) :: (_, b) :: Nil => jaccard(a, b)
+        }
+        if (pairs.nonEmpty && pairs.forall(_ >= jaccardThreshold)) {
+          val names = recent.map(_._1.invoke.toolName.value).distinct
+          val toolList = names.take(5).map(n => s"`$n`").mkString(", ") +
+            (if (names.size > 5) s" + ${names.size - 5} more" else "")
+          val avgOverlap = math.round(pairs.sum / pairs.size * 100).toInt
+          Signal(
+            detected = true,
+            reason   = Some(
+              s"Your last ${recent.size} non-empty tool calls ($toolList) returned ~$avgOverlap% overlapping data — " +
+                "you're confirming facts already in hand rather than learning anything new. Stop gathering and call " +
+                "`respond` with what you have, or shift to a different shape of action (edit/save/send) if the user " +
+                "asked you to DO something."
+            )
+          )
+        } else Signal.Empty
+      }
+    }
+  }
+
+  /** Jaccard similarity of two atom sets. Defined as
+    * `|a ∩ b| / |a ∪ b|`. Empty + empty → 1.0 (degenerate); empty
+    * + non-empty → 0.0. */
+  def jaccard(a: Set[String], b: Set[String]): Double = {
+    if (a.isEmpty && b.isEmpty) 1.0
+    else if (a.isEmpty || b.isEmpty) 0.0
+    else {
+      val inter = a.intersect(b).size.toDouble
+      val union = a.union(b).size.toDouble
+      inter / union
+    }
+  }
+
+  /** Atomize a call's output — typed JSON payload preferred, then
+    * `ToolResults.summary`, then Tool-role Message content. Used
+    * by [[lowInformationStreak]] to compare payloads across
+    * heterogenous tool shapes. */
+  def outputAtoms(r: CallRecord): Set[String] = (r.result, r.resultMessage) match {
+    case (Some(tr), _) if tr.typed.isDefined => jsonAtoms(tr.typed.get)
+    case (Some(tr), _)                       => tr.summary.map(textAtoms).getOrElse(Set.empty)
+    case (None, Some(m))                     => m.content.flatMap {
+      case ResponseContent.Text(t)        => textAtoms(t)
+      case ResponseContent.Markdown(t)    => textAtoms(t)
+      case ResponseContent.Code(code, _)  => textAtoms(code)
+      case _                              => Set.empty[String]
+    }.toSet
+    case _ => Set.empty
+  }
+
+  /** Recursively atomize a JSON payload. Strings tokenize via
+    * [[textAtoms]]; numbers / bools / null become their string
+    * form; arrays and objects flatten their atoms into the
+    * combined set. Object keys are NOT atomized — they're
+    * structural metadata, not content. */
+  def jsonAtoms(j: Json): Set[String] = j match {
+    case Null      => Set("null")
+    case b: Bool   => Set(b.value.toString)
+    case n: NumInt => Set(n.value.toString)
+    case n: NumDec => Set(n.value.toString)
+    case s: Str    => textAtoms(s.value)
+    case a: Arr    => a.value.iterator.flatMap(jsonAtoms).toSet
+    case o: Obj    => o.value.values.iterator.flatMap(jsonAtoms).toSet
+  }
+
+  /** Tokenize a text fragment into a set of normalized atoms.
+    * Splits on non-alphanumeric runs, lowercases, drops tokens
+    * shorter than 3 chars (noise; doesn't carry meaning). */
+  def textAtoms(text: String): Set[String] =
+    text.split("[^A-Za-z0-9_]+").iterator
+      .filter(_.length >= 3)
+      .map(_.toLowerCase)
+      .toSet
 
   private def emitEmptySignal(count: Int, distinctNames: List[String]): Signal = {
     val toolList = distinctNames.take(5).map(n => s"`$n`").mkString(", ") +
