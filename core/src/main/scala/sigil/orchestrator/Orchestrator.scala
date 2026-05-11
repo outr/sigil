@@ -548,7 +548,52 @@ object Orchestrator {
         // 5xx), the unsettled `ToolInvoke` would otherwise stay
         // `state=Active` in the events store forever, and clients reading
         // that state believe the agent is still working.
+        //
+        // Snapshot the orphaned calls BEFORE settleOrphanToolInvoke
+        // clears them — sigil bug #123's MaxTokens-during-tool-args
+        // diagnostic needs to know which tool was being streamed so
+        // the paired Failure message can name it. Without this snapshot
+        // the diagnostic loses the tool name (settleOrphan clears
+        // activeCalls) and the frame renderer surfaces the misleading
+        // "tool's executeTyped — please report it" framework error
+        // instead.
+        val orphanedCalls = state.activeCalls.values.toList
         val closeOrphan = settleOrphanToolInvoke(state, convId)
+        // Sigil bug #123 — when a streaming completion settles with
+        // `finish_reason=length` mid-tool-call-args, the provider
+        // truncated the args before the JSON closed. The orphan
+        // settle's `ToolDelta(input=None, state=Complete)` leaves
+        // the function_call without a paired Tool-role event, so
+        // the frame renderer surfaces the misleading "tool's
+        // executeTyped — please report it" framework error and the
+        // agent has no signal to refine its inputs.
+        //
+        // Emit a Tool-role `Failure` Message paired to each orphan
+        // invoke (via `origin`) with a concrete diagnosis the agent
+        // can act on. Closes the function_call ↔ function_call_output
+        // pair AND replaces the bogus "report it" message.
+        val truncationDiagnostic: List[Signal] = stopReason match {
+          case StopReason.MaxTokens if orphanedCalls.nonEmpty =>
+            orphanedCalls.flatMap { active =>
+              val reason =
+                s"Your `${active.toolName}` call was truncated at max_tokens — the arguments " +
+                  "never fully arrived, so the tool didn't run. Reduce argument size (e.g. don't " +
+                  "inline whole files into a `text:` field — read the file separately), split the " +
+                  "work across multiple smaller calls, or request a larger max_tokens for this turn."
+              val diag = Message(
+                participantId  = caller,
+                conversationId = convId,
+                topicId        = topicId,
+                role           = MessageRole.Tool,
+                content        = Vector(ResponseContent.Failure(reason = reason, recoverable = true)),
+                state          = EventState.Complete,
+                visibility     = MessageVisibility.Agents,
+                origin         = Some(active.invokeId)
+              )
+              List[Signal](diag)
+            }
+          case _ => Nil
+        }
         // Detect token-level repetition loops — the model hit
         // max_tokens AND the accumulated text is dominated by a
         // single repeated sentence. Surface as a Failure-block
@@ -645,7 +690,7 @@ object Orchestrator {
             )
             List[Signal](syntheticInvoke, diagnosticMessage)
           } else Nil
-        Stream.emits(closeOrphan ++ plainTextDiagnostic ++ degenerateDiagnostic)
+        Stream.emits(closeOrphan ++ truncationDiagnostic ++ plainTextDiagnostic ++ degenerateDiagnostic)
       case ProviderEvent.Error(msg)                       =>
         // Bug #50 — surface the provider/validator failure as a
         // Tool-role Message so the agent's next iteration sees a
