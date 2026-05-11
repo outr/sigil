@@ -4620,6 +4620,7 @@ trait Sigil {
       val state = checkpointStates.computeIfAbsent(claimed._id,
         _ => CheckpointState(lastStatus = None, noProgressStreak = 0))
       val priorStatus = state.lastStatus
+      val stallTask = evaluateStall(convId, agent.id)
       loadProgressContext(convId, agent.id).flatMap { ctx =>
         val systemPrompt =
           """You are reflecting on the agent's progress on a specific user task. Given the
@@ -4640,48 +4641,67 @@ trait Sigil {
         case None         => Task.pure(None)  // checkpoint-call failed; let the loop continue
         case Some(report) =>
           // Persist the checkpoint event so the chain is replayable.
-          withDB(_.conversations.transaction(_.get(convId))).flatMap { convOpt =>
-            val topicId = convOpt.flatMap(_.topics.lastOption.map(_.id))
-              .getOrElse(_root_.sigil.conversation.Topic.id("__no_topic__"))
-            val checkpoint = sigil.event.ProgressCheckpoint(
-              participantId        = agent.id,
-              conversationId       = convId,
-              topicId              = topicId,
-              iterationCount       = iteration,
-              prevCheckpointStatus = priorStatus,
-              currentStatus        = report.currentStatus,
-              meaningfulProgress   = report.meaningfulProgress,
-              remainingSteps       = report.remainingSteps,
-              stuckOn              = report.stuckOn,
-              shouldAskUser        = report.shouldAskUser
-            )
-            publish(checkpoint).flatMap { _ =>
-              // Update side-state for the next checkpoint comparison.
-              state.lastStatus = Some(report.currentStatus)
-              if (!report.meaningfulProgress) {
-                state.noProgressStreak = state.noProgressStreak + 1
-              } else {
-                state.noProgressStreak = 0
+          stallTask.flatMap { stall =>
+            withDB(_.conversations.transaction(_.get(convId))).flatMap { convOpt =>
+              val topicId = convOpt.flatMap(_.topics.lastOption.map(_.id))
+                .getOrElse(_root_.sigil.conversation.Topic.id("__no_topic__"))
+              // Sigil bug #124 — fold the objective stall signal into the
+              // reflector's self-assessment. The agent's `meaningfulProgress`
+              // self-report is necessary but not sufficient; if the
+              // StallDetector spots an identical-call streak or empty-
+              // payload streak, the persisted checkpoint records
+              // `meaningfulProgress = false` regardless of what the agent
+              // said, and `stuckOn` carries the detector's reason so the
+              // intervention message names the loop concretely.
+              val effectiveMeaningful = report.meaningfulProgress && !stall.detected
+              val effectiveStuckOn    = stall.reason.orElse(report.stuckOn)
+              val checkpoint = sigil.event.ProgressCheckpoint(
+                participantId        = agent.id,
+                conversationId       = convId,
+                topicId              = topicId,
+                iterationCount       = iteration,
+                prevCheckpointStatus = priorStatus,
+                currentStatus        = report.currentStatus,
+                meaningfulProgress   = effectiveMeaningful,
+                remainingSteps       = report.remainingSteps,
+                stuckOn              = effectiveStuckOn,
+                shouldAskUser        = report.shouldAskUser
+              )
+              publish(checkpoint).flatMap { _ =>
+                // Update side-state for the next checkpoint comparison.
+                state.lastStatus = Some(report.currentStatus)
+                if (!effectiveMeaningful) {
+                  state.noProgressStreak = state.noProgressStreak + 1
+                } else {
+                  state.noProgressStreak = 0
+                }
+                val stuck = state.noProgressStreak >= consecutiveNoProgressLimit
+                if (report.shouldAskUser || stuck || stall.detected) {
+                  val reason =
+                    if (report.shouldAskUser)
+                      s"I need clarification before I can continue. ${effectiveStuckOn.getOrElse("")}".trim
+                    else if (stall.detected)
+                      // Stall-detector hit on the current checkpoint —
+                      // intervene immediately rather than waiting for
+                      // `consecutiveNoProgressLimit` streaks to stack.
+                      stall.reason.getOrElse(
+                        s"I've made the same kind of call repeatedly without new information. How would you like me to proceed?"
+                      )
+                    else
+                      s"I've been working on this for $iteration turns and haven't made meaningful " +
+                        s"progress since: \"${priorStatus.getOrElse(report.currentStatus)}\". " +
+                        s"${effectiveStuckOn.map(s => s"I'm stuck on: $s. ").getOrElse("")}" +
+                        "How would you like me to proceed?"
+                  Task.pure(Some(Message(
+                    participantId  = agent.id,
+                    conversationId = convId,
+                    topicId        = topicId,
+                    content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(reason)),
+                    state          = EventState.Complete,
+                    role           = MessageRole.Standard
+                  )))
+                } else Task.pure(None)
               }
-              val stuck = state.noProgressStreak >= consecutiveNoProgressLimit
-              if (report.shouldAskUser || stuck) {
-                val reason =
-                  if (report.shouldAskUser)
-                    s"I need clarification before I can continue. ${report.stuckOn.getOrElse("")}".trim
-                  else
-                    s"I've been working on this for $iteration turns and haven't made meaningful " +
-                      s"progress since: \"${priorStatus.getOrElse(report.currentStatus)}\". " +
-                      s"${report.stuckOn.map(s => s"I'm stuck on: $s. ").getOrElse("")}" +
-                      "How would you like me to proceed?"
-                Task.pure(Some(Message(
-                  participantId  = agent.id,
-                  conversationId = convId,
-                  topicId        = topicId,
-                  content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(reason)),
-                  state          = EventState.Complete,
-                  role           = MessageRole.Standard
-                )))
-              } else Task.pure(None)
             }
           }
       }.handleError { e =>
@@ -4745,6 +4765,59 @@ trait Sigil {
         agentResponds.foreach(r => historyEntries += s"respond → \"${snippet(r, 80)}\"")
       ProgressContext(userTask = task, toolHistory = historyEntries.toList)
     }.handleError(_ => Task.pure(ProgressContext(None, Nil)))
+
+  /** Evaluate the agent's recent tool-call tail for objective stall
+    * signals — identical-call streaks and empty-payload streaks.
+    * Folds into the progress checkpoint's `meaningfulProgress`
+    * computation. Best-effort: failures fall through to the empty
+    * signal rather than aborting the checkpoint. */
+  private final def evaluateStall(convId: Id[Conversation],
+                                  agentId: ParticipantId): Task[sigil.conversation.compression.StallDetector.Signal] =
+    withDB(_.events.transaction(_.list)).map { all =>
+      val convEvents = all.iterator
+        .collect { case e: Event if e.conversationId == convId => e }
+        .toList
+        .sortBy(_.timestamp.value)
+      // Resolve the prior-checkpoint timestamp as the lower bound,
+      // falling back to the most recent user Message when no prior
+      // checkpoint exists, falling back to 0 otherwise.
+      val priorCheckpointAt = convEvents.reverseIterator.collectFirst {
+        case c: sigil.event.ProgressCheckpoint
+          if c.participantId == agentId &&
+             c.state == EventState.Complete =>
+          c.timestamp.value
+      }
+      val cutoff = priorCheckpointAt.orElse {
+        convEvents.reverseIterator.collectFirst {
+          case m: Message
+            if !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId] &&
+               m.role == MessageRole.Standard &&
+               m.content.nonEmpty =>
+            m.timestamp.value
+        }
+      }.getOrElse(0L)
+
+      val invokes = convEvents.collect {
+        case ti: sigil.event.ToolInvoke
+          if ti.timestamp.value > cutoff &&
+             ti.participantId == agentId &&
+             !ti.internal => ti
+      }
+      val resultsByOrigin = convEvents.collect {
+        case tr: sigil.event.ToolResults if tr.origin.isDefined => tr.origin.get -> tr
+      }.toMap
+      val messagesByOrigin = convEvents.collect {
+        case m: Message if m.role == MessageRole.Tool && m.origin.isDefined => m.origin.get -> m
+      }.toMap
+      val records = invokes.sortBy(_.timestamp.value).map { ti =>
+        sigil.conversation.compression.StallDetector.CallRecord(
+          invoke        = ti,
+          result        = resultsByOrigin.get(ti._id),
+          resultMessage = messagesByOrigin.get(ti._id)
+        )
+      }
+      sigil.conversation.compression.StallDetector.evaluate(records)
+    }.handleError(_ => Task.pure(sigil.conversation.compression.StallDetector.Signal.Empty))
 
   /** Concatenate textual ResponseContent blocks; used to derive a
     * one-line view of a Message for the reflection prompt. */
