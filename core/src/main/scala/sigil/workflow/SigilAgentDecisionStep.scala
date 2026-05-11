@@ -89,11 +89,22 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
         val answersFromParent = SigilAgentDecisionStep.extractParentAnswers(workflow)
         val systemPrompt = SigilAgentDecisionStep.buildSystemPrompt(input)
         val userPrompt   = SigilAgentDecisionStep.buildUserPrompt(input, answersFromParent)
+        // `maxOutputTokens = 2000` — workers run on reasoning models
+        // (Qwen3.6-A3B, DeepSeek-R1, o-series) that burn output
+        // tokens on internal thinking before emitting the
+        // `complete_task` tool call OR the `Complete: <summary>`
+        // marker. The provider's default (often 512-1024) cut these
+        // models off mid-think and the worker never settled — every
+        // iteration looped forward without termination signal. 2000
+        // covers the worst-case thinking budget plus a multi-paragraph
+        // summary; workers whose body genuinely needs more
+        // override via `AgentDecisionStepInput.maxOutputTokens` (TODO
+        // — surface as input field).
         val request = OneShotRequest(
           modelId            = modelId,
           systemPrompt       = systemPrompt,
           userPrompt         = userPrompt,
-          generationSettings = GenerationSettings(),
+          generationSettings = GenerationSettings(maxOutputTokens = Some(2000)),
           tools              = toolsForRequest
         )
         val acc = new java.lang.StringBuilder
