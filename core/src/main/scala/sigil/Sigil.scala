@@ -5720,12 +5720,19 @@ trait Sigil {
   def modeSkillShareLimit: Double = 0.10
 
   /** Validate that every registered Mode's bundled skill content (if
-    * any) fits under [[modeSkillShareLimit]] × smallest-model-context.
+    * any) fits under [[modeSkillShareLimit]] × largest-model-context.
     * Modes share `SkillSource.Mode` slot; one per active mode. Apps
     * with intentionally large skills override [[modeSkillShareLimit]]
-    * or skip the validation by overriding this method. */
+    * or skip the validation by overriding this method.
+    *
+    * Basis is the LARGEST registered model — complexity-routed setups
+    * register a small local model for `Complexity.Low` traffic that
+    * by design won't run the modes whose skills this validator gates.
+    * The skills always render against a frontier model with ample
+    * headroom; the validator should pessimise against the AGENT's
+    * configured ceiling rather than the cost-tier floor. */
   protected def validateModeSkillSizes(): Task[Unit] = Task {
-    sigil.conversation.CoreContextValidator.smallestModelContext(this) match {
+    sigil.conversation.CoreContextValidator.largestModelContext(this) match {
       case None => () // no models registered → can't validate
       case Some(model) =>
         val limit = (model.contextLength.toDouble * modeSkillShareLimit).toInt

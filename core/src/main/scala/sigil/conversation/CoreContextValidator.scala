@@ -76,7 +76,19 @@ object CoreContextValidator {
     * context (no specific model in scope). The cap holds for every
     * model the app might use. */
   def smallestModelContext(sigil: Sigil): Option[Model] = {
-    val models = sigil.cache.find()
+    val models = sigil.cache.find().filter(_.contextLength > 0)
     if (models.isEmpty) None else Some(models.minBy(_.contextLength))
+  }
+
+  /** Chooses the largest contextLength among registered models. Used by
+    * boot-time validators that gate against the AGENT's configured
+    * ceiling rather than a cost-tiered fallback model. Complexity-routed
+    * setups put a small local model in the registry exactly because it
+    * handles only `Complexity.Low` turns; the modes whose skills sit on
+    * the system prompt always route to a frontier model with plenty of
+    * headroom for their bundled content. */
+  def largestModelContext(sigil: Sigil): Option[Model] = {
+    val models = sigil.cache.find().filter(_.contextLength > 0)
+    if (models.isEmpty) None else Some(models.maxBy(_.contextLength))
   }
 }
