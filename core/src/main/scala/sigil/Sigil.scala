@@ -3801,6 +3801,132 @@ trait Sigil {
     }
   }
 
+  /**
+   * Resolve a respond's declared `topicLabel` + `topicSummary` against
+   * the conversation's topic stack. Returns the [[TopicChange]]
+   * event(s) the caller should emit ahead of the respond's
+   * [[Message]] — empty when the proposed topic is the active one
+   * (no-op shift).
+   *
+   * Shared by both code paths that handle respond emission:
+   *
+   *   - [[sigil.orchestrator.Orchestrator]]'s streaming branch (when
+   *     respond's content streamed live via ContentBlockDeltas — the
+   *     orchestrator wraps the result as `Signal` and emits before
+   *     the Message-settle delta).
+   *   - [[sigil.tool.core.RespondTool.executeTyped]] for atomic
+   *     respond calls (llama.cpp grammar-constrained, OpenAI strict-
+   *     mode, Anthropic, Google — every provider whose respond
+   *     materialises as a function call). The tool's stream emits the
+   *     TopicChange events as ordinary `Event`s; the orchestrator's
+   *     `runExecute` pairs each with a settling `StateDelta`.
+   *
+   * Side effect: when the classifier returns `Refine`, the active
+   * Topic record's label/summary is rewritten in-place; on `New`, a
+   * fresh Topic record is persisted. Both paths emit the matching
+   * `TopicChange` event.
+   *
+   * Fast-path shortcuts avoid the classifier LLM call when the
+   * answer is unambiguous from a label match alone (active topic's
+   * label, or any prior topic's label).
+   */
+  def resolveTopicShift(proposedLabel: String,
+                        proposedSummary: String,
+                        caller: ParticipantId,
+                        conversation: Conversation,
+                        currentTopic: TopicEntry,
+                        previousTopics: List[TopicEntry],
+                        modelId: Id[Model],
+                        chain: List[ParticipantId],
+                        userMessage: String): Task[List[Event]] = {
+    if (proposedLabel.equalsIgnoreCase(currentTopic.label)) Task.pure(Nil)
+    else previousTopics.find(_.label.equalsIgnoreCase(proposedLabel)) match {
+      case Some(prior) =>
+        Task.pure(List(buildSwitch(caller, conversation._id, currentTopic.id, prior.id, prior.label, prior.summary)))
+      case None =>
+        classifyTopicShift(modelId, chain, currentTopic, previousTopics, proposedLabel, proposedSummary, userMessage).flatMap {
+          case TopicShiftResult.NoChange       => Task.pure(Nil)
+          case TopicShiftResult.Refine         => resolveRenameTopic(proposedLabel, proposedSummary, caller, conversation, currentTopic.id)
+          case TopicShiftResult.New            => resolveNewTopic(proposedLabel, proposedSummary, caller, conversation, currentTopic.id)
+          case TopicShiftResult.Return(prior)  =>
+            Task.pure(List(buildSwitch(caller, conversation._id, currentTopic.id, prior.id, prior.label, prior.summary)))
+        }
+    }
+  }
+
+  private def buildSwitch(caller: ParticipantId,
+                          convId: Id[Conversation],
+                          previousTopicId: Id[Topic],
+                          newTopicId: Id[Topic],
+                          newLabel: String,
+                          newSummary: String): TopicChange =
+    TopicChange(
+      kind           = TopicChangeKind.Switch(previousTopicId = previousTopicId),
+      newLabel       = newLabel,
+      newSummary     = newSummary,
+      participantId  = caller,
+      conversationId = convId,
+      topicId        = newTopicId
+    )
+
+  private def resolveNewTopic(proposedLabel: String,
+                              proposedSummary: String,
+                              caller: ParticipantId,
+                              conversation: Conversation,
+                              previousTopicId: Id[Topic]): Task[List[Event]] = {
+    val created = Topic(
+      conversationId = conversation._id,
+      label          = proposedLabel,
+      summary        = proposedSummary,
+      createdBy      = caller
+    )
+    withDB(_.topics.transaction(_.upsert(created))).map { stored =>
+      List(buildSwitch(caller, conversation._id, previousTopicId, stored._id, stored.label, stored.summary))
+    }
+  }
+
+  private def resolveRenameTopic(proposedLabel: String,
+                                 proposedSummary: String,
+                                 caller: ParticipantId,
+                                 conversation: Conversation,
+                                 currentTopicId: Id[Topic]): Task[List[Event]] =
+    withDB(_.topics.transaction(_.get(currentTopicId))).flatMap {
+      case None                                  => Task.pure(Nil)
+      case Some(current) if current.labelLocked  => Task.pure(Nil)
+      case Some(current)                         =>
+        val renamed = current.copy(label = proposedLabel, summary = proposedSummary, modified = Timestamp())
+        withDB(_.topics.transaction(_.upsert(renamed))).map { _ =>
+          List(TopicChange(
+            kind           = TopicChangeKind.Rename(previousLabel = current.label),
+            newLabel       = proposedLabel,
+            newSummary     = proposedSummary,
+            participantId  = caller,
+            conversationId = conversation._id,
+            topicId        = current._id
+          ))
+        }
+    }
+
+  /** Persist the agent's per-turn keyword push (from `RespondInput.keywords`)
+    * onto the conversation as `currentKeywords`. The non-critical memory
+    * retriever reads this on the next turn — no event is emitted because
+    * the keywords are turn-state, not durable history. Empty input is a
+    * no-op so the agent isn't forced to push a list it doesn't have.
+    *
+    * Called from both [[sigil.tool.core.RespondTool]] and
+    * [[sigil.orchestrator.Orchestrator]]'s streaming-respond branch so
+    * the keyword side effect fires regardless of which respond path
+    * materialised. */
+  def updateConversationKeywords(conversationId: Id[Conversation],
+                                 keywords: List[String]): Task[Unit] = {
+    val cleaned = keywords.iterator.map(_.trim).filter(_.nonEmpty).toVector.distinct
+    if (cleaned.isEmpty) Task.unit
+    else withDB(_.conversations.transaction(_.modify(conversationId) {
+      case Some(c) => Task.pure(Some(c.copy(currentKeywords = cleaned, modified = Timestamp())))
+      case None    => Task.pure(None)
+    })).unit
+  }
+
   private def quote(s: String): String = "\"" + s.replace("\"", "\\\"") + "\""
 
   // -- conversation helpers --

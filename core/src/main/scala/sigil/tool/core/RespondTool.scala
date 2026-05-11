@@ -1,6 +1,7 @@
 package sigil.tool.core
 
 import sigil.TurnContext
+import sigil.conversation.ContextFrame
 import sigil.event.{Event, Message}
 import sigil.signal.EventState
 import sigil.tool.{ToolExample, ToolName, TypedTool}
@@ -67,6 +68,40 @@ case object RespondTool extends TypedTool[RespondInput](
       content = blocks,
       modelId = context.modelId
     )
-    rapid.Stream.emits(List[Event](message))
+    // Sigil bug: topic resolution + keyword update used to fire only
+    // from the orchestrator's streaming-respond branch. Atomic-respond
+    // calls (llama.cpp grammar-constrained, OpenAI strict-mode, every
+    // provider whose respond materialises as a function call) skipped
+    // both, so TopicChange events never fired and `currentKeywords`
+    // never updated for those providers. Fire both here so the
+    // behaviour is uniform across paths. Bug #2 from the
+    // path-discrepancy audit.
+    context.modelId match {
+      case None =>
+        // No modelId on the context (test harnesses, off-turn
+        // invocation) — skip topic classification (the classifier
+        // needs a model to route through). Just emit the Message.
+        rapid.Stream.emits(List[Event](message))
+      case Some(modelId) =>
+        val userMessage = context.turnInput.frames.reverseIterator.collectFirst {
+          case t: ContextFrame.Text if t.participantId != context.caller => t.content
+        }.getOrElse("")
+        rapid.Stream.force(
+          for {
+            topicEvents <- context.sigil.resolveTopicShift(
+              proposedLabel   = input.topicLabel,
+              proposedSummary = input.topicSummary,
+              caller          = context.caller,
+              conversation    = context.conversation,
+              currentTopic    = context.conversation.currentTopic,
+              previousTopics  = context.conversation.previousTopics,
+              modelId         = modelId,
+              chain           = context.chain,
+              userMessage     = userMessage
+            )
+            _ <- context.sigil.updateConversationKeywords(context.conversation.id, input.keywords)
+          } yield rapid.Stream.emits[Event](topicEvents :+ message)
+        )
+    }
   }
 }
