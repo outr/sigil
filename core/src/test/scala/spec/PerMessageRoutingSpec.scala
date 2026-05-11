@@ -104,10 +104,17 @@ class ProviderStrategySkipGatesSpec extends AnyWordSpec with Matchers {
   }
 
   "Complexity.bumpUp" should {
-    "raise Low → Medium → High and clamp at High" in {
+    "raise Low → Medium → High → VeryHigh and clamp at VeryHigh" in {
       Complexity.bumpUp(Complexity.Low) shouldBe Complexity.Medium
       Complexity.bumpUp(Complexity.Medium) shouldBe Complexity.High
-      Complexity.bumpUp(Complexity.High) shouldBe Complexity.High
+      Complexity.bumpUp(Complexity.High) shouldBe Complexity.VeryHigh
+      Complexity.bumpUp(Complexity.VeryHigh) shouldBe Complexity.VeryHigh
+    }
+  }
+
+  "Complexity.ordered" should {
+    "enumerate every tier in ascending order" in {
+      Complexity.ordered shouldBe List(Complexity.Low, Complexity.Medium, Complexity.High, Complexity.VeryHigh)
     }
   }
 }
@@ -274,14 +281,17 @@ class PerMessageRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         _    <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, Some(userMsg), ctx)
         out1 <- RequestEscalationTool.invoke(RequestEscalationInput(reason = "harder than I thought"), ctx)
         out2 <- RequestEscalationTool.invoke(RequestEscalationInput(reason = "harder still"), ctx)
-        out3 <- RequestEscalationTool.invoke(RequestEscalationInput(reason = "max it out"), ctx)
+        out3 <- RequestEscalationTool.invoke(RequestEscalationInput(reason = "frontier needed"), ctx)
+        out4 <- RequestEscalationTool.invoke(RequestEscalationInput(reason = "max it out"), ctx)
       } yield {
         out1.tier shouldBe Complexity.Medium
         out1.bumped shouldBe true
         out2.tier shouldBe Complexity.High
         out2.bumped shouldBe true
-        out3.tier shouldBe Complexity.High
-        out3.bumped shouldBe false  // clamp
+        out3.tier shouldBe Complexity.VeryHigh
+        out3.bumped shouldBe true
+        out4.tier shouldBe Complexity.VeryHigh
+        out4.bumped shouldBe false  // clamp at VeryHigh
       }
     }
   }
