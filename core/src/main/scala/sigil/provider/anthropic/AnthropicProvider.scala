@@ -38,7 +38,15 @@ case class AnthropicProvider(apiKey: String,
                              /** Per-read idle timeout for the SSE stream. Fires
                                * only when no bytes arrive for the duration —
                                * slow-but-working streams keep going. */
-                             tokenIdleTimeout: FiniteDuration = 120.seconds) extends Provider {
+                             tokenIdleTimeout: FiniteDuration = 120.seconds,
+                             /** How to send the credential. Anthropic's direct API
+                               * uses `x-api-key` + `anthropic-version`; vendor
+                               * mirrors that expose `/v1/messages` (DigitalOcean
+                               * Inference for `anthropic-claude-*` models) use the
+                               * OpenAI-style `Authorization: Bearer`. The wire
+                               * body is identical across both modes — only the
+                               * auth + version headers differ. */
+                             authMode: AnthropicAuthMode = AnthropicAuthMode.XApiKey) extends Provider {
   override def `type`: ProviderType = ProviderType.Anthropic
   override val providerKey: String = Anthropic.Provider
   override protected def sigil: Sigil = sigilRef
@@ -72,13 +80,19 @@ case class AnthropicProvider(apiKey: String,
 
   override def httpRequestFor(input: ProviderCall): Task[HttpRequest] = Task {
     val bodyStr = JsonFormatter.Compact(buildBody(input))
-    HttpRequest(
+    val base = HttpRequest(
       method = HttpMethod.Post,
       url = baseUrl.withPath("/v1/messages"),
       content = Some(StringContent(bodyStr, ContentType.`application/json`))
     )
-      .withHeader("x-api-key", apiKey)
-      .withHeader("anthropic-version", Anthropic.ApiVersion)
+    authMode match {
+      case AnthropicAuthMode.XApiKey =>
+        base
+          .withHeader("x-api-key", apiKey)
+          .withHeader("anthropic-version", Anthropic.ApiVersion)
+      case AnthropicAuthMode.Bearer =>
+        base.withHeader("Authorization", s"Bearer $apiKey")
+    }
   }
 
   // ---- request body ----
