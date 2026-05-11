@@ -61,7 +61,19 @@ case class OpenAIProvider(apiKey: String,
                             * tracking + model-registry namespacing should track
                             * the actual host. Defaults: OpenAI. */
                           providerType: ProviderType = ProviderType.OpenAI,
-                          providerNamespace: String = OpenAI.Provider) extends Provider {
+                          providerNamespace: String = OpenAI.Provider,
+                          /** Whether the upstream Responses surface accepts
+                            * `tool_choice: "required"`. OpenAI does;
+                            * DigitalOcean Inference's Responses surface
+                            * rejects it with HTTP 424 "unexpected EOF" and
+                            * only accepts `auto` / `none` / specific-tool.
+                            * When false, `ToolChoice.Required` is silently
+                            * downgraded to `auto` — the agent loop's
+                            * tool-choice-required semantics still hold
+                            * (the system prompt's tool-mandatory framing
+                            * does the heavy lifting), the wire body just
+                            * stays parseable. */
+                          requiredToolChoiceSupported: Boolean = true) extends Provider {
   override def `type`: ProviderType = providerType
   override val providerKey: String = providerNamespace
   override protected def sigil: Sigil = sigilRef
@@ -188,7 +200,8 @@ case class OpenAIProvider(apiKey: String,
       case ToolChoice.Auto =>
         Vector("tools" -> arr(toolsArr*), "tool_choice" -> str("auto"))
       case ToolChoice.Required =>
-        Vector("tools" -> arr(toolsArr*), "tool_choice" -> str("required"))
+        val choice = if (requiredToolChoiceSupported) "required" else "auto"
+        Vector("tools" -> arr(toolsArr*), "tool_choice" -> str(choice))
       case ToolChoice.Specific(name) =>
         // Responses API: `tool_choice: {type: "function", name: "<name>"}`.
         Vector(

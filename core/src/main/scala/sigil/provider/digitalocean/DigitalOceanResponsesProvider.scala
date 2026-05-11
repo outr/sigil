@@ -23,10 +23,14 @@ object DigitalOceanResponsesProvider {
              apiKey: String,
              baseUrl: URL = url"https://inference.do-ai.run"): Task[OpenAIProvider] =
     Task.pure(OpenAIProvider(
-      apiKey            = apiKey,
-      sigilRef          = sigil,
-      baseUrl           = baseUrl,
-      providerType      = ProviderType.DigitalOcean,
-      providerNamespace = DigitalOcean.Provider
+      apiKey                      = apiKey,
+      sigilRef                    = sigil,
+      baseUrl                     = baseUrl,
+      providerType                = ProviderType.DigitalOcean,
+      providerNamespace           = DigitalOcean.Provider,
+      // DO's Responses surface rejects `tool_choice: "required"` with
+      // HTTP 424 "unexpected EOF". Downgrade silently to `auto`; the
+      // agent loop's tool-mandatory framing still drives the model.
+      requiredToolChoiceSupported = false
     ))
 }
