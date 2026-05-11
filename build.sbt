@@ -13,7 +13,7 @@ val scribeVersion: String = "3.19.0"
 
 val lightdbVersion: String = "4.36.0"
 
-val scalatestVersion: String = "3.2.20"
+val striderVersion: String = "1.0.3"
 
 val scalapassVersion: String = "1.4.1"
 
@@ -29,9 +29,9 @@ val bsp4jVersion: String = "2.2.0-M4.TEST"
 
 val lsp4jDebugVersion: String = "1.0.0"
 
-val striderVersion: String = "1.0.3"
-
 val jtokkitVersion: String = "1.1.0"
+
+val scalatestVersion: String = "3.2.20"
 
 ThisBuild / versionScheme := Some("early-semver")
 ThisBuild / licenses := Seq("MIT" -> url("https://github.com/outr/sigil/blob/master/LICENSE"))
