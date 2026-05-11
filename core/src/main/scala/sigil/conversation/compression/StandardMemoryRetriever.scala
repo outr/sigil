@@ -53,7 +53,23 @@ import sigil.participant.ParticipantId
 case class StandardMemoryRetriever(limit: Int = 5,
                                    queryFrom: Option[StandardMemoryRetriever.QueryBuilder] = None,
                                    includePinned: Boolean = true,
-                                   rrfK: Int = 60) extends MemoryRetriever {
+                                   rrfK: Int = 60,
+                                   /** Per-signal weight on the Lucene leg of RRF.
+                                     * Default 2.0 — BM25 scores are semantically
+                                     * grounded (keyword match means keyword match),
+                                     * while vector signal quality depends on
+                                     * embedding model + dimension count. When the
+                                     * pools are small (a few candidates), pure-
+                                     * symmetric ranking lets a noisy vector
+                                     * embedding override a clear lexical match;
+                                     * giving Lucene more weight prevents that
+                                     * inversion. Apps with high-quality semantic
+                                     * embeddings can set both to 1.0 for
+                                     * traditional RRF. */
+                                   lexicalWeight: Double = 2.0,
+                                   /** Per-signal weight on the vector leg of RRF.
+                                     * Default 1.0. Pair with `lexicalWeight`. */
+                                   vectorWeight: Double = 1.0) extends MemoryRetriever {
 
   override def retrieve(sigil: Sigil,
                         conversationId: Id[Conversation],
@@ -142,7 +158,15 @@ case class StandardMemoryRetriever(limit: Int = 5,
       val confidenceById: Map[Id[ContextMemory], Double] =
         (vectorHits.iterator ++ lexicalHits.iterator).map(m => m._id -> m.confidence).toMap
       val weight: Id[ContextMemory] => Double = id => confidenceById.getOrElse(id, 1.0)
-      StandardMemoryRetriever.rrfFuse(List(vectorIds, lexicalIds), rrfK, weight).take(limit).toVector
+      // Per-signal weights — lexical defaults heavier than vector so a
+      // noisy hash embedding can't override a clear BM25 keyword match
+      // on small candidate pools. Apps with high-quality semantic
+      // embeddings pass `lexicalWeight = vectorWeight = 1.0` for
+      // traditional RRF.
+      StandardMemoryRetriever
+        .rrfFuse(List((lexicalIds, lexicalWeight), (vectorIds, vectorWeight)), rrfK, weight)
+        .take(limit)
+        .toVector
     }
   }
 
@@ -228,12 +252,20 @@ object StandardMemoryRetriever {
     * callers shape the fused score with per-document signals like
     * confidence — default 1.0 reproduces the standard RRF formula.
     * Returns ids in descending fused-score order. */
-  def rrfFuse[A](rankings: List[List[A]], k: Int, weightOf: A => Double = (_: A) => 1.0): List[A] = {
+  def rrfFuse[A](rankings: List[List[A]], k: Int, weightOf: A => Double = (_: A) => 1.0): List[A] =
+    rrfFuse(rankings.map(r => (r, 1.0)), k, weightOf)
+
+  /** Weighted RRF — each ranker carries its own multiplier on top
+    * of the per-document `weightOf`. Used to give one signal more
+    * influence than another (e.g. lexical BM25 over hash-vector
+    * cosine on small candidate pools). */
+  @scala.annotation.targetName("rrfFuseWeighted")
+  def rrfFuse[A](weightedRankings: List[(List[A], Double)], k: Int, weightOf: A => Double): List[A] = {
     val accum = scala.collection.mutable.LinkedHashMap.empty[A, Double]
-    rankings.foreach { ranking =>
+    weightedRankings.foreach { case (ranking, rankerWeight) =>
       ranking.iterator.zipWithIndex.foreach { case (id, idx) =>
         val rank = idx + 1
-        val contribution = weightOf(id) / (k + rank)
+        val contribution = weightOf(id) * rankerWeight / (k + rank)
         accum.updateWith(id) {
           case Some(v) => Some(v + contribution)
           case None    => Some(contribution)
