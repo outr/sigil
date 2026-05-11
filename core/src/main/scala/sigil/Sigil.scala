@@ -4896,14 +4896,58 @@ trait Sigil {
                 // synthetic respond and end the loop instead of
                 // recursing.
                 val nextIteration = iteration + 1
-                val checkpointTask: Task[Option[Message]] =
+                val checkpointTask: Task[Option[CheckpointIntervention]] =
                   if (progressCheckpointInterval > 0 && nextIteration % progressCheckpointInterval == 0)
                     runProgressCheckpoint(agent, convId, claimed, nextIteration)
                   else
                     Task.pure(None)
                 checkpointTask.flatMap {
+                  case Some(intervention) if intervention.askingUser =>
+                    // Genuine "agent needs user input to proceed" —
+                    // publish user-visible and release the claim. The
+                    // agent can't make progress without the user's
+                    // reply; the next user Message will re-trigger.
+                    publish(intervention.message).flatMap(_ => releaseClaim(claimed))
                   case Some(intervention) =>
-                    publish(intervention).flatMap(_ => releaseClaim(claimed))
+                    // Bug #133 — stall / no-progress streak. The
+                    // intervention text is a directive to the agent
+                    // ("Stop gathering and call respond"). Publish
+                    // as Tool-role (Agents visibility) under a
+                    // synthetic `_stall_detected` parent invoke so
+                    // the agent reads it on its next iteration but
+                    // the user doesn't see the raw directive. Then
+                    // run ONE forced-synthesis iteration so the
+                    // agent actually responds rather than going
+                    // silent. Same shape as #125's cap-hit.
+                    val syntheticInvokeId = Event.id()
+                    val syntheticInvoke = sigil.event.ToolInvoke(
+                      toolName       = sigil.tool.ToolName("_stall_detected"),
+                      participantId  = agent.id,
+                      conversationId = convId,
+                      topicId        = conv.currentTopicId,
+                      _id            = syntheticInvokeId,
+                      state          = EventState.Complete,
+                      internal       = true
+                    )
+                    val taggedDirective = intervention.message.copy(
+                      role       = MessageRole.Tool,
+                      visibility = MessageVisibility.Agents,
+                      origin     = Some(syntheticInvokeId)
+                    )
+                    publish(syntheticInvoke)
+                      .flatMap(_ => publish(taggedDirective))
+                      .flatMap { _ =>
+                        runAgentLoop(
+                          agent                  = agent,
+                          convId                 = convId,
+                          claimed                = claimed,
+                          iteration              = nextIteration,
+                          sinceTimestamp         = thisIterationStart,
+                          greeting               = false,
+                          userVisibleSeen        = userVisibleSeen,
+                          forceResponseSynthesis = true
+                        )
+                      }
                   case None =>
                     runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart, userVisibleSeen = userVisibleSeen)
                 }
@@ -5003,10 +5047,29 @@ trait Sigil {
     * after publishing this respond Message (the framework intervened
     * because the agent reported being stuck or asked the user for
     * guidance). */
+  /** Bug #133 — outcome envelope for a checkpoint's intervention.
+    * Distinguishes the two recoverable shapes the framework can hit:
+    *
+    *   - [[CheckpointIntervention]] with `askingUser = false` — stall
+    *     detector trip, no-progress streak, or any other "agent should
+    *     now do something different" case. The intervention text is
+    *     a directive to the AGENT. Caller publishes as Tool-role +
+    *     runs one forced-synthesis iteration so the agent actually
+    *     gets to act on the guidance (parallel to #125's cap-hit).
+    *   - [[CheckpointIntervention]] with `askingUser = true` — the
+    *     reflector self-reported `shouldAskUser`. Genuine "I need
+    *     user input to proceed" — caller publishes user-visible and
+    *     releases the claim.
+    *
+    * The previous return shape (`Option[Message]`) collapsed both
+    * cases into one path and unconditionally terminated the loop;
+    * the agent never got to act on stall directives. */
+  private final case class CheckpointIntervention(message: Message, askingUser: Boolean)
+
   private final def runProgressCheckpoint(agent: AgentParticipant,
                                           convId: Id[Conversation],
                                           claimed: AgentState,
-                                          iteration: Int): Task[Option[Message]] = Task.defer {
+                                          iteration: Int): Task[Option[CheckpointIntervention]] = Task.defer {
     if (progressCheckpointInterval <= 0) Task.pure(None)
     else {
       val state = checkpointStates.computeIfAbsent(claimed._id,
@@ -5084,13 +5147,24 @@ trait Sigil {
                         s"progress since: \"${priorStatus.getOrElse(report.currentStatus)}\". " +
                         s"${effectiveStuckOn.map(s => s"I'm stuck on: $s. ").getOrElse("")}" +
                         "How would you like me to proceed?"
-                  Task.pure(Some(Message(
-                    participantId  = agent.id,
-                    conversationId = convId,
-                    topicId        = topicId,
-                    content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(reason)),
-                    state          = EventState.Complete,
-                    role           = MessageRole.Standard
+                  // Bug #133 — distinguish "ask the user" (genuine
+                  // terminal — needs human input) from "agent should
+                  // act differently now" (directive — agent gets one
+                  // more iteration). The caller in `runAgentLoop`
+                  // routes each to the right shape. Constructing the
+                  // Message with Standard role here is fine: the
+                  // caller rewrites it to Tool-role + Agents
+                  // visibility for the directive case.
+                  Task.pure(Some(CheckpointIntervention(
+                    message = Message(
+                      participantId  = agent.id,
+                      conversationId = convId,
+                      topicId        = topicId,
+                      content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(reason)),
+                      state          = EventState.Complete,
+                      role           = MessageRole.Standard
+                    ),
+                    askingUser = report.shouldAskUser
                   )))
                 } else Task.pure(None)
               }
