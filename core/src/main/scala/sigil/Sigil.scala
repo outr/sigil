@@ -1458,7 +1458,8 @@ trait Sigil {
         builtInTools = agent.builtInTools ++ context.conversation.currentMode.builtInTools,
         chain = effectiveChain,
         roles = rolesResolved,
-        isGreeting = context.isGreeting
+        isGreeting = context.isGreeting,
+        forceResponseSynthesis = context.forceResponseSynthesis
       )
 
       val typingEmitted = new java.util.concurrent.atomic.AtomicBoolean(false)
@@ -4412,7 +4413,18 @@ trait Sigil {
                                  iteration: Int,
                                  sinceTimestamp: Timestamp,
                                  greeting: Boolean = false,
-                                 userVisibleSeen: java.util.concurrent.atomic.AtomicBoolean): Task[Unit] = Task.defer {
+                                 userVisibleSeen: java.util.concurrent.atomic.AtomicBoolean,
+                                 /** Sigil bug #125 — when `true`, this is the
+                                   * forced-synthesis turn invoked by the
+                                   * cap-hit soft-stop. The loop runs ONE
+                                   * iteration with `tool_choice: respond` and
+                                   * exits regardless of `shouldIterate`. A
+                                   * subsequent cap-hit while this flag is
+                                   * already true falls back to the hard
+                                   * [[AgentRunawayException]] throw — at that
+                                   * point the soft path has genuinely
+                                   * exhausted. */
+                                 forceResponseSynthesis: Boolean = false): Task[Unit] = Task.defer {
     // Snapshot the start of THIS iteration. The next iteration uses this as
     // its own `sinceTimestamp`, so events emitted during this iteration
     // (including self-emitted non-terminal tool results the agent acted on)
@@ -4455,7 +4467,11 @@ trait Sigil {
         projectionFor(agent.id, convId).map(_.suggestedTools).flatMap { suggestedSnapshot =>
           scribe.info(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext start")
           buildContext(agent, conv, sinceTimestamp = sinceTimestamp, claimedId = claimed._id, isGreeting = greeting && iteration == 1).flatMap {
-            case (ctx, triggers) =>
+            case (rawCtx, triggers) =>
+              // Sigil bug #125 — propagate the cap-hit soft-stop flag
+              // through the TurnContext so runAgentTurn → ConversationRequest →
+              // Provider's tool_choice all reflect it.
+              val ctx = if (forceResponseSynthesis) rawCtx.copy(forceResponseSynthesis = true) else rawCtx
               scribe.info(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext done; dispatching agent.process")
               // Wrap the agent's signal stream with a force-stop check so a
               // Stop(force=true) mid-iteration terminates the stream promptly.
@@ -4521,6 +4537,25 @@ trait Sigil {
           // continue looping even if there are new triggers.
           if (stopFlag.exists(_.requested))
             ensureSilentTurnReply(agent, convId, userVisibleSeen).flatMap(_ => releaseClaim(claimed))
+          else if (forceResponseSynthesis) {
+            // Sigil bug #125 — the cap-hit soft-stop ran. With
+            // `tool_choice: respond` the model SHOULD have called
+            // respond on this iteration. If it did
+            // (`userVisibleSeen = true`), release the claim and
+            // exit cleanly. If it didn't (very weak / non-
+            // instruction-following local models), the soft path
+            // has genuinely exhausted — raise the hard throw so the
+            // calling fiber's failure handler sees it.
+            if (userVisibleSeen.get())
+              releaseClaim(claimed)
+            else
+              releaseClaim(claimed).flatMap(_ =>
+                Task.error(new AgentRunawayException(
+                  s"Agent ${agent.id.value} hit maxAgentIterations ($maxAgentIterations) " +
+                    s"in conversation ${conv._id.value} AND the forced-synthesis turn also " +
+                    s"failed to call `respond`. Check LLM behavior or raise the cap."))
+              )
+          }
           else {
             // Bug #74 — `respond(endsTurn = false)` continues the
             // loop without waiting for an external trigger. The
@@ -4576,16 +4611,69 @@ trait Sigil {
                     runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart, userVisibleSeen = userVisibleSeen)
                 }
               }
+            case true if !forceResponseSynthesis =>
+              // Sigil bug #125 — cap hit on a normal iteration. Instead of
+              // throwing AgentRunawayException and discarding whatever
+              // context the agent has gathered, inject a Tool-role
+              // "cap reached, respond NOW" diagnostic and run ONE more
+              // forced-synthesis iteration with `tool_choice: respond`.
+              // The agent synthesises a reply from the conversation it
+              // already built up. Only fall through to the hard throw
+              // if THAT iteration also fails (`case true if
+              // forceResponseSynthesis` below).
+              // Synthetic ToolInvoke parent so the Tool-role diagnostic
+              // satisfies the framework's "every Tool-role event MUST
+              // carry origin" invariant. Marked `internal = true` so
+              // client UIs filter it out of the user-facing chip
+              // stream — this is framework-internal model nudging.
+              val capInvokeId = Event.id()
+              val capInvoke = sigil.event.ToolInvoke(
+                toolName       = sigil.tool.ToolName("_cap_reached"),
+                participantId  = agent.id,
+                conversationId = convId,
+                topicId        = conv.currentTopicId,
+                _id            = capInvokeId,
+                state          = EventState.Complete,
+                internal       = true
+              )
+              val capDiagnostic = Message(
+                participantId  = agent.id,
+                conversationId = convId,
+                topicId        = conv.currentTopicId,
+                content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(
+                  s"You've reached the iteration cap ($maxAgentIterations turns) for this user request. " +
+                    "Synthesize a response NOW from what you've gathered so far — call `respond` with " +
+                    "your findings. Do not call any more discovery / read / search tools."
+                )),
+                state          = EventState.Complete,
+                role           = MessageRole.Tool,
+                visibility     = MessageVisibility.Agents,
+                origin         = Some(capInvokeId)
+              )
+              publish(capInvoke).flatMap(_ => publish(capDiagnostic)).flatMap { _ =>
+                runAgentLoop(
+                  agent                  = agent,
+                  convId                 = convId,
+                  claimed                = claimed,
+                  iteration              = iteration + 1,
+                  sinceTimestamp         = thisIterationStart,
+                  greeting               = false,
+                  userVisibleSeen        = userVisibleSeen,
+                  forceResponseSynthesis = true
+                )
+              }
             case true =>
-              // Cap hit — release the lock, then propagate as an error so the
-              // calling fiber's failure handler sees it. A runaway loop is a
-              // real failure (broken LLM behavior, bad instructions, etc.) and
-              // shouldn't masquerade as a successful exit.
+              // Cap hit on the forced-synthesis iteration too. The model
+              // failed to call `respond` despite `tool_choice` pinning it
+              // (very weak / non-instruction-following local models, or
+              // a buggy provider). Soft path exhausted — surface the hard
+              // failure so the calling fiber's error boundary logs it.
               ensureSilentTurnReply(agent, convId, userVisibleSeen).flatMap(_ =>
                 releaseClaim(claimed).flatMap(_ =>
                   Task.error(new AgentRunawayException(
                     s"Agent ${agent.id.value} hit maxAgentIterations ($maxAgentIterations) " +
-                      s"in conversation ${conv._id.value}; check LLM behavior or raise the cap."))))
+                      s"in conversation ${conv._id.value} AND the forced-synthesis turn also " +
+                      s"failed to call `respond`. Check LLM behavior or raise the cap."))))
             case false =>
               ensureSilentTurnReply(agent, convId, userVisibleSeen).flatMap(_ => releaseClaim(claimed))
             }

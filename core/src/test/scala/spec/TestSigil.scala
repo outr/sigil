@@ -237,6 +237,17 @@ object TestSigil extends Sigil {
   def setEmbeddingProvider(p: EmbeddingProvider): Unit = embeddingProviderRef.set(p)
   def setVectorIndex(v: VectorIndex): Unit = vectorIndexRef.set(v)
 
+  /** Per-test cap override — specs exercising the iteration-cap
+    * soft-stop (sigil bug #125) tighten the cap so the soft-stop
+    * fires within a reasonable test window. `resetMaxAgentIterations`
+    * reverts to the framework default. */
+  private val maxAgentIterationsRef =
+    new java.util.concurrent.atomic.AtomicReference[Option[Int]](None)
+  override def maxAgentIterations: Int =
+    maxAgentIterationsRef.get().getOrElse(super.maxAgentIterations)
+  def setMaxAgentIterations(n: Int): Unit = maxAgentIterationsRef.set(Some(n))
+  def resetMaxAgentIterations(): Unit     = maxAgentIterationsRef.set(None)
+
   /** Per-test ToolFinder override — specs that need a synthetic
     * tool catalog (consent gate, toolchain boost, etc.) install
     * one without touching the persisted DB tools. `None` reverts

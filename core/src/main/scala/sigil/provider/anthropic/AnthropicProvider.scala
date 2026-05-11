@@ -117,6 +117,11 @@ case class AnthropicProvider(apiKey: String,
         Vector("tools" -> arr(toolsArr*), "tool_choice" -> obj("type" -> str("auto")))
       case ToolChoice.Required =>
         Vector("tools" -> arr(toolsArr*), "tool_choice" -> obj("type" -> str("any")))
+      case ToolChoice.Specific(name) =>
+        Vector(
+          "tools" -> arr(toolsArr*),
+          "tool_choice" -> obj("type" -> str("tool"), "name" -> str(name.value))
+        )
     }
 
     val gen = input.generationSettings

@@ -230,6 +230,14 @@ case class LlamaCppProvider(url: URL,
         Vector("tools" -> arr(toolsArr*), "tool_choice" -> str("auto"))
       case ToolChoice.Required =>
         Vector("tools" -> arr(toolsArr*), "tool_choice" -> str("required"))
+      case ToolChoice.Specific(name) =>
+        Vector(
+          "tools" -> arr(toolsArr*),
+          "tool_choice" -> obj(
+            "type"     -> str("function"),
+            "function" -> obj("name" -> str(name.value))
+          )
+        )
     }
     val gen = input.generationSettings
     val generationFields: Vector[(String, Json)] =

@@ -511,8 +511,10 @@ trait Provider {
   private def translateConversation(c: ConversationRequest): Task[ProviderCall] =
     resolveReferences(c.turnInput).flatMap { resolved =>
       val agentId = c.chain.lastOption
-      val toolChoice =
-        if (c.tools.isEmpty) ToolChoice.None else ToolChoice.Required
+      val toolChoice: ToolChoice =
+        if (c.tools.isEmpty) ToolChoice.None
+        else if (c.forceResponseSynthesis) ToolChoice.Specific(_root_.sigil.tool.core.RespondTool.schema.name)
+        else ToolChoice.Required
       // Adaptive max_tokens — when the paraphrase detector has
       // flagged a planning-without-acting loop on this turn (signal
       // lives in `turnInput.extraContext`), cap the per-call

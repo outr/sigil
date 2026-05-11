@@ -157,6 +157,15 @@ case class OpenAIProvider(apiKey: String,
         Vector("tools" -> arr(toolsArr*), "tool_choice" -> str("auto"))
       case ToolChoice.Required =>
         Vector("tools" -> arr(toolsArr*), "tool_choice" -> str("required"))
+      case ToolChoice.Specific(name) =>
+        // Responses API: `tool_choice: {type: "function", name: "<name>"}`.
+        Vector(
+          "tools" -> arr(toolsArr*),
+          "tool_choice" -> obj(
+            "type" -> str("function"),
+            "name" -> str(name.value)
+          )
+        )
     }
     val gen = input.generationSettings
     val isReasoningModel = OpenAI.reasoningModelPrefixes.exists(modelName.startsWith)
