@@ -93,7 +93,15 @@ class AgentLoopIterationBoundarySpec extends AsyncWordSpec with AsyncTaskSpec wi
     )
 
   private def runScenario(): Task[List[Signal]] = {
-    TestSigil.setProvider(Task.pure(new TwoIterationProvider))
+    // Provider is genuinely stateful across the two-iteration scenario —
+    // call 1 returns change_mode, call 2 returns respond. `setProvider`
+    // re-evaluates its by-name argument on every `providerFor` call, so
+    // we need to hand it a Task that holds a SINGLE provider instance
+    // (otherwise each iteration gets a fresh callCount=0 and the loop
+    // never reaches the terminal respond, eventually hitting the
+    // maxAgentIterations cap).
+    val provider = new TwoIterationProvider
+    TestSigil.setProvider(Task.pure(provider))
     val convId = Conversation.id(s"iteration-boundary-${rapid.Unique()}")
     val agent  = makeAgent()
     val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
@@ -106,6 +114,23 @@ class AgentLoopIterationBoundarySpec extends AsyncWordSpec with AsyncTaskSpec wi
       .drain
       .startUnit()
 
+    // Wait for the agent loop to settle — poll for the terminal
+    // AgentStateDelta(Idle, Complete) that releaseClaim emits. Bounded
+    // at 10 s to keep test runtime predictable; pre-fix the test slept
+    // 1500 ms and missed the terminal delta when the iter cap raised
+    // from 10 to 200 (sigil bug #109).
+    def waitForTerminal(deadline: Long): Task[Unit] = Task.defer {
+      val terminal = recorded.iterator().asScala.exists {
+        case d: AgentStateDelta if d.activity.contains(AgentActivity.Idle)
+                                && d.state.contains(EventState.Complete)
+                                && d.conversationId == convId => true
+        case _ => false
+      }
+      if (terminal) Task.unit
+      else if (System.currentTimeMillis() > deadline) Task.unit
+      else Task.sleep(50.millis).flatMap(_ => waitForTerminal(deadline))
+    }
+
     for {
       _ <- Task.sleep(100.millis)
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
@@ -116,7 +141,7 @@ class AgentLoopIterationBoundarySpec extends AsyncWordSpec with AsyncTaskSpec wi
              content        = Vector(ResponseContent.Text("Switch to coding then say hi.")),
              state          = EventState.Complete
            ))
-      _ <- Task.sleep(1500.millis)
+      _ <- waitForTerminal(System.currentTimeMillis() + 10_000L)
     } yield {
       running.set(false)
       recorded.iterator().asScala.toList
