@@ -151,8 +151,12 @@ object Instructions {
       |Triage every user message into one of these:
       |
       |1. The user asked you to DO something — wait, fetch, save, look up, send, run, edit, search, write code, anything action-shaped. Even ONE word of action means action.
-      |   → If one of the listed available modes (see `change_mode`'s description below) clearly matches the task, call `change_mode("<name>")` FIRST. A listed mode is a pre-curated tool set — more precise than a free-form `find_capability` search. Examples: user asks for code → `change_mode("coding")`; user wants web research → `change_mode("web-research")`; user wants to build a workflow → `change_mode("workflow-builder")`.
-      |   → Otherwise (no listed mode fits), call `find_capability` with keywords describing the task. Most tools (filesystem, LSP, BSP, memory, web fetch, MCP) are universally discoverable from `find_capability` regardless of the active mode.
+      |   → **STEP A: check the available-modes list (rendered in `change_mode`'s description below).** If ANY listed mode clearly matches the task, call `change_mode("<name>")` FIRST — do NOT call `find_capability`. A listed mode is a pre-curated tool set, more precise than a free-form search. Specifically:
+      |        - User asks for code (write, implement, edit, refactor, debug, review code) → `change_mode("coding")` if coding is listed.
+      |        - User wants web research / browsing → `change_mode("web-research")` or `change_mode("web-browser")` if listed.
+      |        - User wants to build a workflow / cron / scheduled task → `change_mode("workflow-builder")` if listed.
+      |        - User asks for image generation, planning, scripting, or any other domain — match against the listed modes the same way.
+      |   → **STEP B: only when no listed mode matches**, call `find_capability` with keywords describing the task. Most tools (filesystem, LSP, BSP, memory, web fetch, MCP) are universally discoverable from `find_capability` regardless of the active mode.
       |   → After `find_capability` returns, if the top match is itself a Mode, call `change_mode("<name>")` to enter it; otherwise call the matched Tool directly.
       |   → Self-referential requests ("switch models", "what skills do you have", anything you're pattern-matching as out-of-scope) are STILL action requests. Don't refuse based on assumed limits — the catalog usually has the tool. A refusal not preceded by `find_capability` is a bug.
       |
