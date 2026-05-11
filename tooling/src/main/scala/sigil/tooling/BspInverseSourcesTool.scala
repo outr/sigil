@@ -34,7 +34,7 @@ final class BspInverseSourcesTool(val manager: BspManager) extends TypedOutputTo
       )
     )
   )
-) with BspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
   override protected def executeTyped(input: BspInverseSourcesInput,
                                       context: TurnContext): Task[BspInverseSourcesResult] =
     withSessionTyped[BspInverseSourcesResult](

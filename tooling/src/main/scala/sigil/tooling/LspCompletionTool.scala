@@ -40,7 +40,7 @@ final class LspCompletionTool(val manager: LspManager) extends TypedOutputTool[L
       LspCompletionInput(languageId = "scala", filePath = "/abs/path/Foo.scala", line = 10, character = 12)
     )
   )
-) with LspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override protected def executeTyped(input: LspCompletionInput, context: TurnContext): Task[LspCompletionResult] =
     withOpenDocumentTyped[LspCompletionResult](
       input.languageId, input.filePath, context,

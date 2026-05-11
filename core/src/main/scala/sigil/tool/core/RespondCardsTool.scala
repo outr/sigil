@@ -27,7 +27,7 @@ case object RespondCardsTool extends TypedTool[RespondCardsInput](
       |- `topicSummary` — 1-2 sentences.
       |- `cards` — the cards, in order.""".stripMargin,
   examples = Nil
-) {
+) with RespondFamilyTool {
   override protected def executeTyped(input: RespondCardsInput, context: TurnContext): rapid.Stream[Event] =
     rapid.Stream.emits(List(Message(
       participantId = context.caller,

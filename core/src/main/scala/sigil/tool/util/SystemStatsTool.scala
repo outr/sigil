@@ -28,7 +28,7 @@ final class SystemStatsTool(context: FileSystemContext)
       ToolExample("Only memory", SystemStatsInput(includeCpu = false, includeDisk = false, includeLoadAvg = false))
     ),
     keywords = Set("system", "stats", "cpu", "memory", "disk", "load", "uptime")
-  ) {
+  ) with sigil.tool.ReadOnlyExternalTool {
 
   override protected def executeTyped(input: SystemStatsInput, ctx: TurnContext): Task[SystemStatsOutput] = {
     val parts = List(

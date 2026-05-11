@@ -40,7 +40,7 @@ final class LspInlayHintsTool(val manager: LspManager) extends TypedOutputTool[L
       LspInlayHintsInput(languageId = "scala", filePath = "/abs/path/Foo.scala")
     )
   )
-) with LspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override protected def executeTyped(input: LspInlayHintsInput, context: TurnContext): Task[LspInlayHintsResult] =
     withOpenDocumentTyped[LspInlayHintsResult](
       input.languageId, input.filePath, context,

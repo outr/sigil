@@ -31,7 +31,7 @@ case object RespondCardTool extends TypedTool[RespondCardInput](
       |- `card.kind` — optional UI styling hint (e.g. "alert", "info", "metric", "recipe").
       |- `card.sections` — the building blocks, in order. Recursive: nested Cards are allowed.""".stripMargin,
   examples = Nil
-) {
+) with RespondFamilyTool {
   override protected def executeTyped(input: RespondCardInput, context: TurnContext): rapid.Stream[Event] =
     rapid.Stream.emits(List(Message(
       participantId = context.caller,

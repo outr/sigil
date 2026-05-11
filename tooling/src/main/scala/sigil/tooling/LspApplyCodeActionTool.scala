@@ -47,7 +47,7 @@ final class LspApplyCodeActionTool(val manager: LspManager) extends TypedOutputT
       LspApplyCodeActionInput(languageId = "scala", filePath = "/abs/path/Foo.scala", index = 0)
     )
   )
-) with LspToolSupport {
+) with sigil.tool.DestructiveExternalTool with LspToolSupport {
   override protected def executeTyped(input: LspApplyCodeActionInput, context: TurnContext): Task[LspApplyCodeActionResult] =
     withSessionTyped[LspApplyCodeActionResult](
       input.languageId, input.filePath, context,

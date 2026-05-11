@@ -26,7 +26,7 @@ final class WebSearchTool(provider: SearchProvider, defaultMaxResults: Int = 10)
       ToolExample("Top 5 only", WebSearchInput(query = "weather Tokyo today", maxResults = Some(5)))
     ),
     keywords = Set("web", "search", "google", "find", "lookup", "query", "internet")
-  ) {
+  ) with sigil.tool.NetworkReadOnlyTool {
   override protected def executeTyped(input: WebSearchInput, ctx: TurnContext): Stream[Event] = Stream.force(
     provider.search(input.query, input.maxResults.getOrElse(defaultMaxResults)).map { results =>
       val items = results.toVector.map { r =>

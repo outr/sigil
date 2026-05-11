@@ -42,7 +42,7 @@ final class BspTestTool(val manager: BspManager) extends TypedOutputTool[BspTest
       )
     )
   )
-) with BspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
   override protected def executeTyped(input: BspTestInput, context: TurnContext): Task[BspExecResult] =
     withSessionTyped[BspExecResult](
       input.projectRoot, context,

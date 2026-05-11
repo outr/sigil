@@ -46,7 +46,7 @@ final class LspFormatRangeTool(val manager: LspManager) extends TypedOutputTool[
       )
     )
   )
-) with LspToolSupport {
+) with sigil.tool.DestructiveExternalTool with LspToolSupport {
   override protected def executeTyped(input: LspFormatRangeInput, context: TurnContext): Task[LspFormatResult] =
     withOpenDocumentTyped[LspFormatResult](
       input.languageId, input.filePath, context,

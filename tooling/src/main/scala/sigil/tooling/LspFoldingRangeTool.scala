@@ -29,7 +29,7 @@ final class LspFoldingRangeTool(val manager: LspManager) extends TypedOutputTool
       LspFoldingRangeInput(languageId = "scala", filePath = "/abs/path/Foo.scala")
     )
   )
-) with LspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override protected def executeTyped(input: LspFoldingRangeInput, context: TurnContext): Task[LspFoldingRangeResult] =
     withOpenDocumentTyped[LspFoldingRangeResult](
       input.languageId, input.filePath, context,

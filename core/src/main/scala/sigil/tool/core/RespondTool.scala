@@ -26,9 +26,9 @@ case object RespondTool extends TypedTool[RespondInput](
       |  (b) you've already executed the requested action via another tool and are reporting the outcome.
       |
       |DO NOT use `respond` as a substitute for an action you haven't run. If the user asked you
-      |to DO anything — wait, fetch, save, send, run, edit, look up, etc. — your first call must
-      |be `find_capability`. `respond` is the final step after the action completes, not a way to
-      |skip the action.
+      |to DO anything — wait, fetch, save, send, run, edit, look up, etc. — call `change_mode`
+      |first when a listed mode obviously matches the task; otherwise call `find_capability`.
+      |`respond` is the final step after the action completes, not a way to skip the action.
       |
       |- `topicLabel` — 3-6 words describing what the CONVERSATION IS ABOUT, not who you are. Fresh
       |  label when the user starts a new subject; keep the current label when following up; reuse a
@@ -58,7 +58,8 @@ case object RespondTool extends TypedTool[RespondInput](
       |For interactive choices, labeled key/value cards, or failure signals: use `respond_options`,
       |`respond_field`, `respond_failure`.""".stripMargin,
   examples = Nil
-) {
+) with RespondFamilyTool {
+
   override protected def executeTyped(input: RespondInput, context: TurnContext): rapid.Stream[Event] = {
     val blocks = MarkdownContentParser.parse(input.content)
     val message = Message(

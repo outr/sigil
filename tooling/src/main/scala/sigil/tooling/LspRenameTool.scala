@@ -44,7 +44,7 @@ final class LspRenameTool(val manager: LspManager) extends TypedOutputTool[LspRe
       )
     )
   )
-) with LspToolSupport {
+) with sigil.tool.DestructiveExternalTool with LspToolSupport {
   override protected def executeTyped(input: LspRenameInput, context: TurnContext): Task[LspRenameResult] =
     withOpenDocumentTyped[LspRenameResult](
       input.languageId, input.filePath, context,

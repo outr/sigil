@@ -28,7 +28,7 @@ final class BspCleanTool(val manager: BspManager) extends TypedOutputTool[BspCle
       BspCleanInput(projectRoot = "/abs/path/myproject")
     )
   )
-) with BspToolSupport {
+) with sigil.tool.DestructiveExternalTool with BspToolSupport {
   override protected def executeTyped(input: BspCleanInput, context: TurnContext): Task[BspCleanResult] =
     withSessionTyped[BspCleanResult](
       input.projectRoot, context,

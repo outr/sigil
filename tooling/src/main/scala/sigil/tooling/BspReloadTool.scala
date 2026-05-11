@@ -27,7 +27,7 @@ final class BspReloadTool(val manager: BspManager) extends TypedOutputTool[BspRe
       BspReloadInput(projectRoot = "/abs/path/myproject")
     )
   )
-) with BspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
   override protected def executeTyped(input: BspReloadInput, context: TurnContext): Task[BspReloadResult] =
     withSessionTyped[BspReloadResult](
       input.projectRoot, context,

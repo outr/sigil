@@ -35,7 +35,7 @@ final class LspImplementationTool(val manager: LspManager) extends TypedOutputTo
       LspImplementationInput(languageId = "scala", filePath = "/abs/path/Foo.scala", line = 10, character = 7)
     )
   )
-) with LspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override protected def executeTyped(input: LspImplementationInput, context: TurnContext): Task[List[LspLocation]] =
     withOpenDocumentTyped[List[LspLocation]](
       input.languageId, input.filePath, context,

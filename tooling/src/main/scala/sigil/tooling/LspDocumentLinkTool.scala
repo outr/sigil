@@ -31,7 +31,7 @@ final class LspDocumentLinkTool(val manager: LspManager) extends TypedOutputTool
       LspDocumentLinkInput(languageId = "markdown", filePath = "/abs/path/README.md")
     )
   )
-) with LspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override protected def executeTyped(input: LspDocumentLinkInput, context: TurnContext): Task[LspDocumentLinkResult] =
     withOpenDocumentTyped[LspDocumentLinkResult](
       input.languageId, input.filePath, context,

@@ -189,6 +189,64 @@ trait Tool extends RecordDocument[Tool] {
     * etc. — those don't need the penalty. */
   def preferIfNoBetter: Boolean = false
 
+  /** **MCP-style annotation.** True when calling this tool has no
+    * side effects beyond the local conversation log — safe to call
+    * speculatively. `grep`, `glob`, `read_file`, `lsp_diagnostics`
+    * are read-only; `respond`, `bash`, `edit_file` are not.
+    *
+    * Surfaced to the agent in [[wireDescription]] and to UI clients
+    * via the tool record. Apps that want to filter risky tools
+    * during exploratory iterations read this flag. Default `false`
+    * — annotation is opt-in per tool. */
+  def readOnly: Boolean = false
+
+  /** **MCP-style annotation.** True when calling this tool affects
+    * user-visible state irreversibly. The `respond_*` family is
+    * destructive (publishes a Message, ends the turn); `bash` and
+    * `edit_file` are destructive (mutates external state); LSP
+    * notification tools (`lsp_did_change`, `lsp_did_open`,
+    * `lsp_did_close`) are destructive (overwrites the LSP's
+    * in-memory copy of the document — corruptible by misuse).
+    *
+    * When `true`, [[wireDescription]] prefixes the description with
+    * `**ENDS YOUR TURN.**` (for `respond_*` family) or a
+    * `**DESTRUCTIVE.**` lead so the LLM reads terminality first.
+    * Default `false`. */
+  def destructive: Boolean = false
+
+  /** **MCP-style annotation.** True when calling this tool twice
+    * with identical args produces the same result. `read_file` on
+    * an unchanging file is idempotent; `bash` (non-pure commands)
+    * is not. Mainly informational; UI clients use it to surface
+    * "safe to retry" hints. Default `false`. */
+  def idempotent: Boolean = false
+
+  /** **MCP-style annotation.** True when this tool interacts with
+    * state outside Sigil's control — filesystem, network, LSP
+    * server, external API. `read_file` is open-world (filesystem
+    * can change); `consult` is open-world (network call); `respond`
+    * is not (purely intra-conversation). Default `false`. */
+  def openWorld: Boolean = false
+
+  /** The description the LLM sees on the wire, given runtime context.
+    * Default returns [[descriptionFor]] with a destructive prefix
+    * baked in when [[destructive]] is `true` — so the LLM reads
+    * terminality first regardless of the tool author's description
+    * body. Apps overriding [[descriptionFor]] still get the prefix
+    * for free; apps overriding [[wireDescription]] take full control
+    * (rare). */
+  def wireDescription(mode: Mode, sigil: Sigil): String = {
+    val body = descriptionFor(mode, sigil)
+    if (destructive) destructivePrefix + body
+    else body
+  }
+
+  /** Prefix prepended to destructive tools' descriptions on the wire.
+    * Override per tool family when a more specific framing fits
+    * (e.g. `respond_*` could say `**ENDS YOUR TURN.**`); the default
+    * generic prefix is `**DESTRUCTIVE.**` and signals irreversibility. */
+  protected def destructivePrefix: String = "**DESTRUCTIVE.** "
+
   /** The description the LLM sees, given runtime context (active
     * mode + the live `Sigil`). Default returns the static
     * [[description]]; tools whose documentation depends on runtime

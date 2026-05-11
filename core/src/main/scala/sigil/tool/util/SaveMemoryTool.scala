@@ -46,7 +46,7 @@ final class SaveMemoryTool(space: SpaceId,
       )
     ),
     keywords = Set("memory", "save", "remember", "store", "persist", "fact")
-  ) {
+  ) with sigil.tool.DestructiveInternalTool {
 
   override val requiresAccessibleSpaces: Boolean = true
 

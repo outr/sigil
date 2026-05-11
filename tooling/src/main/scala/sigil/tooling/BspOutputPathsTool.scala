@@ -31,7 +31,7 @@ final class BspOutputPathsTool(val manager: BspManager) extends TypedOutputTool[
       BspOutputPathsInput(projectRoot = "/abs/path/myproject")
     )
   )
-) with BspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
   override protected def executeTyped(input: BspOutputPathsInput,
                                       context: TurnContext): Task[BspOutputPathsResult] =
     withSessionTyped[BspOutputPathsResult](

@@ -27,7 +27,7 @@ final class GitDiffTool(context: FileSystemContext)
       ToolExample("Structured hunks", GitDiffInput(format = "hunks"))
     ),
     keywords = Set("git", "diff", "changes", "patch", "hunk")
-  ) {
+  ) with sigil.tool.ReadOnlyExternalTool {
   override protected def executeTyped(input: GitDiffInput, ctx: TurnContext): Stream[Event] = Stream.force(
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val stagedFlag = if (input.staged) " --staged" else ""

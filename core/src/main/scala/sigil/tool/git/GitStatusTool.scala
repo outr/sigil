@@ -26,7 +26,7 @@ final class GitStatusTool(context: FileSystemContext)
       ToolExample("Status of a specific repo", GitStatusInput(workingDir = Some("/abs/path/to/repo")))
     ),
     keywords = Set("git", "status", "changes", "diff", "porcelain", "uncommitted")
-  ) {
+  ) with sigil.tool.ReadOnlyExternalTool {
   override protected def executeTyped(input: GitStatusInput, ctx: TurnContext): Stream[Event] = Stream.force(
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       context.executeCommand("git status --porcelain=v1 --branch", dir).map { r =>

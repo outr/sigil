@@ -41,7 +41,7 @@ final class LspFormatTool(val manager: LspManager) extends TypedOutputTool[LspFo
       LspFormatInput(languageId = "scala", filePath = "/abs/path/Foo.scala")
     )
   )
-) with LspToolSupport {
+) with sigil.tool.DestructiveExternalTool with LspToolSupport {
   override protected def executeTyped(input: LspFormatInput, context: TurnContext): Task[LspFormatResult] =
     withOpenDocumentTyped[LspFormatResult](
       input.languageId, input.filePath, context,

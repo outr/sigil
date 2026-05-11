@@ -42,7 +42,7 @@ case object SearchConversationTool extends TypedOutputTool[SearchConversationInp
     )
   ),
   keywords = Set("search", "conversation", "history", "find", "recall")
-) {
+) with sigil.tool.ReadOnlyInternalTool {
   override protected def executeTyped(input: SearchConversationInput, context: TurnContext): Task[SearchConversationOutput] =
     context.sigil
       .searchConversationEvents(

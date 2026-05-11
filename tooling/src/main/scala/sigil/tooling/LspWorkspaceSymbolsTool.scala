@@ -43,7 +43,7 @@ final class LspWorkspaceSymbolsTool(val manager: LspManager) extends PaginatedTo
       LspWorkspaceSymbolsInput(languageId = "scala", projectRoot = "/abs/path/myproject", query = "Provider")
     )
   )
-) with LspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
 
   override protected def executeStream(input: LspWorkspaceSymbolsInput, context: TurnContext): Stream[Node[LspWorkspaceSymbol]] =
     Stream.force(

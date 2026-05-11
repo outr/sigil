@@ -31,7 +31,7 @@ final class LspCodeLensTool(val manager: LspManager) extends TypedOutputTool[Lsp
       LspCodeLensInput(languageId = "scala", filePath = "/abs/path/Foo.scala")
     )
   )
-) with LspToolSupport {
+) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override protected def executeTyped(input: LspCodeLensInput, context: TurnContext): Task[LspCodeLensResult] =
     withOpenDocumentTyped[LspCodeLensResult](
       input.languageId, input.filePath, context,

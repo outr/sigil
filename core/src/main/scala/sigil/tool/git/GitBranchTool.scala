@@ -24,7 +24,7 @@ final class GitBranchTool(context: FileSystemContext)
       ToolExample("Local + remote-tracking",   GitBranchInput(includeRemotes = true))
     ),
     keywords = Set("git", "branch", "branches", "checkout")
-  ) {
+  ) with sigil.tool.ReadOnlyExternalTool {
   override protected def executeTyped(input: GitBranchInput, ctx: TurnContext): Stream[Event] = Stream.force(
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val flag = if (input.includeRemotes) "-a" else ""

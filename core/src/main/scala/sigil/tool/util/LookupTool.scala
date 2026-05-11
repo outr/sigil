@@ -47,7 +47,7 @@ case object LookupTool extends TypedOutputTool[LookupInput, LookupOutput](
       |Returns `Found(capabilityType, name, payload)`, `NotFound(capabilityType, name)`, or
       |`NotRetrievable(capabilityType, name, hint)`.""".stripMargin,
   keywords = Set("lookup", "fetch", "retrieve", "resolve", "details", "full", "expand")
-) {
+) with sigil.tool.ReadOnlyInternalTool {
   override protected def executeTyped(input: LookupInput, context: TurnContext): Task[LookupOutput] = {
     val typeName = input.capabilityType.toString
     input.capabilityType match {
