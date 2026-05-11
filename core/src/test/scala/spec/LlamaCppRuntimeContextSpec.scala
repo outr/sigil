@@ -60,4 +60,27 @@ class LlamaCppRuntimeContextSpec extends AnyWordSpec with Matchers {
       model.contextLength shouldBe 262_144L
     }
   }
+
+  /** llama-server's `/props` reports `default_generation_settings.n_ctx`
+    * as the value an individual request can occupy — total
+    * `--ctx-size` divided across `--parallel` slots before being
+    * surfaced. `RuntimeProps.perSlotContext` must surface that
+    * directly; a prior bug divided again, producing
+    * `1/parallel` of the real budget on multi-slot servers and
+    * tripping pre-flight false positives. */
+  "RuntimeProps.perSlotContext" should {
+    "return n_ctx unchanged on a single-slot server" in {
+      LlamaCpp.RuntimeProps(nCtx = 65536L, totalSlots = 1L).perSlotContext shouldBe 65536L
+    }
+
+    "return n_ctx unchanged on a 4-slot server (no double-divide)" in {
+      // Mirrors meg's --ctx-size 131072 --parallel 4 → /props n_ctx 32768.
+      // Pre-fix: 32768 / 4 = 8192 (wrong). Post-fix: 32768.
+      LlamaCpp.RuntimeProps(nCtx = 32768L, totalSlots = 4L).perSlotContext shouldBe 32768L
+    }
+
+    "floor to 1 when n_ctx is 0 (guards against divide-by-zero callers downstream)" in {
+      LlamaCpp.RuntimeProps(nCtx = 0L, totalSlots = 4L).perSlotContext shouldBe 1L
+    }
+  }
 }
