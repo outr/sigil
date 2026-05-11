@@ -1,12 +1,13 @@
 package sigil.browser.tool
 
 import rapid.{Stream, Task}
-import sigil.{GlobalSpace, TurnContext}
 import sigil.browser.BrowserScript
+import sigil.browser.WebBrowserMode
 import sigil.event.{Event, Message, MessageRole, MessageVisibility}
 import sigil.signal.EventState
-import sigil.tool.{ToolName, TypedTool}
 import sigil.tool.model.ResponseContent
+import sigil.tool.{ToolName, TypedTool}
+import sigil.{GlobalSpace, TurnContext}
 
 /** Delete a stored [[BrowserScript]] by name. Authz: caller's
   * `accessibleSpaces` must include the script's space (or the
@@ -15,6 +16,7 @@ case object DeleteBrowserScriptTool extends TypedTool[DeleteBrowserScriptInput](
   name = ToolName("delete_browser_script"),
   description =
     "Delete a stored browser-script tool by name. Caller must have access to the script's space.",
+  modes = Set(WebBrowserMode.id),
   keywords = Set("delete", "remove", "browser", "script")
 ) {
   override protected def executeTyped(input: DeleteBrowserScriptInput,

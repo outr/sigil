@@ -5,6 +5,7 @@ import lightdb.id.Id
 import org.jsoup.Jsoup
 import rapid.Stream
 import sigil.TurnContext
+import sigil.browser.WebBrowserMode
 import sigil.event.Event
 import sigil.storage.StoredFile
 import sigil.tool.{ToolExample, ToolName, TypedTool}
@@ -38,6 +39,7 @@ final class BrowserXPathQueryTool extends TypedTool[BrowserXPathQueryInput](
       BrowserXPathQueryInput(htmlFileId = "abc123", xpath = "//h1[1]", includeOuterHtml = true)
     )
   ),
+  modes = Set(WebBrowserMode.id),
   keywords = Set("browser", "xpath", "query", "extract", "html", "structure")
 ) {
 

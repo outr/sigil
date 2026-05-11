@@ -4,6 +4,7 @@ import fabric.{num, obj, str}
 import rapid.Stream
 import sigil.TurnContext
 import sigil.browser.BrowserStateDelta
+import sigil.browser.WebBrowserMode
 import sigil.event.Event
 import sigil.tool.{ToolExample, ToolName, TypedTool}
 
@@ -32,6 +33,7 @@ final class BrowserNavigateTool extends TypedTool[BrowserNavigateInput](
     ToolExample("Open with a longer wait for slow pages",
       BrowserNavigateInput(url = "https://news.example/", waitForLoadSeconds = 30))
   ),
+  modes = Set(WebBrowserMode.id),
   keywords = Set("browser", "navigate", "open", "goto", "load", "url")
 ) {
 

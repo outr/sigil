@@ -4,6 +4,7 @@ import fabric.{Str, obj, str}
 import rapid.Stream
 import robobrowser.select.Selector
 import sigil.TurnContext
+import sigil.browser.WebBrowserMode
 import sigil.event.Event
 import sigil.tool.{ToolExample, ToolName, TypedTool}
 
@@ -17,6 +18,7 @@ final class BrowserTypeTool extends TypedTool[BrowserTypeInput](
   examples = List(
     ToolExample("Type into a search box", BrowserTypeInput(selector = "input[name=q]", value = "scala"))
   ),
+  modes = Set(WebBrowserMode.id),
   keywords = Set("browser", "type", "input", "form", "fill")
 ) {
 

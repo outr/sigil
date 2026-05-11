@@ -3,10 +3,11 @@ package sigil.browser.tool
 import org.jsoup.Jsoup
 import rapid.{Stream, Task}
 import robobrowser.select.Selector
-import sigil.{GlobalSpace, TurnContext}
 import sigil.browser.BrowserStateDelta
+import sigil.browser.WebBrowserMode
 import sigil.event.Event
 import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.{GlobalSpace, TurnContext}
 
 /**
  * Capture the current page's outer HTML, normalize via jSoup so the
@@ -27,6 +28,7 @@ final class BrowserSaveHtmlTool extends TypedTool[BrowserSaveHtmlInput](
   examples = List(
     ToolExample("Save the current page", BrowserSaveHtmlInput())
   ),
+  modes = Set(WebBrowserMode.id),
   keywords = Set("browser", "html", "save", "snapshot", "overview", "structure")
 ) {
 

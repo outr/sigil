@@ -7,6 +7,7 @@ import org.jsoup.nodes.{Element, TextNode}
 import org.jsoup.select.{NodeTraversor, NodeVisitor}
 import rapid.Stream
 import sigil.TurnContext
+import sigil.browser.WebBrowserMode
 import sigil.event.Event
 import sigil.storage.StoredFile
 import sigil.tool.{ToolExample, ToolName, TypedTool}
@@ -41,6 +42,7 @@ final class BrowserTextSearchTool extends TypedTool[BrowserTextSearchInput](
       BrowserTextSearchInput(htmlFileId = "abc123", query = "Section 3.2", contextChars = 200)
     )
   ),
+  modes = Set(WebBrowserMode.id),
   keywords = Set("browser", "text", "search", "find", "substring", "query")
 ) {
 

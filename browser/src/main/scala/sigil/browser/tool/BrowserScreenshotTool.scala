@@ -1,13 +1,14 @@
 package sigil.browser.tool
 
 import rapid.{Stream, Task}
-import sigil.{GlobalSpace, TurnContext}
 import sigil.browser.BrowserStateDelta
+import sigil.browser.WebBrowserMode
 import sigil.event.{Event, Message, MessageRole}
 import sigil.signal.EventState
 import sigil.storage.StoredFile
 import sigil.tool.model.ResponseContent
 import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.{GlobalSpace, TurnContext}
 
 import java.nio.file.{Files, Path}
 import scala.concurrent.duration.*
@@ -32,6 +33,7 @@ final class BrowserScreenshotTool extends TypedTool[BrowserScreenshotInput](
     ToolExample("Default screenshot", BrowserScreenshotInput()),
     ToolExample("Wait 5s for animations", BrowserScreenshotInput(waitSeconds = 5))
   ),
+  modes = Set(WebBrowserMode.id),
   keywords = Set("browser", "screenshot", "image", "capture", "render")
 ) {
 
