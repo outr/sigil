@@ -112,16 +112,16 @@ object LlamaCpp {
   /**
    * Fetch and map currently-loaded models from a llama.cpp server.
    *
-   * Bug #42 — also queries `/props` for the runtime `n_ctx` (actual
-   * allocated context window) and `total_slots` (concurrent slots
-   * the window is split across). The per-request runtime budget is
-   * `n_ctx / total_slots` (single-slot setups: just `n_ctx`); we
-   * stamp that on every returned [[sigil.db.Model]] as
+   * Bug #42 — also queries `/props` for the runtime per-slot
+   * context budget. llama-server reports `default_generation_settings.n_ctx`
+   * as the value an individual request can occupy (total `--ctx-size`
+   * already divided by `--parallel`), so the framework consumes it
+   * as-is; we stamp it on every returned [[sigil.db.Model]] as
    * `contextLength` so downstream budget gates (curator, size-aware
-   * `routedModelFor`, provider pre-flight) operate on the real limit
-   * rather than the model's training-time max. `/props` failures
-   * (older llama.cpp builds, restricted endpoints) fall through to
-   * the legacy `n_ctx_train` path.
+   * `routedModelFor`, provider pre-flight) operate on the real
+   * per-request limit rather than the model's training-time max.
+   * `/props` failures (older llama.cpp builds, restricted endpoints)
+   * fall through to the legacy `n_ctx_train` path.
    */
   def loadModels(baseUrl: URL): Task[List[Model]] =
     fetchProps(baseUrl).flatMap { propsOpt =>
@@ -138,8 +138,14 @@ object LlamaCpp {
     * bug #49 adds `totalSlots` to drive `Provider.maxConcurrent`. */
   case class RuntimeProps(nCtx: Long, totalSlots: Long) {
     /** Per-slot context budget — the hard limit any single request
-      * can occupy. */
-    def perSlotContext: Long = math.max(1L, nCtx / math.max(1L, totalSlots))
+      * can occupy. llama-server's `/props` already reports
+      * `default_generation_settings.n_ctx` as the per-slot value
+      * (total `--ctx-size` ÷ `--parallel`), so we surface it
+      * directly. Prior implementation divided by `totalSlots`
+      * again, producing a value `1/parallel` of the real budget
+      * whenever `--parallel > 1`; that drove pre-flight false
+      * positives on multi-slot setups. */
+    def perSlotContext: Long = math.max(1L, nCtx)
   }
 
   /** Read the running server's `default_generation_settings.n_ctx`
