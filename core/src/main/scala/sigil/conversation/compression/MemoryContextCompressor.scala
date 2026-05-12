@@ -240,20 +240,29 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
     }
 
   /**
-   * Hierarchical compression — for bulk-import flows that have too
-   * many frames to summarize in one pass. Chunks the frames by
-   * `(tokens, bytes)` budgets, summarizes each chunk to a
-   * [[ContextSummary]] (persisted via
-   * [[sigil.Sigil.persistSummary]]), then optionally summarizes
-   * runs of summaries into higher-level "epoch" summaries when
-   * `depth > 1`. Returns the top-level summary set — the per-leaf
-   * records also persist so the curator's `summariesFor` lookup
-   * surfaces them on subsequent turns.
+   * Hierarchical compression — produces a narrative tree of summary
+   * records for a conversation. Chunks frames by `(tokens, bytes)`
+   * budgets, summarises each chunk to a [[ContextSummary]]
+   * (persisted via [[sigil.Sigil.persistSummary]]), then optionally
+   * summarises runs of summaries into higher-level "epoch"
+   * summaries when `depth > 1`. Returns the top-level summary set;
+   * every intermediate level also persists so
+   * [[sigil.Sigil.summariesFor]] surfaces them.
    *
-   * Apps wire this from [[sigil.Sigil.compressOnImport]] so a
-   * one-shot bulk load (e.g. `load_claude_state` ingesting 50K
-   * events) produces a tree of summaries the agent recalls without
-   * re-paying compression cost on every turn.
+   * **For agent recall, prefer
+   * [[sigil.tool.util.SearchConversationTool]] /
+   * [[sigil.tool.util.SemanticSearchTool]].** Those retrieve actual
+   * exchanges (the durable event log retains everything) rather
+   * than lossy paraphrase, which is almost always what the agent
+   * wants. The curator's `maxFramesPerTurn` cap already keeps the
+   * per-turn prompt bounded; older content remains reachable via
+   * search at the moment a question references it.
+   *
+   * Call this directly only when the UX requires a precomputed
+   * narrative summary (e.g. a "Generate session overview" button,
+   * a daily-digest panel, an emailed recap). Apps trigger it on
+   * their own user-visible action — never silently from
+   * `publishHistorical` — so the multi-minute cost is intentional.
    *
    * @param depth     how many recursive levels to fold; `1` =
    *                  per-chunk summaries only (flat); `2` =

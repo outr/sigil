@@ -1,0 +1,202 @@
+{
+    "version": "1.4.0",
+    "project": {
+        "name": "root",
+        "directory": "/home/mhicks/projects/open/sigil",
+        "workspaceDir": "/home/mhicks/projects/open/sigil",
+        "sources": [
+            "/home/mhicks/projects/open/sigil/src/main/scala",
+            "/home/mhicks/projects/open/sigil/src/main/scala-3",
+            "/home/mhicks/projects/open/sigil/src/main/java",
+            "/home/mhicks/projects/open/sigil/target/scala-3.8.3/src_managed/main"
+        ],
+        "dependencies": [
+            "core",
+            "secrets",
+            "script",
+            "mcp",
+            "tooling",
+            "metals",
+            "debug",
+            "browser",
+            "all",
+            "benchmark",
+            "docs"
+        ],
+        "classpath": [
+            "/home/mhicks/.cache/coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala3-library_3/3.8.3/scala3-library_3-3.8.3.jar",
+            "/home/mhicks/.cache/coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala-library/3.8.3/scala-library-3.8.3.jar"
+        ],
+        "out": "/home/mhicks/projects/open/sigil/.bloop/root",
+        "classesDir": "/home/mhicks/projects/open/sigil/.bloop/root/scala-3.8.3/classes",
+        "resources": [
+            "/home/mhicks/projects/open/sigil/src/main/resources",
+            "/home/mhicks/projects/open/sigil/target/scala-3.8.3/resource_managed/main"
+        ],
+        "scala": {
+            "organization": "org.scala-lang",
+            "name": "scala-compiler",
+            "version": "3.8.3",
+            "options": [
+                "-deprecation",
+                "-feature",
+                "-unchecked"
+            ],
+            "jars": [
+                "/home/mhicks/.cache/coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala3-library_3/3.8.3/scala3-library_3-3.8.3.jar",
+                "/home/mhicks/.cache/coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala-library/3.8.3/scala-library-3.8.3.jar",
+                "/home/mhicks/.cache/coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala3-compiler_3/3.8.3/scala3-compiler_3-3.8.3.jar",
+                "/home/mhicks/.cache/coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala3-interfaces/3.8.3/scala3-interfaces-3.8.3.jar",
+                "/home/mhicks/.cache/coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/tasty-core_3/3.8.3/tasty-core_3-3.8.3.jar",
+                "/home/mhicks/.cache/coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/modules/scala-asm/9.9.0-scala-1/scala-asm-9.9.0-scala-1.jar",
+                "/home/mhicks/.cache/coursier/v1/https/repo1.maven.org/maven2/org/scala-sbt/compiler-interface/1.10.7/compiler-interface-1.10.7.jar",
+                "/home/mhicks/.cache/coursier/v1/https/repo1.maven.org/maven2/org/scala-sbt/util-interface/1.10.7/util-interface-1.10.7.jar"
+            ],
+            "setup": {
+                "order": "mixed",
+                "addLibraryToBootClasspath": false,
+                "addCompilerToClasspath": false,
+                "addExtraJarsToClasspath": false,
+                "manageBootClasspath": false,
+                "filterLibraryFromClasspath": false
+            },
+            "bridgeJars": [
+                "/home/mhicks/.cache/coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala3-sbt-bridge/3.8.3/scala3-sbt-bridge-3.8.3.jar"
+            ]
+        },
+        "java": {
+            "options": [
+                
+            ]
+        },
+        "test": {
+            "frameworks": [
+                {
+                    "names": [
+                        "org.scalacheck.ScalaCheckFramework"
+                    ]
+                },
+                {
+                    "names": [
+                        "org.specs2.runner.Specs2Framework",
+                        "org.specs2.runner.SpecsFramework"
+                    ]
+                },
+                {
+                    "names": [
+                        "org.specs.runner.SpecsFramework"
+                    ]
+                },
+                {
+                    "names": [
+                        "org.scalatest.tools.Framework",
+                        "org.scalatest.tools.ScalaTestFramework"
+                    ]
+                },
+                {
+                    "names": [
+                        "com.novocode.junit.JUnitFramework"
+                    ]
+                },
+                {
+                    "names": [
+                        "munit.Framework"
+                    ]
+                },
+                {
+                    "names": [
+                        "zio.test.sbt.ZTestFramework"
+                    ]
+                },
+                {
+                    "names": [
+                        "weaver.framework.CatsEffect"
+                    ]
+                },
+                {
+                    "names": [
+                        "hedgehog.sbt.Framework"
+                    ]
+                }
+            ],
+            "options": {
+                "excludes": [
+                    
+                ],
+                "arguments": [
+                    
+                ]
+            }
+        },
+        "platform": {
+            "name": "jvm",
+            "config": {
+                "home": "/home/mhicks/.sdkman/candidates/java/21.0.11-zulu",
+                "options": [
+                    "-Duser.dir=/home/mhicks/projects/open/sigil",
+                    "-Xmx16G",
+                    "-Xss4m",
+                    "-XX:MaxMetaspaceSize=2g"
+                ]
+            },
+            "mainClass": [
+                
+            ],
+            "runtimeConfig": {
+                "home": "/home/mhicks/.sdkman/candidates/java/21.0.11-zulu",
+                "options": [
+                    "-Duser.dir=/home/mhicks/projects/open/sigil",
+                    "-Xmx16G",
+                    "-Xss4m",
+                    "-XX:MaxMetaspaceSize=2g"
+                ]
+            },
+            "classpath": [
+                "/home/mhicks/projects/open/sigil/.bloop/root/scala-3.8.3/classes",
+                "/home/mhicks/.cache/coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala3-library_3/3.8.3/scala3-library_3-3.8.3.jar",
+                "/home/mhicks/.cache/coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala-library/3.8.3/scala-library-3.8.3.jar"
+            ]
+        },
+        "resolution": {
+            "modules": [
+                {
+                    "organization": "org.scala-lang",
+                    "name": "scala3-library_3",
+                    "version": "3.8.3",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "scala3-library_3",
+                            "path": "/home/mhicks/.cache/coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala3-library_3/3.8.3/scala3-library_3-3.8.3.jar"
+                        },
+                        {
+                            "name": "scala3-library_3",
+                            "classifier": "sources",
+                            "path": "/home/mhicks/.cache/coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala3-library_3/3.8.3/scala3-library_3-3.8.3-sources.jar"
+                        }
+                    ]
+                },
+                {
+                    "organization": "org.scala-lang",
+                    "name": "scala-library",
+                    "version": "3.8.3",
+                    "configurations": "default",
+                    "artifacts": [
+                        {
+                            "name": "scala-library",
+                            "path": "/home/mhicks/.cache/coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala-library/3.8.3/scala-library-3.8.3.jar"
+                        },
+                        {
+                            "name": "scala-library",
+                            "classifier": "sources",
+                            "path": "/home/mhicks/.cache/coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala-library/3.8.3/scala-library-3.8.3-sources.jar"
+                        }
+                    ]
+                }
+            ]
+        },
+        "tags": [
+            "library"
+        ]
+    }
+}
