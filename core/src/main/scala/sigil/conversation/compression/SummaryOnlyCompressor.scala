@@ -6,7 +6,7 @@ import sigil.Sigil
 import sigil.conversation.{ContextFrame, ContextSummary, Conversation}
 import sigil.db.Model
 import sigil.participant.ParticipantId
-import sigil.provider.SummarizationWork
+import sigil.provider.{GenerationSettings, SummarizationWork}
 import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
 import sigil.tool.consult.{ConsultTool, SummarizationInput, SummarizationTool}
 
@@ -44,7 +44,16 @@ case class SummaryOnlyCompressor(systemPrompt: String = SummaryOnlyCompressor.De
                                    * Default 8 MB stays comfortably under both. Apps
                                    * pointed at a provider with a different limit
                                    * override. Bug #143. */
-                                 maxChunkBytes: Long = SummaryOnlyCompressor.DefaultMaxChunkBytes) extends ContextCompressor {
+                                 maxChunkBytes: Long = SummaryOnlyCompressor.DefaultMaxChunkBytes,
+                                 /** Hard cap on the summarisation call's
+                                   * generation. Same rationale as
+                                   * [[MemoryContextCompressor.maxSummaryTokens]] —
+                                   * without a cap the model can produce a
+                                   * paraphrase the size of the input that
+                                   * the server truncates mid-sentence and
+                                   * the framework persists anyway. Bug
+                                   * #148. */
+                                 maxSummaryTokens: Int = 2048) extends ContextCompressor {
 
   override def compress(sigil: Sigil,
                         callerModelId: Id[Model],
@@ -111,7 +120,8 @@ case class SummaryOnlyCompressor(systemPrompt: String = SummaryOnlyCompressor.De
       chain = chain,
       systemPrompt = systemPrompt,
       userPrompt = userPrompt,
-      tool = SummarizationTool
+      tool = SummarizationTool,
+      generationSettings = GenerationSettings(maxOutputTokens = Some(maxSummaryTokens))
     ).flatMap {
       case Some(r) if r.summary.trim.nonEmpty =>
         val summary = ContextSummary(

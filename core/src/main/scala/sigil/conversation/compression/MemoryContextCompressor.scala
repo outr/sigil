@@ -7,7 +7,7 @@ import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary, Conversa
 import sigil.SpaceId
 import sigil.db.Model
 import sigil.participant.ParticipantId
-import sigil.provider.SummarizationWork
+import sigil.provider.{GenerationSettings, SummarizationWork}
 import sigil.tool.consult.{ConsultTool, ExtractMemoriesInput, ExtractMemoriesTool, SummarizationInput, SummarizationTool}
 
 /**
@@ -66,7 +66,31 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                                      * with the same knob — fewer calls per
                                      * level, but the same bound applies. Bug
                                      * #145. */
-                                   hierarchicalParallelism: Int = 1) extends ContextCompressor {
+                                   hierarchicalParallelism: Int = 1,
+                                   /** Hard cap on the summarisation call's
+                                     * generation. Without a cap the model
+                                     * falls through to the provider's
+                                     * server-side `n_predict` default —
+                                     * observed in the wild generating 12K-
+                                     * token "summaries" (functionally
+                                     * paraphrases of the input) before the
+                                     * server truncates mid-sentence. The
+                                     * truncated text persisted as a
+                                     * `ContextSummary` regardless. 2048
+                                     * comfortably fits the two-paragraph
+                                     * shape the system prompt asks for;
+                                     * chunks that would genuinely need more
+                                     * were producing lossy paraphrase
+                                     * anyway. Bug #148. */
+                                   maxSummaryTokens: Int = 2048,
+                                   /** Hard cap on the fact-extraction call's
+                                     * generation. Mirror of `maxSummaryTokens`
+                                     * for the `extract_memories` path so an
+                                     * aggressive extractor can't enumerate
+                                     * hundreds of pseudo-facts past any
+                                     * useful limit. 1024 holds 20-30 typical
+                                     * fact records. Bug #148. */
+                                   maxExtractionTokens: Int = 1024) extends ContextCompressor {
 
   override def compress(sigil: Sigil,
                         callerModelId: Id[Model],
@@ -124,7 +148,8 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                          tokenizer = tokenizer,
                          reservedOutputTokens = reservedOutputTokens,
                          promptOverheadTokens = promptOverheadTokens,
-                         maxChunkBytes = maxChunkBytes
+                         maxChunkBytes = maxChunkBytes,
+                         maxSummaryTokens = maxSummaryTokens
                        ).compress(sigil, summarizationModel, chain, rapid.Stream.emits(materialized), conversationId)
         } yield summary
       }
@@ -172,7 +197,8 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
       chain = chain,
       systemPrompt = extractionSystemPrompt,
       userPrompt = userPrompt,
-      tool = ExtractMemoriesTool
+      tool = ExtractMemoriesTool,
+      generationSettings = GenerationSettings(maxOutputTokens = Some(maxExtractionTokens))
     ).flatMap {
       case Some(result) =>
         val kept = result.memories.filter(_.content.trim.length >= minFactChars)
@@ -215,7 +241,8 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
       chain = chain,
       systemPrompt = summarizationSystemPrompt,
       userPrompt = userPrompt,
-      tool = SummarizationTool
+      tool = SummarizationTool,
+      generationSettings = GenerationSettings(maxOutputTokens = Some(maxSummaryTokens))
     ).flatMap {
       case Some(result) if result.summary.trim.nonEmpty =>
         val record = ContextSummary(
