@@ -15,7 +15,7 @@ import sigil.provider.{
 import sigil.signal.{EventState, Signal}
 import sigil.tool.ToolName
 import sigil.tool.core.{CoreTools, NoResponseTool, RespondTool}
-import sigil.tool.model.{NoResponseInput, RespondInput, ResponseContent}
+import sigil.tool.model.{NoResponseInput, RespondContent, RespondInput, ResponseContent}
 import spice.http.HttpRequest
 
 import java.util.concurrent.{ConcurrentLinkedQueue, atomic}
@@ -80,7 +80,7 @@ class OrchestratorSilentTurnSpec extends AsyncWordSpec with AsyncTaskSpec with M
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
         ProviderEvent.ToolCallComplete(callId,
-          RespondInput(topicLabel = "Test", topicSummary = "Test summary", content = "Done.", endsTurn = true)),
+          RespondInput(topicLabel = "Test", topicSummary = "Test summary", content = RespondContent.Text("Done."), endsTurn = true)),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }

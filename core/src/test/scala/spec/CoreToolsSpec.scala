@@ -13,7 +13,7 @@ import sigil.signal.EventState
 import sigil.tool.core.{RespondTool, CancelTool}
 import sigil.tool.discovery.CapabilityType
 import sigil.tool.util.LookupTool
-import sigil.tool.model.{LookupInput, RespondInput, CancelInput}
+import sigil.tool.model.{LookupInput, RespondContent, RespondInput, CancelInput}
 
 /**
  * Round-trip coverage for framework tools where direct `execute` semantics
@@ -50,7 +50,7 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val input = RespondInput(
         topicLabel = "Refactoring Notes",
         topicSummary = "Notes on refactoring strategies.",
-        content = "Hello!",
+        content = RespondContent.Text("Hello!"),
         endsTurn = true
       )
       val events = RespondTool

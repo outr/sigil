@@ -5,7 +5,7 @@ import sigil.conversation.ContextFrame
 import sigil.event.{Event, Message}
 import sigil.signal.EventState
 import sigil.tool.{ToolExample, ToolName, TypedTool}
-import sigil.tool.model.{MarkdownContentParser, RespondInput}
+import sigil.tool.model.{MarkdownContentParser, RespondContent, RespondInput, ResponseContent}
 
 /**
  * The respond tool — every user-facing reply goes through here. The
@@ -55,13 +55,34 @@ case object RespondTool extends TypedTool[RespondInput](
       |  expects results, not silence. If you don't have a concrete next step, finish the turn
       |  cleanly with `endsTurn = true`.
       |
-      |For interactive choices, labeled key/value cards, or failure signals: use `respond_options`,
-      |`respond_field`, `respond_failure`.""".stripMargin,
+      |`content` is a tagged-union picking the reply shape:
+      |  - `Text(content)`              — plain markdown reply (chat, explanations, code).
+      |  - `Failure(reason, recoverable)` — honest "can't do that" signal. `recoverable = true` for
+      |    transient failures (rate limits, network) the user can retry; `false` for permanent
+      |    (missing permissions, unsupported input).
+      |  - `Field(label, value, icon?)` — single labeled key/value card (status, source, metadata).
+      |  - `Options(prompt, options, allowMultiple)` — structured multi-choice prompt. The user can
+      |    still answer in natural language. `allowMultiple = true` when independent choices the
+      |    user might combine; `false` for forced single selection (Yes/No, plan tier, theme).""".stripMargin,
   examples = Nil
 ) with RespondFamilyTool {
 
   override protected def executeTyped(input: RespondInput, context: TurnContext): rapid.Stream[Event] = {
-    val blocks = MarkdownContentParser.parse(input.content)
+    // Bug #157 — dispatch on the tagged-union content slot. Text
+    // still flows through MarkdownContentParser; the other kinds
+    // map 1:1 to typed ResponseContent blocks. Topic-resolution +
+    // keyword-update fires for every kind so atomic-call paths
+    // stay symmetric with the streaming-text path.
+    val blocks: Vector[ResponseContent] = input.content match {
+      case RespondContent.Text(content) =>
+        MarkdownContentParser.parse(content)
+      case RespondContent.Failure(reason, recoverable) =>
+        Vector(ResponseContent.Failure(reason = reason, recoverable = recoverable))
+      case RespondContent.Field(label, value, icon) =>
+        Vector(ResponseContent.Field(label = label, value = value, icon = icon))
+      case RespondContent.Options(prompt, options, allowMultiple) =>
+        Vector(ResponseContent.Options(prompt = prompt, options = options, allowMultiple = allowMultiple))
+    }
     val message = Message(
       participantId = context.caller,
       conversationId = context.conversation.id,

@@ -16,7 +16,7 @@ import sigil.provider.{
 import sigil.signal.EventState
 import sigil.tool.ToolName
 import sigil.tool.core.{ChangeModeTool, CoreTools, RespondTool}
-import sigil.tool.model.{ChangeModeInput, ResponseContent, RespondInput}
+import sigil.tool.model.{ChangeModeInput, ResponseContent, RespondContent, RespondInput}
 import spice.http.HttpRequest
 
 import java.util.concurrent.atomic
@@ -79,7 +79,7 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
             ProviderEvent.ToolCallComplete(
               callId,
-              RespondInput(topicLabel = "Cap", topicSummary = "cap-hit synth", content = "synthesized from gathered context", endsTurn = true)
+              RespondInput(topicLabel = "Cap", topicSummary = "cap-hit synth", content = RespondContent.Text("synthesized from gathered context"), endsTurn = true)
             ),
             ProviderEvent.Done(StopReason.Complete)
           )

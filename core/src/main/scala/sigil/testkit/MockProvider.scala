@@ -22,7 +22,7 @@ import scala.jdk.CollectionConverters.*
  *     sigil = TestSigil,
  *     responses = List(
  *       MockProvider.Script.toolCall(CallId("c1"), "respond",
- *         RespondInput("Greeting", "Hi!", "Hello, world.", endsTurn = true)),
+ *         RespondInput("Greeting", "Hi!", RespondContent.Text("Hello, world."), endsTurn = true)),
  *       MockProvider.Script.text("Done.")
  *     )
  *   )

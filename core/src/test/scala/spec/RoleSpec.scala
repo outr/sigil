@@ -9,8 +9,7 @@ import sigil.participant.{AgentParticipant, DefaultAgentParticipant}
 import sigil.provider.{GenerationSettings, Instructions, Mode, ToolPolicy}
 import sigil.tool.ToolName
 import sigil.tool.core.{
-  FindCapabilityTool, NoResponseTool, RespondTool,
-  RespondFailureTool, RespondFieldTool, RespondOptionsTool, CancelTool
+  FindCapabilityTool, RespondTool, CancelTool
 }
 
 /**
@@ -26,10 +25,7 @@ class RoleSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
   private val essentials: Set[ToolName] =
-    List(
-      RespondTool, RespondOptionsTool, RespondFieldTool, RespondFailureTool,
-      NoResponseTool, CancelTool
-    ).map(_.schema.name).toSet
+    List(RespondTool, CancelTool).map(_.schema.name).toSet
   private val withDiscovery: Set[ToolName] =
     essentials + FindCapabilityTool.schema.name
 

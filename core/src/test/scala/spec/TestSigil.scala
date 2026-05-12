@@ -74,14 +74,22 @@ object TestSigil extends Sigil {
   // writes all of these into SigilDB.tools at startup; the default
   // DbToolFinder resolves by name from there.
   override def staticTools: List[Tool] =
-    super.staticTools ++ List(
+    super.staticTools ++ (List(
       sigil.tool.core.ChangeModeTool,
+      // Deprecated standalone respond-family tools (sigil bug #157)
+      // — kept registered here so specs that exercise the legacy
+      // by-name dispatch path (e.g. PostRespondContextSpec) still
+      // resolve them through `findTools`.
+      sigil.tool.core.RespondOptionsTool,
+      sigil.tool.core.RespondFieldTool,
+      sigil.tool.core.RespondFailureTool,
+      sigil.tool.core.NoResponseTool,
       SendSlackMessageTool,
       sigil.tool.util.SleepTool,
       sigil.tool.util.LookupTool,
       GetMagicNumberTool,
       ProgressEmittingTool
-    )
+    ): @annotation.nowarn("cat=deprecation"))
 
   // ---- registration lists ----
 

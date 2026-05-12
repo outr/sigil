@@ -12,7 +12,7 @@ import sigil.provider.{CallId, ConversationRequest, GenerationSettings, Instruct
 import sigil.signal.Signal
 import sigil.tool.core.RespondTool
 import sigil.tool.consult.TopicClassifierInput
-import sigil.tool.model.RespondInput
+import sigil.tool.model.{RespondContent, RespondInput}
 import spice.http.HttpRequest
 
 /**
@@ -120,7 +120,7 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
     "emit NO TopicChange when the proposed label equals the current label (no classifier call)" in {
       val input = RespondInput(
-        content = "scripted",
+        content = RespondContent.Text("scripted"),
         topicLabel = "Existing Thread",
         topicSummary = "Same thread.",
         endsTurn = true
@@ -135,7 +135,7 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val priorId = Topic.id("prior-py")
       val priorEntry = TopicEntry(priorId, "Python GIL", "Python Global Interpreter Lock.")
       val input = RespondInput(
-        content = "back to GIL",
+        content = RespondContent.Text("back to GIL"),
         topicLabel = "Python GIL",
         topicSummary = "Returning to the GIL topic.",
         endsTurn = true
@@ -157,7 +157,7 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
     "emit NO TopicChange when the classifier returns NoChange" in {
       val input = RespondInput(
-        content = "scripted",
+        content = RespondContent.Text("scripted"),
         topicLabel = "Python GIL and I/O",
         topicSummary = "Effect of GIL on I/O-bound Python code.",
         endsTurn = true
@@ -170,7 +170,7 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
     "emit a TopicChange(Rename) with label + summary updated when the classifier returns Refine" in {
       val input = RespondInput(
-        content = "scripted",
+        content = RespondContent.Text("scripted"),
         topicLabel = "Python GIL",
         topicSummary = "Python's Global Interpreter Lock and threading.",
         endsTurn = true
@@ -194,7 +194,7 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
     "emit a TopicChange(Switch) and persist a new Topic when the classifier returns New" in {
       val input = RespondInput(
-        content = "scripted",
+        content = RespondContent.Text("scripted"),
         topicLabel = "TypeScript Generics",
         topicSummary = "TypeScript's generic type parameterization.",
         endsTurn = true
@@ -222,7 +222,7 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val priorId = Topic.id("prior-returning")
       val priorEntry = TopicEntry(priorId, "Python GIL", "GIL topic from earlier.")
       val input = RespondInput(
-        content = "scripted",
+        content = RespondContent.Text("scripted"),
         topicLabel = "GIL and NumPy",
         topicSummary = "GIL implications for NumPy.",
         endsTurn = true
@@ -242,7 +242,7 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
     "emit NO TopicChange when the classifier call fails (fallback)" in {
       val input = RespondInput(
-        content = "scripted",
+        content = RespondContent.Text("scripted"),
         topicLabel = "Unrelated Label",
         topicSummary = "Something.",
         endsTurn = true
@@ -257,7 +257,7 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
   "Message topicId tagging" should {
     "tag the emitted Message with the current topicId (shift takes effect next message)" in {
       val input = RespondInput(
-        content = "scripted",
+        content = RespondContent.Text("scripted"),
         topicLabel = "New Subject",
         topicSummary = "A new subject.",
         endsTurn = true

@@ -25,14 +25,13 @@ import sigil.tool.ToolInput
  * display content (sidebar / breadcrumb hover) and as the rich semantic
  * context the classifier uses to compare against prior topics' summaries.
  *
- * `content` — REQUIRED. Plain markdown. Code fences for code blocks,
- * `# heading` for headings, `![alt](url)` for images, lists / links /
- * tables work. The framework parses the markdown into typed
- * [[ResponseContent]] blocks via [[MarkdownContentParser]] at
- * turn-settle time. For interactive choices, labeled fields, or typed
- * failure signals — markdown can't express those — call the dedicated
- * atomic tools (`respond_options`, `respond_field`, `respond_failure`)
- * instead of (or alongside) `respond`.
+ * `content` — REQUIRED. Tagged-union picking the reply shape
+ * (sigil bug #157): [[RespondContent.Text]] for plain markdown,
+ * [[RespondContent.Failure]] when the task can't be completed,
+ * [[RespondContent.Field]] for a single labeled key/value,
+ * [[RespondContent.Options]] for a structured multi-choice prompt.
+ * One tool call covers every user-facing reply shape; the framework
+ * dispatches on the discriminator at turn-settle time.
  *
  * `keywords` — OPTIONAL. The agent's keyword tagging of the active
  * subject for memory retrieval. The framework stores them on the
@@ -57,6 +56,6 @@ import sigil.tool.ToolInput
  */
 case class RespondInput(topicLabel: String,
                         topicSummary: String,
-                        content: String,
+                        content: RespondContent,
                         endsTurn: Boolean,
                         keywords: List[String] = Nil) extends ToolInput derives RW

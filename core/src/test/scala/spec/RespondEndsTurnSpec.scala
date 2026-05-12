@@ -15,7 +15,7 @@ import sigil.provider.{
 import sigil.signal.EventState
 import sigil.tool.ToolName
 import sigil.tool.core.{CoreTools, RespondTool}
-import sigil.tool.model.{ResponseContent, RespondInput}
+import sigil.tool.model.{ResponseContent, RespondContent, RespondInput}
 import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.AtomicInteger
@@ -72,14 +72,14 @@ class RespondEndsTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
           RespondInput(
             topicLabel   = "Status",
             topicSummary = "Progress update before doing more work.",
-            content      = "Let me check…",
+            content      = RespondContent.Text("Let me check…"),
             endsTurn     = false
           )
         else
           RespondInput(
             topicLabel   = "Done",
             topicSummary = "Final answer for this turn.",
-            content      = "Done.",
+            content      = RespondContent.Text("Done."),
             endsTurn     = true
           )
       Stream.emits(List(
@@ -107,7 +107,7 @@ class RespondEndsTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         ProviderEvent.ToolCallComplete(callId, RespondInput(
           topicLabel   = s"Status $n",
           topicSummary = "Status pulse.",
-          content      = s"Step $n…",
+          content      = RespondContent.Text(s"Step $n…"),
           endsTurn     = false
         )),
         ProviderEvent.Done(StopReason.Complete)
@@ -189,7 +189,7 @@ class RespondEndsTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
             ProviderEvent.ToolCallComplete(callId, RespondInput(
               topicLabel   = "Done",
               topicSummary = "Direct reply.",
-              content      = "Hi.",
+              content      = RespondContent.Text("Hi."),
               endsTurn     = true
             )),
             ProviderEvent.Done(StopReason.Complete)

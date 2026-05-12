@@ -17,7 +17,7 @@ import sigil.provider.{
 import sigil.signal.{AgentActivity, AgentStateDelta, EventState, Signal}
 import sigil.tool.ToolName
 import sigil.tool.core.{CoreTools, RespondTool}
-import sigil.tool.model.{ChangeModeInput, ResponseContent, RespondInput}
+import sigil.tool.model.{ChangeModeInput, ResponseContent, RespondContent, RespondInput}
 import spice.http.HttpRequest
 
 import java.util.concurrent.{ConcurrentLinkedQueue, atomic}
@@ -90,7 +90,7 @@ class PerTurnExtractorBoundarySpec extends AsyncWordSpec with AsyncTaskSpec with
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
             ProviderEvent.ToolCallComplete(
               callId,
-              RespondInput(topicLabel = "Test", topicSummary = "Per-turn extractor", content = "Reply", endsTurn = true)
+              RespondInput(topicLabel = "Test", topicSummary = "Per-turn extractor", content = RespondContent.Text("Reply"), endsTurn = true)
             ),
             ProviderEvent.Done(StopReason.Complete)
           )

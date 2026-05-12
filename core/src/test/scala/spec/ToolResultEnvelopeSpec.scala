@@ -185,10 +185,11 @@ class ToolAnnotationsSpec extends AnyWordSpec with Matchers {
 
   "Respond-family tools" should {
     "all set destructive = true" in {
-      List(
-        RespondTool, RespondOptionsTool, RespondFieldTool, RespondFailureTool,
-        RespondCardTool, RespondCardsTool, NoResponseTool
-      ).foreach { t =>
+      val deprecatedFamily: List[sigil.tool.Tool] =
+        (List(RespondOptionsTool, RespondFieldTool, RespondFailureTool): @annotation.nowarn("cat=deprecation"))
+      val activeFamily: List[sigil.tool.Tool] =
+        List(RespondTool, RespondCardTool, RespondCardsTool, NoResponseTool)
+      (activeFamily ++ deprecatedFamily).foreach { t =>
         withClue(s"${t.name.value} should be destructive: ") {
           t.destructive shouldBe true
         }
