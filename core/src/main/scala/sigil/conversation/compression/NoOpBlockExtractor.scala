@@ -10,6 +10,8 @@ import sigil.conversation.ContextFrame
  * [[StandardBlockExtractor]] (or a custom impl) to enable extraction.
  */
 object NoOpBlockExtractor extends BlockExtractor {
-  override def extract(sigil: Sigil, frames: Vector[ContextFrame]): Task[BlockExtractionResult] =
+  override def extract(sigil: Sigil,
+                       frames: Vector[ContextFrame],
+                       progress: BlockExtractor.ProgressCallback): Task[BlockExtractionResult] =
     Task.pure(BlockExtractionResult(frames, Vector.empty))
 }

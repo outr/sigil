@@ -34,55 +34,82 @@ case class StandardBlockExtractor(toInformation: (String, Id[Information]) => In
                                   extractToolResult: Boolean = true,
                                   placeholder: (Id[Information], String) => String =
                                     StandardBlockExtractor.DefaultPlaceholder,
-                                  summaryOf: String => String = StandardBlockExtractor.DefaultSummary) extends BlockExtractor {
+                                  summaryOf: String => String = StandardBlockExtractor.DefaultSummary,
+                                  /** Emit a progress callback every N frames inspected.
+                                    * Default 500 keeps the activity-bar pulse cheap on small
+                                    * runs but visible on imports. Apps with very wide UIs
+                                    * tighten; apps with no progress surface keep the
+                                    * default — the callback is a no-op by default. */
+                                  progressEvery: Int = 500) extends BlockExtractor {
 
-  override def extract(sigil: Sigil, frames: Vector[ContextFrame]): Task[BlockExtractionResult] = {
-    val pending = Vector.newBuilder[Task[FrameOutcome]]
-    frames.foreach {
-      case t: ContextFrame.Text if extractText && t.content.length >= minChars =>
-        pending += extractOne(sigil, t.content, replacement => t.copy(content = replacement))
+  override def extract(sigil: Sigil,
+                       frames: Vector[ContextFrame],
+                       progress: BlockExtractor.ProgressCallback): Task[BlockExtractionResult] = {
+    val total = frames.size
+    // Walk the frame vector once, building the eventual outcome
+    // vector + a flat batch of new Information records to persist in
+    // one shot. No I/O happens during the walk — the bulk write is
+    // amortised at the end via `Sigil.putInformations`. Progress
+    // pulses every `progressEvery` frames so the curator's
+    // activity-bar label reflects forward motion.
+    val outcomes = new Array[ContextFrame](total)
+    val summariesBuilder = Vector.newBuilder[InformationSummary]
+    val infosBuilder     = Vector.newBuilder[Information]
 
-      case tr: ContextFrame.ToolResult if extractToolResult && tr.content.length >= minChars =>
-        pending += extractOne(sigil, tr.content, replacement => tr.copy(content = replacement))
-
-      case other =>
-        pending += Task.pure(FrameOutcome(other, None))
+    def walk(remaining: List[(ContextFrame, Int)]): Task[Unit] = remaining match {
+      case Nil => Task.unit
+      case (frame, idx) :: rest =>
+        val (resultFrame, summary, info) = frame match {
+          case t: ContextFrame.Text if extractText && t.content.length >= minChars =>
+            val (f, s, i) = buildExtraction(t.content, replacement => t.copy(content = replacement))
+            (f, Some(s), Some(i))
+          case tr: ContextFrame.ToolResult if extractToolResult && tr.content.length >= minChars =>
+            val (f, s, i) = buildExtraction(tr.content, replacement => tr.copy(content = replacement))
+            (f, Some(s), Some(i))
+          case other =>
+            (other, None, None)
+        }
+        outcomes(idx) = resultFrame
+        summary.foreach(summariesBuilder += _)
+        info.foreach(infosBuilder += _)
+        val nextIdx = idx + 1
+        val tick: Task[Unit] =
+          if (progressEvery > 0 && nextIdx % progressEvery == 0) progress(nextIdx, total)
+          else Task.unit
+        tick.flatMap(_ => walk(rest))
     }
 
-    Task.sequence(pending.result().toList).map { outcomes =>
-      val keptFrames = Vector.newBuilder[ContextFrame]
-      val newInfo = Vector.newBuilder[InformationSummary]
-      outcomes.foreach { out =>
-        keptFrames += out.frame
-        out.summary.foreach(newInfo += _)
-      }
-      BlockExtractionResult(keptFrames.result(), newInfo.result())
-    }
+    for {
+      _ <- walk(frames.iterator.zipWithIndex.toList)
+      infos = infosBuilder.result()
+      // One bulk write at the end. Apps with a transactional store
+      // override `putInformations` to a single multi-upsert; the
+      // default falls back to `N` calls to `putInformation` for
+      // backwards compatibility.
+      _ <- if (infos.isEmpty) Task.unit else sigil.putInformations(infos)
+      _ <- if (progressEvery > 0 && total > 0 && total % progressEvery != 0) progress(total, total) else Task.unit
+    } yield BlockExtractionResult(outcomes.toVector, summariesBuilder.result())
   }
 
   /** Allocate an Information id, build the record via the factory,
-    * persist it, and return a FrameOutcome carrying the replaced
-    * frame + the catalog summary. */
-  private def extractOne(sigil: Sigil,
-                         content: String,
-                         replace: String => ContextFrame): Task[FrameOutcome] = {
-    val newId = Id[Information]()
-    val info = toInformation(content, newId)
+    * and return the replaced frame + the catalog summary + the
+    * record to be persisted at the end of the pass. No I/O here. */
+  private def buildExtraction(content: String,
+                              replace: String => ContextFrame): (ContextFrame, InformationSummary, Information) = {
+    val newId   = Id[Information]()
+    val info    = toInformation(content, newId)
     val summary = summaryOf(content)
     val refText = placeholder(newId, summary)
-    sigil.putInformation(info).map { _ =>
-      FrameOutcome(
-        frame = replace(refText),
-        summary = Some(InformationSummary(
-          id = newId,
-          informationType = info.informationType,
-          summary = summary
-        ))
-      )
-    }
+    (
+      replace(refText),
+      InformationSummary(
+        id              = newId,
+        informationType = info.informationType,
+        summary         = summary
+      ),
+      info
+    )
   }
-
-  private case class FrameOutcome(frame: ContextFrame, summary: Option[InformationSummary])
 }
 
 object StandardBlockExtractor {

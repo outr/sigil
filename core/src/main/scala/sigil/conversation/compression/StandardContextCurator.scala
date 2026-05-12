@@ -105,7 +105,13 @@ case class StandardContextCurator(sigil: Sigil,
         visibleFrames = rawFrames.filter(f => sigil.visibilityAllows(f.visibility, chain.lastOption.orNull))
         optimizedFrames = optimizer.optimize(visibleFrames, elide, chain.headOption)
         _             <- control.step(s"Extracting blocks (${optimizedFrames.size} frames)")
-        blockResult   <- blockExtractor.extract(sigil, optimizedFrames)
+        // Pulse the workflow step every progress callback the
+        // extractor fires so the activity bar reflects forward
+        // motion on bulk imports instead of sitting on the same
+        // label for minutes. Default cadence (every 500 frames)
+        // keeps small-conversation noise low.
+        progressCb    = (i: Int, n: Int) => control.step(s"Extracting blocks ($i / $n)")
+        blockResult   <- blockExtractor.extract(sigil, optimizedFrames, progressCb)
         _             <- control.step("Retrieving memories")
         memoryResult  <- memoryRetriever.retrieve(sigil, conversationId, blockResult.frames, chain)
         projections   <- loadProjections(conversationId, chain)

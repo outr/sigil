@@ -1311,6 +1311,22 @@ trait Sigil {
    */
   def putInformation(information: Information): Task[Unit] = Task.unit
 
+  /**
+   * Bulk variant of [[putInformation]]. The framework's
+   * [[sigil.conversation.compression.StandardBlockExtractor]] hands
+   * the entire batch in one call so apps backed by transactional
+   * stores (LightDB + Lucene, RocksDB, Postgres) can amortise commit
+   * / fsync / segment-flush overhead across the whole batch.
+   *
+   * Default = `N` calls to `putInformation` — preserves the
+   * per-record contract for apps that don't override. Apps with a
+   * transactional store override to a single-transaction multi-upsert.
+   * Bulk-import flows (50K+ events) drop from `N` commits to one when
+   * the override lands.
+   */
+  def putInformations(informations: Vector[Information]): Task[Unit] =
+    Task.sequence(informations.toList.map(putInformation)).unit
+
   // -- memory --
 
   /**
