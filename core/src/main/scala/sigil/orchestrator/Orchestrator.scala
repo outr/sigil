@@ -153,10 +153,6 @@ object Orchestrator {
     /** Accumulates every text fragment the agent produced across the
       * whole turn. Used by the per-turn memory extractor after `Done`. */
     val turnBuffer: StringBuilder = new StringBuilder
-    /** Set to true once the per-turn extractor has been fired for this
-      * turn so repeated `Done` events (Usage → Done race) don't
-      * double-fire. */
-    var extractorFired: Boolean = false
     /** Stable Message id per image-generation callId. The first
       * ImageGenerationPartial creates an Active Message; subsequent
       * partials emit `ImageDelta` updates targeting this id; the
@@ -707,10 +703,14 @@ object Orchestrator {
             }
           case _ => Nil
         }
-        if (!state.extractorFired) {
-          state.extractorFired = true
-          fireMemoryExtractor(sigil, request, state).startUnit()
-        }
+        // Bug #149 — memory extraction used to fire per-iteration
+        // here. Lifted to `Sigil.runAgentLoop`'s `terminate()`
+        // boundary so it fires exactly once per user turn instead
+        // of once per agent-loop iteration. The orchestrator's
+        // turn-scoped buffer is unreliable for this anyway: each
+        // Orchestrator.process call has its own State, so a
+        // multi-iteration turn produced N extractions over
+        // overlapping content.
         // Bug #75 — if the model emitted plain text without any tool
         // call this turn, the framework was silently dropping the
         // text and bug-#46's placeholder fired post-loop with no
@@ -949,39 +949,6 @@ object Orchestrator {
     List[Signal](syntheticInvoke, diagnostic)
   }
 
-  /**
-   * Fire-and-forget per-turn memory extraction. Extracts the last
-   * user-authored text frame from the turn's view, pairs it with
-   * the agent's accumulated response text, and hands both to the
-   * app-wired [[sigil.conversation.compression.extract.MemoryExtractor]].
-   * Failures are logged but never propagate — extraction is best-
-   * effort latency-hidden work.
-   */
-  private def fireMemoryExtractor(sigil: Sigil,
-                                  request: ConversationRequest,
-                                  state: State): Task[Unit] = {
-    val agentResponse = state.turnBuffer.toString.trim
-    val caller = request.chain.lastOption
-    val userText = request.turnInput.frames.reverseIterator
-      .collectFirst {
-        case t: ContextFrame.Text if !caller.contains(t.participantId) => t.content
-      }
-      .getOrElse("")
-    if (userText.isEmpty && agentResponse.isEmpty) Task.unit
-    else sigil.memoryExtractor
-      .extract(
-        sigil = sigil,
-        conversationId = request.conversationId,
-        modelId = request.modelId,
-        chain = request.chain,
-        userMessage = userText,
-        agentResponse = agentResponse
-      )
-      .unit
-      .handleError { e =>
-        Task(scribe.warn(s"MemoryExtractor failed for conversation ${request.conversationId.value}: ${e.getMessage}"))
-      }
-  }
 
   /** Public alias for [[executeAtomic]] — exposes the consent +
     * precondition gates the agent loop runs before dispatching a

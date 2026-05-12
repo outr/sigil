@@ -4830,7 +4830,13 @@ trait Sigil {
       // when this stays false. Bug #46 — without it, an agent that
       // chains tool calls without ever calling `respond` /
       // `no_response` / etc. ends the conversation in silence.
-      userVisibleSeen = new java.util.concurrent.atomic.AtomicBoolean(false)
+      userVisibleSeen = new java.util.concurrent.atomic.AtomicBoolean(false),
+      // Bug #149 — the per-turn memory extractor must fire exactly
+      // once per user turn (not once per agent-loop iteration). This
+      // flag is threaded through every recursion so a CAS at the
+      // terminate path guarantees a single fire across the whole
+      // loop.
+      turnExtractorFired = new java.util.concurrent.atomic.AtomicBoolean(false)
     )
 
   /**
@@ -4850,6 +4856,13 @@ trait Sigil {
                                  sinceTimestamp: Timestamp,
                                  greeting: Boolean = false,
                                  userVisibleSeen: java.util.concurrent.atomic.AtomicBoolean,
+                                 /** Bug #149 — single-shot fire-gate for the
+                                   * per-turn memory extractor. Shared across
+                                   * every iteration of the loop so the
+                                   * extractor runs exactly once per user
+                                   * turn at the terminate boundary, not
+                                   * once per iteration. */
+                                 turnExtractorFired: java.util.concurrent.atomic.AtomicBoolean,
                                  /** Sigil bug #125 — when `true`, this is the
                                    * forced-synthesis turn invoked by the
                                    * cap-hit soft-stop. The loop runs ONE
@@ -4861,6 +4874,18 @@ trait Sigil {
                                    * point the soft path has genuinely
                                    * exhausted. */
                                  forceResponseSynthesis: Boolean = false): Task[Unit] = Task.defer {
+    // Bug #149 — release the agent's claim AND fire the per-turn
+    // memory extractor exactly once. The CAS-guard guarantees a
+    // single extraction across every terminal exit path of the
+    // loop (Stop, max-iterations, cap-hit, checkpoint intervention,
+    // post-stream error). The extractor itself runs on a fiber
+    // so the release path isn't blocked by its LLM round-trip.
+    def terminate(): Task[Unit] = {
+      if (turnExtractorFired.compareAndSet(false, true)) {
+        firePostTurnExtraction(agent, convId, claimed.timestamp).startUnit()
+      }
+      releaseClaim(claimed)
+    }
     // Snapshot the start of THIS iteration. The next iteration uses this as
     // its own `sinceTimestamp`, so events emitted during this iteration
     // (including self-emitted non-terminal tool results the agent acted on)
@@ -4884,7 +4909,7 @@ trait Sigil {
     // circuit if so (graceful = "don't start another iteration"; force
     // = "same, plus the in-flight stream below won't run"). Either way,
     // release and exit.
-    if (stopFlag.exists(_.requested)) releaseClaim(claimed)
+    if (stopFlag.exists(_.requested)) terminate()
     else
     // Reload the conversation each iteration — materialized projections
     // (currentMode, modified, etc.) update as Events flow through `publish`,
@@ -4892,6 +4917,7 @@ trait Sigil {
     withDB(_.conversations.transaction(_.get(convId))).flatMap {
       case None =>
         // Conversation deleted mid-turn — release the lock and exit cleanly.
+        // Extractor isn't fired here — no conversation = nothing to extract.
         releaseClaim(claimed)
       case Some(conv) =>
         // Snapshot suggestedTools BEFORE the iteration so we can detect
@@ -4972,7 +4998,7 @@ trait Sigil {
           // else — a Stop that fired mid-stream means exit now, don't
           // continue looping even if there are new triggers.
           if (stopFlag.exists(_.requested))
-            ensureSilentTurnReply(agent, convId, userVisibleSeen).flatMap(_ => releaseClaim(claimed))
+            ensureSilentTurnReply(agent, convId, userVisibleSeen).flatMap(_ => terminate())
           else if (forceResponseSynthesis) {
             // Sigil bug #125 — the cap-hit soft-stop ran. With
             // `tool_choice: respond` the model SHOULD have called
@@ -4983,9 +5009,9 @@ trait Sigil {
             // has genuinely exhausted — raise the hard throw so the
             // calling fiber's failure handler sees it.
             if (userVisibleSeen.get())
-              releaseClaim(claimed)
+              terminate()
             else
-              releaseClaim(claimed).flatMap(_ =>
+              terminate().flatMap(_ =>
                 Task.error(new AgentRunawayException(
                   s"Agent ${agent.id.value} hit maxAgentIterations ($maxAgentIterations) " +
                     s"in conversation ${conv._id.value} AND the forced-synthesis turn also " +
@@ -5046,7 +5072,7 @@ trait Sigil {
                     // publish user-visible and release the claim. The
                     // agent can't make progress without the user's
                     // reply; the next user Message will re-trigger.
-                    publish(intervention.message).flatMap(_ => releaseClaim(claimed))
+                    publish(intervention.message).flatMap(_ => terminate())
                   case Some(intervention) =>
                     // Bug #133 — stall / no-progress streak. The
                     // intervention text is a directive to the agent
@@ -5084,11 +5110,13 @@ trait Sigil {
                           sinceTimestamp         = thisIterationStart,
                           greeting               = false,
                           userVisibleSeen        = userVisibleSeen,
+                          turnExtractorFired     = turnExtractorFired,
                           forceResponseSynthesis = true
                         )
                       }
                   case None =>
-                    runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart, userVisibleSeen = userVisibleSeen)
+                    runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart,
+                      userVisibleSeen = userVisibleSeen, turnExtractorFired = turnExtractorFired)
                 }
               }
             case true if !forceResponseSynthesis =>
@@ -5145,6 +5173,7 @@ trait Sigil {
                     sinceTimestamp         = thisIterationStart,
                     greeting               = false,
                     userVisibleSeen        = userVisibleSeen,
+                    turnExtractorFired     = turnExtractorFired,
                     forceResponseSynthesis = true
                   )
                 )
@@ -5156,13 +5185,13 @@ trait Sigil {
               // a buggy provider). Soft path exhausted — surface the hard
               // failure so the calling fiber's error boundary logs it.
               ensureSilentTurnReply(agent, convId, userVisibleSeen).flatMap(_ =>
-                releaseClaim(claimed).flatMap(_ =>
+                terminate().flatMap(_ =>
                   Task.error(new AgentRunawayException(
                     s"Agent ${agent.id.value} hit maxAgentIterations ($maxAgentIterations) " +
                       s"in conversation ${conv._id.value} AND the forced-synthesis turn also " +
                       s"failed to call `respond`. Check LLM behavior or raise the cap."))))
             case false =>
-              ensureSilentTurnReply(agent, convId, userVisibleSeen).flatMap(_ => releaseClaim(claimed))
+              ensureSilentTurnReply(agent, convId, userVisibleSeen).flatMap(_ => terminate())
             }
           }
         }
@@ -5176,10 +5205,63 @@ trait Sigil {
       // the original error.
       scribe.error(s"runAgent failed for ${agent.id.value} in ${convId.value}", t)
       publishFailureMessage(agent, convId, t).handleError(_ => Task.unit)
-        .flatMap(_ => releaseClaim(claimed).handleError(_ => Task.unit))
+        .flatMap(_ => terminate().handleError(_ => Task.unit))
         .flatMap(_ => Task.error(t))
     }
   }
+
+  /** Bug #149 — assemble the per-turn extractor's `(userMessage,
+    * agentResponse)` arguments from the conversation's events since
+    * the turn started, and fire `memoryExtractor.extract`. Runs once
+    * per user turn at the agent loop's terminate boundary (see
+    * `terminate()` inside `runAgentLoop`). Background fiber —
+    * failures are logged + swallowed; the agent's settle path never
+    * blocks on extraction. */
+  private final def firePostTurnExtraction(agent: AgentParticipant,
+                                           convId: Id[Conversation],
+                                           turnStartTimestamp: Timestamp): Task[Unit] =
+    withDB(_.events.transaction(_.list)).flatMap { all =>
+      val convEvents = all.iterator
+        .filter(_.conversationId == convId)
+        .filter(_.state == EventState.Complete)
+        .toVector
+        .sortBy(_.timestamp.value)
+      // Agent response: text frames the agent authored DURING this
+      // turn (events at or after `claimed.timestamp`).
+      val agentResponse = convEvents.iterator
+        .filter(_.timestamp.value >= turnStartTimestamp.value)
+        .collect {
+          case m: Message if m.participantId == agent.id && m.role == MessageRole.Standard =>
+            m.content.collect { case sigil.tool.model.ResponseContent.Text(t) => t }.mkString("")
+        }
+        .mkString("\n")
+        .trim
+      // User message: the most recent user-authored Message in the
+      // entire conversation. The triggering message PRECEDES the
+      // agent's claim timestamp (it's what woke the agent), so
+      // turn-window filtering would miss it.
+      val userMessage = convEvents.reverseIterator
+        .collectFirst {
+          case m: Message if !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId] && m.role == MessageRole.Standard =>
+            m.content.collect { case sigil.tool.model.ResponseContent.Text(t) => t }.mkString("")
+        }
+        .getOrElse("")
+        .trim
+      if (userMessage.isEmpty && agentResponse.isEmpty) Task.unit
+      else memoryExtractor
+        .extract(
+          sigil          = this,
+          conversationId = convId,
+          modelId        = agent.modelId,
+          chain          = List(agent.id),
+          userMessage    = userMessage,
+          agentResponse  = agentResponse
+        )
+        .unit
+        .handleError { e =>
+          Task(scribe.warn(s"MemoryExtractor failed for conversation ${convId.value}: ${e.getMessage}"))
+        }
+    }
 
   /** Outcome of a progress checkpoint dispatch. `None` means continue
     * the agent loop normally; `Some(message)` means terminate the loop
