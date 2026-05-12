@@ -311,7 +311,21 @@ object Orchestrator {
             val closeBlock = closeCurrentBlock(state, convId)
             (Some(active.toolName), input) match {
               case (Some("respond"), r: RespondInput) =>
-                val parsed = MarkdownContentParser.parse(r.content)
+                // Bug #157 — streaming path only runs when the content
+                // streams via ContentBlockDelta, which is always Text.
+                // The other RespondContent kinds (Failure / Field /
+                // Options) reach the atomic path via executeTyped.
+                val parsed = r.content match {
+                  case t: _root_.sigil.tool.model.RespondContent.Text =>
+                    MarkdownContentParser.parse(t.content)
+                  case other =>
+                    // Unexpected for a streamed respond — render as a
+                    // single Text block of the structured value's
+                    // toString. The atomic dispatch path is the
+                    // intended route for these kinds; this fallback
+                    // exists so a misrouted call still settles.
+                    Vector(_root_.sigil.tool.model.ResponseContent.Text(other.toString))
+                }
                 val settle = MessageDelta(
                   target = msgId,
                   conversationId = convId,
@@ -485,7 +499,16 @@ object Orchestrator {
             if (active.toolName == "respond") {
               input match {
                 case r: RespondInput =>
-                  return Stream.force(refusalChallengeOutcome(sigil, r.content, convId, caller, topicId).map {
+                  // Bug #157 — refusal challenge only inspects the
+                  // Text variant's content. Structured kinds
+                  // (Failure / Field / Options) can't be refusals
+                  // by construction; they're explicit signals.
+                  val textContent = r.content match {
+                    case t: _root_.sigil.tool.model.RespondContent.Text => t.content
+                    case _                                              => ""
+                  }
+                  if (textContent.isEmpty) proceedWithAtomicDispatch()
+                  else return Stream.force(refusalChallengeOutcome(sigil, textContent, convId, caller, topicId).map {
                     case Some(challengeSignals) =>
                       Stream.emits(toolDeltaPrefix ::: challengeSignals)
                     case None =>

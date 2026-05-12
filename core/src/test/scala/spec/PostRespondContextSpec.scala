@@ -15,7 +15,7 @@ import sigil.provider.{
 import sigil.signal.EventState
 import sigil.tool.ToolName
 import sigil.tool.core.{CoreTools, RespondTool}
-import sigil.tool.model.{RespondFieldInput, RespondInput, ResponseContent}
+import sigil.tool.model.{RespondContent, RespondFieldInput, RespondInput, ResponseContent}
 import spice.http.HttpRequest
 
 import java.util.concurrent.{ConcurrentLinkedQueue, atomic}
@@ -79,7 +79,7 @@ class PostRespondContextSpec extends AsyncWordSpec with AsyncTaskSpec with Match
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
             ProviderEvent.ToolCallComplete(
               callId,
-              RespondInput(topicLabel = "Overview", topicSummary = "Project overview", content = "Here's an overview.", endsTurn = true)
+              RespondInput(topicLabel = "Overview", topicSummary = "Project overview", content = RespondContent.Text("Here's an overview."), endsTurn = true)
             ),
             ProviderEvent.Done(StopReason.Complete)
           )

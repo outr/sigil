@@ -28,10 +28,14 @@ import sigil.tool.skill.{ActivateSkillInput, ActivateSkillTool}
  * topic-shift resolution stays deterministic.
  *
  * Markdown can't natively express interactive choices, labeled
- * key/value cards, or typed failure signals — those live as small
- * atomic content tools (`respond_options`, `respond_field`,
- * `respond_failure`) that emit a single `Message` carrying the
- * structured block.
+ * key/value cards, or typed failure signals — the unified `respond`
+ * tool's `content` field accepts those as tagged-union variants
+ * ([[sigil.tool.model.RespondContent.Options]],
+ * [[sigil.tool.model.RespondContent.Field]],
+ * [[sigil.tool.model.RespondContent.Failure]]) so a single tool covers
+ * every reply shape (sigil bug #157). The standalone `respond_options`
+ * / `respond_field` / `respond_failure` tools still ship in core for
+ * apps that registered them by name; they're marked deprecated.
  *
  * Plus essentials: `find_capability`, `cancel`.
  *
@@ -76,9 +80,6 @@ object CoreTools {
   val all: Vector[Tool] =
     Vector(
       RespondTool,
-      RespondOptionsTool,
-      RespondFieldTool,
-      RespondFailureTool,
       FindCapabilityTool,
       CancelTool,
       RecordConsentTool
@@ -131,9 +132,11 @@ object CoreTools {
     * (sigil bug #19). */
   val atomicContentToolNames: Set[sigil.tool.ToolName] = Set(
     RespondTool.schema.name,
-    RespondOptionsTool.schema.name,
-    RespondFieldTool.schema.name,
-    RespondFailureTool.schema.name,
+    // Deprecated standalone respond-family tools (sigil bug #157) still
+    // have atomic-content shape when apps opt them back in.
+    (RespondOptionsTool: @annotation.nowarn("cat=deprecation")).schema.name,
+    (RespondFieldTool: @annotation.nowarn("cat=deprecation")).schema.name,
+    (RespondFailureTool: @annotation.nowarn("cat=deprecation")).schema.name,
     RespondCardTool.schema.name,
     RespondCardsTool.schema.name,
     NoResponseTool.schema.name  // still atomic-shape when apps opt back in

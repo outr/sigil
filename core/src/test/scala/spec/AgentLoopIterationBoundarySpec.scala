@@ -15,7 +15,7 @@ import sigil.provider.{
 import sigil.signal.{AgentActivity, AgentStateDelta, EventState, Signal}
 import sigil.tool.ToolName
 import sigil.tool.core.{CoreTools, RespondTool}
-import sigil.tool.model.{ChangeModeInput, ResponseContent, RespondInput}
+import sigil.tool.model.{ChangeModeInput, ResponseContent, RespondContent, RespondInput}
 import spice.http.HttpRequest
 
 import java.util.concurrent.{ConcurrentLinkedQueue, atomic}
@@ -75,7 +75,7 @@ class AgentLoopIterationBoundarySpec extends AsyncWordSpec with AsyncTaskSpec wi
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
             ProviderEvent.ToolCallComplete(
               callId,
-              RespondInput(topicLabel = "Test", topicSummary = "Iteration boundary repro", content = "Hi.", endsTurn = true)
+              RespondInput(topicLabel = "Test", topicSummary = "Iteration boundary repro", content = RespondContent.Text("Hi."), endsTurn = true)
             ),
             ProviderEvent.Done(StopReason.Complete)
           )

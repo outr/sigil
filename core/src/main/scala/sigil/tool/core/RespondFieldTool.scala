@@ -11,7 +11,12 @@ import sigil.tool.model.{RespondFieldInput, ResponseContent}
  * compact card-shaped content (status summaries, news metadata, product
  * attributes) where the renderer needs label/value/icon structure that
  * markdown's bold-and-text can't express.
+ *
+ * **Deprecated** (sigil bug #157) — the unified `respond` tool accepts
+ * `RespondContent.Field(...)` directly. Kept for backwards-
+ * compatibility with apps that registered this tool by name.
  */
+@deprecated("Use `RespondTool` with `RespondContent.Field(...)`. Sigil bug #157.", "0.x")
 case object RespondFieldTool extends TypedTool[RespondFieldInput](
   name = ToolName("respond_field"),
   description =

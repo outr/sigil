@@ -299,8 +299,8 @@ trait Sigil {
    * into the polymorphic `Tool` RW via `RW.static`.
    *
    * Defaults to [[sigil.tool.core.CoreTools.all]] so the framework
-   * essentials (`respond`, `no_response`, `stop`, `find_capability`)
-   * are always resolvable by name. Apps with multiple
+   * essentials (`respond`, `cancel`, `find_capability`) are always
+   * resolvable by name. Apps with multiple
    * [[sigil.provider.Mode]]s add `ChangeModeTool` themselves; it's
    * shipped in core but not auto-registered, since single-mode apps
    * don't need it. Apps add their
@@ -1438,9 +1438,14 @@ trait Sigil {
       RespondFailureTool, RespondFieldTool, RespondOptionsTool
     }
     import sigil.tool.skill.ActivateSkillTool
+    // Sigil bug #157 — the respond family unified into a single
+    // `respond` tool whose `content` is a tagged union (Text /
+    // Failure / Field / Options). Sigil bug #156 — `no_response`
+    // dropped from default essentials. Apps that opted back into the
+    // legacy standalone tools add them to their own `staticTools` /
+    // `toolNames`; the framework no longer treats them as essential.
     val fullEssentials = List(
-      RespondTool, RespondOptionsTool, RespondFieldTool, RespondFailureTool,
-      NoResponseTool, CancelTool
+      RespondTool, CancelTool
     ).map(_.schema.name)
     val pureDiscoveryEssentials = List(CancelTool.schema.name)
 
@@ -1472,9 +1477,15 @@ trait Sigil {
     val merged         = (essentials ++ findCapability ++ baseline ++ state.extras ++ suggested).distinct
     val deduped =
       if (state.pureDiscovery) {
-        val stripped = Set(
-          RespondTool, RespondOptionsTool, RespondFieldTool, RespondFailureTool, NoResponseTool
-        ).map(_.schema.name)
+        // Strip the entire respond family + no_response so the agent
+        // can only reach a reply through discovery. The legacy
+        // standalone tools (deprecated post sigil bug #157) stay in
+        // the strip set so apps that opted back into them retain the
+        // same pure-discovery semantics.
+        val stripped: Set[sigil.tool.ToolName] =
+          (Set(
+            RespondTool, RespondOptionsTool, RespondFieldTool, RespondFailureTool, NoResponseTool
+          ): @annotation.nowarn("cat=deprecation")).map(_.schema.name)
         merged.filterNot(stripped.contains)
       } else merged
     // Tool position bias is real for smaller models — they tend to pick the
@@ -1483,17 +1494,20 @@ trait Sigil {
     // of being captured by the always-applicable `respond` family. Response
     // tools render last so they're available for chat without dominating
     // when an action tool is the right call.
-    val priority: Map[sigil.tool.ToolName, Int] = Map(
+    val priority: Map[sigil.tool.ToolName, Int] = (Map(
       ChangeModeTool.schema.name        -> 0,
       FindCapabilityTool.schema.name    -> 1,
       ActivateSkillTool.schema.name     -> 2,
       CancelTool.schema.name              -> 100,
       RespondTool.schema.name           -> 101,
+      // Deprecated standalone respond-family tools (sigil bug #157)
+      // still get late-render priority so apps that opted them back
+      // in keep the prior tool-position ordering.
       RespondOptionsTool.schema.name    -> 102,
       RespondFieldTool.schema.name      -> 103,
       RespondFailureTool.schema.name    -> 104,
       NoResponseTool.schema.name        -> 105
-    ).withDefaultValue(50)
+    ): @annotation.nowarn("cat=deprecation")).withDefaultValue(50)
     deduped.zipWithIndex.sortBy { case (name, idx) => (priority(name), idx) }.map(_._1)
   }
 

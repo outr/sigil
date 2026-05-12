@@ -16,7 +16,12 @@ import sigil.tool.model.{RespondOptionsInput, ResponseContent, SelectOption}
  * single content entry. Multi-block replies that mix markdown with
  * structured Options will produce multiple Message events on the wire;
  * each renders as its own UI bubble / card.
+ *
+ * **Deprecated** (sigil bug #157) — the unified `respond` tool accepts
+ * `RespondContent.Options(...)` directly. Kept for backwards-
+ * compatibility with apps that registered this tool by name.
  */
+@deprecated("Use `RespondTool` with `RespondContent.Options(...)`. Sigil bug #157.", "0.x")
 case object RespondOptionsTool extends TypedTool[RespondOptionsInput](
   name = ToolName("respond_options"),
   description =

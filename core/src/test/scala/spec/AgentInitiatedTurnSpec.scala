@@ -49,7 +49,7 @@ class AgentInitiatedTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Match
           CallId("c-1"),
           _root_.sigil.tool.model.RespondInput(
             topicLabel = "Greet", topicSummary = "agent-initiated test",
-            content = "hi", endsTurn = true
+            content = _root_.sigil.tool.model.RespondContent.Text("hi"), endsTurn = true
           )
         ),
         ProviderEvent.Done(StopReason.Complete)
