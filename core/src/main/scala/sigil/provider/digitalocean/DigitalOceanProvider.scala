@@ -69,7 +69,13 @@ case class DigitalOceanProvider(apiKey: String,
 
   private def buildBody(input: ProviderCall): Json = {
     val modelName = DigitalOcean.stripProviderPrefix(input.modelId.value)
-    val systemMsg = obj("role" -> str("system"), "content" -> str(input.system))
+    // Bug #155 — translate `GenerationSettings.reasoningMode` into
+    // kimi's system-prompt directive. `/think` forces deliberation;
+    // `/no_think` disables it. Other DO-hosted models without a
+    // thinking mode ignore the marker (it's just text in the
+    // system prompt).
+    val systemContent = applyKimiReasoningDirective(input.system, modelName, input.generationSettings.reasoningMode)
+    val systemMsg = obj("role" -> str("system"), "content" -> str(systemContent))
     val rendered = renderMessages(input.messages)
 
     // OpenAI chat-completions tool shape, without `strict: true`.
@@ -119,6 +125,30 @@ case class DigitalOceanProvider(apiKey: String,
         (if (gen.stopSequences.nonEmpty) Vector("stop" -> arr(gen.stopSequences.map(str)*)) else Vector.empty)
 
     obj((baseFields ++ toolFields ++ genFields)*)
+  }
+
+  /** Inject kimi's `/think` / `/no_think` system-prompt directive
+    * when [[ReasoningMode]] forces a non-default mode. kimi-k2.5
+    * defaults to thinking-on for non-trivial system prompts; kimi-
+    * k2.6 is thinking-by-default unconditionally. Apps wanting the
+    * fast non-thinking path on either model set
+    * `GenerationSettings(reasoningMode = ReasoningMode.Off)` and
+    * the provider stamps `/no_think` here. Bug #155. */
+  private def applyKimiReasoningDirective(systemPrompt: String,
+                                          modelName: String,
+                                          mode: ReasoningMode): String = {
+    val isKimi = modelName.toLowerCase.startsWith("kimi-")
+    val directive: Option[String] = if (!isKimi) None else mode match {
+      case ReasoningMode.Off  => Some("/no_think")
+      case ReasoningMode.On   => Some("/think")
+      case ReasoningMode.Auto => None
+    }
+    directive match {
+      case None      => systemPrompt
+      case Some(dir) =>
+        if (systemPrompt.isEmpty) dir
+        else s"$systemPrompt\n\n$dir"
+    }
   }
 
   private def renderMessages(messages: Vector[ProviderMessage]): Vector[Json] =
