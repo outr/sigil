@@ -2910,6 +2910,29 @@ trait Sigil {
       }
     }
 
+  /**
+   * Monotonically advance a conversation's `clearedAt` watermark.
+   * The curator's stage-3 shed calls this after it summarises the
+   * oldest frames into a `ContextSummary`: the watermark moves past
+   * the shed slice, the next turn's `framesFor` filters those frames
+   * out, and the summary takes their place via `summariesFor` —
+   * "compress once, recall many" actually amortises.
+   *
+   * Monotonicity is enforced inside the transactional modify: the
+   * watermark only advances. A concurrent caller racing with a
+   * smaller `at` is a no-op on the persisted row. Events stay in
+   * `db.events` for `SearchConversationTool` recall; this only
+   * filters the curator's rolling-window input. Bug #147.
+   */
+  def advanceClearedAt(conversationId: Id[Conversation], at: Timestamp): Task[Unit] =
+    withDB(_.conversations.transaction(_.modify(conversationId) {
+      case Some(conv) =>
+        val current = conv.clearedAt.map(_.value).getOrElse(0L)
+        if (at.value <= current) Task.pure(Some(conv))
+        else Task.pure(Some(conv.copy(clearedAt = Some(at), modified = Timestamp(Nowish()))))
+      case None => Task.pure(None)
+    })).unit
+
   /** Fetch the [[EncodedContext]] cache row for this `(agentId,
     * conversationId, modelId)` triple, returning a fresh empty row if
     * none exists. Bug #26 — the curator looks this up per turn,

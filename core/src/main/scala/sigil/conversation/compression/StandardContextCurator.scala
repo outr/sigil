@@ -254,15 +254,33 @@ case class StandardContextCurator(sigil: Sigil,
                   conversationId = tentative.conversationId,
                   tokensOfKept = (kept, summaryOpt) =>
                     tokensOf(afterStage2b, kept, summaryOpt.toVector)
-                ).map { case (newerKept, summaryOpt) =>
+                ).flatMap { case (newerKept, summaryOpt) =>
                   summaryOpt match {
                     case Some(summary) =>
-                      afterStage2b.copy(
-                        frames = newerKept,
+                      // Bug #147 — advance the conversation's
+                      // `clearedAt` watermark to the timestamp of
+                      // the LAST shed frame's source event so the
+                      // next turn's `framesFor` filters them out.
+                      // Without this, the same shed re-fires every
+                      // turn forever — the summary lands but the
+                      // frames it replaced come right back.
+                      val shedSlice = frames.dropRight(newerKept.size)
+                      val advance: Task[Unit] = shedSlice.lastOption match {
+                        case Some(boundary) =>
+                          sigil.withDB(_.events.transaction(_.get(boundary.sourceEventId))).flatMap {
+                            case Some(ev) =>
+                              sigil.advanceClearedAt(tentative.conversationId, ev.timestamp)
+                                .handleError(_ => Task.unit)
+                            case None => Task.unit
+                          }
+                        case None => Task.unit
+                      }
+                      advance.map(_ => afterStage2b.copy(
+                        frames    = newerKept,
                         summaries = Vector(summary._id)
-                      )
+                      ))
                     case None =>
-                      afterStage2b.copy(frames = newerKept)
+                      Task.pure(afterStage2b.copy(frames = newerKept))
                   }
                 }
               }
