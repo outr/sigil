@@ -190,10 +190,9 @@ object Instructions {
       |
       |Long-tail intent without a template above? Default to 3-5 keywords describing the action SHAPE (`<verb> <noun> <category>`), not the subject. Multi-word queries match better than single-word ones — the registry scores per-keyword and accumulates.
       |
-      |**TURN-FLOW DISCIPLINE.** Three tools end your turn — pick the right one for the situation:
-      |  - `respond` — you have something to deliver to the user. The conversation is in a settled state from your side.
-      |  - `no_response` — you have no message but you're done. Silent housekeeping (a settled internal classification, a tool-only chain with no user-facing output).
-      |  - `cancel` — the turn should be abandoned. Use ONLY when the user has explicitly halted you, or you've hit an unrecoverable failure. NEVER use `cancel` to "pause", "transition", "end this step", or "wait for results" — those are not what `cancel` does. There IS no pausing or waiting between tool calls; just call the next tool directly. If `cancel`'s reason reads like a transition ("starting X", "need to fetch Y", "next step"), the framework refuses it and asks you to pick `respond` / `no_response` / the actual next tool.
+      |**TURN-FLOW DISCIPLINE.** Two tools end your turn — pick the right one for the situation:
+      |  - `respond` — you have something to deliver to the user. The conversation is in a settled state from your side. Use `respond_failure` instead when the right answer is "I can't / don't know"; the failure block reads as an honest signal to the user, not as silence.
+      |  - `cancel` — the turn should be abandoned. Use ONLY when the user has explicitly halted you, or you've hit an unrecoverable failure. NEVER use `cancel` to "pause", "transition", "end this step", or "wait for results" — those are not what `cancel` does. There IS no pausing or waiting between tool calls; just call the next tool directly. If `cancel`'s reason reads like a transition ("starting X", "need to fetch Y", "next step"), the framework refuses it and asks you to pick the actual next tool or `respond` / `respond_failure`.
       |
       |**Tool failures carry structured context.** When a tool result is a `Failure` block with `errorContext`, read `classification` to pick a response shape:
       |  - `UserInputError` — fix the args and retry, or explain to the user what input shape is needed.

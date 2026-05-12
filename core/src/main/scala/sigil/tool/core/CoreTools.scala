@@ -33,7 +33,7 @@ import sigil.tool.skill.{ActivateSkillInput, ActivateSkillTool}
  * `respond_failure`) that emit a single `Message` carrying the
  * structured block.
  *
- * Plus essentials: `no_response`, `find_capability`, `cancel`.
+ * Plus essentials: `find_capability`, `cancel`.
  *
  * **NOT in `all` by default** (each is shipped in core but apps opt
  * in by adding to their own `staticTools` / `toolNames`):
@@ -79,7 +79,6 @@ object CoreTools {
       RespondOptionsTool,
       RespondFieldTool,
       RespondFailureTool,
-      NoResponseTool,
       FindCapabilityTool,
       CancelTool,
       RecordConsentTool
@@ -137,6 +136,6 @@ object CoreTools {
     RespondFailureTool.schema.name,
     RespondCardTool.schema.name,
     RespondCardsTool.schema.name,
-    NoResponseTool.schema.name
+    NoResponseTool.schema.name  // still atomic-shape when apps opt back in
   )
 }
