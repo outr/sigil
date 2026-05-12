@@ -35,7 +35,15 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: 'zulu'
-          java-version: 25
+          # Pinned to 21 LTS — Java 25 surfaces intermittent
+          # ClassCastException patterns in rapid's Task pipeline
+          # (`RespondFieldTool$` / `Boolean` / `BoxedUnit` casts
+          # failing under StaticToolSyncUpgrade + maintenance
+          # sweeps). The same code runs clean on local Java 21/26
+          # but CI's 25 was aborting ~half of recent pushes.
+          # Revisit once rapid 2.5+ ships its Java 25-compatible
+          # interpreter.
+          java-version: 21
       - name: Setup sbt launcher
         uses: sbt/setup-sbt@v1
       - name: Coursier cache
