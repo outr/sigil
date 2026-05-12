@@ -1,6 +1,9 @@
 .idea/
 .bsp/
+.bloop/
 .claude/
+.metals/
+metals.sbt
 CLAUDE.md
 /db/
 target/
