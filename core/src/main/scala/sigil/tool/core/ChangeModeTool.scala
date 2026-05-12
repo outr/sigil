@@ -35,7 +35,19 @@ case object ChangeModeTool extends TypedTool[ChangeModeInput](
       |
       |After change_mode succeeds, the new mode's tools are directly callable on the next turn —
       |do NOT then call `find_capability`. `mode` is the target's stable name from the
-      |available-modes list below.""".stripMargin
+      |available-modes list below.""".stripMargin,
+  // Curated keyword surface for discovery ranking. Tight on what
+  // `change_mode` actually does — switch the agent's operating
+  // posture / toolset — without leaking into adjacent intents like
+  // `pin_complexity` (tier / level / complexity / cost), which are
+  // separate tools with their own keyword sets. Without these, the
+  // BM25 ranker would score `change_mode` purely on its description
+  // prose and accidentally match tier-shaped queries (sigil bug
+  // #158).
+  keywords = Set(
+    "mode", "modes", "switch", "change", "transition",
+    "operating", "posture", "kit", "toolset", "tools"
+  )
 ) {
   // ModeChange Events update Conversation.currentMode and the system
   // prompt's "Current mode" line. The verbose ToolResults pair is
