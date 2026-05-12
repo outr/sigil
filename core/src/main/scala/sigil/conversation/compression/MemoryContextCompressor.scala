@@ -2,7 +2,7 @@ package sigil.conversation.compression
 
 import lightdb.id.Id
 import rapid.{Stream, Task}
-import sigil.Sigil
+import sigil.{FrameworkWorkflowControl, Sigil}
 import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary, Conversation, MemorySource}
 import sigil.SpaceId
 import sigil.db.Model
@@ -53,7 +53,20 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                                    /** Wire-protocol body ceiling shared with the
                                      * chunker. Defaults to [[SummaryOnlyCompressor.DefaultMaxChunkBytes]]
                                      * (8 MB). Bug #143. */
-                                   maxChunkBytes: Long = SummaryOnlyCompressor.DefaultMaxChunkBytes) extends ContextCompressor {
+                                   maxChunkBytes: Long = SummaryOnlyCompressor.DefaultMaxChunkBytes,
+                                   /** Concurrent leaf-summarization fan-out for
+                                     * [[compressHierarchical]]. Default 1 = serial
+                                     * (preserves the original behaviour for
+                                     * llama.cpp single-slot setups). Apps with
+                                     * `--parallel N` configured locally, or
+                                     * hosted providers that aren't slot-limited,
+                                     * bump this to run leaf chunks concurrently.
+                                     * At parallelism = 4 a 100-chunk pass drops
+                                     * from ~50 minutes to ~12. Epoch folds run
+                                     * with the same knob — fewer calls per
+                                     * level, but the same bound applies. Bug
+                                     * #145. */
+                                   hierarchicalParallelism: Int = 1) extends ContextCompressor {
 
   override def compress(sigil: Sigil,
                         callerModelId: Id[Model],
@@ -261,7 +274,15 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                            frames: Vector[ContextFrame],
                            conversationId: Id[Conversation],
                            depth: Int = 1,
-                           epochSize: Int = 8): Task[Vector[ContextSummary]] = {
+                           epochSize: Int = 8,
+                           /** When supplied, the hierarchical pass emits a
+                             * `control.step(...)` event before each leaf
+                             * summarize, before each epoch fold, and at the
+                             * end of every level so the activity bar reflects
+                             * forward motion. Default `None` keeps the path
+                             * silent for apps that haven't wired a workflow
+                             * surface. Bug #145. */
+                           control: Option[FrameworkWorkflowControl] = None): Task[Vector[ContextSummary]] = {
     if (frames.isEmpty) Task.pure(Vector.empty)
     else for {
       ctx <- loadContext(sigil, conversationId)
@@ -281,16 +302,31 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
       leafChunks = SummaryOnlyCompressor.chunkByTokensAndBytes(
                      frames, ctx, renderTranscript, tokenizer, effectiveTokens, maxChunkBytes
                    )
-      // Summarize each leaf chunk; persist via the per-chunk path.
-      leafSummaries <- Task.sequence(leafChunks.map { chunk =>
-                         val text = renderTranscript(chunk, ctx._1, ctx._2)
-                         summarize(sigil, summarizationModel, chain, text, conversationId)
-                       }).map(_.flatten.toVector)
+      total = leafChunks.size
+      _ <- emit(control, s"Hierarchical compression: $total leaf chunks queued")
+      // Counter for per-leaf progress. With parallelism > 1 the
+      // chunks complete out of order; the counter still gives a
+      // monotonic "k of N done" surface the UI can display.
+      completed = new java.util.concurrent.atomic.AtomicInteger(0)
+      leafTasks = leafChunks.map { chunk =>
+                    val text = renderTranscript(chunk, ctx._1, ctx._2)
+                    summarize(sigil, summarizationModel, chain, text, conversationId).flatMap { settled =>
+                      val done = completed.incrementAndGet()
+                      emit(control, s"Hierarchical compression: leaf $done / $total summarized").map(_ => settled)
+                    }
+                  }
+      // Bounded parallelism: default 1 = serial (current
+      // behaviour). Apps bump for hosted providers / multi-slot
+      // local backends. Bug #145.
+      summarised <- Task.parSequenceBounded(leafTasks, math.max(1, hierarchicalParallelism))
+      leafSummaries = summarised.flatten.toVector
+      _ <- emit(control, s"Leaf pass complete · ${leafSummaries.size} summaries persisted")
       // Recursive fold: if depth > 1 and we have more than
-      // `epochSize` leaves, group + summarize into epoch summaries
-      // and recurse.
+      // `epochSize` leaves, group + summarize into epoch
+      // summaries and recurse. The fold runs through the same
+      // progress + parallelism surface.
       top <- foldSummaries(sigil, summarizationModel, chain, leafSummaries, conversationId,
-                            remainingDepth = depth - 1, epochSize = epochSize)
+                            remainingDepth = depth - 1, epochSize = epochSize, control = control)
     } yield top
   }
 
@@ -304,20 +340,40 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                             summaries: Vector[ContextSummary],
                             conversationId: Id[Conversation],
                             remainingDepth: Int,
-                            epochSize: Int): Task[Vector[ContextSummary]] = {
+                            epochSize: Int,
+                            control: Option[FrameworkWorkflowControl]): Task[Vector[ContextSummary]] = {
     if (remainingDepth <= 0 || summaries.size <= epochSize) Task.pure(summaries)
     else {
       val groups = summaries.grouped(epochSize).toVector
-      Task.sequence(groups.toList.map { group =>
+      val total  = groups.size
+      val completed = new java.util.concurrent.atomic.AtomicInteger(0)
+      val groupTasks = groups.toList.map { group =>
         val text = group.zipWithIndex.map { case (s, i) =>
           s"--- chunk ${i + 1} ---\n${s.text}"
         }.mkString("\n\n")
-        summarize(sigil, modelId, chain, text, conversationId)
-      }).map(_.flatten.toVector).flatMap { epoch =>
-        foldSummaries(sigil, modelId, chain, epoch, conversationId, remainingDepth - 1, epochSize)
+        summarize(sigil, modelId, chain, text, conversationId).flatMap { settled =>
+          val done = completed.incrementAndGet()
+          emit(control, s"Epoch fold (depth ${remainingDepth}): $done / $total summarized").map(_ => settled)
+        }
       }
+      for {
+        _    <- emit(control, s"Epoch fold (depth ${remainingDepth}): $total groups queued")
+        merged <- Task.parSequenceBounded(groupTasks, math.max(1, hierarchicalParallelism))
+        epoch = merged.flatten.toVector
+        _    <- emit(control, s"Epoch fold (depth ${remainingDepth}) complete · ${epoch.size} summaries")
+        next <- foldSummaries(sigil, modelId, chain, epoch, conversationId, remainingDepth - 1, epochSize, control)
+      } yield next
     }
   }
+
+  /** Fire a progress step against the supplied control handle, if
+    * any. Swallows control-side errors — a workflow-pulse hiccup
+    * never blocks compression itself. Bug #145. */
+  private def emit(control: Option[FrameworkWorkflowControl], label: String): Task[Unit] =
+    control match {
+      case Some(c) => c.step(label).handleError(_ => Task.unit)
+      case None    => Task.unit
+    }
 }
 
 object MemoryContextCompressor {
