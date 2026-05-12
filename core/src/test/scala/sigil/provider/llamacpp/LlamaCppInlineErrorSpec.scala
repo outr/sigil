@@ -5,31 +5,37 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.provider.{ProviderStreamException, ToolCallAccumulator}
+import sigil.provider.wire.OpenAIChatCompletions
 
 /**
  * Coverage for Bug #8 — when `/v1/chat/completions` returns HTTP 200
- * but embeds an `error` event mid-stream, `parseChunk` raises a
- * [[ProviderStreamException]] so `runAgentLoop`'s handler (Bug #6)
- * can surface a user-visible Failure Message instead of dropping the
- * chunk silently.
+ * but embeds an `error` event mid-stream, the shared chat-completions
+ * wire raises a [[ProviderStreamException]] (when `inlineErrorThrows`
+ * is configured) so `runAgentLoop`'s handler (Bug #6) can surface a
+ * user-visible Failure Message instead of dropping the chunk silently.
  *
- * Lives in `sigil.provider.llamacpp` so it can call the
- * package-private `parseLine` / `StreamState` directly — no
- * reflection, no spinning up a stub HTTP server.
+ * Drives the wire object's `parseLine` directly; no HTTP server.
  */
 class LlamaCppInlineErrorSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   spec.TestSigil.initFor(getClass.getSimpleName)
 
-  private def provider: LlamaCppProvider =
-    LlamaCppProvider(spec.TestSigil.llamaCppHost, Nil, spec.TestSigil)
+  // Use the same Config LlamaCppProvider builds: providerNamespace
+  // drives the exception's reported provider key, and inlineErrorThrows
+  // is the gate under test.
+  private val cfg: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
+    providerNamespace    = LlamaCpp.Provider,
+    providerName         = "LlamaCpp",
+    schemaTransform      = identity,
+    inlineErrorThrows    = true
+  )
 
   /** Build a fresh state + parse one SSE data line carrying `json`. */
-  private def parse(p: LlamaCppProvider, json: Json): Vector[sigil.provider.ProviderEvent] = {
-    val state = new p.StreamState(new ToolCallAccumulator(Vector.empty))
-    p.parseLine("data: " + fabric.io.JsonFormatter.Compact(json), state)
+  private def parse(json: Json): Vector[sigil.provider.ProviderEvent] = {
+    val state = new OpenAIChatCompletions.StreamState(new ToolCallAccumulator(Vector.empty))
+    OpenAIChatCompletions.parseLine("data: " + fabric.io.JsonFormatter.Compact(json), state, cfg)
   }
 
-  "LlamaCppProvider.parseChunk (Bug #8)" should {
+  "OpenAIChatCompletions.parseChunk (Bug #8)" should {
     "throw ProviderStreamException when an inline `error` event arrives mid-stream" in {
       val errorEvent = obj(
         "error" -> obj(
@@ -39,7 +45,7 @@ class LlamaCppInlineErrorSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         )
       )
       val thrown = intercept[ProviderStreamException] {
-        parse(provider, errorEvent)
+        parse(errorEvent)
       }
       thrown.code shouldBe 500
       thrown.typ shouldBe "server_error"
@@ -55,7 +61,7 @@ class LlamaCppInlineErrorSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         "error"   -> Null,
         "choices" -> arr()
       )
-      noException should be thrownBy parse(provider, nullErrorEvent)
+      noException should be thrownBy parse(nullErrorEvent)
       rapid.Task.pure(succeed)
     }
 
@@ -68,7 +74,7 @@ class LlamaCppInlineErrorSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
           )
         )
       )
-      val events = parse(provider, normalChunk)
+      val events = parse(normalChunk)
       events.collect { case sigil.provider.ProviderEvent.TextDelta(t) => t }.mkString shouldBe "hello"
     }
   }
