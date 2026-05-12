@@ -71,6 +71,34 @@ case class StandardContextCurator(sigil: Sigil,
                                     * they wire a network tokenizer for other paths. */
                                   budgetTokenizer: Tokenizer = HeuristicTokenizer,
                                   pinnedShareWarningThreshold: Double = 0.20,
+                                  /** Hard cap on the number of frames the per-turn
+                                    * curate pass considers. When the conversation has
+                                    * more frames than this (typical only on bulk-
+                                    * imported histories — 50K+ events from
+                                    * `load_claude_state`), only the most-recent
+                                    * `maxFramesPerTurn` flow through block extraction,
+                                    * memory retrieval, and budget resolution. Older
+                                    * frames remain in the durable event log and stay
+                                    * reachable via `search_conversation` /
+                                    * `recall_memory` / persisted summaries —
+                                    * they're just skipped on the hot path so the
+                                    * curator doesn't try to summarize the entire
+                                    * history every turn. `Int.MaxValue` disables the
+                                    * cap (legacy behaviour). Bug #144. */
+                                  maxFramesPerTurn: Int = 5000,
+                                  /** When `true`, the curator pulls persisted
+                                    * `ContextSummary` records via
+                                    * [[sigil.Sigil.summariesFor]] and feeds them
+                                    * into the turn's `TurnInput.summaries`
+                                    * BEFORE the budget gate runs. Apps that
+                                    * precompute summaries at import time (the
+                                    * "compress once, recall many" pattern) get
+                                    * them rendered on every subsequent turn
+                                    * without re-paying the compression cost.
+                                    * Default `true`; apps that don't use the
+                                    * persisted-summary pathway can disable to
+                                    * skip the per-turn DB read. Bug #144. */
+                                  loadPersistedSummaries: Boolean = true,
                                   /** Optional detector for the
                                     * "paraphrase without action" failure
                                     * mode. When set and a pattern fires,
@@ -103,7 +131,16 @@ case class StandardContextCurator(sigil: Sigil,
         _             <- control.step("Loading frames")
         rawFrames     <- sigil.framesFor(conversationId)
         visibleFrames = rawFrames.filter(f => sigil.visibilityAllows(f.visibility, chain.lastOption.orNull))
-        optimizedFrames = optimizer.optimize(visibleFrames, elide, chain.headOption)
+        // Cap the per-turn frame budget. Bulk-imported conversations
+        // (50K+ events) flow through curate every turn; without a
+        // bound the framework re-runs block extraction + budget
+        // resolution over the entire history each time. The most-
+        // recent `maxFramesPerTurn` are what the agent typically
+        // needs in scope; older frames remain durable and reachable
+        // via search / recall / persisted summaries.
+        boundedFrames = if (visibleFrames.size <= maxFramesPerTurn) visibleFrames
+                        else visibleFrames.takeRight(maxFramesPerTurn)
+        optimizedFrames = optimizer.optimize(boundedFrames, elide, chain.headOption)
         _             <- control.step(s"Extracting blocks (${optimizedFrames.size} frames)")
         // Pulse the workflow step every progress callback the
         // extractor fires so the activity bar reflects forward
@@ -114,6 +151,14 @@ case class StandardContextCurator(sigil: Sigil,
         blockResult   <- blockExtractor.extract(sigil, optimizedFrames, progressCb)
         _             <- control.step("Retrieving memories")
         memoryResult  <- memoryRetriever.retrieve(sigil, conversationId, blockResult.frames, chain)
+        // Pull persisted summaries (the "compress once, recall many"
+        // path). Compression-time records from earlier turns AND
+        // import-time hierarchical summaries (when an app wires
+        // `compressOnImport`) both flow through here so older history
+        // is represented without being in the raw-frame stream.
+        persistedSummaries <-
+          if (loadPersistedSummaries) sigil.summariesFor(conversationId).map(_.map(_._id).toVector)
+          else Task.pure(Vector.empty)
         projections   <- loadProjections(conversationId, chain)
         tentative     = injectParaphraseObservation(
           TurnInput(
@@ -122,6 +167,7 @@ case class StandardContextCurator(sigil: Sigil,
             participantProjections = projections,
             criticalMemories = memoryResult.criticalMemories,
             memories = memoryResult.memories,
+            summaries = persistedSummaries,
             information = blockResult.information
           ),
           chain
@@ -155,10 +201,17 @@ case class StandardContextCurator(sigil: Sigil,
                             chain: List[ParticipantId],
                             memoryResult: MemoryRetrievalResult,
                             information: Vector[InformationSummary]): Task[TurnInput] =
-    resolveMemoriesAndSummaries(memoryResult).flatMap {
-      case (resolvedCritical, resolvedRetrieved) =>
+    for {
+      memTuple <- resolveMemoriesAndSummaries(memoryResult)
+      resolvedSummaries <- resolveSummaries(tentative.summaries)
+      out <- {
+        val (resolvedCritical, resolvedRetrieved) = memTuple
         val cap = budget.tokensFor(model)
 
+        // The persisted-summary section is always rendered when
+        // budget allows. When the budget gets tight the curator
+        // sheds it BEFORE frame compression (cheaper, app-authored
+        // — sheds preserve frames). Bug #144.
         def tokensOf(t: TurnInput, framesArg: Vector[ContextFrame], summariesArg: Vector[ContextSummary]): Int =
           TokenEstimator.estimateCuratorSections(
             frames = framesArg,
@@ -171,44 +224,64 @@ case class StandardContextCurator(sigil: Sigil,
 
         val frames = tentative.frames
 
-        if (tokensOf(tentative, frames, Vector.empty) <= cap) Task.pure(tentative)
+        if (tokensOf(tentative, frames, resolvedSummaries) <= cap) Task.pure(tentative)
         else {
           // Stage 1 — drop non-critical retrieved memories.
           val afterStage1 = tentative.copy(memories = Vector.empty)
-          if (tokensOf(afterStage1, frames, Vector.empty) <= cap) Task.pure(afterStage1)
+          if (tokensOf(afterStage1, frames, resolvedSummaries) <= cap) Task.pure(afterStage1)
           else {
             // Stage 2 — drop unreferenced Information.
             val referenced = referencedInformationIds(frames)
             val keptInformation = information.filter(i => referenced.contains(i.id.value))
             val afterStage2 = afterStage1.copy(information = keptInformation)
-            if (tokensOf(afterStage2, frames, Vector.empty) <= cap) Task.pure(afterStage2)
+            if (tokensOf(afterStage2, frames, resolvedSummaries) <= cap) Task.pure(afterStage2)
             else {
-              // Stage 3 — iterative frame compression (bug #23 + #26).
-              shedFramesIteratively(
-                kept = frames,
-                droppedSoFar = Vector.empty,
-                summaryCarry = None,
-                cap = cap,
-                modelId = modelId,
-                chain = chain,
-                conversationId = tentative.conversationId,
-                tokensOfKept = (kept, summaryOpt) =>
-                  tokensOf(afterStage2, kept, summaryOpt.toVector)
-              ).map { case (newerKept, summaryOpt) =>
-                summaryOpt match {
-                  case Some(summary) =>
-                    afterStage2.copy(
-                      frames = newerKept,
-                      summaries = Vector(summary._id)
-                    )
-                  case None =>
-                    afterStage2.copy(frames = newerKept)
+              // Stage 2b — drop persisted summaries (cheap-shed
+              // before invoking compressor). Apps relying on
+              // import-time summaries pay the cost only when the
+              // budget genuinely can't accommodate them.
+              val afterStage2b = afterStage2.copy(summaries = Vector.empty)
+              if (tokensOf(afterStage2b, frames, Vector.empty) <= cap) Task.pure(afterStage2b)
+              else {
+                // Stage 3 — iterative frame compression (bug #23 + #26).
+                shedFramesIteratively(
+                  kept = frames,
+                  droppedSoFar = Vector.empty,
+                  summaryCarry = None,
+                  cap = cap,
+                  modelId = modelId,
+                  chain = chain,
+                  conversationId = tentative.conversationId,
+                  tokensOfKept = (kept, summaryOpt) =>
+                    tokensOf(afterStage2b, kept, summaryOpt.toVector)
+                ).map { case (newerKept, summaryOpt) =>
+                  summaryOpt match {
+                    case Some(summary) =>
+                      afterStage2b.copy(
+                        frames = newerKept,
+                        summaries = Vector(summary._id)
+                      )
+                    case None =>
+                      afterStage2b.copy(frames = newerKept)
+                  }
                 }
               }
             }
           }
         }
-    }
+      }
+    } yield out
+
+  /** Resolve persisted-summary ids on `TurnInput.summaries` to full
+    * records via the DB. Bug #144 — the curator's budget-gate math
+    * needs the rendered token cost of every summary in the tentative
+    * TurnInput; without resolution the gate under-counts and the
+    * provider sees a request that's bigger than the budget computed. */
+  private def resolveSummaries(ids: Vector[Id[ContextSummary]]): Task[Vector[ContextSummary]] =
+    if (ids.isEmpty) Task.pure(Vector.empty)
+    else Task.sequence(ids.toList.map { id =>
+      sigil.withDB(_.summaries.transaction(_.get(id)))
+    }).map(_.flatten.toVector)
 
   /** Iterative Stage 3 shed (bug #23 — preserves the iteration model
     * inside the new bug-#26 architecture). Each pass either fits, hits

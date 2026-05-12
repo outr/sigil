@@ -225,6 +225,99 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
       case Some(conv) => (Some(conv.currentMode), conv.topics.lastOption)
       case None       => (None, None)
     }
+
+  /**
+   * Hierarchical compression — for bulk-import flows that have too
+   * many frames to summarize in one pass. Chunks the frames by
+   * `(tokens, bytes)` budgets, summarizes each chunk to a
+   * [[ContextSummary]] (persisted via
+   * [[sigil.Sigil.persistSummary]]), then optionally summarizes
+   * runs of summaries into higher-level "epoch" summaries when
+   * `depth > 1`. Returns the top-level summary set — the per-leaf
+   * records also persist so the curator's `summariesFor` lookup
+   * surfaces them on subsequent turns.
+   *
+   * Apps wire this from [[sigil.Sigil.compressOnImport]] so a
+   * one-shot bulk load (e.g. `load_claude_state` ingesting 50K
+   * events) produces a tree of summaries the agent recalls without
+   * re-paying compression cost on every turn.
+   *
+   * @param depth     how many recursive levels to fold; `1` =
+   *                  per-chunk summaries only (flat); `2` =
+   *                  summarize runs of `epochSize` per-chunk
+   *                  summaries into epoch summaries; `3+` =
+   *                  recursive narrowing until one summary remains
+   *                  OR the limit is hit.
+   * @param epochSize how many lower-level summaries fold into one
+   *                  higher-level summary at each recursive step.
+   *                  Default 8 → 64-summary input collapses to 8
+   *                  epoch summaries collapses to one top summary
+   *                  at depth=3.
+   * Bug #144.
+   */
+  def compressHierarchical(sigil: Sigil,
+                           callerModelId: Id[Model],
+                           chain: List[ParticipantId],
+                           frames: Vector[ContextFrame],
+                           conversationId: Id[Conversation],
+                           depth: Int = 1,
+                           epochSize: Int = 8): Task[Vector[ContextSummary]] = {
+    if (frames.isEmpty) Task.pure(Vector.empty)
+    else for {
+      ctx <- loadContext(sigil, conversationId)
+      // Route once for the whole hierarchical pass — every chunk
+      // and every epoch fold goes through the same model.
+      summarizationModel <- sigil.routedModelFor(
+                              SummarizationWork,
+                              chain,
+                              fallback = callerModelId,
+                              estimatedInputTokens = None,
+                              reservedOutputTokens = reservedOutputTokens
+                            ).handleError(_ => Task.pure(callerModelId))
+      available = sigil.cache.find(summarizationModel).map(_.contextLength).getOrElse(0L) - reservedOutputTokens - promptOverheadTokens
+      effectiveTokens = if (available <= 0L) Long.MaxValue else available
+      // Stage 0 — leaf chunks. Bytes ceiling applied alongside the
+      // token budget per bug #143.
+      leafChunks = SummaryOnlyCompressor.chunkByTokensAndBytes(
+                     frames, ctx, renderTranscript, tokenizer, effectiveTokens, maxChunkBytes
+                   )
+      // Summarize each leaf chunk; persist via the per-chunk path.
+      leafSummaries <- Task.sequence(leafChunks.map { chunk =>
+                         val text = renderTranscript(chunk, ctx._1, ctx._2)
+                         summarize(sigil, summarizationModel, chain, text, conversationId)
+                       }).map(_.flatten.toVector)
+      // Recursive fold: if depth > 1 and we have more than
+      // `epochSize` leaves, group + summarize into epoch summaries
+      // and recurse.
+      top <- foldSummaries(sigil, summarizationModel, chain, leafSummaries, conversationId,
+                            remainingDepth = depth - 1, epochSize = epochSize)
+    } yield top
+  }
+
+  /** Fold a vector of summaries into epoch summaries — `epochSize`
+    * inputs per fold — and recurse `remainingDepth` levels deeper.
+    * Each epoch summary is persisted so the curator's
+    * `summariesFor` lookup surfaces every level. */
+  private def foldSummaries(sigil: Sigil,
+                            modelId: Id[Model],
+                            chain: List[ParticipantId],
+                            summaries: Vector[ContextSummary],
+                            conversationId: Id[Conversation],
+                            remainingDepth: Int,
+                            epochSize: Int): Task[Vector[ContextSummary]] = {
+    if (remainingDepth <= 0 || summaries.size <= epochSize) Task.pure(summaries)
+    else {
+      val groups = summaries.grouped(epochSize).toVector
+      Task.sequence(groups.toList.map { group =>
+        val text = group.zipWithIndex.map { case (s, i) =>
+          s"--- chunk ${i + 1} ---\n${s.text}"
+        }.mkString("\n\n")
+        summarize(sigil, modelId, chain, text, conversationId)
+      }).map(_.flatten.toVector).flatMap { epoch =>
+        foldSummaries(sigil, modelId, chain, epoch, conversationId, remainingDepth - 1, epochSize)
+      }
+    }
+  }
 }
 
 object MemoryContextCompressor {

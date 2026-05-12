@@ -146,6 +146,8 @@ object TestSigil extends Sigil {
   private val compressionSpaceRef = new AtomicReference[Option[SpaceId]](defaultCompressionSpace)
   private val putInformationRef = new AtomicReference[Information => Unit](defaultPutInformation)
   private val putInformationsRef = new AtomicReference[Option[Vector[Information] => Unit]](None)
+  private val compressOnImportRef =
+    new AtomicReference[(Id[Conversation], Long) => Task[Unit]]((_: Id[Conversation], _: Long) => Task.unit)
   private val curateRef = new AtomicReference[(Id[Conversation], Id[Model], List[ParticipantId]) => Task[TurnInput]](defaultCurate)
   private val wireInterceptorRef = new AtomicReference[spice.http.client.intercept.Interceptor](defaultWireInterceptor)
   private val memoryExtractorRef = new AtomicReference[MemoryExtractor](defaultMemoryExtractor)
@@ -193,6 +195,9 @@ object TestSigil extends Sigil {
       case Some(f) => Task(f(informations))
       case None    => super.putInformations(informations)  // default = N putInformation calls
     }
+
+  override def compressOnImport(conversationId: Id[Conversation], framesAdded: Long): Task[Unit] =
+    compressOnImportRef.get().apply(conversationId, framesAdded)
 
   override def embeddingProvider: EmbeddingProvider = embeddingProviderRef.get()
 
@@ -302,6 +307,12 @@ object TestSigil extends Sigil {
 
   def clearPutInformations(): Unit = putInformationsRef.set(None)
 
+  /** Install a callback that runs from `compressOnImport` (fired by
+    * the framework after every successful `publishHistorical`). Used
+    * by specs to assert the hook fires + capture its arguments. */
+  def onCompressOnImport(f: (Id[Conversation], Long) => Task[Unit]): Unit =
+    compressOnImportRef.set(f)
+
   /** Install a curator function — specs exercising compression /
     * custom TurnInput shaping wire a curator via this hook. */
   def setCurate(f: (Id[Conversation], Id[Model], List[ParticipantId]) => Task[TurnInput]): Unit =
@@ -356,6 +367,7 @@ object TestSigil extends Sigil {
     compressionSpaceRef.set(defaultCompressionSpace)
     putInformationRef.set(defaultPutInformation)
     putInformationsRef.set(None)
+    compressOnImportRef.set((_: Id[Conversation], _: Long) => Task.unit)
     curateRef.set(defaultCurate)
     wireInterceptorRef.set(defaultWireInterceptor)
     memoryExtractorRef.set(defaultMemoryExtractor)

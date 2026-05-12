@@ -2249,9 +2249,39 @@ trait Sigil {
    */
   final def publishHistorical(events: Seq[sigil.event.Event],
                               conversationId: Id[Conversation]): Task[Unit] =
-    publishHistoricalSilent(events, conversationId).flatMap(_ =>
-      notifyHistoryImported(conversationId, events.size)
-    )
+    for {
+      _ <- publishHistoricalSilent(events, conversationId)
+      // Apps wire `compressOnImport` to fire a one-time hierarchical
+      // compression after bulk loads land. Default no-op so existing
+      // consumers pay nothing. Failures are best-effort logged here
+      // and don't block the refresh notification.
+      _ <- compressOnImport(conversationId, events.size.toLong).handleError { e =>
+             Task(scribe.warn(s"compressOnImport failed for ${conversationId.value}: ${e.getMessage}"))
+           }
+      _ <- notifyHistoryImported(conversationId, events.size)
+    } yield ()
+
+  /**
+   * Hook fired after [[publishHistorical]] (and friends) land a bulk
+   * import. Apps that want the "compress once, recall many" pattern
+   * override this to chunk the imported frames, summarize each chunk
+   * (typically via [[sigil.conversation.compression.MemoryContextCompressor.compressHierarchical]]),
+   * persist the summaries via [[persistSummary]], and optionally
+   * merge into a top-level epoch summary. The default is a no-op so
+   * existing consumers pay nothing — they keep the prior behaviour
+   * where the curator re-summarizes the entire history each turn.
+   *
+   * @param conversationId conversation that just received the bulk
+   *                       events.
+   * @param framesAdded    count of events newly persisted in this
+   *                       import (NOT the conversation's total
+   *                       frame count — only the delta). Apps short-
+   *                       circuit on small deltas to keep the cost
+   *                       of incremental imports low.
+   *
+   * Bug #144.
+   */
+  def compressOnImport(conversationId: Id[Conversation], framesAdded: Long): Task[Unit] = Task.unit
 
   /**
    * Persist + project a batch of historical events WITHOUT firing the
