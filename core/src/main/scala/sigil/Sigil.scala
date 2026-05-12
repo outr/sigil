@@ -1049,13 +1049,22 @@ trait Sigil {
           else Task.pure(defaultWorkType)
         wtTask.flatMap { wt =>
           val cxTask: Task[Complexity] =
-            if (strategy.shouldClassifyComplexity(wt) && userText.nonEmpty)
-              strategy.inferComplexity.get.apply(userText, turnContext)
-                .handleError { e =>
-                  scribe.warn(s"inferComplexity failed (${e.getClass.getSimpleName}: ${e.getMessage}) — falling back to Medium")
-                  Task.pure(Complexity.Medium)
-                }
-            else Task.pure(Complexity.Medium)
+            // Pin wins over inference (bug #152). Apps set
+            // `Conversation.pinnedComplexity` via the
+            // `pin_complexity` tool to force every turn onto a
+            // specific tier. The classifier path stays exercised
+            // only when no pin is in effect.
+            conversation.pinnedComplexity match {
+              case Some(pinned) => Task.pure(pinned)
+              case None =>
+                if (strategy.shouldClassifyComplexity(wt) && userText.nonEmpty)
+                  strategy.inferComplexity.get.apply(userText, turnContext)
+                    .handleError { e =>
+                      scribe.warn(s"inferComplexity failed (${e.getClass.getSimpleName}: ${e.getMessage}) — falling back to Medium")
+                      Task.pure(Complexity.Medium)
+                    }
+                else Task.pure(Complexity.Medium)
+            }
           cxTask.map { cx =>
             routingCache.put(conversation._id, RoutingState(msgId, wt, cx, escalations = 0))
             (wt, cx)
