@@ -1,5 +1,6 @@
 package sigil.tool.core
 
+import rapid.Stream
 import sigil.TurnContext
 import sigil.event.{Event, Message, MessageRole, ToolApproval}
 import sigil.signal.EventState
@@ -66,39 +67,67 @@ case object RecordConsentTool extends TypedTool[RecordConsentInput](
     )
   )
 ) {
-  override protected def executeTyped(input: RecordConsentInput, ctx: TurnContext): rapid.Stream[Event] = {
-    val approval = ToolApproval(
-      toolName       = ToolName(input.toolName),
-      approved       = input.approved,
-      reason         = input.reason,
-      participantId  = ctx.caller,
-      conversationId = ctx.conversation.id,
-      topicId        = ctx.conversation.currentTopicId
+  override protected def executeTyped(input: RecordConsentInput, ctx: TurnContext): Stream[Event] = {
+    val targetName = ToolName(input.toolName)
+    Stream.force(
+      ctx.sigil.findTools.byName(targetName).map {
+        case None =>
+          // Bug #160 — refuse to persist `ToolApproval` for a
+          // toolName that isn't in the registry. Agents that
+          // fabricate names (the wire-log case: a non-existent
+          // `start_coding` invented to clear a gate that didn't
+          // need clearing) used to land a useless `ToolApproval`
+          // row that polluted the audit log AND silently failed
+          // the gate forever (the row matches the fabricated
+          // name, not any real tool). Emit a Tool-role Failure
+          // instead so the agent reads "unknown tool" + the
+          // hint to call `find_capability` first.
+          val failureBody =
+            s"record_consent: unknown tool '${input.toolName}'. " +
+              "Call `find_capability` to discover the correct tool name before recording consent. " +
+              "Don't fabricate names — the framework refuses to persist approvals for tools that " +
+              "aren't in the registry."
+          val failure = Message(
+            participantId  = ctx.caller,
+            conversationId = ctx.conversation.id,
+            topicId        = ctx.conversation.currentTopicId,
+            content        = Vector(ResponseContent.Failure(reason = failureBody, recoverable = true)),
+            role           = MessageRole.Tool,
+            state          = EventState.Complete
+          )
+          Stream.emit[Event](failure)
+
+        case Some(_) =>
+          val approval = ToolApproval(
+            toolName       = targetName,
+            approved       = input.approved,
+            reason         = input.reason,
+            participantId  = ctx.caller,
+            conversationId = ctx.conversation.id,
+            topicId        = ctx.conversation.currentTopicId
+          )
+          // Bug #84 — emit a Tool-role confirmation Message
+          // alongside the durable ToolApproval so the orchestrator's
+          // function_call ↔ function_call_output pairing stays
+          // intact. ToolApproval alone is a ControlPlaneEvent —
+          // durable but doesn't render to a ToolResult frame.
+          val verdict = if (input.approved) "approved" else "declined"
+          val confirmationText = input.reason match {
+            case Some(reason) if reason.nonEmpty =>
+              s"Consent recorded: `${input.toolName}` $verdict — $reason"
+            case _ =>
+              s"Consent recorded: `${input.toolName}` $verdict"
+          }
+          val confirmation = Message(
+            participantId  = ctx.caller,
+            conversationId = ctx.conversation.id,
+            topicId        = ctx.conversation.currentTopicId,
+            content        = Vector(ResponseContent.Text(confirmationText)),
+            role           = MessageRole.Tool,
+            state          = EventState.Complete
+          )
+          Stream.emits(List[Event](approval, confirmation))
+      }
     )
-    // Bug #84 — emit a Tool-role confirmation Message alongside
-    // the durable ToolApproval so the orchestrator's
-    // function_call ↔ function_call_output pairing stays
-    // intact. Without this, OpenAI's Responses API rejects the
-    // next turn with "No tool output found for function call X"
-    // because the agent's `record_consent` ToolInvoke has no
-    // matching Tool-role result. ToolApproval alone is a
-    // ControlPlaneEvent — durable but doesn't render to a
-    // ToolResult frame.
-    val verdict = if (input.approved) "approved" else "declined"
-    val confirmationText = input.reason match {
-      case Some(reason) if reason.nonEmpty =>
-        s"Consent recorded: `${input.toolName}` $verdict — $reason"
-      case _ =>
-        s"Consent recorded: `${input.toolName}` $verdict"
-    }
-    val confirmation = Message(
-      participantId  = ctx.caller,
-      conversationId = ctx.conversation.id,
-      topicId        = ctx.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Text(confirmationText)),
-      role           = MessageRole.Tool,
-      state          = EventState.Complete
-    )
-    rapid.Stream.emits(List[Event](approval, confirmation))
   }
 }

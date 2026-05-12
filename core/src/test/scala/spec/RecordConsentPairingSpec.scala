@@ -31,6 +31,13 @@ import sigil.tool.model.{RecordConsentInput, ResponseContent}
 class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
+  // Sigil bug #160 — `record_consent` validates `toolName` against
+  // the live registry. Use a real, framework-shipped tool name so
+  // the pair-emission assertions exercise the happy path rather
+  // than the validation refusal path. `RespondTool` is always
+  // registered by `CoreTools.all`.
+  private val testToolName: String = sigil.tool.core.RespondTool.schema.name.value
+
   private def turnContextFor(): Task[TurnContext] = {
     val convId = Conversation.id(s"consent-pair-${rapid.Unique()}")
     val topic  = TopicEntry(
@@ -55,12 +62,12 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       for {
         ctx    <- turnContextFor()
         events <- RecordConsentTool.execute(
-                    RecordConsentInput(toolName = "load_claude_state", approved = true,
+                    RecordConsentInput(toolName = testToolName, approved = true,
                       reason = Some("user picked Claude state in setup options")), ctx).toList
       } yield {
         val approvals = events.collect { case t: ToolApproval => t }
         approvals should have size 1
-        approvals.head.toolName shouldBe ToolName("load_claude_state")
+        approvals.head.toolName shouldBe ToolName(testToolName)
         approvals.head.approved shouldBe true
 
         val toolMessages = events.collect {
@@ -68,7 +75,7 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         }
         toolMessages should have size 1
         val text = toolMessages.head.content.collect { case ResponseContent.Text(t) => t }.mkString
-        text should include("load_claude_state")
+        text should include(testToolName)
         text should include("approved")
         text should include("user picked Claude state")
       }
@@ -78,7 +85,7 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       for {
         ctx    <- turnContextFor()
         events <- RecordConsentTool.execute(
-                    RecordConsentInput(toolName = "load_claude_state", approved = false,
+                    RecordConsentInput(toolName = testToolName, approved = false,
                       reason = Some("user explicitly did not select")), ctx).toList
       } yield {
         events.collect { case t: ToolApproval => t } should have size 1
@@ -96,7 +103,7 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       for {
         ctx    <- turnContextFor()
         events <- RecordConsentTool.execute(
-                    RecordConsentInput(toolName = "some_tool", approved = true), ctx).toList
+                    RecordConsentInput(toolName = testToolName, approved = true), ctx).toList
       } yield {
         val toolMessages = events.collect {
           case m: Message if m.role == MessageRole.Tool => m

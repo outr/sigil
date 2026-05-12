@@ -28,7 +28,21 @@ case class Instructions private (safety: String = Instructions.ConfirmingSafety,
                                  tools: String = Instructions.DefaultToolsGuidance,
                                  personality: String = Instructions.DefaultPersonality,
                                  guidelines: List[String] = Nil,
-                                 toolsTrailer: String = Instructions.DefaultToolsTrailer) derives RW {
+                                 toolsTrailer: String = Instructions.DefaultToolsTrailer,
+                                 /** The agent's safety posture (sigil bug
+                                   * #160). `Confirming` keeps the
+                                   * orchestrator's `requiresUserConsent`
+                                   * gate active; `Autonomous` bypasses
+                                   * it because the user has pre-
+                                   * authorized the agent. Independent of
+                                   * the [[safety]] prose — that's the
+                                   * model-facing wording; this is the
+                                   * structural flag the orchestrator
+                                   * keys off. The two should usually
+                                   * agree (set both via
+                                   * [[Instructions.autonomous]] or
+                                   * [[Instructions.apply]]). */
+                                 posture: SafetyPosture = SafetyPosture.Confirming) derives RW {
   assert(personality.nonEmpty, "Personality must not be empty!")
 
   def withPersonality(personality: String): Instructions = copy(personality = personality)
@@ -43,6 +57,11 @@ case class Instructions private (safety: String = Instructions.ConfirmingSafety,
 
   /** Set or disable the trailing tool-call recap. Pass `""` to suppress. */
   def withToolsTrailer(toolsTrailer: String): Instructions = copy(toolsTrailer = toolsTrailer)
+
+  /** Set the structural safety posture. Distinct from [[withSafety]] —
+    * that swaps the model-facing safety prose; this flips the
+    * orchestrator's consent-gate behaviour. */
+  def withPosture(posture: SafetyPosture): Instructions = copy(posture = posture)
 
   /** Swap in the pure-discovery tools text. Used by `Provider.renderSystem`
     * when the active roster has stripped the respond family — the default
@@ -262,10 +281,11 @@ object Instructions {
             tools: String = DefaultToolsGuidance,
             personality: String = DefaultPersonality,
             guidelines: List[String] = Nil,
-            toolsTrailer: String = DefaultToolsTrailer): Instructions =
+            toolsTrailer: String = DefaultToolsTrailer,
+            posture: SafetyPosture = SafetyPosture.Confirming): Instructions =
     new Instructions(safety = safety, behavior = behavior, tools = tools,
                      personality = personality, guidelines = guidelines,
-                     toolsTrailer = toolsTrailer)
+                     toolsTrailer = toolsTrailer, posture = posture)
 
   /**
    * Convenience factory for autonomous-action posture — the agent acts
@@ -273,10 +293,16 @@ object Instructions {
    * this for benchmarks (AgentDojo, etc.) and "agent has been granted
    * full authority" deployments.
    *
-   * Equivalent to `Instructions(safety = Instructions.AutonomousSafety, ...)`.
+   * Sets both the model-facing safety prose ([[AutonomousSafety]])
+   * AND the structural [[SafetyPosture.Autonomous]] — the latter
+   * bypasses the orchestrator's `requiresUserConsent` gate so the
+   * agent doesn't have to call `record_consent` on itself to clear
+   * gates the user has already implicitly authorized (sigil bug
+   * #160).
    */
   def autonomous(personality: String = DefaultPersonality,
                  guidelines: List[String] = Nil): Instructions =
-    apply(safety = AutonomousSafety, personality = personality, guidelines = guidelines)
+    apply(safety = AutonomousSafety, personality = personality, guidelines = guidelines,
+          posture = SafetyPosture.Autonomous)
 }
 

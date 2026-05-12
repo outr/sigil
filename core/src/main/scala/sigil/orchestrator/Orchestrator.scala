@@ -59,6 +59,24 @@ object Orchestrator {
     * once-per-turn intercept. */
   def normalizeQuery(s: String): String = s.trim.toLowerCase.replaceAll("\\s+", " ")
 
+  /** Read the caller agent's [[sigil.provider.SafetyPosture]] from
+    * the turn context. The orchestrator's consent gate (sigil bug
+    * #160) bypasses `requiresUserConsent` when this is
+    * `Autonomous` — the user has pre-authorized the agent and the
+    * gate would only force the agent to call `record_consent` on
+    * itself.
+    *
+    * Walks the conversation's participants to find the caller's
+    * instance and reads `instructions.posture`. Non-agent callers
+    * (or chains where the caller isn't a registered participant)
+    * default to `Confirming` — the framework refuses to bypass
+    * gates for callers it can't attribute. */
+  def isAutonomousPosture(context: TurnContext): Boolean =
+    context.conversation.participants
+      .find(_.id == context.caller)
+      .collect { case agent: _root_.sigil.participant.AgentParticipant => agent }
+      .exists(_.instructions.posture == _root_.sigil.provider.SafetyPosture.Autonomous)
+
   def process(sigil: Sigil,
               provider: Provider,
               request: ConversationRequest,
@@ -1165,6 +1183,7 @@ object Orchestrator {
                              context: TurnContext,
                              originatingInvokeId: Id[Event]): Task[Either[List[Signal], Unit]] =
     if (!tool.requiresUserConsent) Task.pure(Right(()))
+    else if (Orchestrator.isAutonomousPosture(context)) Task.pure(Right(()))
     else context.sigil.latestToolApproval(tool.name, context.conversation._id).map {
       case Some(approval) if approval.approved => Right(())
       case Some(declined) =>
