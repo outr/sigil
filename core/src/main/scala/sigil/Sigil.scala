@@ -1053,17 +1053,22 @@ trait Sigil {
             // `Conversation.pinnedComplexity` via the
             // `pin_complexity` tool to force every turn onto a
             // specific tier. The classifier path stays exercised
-            // only when no pin is in effect.
+            // only when no pin is in effect. Bug #154 — the
+            // empty-text and classifier-failure fallbacks honour
+            // `strategy.defaultComplexity` instead of hard-coding
+            // Medium, so cost-first apps can route greets / silent
+            // continuations to Low without writing a custom
+            // classifier.
             conversation.pinnedComplexity match {
               case Some(pinned) => Task.pure(pinned)
               case None =>
                 if (strategy.shouldClassifyComplexity(wt) && userText.nonEmpty)
                   strategy.inferComplexity.get.apply(userText, turnContext)
                     .handleError { e =>
-                      scribe.warn(s"inferComplexity failed (${e.getClass.getSimpleName}: ${e.getMessage}) — falling back to Medium")
-                      Task.pure(Complexity.Medium)
+                      scribe.warn(s"inferComplexity failed (${e.getClass.getSimpleName}: ${e.getMessage}) — falling back to ${strategy.defaultComplexity}")
+                      Task.pure(strategy.defaultComplexity)
                     }
-                else Task.pure(Complexity.Medium)
+                else Task.pure(strategy.defaultComplexity)
             }
           cxTask.map { cx =>
             routingCache.put(conversation._id, RoutingState(msgId, wt, cx, escalations = 0))

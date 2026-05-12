@@ -61,8 +61,19 @@ trait ProviderStrategy {
 
   /** Bug #128 — per-message [[Complexity]] inference. Mirror of
     * [[inferWorkType]]; `None` means the framework defaults to
-    * `Complexity.Medium` for every turn. */
+    * [[defaultComplexity]] for every turn. */
   def inferComplexity: Option[ProviderStrategy.InferComplexity] = None
+
+  /** Bug #154 — complexity tier used when no per-message
+    * classification runs (empty user text on greet / synthetic
+    * turns, classifier-disabled, classifier failure). Apps
+    * biased toward cost-first routing (local model handles every
+    * greet) override with [[Complexity.Low]]; apps that want
+    * frontier-by-default for empty-text greets override with
+    * [[Complexity.VeryHigh]]. The framework's previous
+    * hardcoded `Complexity.Medium` becomes the trait's default
+    * — existing apps see no behavioural change. */
+  def defaultComplexity: Complexity = Complexity.Medium
 
   /** True when at least one [[WorkType]] chain differs from another
     * (or from default). When every chain is identical, classifying
@@ -132,8 +143,9 @@ object ProviderStrategy {
              routes: Map[WorkType, List[ModelCandidate]] = Map.empty,
              errorClassifier: ErrorClassifier = ErrorClassifier.Default,
              inferWorkType: Option[InferWorkType] = None,
-             inferComplexity: Option[InferComplexity] = None): ProviderStrategy =
-    new RoutedStrategy(default, routes, errorClassifier, inferWorkType, inferComplexity)
+             inferComplexity: Option[InferComplexity] = None,
+             defaultComplexity: Complexity = Complexity.Medium): ProviderStrategy =
+    new RoutedStrategy(default, routes, errorClassifier, inferWorkType, inferComplexity, defaultComplexity)
 }
 
 /** Single-model strategy — every work type returns the same one-element list. */
@@ -148,7 +160,8 @@ private final class RoutedStrategy(default: List[ModelCandidate],
                                    routes: Map[WorkType, List[ModelCandidate]],
                                    override val errorClassifier: ErrorClassifier,
                                    override val inferWorkType: Option[ProviderStrategy.InferWorkType],
-                                   override val inferComplexity: Option[ProviderStrategy.InferComplexity])
+                                   override val inferComplexity: Option[ProviderStrategy.InferComplexity],
+                                   override val defaultComplexity: Complexity)
   extends ProviderStrategy {
 
   private val cooldowns: ConcurrentHashMap[Id[Model], Instant] = new ConcurrentHashMap[Id[Model], Instant]()
