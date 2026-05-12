@@ -10,7 +10,7 @@ import sigil.conversation.{Conversation, TopicEntry, TurnInput}
 import sigil.event.{Event, Message, MessageRole, ToolApproval, ToolInvoke}
 import sigil.orchestrator.Orchestrator
 import sigil.signal.{EventState, Signal}
-import sigil.tool.{ToolInput, ToolName, TypedTool}
+import sigil.tool.{InMemoryToolFinder, ToolInput, ToolName, TypedTool}
 import sigil.tool.core.RecordConsentTool
 import sigil.tool.model.{RecordConsentInput, ResponseContent}
 
@@ -80,6 +80,14 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
   }
 
   ToolInput.register(RW.static(GatedInput("")), RW.static(FreeInput("")))
+
+  // Sigil bug #160 — `record_consent` validates `toolName` against
+  // the registry, so the spec's in-test `GatedTool` / `FreeTool` need
+  // to be discoverable for the dispatch paths that record consent
+  // via the real tool. Override the finder so byName succeeds for
+  // both; cleared in tear-down so other specs see the default
+  // `DbToolFinder`.
+  TestSigil.setToolFinder(InMemoryToolFinder(List(GatedTool, FreeTool, RecordConsentTool)))
 
   private def newConv(suffix: String): Task[Conversation] = {
     val convId = Conversation.id(s"consent-$suffix-${rapid.Unique()}")
@@ -193,6 +201,7 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
   }
 
   "tear down" should {
+    "clear the per-spec ToolFinder override" in Task { TestSigil.clearToolFinder(); succeed }
     "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
   }
 }
