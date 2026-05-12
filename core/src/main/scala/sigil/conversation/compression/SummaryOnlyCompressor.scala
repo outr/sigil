@@ -37,7 +37,14 @@ case class SummaryOnlyCompressor(systemPrompt: String = SummaryOnlyCompressor.De
                                    SummaryOnlyCompressor.DefaultRenderer,
                                  tokenizer: Tokenizer = HeuristicTokenizer,
                                  reservedOutputTokens: Long = 1024L,
-                                 promptOverheadTokens: Long = 512L) extends ContextCompressor {
+                                 promptOverheadTokens: Long = 512L,
+                                 /** Per-chunk wire-protocol body ceiling. OpenAI caps
+                                   * each `input[…].content[…].text` at 10 MB; llama.cpp
+                                   * HTTP servers cap their request bodies similarly.
+                                   * Default 8 MB stays comfortably under both. Apps
+                                   * pointed at a provider with a different limit
+                                   * override. Bug #143. */
+                                 maxChunkBytes: Long = SummaryOnlyCompressor.DefaultMaxChunkBytes) extends ContextCompressor {
 
   override def compress(sigil: Sigil,
                         callerModelId: Id[Model],
@@ -75,8 +82,16 @@ case class SummaryOnlyCompressor(systemPrompt: String = SummaryOnlyCompressor.De
                               conversationId: Id[Conversation]): Task[Option[ContextSummary]] = {
     val transcript = renderTranscript(frames, ctx._1, ctx._2)
     val transcriptTokens = tokenizer.count(transcript).toLong
+    val transcriptBytes  = transcript.getBytes(java.nio.charset.StandardCharsets.UTF_8).length.toLong
     val available = sigil.cache.find(modelId).map(_.contextLength).getOrElse(0L) - reservedOutputTokens - promptOverheadTokens
-    if (available <= 0L || transcriptTokens <= available)
+    // Single-shot path is viable only when BOTH the token window
+    // accommodates the transcript AND the wire body fits the byte
+    // ceiling. Bug #143 — token-only check was letting 18 MB
+    // transcripts through to a 200K-context frontier model and
+    // hitting the provider's per-text-input cap.
+    val fitsTokens = available <= 0L || transcriptTokens <= available
+    val fitsBytes  = transcriptBytes <= maxChunkBytes
+    if (fitsTokens && fitsBytes)
       summarizeOnce(sigil, modelId, chain, transcript, conversationId)
     else
       chunkAndMerge(sigil, modelId, chain, frames, ctx, conversationId, available)
@@ -126,7 +141,10 @@ case class SummaryOnlyCompressor(systemPrompt: String = SummaryOnlyCompressor.De
                             ctx: (Option[_root_.sigil.provider.Mode], Option[_root_.sigil.conversation.TopicEntry]),
                             conversationId: Id[Conversation],
                             availableTokens: Long): Task[Option[ContextSummary]] = {
-    val chunks = SummaryOnlyCompressor.chunkByTokens(frames, ctx, renderTranscript, tokenizer, availableTokens)
+    val effectiveTokenBudget = if (availableTokens <= 0L) Long.MaxValue else availableTokens
+    val chunks = SummaryOnlyCompressor.chunkByTokensAndBytes(
+      frames, ctx, renderTranscript, tokenizer, effectiveTokenBudget, maxChunkBytes
+    )
     val perChunkTask: Task[List[ContextSummary]] = Task.sequence(chunks.map { chunk =>
       val text = renderTranscript(chunk, ctx._1, ctx._2)
       summarizeOnce(sigil, modelId, chain, text, conversationId)
@@ -178,6 +196,13 @@ object SummaryOnlyCompressor {
 
   val DefaultRenderer: Renderer = TranscriptRenderer.render
 
+  /** Default per-chunk wire-protocol body ceiling. OpenAI's
+    * Responses API caps each text input field at 10 MB; llama.cpp's
+    * HTTP server typically caps lower. 8 MB stays comfortably under
+    * both without inflating chunk count on normal-sized inputs.
+    * Bug #143. */
+  val DefaultMaxChunkBytes: Long = 8L * 1024L * 1024L
+
   /** Split a frame vector into chunks each rendering to ≤
     * `budgetTokens` per `tokenizer`. Greedy: walks frames in order,
     * accumulates into the current chunk until adding the next frame
@@ -190,19 +215,45 @@ object SummaryOnlyCompressor {
                     ctx: (Option[_root_.sigil.provider.Mode], Option[_root_.sigil.conversation.TopicEntry]),
                     render: Renderer,
                     tokenizer: sigil.tokenize.Tokenizer,
-                    budgetTokens: Long): List[Vector[ContextFrame]] = {
+                    budgetTokens: Long): List[Vector[ContextFrame]] =
+    chunkByTokensAndBytes(frames, ctx, render, tokenizer, budgetTokens, maxBytes = Long.MaxValue)
+
+  /** Split a frame vector into chunks satisfying BOTH a token budget
+    * AND a byte ceiling — splits whenever adding the next frame would
+    * exceed either constraint. The byte ceiling captures the wire-
+    * protocol body cap that every provider enforces below the model's
+    * claimed token context (OpenAI: 10 MB per input field, llama.cpp:
+    * server-configured but typically smaller, …). Token-window math
+    * is necessary but not sufficient. Single frames whose own size
+    * exceeds either budget land alone in their chunk — caller decides
+    * whether to refuse or let the provider handle it. Bug #143. */
+  def chunkByTokensAndBytes(frames: Vector[ContextFrame],
+                            ctx: (Option[_root_.sigil.provider.Mode], Option[_root_.sigil.conversation.TopicEntry]),
+                            render: Renderer,
+                            tokenizer: sigil.tokenize.Tokenizer,
+                            budgetTokens: Long,
+                            maxBytes: Long): List[Vector[ContextFrame]] = {
     val out = scala.collection.mutable.ListBuffer.empty[Vector[ContextFrame]]
     var current = Vector.empty[ContextFrame]
     var currentTokens = 0L
+    var currentBytes  = 0L
     frames.foreach { frame =>
-      val frameTokens = tokenizer.count(render(Vector(frame), ctx._1, ctx._2)).toLong
-      if (current.nonEmpty && currentTokens + frameTokens > budgetTokens) {
+      val rendered    = render(Vector(frame), ctx._1, ctx._2)
+      val frameTokens = tokenizer.count(rendered).toLong
+      val frameBytes  = rendered.getBytes(java.nio.charset.StandardCharsets.UTF_8).length.toLong
+      val wouldExceed =
+        current.nonEmpty &&
+          ((currentTokens + frameTokens > budgetTokens) ||
+            (currentBytes + frameBytes > maxBytes))
+      if (wouldExceed) {
         out += current
         current = Vector(frame)
         currentTokens = frameTokens
+        currentBytes  = frameBytes
       } else {
         current = current :+ frame
         currentTokens += frameTokens
+        currentBytes  += frameBytes
       }
     }
     if (current.nonEmpty) out += current
