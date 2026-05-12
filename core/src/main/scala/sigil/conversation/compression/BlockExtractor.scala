@@ -23,5 +23,21 @@ import sigil.conversation.ContextFrame
  * [[sigil.Sigil.putInformation]] is never called.
  */
 trait BlockExtractor {
-  def extract(sigil: Sigil, frames: Vector[ContextFrame]): Task[BlockExtractionResult]
+
+  def extract(sigil: Sigil,
+              frames: Vector[ContextFrame],
+              progress: BlockExtractor.ProgressCallback = BlockExtractor.NoProgress): Task[BlockExtractionResult]
+}
+
+object BlockExtractor {
+  /** Progress callback invoked periodically during extraction. First
+    * arg is the count of frames inspected; second is the total. The
+    * standard curator wires this to its workflow-control `step`
+    * pulse so the activity bar reflects forward motion on big
+    * imports instead of sitting on one opaque label for minutes. */
+  type ProgressCallback = (Int, Int) => Task[Unit]
+
+  /** Default callback: no-op. Apps without a workflow surface pass
+    * nothing and pay zero cost. */
+  val NoProgress: ProgressCallback = (_, _) => Task.unit
 }

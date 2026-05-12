@@ -145,6 +145,7 @@ object TestSigil extends Sigil {
   private val vectorIndexRef = new AtomicReference[VectorIndex](defaultVectorIndex)
   private val compressionSpaceRef = new AtomicReference[Option[SpaceId]](defaultCompressionSpace)
   private val putInformationRef = new AtomicReference[Information => Unit](defaultPutInformation)
+  private val putInformationsRef = new AtomicReference[Option[Vector[Information] => Unit]](None)
   private val curateRef = new AtomicReference[(Id[Conversation], Id[Model], List[ParticipantId]) => Task[TurnInput]](defaultCurate)
   private val wireInterceptorRef = new AtomicReference[spice.http.client.intercept.Interceptor](defaultWireInterceptor)
   private val memoryExtractorRef = new AtomicReference[MemoryExtractor](defaultMemoryExtractor)
@@ -186,6 +187,12 @@ object TestSigil extends Sigil {
 
   override def putInformation(information: Information): Task[Unit] =
     Task(putInformationRef.get().apply(information))
+
+  override def putInformations(informations: Vector[Information]): Task[Unit] =
+    putInformationsRef.get() match {
+      case Some(f) => Task(f(informations))
+      case None    => super.putInformations(informations)  // default = N putInformation calls
+    }
 
   override def embeddingProvider: EmbeddingProvider = embeddingProviderRef.get()
 
@@ -283,6 +290,18 @@ object TestSigil extends Sigil {
     * that want to capture writes for assertions pass an appender. */
   def onPutInformation(f: Information => Unit): Unit = putInformationRef.set(f)
 
+  /** Install a callback invoked on every `putInformations` (bulk)
+    * call. When set, the framework's default delegation to per-record
+    * `putInformation` is bypassed — specs use this to assert the
+    * batch path. Unset by default: TestSigil falls back to the
+    * framework's `N` calls to `putInformation` so existing specs
+    * that hook `onPutInformation` continue to capture the same
+    * writes. */
+  def onPutInformations(f: Vector[Information] => Unit): Unit =
+    putInformationsRef.set(Some(f))
+
+  def clearPutInformations(): Unit = putInformationsRef.set(None)
+
   /** Install a curator function — specs exercising compression /
     * custom TurnInput shaping wire a curator via this hook. */
   def setCurate(f: (Id[Conversation], Id[Model], List[ParticipantId]) => Task[TurnInput]): Unit =
@@ -336,6 +355,7 @@ object TestSigil extends Sigil {
     vectorIndexRef.set(defaultVectorIndex)
     compressionSpaceRef.set(defaultCompressionSpace)
     putInformationRef.set(defaultPutInformation)
+    putInformationsRef.set(None)
     curateRef.set(defaultCurate)
     wireInterceptorRef.set(defaultWireInterceptor)
     memoryExtractorRef.set(defaultMemoryExtractor)
