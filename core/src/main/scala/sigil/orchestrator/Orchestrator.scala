@@ -9,6 +9,7 @@ import sigil.event.{Event, Message, MessageRole, MessageVisibility, Reasoning, T
 import sigil.participant.ParticipantId
 import sigil.provider.{CallId, ConversationRequest, Provider, ProviderEvent, StopReason}
 import sigil.signal.{MessageContentDelta, ContentKind, EventState, ImageDelta, MessageDelta, Signal, StateDelta, ToolDelta}
+import sigil.tool.core.FindCapabilityInput
 import sigil.tool.model.{MarkdownContentParser, RespondInput, ResponseContent}
 import sigil.tool.ToolName
 import sigil.TurnContext
@@ -50,6 +51,13 @@ object Orchestrator {
     * the turn. Used for bug #46's silent-completion fallback. */
   val UserVisibleTerminalTools: Set[String] =
     Set("respond", "respond_options", "respond_field", "respond_failure", "no_response")
+
+  /** Canonicalise a `find_capability` keywords string for repeated-
+    * query detection (sigil bug #159). Lowercases, trims, and
+    * collapses whitespace runs so trivial formatting differences
+    * (`"foo  bar"` vs `" foo bar "`) don't slip past the
+    * once-per-turn intercept. */
+  def normalizeQuery(s: String): String = s.trim.toLowerCase.replaceAll("\\s+", " ")
 
   def process(sigil: Sigil,
               provider: Provider,
@@ -517,6 +525,28 @@ object Orchestrator {
                 case _ =>
               }
             }
+            if (active.toolName == "find_capability") {
+              input match {
+                case fc: FindCapabilityInput =>
+                  // Bug #159 — repeated-query intercept. When the
+                  // agent has already invoked `find_capability` with
+                  // identical (normalized) keywords earlier in the
+                  // same user turn, the ranker is deterministic so a
+                  // second call will return the same hits. Replace
+                  // the duplicate execution with a guidance Failure
+                  // directing the agent to refine the query or pick
+                  // a different result from the prior hits, before
+                  // it burns the turn looping until
+                  // `maxAgentIterations`.
+                  return Stream.force(repeatedQueryOutcome(sigil, fc.keywords, convId, caller, topicId).map {
+                    case Some(interceptSignals) =>
+                      Stream.emits(toolDeltaPrefix ::: interceptSignals)
+                    case None =>
+                      proceedWithAtomicDispatch()
+                  })
+                case _ =>
+              }
+            }
             proceedWithAtomicDispatch()
         }
 
@@ -959,6 +989,101 @@ object Orchestrator {
         "describing what the user asked, review the matches, then decide whether to refuse based on " +
         "what discovery actually returns. If no relevant capability surfaces, refuse with the " +
         "specifics of what you searched and what wasn't there."
+    val diagnostic = Message(
+      participantId  = caller,
+      conversationId = convId,
+      topicId        = topicId,
+      role           = MessageRole.Tool,
+      content        = Vector(ResponseContent.Failure(reason = reason, recoverable = true)),
+      state          = EventState.Complete,
+      visibility     = MessageVisibility.Agents,
+      origin         = Some(syntheticInvokeId)
+    )
+    List[Signal](syntheticInvoke, diagnostic)
+  }
+
+  /** Bug #159 — decide whether a `find_capability` dispatch should be
+    * suppressed because the agent already issued the same query
+    * earlier in this user turn.
+    *
+    * Returns:
+    *   - `Some(signals)` when a prior `find_capability` invoke since
+    *     the last user-authored Message carries identical normalized
+    *     keywords AND no `_repeated_query_intercept` marker is
+    *     already on the tail. The signals are a synthetic
+    *     `_repeated_query_intercept` ToolInvoke + a paired Tool-role
+    *     `Failure` that tells the agent to refine the query or pick
+    *     a different result from the previous hits.
+    *   - `None` when no duplicate is on the tail, when the prior
+    *     query had different keywords, when no prior `find_capability`
+    *     exists this turn, or when a prior intercept is already
+    *     present (once-per-turn limit — same shape as the refusal
+    *     challenge's loop safety). */
+  private def repeatedQueryOutcome(sigil: Sigil,
+                                   keywords: String,
+                                   convId: lightdb.id.Id[Conversation],
+                                   caller: ParticipantId,
+                                   topicId: lightdb.id.Id[Topic]): Task[Option[List[Signal]]] = {
+    val normalized = Orchestrator.normalizeQuery(keywords)
+    sigil.withDB(_.events.transaction(_.list)).map { allEvents =>
+      val convEvents = allEvents
+        .filter(_.conversationId == convId)
+        .sortBy(_.timestamp.value)
+      val lastUserIdx = convEvents.lastIndexWhere {
+        case m: Message => !m.participantId.isInstanceOf[_root_.sigil.participant.AgentParticipantId]
+        case _          => false
+      }
+      if (lastUserIdx < 0) None
+      else {
+        val tail = convEvents.drop(lastUserIdx + 1)
+        val alreadyIntercepted = tail.exists {
+          case ti: ToolInvoke if ti.toolName.value == "_repeated_query_intercept" => true
+          case _                                                                  => false
+        }
+        if (alreadyIntercepted) None
+        else {
+          val priorMatch = tail.exists {
+            case ti: ToolInvoke if ti.toolName.value == "find_capability" =>
+              ti.input match {
+                case Some(fc: FindCapabilityInput) =>
+                  Orchestrator.normalizeQuery(fc.keywords) == normalized
+                case _ => false
+              }
+            case _ => false
+          }
+          if (!priorMatch) None
+          else Some(buildRepeatedQuerySignals(caller, convId, topicId, normalized))
+        }
+      }
+    }
+  }
+
+  /** Construct the (synthetic-invoke, Failure-message) pair the
+    * orchestrator emits when [[repeatedQueryOutcome]] fires. The
+    * `_repeated_query_intercept` invoke name doubles as the marker
+    * the detector walks for to enforce once-per-user-turn loop
+    * safety. */
+  private def buildRepeatedQuerySignals(caller: ParticipantId,
+                                        convId: lightdb.id.Id[Conversation],
+                                        topicId: lightdb.id.Id[Topic],
+                                        normalizedKeywords: String): List[Signal] = {
+    val syntheticInvokeId = Event.id()
+    val syntheticInvoke = ToolInvoke(
+      toolName       = ToolName("_repeated_query_intercept"),
+      participantId  = caller,
+      conversationId = convId,
+      topicId        = topicId,
+      _id            = syntheticInvokeId,
+      state          = EventState.Complete,
+      internal       = true
+    )
+    val reason =
+      s"You already called `find_capability` with keywords `$normalizedKeywords` earlier this " +
+        "turn. The ranker is deterministic — the same keywords will return the same hits. " +
+        "Either pick a different tool from the prior results (review the previous " +
+        "`find_capability` result Message in your context), or call `find_capability` again " +
+        "with DIFFERENT keywords that describe the action shape more specifically. Repeating " +
+        "the same search will not produce a different answer."
     val diagnostic = Message(
       participantId  = caller,
       conversationId = convId,
