@@ -76,6 +76,7 @@ object TestSigil extends Sigil {
   override def staticTools: List[Tool] =
     super.staticTools ++ (List(
       sigil.tool.core.ChangeModeTool,
+      sigil.tool.provider.PinComplexityTool,
       // Deprecated standalone respond-family tools (sigil bug #157)
       // — kept registered here so specs that exercise the legacy
       // by-name dispatch path (e.g. PostRespondContextSpec) still

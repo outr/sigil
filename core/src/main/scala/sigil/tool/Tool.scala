@@ -298,11 +298,31 @@ object Tool extends PolyType[Tool]()(using scala.reflect.ClassTag(classOf[Tool])
    * the search query OR-combines per-keyword `TermQuery`s, and the
    * `BestMatch` sort returns documents in descending relevance order.
    *
+   * `keywords` is repeated 5× in the indexed string so BM25's term-
+   * frequency signal weights a tool author's curated intent surface
+   * above incidental description prose. Without the boost, a long
+   * description with accidentally-matching tokens can outscore a
+   * tool whose keywords match the query exactly — see sigil bug
+   * #158 for the concrete failure case (`change_mode` outranking
+   * `pin_complexity` on a tier-pinning query).
+   *
    * Apps can rebuild the searchable surface per tool by overriding any
    * of the source fields; the index recomputes on `tools.upsert`.
    */
   val searchText: lightdb.field.Field.Tokenized[Tool] =
-    field.tokenized("searchText", (t: Tool) =>
-      s"${t.name.value} ${t.description} ${t.keywords.mkString(" ")}"
-    )
+    field.tokenized("searchText", (t: Tool) => {
+      val keywordBlock =
+        if (t.keywords.isEmpty) ""
+        else Iterator.fill(KeywordSearchBoost)(t.keywords.mkString(" ")).mkString(" ")
+      s"${t.name.value} ${t.description} $keywordBlock"
+    })
+
+  /** Multiplier applied to a tool's `keywords` block within the
+    * indexed [[searchText]]. Repeating the curated tokens N times
+    * raises BM25's term-frequency contribution from `keywords` so the
+    * ranker honors intent surface over description prose. 5× is the
+    * default — high enough to flip cases like sigil bug #158, low
+    * enough that a tool with no keywords still surfaces from a
+    * description match. */
+  val KeywordSearchBoost: Int = 5
 }
