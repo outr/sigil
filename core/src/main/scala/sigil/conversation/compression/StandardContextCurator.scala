@@ -151,11 +151,11 @@ case class StandardContextCurator(sigil: Sigil,
         blockResult   <- blockExtractor.extract(sigil, optimizedFrames, progressCb)
         _             <- control.step("Retrieving memories")
         memoryResult  <- memoryRetriever.retrieve(sigil, conversationId, blockResult.frames, chain)
-        // Pull persisted summaries (the "compress once, recall many"
-        // path). Compression-time records from earlier turns AND
-        // import-time hierarchical summaries (when an app wires
-        // `compressOnImport`) both flow through here so older history
-        // is represented without being in the raw-frame stream.
+        // Pull persisted summaries — compression-time records from
+        // earlier turns + any narrative summaries an app's UX
+        // generated explicitly via `MemoryContextCompressor.compressHierarchical`.
+        // Older history is represented this way without re-occupying
+        // the raw-frame stream every turn.
         persistedSummaries <-
           if (loadPersistedSummaries) sigil.summariesFor(conversationId).map(_.map(_._id).toVector)
           else Task.pure(Vector.empty)

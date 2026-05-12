@@ -13,9 +13,9 @@ import sigil.tool.model.ResponseContent
 
 /**
  * Regression for sigil bug #144 — the curator never loaded
- * persisted `ContextSummary` records, so app-side
- * compress-once-recall-many flows (typically wired via
- * `compressOnImport`) had no effect on subsequent turns. Verifies:
+ * persisted `ContextSummary` records, so any summary an app
+ * generated (whether at import time or via a "session overview"
+ * UX action) was invisible to subsequent turns. Verifies:
  *
  *   - `loadPersistedSummaries = true` (default) pulls
  *     `Sigil.summariesFor` into the turn's `TurnInput.summaries`
@@ -178,56 +178,6 @@ class CuratorPersistedSummariesSpec extends AsyncWordSpec with AsyncTaskSpec wit
         result <- curator.curate(convId, modelId, chain = List(TestUser, TestAgent))
       } yield {
         result.frames should have size 4
-      }
-    }
-  }
-
-  "Sigil.compressOnImport" should {
-
-    "fire after publishHistorical lands a batch" in {
-      val convId = freshConvId("import")
-      val captured = new java.util.concurrent.atomic.AtomicReference[Option[(Id[Conversation], Long)]](None)
-      TestSigil.onCompressOnImport { (cid, n) =>
-        Task {
-          captured.set(Some(cid -> n))
-        }
-      }
-      val sampleEvent = Message(
-        participantId  = TestUser,
-        conversationId = convId,
-        topicId        = topic.id,
-        content        = Vector(ResponseContent.Text("history")),
-        state          = EventState.Complete
-      )
-      for {
-        _ <- seedConversation(convId)
-        _ <- TestSigil.publishHistorical(Seq(sampleEvent), convId)
-      } yield {
-        captured.get() shouldBe Some(convId -> 1L)
-      }
-    }
-
-    "default to a no-op when the app doesn't override the hook" in {
-      // The default `compressOnImport` returns `Task.unit`. We
-      // observe its non-effect indirectly: a publishHistorical
-      // call against TestSigil must complete without error and
-      // without persisting any summary.
-      val convId = freshConvId("default-import")
-      val sampleEvent = Message(
-        participantId  = TestUser,
-        conversationId = convId,
-        topicId        = topic.id,
-        content        = Vector(ResponseContent.Text("history")),
-        state          = EventState.Complete
-      )
-      for {
-        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-               _id = convId, topics = List(topic)
-             ))))
-        _ <- TestSigil.publishHistorical(Seq(sampleEvent), convId)
-        summaries <- TestSigil.summariesFor(convId)
-      } yield {
-        summaries shouldBe empty
       }
     }
   }

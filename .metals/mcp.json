@@ -1,0 +1,7 @@
+{
+  "servers": {
+    "sigil-metals": {
+      "url": "http://localhost:39399/mcp"
+    }
+  }
+}
