@@ -49,7 +49,11 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                                    extractFacts: Boolean = true,
                                    tokenizer: sigil.tokenize.Tokenizer = sigil.tokenize.HeuristicTokenizer,
                                    reservedOutputTokens: Long = 1024L,
-                                   promptOverheadTokens: Long = 512L) extends ContextCompressor {
+                                   promptOverheadTokens: Long = 512L,
+                                   /** Wire-protocol body ceiling shared with the
+                                     * chunker. Defaults to [[SummaryOnlyCompressor.DefaultMaxChunkBytes]]
+                                     * (8 MB). Bug #143. */
+                                   maxChunkBytes: Long = SummaryOnlyCompressor.DefaultMaxChunkBytes) extends ContextCompressor {
 
   override def compress(sigil: Sigil,
                         callerModelId: Id[Model],
@@ -82,17 +86,23 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
           spaceOpt <- if (extractFacts) sigil.compressionMemorySpace(conversationId) else Task.pure(None)
           available        = sigil.cache.find(summarizationModel).map(_.contextLength).getOrElse(0L) - reservedOutputTokens - promptOverheadTokens
           transcriptTokens = tokenizer.count(transcript).toLong
+          transcriptBytes  = transcript.getBytes(java.nio.charset.StandardCharsets.UTF_8).length.toLong
+          // Single-shot only when BOTH the token window accommodates
+          // the transcript AND the wire body fits the byte ceiling.
+          // Bug #143 — token-only check let 18 MB transcripts through
+          // to a 200K-context frontier model.
+          fitsSinglePass = (available <= 0L || transcriptTokens <= available) && transcriptBytes <= maxChunkBytes
           _ <- control.step("Extracting facts")
           _ <- spaceOpt match {
                  case Some(space) =>
-                   if (available <= 0L || transcriptTokens <= available)
+                   if (fitsSinglePass)
                      extractAndPersist(sigil, summarizationModel, chain, transcript, conversationId, space)
                    else
                      extractAndPersistChunked(sigil, summarizationModel, chain, materialized, ctx, conversationId, space, available)
                  case None => Task.unit
                }
           _ <- control.step("Summarizing transcript")
-          summary <- if (available <= 0L || transcriptTokens <= available)
+          summary <- if (fitsSinglePass)
                        summarize(sigil, summarizationModel, chain, transcript, conversationId)
                      else
                        SummaryOnlyCompressor(
@@ -100,7 +110,8 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                          renderTranscript = renderTranscript,
                          tokenizer = tokenizer,
                          reservedOutputTokens = reservedOutputTokens,
-                         promptOverheadTokens = promptOverheadTokens
+                         promptOverheadTokens = promptOverheadTokens,
+                         maxChunkBytes = maxChunkBytes
                        ).compress(sigil, summarizationModel, chain, rapid.Stream.emits(materialized), conversationId)
         } yield summary
       }
@@ -119,7 +130,10 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                                        conversationId: Id[Conversation],
                                        space: SpaceId,
                                        availableTokens: Long): Task[Unit] = {
-    val chunks = SummaryOnlyCompressor.chunkByTokens(frames, ctx, renderTranscript, tokenizer, availableTokens)
+    val effectiveTokenBudget = if (availableTokens <= 0L) Long.MaxValue else availableTokens
+    val chunks = SummaryOnlyCompressor.chunkByTokensAndBytes(
+      frames, ctx, renderTranscript, tokenizer, effectiveTokenBudget, maxChunkBytes
+    )
     Task.sequence(chunks.map { chunk =>
       val text = renderTranscript(chunk, ctx._1, ctx._2)
       extractAndPersist(sigil, modelId, chain, text, conversationId, space)
