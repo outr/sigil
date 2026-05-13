@@ -40,6 +40,7 @@ case class DigitalOceanProvider(apiKey: String,
   private val wireConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
     providerNamespace = DigitalOcean.Provider,
     providerName      = "DigitalOcean",
+    strictModeCapable = true,
     multimodalPolicy  = OpenAIChatCompletions.MultimodalPolicy.OpenAIArrayForm,
     // Sigil bug #161 — DO's kimi-k2.5 deployment intermittently emits
     // either degenerate `" The!!!!"` reasoning_content or null-padded

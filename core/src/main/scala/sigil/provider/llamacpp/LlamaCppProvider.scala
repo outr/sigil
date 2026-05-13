@@ -69,14 +69,14 @@ case class LlamaCppProvider(url: URL,
     * passes through unchanged — llama.cpp's chat-completions endpoint
     * translates it into a GBNF grammar at generation time. */
   private val wireConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
-    providerNamespace    = LlamaCpp.Provider,
-    providerName         = "LlamaCpp",
-    schemaTransform      = identity,
-    reasoningPolicy      = OpenAIChatCompletions.ReasoningPolicy.ChatTemplateEnableThinking,
-    multimodalPolicy     = OpenAIChatCompletions.MultimodalPolicy.TextOnlyWithWarning,
-    preprocess           = preprocessForLlamaCpp,
-    toolCallIdNormalizer = LlamaCppProvider.normalizeWireId,
-    inlineErrorThrows    = true
+    providerNamespace        = LlamaCpp.Provider,
+    providerName             = "LlamaCpp",
+    nonStrictSchemaTransform = identity,
+    reasoningPolicy          = OpenAIChatCompletions.ReasoningPolicy.ChatTemplateEnableThinking,
+    multimodalPolicy         = OpenAIChatCompletions.MultimodalPolicy.TextOnlyWithWarning,
+    preprocess               = preprocessForLlamaCpp,
+    toolCallIdNormalizer     = LlamaCppProvider.normalizeWireId,
+    inlineErrorThrows        = true
   )
 
   override def call(input: ProviderCall): Stream[ProviderEvent] =

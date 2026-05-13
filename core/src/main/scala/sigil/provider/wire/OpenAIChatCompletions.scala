@@ -74,19 +74,31 @@ object OpenAIChatCompletions {
     /** Endpoint path. Defaults to `/v1/chat/completions`. */
     path: String = "/v1/chat/completions",
 
-    /** Emit `"strict": true` on tool functions. Enables grammar-constrained
-      * decoding on backends that honour it (DeepSeek; OpenAI strict-mode
-      * lives on the Responses wire — not this one). */
-    strictMode: Boolean = false,
+    /** Backend supports OpenAI-style `strict: true` on tool functions —
+      * the wire flag that engages grammar-constrained decoding. When
+      * true, [[renderTools]] dispatches per-tool: tools whose schema
+      * is strict-compatible (no `DefType.Json` anywhere in the tree —
+      * bug #64) ship with `strict: true` and [[StrictSchema.forOpenAIStrict]]
+      * applied to their parameters. Tools that can't be strict (Json
+      * fields are incompatible with strict mode's closed-object
+      * requirement) fall through to [[nonStrictSchemaTransform]] and
+      * omit the `strict` flag.
+      *
+      * Engaged for OpenAI-compatible backends that honour strict
+      * mode (DeepSeek, DeepInfra, DigitalOcean, …); off for llama.cpp
+      * (its GBNF translator handles the full schema and doesn't need
+      * the strict flag). OpenAI's own strict-mode path lives on the
+      * Responses wire, not this one. */
+    strictModeCapable: Boolean = false,
 
-    /** Schema transform applied to each tool's JSON schema before it
-      * ships. Use [[StrictSchema.forDeepSeek]] (or `forOpenAI` if
-      * applicable) when [[strictMode]] is on; otherwise
-      * [[StrictSchema.stripUnsupportedKeys]] is the conservative
-      * choice (drops `pattern` / `format` / numeric bounds that some
-      * validators reject). Pass [[identity]] for backends that handle
-      * the full schema (llama.cpp's GBNF translation). */
-    schemaTransform: Json => Json = StrictSchema.stripUnsupportedKeys,
+    /** Schema transform applied to each tool's JSON schema when strict
+      * mode is NOT engaged (either [[strictModeCapable]] is false OR
+      * the tool's input schema contains a `DefType.Json` and can't be
+      * strict). Default [[StrictSchema.stripUnsupportedKeys]] drops
+      * `pattern` / `format` / numeric bounds that some validators
+      * reject. Pass [[identity]] for backends that handle the full
+      * schema (llama.cpp's GBNF translation). */
+    nonStrictSchemaTransform: Json => Json = StrictSchema.stripUnsupportedKeys,
 
     /** Forwarding policy for `GenerationSettings.effort`. */
     reasoningPolicy: ReasoningPolicy = ReasoningPolicy.None,
@@ -245,17 +257,26 @@ object OpenAIChatCompletions {
     obj((baseFields ++ toolFields ++ reasoningFields ++ generationFields)*)
   }
 
-  /** Render the wire `tools` array. Each tool's input schema runs through
-    * [[Config.schemaTransform]] (the place to strip dialect-unfriendly
-    * keywords, or apply the strict-mode reshaping). */
+  /** Render the wire `tools` array. Per-tool dispatch on strict-mode
+    * capability: when [[Config.strictModeCapable]] is true AND the
+    * tool's input schema has no `DefType.Json` anywhere (bug #64 —
+    * strict mode is incompatible with any-JSON-value fields), the
+    * tool ships with `strict: true` and a [[StrictSchema.forOpenAIStrict]]-
+    * shaped schema. Otherwise the schema runs through
+    * [[Config.nonStrictSchemaTransform]] and `strict` is omitted. */
   def renderTools(input: ProviderCall, sigil: Sigil, config: Config): Vector[Json] =
     input.tools.map { t =>
       val s = t.schema
+      val canBeStrict = config.strictModeCapable && !DefinitionToSchema.containsJson(s.input)
+      val baseSchema = DefinitionToSchema(s.input)
+      val parameters =
+        if (canBeStrict) StrictSchema.forOpenAIStrict(baseSchema)
+        else config.nonStrictSchemaTransform(baseSchema)
       val fnFields = Vector[(String, Json)](
         "name"        -> str(s.name.value),
         "description" -> str(renderDescription(t, input.currentMode, sigil)),
-        "parameters"  -> config.schemaTransform(DefinitionToSchema(s.input))
-      ) ++ (if (config.strictMode) Vector("strict" -> bool(true)) else Vector.empty)
+        "parameters"  -> parameters
+      ) ++ (if (canBeStrict) Vector("strict" -> bool(true)) else Vector.empty)
       obj(
         "type"     -> str("function"),
         "function" -> obj(fnFields*)
