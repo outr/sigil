@@ -47,14 +47,10 @@ case object RespondTool extends TypedTool[RespondInput](
       |
       |- `topicLabel` — 3-6 words describing what the CONVERSATION IS ABOUT, not who you are. Fresh
       |  label when the user starts a new subject; keep the current label when following up; reuse a
-      |  prior label when the user returns to a previous topic.
-      |
-      |  Do NOT use your own name (`Sage`, `Claude`, `Assistant`), the conversation's app name, or
-      |  generic catch-alls (`Chat`, `Help`) as `topicLabel` — they describe the agent, not the
-      |  topic. If the user's first message is a greeting with no actual task yet, use `Greeting`
-      |  or `Initial setup` and let the next user turn drive the real topic. Reserved labels stick
-      |  to the conversation forever and pollute the topic-shift classifier on every later turn —
-      |  pick a real subject as soon as one exists.
+      |  prior label when the user returns to a previous topic. Avoid agent names (`Sage`, `Claude`,
+      |  `Assistant`) and generic catch-alls (`Chat`, `Help`) — they describe the agent, pollute the
+      |  topic-shift classifier, and stick forever. For pure-greeting first turns use `Greeting`;
+      |  pick a real subject as soon as the next user message reveals one.
       |- `topicSummary` — 1-2 sentences.
       |- `content` — markdown body. Standard markdown (paragraphs, code fences, tables, lists,
       |  links, images, headings) is parsed into typed content blocks. Two markdown extensions

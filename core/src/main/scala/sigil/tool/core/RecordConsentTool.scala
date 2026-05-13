@@ -36,24 +36,17 @@ import sigil.tool.model.{RecordConsentInput, ResponseContent}
 case object RecordConsentTool extends TypedTool[RecordConsentInput](
   name = ToolName("record_consent"),
   description =
-    """Record the user's consent decision for a tool that requires user approval.
+    """Record the user's consent decision for a `requiresUserConsent` tool. Call AFTER the
+      |user has answered an approval prompt (typically the agent's own `respond_options`).
+      |The framework refuses to dispatch consent-gated tools until an approval record exists.
       |
-      |Use this AFTER the user has answered an approval prompt — typically the agent's own
-      |`respond_options` listing the action(s) to take. The framework refuses to dispatch
-      |`requiresUserConsent` tools until an approval record exists; this tool writes that
-      |record.
+      |- `toolName` — EXACT name of the consent-gated tool. Mistyped names persist a useless
+      |  record and the gate keeps refusing.
+      |- `approved` — `true` clears the gate; `false` stickily declines until a fresh `true`.
+      |- `reason` — optional narrative; renders in the refusal Tool-result for future agents.
       |
-      |- `toolName` — the EXACT name of the consent-gated tool (e.g. `"start_metals"`).
-      |  Mistyped names persist a useless record and the gate keeps refusing.
-      |- `approved` — `true` clears the gate, `false` stickily declines until a fresh `true`
-      |  is recorded.
-      |- `reason` — optional narrative ("user picked Metals from setup options"). Renders in
-      |  the refusal Tool-result so future agents understand the decision.
-      |
-      |Record consent for declined options too — when the user picked Metals from a list of
-      |[Metals, Claude state, Both, Neither], record `approved=true` for `start_metals` AND
-      |`approved=false` for `load_claude_state` so a later agent iteration doesn't revisit
-      |the declined option.""".stripMargin,
+      |Record `approved=false` for declined options too, so a later iteration doesn't revisit
+      |them.""".stripMargin,
   examples = List(
     ToolExample(
       "user picked Metals from setup options",
