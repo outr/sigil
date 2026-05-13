@@ -54,6 +54,86 @@ class OpenAIInterleavedToolResultDropSpec extends AsyncWordSpec with AsyncTaskSp
   private val modelId: Id[Model] = Model.id("openai", "gpt-5")
   private val vectorLookupCallId = "call_vlu_abc123"
 
+  "OpenAI Responses input rendering for a respond call on prev_id chain (Bug #167 r4)" should {
+
+    "include function_call_output for the prior respond call so OpenAI's prev_id state stays paired" in {
+      val convId = Conversation.id(s"respond-pair-${rapid.Unique()}")
+      val topic  = TopicEntry(sigil.conversation.Topic.id("t"), label = "t", summary = "t")
+      val priorId    = "resp_prior_respond"
+      // After Turn 1 (model emitted function_call(respond)), the framework's
+      // frame list has: User, ToolCall(respond), Text("hi back"). With the
+      // round-3 messageCount semantics (sentMessageCount only),
+      // priorMessageCount = 1.
+      val priorCount = 1
+      val respondCallId = "call_resp_abc"
+
+      val frames = Vector[ContextFrame](
+        ContextFrame.Text(
+          content = "hi",
+          participantId = TestUser,
+          sourceEventId = Id[Event]("user-1"),
+          visibility = MessageVisibility.All
+        ),
+        ContextFrame.ToolCall(
+          toolName = ToolName("respond"),
+          argsJson = """{"content":"hi back","topicLabel":"Greeting","topicSummary":"Hi","disposition":"Success","endsTurn":true,"keywords":[]}""",
+          callId = Id[Event](respondCallId),
+          participantId = TestAgent,
+          sourceEventId = Id[Event]("invoke-respond-1"),
+          visibility = MessageVisibility.All
+        ),
+        ContextFrame.Text(
+          content = "hi back",
+          participantId = TestAgent,
+          sourceEventId = Id[Event]("agent-text-1"),
+          visibility = MessageVisibility.All
+        ),
+        ContextFrame.Text(
+          content = "follow-up",
+          participantId = TestUser,
+          sourceEventId = Id[Event]("user-2"),
+          visibility = MessageVisibility.All
+        )
+      )
+
+      for {
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
+               _id = convId, topics = List(topic), participants = Nil
+             ))))
+        _ <- TestSigil.updateProjection(convId, TestAgent)(_.copy(
+               latestProviderResponseId           = Some(priorId),
+               latestProviderResponseMessageCount = Some(priorCount)
+             ))
+        body <- {
+          val req = ConversationRequest(
+            conversationId     = convId,
+            modelId            = modelId,
+            instructions       = Instructions(),
+            turnInput          = TurnInput(conversationId = convId, frames = frames),
+            currentMode        = ConversationMode,
+            currentTopic       = topic,
+            generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
+            tools              = CoreTools.all,
+            chain              = List(TestUser, TestAgent)
+          )
+          provider.requestConverter(req).map(_.content match {
+            case Some(c: spice.http.content.StringContent) => c.value
+            case _                                         => ""
+          })
+        }
+      } yield {
+        body should include(priorId)
+        // The empty function_call_output paired with the prior respond
+        // call MUST be present — without it OpenAI's prev_id state has
+        // an unpaired function_call(respond) and 400s.
+        body should include("function_call_output")
+        body should include(respondCallId)
+        // The new user follow-up survives.
+        body should include("follow-up")
+      }
+    }
+  }
+
   "OpenAI Responses input rendering with prev_id (Bug #167 r3)" should {
 
     "include function_call_output for an interleaved ToolResult even when later Assistant text exists" in {
