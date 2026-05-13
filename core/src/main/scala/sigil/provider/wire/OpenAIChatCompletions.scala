@@ -113,7 +113,20 @@ object OpenAIChatCompletions {
       * silently ignored. Surfaces backend-side mid-stream failures
       * (HTTP 200 + JSON error envelope) as user-visible failures via
       * the agent loop's failure-surface path. llama.cpp. */
-    inlineErrorThrows: Boolean = false
+    inlineErrorThrows: Boolean = false,
+
+    /** When `true`, a stream that closes with `finish_reason: length`
+      * having emitted zero content text AND zero tool calls raises
+      * [[ProviderStreamException]] instead of producing a silent
+      * `Done(MaxTokens)`. Surfaces deployment-level degeneration —
+      * e.g. DigitalOcean's `kimi-k2.5` will sometimes burn the entire
+      * `max_tokens` budget emitting `reasoning_content: " The!!!!"`
+      * garbage or `content: null` padding with no usable output. The
+      * agent can't recover from this (there's nothing to react to),
+      * so the framework raises so [[ProviderStrategy.errorClassifier]]
+      * can fall through to the next candidate. Reasoning-only output
+      * still counts as no useful output. Sigil bug #161. */
+    emptyBudgetBurnThrows: Boolean = false
   )
 
   /** Output of [[Config.preprocess]] — the system content + messages to
@@ -317,7 +330,7 @@ object OpenAIChatCompletions {
   def parseLine(line: String, state: StreamState, config: Config): Vector[ProviderEvent] =
     SSELineParser.parse(line) match {
       case SSELine.Data(json) => parseChunk(json, state, config)
-      case SSELine.Done       => state.flushDone()
+      case SSELine.Done       => state.flushDone(config)
       case SSELine.MalformedData(_, reason) =>
         Vector(ProviderEvent.Error(s"parse: $reason"))
       case SSELine.Blank | SSELine.Comment | _: SSELine.Other => Vector.empty
@@ -348,7 +361,10 @@ object OpenAIChatCompletions {
       delta.get("content").foreach { c =>
         if (!c.isNull) {
           val text = c.asString
-          if (text.nonEmpty) events += ProviderEvent.TextDelta(text)
+          if (text.nonEmpty) {
+            events += ProviderEvent.TextDelta(text)
+            state.hasUsefulOutput = true
+          }
         }
       }
       delta.get("reasoning_content").foreach { c =>
@@ -358,17 +374,26 @@ object OpenAIChatCompletions {
         }
       }
       delta.get("tool_calls").foreach { tcs =>
-        tcs.asVector.foreach { tc =>
-          val index   = tc.get("index").map(_.asInt).getOrElse(0)
-          val idOpt   = tc.get("id").flatMap(j => if (j.isNull) None else Some(j.asString)).map(config.toolCallIdNormalizer)
-          val nameOpt = tc.get("function").flatMap(_.get("name")).flatMap(j => if (j.isNull) None else Some(j.asString))
-          (idOpt, nameOpt) match {
-            case (Some(id), Some(n)) => events ++= state.acc.start(index, CallId(id), n)
-            case _                   => ()
+        // DeepInfra streams `tool_calls: null` on no-tool-call deltas
+        // (the role: "assistant" warmup chunk emits it before any
+        // content). DO and OpenAI omit the field entirely. Both shapes
+        // are wire-spec valid — null-guard so we tolerate both. Sigil
+        // bug #163.
+        if (!tcs.isNull) {
+          tcs.asVector.foreach { tc =>
+            val index   = tc.get("index").map(_.asInt).getOrElse(0)
+            val idOpt   = tc.get("id").flatMap(j => if (j.isNull) None else Some(j.asString)).map(config.toolCallIdNormalizer)
+            val nameOpt = tc.get("function").flatMap(_.get("name")).flatMap(j => if (j.isNull) None else Some(j.asString))
+            (idOpt, nameOpt) match {
+              case (Some(id), Some(n)) =>
+                events ++= state.acc.start(index, CallId(id), n)
+                state.hasUsefulOutput = true
+              case _                   => ()
+            }
+            tc.get("function").flatMap(_.get("arguments"))
+              .flatMap(j => if (j.isNull) None else Some(j.asString))
+              .foreach(a => events ++= state.acc.appendArgs(index, a))
           }
-          tc.get("function").flatMap(_.get("arguments"))
-            .flatMap(j => if (j.isNull) None else Some(j.asString))
-            .foreach(a => events ++= state.acc.appendArgs(index, a))
         }
       }
     }
@@ -410,8 +435,27 @@ object OpenAIChatCompletions {
   final class StreamState(val acc: ToolCallAccumulator) {
     var pendingDone: Option[StopReason] = None
 
-    def flushDone(): Vector[ProviderEvent] = pendingDone match {
-      case Some(sr) => pendingDone = None; Vector(ProviderEvent.Done(sr))
+    /** Tracks whether the stream emitted any TextDelta with non-empty
+      * text OR a tool-call Start event. `reasoning_content` deltas
+      * (ThinkingDelta) do NOT flip this — a stream of pure reasoning
+      * with no content/tool emissions IS the no-useful-output failure
+      * mode the empty-budget-burn detection (sigil bug #161)
+      * surfaces. */
+    var hasUsefulOutput: Boolean = false
+
+    def flushDone(config: Config): Vector[ProviderEvent] = pendingDone match {
+      case Some(sr) =>
+        pendingDone = None
+        if (config.emptyBudgetBurnThrows && sr == StopReason.MaxTokens && !hasUsefulOutput) {
+          throw new ProviderStreamException(
+            providerKey = config.providerNamespace,
+            code        = 200,
+            typ         = "empty_budget_burn",
+            message_    = s"${config.providerName} consumed max_tokens budget without emitting any content or tool calls" +
+              " — likely a deployment-level degeneration (e.g. reasoning-only output or null-padded stream)."
+          )
+        }
+        Vector(ProviderEvent.Done(sr))
       case None     => Vector.empty
     }
   }
