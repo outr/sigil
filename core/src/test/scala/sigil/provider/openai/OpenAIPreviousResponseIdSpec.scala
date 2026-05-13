@@ -69,6 +69,28 @@ class OpenAIPreviousResponseIdSpec extends AsyncWordSpec with AsyncTaskSpec with
       events.collect { case rc: ProviderEvent.ResponseStateCaptured => rc } shouldBe empty
     }
 
+    "skip server-managed tool output items in the messageCount drop counter (sigil bug #167)" in Task {
+      // Response contains: function_call (1 frame OpenAI knows about
+      // + 1 tool result frame the framework will ship next turn),
+      // web_search_call (0 frames — server-managed), message (1 frame
+      // OpenAI knows about). The drop counter should be 2, NOT 3 —
+      // counting web_search_call would force the next turn to drop
+      // the function_call_output, triggering OpenAI's "No tool output
+      // found for function call <id>" 400.
+      val events = runLines(sse(List(
+        """{"type":"response.created","response":{"id":"resp_xyz","status":"in_progress"}}""",
+        """{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc1","call_id":"call_abc","name":"vector_lookup"}}""",
+        """{"type":"response.output_item.added","output_index":1,"item":{"type":"web_search_call","id":"ws1"}}""",
+        """{"type":"response.output_item.added","output_index":2,"item":{"type":"message","id":"msg1"}}""",
+        """{"type":"response.completed","response":{"status":"completed"}}"""
+      )))
+      val captured = events.collect { case rc: ProviderEvent.ResponseStateCaptured => rc }
+      captured should have size 1
+      // sentMessageCount=1 + outputItemCount=2 (function_call + message,
+      // NOT counting web_search_call) → 3.
+      captured.head.messageCount shouldBe 3
+    }
+
     "emit ResponseStateCaptured(None, _) on previous_response_not_found error to clear the cache" in Task {
       val events = runLines(sse(List(
         """{"type":"response.error","error":{"code":"previous_response_not_found","message":"Response not found"}}"""
