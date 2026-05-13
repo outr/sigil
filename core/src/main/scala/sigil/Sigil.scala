@@ -976,19 +976,30 @@ trait Sigil {
         .flatMap(_.modelId)
     }
 
-  // ---- Bug #128 — per-message routing state ----
+  // ---- Bug #128 / #167 — per-message routing state ----
+  //
+  // Split into two stores with disjoint concerns so mid-turn state
+  // changes (pin, unpin, mode switch, etc.) can't shadow each other:
+  //
+  //   - classifierMemo  : pure memoization of the classifier LLM call.
+  //                       Keyed by userMessageId (globally unique).
+  //                       Value never mutates after write — same user
+  //                       message implies the same classifier output.
+  //                       Only purpose: avoid re-running the classifier
+  //                       across the iterations of one agent turn.
+  //
+  //   - perTurnEscalations : per-turn mutable counter. Reset whenever
+  //                          the conversation's userMessageId changes.
+  //
+  // Effective routing (pin vs classifier vs escalation) is computed
+  // fresh on every `classifyForRoute` call from current conversation
+  // state, so a mid-turn pin / unpin surfaces on the next iteration
+  // without needing any cache invalidation logic.
 
-  /** Per-conversation routing snapshot — what (WorkType, Complexity)
-    * the strategy resolved for the current user turn, plus an
-    * escalation counter. Refreshed when a new user Message arrives.
-    * Lives in-memory; lost on JVM restart (re-computed automatically
-    * on the next turn). */
-  private final case class RoutingState(userMessageId: Id[Event],
-                                        workType: WorkType,
-                                        complexity: Complexity,
-                                        escalations: Int)
+  private val classifierMemo: java.util.concurrent.ConcurrentHashMap[Id[Event], (WorkType, Complexity)] =
+    new java.util.concurrent.ConcurrentHashMap()
 
-  private val routingCache: java.util.concurrent.ConcurrentHashMap[Id[Conversation], RoutingState] =
+  private val perTurnEscalations: java.util.concurrent.ConcurrentHashMap[Id[Conversation], (Id[Event], Int)] =
     new java.util.concurrent.ConcurrentHashMap()
 
   /** When `true`, the iteration-cap soft-stop (sigil bug #125) auto-
@@ -1015,9 +1026,12 @@ trait Sigil {
     * On classifier failure (network, unparsable response, etc.) the
     * routing falls back to defaults rather than blocking the turn.
     *
-    * Cached result is invalidated when a new user Message arrives —
-    * the cache lookup compares against the latest user-message id and
-    * re-classifies on mismatch.
+    * Memo is keyed by `userMessageId` — the classifier output is a
+    * function of the user's message text and never changes within
+    * one turn. Pin / unpin / escalation read fresh from the
+    * conversation + per-turn escalation counter, so mid-turn tier
+    * changes surface on the next call without any cache machinery
+    * to coordinate.
     */
   def classifyForRoute(strategy: ProviderStrategy,
                        defaultWorkType: WorkType,
@@ -1030,15 +1044,21 @@ trait Sigil {
       case ResponseContent.Markdown(t) => t
     }.headOption).getOrElse("")
     val msgId = userMsg.map(_._id).getOrElse(Event.id())
-    val cached = Option(routingCache.get(conversation._id))
 
-    cached match {
-      case Some(state) if state.userMessageId == msgId =>
-        // Cache hit — same user turn; share the classification across
-        // all agent iterations in this turn.
-        Task.pure((state.workType, state.complexity))
-      case _ =>
-        // Cache miss — fresh user turn, classify.
+    // Reset the per-turn escalation counter when the user turn
+    // advances. Done eagerly so `requestEscalation` and the
+    // RouteResolved escalation read both see the right turn-scope.
+    perTurnEscalations.compute(conversation._id, (_, existing) =>
+      if (existing == null || existing._1 != msgId) (msgId, 0) else existing
+    )
+
+    // Memo: classifier output for this user message. Pure function
+    // of (userText), so safe to memoize across the iterations of
+    // this turn. Compute once, re-use.
+    val memoed = Option(classifierMemo.get(msgId))
+    val classifierTask: Task[(WorkType, Complexity)] = memoed match {
+      case Some(v) => Task.pure(v)
+      case None    =>
         val wtTask: Task[WorkType] =
           if (strategy.shouldClassifyWorkType && userText.nonEmpty)
             strategy.inferWorkType.get.apply(userText, turnContext)
@@ -1049,36 +1069,39 @@ trait Sigil {
           else Task.pure(defaultWorkType)
         wtTask.flatMap { wt =>
           val cxTask: Task[Complexity] =
-            // Pin wins over inference (bug #152). Apps set
-            // `Conversation.pinnedComplexity` via the
-            // `pin_complexity` tool to force every turn onto a
-            // specific tier. The classifier path stays exercised
-            // only when no pin is in effect. Bug #154 — the
-            // empty-text and classifier-failure fallbacks honour
-            // `strategy.defaultComplexity` instead of hard-coding
-            // Medium, so cost-first apps can route greets / silent
-            // continuations to Low without writing a custom
-            // classifier.
-            conversation.pinnedComplexity match {
-              case Some(pinned) => Task.pure(pinned)
-              case None =>
-                if (strategy.shouldClassifyComplexity(wt) && userText.nonEmpty)
-                  strategy.inferComplexity.get.apply(userText, turnContext)
-                    .handleError { e =>
-                      scribe.warn(s"inferComplexity failed (${e.getClass.getSimpleName}: ${e.getMessage}) — falling back to ${strategy.defaultComplexity}")
-                      Task.pure(strategy.defaultComplexity)
-                    }
-                else Task.pure(strategy.defaultComplexity)
-            }
+            if (strategy.shouldClassifyComplexity(wt) && userText.nonEmpty)
+              strategy.inferComplexity.get.apply(userText, turnContext)
+                .handleError { e =>
+                  scribe.warn(s"inferComplexity failed (${e.getClass.getSimpleName}: ${e.getMessage}) — falling back to ${strategy.defaultComplexity}")
+                  Task.pure(strategy.defaultComplexity)
+                }
+            else Task.pure(strategy.defaultComplexity)
           cxTask.map { cx =>
-            routingCache.put(conversation._id, RoutingState(msgId, wt, cx, escalations = 0))
-            (wt, cx)
+            val v = (wt, cx)
+            classifierMemo.putIfAbsent(msgId, v)
+            v
           }
         }
     }
+
+    // Effective routing: fresh derivation from current state.
+    // Pin wins over inference (bug #152). Escalations apply on
+    // top of the classifier complexity. Pin and escalations are
+    // independent — when a pin is in effect, escalations are
+    // intentionally ignored so the pinned tier stays binding for
+    // the duration of the turn.
+    classifierTask.map { case (wt, classifierCx) =>
+      val effectiveCx = conversation.pinnedComplexity match {
+        case Some(pinned) => pinned
+        case None =>
+          val escalations = Option(perTurnEscalations.get(conversation._id)).map(_._2).getOrElse(0)
+          (1 to escalations).foldLeft(classifierCx)((acc, _) => Complexity.bumpUp(acc))
+      }
+      (wt, effectiveCx)
+    }
   }
 
-  /** Bump the cached complexity tier one step up for the current
+  /** Bump the per-turn complexity tier one step up for the current
     * user turn — what [[sigil.tool.core.RequestEscalationTool]] calls
     * when the agent realizes mid-turn that the task is harder than
     * the classifier's initial assessment. Returns `(newTier, bumped)`:
@@ -1086,18 +1109,29 @@ trait Sigil {
     *   - `bumped = true` means the tier actually moved (Low → Medium
     *     or Medium → High);
     *   - `bumped = false` means we were already at High (clamp) or
-    *     the routing cache was empty (no classifier had run; nothing
-    *     to bump). */
+    *     no classification has been done yet (no message id to
+    *     attach the escalation to).
+    *
+    * The escalation count is held in [[perTurnEscalations]] keyed
+    * by conversation; subsequent calls to [[classifyForRoute]] apply
+    * the count on top of the classifier's raw complexity to produce
+    * the effective tier. */
   def requestEscalation(conversationId: Id[Conversation], reason: String): Task[(Complexity, Boolean)] = Task {
-    val state = routingCache.get(conversationId)
+    val state = perTurnEscalations.get(conversationId)
     if (state == null) (Complexity.Medium, false)
     else {
-      val next = Complexity.bumpUp(state.complexity)
-      val bumped = next != state.complexity
-      val updated = state.copy(complexity = next, escalations = state.escalations + 1)
-      routingCache.put(conversationId, updated)
-      scribe.info(s"requestEscalation conv=${conversationId.value} from=${state.complexity} to=$next bumped=$bumped reason=$reason")
-      (next, bumped)
+      val (msgId, count) = state
+      // Compute the would-be effective tier from the memo + new count.
+      // The memo's complexity may not exist yet if shouldClassifyComplexity
+      // is false (e.g., the strategy doesn't have a classifier); in that
+      // case bump from defaultComplexity-equivalent Medium as a safe baseline.
+      val classifierCx = Option(classifierMemo.get(msgId)).map(_._2).getOrElse(Complexity.Medium)
+      val currentEffective = (1 to count).foldLeft(classifierCx)((acc, _) => Complexity.bumpUp(acc))
+      val nextEffective = Complexity.bumpUp(currentEffective)
+      val bumped = nextEffective != currentEffective
+      if (bumped) perTurnEscalations.put(conversationId, (msgId, count + 1))
+      scribe.info(s"requestEscalation conv=${conversationId.value} from=$currentEffective to=$nextEffective bumped=$bumped reason=$reason")
+      (nextEffective, bumped)
     }
   }
 
@@ -1139,7 +1173,7 @@ trait Sigil {
       chosenModelId       = chosenModelId,
       skipReasons         = skipReasons,
       classifierLatencyMs = None,
-      escalationCount     = Option(routingCache.get(conversation._id)).map(_.escalations).getOrElse(0)
+      escalationCount     = Option(perTurnEscalations.get(conversation._id)).map(_._2).getOrElse(0)
     )
     publish(event).map(_ => ()).handleError(_ => Task.unit)
   }
