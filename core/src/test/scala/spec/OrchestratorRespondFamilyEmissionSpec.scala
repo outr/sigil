@@ -15,7 +15,7 @@ import sigil.provider.{
 import sigil.signal.{EventState, MessageDelta, Signal, ToolDelta}
 import sigil.tool.ToolName
 import sigil.tool.core.{NoResponseTool, RespondTool}
-import sigil.tool.model.{NoResponseInput, RespondContent, RespondInput}
+import sigil.tool.model.{NoResponseInput, RespondInput}
 import spice.http.HttpRequest
 
 /**
@@ -51,7 +51,7 @@ class OrchestratorRespondFamilyEmissionSpec extends AsyncWordSpec with AsyncTask
         ProviderEvent.ContentBlockDelta(callId, "Hello, world."),
         ProviderEvent.ToolCallComplete(
           callId,
-          RespondInput(topicLabel = "Greeting", topicSummary = "A friendly hello", content = RespondContent.Text("Hello, world."), endsTurn = true)
+          RespondInput(topicLabel = "Greeting", topicSummary = "A friendly hello", content = "Hello, world.", endsTurn = true)
         ),
         ProviderEvent.Done(StopReason.Complete)
       ))

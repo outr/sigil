@@ -115,14 +115,15 @@ class OrchestratorMaxTokensTruncationSpec extends AsyncWordSpec with AsyncTaskSp
 
         pairedFailure.visibility shouldBe MessageVisibility.Agents
         pairedFailure.state shouldBe EventState.Complete
-        pairedFailure.content.headOption match {
-          case Some(ResponseContent.Failure(text, recoverable, _)) =>
+        pairedFailure.disposition match {
+          case sigil.event.MessageDisposition.Failure(recoverable, _) =>
+            val text = pairedFailure.failureReason.getOrElse("")
             text should include ("lsp_did_change")
             text should include ("max_tokens")
             text should include ("arguments never fully arrived")
             recoverable shouldBe true
           case other =>
-            fail(s"Expected ResponseContent.Failure; saw $other")
+            fail(s"Expected MessageDisposition.Failure; saw $other")
         }
       }
     }
@@ -135,9 +136,8 @@ class OrchestratorMaxTokensTruncationSpec extends AsyncWordSpec with AsyncTaskSp
         val anyTextMentions = signals.collect {
           case m: Message =>
             m.content.collectFirst {
-              case ResponseContent.Text(t)    => t
-              case ResponseContent.Failure(t, _, _) => t
-            }.getOrElse("")
+              case ResponseContent.Text(t) => t
+            }.orElse(m.failureReason).getOrElse("")
           case _ => ""
         }
         all(anyTextMentions) should not include "please report it"
@@ -153,8 +153,7 @@ class OrchestratorMaxTokensTruncationSpec extends AsyncWordSpec with AsyncTaskSp
         // exercised here.
         val pairedFailures = signals.collect {
           case m: Message
-            if m.role == MessageRole.Tool && m.origin.isDefined &&
-               m.content.exists(_.isInstanceOf[ResponseContent.Failure]) =>
+            if m.role == MessageRole.Tool && m.origin.isDefined && m.isFailure =>
             m
         }
         pairedFailures shouldBe empty

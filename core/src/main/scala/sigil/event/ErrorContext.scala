@@ -3,7 +3,7 @@ package sigil.event
 import fabric.rw.*
 
 /**
- * Structured failure payload attached to `ResponseContent.Failure`
+ * Structured failure payload attached to `MessageDisposition.Failure`
  * so the agent can act on a tool failure intelligently — distinguish
  * "I called this wrong" from "the framework broke" from "the network
  * blipped".

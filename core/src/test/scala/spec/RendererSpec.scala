@@ -33,7 +33,6 @@ class RendererSpec extends AnyWordSpec with Matchers {
       "Pick:",
       List(SelectOption("Yes", "yes"), SelectOption("No", "no"))
     ),
-    ResponseContent.Failure("transient", recoverable = true),
     ResponseContent.TextInput("Name", "name-id", Some("placeholder"), None),
     ResponseContent.SecretInput("Token", "secret-id", sigil.security.SecretKind.Encrypted),
     ResponseContent.SecretRef("secret-id", "Token"),

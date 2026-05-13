@@ -5,7 +5,7 @@ import fabric.rw.*
 /**
  * Bucket for how an agent should respond to a tool failure.
  * Filled in by the framework's auto-classifier when it constructs
- * the [[ErrorContext]] payload on a `ResponseContent.Failure`
+ * the [[ErrorContext]] payload on a `MessageDisposition.Failure`
  * block; tools with domain knowledge override the default.
  */
 enum ErrorClassification derives RW {

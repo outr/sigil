@@ -5,7 +5,7 @@ import lightdb.time.Timestamp
 import rapid.{Stream, Task}
 import sigil.Sigil
 import sigil.conversation.{ContextFrame, Conversation, Topic, TopicShiftResult}
-import sigil.event.{Event, Message, MessageRole, MessageVisibility, Reasoning, TopicChange, TopicChangeKind, ToolInvoke}
+import sigil.event.{Event, Message, MessageDisposition, MessageRole, MessageVisibility, Reasoning, TopicChange, TopicChangeKind, ToolInvoke}
 import sigil.participant.ParticipantId
 import sigil.provider.{CallId, ConversationRequest, Provider, ProviderEvent, StopReason}
 import sigil.signal.{MessageContentDelta, ContentKind, EventState, ImageDelta, MessageDelta, Signal, StateDelta, ToolDelta}
@@ -194,7 +194,7 @@ object Orchestrator {
       * long contexts; pre-fix that text was silently dropped, the
       * turn settled silent, and bug-#46's placeholder fired with no
       * feedback to the model. Post-fix the orchestrator emits a
-      * `ResponseContent.Failure` diagnostic the agent's next
+      * `MessageDisposition.Failure` diagnostic the agent's next
       * iteration reads and can self-correct from. */
     val plainTextBuffer: StringBuilder = new StringBuilder
     var sawAnyToolCall: Boolean = false
@@ -337,21 +337,7 @@ object Orchestrator {
             val closeBlock = closeCurrentBlock(state, convId)
             (Some(active.toolName), input) match {
               case (Some("respond"), r: RespondInput) =>
-                // Bug #157 — streaming path only runs when the content
-                // streams via ContentBlockDelta, which is always Text.
-                // The other RespondContent kinds (Failure / Field /
-                // Options) reach the atomic path via executeTyped.
-                val parsed = r.content match {
-                  case t: _root_.sigil.tool.model.RespondContent.Text =>
-                    MarkdownContentParser.parse(t.content)
-                  case other =>
-                    // Unexpected for a streamed respond — render as a
-                    // single Text block of the structured value's
-                    // toString. The atomic dispatch path is the
-                    // intended route for these kinds; this fallback
-                    // exists so a misrouted call still settles.
-                    Vector(_root_.sigil.tool.model.ResponseContent.Text(other.toString))
-                }
+                val parsed = MarkdownContentParser.parse(r.content)
                 val settle = MessageDelta(
                   target = msgId,
                   conversationId = convId,
@@ -525,21 +511,25 @@ object Orchestrator {
             if (active.toolName == "respond") {
               input match {
                 case r: RespondInput =>
-                  // Bug #157 — refusal challenge only inspects the
-                  // Text variant's content. Structured kinds
-                  // (Failure / Field / Options) can't be refusals
-                  // by construction; they're explicit signals.
-                  val textContent = r.content match {
-                    case t: _root_.sigil.tool.model.RespondContent.Text => t.content
-                    case _                                              => ""
+                  // Failure-disposition responses are explicit
+                  // structured signals; they bypass the refusal
+                  // challenge entirely. Success-disposition replies
+                  // run through the detector against their markdown
+                  // content.
+                  r.disposition match {
+                    case _root_.sigil.tool.model.ResponseDisposition.Failure =>
+                      // Explicit failure — agent has decided, no
+                      // challenge.
+                    case _root_.sigil.tool.model.ResponseDisposition.Success =>
+                      if (r.content.nonEmpty) {
+                        return Stream.force(refusalChallengeOutcome(sigil, r.content, convId, caller, topicId).map {
+                          case Some(challengeSignals) =>
+                            Stream.emits(toolDeltaPrefix ::: challengeSignals)
+                          case None =>
+                            proceedWithAtomicDispatch()
+                        })
+                      }
                   }
-                  if (textContent.isEmpty) proceedWithAtomicDispatch()
-                  else return Stream.force(refusalChallengeOutcome(sigil, textContent, convId, caller, topicId).map {
-                    case Some(challengeSignals) =>
-                      Stream.emits(toolDeltaPrefix ::: challengeSignals)
-                    case None =>
-                      proceedWithAtomicDispatch()
-                  })
                 case _ =>
               }
             }
@@ -727,7 +717,8 @@ object Orchestrator {
                 conversationId = convId,
                 topicId        = topicId,
                 role           = MessageRole.Tool,
-                content        = Vector(ResponseContent.Failure(reason = reason, recoverable = true)),
+                content        = Vector(ResponseContent.Text(reason)),
+                disposition    = MessageDisposition.Failure(recoverable = true),
                 state          = EventState.Complete,
                 visibility     = MessageVisibility.Agents,
                 origin         = Some(active.invokeId)
@@ -764,7 +755,8 @@ object Orchestrator {
                   conversationId = convId,
                   topicId        = topicId,
                   role           = MessageRole.Tool,
-                  content        = Vector(ResponseContent.Failure(reason = hit.renderDiagnostic(text.length), recoverable = true)),
+                  content        = Vector(ResponseContent.Text(hit.renderDiagnostic(text.length))),
+                  disposition    = MessageDisposition.Failure(recoverable = true),
                   state          = EventState.Complete,
                   visibility     = MessageVisibility.Agents,
                   origin         = Some(syntheticInvokeId)
@@ -790,7 +782,7 @@ object Orchestrator {
         // its next iteration — structurally identical to a script
         // compile error / arg-parse error / validator failure: a
         // Tool-role Message carrying
-        // `ResponseContent.Failure(reason, recoverable = true)`,
+        // `MessageDisposition.Failure(reason, recoverable = true)`,
         // paired with a synthetic ToolInvoke representing the
         // "attempted reply via plain text" that the framework
         // rejected.
@@ -829,7 +821,8 @@ object Orchestrator {
               conversationId = convId,
               topicId        = topicId,
               role           = MessageRole.Tool,
-              content        = Vector(ResponseContent.Failure(reason = reason, recoverable = true)),
+              content        = Vector(ResponseContent.Text(reason)),
+              disposition    = MessageDisposition.Failure(recoverable = true),
               state          = EventState.Complete,
               visibility     = MessageVisibility.Agents,
               origin         = Some(syntheticInvokeId)
@@ -1012,7 +1005,8 @@ object Orchestrator {
       conversationId = convId,
       topicId        = topicId,
       role           = MessageRole.Tool,
-      content        = Vector(ResponseContent.Failure(reason = reason, recoverable = true)),
+      content        = Vector(ResponseContent.Text(reason)),
+      disposition    = MessageDisposition.Failure(recoverable = true),
       state          = EventState.Complete,
       visibility     = MessageVisibility.Agents,
       origin         = Some(syntheticInvokeId)
@@ -1107,7 +1101,8 @@ object Orchestrator {
       conversationId = convId,
       topicId        = topicId,
       role           = MessageRole.Tool,
-      content        = Vector(ResponseContent.Failure(reason = reason, recoverable = true)),
+      content        = Vector(ResponseContent.Text(reason)),
+      disposition    = MessageDisposition.Failure(recoverable = true),
       state          = EventState.Complete,
       visibility     = MessageVisibility.Agents,
       origin         = Some(syntheticInvokeId)
@@ -1213,7 +1208,8 @@ object Orchestrator {
       participantId  = context.caller,
       conversationId = context.conversation.id,
       topicId        = context.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Failure(body, recoverable = true)),
+      content        = Vector(ResponseContent.Text(body)),
+      disposition    = MessageDisposition.Failure(recoverable = true),
       role           = MessageRole.Tool,
       state          = EventState.Complete,
       origin         = Some(originatingInvokeId)
@@ -1269,7 +1265,8 @@ object Orchestrator {
           participantId = context.caller,
           conversationId = context.conversation.id,
           topicId = context.conversation.currentTopicId,
-          content = Vector(ResponseContent.Failure(body, recoverable = true)),
+          content = Vector(ResponseContent.Text(body)),
+          disposition = MessageDisposition.Failure(recoverable = true),
           role = MessageRole.Tool,
           state = EventState.Complete,
           origin = Some(originatingInvokeId)

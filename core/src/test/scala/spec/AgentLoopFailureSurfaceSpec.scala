@@ -94,23 +94,24 @@ class AgentLoopFailureSurfaceSpec extends AsyncWordSpec with AsyncTaskSpec with 
   }
 
   "Sigil.runAgentLoop (bug #6)" should {
-    "publish a Failure-content Message when a turn throws" in {
+    "publish a Failure-disposition Message when a turn throws" in {
       runScenario().map { signals =>
         val agentMessages = signals.collect {
           case m: Message if m.participantId == TestAgent => m
         }
-        val failures = agentMessages.flatMap(_.content.collect {
-          case f: ResponseContent.Failure => f
-        })
+        val failures = agentMessages.filter(_.isFailure)
         failures should not be empty
         // The reason carries the simulated exception's class+message
         // so operators have something to act on.
-        val reasons = failures.map(_.reason).mkString(" | ")
+        val reasons = failures.flatMap(_.failureReason).mkString(" | ")
         reasons should include("simulated provider crash")
         // Surfaced as non-recoverable — the agent crashed, retrying
         // the same input on the same conversation isn't a sensible
         // automatic recovery.
-        failures.exists(_.recoverable == false) shouldBe true
+        failures.exists(_.disposition match {
+          case sigil.event.MessageDisposition.Failure(rec, _) => rec == false
+          case _ => false
+        }) shouldBe true
       }
     }
 

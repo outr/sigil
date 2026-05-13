@@ -124,7 +124,7 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       }
     }
 
-    "emit a Tool-role Failure Message on the event stream when execute runs against a Failure" in {
+    "emit a Tool-role Failure-disposition Message on the event stream when execute runs against a Failure" in {
       val tool = new EnvelopeEchoTool
       turnContext().flatMap { ctx =>
         tool.execute(EchoInput(""), ctx).toList.map { evs =>
@@ -132,10 +132,10 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
           msgs should have size 1
           msgs.head.role shouldBe MessageRole.Tool
           msgs.head.visibility shouldBe MessageVisibility.Agents
-          msgs.head.content.head shouldBe a [ResponseContent.Failure]
-          val failure = msgs.head.content.head.asInstanceOf[ResponseContent.Failure]
-          failure.reason should include("payload must not be empty")
-          failure.reason should include("non-empty") // hint inlined
+          msgs.head.isFailure shouldBe true
+          val reason = msgs.head.failureReason.getOrElse("")
+          reason should include("payload must not be empty")
+          reason should include("non-empty") // hint inlined
         }
       }
     }

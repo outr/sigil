@@ -14,7 +14,7 @@ import sigil.provider.{
 }
 import sigil.signal.EventState
 import sigil.tool.core.{CoreTools, RespondTool}
-import sigil.tool.model.{ResponseContent, RespondContent, RespondInput}
+import sigil.tool.model.{ResponseContent, RespondInput}
 import spice.http.HttpRequest
 
 import scala.concurrent.duration.*
@@ -57,7 +57,7 @@ class OrchestratorRespondTopicAtomicSpec extends AsyncWordSpec with AsyncTaskSpe
           RespondInput(
             topicLabel   = topicLabel,
             topicSummary = topicSummary,
-            content      = RespondContent.Text(content),
+            content      = content,
             endsTurn     = true
           )
         ),

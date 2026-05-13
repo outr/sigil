@@ -6,7 +6,7 @@ import fabric.rw.*
  * Top-level discriminator on a [[ToolResults]] event — did this tool
  * call succeed or fail?
  *
- * Distinct from `ResponseContent.Failure`-shaped content blocks
+ * Distinct from `MessageDisposition.Failure`-shaped content blocks
  * (which encode a user-facing "agent couldn't complete the task" via
  * `respond_failure`); `ToolOutcome` is the framework-level "did this
  * tool's invocation produce a usable result?" answer. Lets consumers

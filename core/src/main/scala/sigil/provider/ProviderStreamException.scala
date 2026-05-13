@@ -12,7 +12,7 @@ package sigil.provider
  * model itself crashed mid-generation — the agent has nothing useful
  * to retry with, so the framework lets the error propagate to
  * `runAgentLoop`'s handler where it becomes a user-visible
- * `ResponseContent.Failure` Message (Bug #6).
+ * `MessageDisposition.Failure` Message (Bug #6).
  *
  * `providerKey` identifies the provider that raised (`"llamacpp"`,
  * `"openai"`, …); `code` is the upstream error code when known

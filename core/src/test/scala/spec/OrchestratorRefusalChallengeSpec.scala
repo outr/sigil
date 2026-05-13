@@ -15,7 +15,7 @@ import sigil.provider.{
 import sigil.signal.EventState
 import sigil.tool.ToolName
 import sigil.tool.core.{CoreTools, FindCapabilityInput, FindCapabilityTool, RespondTool}
-import sigil.tool.model.{ResponseContent, RespondContent, RespondInput}
+import sigil.tool.model.{ResponseContent, RespondInput}
 import spice.http.HttpRequest
 
 import scala.concurrent.duration.*
@@ -48,7 +48,7 @@ class OrchestratorRefusalChallengeSpec extends AsyncWordSpec with AsyncTaskSpec 
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
         ProviderEvent.ToolCallComplete(
           callId,
-          RespondInput(topicLabel = "Refusal", topicSummary = "challenge spec", content = RespondContent.Text(content), endsTurn = true)
+          RespondInput(topicLabel = "Refusal", topicSummary = "challenge spec", content = content, endsTurn = true)
         ),
         ProviderEvent.Done(StopReason.Complete)
       ))
@@ -79,7 +79,7 @@ class OrchestratorRefusalChallengeSpec extends AsyncWordSpec with AsyncTaskSpec 
           ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
           ProviderEvent.ToolCallComplete(
             callId,
-            RespondInput(topicLabel = "After Discovery", topicSummary = "informed refusal", content = RespondContent.Text(refusalContent), endsTurn = true)
+            RespondInput(topicLabel = "After Discovery", topicSummary = "informed refusal", content = refusalContent, endsTurn = true)
           ),
           ProviderEvent.Done(StopReason.Complete)
         ))
@@ -105,7 +105,7 @@ class OrchestratorRefusalChallengeSpec extends AsyncWordSpec with AsyncTaskSpec 
         ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
         ProviderEvent.ToolCallComplete(
           callId,
-          RespondInput(topicLabel = "Refusal", topicSummary = "stubborn refusal", content = RespondContent.Text(content), endsTurn = true)
+          RespondInput(topicLabel = "Refusal", topicSummary = "stubborn refusal", content = content, endsTurn = true)
         ),
         ProviderEvent.Done(StopReason.Complete)
       ))
@@ -160,11 +160,8 @@ class OrchestratorRefusalChallengeSpec extends AsyncWordSpec with AsyncTaskSpec 
           // reason) so its next iteration has actionable feedback.
           val failures = evs.collect {
             case m: Message
-              if m.role == MessageRole.Tool &&
-                 m.content.exists {
-                   case ResponseContent.Failure(reason, _, _) => reason.contains("find_capability")
-                   case _                                     => false
-                 } => m
+              if m.role == MessageRole.Tool && m.isFailure &&
+                 m.failureReason.exists(_.contains("find_capability")) => m
           }
           failures should not be empty
 

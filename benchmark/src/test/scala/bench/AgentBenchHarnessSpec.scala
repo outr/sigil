@@ -12,7 +12,7 @@ import sigil.provider.{
   Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
 import sigil.tool.core.{ChangeModeTool, CoreTools, RespondTool}
-import sigil.tool.model.{ChangeModeInput, RespondContent, RespondInput}
+import sigil.tool.model.{ChangeModeInput, RespondInput}
 import spec.{TestAgent, TestCodingMode, TestSigil, TestTopicEntry, TestUser}
 import spice.http.HttpRequest
 
@@ -75,7 +75,7 @@ class AgentBenchHarnessSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       ProviderEvent.ContentBlockStart(cid, "Text", arg = None),
       ProviderEvent.ContentBlockDelta(cid, content),
       ProviderEvent.ToolCallComplete(cid,
-        RespondInput(topicLabel = TestTopicEntry.label, topicSummary = TestTopicEntry.summary, content = RespondContent.Text(content), endsTurn = true)),
+        RespondInput(topicLabel = TestTopicEntry.label, topicSummary = TestTopicEntry.summary, content = content, endsTurn = true)),
       ProviderEvent.Done(StopReason.Complete)
     )
   }

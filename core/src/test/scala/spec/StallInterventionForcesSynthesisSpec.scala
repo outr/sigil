@@ -16,7 +16,7 @@ import sigil.provider.{
 import sigil.signal.EventState
 import sigil.tool.ToolName
 import sigil.tool.core.{ChangeModeTool, CoreTools, RespondTool}
-import sigil.tool.model.{ChangeModeInput, ResponseContent, RespondContent, RespondInput}
+import sigil.tool.model.{ChangeModeInput, ResponseContent, RespondInput}
 import spice.http.HttpRequest
 
 import java.util.concurrent.atomic
@@ -100,7 +100,7 @@ class StallInterventionForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskS
                 RespondInput(
                   topicLabel   = "Stall-synth",
                   topicSummary = "forced-synthesis after stall",
-                  content      = RespondContent.Text("Synthesised from gathered context after stall intercept."),
+                  content      = "Synthesised from gathered context after stall intercept.",
                   endsTurn     = true
                 )
               ),

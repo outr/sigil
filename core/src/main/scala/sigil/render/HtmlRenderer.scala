@@ -51,9 +51,6 @@ object HtmlRenderer extends ContentRenderer[String] {
         .map(o => s"<li><strong>${escape(o.label)}</strong> — ${escape(o.value)}</li>")
         .mkString
       s"<p>${escape(prompt)}</p><ul>$items</ul>"
-    case ResponseContent.Failure(reason, recoverable, _) =>
-      val cls = if (recoverable) "failure recoverable" else "failure"
-      s"""<p class="$cls"><strong>Failure:</strong> ${escape(reason)}</p>"""
     case ResponseContent.TextInput(label, id, placeholder, default) =>
       val ph = placeholder.fold("")(p => s""" placeholder="${escape(p)}"""")
       val dv = default.fold("")(d => s""" value="${escape(d)}"""")

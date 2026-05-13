@@ -25,13 +25,25 @@ import sigil.tool.ToolInput
  * display content (sidebar / breadcrumb hover) and as the rich semantic
  * context the classifier uses to compare against prior topics' summaries.
  *
- * `content` — REQUIRED. Tagged-union picking the reply shape
- * (sigil bug #157): [[RespondContent.Text]] for plain markdown,
- * [[RespondContent.Failure]] when the task can't be completed,
- * [[RespondContent.Field]] for a single labeled key/value,
- * [[RespondContent.Options]] for a structured multi-choice prompt.
- * One tool call covers every user-facing reply shape; the framework
- * dispatches on the discriminator at turn-settle time.
+ * `content` — REQUIRED. Markdown body. Standard markdown (paragraphs,
+ * code fences, tables, lists, links, images, headings) parses into
+ * typed [[ResponseContent]] blocks via [[MarkdownContentParser]].
+ * Two markdown extensions are also recognised:
+ *
+ *   - **`> [!Field icon="…"]\n> Label: Value`** — emits a typed
+ *     [[ResponseContent.Field]] block for compact labeled metadata.
+ *   - **`## Heading`** — opens a [[ResponseContent.Card]] section;
+ *     every block under the heading (until the next `##`) becomes the
+ *     Card's sections, with the heading as the title.
+ *
+ * `disposition` — REQUIRED. [[ResponseDisposition.Success]] for normal
+ * answers / status / explanations. [[ResponseDisposition.Failure]]
+ * when the agent has decided it cannot complete the requested work
+ * (out-of-scope, missing capability, a tool failed and the agent is
+ * reporting that). The framework stamps the resulting Message's
+ * `disposition` accordingly so the orchestrator's refusal-challenge
+ * intercept, downstream "show me failed turns" queries, and UI
+ * chrome can all read it directly.
  *
  * `keywords` — OPTIONAL. The agent's keyword tagging of the active
  * subject for memory retrieval. The framework stores them on the
@@ -56,6 +68,7 @@ import sigil.tool.ToolInput
  */
 case class RespondInput(topicLabel: String,
                         topicSummary: String,
-                        content: RespondContent,
+                        content: String,
+                        disposition: ResponseDisposition = ResponseDisposition.Success,
                         endsTurn: Boolean,
                         keywords: List[String] = Nil) extends ToolInput derives RW

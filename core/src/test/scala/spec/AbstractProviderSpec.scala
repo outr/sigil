@@ -10,7 +10,7 @@ import sigil.event.Message
 import sigil.provider.{ConversationRequest, Effort, GenerationSettings, Instructions, Mode, ConversationMode, Provider, ProviderEvent, StopReason}
 import sigil.tool.core.{ChangeModeTool, CoreTools, FindCapabilityInput, RespondTool}
 import sigil.tool.{Tool, ToolInput}
-import sigil.tool.model.{ChangeModeInput, RespondContent, RespondInput, ResponseContent}
+import sigil.tool.model.{ChangeModeInput, RespondInput, RespondOptionsInput, ResponseContent}
 
 trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -35,13 +35,6 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   protected def request(message: String,
                         currentMode: Mode = ConversationMode,
                         generationSettings: GenerationSettings =
-                          // 1500 (was 200) — accommodates reasoning models
-                          // (Qwen3.6-A3B, DeepSeek-R1) that burn output
-                          // tokens on internal thinking before emitting
-                          // the structured tool call, even when the chat
-                          // template hints `enable_thinking: false`. 200
-                          // cut these models off mid-think and the
-                          // expected tool call never landed.
                           GenerationSettings(maxOutputTokens = Some(1500), temperature = Some(0.0))): Task[List[ProviderEvent]] = provider.flatMap { p =>
     val conversationId = Conversation.id("test-conversation")
     val userMessage = Message(
@@ -77,11 +70,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
         val complete = events.collectFirst { case ProviderEvent.ToolCallComplete(_, i: RespondInput) => i }
         complete should not be empty
-        val text = complete.get.content match {
-          case t: _root_.sigil.tool.model.RespondContent.Text => t.content
-          case other => other.toString
-        }
-        text should include("4")
+        complete.get.content should include("4")
         complete.get.topicLabel.trim should not be empty
 
         val usage = events.collectFirst { case u: ProviderEvent.Usage => u }
@@ -91,30 +80,24 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         events.last shouldBe a[ProviderEvent.Done]
         events.last.asInstanceOf[ProviderEvent.Done].stopReason shouldBe StopReason.ToolCall
       }
-    "emit a single-select Options block via respond with RespondContent.Options when the user asks to be presented choices" in
+    "emit a single-select Options block via respond_options when the user asks to be presented choices" in
       request(
         "I need to pick a backend language for a new web service. Ask me which of Python, Node.js, or Go I want."
       ).map { events =>
-        val options = events.collectFirst {
-          case ProviderEvent.ToolCallComplete(_, i: RespondInput) =>
-            i.content
-        }.collect { case o: RespondContent.Options => o }
-        options should not be empty
-        options.get.allowMultiple should be(false)
-        options.get.options.size should be(3)
+        val complete = events.collectFirst { case ProviderEvent.ToolCallComplete(_, i: RespondOptionsInput) => i }
+        complete should not be empty
+        complete.get.allowMultiple should be(false)
+        complete.get.options.size should be(3)
       }
-    "emit a multi-select Options block with an exclusive escape-hatch option via respond" in
+    "emit a multi-select Options block with an exclusive escape-hatch option via respond_options" in
       request(
         "I want to enable notifications. Ask me which of email, SMS, or push I want — multiple selections are allowed. Also include a None option that cannot be combined with the others."
       ).map { events =>
-        val options = events.collectFirst {
-          case ProviderEvent.ToolCallComplete(_, i: RespondInput) =>
-            i.content
-        }.collect { case o: RespondContent.Options => o }
-        options should not be empty
-        options.get.allowMultiple should be(true)
-        options.get.options.exists(_.exclusive) should be(true)
-        options.get.options.count(_.exclusive) should be(1)
+        val complete = events.collectFirst { case ProviderEvent.ToolCallComplete(_, i: RespondOptionsInput) => i }
+        complete should not be empty
+        complete.get.allowMultiple should be(true)
+        complete.get.options.exists(_.exclusive) should be(true)
+        complete.get.options.count(_.exclusive) should be(1)
       }
     "call find_capability when the user requests an action no core tool can perform" in
       request(
@@ -135,8 +118,6 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         val input = events.collectFirst {
           case ProviderEvent.ToolCallComplete(_, i: ChangeModeInput) => i
         }
-        // ChangeModeInput.mode is now the stable name string (the framework
-        // resolves it to a Mode instance via Sigil.modeByName at execute time).
         input.map(_.mode) shouldBe Some(TestCodingMode.name)
 
         events.last shouldBe a[ProviderEvent.Done]
@@ -149,13 +130,11 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
           temperature = Some(1.0),
           effort = Some(Effort.Low)
         )
-        // Asserts thinking-mode still produces the `respond` tool
-        // call. After sigil bug #157 unification, the respond family
-        // is a single tool with a tagged-union content slot — so the
-        // tool-name check is exact.
+        // Asserts thinking-mode still produces a respond-family tool call.
+        val responseFamily = Set(RespondTool.schema.name.value, "respond_options")
         request("What is 2+2? Respond with just the number.", generationSettings = gen).map { events =>
           val start = events.collectFirst { case s: ProviderEvent.ToolCallStart => s }
-          start.map(_.toolName) shouldBe Some(RespondTool.schema.name.value)
+          responseFamily should contain (start.map(_.toolName).getOrElse(""))
           events.last shouldBe a[ProviderEvent.Done]
           events.last.asInstanceOf[ProviderEvent.Done].stopReason shouldBe StopReason.ToolCall
         }

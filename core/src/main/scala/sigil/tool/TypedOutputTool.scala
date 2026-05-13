@@ -135,7 +135,7 @@ abstract class TypedOutputTool[In <: ToolInput, Out](
     * on `Success`, wraps the typed result into a `ToolResults` event
     * (inline-truncating when rendered JSON exceeds
     * `Sigil.inlineContentThreshold`); on `Failure`, emits a Tool-role
-    * `Message` carrying `ResponseContent.Failure` with the failure's
+    * `Message` carrying `MessageDisposition.Failure` with the failure's
     * message + hint + args so the agent reads a structured failure
     * on its next iteration. */
   final override def execute(input: ToolInput, context: TurnContext): Stream[Event] = {
@@ -157,7 +157,7 @@ abstract class TypedOutputTool[In <: ToolInput, Out](
     }
   }
 
-  /** Emit a Tool-role `Message` carrying `ResponseContent.Failure` —
+  /** Emit a Tool-role `Message` carrying `MessageDisposition.Failure` —
     * the standard wire shape for a recoverable tool failure. The
     * agent's next iteration reads the failure block in the same
     * frame slot a typed Success would occupy, with the structured
@@ -173,7 +173,8 @@ abstract class TypedOutputTool[In <: ToolInput, Out](
       conversationId = context.conversation.id,
       topicId        = context.conversation.currentTopicId,
       role           = MessageRole.Tool,
-      content        = Vector(_root_.sigil.tool.model.ResponseContent.Failure(reason = body, recoverable = true)),
+      content        = Vector(_root_.sigil.tool.model.ResponseContent.Text(body)),
+      disposition    = _root_.sigil.event.MessageDisposition.Failure(recoverable = true),
       state          = EventState.Complete,
       visibility     = _root_.sigil.event.MessageVisibility.Agents
     ))

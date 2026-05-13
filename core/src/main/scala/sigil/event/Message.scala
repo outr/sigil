@@ -69,6 +69,12 @@ case class Message(participantId: ParticipantId,
                    timestamp: Timestamp = Timestamp(Nowish()),
                    location: Option[Place] = None,
                    role: MessageRole = MessageRole.Standard,
+                   /** Was this Message a normal reply or a Failure
+                     * signal? Default Success. Set by `RespondTool` from
+                     * the agent's `disposition` input; set by the
+                     * framework's exception-wrapping path when a tool
+                     * dispatch throws. Content carries the reason. */
+                   disposition: MessageDisposition = MessageDisposition.Success,
                    optionSelection: Option[OptionSelection] = None,
                    override val visibility: MessageVisibility = MessageVisibility.All,
                    override val origin: Option[Id[Event]] = None,
@@ -80,4 +86,21 @@ case class Message(participantId: ParticipantId,
   override def withOrigin(origin: Option[Id[Event]]): Event = copy(origin = origin)
   override def withContextFrame(contextFrame: Option[sigil.conversation.ContextFrame]): Event = copy(contextFrame = contextFrame)
   override def withConversationId(conversationId: Id[Conversation]): Event = copy(conversationId = conversationId)
+
+  /** True when this Message represents a Failure-disposition reply. */
+  def isFailure: Boolean = disposition.isInstanceOf[MessageDisposition.Failure]
+
+  /** True when this Message represents a Success-disposition reply. */
+  def isSuccess: Boolean = disposition == MessageDisposition.Success
+
+  /** The Failure-disposition reason (concatenated text blocks) when
+    * this Message is a Failure. None for Success. */
+  def failureReason: Option[String] =
+    if (isFailure) {
+      val text = content.collect {
+        case ResponseContent.Text(t)     => t
+        case ResponseContent.Markdown(t) => t
+      }.mkString("\n").trim
+      Option.when(text.nonEmpty)(text)
+    } else None
 }
