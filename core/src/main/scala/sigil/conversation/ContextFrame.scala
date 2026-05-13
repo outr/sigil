@@ -64,7 +64,14 @@ enum ContextFrame derives RW {
                 callId: Id[Event],
                 participantId: ParticipantId,
                 sourceEventId: Id[Event],
-                visibility: MessageVisibility = MessageVisibility.All)
+                visibility: MessageVisibility = MessageVisibility.All,
+                /** Wire-level `call_id` from the provider's response when
+                  * the upstream model emitted this call (e.g. OpenAI's
+                  * `call_<hash>`). Renderers prefer this over `callId.value`
+                  * so the wire's `tool_call.id` matches what the provider's
+                  * `previous_response_id` state remembers. `None` for
+                  * synthetic / framework-emitted calls. Sigil bug #167 r5. */
+                wireCallId: Option[String] = None)
 
   /**
    * The tool-side completion of a prior [[ToolCall]]. Always renders at
@@ -73,7 +80,14 @@ enum ContextFrame derives RW {
   case ToolResult(callId: Id[Event],
                   content: String,
                   sourceEventId: Id[Event],
-                  visibility: MessageVisibility = MessageVisibility.All)
+                  visibility: MessageVisibility = MessageVisibility.All,
+                  /** Wire-level `call_id` matching the originating
+                    * function_call. Renderers prefer this over
+                    * `callId.value` so `function_call_output.call_id`
+                    * matches the upstream-emitted id (e.g. OpenAI's
+                    * `call_<hash>`). `None` for synthetic / framework-
+                    * emitted results. Sigil bug #167 r5. */
+                  wireCallId: Option[String] = None)
 
   /**
    * Out-of-band framework-authored context — mode transitions, title
