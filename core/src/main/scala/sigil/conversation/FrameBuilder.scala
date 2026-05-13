@@ -90,6 +90,11 @@ object FrameBuilder {
             content = content,
             sourceEventId = event._id,
             visibility = event.visibility
+            // wireCallId stays None — populated by the renderer at
+            // wire-render time by looking up the matching
+            // ContextFrame.ToolCall.wireCallId. computeFrame is a
+            // per-event pure function; cross-event derivation lives
+            // in the renderer walk. Sigil bug #167 r5.
           ))
         case None =>
           scribe.warn(
@@ -125,7 +130,8 @@ object FrameBuilder {
           callId = ti._id,
           participantId = ti.participantId,
           sourceEventId = ti._id,
-          visibility = ti.visibility
+          visibility = ti.visibility,
+          wireCallId = ti.callId
         ))
 
       case mc: ModeChange =>
@@ -284,7 +290,8 @@ object FrameBuilder {
           callId = ti._id,
           participantId = ti.participantId,
           sourceEventId = ti._id,
-          visibility = ti.visibility
+          visibility = ti.visibility,
+          wireCallId = ti.callId
         )
 
       case mc: ModeChange =>

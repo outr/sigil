@@ -260,7 +260,12 @@ object Orchestrator {
           topicId = topicId,
           _id = invokeId,
           state = EventState.Active,
-          internal = isInternal
+          internal = isInternal,
+          // Sigil bug #167 r5 — persist the wire-level call_id from
+          // the provider's response so subsequent turns can render
+          // function_call_output with the original id (OpenAI's
+          // previous_response_id state matches by call_id).
+          callId = Some(callId.value)
         )
         Stream.emits(List(invoke))
 

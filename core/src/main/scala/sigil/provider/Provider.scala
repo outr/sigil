@@ -860,6 +860,17 @@ trait Provider {
     val pendingToolCallIds: scala.collection.mutable.LinkedHashSet[String] =
       scala.collection.mutable.LinkedHashSet.empty
 
+    // Sigil bug #167 r5 — track framework `Id[Event]` → wire `call_id`
+    // (e.g. OpenAI's `call_<hash>`) as we encounter each
+    // `ContextFrame.ToolCall`. Used to render `function_call_output.call_id`
+    // for the paired `ContextFrame.ToolResult` with the upstream-emitted
+    // id so the provider's `previous_response_id` state finds a match.
+    // Without this, OpenAI's Responses API 400s with "No tool output
+    // found for function call <id>" on every multi-turn conversation
+    // that involves a function_call.
+    val wireCallIdByEvent: scala.collection.mutable.Map[String, String] =
+      scala.collection.mutable.Map.empty
+
     // Bug #69 — merge consecutive `ContextFrame.ToolResult` entries
     // sharing the same `callId` into a single frame whose content is
     // the concatenation in emission order. The wire stays 1:1
@@ -873,40 +884,55 @@ trait Provider {
         if (agentId.contains(participantId)) out += ProviderMessage.Assistant(content)
         else out += ProviderMessage.User(content)
 
-      case ContextFrame.ToolCall(toolName, argsJson, callId, participantId, _, _) if agentId.contains(participantId) =>
+      case tc: ContextFrame.ToolCall if agentId.contains(tc.participantId) =>
+        // Sigil bug #167 r5 — when the upstream model emitted this
+        // call, `wireCallId` carries the provider's wire identifier
+        // (e.g. OpenAI's `call_<hash>`). Renderers prefer it so the
+        // wire's `tool_call.id` / `function_call_output.call_id`
+        // matches the provider's `previous_response_id` state.
+        // Falls back to the framework's `Id[Event]` for synthetic
+        // / framework-emitted calls (where there's no upstream
+        // wire id to roundtrip).
+        val wireId = tc.wireCallId.getOrElse(tc.callId.value)
+        tc.wireCallId.foreach(w => wireCallIdByEvent(tc.callId.value) = w)
         out += ProviderMessage.Assistant(
           content = "",
           toolCalls = List(ToolCallMessage(
-            id = callId.value,
-            name = toolName.value,
-            argsJson = argsJson
+            id = wireId,
+            name = tc.toolName.value,
+            argsJson = tc.argsJson
           ))
         )
-        // Atomic content tools (`respond_options`, `respond_field`,
-        // `respond_card`, etc. — see `CoreTools.atomicContentToolNames`)
-        // emit a `Standard`-role `Message` instead of a `Tool`-role
-        // `ToolResults`, so no `ContextFrame.ToolResult` is ever
-        // produced for the call. OpenAI's Responses API strictly
-        // requires every `function_call` to be followed by a
-        // `function_call_output` carrying the same `call_id` —
-        // unsatisfied calls cause a 400 on the next request. Pair
-        // each atomic call with an empty synthetic output so the
-        // wire shape is satisfied; chat-side surface is unaffected
-        // (the rendered Message is the user-facing artifact). RespondTool
-        // is special-cased above (its function_call is dropped entirely
-        // since the next Text frame IS the response).
-        if (atomicContentToolNames.contains(toolName)) {
-          out += ProviderMessage.ToolResult(toolCallId = callId.value, content = "")
+        // Atomic content tools (`respond`, `respond_options`,
+        // `respond_field`, `respond_card`, etc. — see
+        // `CoreTools.atomicContentToolNames`) emit a `Standard`-role
+        // `Message` instead of a `Tool`-role `ToolResults`, so no
+        // `ContextFrame.ToolResult` is ever produced for the call.
+        // OpenAI's Responses API strictly requires every
+        // `function_call` to be followed by a `function_call_output`
+        // carrying the same `call_id` — unsatisfied calls cause a 400
+        // on the next request. Pair each atomic call with an empty
+        // synthetic output so the wire shape is satisfied; chat-side
+        // surface is unaffected (the rendered Message is the user-
+        // facing artifact).
+        if (atomicContentToolNames.contains(tc.toolName)) {
+          out += ProviderMessage.ToolResult(toolCallId = wireId, content = "")
         } else {
-          pendingToolCallIds.add(callId.value)
+          pendingToolCallIds.add(wireId)
         }
 
       case _: ContextFrame.ToolCall =>
       // ToolCall from someone else — skip (not rendered as a tool call for this agent).
 
-      case ContextFrame.ToolResult(callId, content, _, _) =>
-        out += ProviderMessage.ToolResult(toolCallId = callId.value, content = content)
-        pendingToolCallIds.remove(callId.value)
+      case ContextFrame.ToolResult(callId, content, _, _, _) =>
+        // Sigil bug #167 r5 — pair the function_call_output by wire
+        // call_id (preferring the upstream provider's id from the
+        // matching ContextFrame.ToolCall, captured into
+        // `wireCallIdByEvent` as we walked frames). Falls back to the
+        // framework `Id[Event]` for synthetic results.
+        val wireId = wireCallIdByEvent.getOrElse(callId.value, callId.value)
+        out += ProviderMessage.ToolResult(toolCallId = wireId, content = content)
+        pendingToolCallIds.remove(wireId)
 
       case ContextFrame.System(content, _, _) =>
         out += ProviderMessage.System(content)
@@ -1012,7 +1038,7 @@ trait Provider {
     }
 
     frames.foreach {
-      case curr @ ContextFrame.ToolResult(callId, content, _, _) =>
+      case curr @ ContextFrame.ToolResult(callId, content, _, _, _) =>
         pending match {
           case Some(prev) if prev.callId == callId =>
             // Same call_id — merge into the pending accumulator.

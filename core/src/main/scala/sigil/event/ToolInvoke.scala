@@ -38,6 +38,16 @@ case class ToolInvoke(toolName: ToolName,
                       timestamp: Timestamp = Timestamp(Nowish()),
                       role: MessageRole = MessageRole.Standard,
                       internal: Boolean = false,
+                      /** Wire-level `call_id` from the provider's response
+                        * (OpenAI's `call_<hash>`, etc.) when the model itself
+                        * emitted the call. Captured by the provider's
+                        * SSE parser and persisted here so subsequent turns can
+                        * render the function_call_output with the original
+                        * id — required for OpenAI's `previous_response_id`
+                        * chain to find a match (sigil bug #167 r5). `None`
+                        * for synthetic / framework-emitted invokes (no
+                        * upstream call_id to roundtrip). */
+                      callId: Option[String] = None,
                       override val origin: Option[Id[Event]] = None,
                       override val source: Option[String] = None,
                       override val contextFrame: Option[sigil.conversation.ContextFrame] = None,
