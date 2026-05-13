@@ -41,6 +41,14 @@ case class DigitalOceanProvider(apiKey: String,
     providerNamespace = DigitalOcean.Provider,
     providerName      = "DigitalOcean",
     multimodalPolicy  = OpenAIChatCompletions.MultimodalPolicy.OpenAIArrayForm,
+    // Sigil bug #161 — DO's kimi-k2.5 deployment intermittently emits
+    // either degenerate `" The!!!!"` reasoning_content or null-padded
+    // content tokens until `max_tokens` cap, with no usable content or
+    // tool calls. The framework cannot recover from this in-conversation,
+    // so we raise [[ProviderStreamException]] at the wire boundary and
+    // let [[ProviderStrategy.errorClassifier]] (default classifier maps
+    // this to `Fallthrough`) route to the next candidate.
+    emptyBudgetBurnThrows = true,
     preprocess        = { call =>
       val modelName = DigitalOcean.stripProviderPrefix(call.modelId.value)
       val systemContent = applyKimiReasoningDirective(call.system, modelName, call.generationSettings.reasoningMode)
