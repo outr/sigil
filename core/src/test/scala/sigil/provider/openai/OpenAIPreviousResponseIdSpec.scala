@@ -56,8 +56,11 @@ class OpenAIPreviousResponseIdSpec extends AsyncWordSpec with AsyncTaskSpec with
       val captured = events.collect { case rc: ProviderEvent.ResponseStateCaptured => rc }
       captured should have size 1
       captured.head.responseId shouldBe Some("resp_abc123")
-      // sentMessageCount=1 + outputItemCount=1 → 2.
-      captured.head.messageCount shouldBe 2
+      // messageCount captures `sentMessageCount` at call-entry (= 1).
+      // Output items aren't added to it — the next turn's renderInput
+      // role-filters the post-cutoff tail rather than skipping past
+      // them positionally (sigil bug #167 r3).
+      captured.head.messageCount shouldBe 1
       // Done is the terminator and the only one.
       events.last shouldBe a[ProviderEvent.Done]
     }
@@ -69,14 +72,14 @@ class OpenAIPreviousResponseIdSpec extends AsyncWordSpec with AsyncTaskSpec with
       events.collect { case rc: ProviderEvent.ResponseStateCaptured => rc } shouldBe empty
     }
 
-    "skip server-managed tool output items in the messageCount drop counter (sigil bug #167)" in Task {
-      // Response contains: function_call (1 frame OpenAI knows about
-      // + 1 tool result frame the framework will ship next turn),
-      // web_search_call (0 frames — server-managed), message (1 frame
-      // OpenAI knows about). The drop counter should be 2, NOT 3 —
-      // counting web_search_call would force the next turn to drop
-      // the function_call_output, triggering OpenAI's "No tool output
-      // found for function call <id>" 400.
+    "capture sentMessageCount regardless of output item mix (server tools, function_calls, messages)" in Task {
+      // messageCount is now just sentMessageCount — the rendered count
+      // at call entry. Output item types don't affect it. The next
+      // turn's renderInput role-filters the post-cutoff tail to keep
+      // only User + ToolResult, so server-managed tools (web_search,
+      // image_generation, file_search, code_interpreter) and Assistant
+      // outputs are correctly excluded without needing per-item
+      // counting. Sigil bug #167 r3.
       val events = runLines(sse(List(
         """{"type":"response.created","response":{"id":"resp_xyz","status":"in_progress"}}""",
         """{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc1","call_id":"call_abc","name":"vector_lookup"}}""",
@@ -86,9 +89,8 @@ class OpenAIPreviousResponseIdSpec extends AsyncWordSpec with AsyncTaskSpec with
       )))
       val captured = events.collect { case rc: ProviderEvent.ResponseStateCaptured => rc }
       captured should have size 1
-      // sentMessageCount=1 + outputItemCount=2 (function_call + message,
-      // NOT counting web_search_call) → 3.
-      captured.head.messageCount shouldBe 3
+      // runLines seeds state.sentMessageCount = 1 (line 40).
+      captured.head.messageCount shouldBe 1
     }
 
     "emit ResponseStateCaptured(None, _) on previous_response_not_found error to clear the cache" in Task {
