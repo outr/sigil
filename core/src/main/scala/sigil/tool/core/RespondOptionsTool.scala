@@ -19,36 +19,22 @@ import sigil.tool.model.{RespondOptionsInput, ResponseContent, SelectOption}
 case object RespondOptionsTool extends TypedTool[RespondOptionsInput](
   name = ToolName("respond_options"),
   description =
-    """Offer the user a fixed set of selectable choices. The user may also answer in natural language.
+    """Ask the user to pick from a closed set of options. Options render as clickable controls
+      |(buttons / radio / checkboxes); markdown bullets in `respond.content` do not.
       |
-      |## How to set `allowMultiple` (required)
+      |**Use ONLY** when your reply is a question whose answer must come from a fixed set you supply:
+      |  - "Would you like: A / B / Both / Neither?"
+      |  - "Should I X?"  (Yes / No)
+      |  - "Which Y?"  (one or more from a fixed list)
       |
-      |**Decide based on the user's ORIGINAL QUESTION, not the options you construct.** Even if the
-      |options you generate happen to look mutually exclusive, if the question admits picking more than
-      |one, set `allowMultiple = true`.
+      |**DO NOT use** for: factual answers, explanations, status pulses, open-ended questions (free-text
+      |reply expected), replies that mention items without asking the user to pick, or post-action
+      |reports. Those go through `respond`.
       |
-      |**Use `allowMultiple = true` when:**
-      |- The question asks `What X should I have/use/add/include/list/enable?` with X plural (features,
-      |  dependencies, skills, languages, channels, integrations, plugins, settings, tags, categories,
-      |  toppings, options).
-      |- The question asks `Which X (plural)?` and the X are independent attributes the user might combine.
-      |- Anywhere the user could reasonably answer with `several` or `all of them` or `none of them`.
-      |
-      |**Use `allowMultiple = false` only when:**
-      |- The question is a binary Yes/No / True/False / On/Off / Confirm/Cancel.
-      |- The question asks the user to pick exactly one of mutually-exclusive states (`development` OR
-      |  `production`, `free` OR `pro` OR `enterprise`, `light` OR `dark` theme).
-      |- The question explicitly contains `which one` or `pick one`.
-      |
-      |**When in doubt, use `true`** — the user can still pick exactly one if that is what they want, but
-      |they cannot escape a forced single-select if multi was correct.
-      |
-      |### Worked examples
-      |
-      |- `What test dependencies should I add?` → `allowMultiple = true`.
-      |- `What features should the app have?` → `allowMultiple = true`.
-      |- `Should I commit this change?` → `allowMultiple = false`.
-      |- `Which plan: free, pro, or enterprise?` → `allowMultiple = false`.
+      |`allowMultiple` — `true` when the question admits picking several (plural Xs, independent
+      |attributes, "any of these"); `false` for binary or mutually-exclusive picks. Decide from the
+      |user's original question, not the options you generated. When unsure, prefer `true` — the user
+      |can still pick exactly one, but can't escape a forced single-select if multi was correct.
       |
       |An option with `exclusive = true` (multi-select only) cannot be combined with others (e.g. a
       |"None of these" escape hatch).""".stripMargin,
