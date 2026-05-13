@@ -9,7 +9,7 @@ import sigil.conversation.Conversation
 import sigil.db.Model
 import sigil.event.{AgentState, Event, Message, ToolInvoke}
 import sigil.participant.DefaultAgentParticipant
-import sigil.provider.{GenerationSettings, Instructions}
+import sigil.provider.{GenerationSettings, Instructions, ReasoningMode}
 import sigil.provider.llamacpp.LlamaCppProvider
 import sigil.signal.EventState
 import sigil.tool.ToolName
@@ -55,7 +55,11 @@ class MultiStepToolFlowSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         modelId = modelId,
         toolNames = List(ToolName("get_magic_number")) ++ CoreTools.coreToolNames,
         instructions = Instructions(),
-        generationSettings = GenerationSettings(maxOutputTokens = Some(2000), temperature = Some(0.0))
+        generationSettings = GenerationSettings(
+          maxOutputTokens = Some(2000),
+          temperature = Some(0.0),
+          reasoningMode = ReasoningMode.Off
+        )
       )
       val convId = Conversation.id(s"multistep-${rapid.Unique()}")
       val conv = Conversation(
