@@ -9,7 +9,7 @@ import sigil.event.{Event, Message, MessageDisposition, MessageRole, MessageVisi
 import sigil.participant.ParticipantId
 import sigil.provider.{CallId, ConversationRequest, Provider, ProviderEvent, StopReason}
 import sigil.signal.{MessageContentDelta, ContentKind, EventState, ImageDelta, MessageDelta, Signal, StateDelta, ToolDelta}
-import sigil.tool.core.FindCapabilityInput
+import sigil.tool.core.{CoreTools, FindCapabilityInput}
 import sigil.tool.model.{MarkdownContentParser, RespondInput, ResponseContent}
 import sigil.tool.ToolName
 import sigil.TurnContext
@@ -492,7 +492,31 @@ object Orchestrator {
                       )))
                     }
                   )
-                case None => Stream.empty
+                case None =>
+                  // Bug #167 — model invoked a tool name not in this turn's
+                  // roster (hallucination, or tool renamed/removed mid-flow).
+                  // Without a Tool-role event paired to this invoke, the frame
+                  // builder produces a ContextFrame.ToolCall with no matching
+                  // ContextFrame.ToolResult, and OpenAI's Responses API 400s
+                  // on the next request ("No tool output found for function
+                  // call <id>"). Surface to the agent as a recoverable Tool-
+                  // role Failure so the call_id stays paired and the agent
+                  // self-corrects on its next iteration.
+                  Stream.emit[Signal](Message(
+                    participantId  = caller,
+                    conversationId = convId,
+                    topicId        = topicId,
+                    role           = MessageRole.Tool,
+                    content        = Vector(ResponseContent.Text(
+                      s"Unknown tool: '${active.toolName}'. The framework didn't dispatch this " +
+                        "call because the name isn't in this turn's available tool roster. " +
+                        "Call find_capability to discover the catalog, or pick a tool from your visible roster."
+                    )),
+                    state          = EventState.Complete,
+                    disposition    = MessageDisposition.Failure(recoverable = true),
+                    visibility     = MessageVisibility.Agents,
+                    origin         = Some(invokeId)
+                  ))
               }
               // Bug #55 — record user-visible Message ids the atomic
               // tool emitted so the orchestrator's Usage handler has a
@@ -505,7 +529,48 @@ object Orchestrator {
                     Task.pure(sig)
                 }
               }
-              Stream.emits(toolDeltaPrefix) ++ tracked
+              // Bug #167 — guarantee at least one result-shaped event
+              // (`role == MessageRole.Tool`) is emitted for non-atomic-
+              // content tools. Atomic content tools (respond,
+              // respond_options, …) emit a `Standard`-role Message that
+              // the frame renderer pairs with a synthetic empty
+              // `function_call_output` (sigil bug #19), so the wire
+              // shape is already satisfied for those. Every other tool
+              // is expected to produce a `Tool`-role Message or
+              // `ToolResults` event; if the tool's executeTyped path
+              // returned a stream that completed without emitting any
+              // result-shaped event (silent-failure path that swallowed
+              // an error into `Task.unit`, or a transform that filtered
+              // results out), inject a synthetic Tool-role Failure so
+              // the wire's function_call ↔ function_call_output pairing
+              // stays valid.
+              val needsResultGuard = !CoreTools.atomicContentToolNames.contains(ToolName(active.toolName))
+              val guarded: Stream[Signal] =
+                if (!needsResultGuard) tracked
+                else Stream.force(tracked.toList.map { collected =>
+                  val hasResult = collected.exists {
+                    case e: Event if e.role == MessageRole.Tool => true
+                    case _                                       => false
+                  }
+                  if (hasResult) Stream.emits(collected)
+                  else Stream.emits(collected :+ Message(
+                    participantId  = caller,
+                    conversationId = convId,
+                    topicId        = topicId,
+                    role           = MessageRole.Tool,
+                    content        = Vector(ResponseContent.Text(
+                      s"Tool '${active.toolName}' executed but emitted no result. " +
+                        "This is typically a tool-side bug (executeTyped swallowed an error " +
+                        "without surfacing it). The framework's paired-call wire contract " +
+                        "still requires a result entry, so this synthetic placeholder fills it."
+                    )),
+                    state          = EventState.Complete,
+                    disposition    = MessageDisposition.Failure(recoverable = true),
+                    visibility     = MessageVisibility.Agents,
+                    origin         = Some(invokeId)
+                  ))
+                })
+              Stream.emits(toolDeltaPrefix) ++ guarded
             }
 
             if (active.toolName == "respond") {

@@ -848,7 +848,17 @@ trait Provider {
   protected[provider] def renderFrames(frames: Vector[ContextFrame],
                            agentId: Option[ParticipantId]): Vector[ProviderMessage] = {
     val out = Vector.newBuilder[ProviderMessage]
-    var pendingToolCallId: Option[String] = None
+    // Bug #167 — track ALL unpaired tool_call ids, not just the most-
+    // recent one. The previous `Option[String]` overwrote when two
+    // ContextFrame.ToolCall entries arrived without an intervening
+    // ToolResult, silently losing the first call from the pending
+    // fallback and shipping it unpaired to the wire. OpenAI Responses
+    // 400s on the next request ("No tool output found for function
+    // call <id>"). LinkedHashSet preserves emission order so the
+    // synthetic fallback output entries land in the same sequence the
+    // calls were emitted.
+    val pendingToolCallIds: scala.collection.mutable.LinkedHashSet[String] =
+      scala.collection.mutable.LinkedHashSet.empty
 
     // Bug #69 — merge consecutive `ContextFrame.ToolResult` entries
     // sharing the same `callId` into a single frame whose content is
@@ -892,7 +902,7 @@ trait Provider {
         if (atomicContentToolNames.contains(toolName)) {
           out += ProviderMessage.ToolResult(toolCallId = callId.value, content = "")
         } else {
-          pendingToolCallId = Some(callId.value)
+          pendingToolCallIds.add(callId.value)
         }
 
       case _: ContextFrame.ToolCall =>
@@ -900,7 +910,7 @@ trait Provider {
 
       case ContextFrame.ToolResult(callId, content, _, _) =>
         out += ProviderMessage.ToolResult(toolCallId = callId.value, content = content)
-        if (pendingToolCallId.contains(callId.value)) pendingToolCallId = None
+        pendingToolCallIds.remove(callId.value)
 
       case ContextFrame.System(content, _, _) =>
         out += ProviderMessage.System(content)
@@ -927,7 +937,7 @@ trait Provider {
     // sync throw escaping the tool's `handleError` (the bug shape
     // #67 fixes for the script tools). The text frames it as a
     // framework-level miss so the agent doesn't blame its own input.
-    pendingToolCallId.foreach { callId =>
+    pendingToolCallIds.foreach { callId =>
       out += ProviderMessage.ToolResult(
         toolCallId = callId,
         content =
