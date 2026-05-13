@@ -212,9 +212,29 @@ object OpenAIChatCompletions {
     val reasoningFields: Vector[(String, Json)] = config.reasoningPolicy match {
       case ReasoningPolicy.None => Vector.empty
       case ReasoningPolicy.ReasoningEffortField =>
-        gen.effort.toVector.map(e => "reasoning_effort" -> str(Effort.openAIEffortLevel(e)))
+        // GenerationSettings.reasoningMode is the user-facing toggle;
+        // effort is the optional intensity hint. Auto + no effort →
+        // omit (model default fires). On + no effort → "high" (the
+        // canonical "force thinking on" mapping). Off → "none"
+        // (OpenAI / DeepSeek both accept this enum value).
+        gen.reasoningMode match {
+          case ReasoningMode.Off  => Vector("reasoning_effort" -> str("none"))
+          case ReasoningMode.On   =>
+            val level = gen.effort.map(Effort.openAIEffortLevel).getOrElse("high")
+            Vector("reasoning_effort" -> str(level))
+          case ReasoningMode.Auto =>
+            gen.effort.toVector.map(e => "reasoning_effort" -> str(Effort.openAIEffortLevel(e)))
+        }
       case ReasoningPolicy.ChatTemplateEnableThinking =>
-        Vector("chat_template_kwargs" -> obj("enable_thinking" -> bool(gen.effort.isDefined)))
+        // vLLM-style chat-template kwarg honored by Qwen3 + kimi.
+        // Read ReasoningMode (the user-facing abstraction), not the
+        // orthogonal effort axis. Auto → omit (let template default
+        // fire); On/Off → explicit boolean.
+        gen.reasoningMode match {
+          case ReasoningMode.Auto => Vector.empty
+          case ReasoningMode.On   => Vector("chat_template_kwargs" -> obj("enable_thinking" -> bool(true)))
+          case ReasoningMode.Off  => Vector("chat_template_kwargs" -> obj("enable_thinking" -> bool(false)))
+        }
     }
     val generationFields: Vector[(String, Json)] =
       gen.temperature.toVector.map("temperature" -> num(_)) ++

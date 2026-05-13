@@ -47,6 +47,15 @@ case class DeepInfraProvider(apiKey: String,
     providerNamespace = DeepInfra.Provider,
     providerName      = "DeepInfra",
     path              = "/v1/openai/chat/completions",
+    // DeepInfra exposes the canonical OpenAI `reasoning_effort` field
+    // on /v1/openai/chat/completions and honors `none | low | medium |
+    // high`. Verified against kimi-k2.5: `none` zeroes
+    // `reasoning_content` and converges on a direct tool call (16
+    // compl tokens), while `low/medium/high` produce graduated
+    // reasoning. The shared wire policy translates
+    // GenerationSettings.reasoningMode (Auto/On/Off) + optional
+    // Effort into the right `reasoning_effort` value.
+    reasoningPolicy   = OpenAIChatCompletions.ReasoningPolicy.ReasoningEffortField,
     multimodalPolicy  = OpenAIChatCompletions.MultimodalPolicy.OpenAIArrayForm
   )
 
