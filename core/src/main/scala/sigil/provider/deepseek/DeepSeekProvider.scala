@@ -34,8 +34,7 @@ case class DeepSeekProvider(apiKey: String,
   private val wireConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
     providerNamespace = DeepSeek.Provider,
     providerName      = "DeepSeek",
-    strictMode        = true,
-    schemaTransform   = StrictSchema.forDeepSeek,
+    strictModeCapable = true,
     reasoningPolicy   = OpenAIChatCompletions.ReasoningPolicy.ReasoningEffortField,
     multimodalPolicy  = OpenAIChatCompletions.MultimodalPolicy.TextOnlyWithWarning
   )

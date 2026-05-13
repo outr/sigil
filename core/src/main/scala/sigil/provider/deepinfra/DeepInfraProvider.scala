@@ -61,6 +61,7 @@ case class DeepInfraProvider(apiKey: String,
     providerNamespace = DeepInfra.Provider,
     providerName      = "DeepInfra",
     path              = "/v1/openai/chat/completions",
+    strictModeCapable = true,
     // DeepInfra exposes the canonical OpenAI `reasoning_effort` field
     // on /v1/openai/chat/completions and honors `none | low | medium |
     // high`. Verified against kimi-k2.5: `none` zeroes
