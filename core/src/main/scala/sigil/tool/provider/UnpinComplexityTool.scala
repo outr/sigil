@@ -43,6 +43,9 @@ case object UnpinComplexityTool extends TypedTool[UnpinComplexityInput](
     content        = Vector(ResponseContent.Text(text)),
     state          = EventState.Complete,
     role           = MessageRole.Tool,
-    visibility     = MessageVisibility.All
+    // Sigil bug #164 — Agents-only so the agent's mandatory `respond`
+    // is the sole user-facing confirmation, not a duplicate of the
+    // tool's own text.
+    visibility     = MessageVisibility.Agents
   )
 }

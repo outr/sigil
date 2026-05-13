@@ -92,6 +92,10 @@ case object PinComplexityTool extends TypedTool[PinComplexityInput](
     content        = Vector(ResponseContent.Text(text)),
     state          = EventState.Complete,
     role           = MessageRole.Tool,
-    visibility     = MessageVisibility.All
+    // Sigil bug #164 — keep the confirmation Agents-only so the agent's
+    // mandatory `respond` doesn't have to compete with a duplicate chat
+    // bubble from the tool itself. The tool's text still feeds the
+    // agent's next iteration; the user sees only the agent's `respond`.
+    visibility     = MessageVisibility.Agents
   )
 }
