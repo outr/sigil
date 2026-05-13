@@ -133,21 +133,26 @@ class ToolPreconditionSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         val toolMsgs = signals.collect { case m: Message if m.role == MessageRole.Tool => m }
         toolMsgs should have size 1
         // BlockedTool's `execute` would emit `Text("SHOULD_NOT_RUN")` — verify it didn't run.
+        // The blocked-precondition Message is a Failure disposition; its
+        // content carries the diagnostic, not SHOULD_NOT_RUN.
         val texts = toolMsgs.head.content.collect { case ResponseContent.Text(t) => t }
-        texts shouldBe empty
+        texts shouldNot contain ("SHOULD_NOT_RUN")
+        toolMsgs.head.isFailure shouldBe true
       }
     }
 
-    "emit a Failure block describing the blocked precondition + suggestedFix" in {
+    "emit a Failure-disposition Message describing the blocked precondition + suggestedFix" in {
       runWith(new StubProvider(BlockedTool.name.value, "block-fail-call"), Vector(BlockedTool), "block-fail").map { signals =>
         val toolMsgs = signals.collect { case m: Message if m.role == MessageRole.Tool => m }
-        val failures = toolMsgs.head.content.collect { case f: ResponseContent.Failure => f }
-        failures should have size 1
-        val body = failures.head.reason
+        toolMsgs.head.isFailure shouldBe true
+        val body = toolMsgs.head.failureReason.getOrElse("")
         body should include("rate-limit")
         body should include("daily quota exceeded")
         body should include("upgrade_plan")
-        failures.head.recoverable shouldBe true
+        toolMsgs.head.disposition match {
+          case sigil.event.MessageDisposition.Failure(rec, _) => rec shouldBe true
+          case _ => fail("expected Failure disposition")
+        }
       }
     }
 

@@ -1,62 +1,154 @@
 package sigil.tool.model
 
 import org.commonmark.node.{
-  AbstractVisitor, BulletList, FencedCodeBlock, Heading, Image, Link, Node,
+  AbstractVisitor, BlockQuote, BulletList, FencedCodeBlock, Heading, Image, Link, Node,
   OrderedList, Paragraph, Text => CMText, ThematicBreak
 }
 import org.commonmark.parser.Parser as CMParser
-import org.commonmark.renderer.html.HtmlRenderer
 import spice.net.URL
-
-import scala.jdk.CollectionConverters.*
 
 /**
  * Parses an assembled markdown string into a `Vector[ResponseContent]`.
  *
- * Replaces the legacy `▶<TYPE>\n` multipart format. Agents now emit plain
- * markdown as their assistant content stream; the framework parses it
- * here at turn-settle time to produce the typed block sequence the rest
- * of the framework persists and renders.
- *
  * Block-level mapping:
  *   - Fenced code blocks (```lang...```)     → `ResponseContent.Code(code, language?)`
- *   - Headings (`#`, `##`, …)                → `ResponseContent.Heading(text)`
+ *   - Headings level 3+ (`###`, …)           → `ResponseContent.Heading(text)`
+ *   - Headings level 1-2 (`#`, `##`)         → open a `ResponseContent.Card` whose
+ *                                              `title` is the heading text and whose
+ *                                              `sections` are every block that follows
+ *                                              until the next H1/H2 (auto-Card grouping)
  *   - Thematic breaks (`---`)                → `ResponseContent.Divider`
  *   - Image-only paragraph (`![alt](url)`)   → `ResponseContent.Image(url, altText?)`
  *   - Bullet / ordered lists                 → `ResponseContent.ItemList(items, ordered)`
+ *   - GitHub-style alert callout:
+ *       `> [!Field icon="…"]`
+ *       `> Label: Value`                    → `ResponseContent.Field(label, value, icon)`
+ *     The directive line tolerates a missing leading `>` (some
+ *     providers — DigitalOcean kimi, Google Gemini — drop it).
+ *     Body lines accept either single-line `Label: Value` (split on
+ *     first `:`) or two-line `Label:\nValue:` (key/value extracted).
  *   - Anything else                          → `ResponseContent.Markdown(rendered)`
- *
- * This intentionally does NOT split inline links / images out of mixed
- * prose — keep them inline in the surrounding `Markdown` block so the
- * UI's markdown renderer handles them in context.
- *
- * Tables (pipe syntax) are not yet handled — commonmark-java's table
- * extension lives in a separate artifact. If apps emit tables, they fall
- * through as Markdown blocks; renderers that understand markdown tables
- * still display correctly.
  */
 object MarkdownContentParser {
   private val parser = CMParser.builder().build()
 
+  /** `> [!Type ...]` or bare `[!Type ...]` directive on the first line
+    * of a blockquote body. Captures the type name + any inline
+    * attributes (`icon="..."`, `multi`, `(recoverable)`). */
+  private val AlertDirective = """^\s*\[!([A-Za-z][A-Za-z0-9_-]*)\s*(.*?)\]\s*$""".r
+
   def parse(markdown: String): Vector[ResponseContent] = {
     if (markdown.trim.isEmpty) return Vector.empty
     val doc = parser.parse(markdown)
-    val out = Vector.newBuilder[ResponseContent]
+
+    sealed trait Item
+    final case class Boundary(title: String) extends Item
+    final case class Block(content: ResponseContent)  extends Item
+
+    val items = Vector.newBuilder[Item]
     var node = doc.getFirstChild
     while (node != null) {
-      blockFor(node).foreach(out += _)
+      node match {
+        case h: Heading if h.getLevel <= 2 =>
+          items += Boundary(textOf(h))
+        case h: Heading =>
+          items += Block(ResponseContent.Heading(textOf(h)))
+        case bq: BlockQuote =>
+          parseAlert(bq) match {
+            case Some(block) => items += Block(block)
+            case None        => blockFor(bq).foreach(b => items += Block(b))
+          }
+        case _ =>
+          blockFor(node).foreach(b => items += Block(b))
+      }
       node = node.getNext
     }
+
+    val out = Vector.newBuilder[ResponseContent]
+    var card: Option[(String, scala.collection.mutable.ArrayBuffer[ResponseContent])] = None
+
+    // A heading with no following body just becomes a Heading block —
+    // we only wrap into a Card when there's content under the title.
+    // This keeps a standalone `## Section title` from collapsing to an
+    // empty Card.
+    def flushCard(): Unit = card.foreach { case (title, sections) =>
+      if (sections.nonEmpty) out += Card(sections.toVector, title = Some(title))
+      else out += ResponseContent.Heading(title)
+    }
+
+    items.result().foreach {
+      case Boundary(title) =>
+        flushCard()
+        card = Some((title, scala.collection.mutable.ArrayBuffer.empty))
+      case Block(b) =>
+        card match {
+          case Some((_, sections)) => sections += b
+          case None                => out += b
+        }
+    }
+    flushCard()
     out.result()
+  }
+
+  /** Recognise `> [!Type attrs...]\n> body...` GitHub alert callouts.
+    * Returns Some[ResponseContent] when the directive maps to a known
+    * structured block. Returns None for either non-alert blockquotes
+    * or alerts whose type isn't one we extract — those fall through
+    * to the generic markdown blockquote path. */
+  private def parseAlert(bq: BlockQuote): Option[ResponseContent] = {
+    val rendered = renderMarkdown(bq).stripPrefix("> ")
+    val lines = rendered.split("\n").toList.map(_.stripPrefix("> "))
+    if (lines.isEmpty) return None
+    val directiveLine = lines.head.trim
+    AlertDirective.findFirstMatchIn(directiveLine) match {
+      case Some(m) =>
+        val typ   = m.group(1)
+        val attrs = parseAttrs(m.group(2))
+        val body  = lines.tail.map(_.replaceFirst("^>\\s*", "")).filter(_.nonEmpty)
+        typ.toLowerCase match {
+          case "field" => parseFieldBody(body, attrs)
+          case _       => None  // unknown alert type — let caller fall through
+        }
+      case None => None
+    }
+  }
+
+  /** Extract `key="value"`, bare `flag`, and `(parenthetical)` markers
+    * from the directive's attribute suffix. */
+  private def parseAttrs(s: String): Map[String, String] = {
+    val out = scala.collection.mutable.Map.empty[String, String]
+    val keyEq    = """(\w+)\s*=\s*"([^"]*)"""".r
+    val parens   = """\(\s*(\w+)\s*\)""".r
+    keyEq.findAllMatchIn(s).foreach(m => out += (m.group(1).toLowerCase -> m.group(2)))
+    parens.findAllMatchIn(s).foreach(m => out += (m.group(1).toLowerCase -> "true"))
+    out.toMap
+  }
+
+  /** Body shape accepted:
+    *   `Label: Value` (single line, split on first `:`)
+    *   `Label:` + `Value:` (two lines extracted by key) */
+  private def parseFieldBody(body: List[String], attrs: Map[String, String]): Option[ResponseContent.Field] = {
+    val icon = attrs.get("icon")
+    if (body.isEmpty) return None
+    if (body.size >= 2 && body(0).trim.toLowerCase.startsWith("label:") && body(1).trim.toLowerCase.startsWith("value:")) {
+      val label = body(0).trim.drop("label:".length).trim
+      val value = body(1).trim.drop("value:".length).trim
+      Some(ResponseContent.Field(label = label, value = value, icon = icon))
+    } else {
+      val combined = body.mkString("\n").trim
+      val idx = combined.indexOf(':')
+      if (idx > 0) {
+        val label = combined.take(idx).trim
+        val value = combined.drop(idx + 1).trim
+        Some(ResponseContent.Field(label = label, value = value, icon = icon))
+      } else None
+    }
   }
 
   private def blockFor(node: Node): Option[ResponseContent] = node match {
     case fc: FencedCodeBlock =>
       val lang = Option(fc.getInfo).map(_.trim).filter(_.nonEmpty)
       Some(ResponseContent.Code(fc.getLiteral.stripSuffix("\n"), lang))
-
-    case h: Heading =>
-      Some(ResponseContent.Heading(textOf(h)))
 
     case _: ThematicBreak =>
       Some(ResponseContent.Divider)
@@ -75,11 +167,6 @@ object MarkdownContentParser {
       Some(ResponseContent.ItemList(items = listItems(ol), ordered = true))
 
     case _ =>
-      // Render the block back to markdown source for a Markdown
-      // ResponseContent. We use a small custom render rather than
-      // pulling in commonmark's TextRenderer because we want the
-      // markdown source preserved (links, emphasis, etc.), not the
-      // text-only flattening the TextRenderer produces.
       val source = renderMarkdown(node)
       if (source.trim.isEmpty) None
       else Some(ResponseContent.Markdown(source))
@@ -111,12 +198,6 @@ object MarkdownContentParser {
     sb.toString
   }
 
-  /** Render a node back to a markdown-ish source string. We use the
-    * HtmlRenderer's source-preserving backend by walking the AST and
-    * reconstructing markers for the inline elements we care about
-    * (paragraph, emphasis, strong, code, link, image, soft/hard break).
-    * Sufficient for round-tripping into ResponseContent.Markdown so the
-    * UI's markdown renderer sees the same structure the LLM produced. */
   private def renderMarkdown(node: Node): String = {
     val sb = new StringBuilder
     appendMarkdown(node, sb)
@@ -153,9 +234,14 @@ object MarkdownContentParser {
       case h: Heading =>
         sb.append("#" * h.getLevel).append(' ')
         appendChildren(h, sb)
-      case _: BlockQuote =>
-        sb.append("> ")
-        appendChildren(node, sb)
+      case bq: BlockQuote =>
+        var child = bq.getFirstChild
+        while (child != null) {
+          val inner = renderMarkdown(child).split("\n").map(line => "> " + line).mkString("\n")
+          sb.append(inner)
+          if (child.getNext != null) sb.append("\n")
+          child = child.getNext
+        }
       case bl: BulletList =>
         var item = bl.getFirstChild
         while (item != null) {
@@ -171,7 +257,6 @@ object MarkdownContentParser {
           n += 1
         }
       case _ =>
-        // Fallback: append child text content
         appendChildren(node, sb)
     }
   }

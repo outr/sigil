@@ -15,7 +15,7 @@ import sigil.provider.{
 }
 import sigil.signal.EventState
 import sigil.tool.core.{CoreTools, RespondTool}
-import sigil.tool.model.{ResponseContent, RespondContent, RespondInput}
+import sigil.tool.model.{ResponseContent, RespondInput}
 import spice.http.HttpRequest
 
 import scala.concurrent.duration.*
@@ -35,7 +35,7 @@ class RouteResolvedSignalSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       ProviderEvent.ToolCallStart(CallId(s"r-${rapid.Unique()}"), RespondTool.schema.name.value),
       ProviderEvent.ToolCallComplete(
         CallId(s"r-${rapid.Unique()}"),
-        RespondInput(topicLabel = "RR", topicSummary = "spec", content = RespondContent.Text("ok"), endsTurn = true)
+        RespondInput(topicLabel = "RR", topicSummary = "spec", content = "ok", endsTurn = true)
       ),
       ProviderEvent.Done(StopReason.Complete)
     ))

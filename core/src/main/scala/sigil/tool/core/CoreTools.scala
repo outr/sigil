@@ -20,24 +20,20 @@ import sigil.tool.skill.{ActivateSkillInput, ActivateSkillTool}
  * should have access to — the universal-essential subset, free of
  * any feature that isn't relevant to single-mode apps.
  *
- * The default reply path is `respond` — every user-facing message goes
- * through here. Its `content` field is plain markdown (code fences,
- * headings, images, lists, links, tables) which the framework parses
- * into typed [[sigil.tool.model.ResponseContent]] blocks at
- * turn-settle time. `topicLabel` + `topicSummary` arrive together so
- * topic-shift resolution stays deterministic.
+ * Reply surface is split by intent:
+ *   - `respond` — for telling the user something. `content` is markdown.
+ *     Inside markdown the parser recognises two extensions:
+ *     `> [!Field icon="…"]\n> Label: Value` (typed Field block) and
+ *     `## Heading` (opens a typed Card section). `disposition`
+ *     (`success` / `failure`) stamps the resulting Message — the
+ *     orchestrator's refusal-challenge intercept, downstream "show
+ *     me failed turns" queries, and UI chrome all key off it
+ *     directly.
+ *   - `respond_options` — for asking the user to pick from a list.
+ *     Typed schema (prompt, options, allowMultiple, exclusive). The
+ *     reply correlates with the next user message.
  *
- * Markdown can't natively express interactive choices, labeled
- * key/value cards, or typed failure signals — the unified `respond`
- * tool's `content` field accepts those as tagged-union variants
- * ([[sigil.tool.model.RespondContent.Options]],
- * [[sigil.tool.model.RespondContent.Field]],
- * [[sigil.tool.model.RespondContent.Failure]]) so a single tool covers
- * every reply shape (sigil bug #157). The standalone `respond_options`
- * / `respond_field` / `respond_failure` tools still ship in core for
- * apps that registered them by name; they're marked deprecated.
- *
- * Plus essentials: `find_capability`, `cancel`.
+ * Plus essentials: `find_capability`, `cancel`, `record_consent`.
  *
  * **NOT in `all` by default** (each is shipped in core but apps opt
  * in by adding to their own `staticTools` / `toolNames`):
@@ -46,11 +42,16 @@ import sigil.tool.skill.{ActivateSkillInput, ActivateSkillTool}
  *     one [[sigil.provider.Mode]]. Single-mode apps would surface it
  *     as a no-op tool the model could waste tokens trying to call.
  *
+ *   - `respond_failure` / `respond_field` — typed-emission siblings of
+ *     the markdown extensions on `respond`. `respond` with
+ *     `disposition = "failure"` (or a `> [!Field …]` callout in
+ *     content) covers the common case; these standalone tools stay
+ *     in core for apps that prefer the named-tool dispatch path.
+ *
  *   - `respond_card` / `respond_cards` — composite Card-block reply
- *     surfaces. Useful when the app's UI renders dashboards / metric
- *     tiles / search-result lists as styled cards. Apps that don't
- *     need card composition keep `respond` (plus `respond_options` /
- *     `respond_field`) and skip these.
+ *     surfaces with explicit `kind` and nested sections. `## H2`
+ *     headings inside `respond` content auto-wrap into Cards for the
+ *     common case; these are for typed multi-card dashboards.
  *
  *   - `activate_skill` — only useful when an app's agents register
  *     skill catalogs. Apps without skills surface it as a no-op tool
@@ -80,6 +81,7 @@ object CoreTools {
   val all: Vector[Tool] =
     Vector(
       RespondTool,
+      RespondOptionsTool,
       FindCapabilityTool,
       CancelTool,
       RecordConsentTool
@@ -132,13 +134,11 @@ object CoreTools {
     * (sigil bug #19). */
   val atomicContentToolNames: Set[sigil.tool.ToolName] = Set(
     RespondTool.schema.name,
-    // Deprecated standalone respond-family tools (sigil bug #157) still
-    // have atomic-content shape when apps opt them back in.
-    (RespondOptionsTool: @annotation.nowarn("cat=deprecation")).schema.name,
-    (RespondFieldTool: @annotation.nowarn("cat=deprecation")).schema.name,
-    (RespondFailureTool: @annotation.nowarn("cat=deprecation")).schema.name,
+    RespondOptionsTool.schema.name,
+    RespondFieldTool.schema.name,
+    RespondFailureTool.schema.name,
     RespondCardTool.schema.name,
     RespondCardsTool.schema.name,
-    NoResponseTool.schema.name  // still atomic-shape when apps opt back in
+    NoResponseTool.schema.name
   )
 }

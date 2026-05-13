@@ -291,11 +291,14 @@ object StallDetector {
     case (Some(tr), _) =>
       tr.summary.getOrElse("<no-output>")
     case (None, Some(m)) =>
-      m.content.collect {
-        case ResponseContent.Text(t)        => t
-        case ResponseContent.Markdown(t)    => t
-        case ResponseContent.Failure(t, _, _) => "FAIL:" + t
+      val text = m.content.collect {
+        case ResponseContent.Text(t)     => t
+        case ResponseContent.Markdown(t) => t
       }.mkString("\n").trim
+      m.disposition match {
+        case _: sigil.event.MessageDisposition.Failure => "FAIL:" + text
+        case sigil.event.MessageDisposition.Success    => text
+      }
     case _ => "<pending>"
   }
 

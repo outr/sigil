@@ -53,9 +53,7 @@ class CancelToolValidationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     CancelTool.execute(CancelInput(force = true, reason = Some(reason)), ctx(conv)).toList
 
   private def failureText(events: List[sigil.event.Event]): Option[String] =
-    events.collectFirst { case m: Message =>
-      m.content.collectFirst { case ResponseContent.Failure(text, _, _) => text }
-    }.flatten
+    events.collectFirst { case m: Message if m.isFailure => m.failureReason }.flatten
 
   // --- detectTransition (heuristic in isolation) ---------------------------
 

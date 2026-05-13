@@ -59,7 +59,7 @@ class RecordConsentValidationSpec extends AsyncWordSpec with AsyncTaskSpec with 
       } yield {
         val failures = evs.collect {
           case m: Message =>
-            m.content.collect { case ResponseContent.Failure(reason, _, _) => reason }
+            m.failureReason.toVector
         }.flatten
         failures should not be empty
         failures.head.toLowerCase should include("unknown tool")

@@ -11,7 +11,7 @@ import sigil.provider.{GenerationSettings, Instructions, Mode, ConversationMode,
 import sigil.signal.{MessageContentDelta, ContentKind, EventState, MessageDelta, Signal, ToolDelta}
 import sigil.tool.{ToolInput, ToolName}
 import sigil.tool.core.CoreTools
-import sigil.tool.model.{ChangeModeInput, RespondContent, RespondInput, ResponseContent}
+import sigil.tool.model.{ChangeModeInput, RespondInput, ResponseContent}
 
 /**
  * Verifies that [[TestSigil.instance]] registers core Signal and ToolInput
@@ -54,7 +54,7 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
         participantId = TestUser,
         conversationId = Conversation.id("c1"),
         topicId = TestTopicId,
-        input = Some(RespondInput(topicLabel = "Chat", topicSummary = "Casual chat.", content = RespondContent.Text("hi"), endsTurn = true))
+        input = Some(RespondInput(topicLabel = "Chat", topicSummary = "Casual chat.", content = "hi", endsTurn = true))
       )
       val restored = roundTripSignal(original)
       restored shouldBe a[ToolInvoke]
@@ -147,7 +147,7 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
       val original: ToolInput = RespondInput(
         topicLabel = "Greetings",
         topicSummary = "A friendly greeting exchange.",
-        content = RespondContent.Text("hello"),
+        content = "hello",
         endsTurn = true
       )
       val restored = roundTripToolInput(original)
@@ -155,7 +155,7 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
       val r = restored.asInstanceOf[RespondInput]
       r.topicLabel   shouldBe "Greetings"
       r.topicSummary shouldBe "A friendly greeting exchange."
-      r.content      shouldBe RespondContent.Text("hello")
+      r.content      shouldBe "hello"
     }
 
     "round-trip a ChangeModeInput (core tool)" in {

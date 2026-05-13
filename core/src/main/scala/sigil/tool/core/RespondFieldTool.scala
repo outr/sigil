@@ -9,14 +9,14 @@ import sigil.tool.model.{RespondFieldInput, ResponseContent}
 /**
  * Emit a labeled key/value field as part of the agent's reply. Use for
  * compact card-shaped content (status summaries, news metadata, product
- * attributes) where the renderer needs label/value/icon structure that
- * markdown's bold-and-text can't express.
+ * attributes) where the renderer needs label/value/icon structure.
  *
- * **Deprecated** (sigil bug #157) — the unified `respond` tool accepts
- * `RespondContent.Field(...)` directly. Kept for backwards-
- * compatibility with apps that registered this tool by name.
+ * **Not in the default `CoreTools.all` roster.** The unified `respond`
+ * tool accepts a `> [!Field icon="…"]\n> Label: Value` markdown
+ * callout that emits the same Field block via
+ * [[sigil.tool.model.MarkdownContentParser]]. This standalone tool
+ * stays in core for apps that prefer typed-emission paths.
  */
-@deprecated("Use `RespondTool` with `RespondContent.Field(...)`. Sigil bug #157.", "0.x")
 case object RespondFieldTool extends TypedTool[RespondFieldInput](
   name = ToolName("respond_field"),
   description =

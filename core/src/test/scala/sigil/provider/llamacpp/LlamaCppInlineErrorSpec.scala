@@ -52,7 +52,7 @@ class LlamaCppInlineErrorSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       thrown.message_ should include("Failed to parse input")
       thrown.providerKey shouldBe "llamacpp"
       // Outer message is the user-facing string Bug #6 plumbs into
-      // ResponseContent.Failure.reason.
+      // MessageDisposition.Failure.reason.
       thrown.getMessage should include("llamacpp returned server_error (500)")
     }
 

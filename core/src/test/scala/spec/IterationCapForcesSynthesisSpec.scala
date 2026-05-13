@@ -16,7 +16,7 @@ import sigil.provider.{
 import sigil.signal.EventState
 import sigil.tool.ToolName
 import sigil.tool.core.{ChangeModeTool, CoreTools, RespondTool}
-import sigil.tool.model.{ChangeModeInput, ResponseContent, RespondContent, RespondInput}
+import sigil.tool.model.{ChangeModeInput, ResponseContent, RespondInput}
 import spice.http.HttpRequest
 
 import java.util.concurrent.atomic
@@ -79,7 +79,7 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
             ProviderEvent.ToolCallComplete(
               callId,
-              RespondInput(topicLabel = "Cap", topicSummary = "cap-hit synth", content = RespondContent.Text("synthesized from gathered context"), endsTurn = true)
+              RespondInput(topicLabel = "Cap", topicSummary = "cap-hit synth", content = "synthesized from gathered context", endsTurn = true)
             ),
             ProviderEvent.Done(StopReason.Complete)
           )
@@ -245,21 +245,22 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
           case s: ToolChoice.Specific => s.toolName.value
         }
         forcedChoices should contain (RespondTool.schema.name.value)
-        // No respond Message was produced (the model refused to comply).
+        // No Success-disposition respond Message was produced (the
+        // model refused to comply). The Failure-disposition messages
+        // from the AgentRunawayException publish are separate and
+        // expected — they don't represent a "respond" call.
         val agentRespondMessages = evs.collect {
           case m: Message
             if m.participantId == TestAgent &&
                m.role == MessageRole.Standard &&
+               m.isSuccess &&
                m.content.collectFirst { case ResponseContent.Text(_) => true }.contains(true) =>
             m
         }
         agentRespondMessages shouldBe empty
-        // A Failure message from publishFailureMessage(AgentRunawayException) should land.
+        // A Failure-disposition message from publishFailureMessage(AgentRunawayException) should land.
         val failureMessages = evs.collect {
-          case m: Message if m.content.exists {
-            case ResponseContent.Failure(reason, _, _) => reason.contains("AgentRunaway")
-            case _                                     => false
-          } => m
+          case m: Message if m.isFailure && m.failureReason.exists(_.contains("AgentRunaway")) => m
         }
         failureMessages should not be empty
       }

@@ -15,7 +15,7 @@ import sigil.provider.{
 import sigil.signal.EventState
 import sigil.tool.ToolName
 import sigil.tool.core.{CoreTools, FindCapabilityInput, FindCapabilityTool, RespondTool}
-import sigil.tool.model.{RespondContent, RespondInput, ResponseContent}
+import sigil.tool.model.{RespondInput, ResponseContent}
 import spice.http.HttpRequest
 
 import scala.concurrent.duration.*
@@ -73,7 +73,7 @@ class OrchestratorRepeatedQuerySpec extends AsyncWordSpec with AsyncTaskSpec wit
       ProviderEvent.ToolCallComplete(cid, RespondInput(
         topicLabel   = "Done",
         topicSummary = "Repeated-query spec terminator.",
-        content      = RespondContent.Text("Stopping after the framework's intercept guidance."),
+        content      = "Stopping after the framework's intercept guidance.",
         endsTurn     = true
       )),
       ProviderEvent.Done(StopReason.Complete)
@@ -125,13 +125,11 @@ class OrchestratorRepeatedQuerySpec extends AsyncWordSpec with AsyncTaskSpec wit
 
         val failures = evs.collect {
           case m: Message
-            if m.role == MessageRole.Tool &&
-               m.content.exists {
-                 case ResponseContent.Failure(reason, _, _) =>
-                   reason.toLowerCase.contains("find_capability") &&
-                   reason.toLowerCase.contains("different keywords")
-                 case _ => false
-               } => m
+            if m.role == MessageRole.Tool && m.isFailure &&
+               m.failureReason.exists(r =>
+                 r.toLowerCase.contains("find_capability") &&
+                 r.toLowerCase.contains("different keywords")
+               ) => m
         }
         failures should not be empty
         failures.head.origin shouldBe Some(intercepts.head._id)

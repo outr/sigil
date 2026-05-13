@@ -6,7 +6,7 @@ import sigil.tool.ToolInput
 /**
  * Input for the `respond_failure` tool — emit a typed failure block as
  * part of the agent's reply. Use when the agent could not complete the
- * task. The orchestrator can pattern-match on `ResponseContent.Failure`
+ * task. The orchestrator can pattern-match on `MessageDisposition.Failure`
  * to decide whether to retry, alert, or surface the message as an error
  * UI.
  *

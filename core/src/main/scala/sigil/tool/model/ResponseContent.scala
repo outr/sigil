@@ -108,27 +108,6 @@ enum ResponseContent derives RW {
   case Options(prompt: String, options: List[SelectOption], allowMultiple: Boolean = false)
 
   /**
-   * Signal that the agent could not complete the task. Use this content type
-   * when responding with a failure — the orchestrator can pattern-match on it
-   * to decide whether to retry, alert, or surface the message as an error UI.
-   *
-   * `recoverable = true` indicates the failure may succeed on retry (transient
-   * issues like network errors). `false` indicates the failure is permanent
-   * for this request (missing permissions, unsupported input, etc.).
-   *
-   * `errorContext` carries structured metadata when the framework caught
-   * an exception at the tool boundary — exception class, classification
-   * (UserInputError / TransientError / FrameworkBug / …), top stack
-   * frames, optional suggestion. The agent reads `classification` to pick
-   * a response shape (retry / fix args / report to user / file as
-   * feedback) and surfaces the structured details when the user might
-   * want to know what went wrong.
-   */
-  case Failure(reason: String,
-               recoverable: Boolean = false,
-               errorContext: Option[sigil.event.ErrorContext] = None)
-
-  /**
    * Typed text-input form field. Renders a single-line text field
    * inline in the conversation. The user's submitted value comes back
    * as part of a normal Message reply — apps consuming the wire

@@ -2,21 +2,30 @@ package sigil.tool.core
 
 import sigil.TurnContext
 import sigil.conversation.ContextFrame
-import sigil.event.{Event, Message}
+import sigil.event.{Event, Message, MessageDisposition}
 import sigil.signal.EventState
 import sigil.tool.{ToolExample, ToolName, TypedTool}
-import sigil.tool.model.{MarkdownContentParser, RespondContent, RespondInput, ResponseContent}
+import sigil.tool.model.{MarkdownContentParser, RespondInput, ResponseContent, ResponseDisposition}
 
 /**
  * The respond tool — every user-facing reply goes through here. The
- * `content` field is plain markdown (code fences, headings, images,
- * lists, links, tables); the framework parses it into typed
- * [[sigil.tool.model.ResponseContent]] blocks at turn-settle time.
+ * `content` field is markdown; the framework parses it into typed
+ * [[sigil.tool.model.ResponseContent]] blocks via
+ * [[sigil.tool.model.MarkdownContentParser]] at turn-settle time. The
+ * parser also recognises two markdown extensions:
+ *
+ *   - `> [!Field icon="…"]\n> Label: Value` — typed [[ResponseContent.Field]]
+ *   - `## Heading` — opens a [[ResponseContent.Card]] section
+ *
+ * `disposition` (Success or Failure) is stamped onto the resulting
+ * Message via [[sigil.event.MessageDisposition]] so downstream code
+ * (refusal challenge, UI chrome, "show me failed turns" queries)
+ * keys off it directly.
  *
  * Topic-shift resolution (NoChange / Refine / New / Return) is handled
- * by the orchestrator at [[sigil.provider.ProviderEvent.ToolCallComplete]]
- * time using `topicLabel` + `topicSummary` and the framework's two-step
- * classifier (see [[sigil.Sigil.classifyTopicShift]]).
+ * here from the atomic-respond path using `topicLabel` + `topicSummary`
+ * via [[sigil.Sigil.classifyTopicShift]] so every provider (streaming
+ * and tool-call-only) produces the same TopicChange shape.
  */
 case object RespondTool extends TypedTool[RespondInput](
   name = ToolName("respond"),
@@ -41,68 +50,47 @@ case object RespondTool extends TypedTool[RespondInput](
       |  to the conversation forever and pollute the topic-shift classifier on every later turn —
       |  pick a real subject as soon as one exists.
       |- `topicSummary` — 1-2 sentences.
-      |- `content` — markdown.
-      |- `endsTurn` (optional, default `true`) — `true` when this respond is your COMPLETE reply
-      |  for this turn (the work is done, the user has the final answer). Set `false` only when
-      |  you intend to continue working on this turn after the user sees this message — e.g.
-      |  status updates like "Let me check…", "Reading the auth files now…", "Found 47 matches;
-      |  narrowing to admin/…". With `endsTurn = false` the framework iterates the loop again
-      |  immediately so you can run more tools; the respond's content shows the user a progress
-      |  pulse rather than a permanent reply.
+      |- `content` — markdown body. Standard markdown (paragraphs, code fences, tables, lists,
+      |  links, images, headings) is parsed into typed content blocks. Two markdown extensions
+      |  are also recognised inside content:
+      |    * `> [!Field icon="…"]\n> Label: Value` — emits a typed Field block (labeled metadata
+      |      with optional icon). Use for compact status/source/metadata cards.
+      |    * `## Heading` — opens a Card section. Every block under the heading (until the next
+      |      `##`) becomes the Card's contents, with the heading as the title. Use `##` to
+      |      group related blocks under a labeled container.
+      |- `disposition` — `"success"` for normal answers / status / explanations (the default in
+      |  spirit; set explicitly per turn). `"failure"` when you cannot complete the requested
+      |  work (out of scope, missing capability, a tool failed and you're reporting that). The
+      |  framework stamps the resulting Message's disposition accordingly.
+      |- `endsTurn` — `true` when this respond is your COMPLETE reply for this turn. Set `false`
+      |  for in-flight status pulses you intend to follow up on the same turn.
       |
-      |  Use `endsTurn = false` ONLY if your very next iteration will actually do the announced
-      |  work. Don't promise follow-up that won't happen — the user reads "Let me check…" and
-      |  expects results, not silence. If you don't have a concrete next step, finish the turn
-      |  cleanly with `endsTurn = true`.
-      |
-      |`content` is a tagged-union picking the reply shape:
-      |  - `Text(content)`              — plain markdown reply (chat, explanations, code).
-      |  - `Failure(reason, recoverable)` — honest "can't do that" signal. `recoverable = true` for
-      |    transient failures (rate limits, network) the user can retry; `false` for permanent
-      |    (missing permissions, unsupported input).
-      |  - `Field(label, value, icon?)` — single labeled key/value card (status, source, metadata).
-      |  - `Options(prompt, options, allowMultiple)` — structured multi-choice prompt. The user can
-      |    still answer in natural language. `allowMultiple = true` when independent choices the
-      |    user might combine; `false` for forced single selection (Yes/No, plan tier, theme).""".stripMargin,
+      |For asking the user to pick from a list, use `respond_options` — it's a separate tool
+      |with a typed schema (prompt, options, allowMultiple, exclusive) rather than markdown.""".stripMargin,
   examples = Nil
 ) with RespondFamilyTool {
 
   override protected def executeTyped(input: RespondInput, context: TurnContext): rapid.Stream[Event] = {
-    // Bug #157 — dispatch on the tagged-union content slot. Text
-    // still flows through MarkdownContentParser; the other kinds
-    // map 1:1 to typed ResponseContent blocks. Topic-resolution +
-    // keyword-update fires for every kind so atomic-call paths
-    // stay symmetric with the streaming-text path.
-    val blocks: Vector[ResponseContent] = input.content match {
-      case RespondContent.Text(content) =>
-        MarkdownContentParser.parse(content)
-      case RespondContent.Failure(reason, recoverable) =>
-        Vector(ResponseContent.Failure(reason = reason, recoverable = recoverable))
-      case RespondContent.Field(label, value, icon) =>
-        Vector(ResponseContent.Field(label = label, value = value, icon = icon))
-      case RespondContent.Options(prompt, options, allowMultiple) =>
-        Vector(ResponseContent.Options(prompt = prompt, options = options, allowMultiple = allowMultiple))
+    val blocks = MarkdownContentParser.parse(input.content)
+    val disposition = input.disposition match {
+      case ResponseDisposition.Success => MessageDisposition.Success
+      case ResponseDisposition.Failure => MessageDisposition.Failure()
     }
     val message = Message(
-      participantId = context.caller,
+      participantId  = context.caller,
       conversationId = context.conversation.id,
-      topicId = context.conversation.currentTopicId,
-      content = blocks,
-      modelId = context.modelId
+      topicId        = context.conversation.currentTopicId,
+      content        = blocks,
+      disposition    = disposition,
+      modelId        = context.modelId
     )
-    // Sigil bug: topic resolution + keyword update used to fire only
-    // from the orchestrator's streaming-respond branch. Atomic-respond
-    // calls (llama.cpp grammar-constrained, OpenAI strict-mode, every
-    // provider whose respond materialises as a function call) skipped
-    // both, so TopicChange events never fired and `currentKeywords`
-    // never updated for those providers. Fire both here so the
-    // behaviour is uniform across paths. Bug #2 from the
-    // path-discrepancy audit.
+    // Topic resolution + keyword update fire here so the atomic-respond
+    // path (every provider whose `respond` materialises as a function
+    // call: llama.cpp grammar-constrained, OpenAI strict-mode,
+    // Anthropic tool_use, Google functionCall) produces the same
+    // TopicChange shape as the streaming-respond branch.
     context.modelId match {
       case None =>
-        // No modelId on the context (test harnesses, off-turn
-        // invocation) — skip topic classification (the classifier
-        // needs a model to route through). Just emit the Message.
         rapid.Stream.emits(List[Event](message))
       case Some(modelId) =>
         val userMessage = context.turnInput.frames.reverseIterator.collectFirst {

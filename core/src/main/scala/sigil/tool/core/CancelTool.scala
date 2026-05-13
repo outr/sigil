@@ -117,7 +117,8 @@ case object CancelTool extends TypedTool[CancelInput](
       participantId  = context.caller,
       conversationId = context.conversation.id,
       topicId        = context.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Failure(reason = guidance, recoverable = true)),
+      content        = Vector(ResponseContent.Text(guidance)),
+      disposition    = sigil.event.MessageDisposition.Failure(recoverable = true),
       state          = EventState.Complete,
       role           = MessageRole.Tool,
       visibility     = MessageVisibility.Agents

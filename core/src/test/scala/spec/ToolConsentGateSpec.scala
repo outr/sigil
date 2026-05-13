@@ -129,10 +129,9 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         val refusal = signals.collectFirst {
           case m: Message if m.role == MessageRole.Tool => m
         }.getOrElse(fail("expected Tool-role refusal Message"))
-        val text = refusal.content.collect {
-          case ResponseContent.Failure(b, _, _) => b
-          case ResponseContent.Text(t)       => t
-        }.mkString("\n")
+        val text = (refusal.failureReason.toVector ++ refusal.content.collect {
+          case ResponseContent.Text(t) => t
+        }).mkString("\n")
         text should include("requires user consent")
         text should include("record_consent")
       }
@@ -178,10 +177,9 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         val refusal = signals.collectFirst {
           case m: Message if m.role == MessageRole.Tool => m
         }.getOrElse(fail("expected refusal"))
-        val text = refusal.content.collect {
-          case ResponseContent.Failure(b, _, _) => b
-          case ResponseContent.Text(t)       => t
-        }.mkString("\n")
+        val text = (refusal.failureReason.toVector ++ refusal.content.collect {
+          case ResponseContent.Text(t) => t
+        }).mkString("\n")
         text should include("previously declined")
         text should include("user explicitly declined import")
       }

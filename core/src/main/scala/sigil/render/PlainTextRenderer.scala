@@ -39,9 +39,6 @@ object PlainTextRenderer extends ContentRenderer[String] {
     case ResponseContent.Options(prompt, opts, _) =>
       val items = opts.map(o => s"- ${o.label}: ${o.value}").mkString("\n")
       s"$prompt\n$items"
-    case ResponseContent.Failure(reason, recoverable, _) =>
-      val tag = if (recoverable) "Failure (recoverable)" else "Failure"
-      s"$tag: $reason"
     case ResponseContent.TextInput(label, _, placeholder, default) =>
       val hint = placeholder.orElse(default).fold("")(h => s" ($h)")
       s"$label:$hint"

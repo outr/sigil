@@ -28,7 +28,7 @@ import spice.http.HttpRequest
  *
  * Post-fix: the orchestrator's `Done` handler emits a synthetic
  * ToolInvoke + Tool-role Message carrying
- * `ResponseContent.Failure(reason, recoverable = true)`. The
+ * `MessageDisposition.Failure(reason, recoverable = true)`. The
  * Tool-role tag makes it a trigger (`TriggerFilter.isTriggerFor`
  * always fires on Tool role), so the agent re-iterates with the
  * diagnostic in its history. The agent reads
@@ -114,7 +114,7 @@ class PlainTextRejectionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   }
 
   "Bug #75 — plain text without a tool call" should {
-    "emit a synthetic ToolInvoke + Tool-role Message with ResponseContent.Failure" in {
+    "emit a synthetic ToolInvoke + Tool-role Message with Failure disposition" in {
       runWith(new PlainTextProvider, "drift").map { signals =>
         // Synthetic ToolInvoke is present, with the framework-
         // internal name and `internal = true` flag.
@@ -123,23 +123,24 @@ class PlainTextRejectionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         invokes.head.toolName shouldBe ToolName("_plain_text_reply")
         invokes.head.internal shouldBe true
 
-        // Tool-role Message with Failure content paired to that invoke.
+        // Tool-role Message with Failure disposition paired to that invoke.
         val toolMessages = signals.collect {
           case m: Message if m.role == MessageRole.Tool => m
         }
         toolMessages should have size 1
         val msg = toolMessages.head
         msg.origin shouldBe Some(invokes.head._id)
-        // ResponseContent.Failure carries the diagnostic — apps
-        // pattern-matching on Failure pick this up automatically.
-        val failure = msg.content.collectFirst { case f: ResponseContent.Failure => f }
-        failure shouldBe defined
-        failure.get.recoverable shouldBe true
-        failure.get.reason should include ("plain text")
-        failure.get.reason should include ("respond-family")
+        msg.isFailure shouldBe true
+        msg.disposition match {
+          case sigil.event.MessageDisposition.Failure(rec, _) => rec shouldBe true
+          case _ => fail("expected Failure")
+        }
+        val reason = msg.failureReason.getOrElse("")
+        reason should include ("plain text")
+        reason should include ("respond-family")
         // The dropped text is included so the agent can see what it
         // tried to say and reformulate as a tool call.
-        failure.get.reason should include ("Random Dog")
+        reason should include ("Random Dog")
         succeed
       }
     }
@@ -149,11 +150,10 @@ class PlainTextRejectionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         val invokes = signals.collect { case ti: ToolInvoke => ti }
         // Only the real tool call; no synthetic _plain_text_reply.
         invokes.map(_.toolName) shouldNot contain (ToolName("_plain_text_reply"))
-        // No Tool-role Message carrying a Failure either.
+        // No Tool-role Message with Failure disposition either.
         val failures = signals.collect {
-          case m: Message if m.role == MessageRole.Tool =>
-            m.content.collect { case f: ResponseContent.Failure => f }
-        }.flatten
+          case m: Message if m.role == MessageRole.Tool && m.isFailure => m
+        }
         failures shouldBe empty
         succeed
       }

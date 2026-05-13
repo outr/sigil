@@ -16,7 +16,7 @@ import sigil.provider.{
 import sigil.signal.EventState
 import sigil.tool.ToolName
 import sigil.tool.core.{CoreTools, RespondTool}
-import sigil.tool.model.{ResponseContent, RespondContent, RespondInput}
+import sigil.tool.model.{ResponseContent, RespondInput}
 import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.AtomicInteger
@@ -153,7 +153,7 @@ class ConsecutiveAssistantsMergeSpec extends AsyncWordSpec with AsyncTaskSpec wi
           RespondInput(
             topicLabel   = "Admin services in widge-server",
             topicSummary = "Evaluating the admin services.",
-            content      = RespondContent.Text("Found 500 matches. I'll refine to focus on admin service definitions."),
+            content      = "Found 500 matches. I'll refine to focus on admin service definitions.",
             endsTurn     = false
           )
         case 2 =>
@@ -161,7 +161,7 @@ class ConsecutiveAssistantsMergeSpec extends AsyncWordSpec with AsyncTaskSpec wi
           RespondInput(
             topicLabel   = "Admin services in widge-server",
             topicSummary = "Final breakdown of admin services.",
-            content      = RespondContent.Text("I found 500 matches for \"admin\" in widge-server. Here's the breakdown: …"),
+            content      = "I found 500 matches for \"admin\" in widge-server. Here's the breakdown: …",
             endsTurn     = true
           )
         case _ =>
@@ -170,7 +170,7 @@ class ConsecutiveAssistantsMergeSpec extends AsyncWordSpec with AsyncTaskSpec wi
           RespondInput(
             topicLabel   = "Admin services in widge-server",
             topicSummary = "Continuing the analysis.",
-            content      = RespondContent.Text("Continuing."),
+            content      = "Continuing.",
             endsTurn     = true
           )
       }

@@ -96,7 +96,7 @@ class AutonomousConsentBypassSpec extends AsyncWordSpec with AsyncTaskSpec with 
         // tool executed directly.
         val failures = evs.collect {
           case m: Message if m.role == MessageRole.Tool =>
-            m.content.collect { case ResponseContent.Failure(reason, _, _) => reason }
+            m.failureReason.toVector
         }.flatten
         failures.exists(_.toLowerCase.contains("requires user consent")) shouldBe false
         // The tool's own output Message is present.
@@ -119,7 +119,7 @@ class AutonomousConsentBypassSpec extends AsyncWordSpec with AsyncTaskSpec with 
         ranCount.get() shouldBe 0
         val failures = evs.collect {
           case m: Message if m.role == MessageRole.Tool =>
-            m.content.collect { case ResponseContent.Failure(reason, _, _) => reason }
+            m.failureReason.toVector
         }.flatten
         failures.exists(_.toLowerCase.contains("requires user consent")) shouldBe true
       }

@@ -1438,14 +1438,14 @@ trait Sigil {
       RespondFailureTool, RespondFieldTool, RespondOptionsTool
     }
     import sigil.tool.skill.ActivateSkillTool
-    // Sigil bug #157 — the respond family unified into a single
-    // `respond` tool whose `content` is a tagged union (Text /
-    // Failure / Field / Options). Sigil bug #156 — `no_response`
-    // dropped from default essentials. Apps that opted back into the
-    // legacy standalone tools add them to their own `staticTools` /
-    // `toolNames`; the framework no longer treats them as essential.
+    // Reply surface: `respond` (markdown + Field-callout + H2-Card +
+    // disposition) for telling; `respond_options` (typed) for asking.
+    // The standalone `respond_field` / `respond_failure` /
+    // `respond_card` tools are opt-in (not essentials) — markdown
+    // callouts and disposition cover their cases in `respond`.
+    // `no_response` dropped from defaults in sigil bug #156.
     val fullEssentials = List(
-      RespondTool, CancelTool
+      RespondTool, RespondOptionsTool, CancelTool
     ).map(_.schema.name)
     val pureDiscoveryEssentials = List(CancelTool.schema.name)
 
@@ -5599,11 +5599,11 @@ trait Sigil {
             participantId  = agent.id,
             conversationId = convId,
             topicId        = topic.id,
-            content        = Vector(sigil.tool.model.ResponseContent.Failure(
-              reason       = reason,
+            content        = Vector(sigil.tool.model.ResponseContent.Text(reason)),
+            disposition    = sigil.event.MessageDisposition.Failure(
               recoverable  = false,
               errorContext = Some(ec)
-            )),
+            ),
             state          = EventState.Complete,
             role           = MessageRole.Standard
           )).map(_ => ())

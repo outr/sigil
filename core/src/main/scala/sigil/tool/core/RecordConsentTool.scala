@@ -91,7 +91,8 @@ case object RecordConsentTool extends TypedTool[RecordConsentInput](
             participantId  = ctx.caller,
             conversationId = ctx.conversation.id,
             topicId        = ctx.conversation.currentTopicId,
-            content        = Vector(ResponseContent.Failure(reason = failureBody, recoverable = true)),
+            content        = Vector(ResponseContent.Text(failureBody)),
+            disposition    = sigil.event.MessageDisposition.Failure(recoverable = true),
             role           = MessageRole.Tool,
             state          = EventState.Complete
           )
