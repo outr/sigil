@@ -7,7 +7,7 @@ import sigil.conversation.{ContextMemory, Conversation, MemorySource, MemoryStat
 import sigil.SpaceId
 import sigil.db.Model
 import sigil.participant.ParticipantId
-import sigil.provider.GenerationSettings
+import sigil.provider.{GenerationSettings, ReasoningMode}
 import sigil.tool.consult.{ConsultTool, ExtractMemoriesInput, ExtractMemoriesTool}
 
 /**
@@ -66,7 +66,10 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
         // covers the worst-case thinking budget while staying well
         // under any model's context window.
         val extractorSettings = {
-          val base = GenerationSettings(maxOutputTokens = Some(1500))
+          val base = GenerationSettings(
+            maxOutputTokens = Some(1500),
+            reasoningMode = ReasoningMode.Off
+          )
           if (sigil.supportsParameter(modelId, "temperature")) base.copy(temperature = Some(0.0))
           else base
         }

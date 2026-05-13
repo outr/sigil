@@ -3531,7 +3531,10 @@ trait Sigil {
          |
          |Return the classification.""".stripMargin
     val settings = {
-      val base = sigil.provider.GenerationSettings(maxOutputTokens = Some(220))
+      val base = sigil.provider.GenerationSettings(
+        maxOutputTokens = Some(220),
+        reasoningMode = sigil.provider.ReasoningMode.Off
+      )
       if (supportsParameter(modelId, "temperature")) base.copy(temperature = Some(0.0))
       else base
     }
@@ -4064,7 +4067,10 @@ trait Sigil {
     // → ConsultTool returned None → topic resolution silently
     // defaulted to NoChange.
     val classifierSettings = {
-      val base = GenerationSettings(maxOutputTokens = Some(512))
+      val base = GenerationSettings(
+        maxOutputTokens = Some(512),
+        reasoningMode = sigil.provider.ReasoningMode.Off
+      )
       if (supportsParameter(modelId, "temperature")) base.copy(temperature = Some(0.0))
       else base
     }
@@ -5340,7 +5346,10 @@ trait Sigil {
         systemPrompt       = systemPrompt,
         userPrompt         = userPrompt,
         tool               = sigil.tool.consult.ProgressReflectionTool,
-        generationSettings = sigil.provider.GenerationSettings(maxOutputTokens = Some(200))
+        generationSettings = sigil.provider.GenerationSettings(
+          maxOutputTokens = Some(200),
+          reasoningMode = sigil.provider.ReasoningMode.Off
+        )
       ).flatMap {
         case None         => Task.pure(None)  // checkpoint-call failed; let the loop continue
         case Some(report) =>

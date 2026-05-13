@@ -14,7 +14,8 @@ import sigil.provider.{
   Instructions,
   Mode,
   Provider,
-  ProviderRequest
+  ProviderRequest,
+  ReasoningMode
 }
 import sigil.provider.anthropic.AnthropicProvider
 import sigil.provider.deepseek.{DeepSeek, DeepSeekProvider}
@@ -149,13 +150,26 @@ class EffortWiringSpec extends AnyWordSpec with Matchers {
     val provider = LlamaCppProvider(url = url"http://localhost:8080", models = Nil, sigilRef = TestSigil)
     val modelId = Model.id("qwen3.5-9b-q4_k_m")
 
-    "emit enable_thinking=false when effort is None" in {
+    "omit chat_template_kwargs when reasoningMode=Auto (deployment default fires)" in {
       val body = bodyOf(provider, modelId, GenerationSettings(maxOutputTokens = Some(100)))
+      body shouldNot include("chat_template_kwargs")
+    }
+
+    "emit enable_thinking=false when reasoningMode=Off" in {
+      val body = bodyOf(
+        provider,
+        modelId,
+        GenerationSettings(maxOutputTokens = Some(100), reasoningMode = ReasoningMode.Off)
+      )
       body should include("\"enable_thinking\":false")
     }
 
-    "emit enable_thinking=true when effort is set" in {
-      val body = bodyOf(provider, modelId, GenerationSettings(maxOutputTokens = Some(100), effort = Some(Effort.Low)))
+    "emit enable_thinking=true when reasoningMode=On" in {
+      val body = bodyOf(
+        provider,
+        modelId,
+        GenerationSettings(maxOutputTokens = Some(100), reasoningMode = ReasoningMode.On)
+      )
       body should include("\"enable_thinking\":true")
     }
   }
