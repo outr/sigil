@@ -696,16 +696,30 @@ case class OpenAIProvider(apiKey: String,
     val index = json.get("output_index").map(_.asInt).getOrElse(state.nextIndex)
     state.itemIndex = index
     state.nextIndex = math.max(state.nextIndex, index + 1)
-    state.outputItemCount += 1
 
+    // Sigil bug #167 (round 2) — increment `outputItemCount` only for
+    // output items that produce a frame the framework will render
+    // back onto the wire. The next turn's `priorMessageCount` drops
+    // `sentMessageCount + outputItemCount` ProviderMessages so only
+    // the post-response delta (tool results, fresh user input) is
+    // sent. Server-managed tools (web_search_call, image_generation,
+    // file_search, code_interpreter) are dispatched by OpenAI
+    // server-side and the orchestrator no-ops the corresponding
+    // ProviderEvents — they add ZERO frames. Counting them
+    // over-drops on the next turn, silently skipping a real frame
+    // (typically the `function_call_output` for a vector_lookup or
+    // similar in-band tool), and OpenAI 400s on "No tool output
+    // found for function call <id>".
     itemType match {
       case "function_call" =>
         state.sawFunctionCall = true
+        state.outputItemCount += 1
         val name = item.get("name").map(_.asString).getOrElse("")
         state.acc.start(index, callId, name)
 
       case "message" =>
         // Text-output item — opens a Text content block for subsequent deltas.
+        state.outputItemCount += 1
         Vector(ProviderEvent.ContentBlockStart(callId, "Text", None))
 
       case "web_search_call" =>
@@ -729,6 +743,7 @@ case class OpenAIProvider(apiKey: String,
         // encrypted_content are stashed on the StreamState; we don't
         // emit a ProviderEvent here — the settled record arrives at
         // `output_item.done`.
+        state.outputItemCount += 1
         val pid = item.get("id").map(_.asString).getOrElse(callId.value)
         val initialSummary = item.get("summary").toList.flatMap { s =>
           s.asArr.value.toList.flatMap(_.get("text").map(_.asString))
