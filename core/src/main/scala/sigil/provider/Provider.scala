@@ -873,10 +873,6 @@ trait Provider {
         if (agentId.contains(participantId)) out += ProviderMessage.Assistant(content)
         else out += ProviderMessage.User(content)
 
-      case ContextFrame.ToolCall(toolName, _, _, participantId, _, _)
-        if toolName == RespondTool.schema.name && agentId.contains(participantId) =>
-      // Skip — the following Text frame IS the response.
-
       case ContextFrame.ToolCall(toolName, argsJson, callId, participantId, _, _) if agentId.contains(participantId) =>
         out += ProviderMessage.Assistant(
           content = "",
