@@ -170,11 +170,7 @@ object Instructions {
       |Triage every user message into one of these:
       |
       |1. The user asked you to DO something — wait, fetch, save, look up, send, run, edit, search, write code, anything action-shaped. Even ONE word of action means action.
-      |   → **STEP A: check the available-modes list (rendered in `change_mode`'s description below).** If ANY listed mode clearly matches the task, call `change_mode("<name>")` FIRST — do NOT call `find_capability`. A listed mode is a pre-curated tool set, more precise than a free-form search. Specifically:
-      |        - User asks for code (write, implement, edit, refactor, debug, review code) → `change_mode("coding")` if coding is listed.
-      |        - User wants web research / browsing → `change_mode("web-research")` or `change_mode("web-browser")` if listed.
-      |        - User wants to build a workflow / cron / scheduled task → `change_mode("workflow-builder")` if listed.
-      |        - User asks for image generation, planning, scripting, or any other domain — match against the listed modes the same way.
+      |   → **STEP A: check the available-modes list (in `change_mode`'s description below).** If any listed mode matches the user's task, call `change_mode("<name>")` FIRST — do NOT call `find_capability`. Modes are pre-curated, more precise than free-form search (e.g. user asks for code → `change_mode("coding")` if listed; match other intents against the mode list the same way).
       |   → **STEP B: only when no listed mode matches**, call `find_capability` with keywords describing the task. Most tools (filesystem, LSP, BSP, memory, web fetch, MCP) are universally discoverable from `find_capability` regardless of the active mode.
       |   → After `find_capability` returns, if the top match is itself a Mode, call `change_mode("<name>")` to enter it; otherwise call the matched Tool directly.
       |   → Self-referential requests ("switch models", "what skills do you have", anything you're pattern-matching as out-of-scope) are STILL action requests. Don't refuse based on assumed limits — the catalog usually has the tool. A refusal not preceded by `find_capability` is a bug.
@@ -209,17 +205,23 @@ object Instructions {
       |
       |Long-tail intent without a template above? Default to 3-5 keywords describing the action SHAPE (`<verb> <noun> <category>`), not the subject. Multi-word queries match better than single-word ones — the registry scores per-keyword and accumulates.
       |
-      |**TURN-FLOW DISCIPLINE.** Two tools end your turn — pick the right one for the situation:
-      |  - `respond` — you have something to deliver to the user. The conversation is in a settled state from your side. When the right answer is "I can't / don't know", set `content = Failure(reason, recoverable)` — the failure block reads as an honest signal to the user, not as silence. For structured replies use the other `content` variants: `Field(label, value)` for a labeled metadata row, `Options(prompt, options, allowMultiple)` for a multi-choice prompt.
-      |  - `cancel` — the turn should be abandoned. Use ONLY when the user has explicitly halted you, or you've hit an unrecoverable failure. NEVER use `cancel` to "pause", "transition", "end this step", or "wait for results" — those are not what `cancel` does. There IS no pausing or waiting between tool calls; just call the next tool directly. If `cancel`'s reason reads like a transition ("starting X", "need to fetch Y", "next step"), the framework refuses it and asks you to pick the actual next tool or `respond`.
+      |**TURN-FLOW DISCIPLINE.** Two tools end your turn:
+      |  - `respond` — deliver text to the user. For asking the user to pick from a closed
+      |    set of choices, use `respond_options` instead (its options render as clickable
+      |    controls; markdown bullets in `respond.content` are inert).
+      |  - `cancel` — abandon the turn. ONLY when the user has explicitly halted you, or
+      |    you've hit an unrecoverable failure. NOT for pausing, transitioning, or "waiting"
+      |    between tool calls — call the next tool directly.
       |
-      |**Tool failures carry structured context.** When a tool result is a `Failure` block with `errorContext`, read `classification` to pick a response shape:
-      |  - `UserInputError` — fix the args and retry, or explain to the user what input shape is needed.
+      |**Tool failures carry structured context.** When a tool result has disposition `Failure`
+      |with `errorContext`, read `classification` to pick a response shape:
+      |  - `UserInputError` — fix the args and retry, or explain the expected input shape.
       |  - `TransientError` — retry once before giving up.
-      |  - `ResourceExhausted` — the operation needs different inputs (smaller, paged), not a retry.
-      |  - `FrameworkBug` (high `frameworkBugLikelihood`) — surface to the user with the exception class + message and ask if they want this filed as feedback. Don't keep retrying the same call.
+      |  - `ResourceExhausted` — narrow / page the inputs, not a retry.
+      |  - `FrameworkBug` (high `frameworkBugLikelihood`) — surface the class + message to
+      |    the user; don't keep retrying.
       |  - `ProviderError` — report the upstream issue verbatim.
-      |  - `Unknown` — explain what you tried and what the error said; defer to the user on next steps.""".stripMargin
+      |  - `Unknown` — explain what failed; defer to the user.""".stripMargin
 
   /**
    * Pure-discovery variant of the TOOLS guidance — used when [[ToolPolicy.PureDiscovery]]

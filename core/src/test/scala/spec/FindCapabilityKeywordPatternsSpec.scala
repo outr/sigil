@@ -13,9 +13,10 @@ import sigil.tool.core.FindCapabilityTool
  * that scored badly against the registry's keyword-ranker.
  *
  * The fix is pure instruction text: discovery-query patterns by
- * intent are now in three places — `DefaultToolsGuidance`,
- * `PureDiscoveryToolsGuidance`, and `FindCapabilityTool.description`.
- * This spec verifies the templates land in each attention window.
+ * intent live in the system prompt's `DefaultToolsGuidance` and
+ * `PureDiscoveryToolsGuidance` sections (single source of truth, post
+ * core-tool dedup). The tool description points the model at the
+ * system prompt's templates section rather than restating them.
  * Behavioral coverage (agent produces good queries) lives on the
  * live-llama specs against the published prompt.
  */
@@ -76,18 +77,17 @@ class FindCapabilityKeywordPatternsSpec extends AnyWordSpec with Matchers {
   }
 
   "FindCapabilityTool.description" should {
-    "anchor every intent template alongside the prompt's longer block" in {
-      val desc = FindCapabilityTool.description.toLowerCase
-      expectedIntents.foreach { case (intent, atoms) =>
-        withClue(s"intent '$intent' must seed at least one anchor in the tool description: ") {
-          atoms.exists(desc.contains) shouldBe true
-        }
-      }
+    "point the model at the system prompt's templates section" in {
+      // Single source of truth: the templates live in the system prompt;
+      // the tool description references it rather than restating.
+      FindCapabilityTool.description should include("Discovery-query patterns")
     }
 
-    "explicitly call out the tool-shape vs content distinction" in {
-      FindCapabilityTool.description should include("TOOL-SHAPE")
-      FindCapabilityTool.description should include("CONTENT")
+    "describe `keywords` as action-shape, not content" in {
+      // The terse argument-shape rule that pairs with the system prompt's
+      // longer treatment. Wording is "action SHAPE" instead of the system
+      // prompt's "TOOL-SHAPE" — both convey the same constraint.
+      FindCapabilityTool.description should (include("action SHAPE") and include("not project content"))
     }
   }
 }
