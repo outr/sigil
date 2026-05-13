@@ -26,16 +26,10 @@ case object ChangeModeTool extends TypedTool[ChangeModeInput](
   name = ToolName("change_mode"),
   description =
     """Switch operating mode. Call BEFORE find_capability when a listed mode clearly matches the
-      |user's task — a Mode is a pre-curated tool set, more precise than a free-form search.
+      |user's task — Modes are pre-curated tool sets, more precise than free-form search.
       |
-      |Examples:
-      |  - User asks for code → `change_mode("coding")` (or whichever target mode is listed below).
-      |  - User wants web research → `change_mode("web-browser")`.
-      |  - User wants to build a workflow → `change_mode("workflow-builder")`.
-      |
-      |After change_mode succeeds, the new mode's tools are directly callable on the next turn —
-      |do NOT then call `find_capability`. `mode` is the target's stable name from the
-      |available-modes list below.""".stripMargin,
+      |`mode` is the target's stable name from the available-modes list below. After change_mode
+      |succeeds, the new mode's tools are directly callable on the next turn.""".stripMargin,
   // Curated keyword surface for discovery ranking. Tight on what
   // `change_mode` actually does — switch the agent's operating
   // posture / toolset — without leaking into adjacent intents like

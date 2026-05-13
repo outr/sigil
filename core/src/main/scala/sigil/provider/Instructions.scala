@@ -188,20 +188,20 @@ object Instructions {
       |
       |**`find_capability` results are RANKED by relevance.** The top match is the framework's recommendation for your query — not a buffet to scroll through. Default to invoking the rank-1 tool unless its description makes it clearly inappropriate. Do NOT scroll past LSP/BSP/typed/domain-specific tools to pick a generic primitive (`grep`, `glob`, `bash`, `read_file`, `execute_script`) just because you're more familiar with it. The ranked tool is at the top because the framework knows it's the better answer for the query you typed; trust the rank. Generic primitives are scored to sit BELOW the domain-specific tool when both apply — that's not a rendering quirk, it's the framework telling you "use the typed tool when available."
       |
-      |**Discovery-query patterns — `find_capability` is a TOOL-SHAPE search, not a CONTENT search.** Strip the user's content (filenames, project terms, business jargon) out of your query and keep only the shape of the action you want. Use these templates by intent:
+      |**Discovery-query patterns — `find_capability` is a TOOL-SHAPE search, not a CONTENT search.** Strip user content (filenames, project terms, business jargon); keep only the action shape. Templates by intent:
       |
-      |  - **Read a file's contents** → `find_capability("view file source contents read code lines")`. Covers read_file, cat-like primitives, content viewers.
-      |  - **Search files for a pattern** → `find_capability("grep search find text pattern match")`. Covers grep, ripgrep, content-search.
-      |  - **List files / discover paths** → `find_capability("glob files directory paths list discover")`. Covers glob, find-by-name.
-      |  - **Run a shell command** → `find_capability("bash shell command execute run")`.
-      |  - **Navigate code symbols** → `find_capability("lsp definition reference symbol type implementation")`. The LSP-shaped tools.
-      |  - **Edit / modify a file** → `find_capability("edit modify update file patch change")`. Covers edit_file, write_file.
-      |  - **Web / HTTP fetch** → `find_capability("http fetch download url web request")`.
-      |  - **Switch the model** → `find_capability("model switch pin change llm")`. Covers pin_model, current_model, list_models.
-      |  - **Save / recall memory** → `find_capability("memory save recall persist note remember")`.
-      |  - **Schedule / wait / time** → `find_capability("sleep wait delay timer schedule cron")`.
+      |  - **Read a file** → `view file source contents read code lines`
+      |  - **Search files** → `grep search find text pattern match`
+      |  - **List paths** → `glob files directory paths list discover`
+      |  - **Run shell** → `bash shell command execute run`
+      |  - **Navigate code symbols** → `lsp definition reference symbol type implementation`
+      |  - **Edit a file** → `edit modify update file patch change`
+      |  - **HTTP fetch** → `http fetch download url web request`
+      |  - **Switch the model** → `model switch pin change llm`
+      |  - **Save / recall memory** → `memory save recall persist note remember`
+      |  - **Schedule / wait** → `sleep wait delay timer schedule cron`
       |
-      |Bad query: `"find references search symbol password reset"` (mixes tool-shape with project content — "password reset" doesn't score against any tool's keywords). Good query: `"lsp reference symbol definition"` (pure tool-shape — what the ranker scores).
+      |Bad query: `"find references search symbol password reset"` (mixes shape with project content). Good: `"lsp reference symbol definition"` (pure shape — what the ranker scores).
       |
       |Long-tail intent without a template above? Default to 3-5 keywords describing the action SHAPE (`<verb> <noun> <category>`), not the subject. Multi-word queries match better than single-word ones — the registry scores per-keyword and accumulates.
       |
