@@ -31,6 +31,20 @@ import scala.concurrent.duration.*
  * Schemas pass through [[StrictSchema.stripUnsupportedKeys]] —
  * conservative dialect-friendly shape; no `strict: true` since
  * DeepInfra documents OpenAI compatibility, not strict-mode.
+ *
+ * **`ReasoningMode.Off` is unsafe on kimi-k2.5 here.** Empirically
+ * verified (40-sample curl battery, 2026-05-13): setting
+ * `reasoning_effort: "none"` on kimi-k2.5 / kimi-k2.6 disables both
+ * reasoning AND tool-call compliance. The model bypasses
+ * `tool_choice: required`, emits plain natural-language content
+ * instead of calling tools, and the `function.name` field on the
+ * rare tool calls that DO fire gets filled with the `tool_call.id`
+ * value instead of the actual tool name (~80% slot-confusion rate).
+ * With reasoning enabled (Auto, or On + any Effort), compliance is
+ * 100%. Apps wanting bounded reasoning latency on kimi should set
+ * `GenerationSettings(reasoningMode = ReasoningMode.On, effort =
+ * Some(Effort.Low))` instead of `Off` — caps reasoning at ~120
+ * tokens (~1-2s) while preserving tool compliance. Sigil bug #165.
  */
 case class DeepInfraProvider(apiKey: String,
                              sigilRef: Sigil,
