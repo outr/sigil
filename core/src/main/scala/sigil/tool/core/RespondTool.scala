@@ -39,6 +39,12 @@ case object RespondTool extends TypedTool[RespondInput](
       |first when a listed mode obviously matches the task; otherwise call `find_capability`.
       |`respond` is the final step after the action completes, not a way to skip the action.
       |
+      |DO NOT use `respond` to ask the user to pick from a fixed set of choices. If your reply
+      |would contain a bullet list of options the user is meant to choose from ("Would you like
+      |to: A / B / Both / Neither?"), call `respond_options` instead — its options render as
+      |clickable controls; bullets inside `respond.content` are inert markdown the user cannot
+      |interact with.
+      |
       |- `topicLabel` — 3-6 words describing what the CONVERSATION IS ABOUT, not who you are. Fresh
       |  label when the user starts a new subject; keep the current label when following up; reuse a
       |  prior label when the user returns to a previous topic.
@@ -63,10 +69,7 @@ case object RespondTool extends TypedTool[RespondInput](
       |  work (out of scope, missing capability, a tool failed and you're reporting that). The
       |  framework stamps the resulting Message's disposition accordingly.
       |- `endsTurn` — `true` when this respond is your COMPLETE reply for this turn. Set `false`
-      |  for in-flight status pulses you intend to follow up on the same turn.
-      |
-      |For asking the user to pick from a list, use `respond_options` — it's a separate tool
-      |with a typed schema (prompt, options, allowMultiple, exclusive) rather than markdown.""".stripMargin,
+      |  for in-flight status pulses you intend to follow up on the same turn.""".stripMargin,
   examples = Nil
 ) with RespondFamilyTool {
 

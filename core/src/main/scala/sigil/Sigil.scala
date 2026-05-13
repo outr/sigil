@@ -1499,11 +1499,11 @@ trait Sigil {
       FindCapabilityTool.schema.name    -> 1,
       ActivateSkillTool.schema.name     -> 2,
       CancelTool.schema.name              -> 100,
-      RespondTool.schema.name           -> 101,
-      // Deprecated standalone respond-family tools (sigil bug #157)
-      // still get late-render priority so apps that opted them back
-      // in keep the prior tool-position ordering.
-      RespondOptionsTool.schema.name    -> 102,
+      // Within the response tail, `respond_options` precedes `respond` so first-tool
+      // bias on small models surfaces the specific "asking" shape before the
+      // catch-all "telling" tool. Sigil bug #168.
+      RespondOptionsTool.schema.name    -> 101,
+      RespondTool.schema.name           -> 102,
       RespondFieldTool.schema.name      -> 103,
       RespondFailureTool.schema.name    -> 104,
       NoResponseTool.schema.name        -> 105
