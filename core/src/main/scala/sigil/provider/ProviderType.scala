@@ -11,4 +11,5 @@ enum ProviderType derives RW {
   case Mistral
   case LlamaCpp
   case DigitalOcean
+  case DeepInfra
 }
