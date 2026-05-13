@@ -41,30 +41,26 @@ class OrchestratorSilentTurnSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
   private val modelId: Id[Model] = Model.id("test", "model")
 
-  /** Provider that calls a non-terminal tool then emits Done. After
-    * the orchestrator forwards the events, runAgentLoop checks for
-    * new triggers and finds none — at which point the silent-turn
-    * fallback should fire. */
+  /** Provider that emits `Done` with no tool calls at all. The
+    * orchestrator produces nothing; runAgentLoop sees no user-visible
+    * terminal tool was called this turn — at which point the
+    * silent-turn fallback (sigil bug #46) should fire.
+    *
+    * (Earlier this fixture used an unknown tool name as a proxy for
+    * "silent completion." After sigil bug #167's fix, unknown tool
+    * names produce an explicit Tool-role Failure Message — the wire's
+    * function_call ↔ function_call_output pairing stays valid and
+    * the agent re-iterates with the diagnostic instead of falling
+    * through to the silent-turn placeholder. So the silent case
+    * needs a provider that genuinely emits nothing.) */
   private class SilentlyCompletingProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
     override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
       Task.error(new UnsupportedOperationException("no wire"))
-    override def call(input: ProviderCall): Stream[ProviderEvent] = {
-      val callId = CallId("silent-call")
-      // Use NoResponseTool's input shape but as a non-recognized tool
-      // name — the orchestrator will see ToolCallStart for an unknown
-      // tool and route through executeAtomic with no match (returns
-      // empty), producing no further events. Net effect: the loop
-      // sees no user-visible terminal tool, so the silent-turn
-      // fallback should fire.
-      Stream.emits(List(
-        ProviderEvent.ToolCallStart(callId, "not_a_terminal_tool"),
-        ProviderEvent.ToolCallComplete(callId, NoResponseInput()),
-        ProviderEvent.Done(StopReason.Complete)
-      ))
-    }
+    override def call(input: ProviderCall): Stream[ProviderEvent] =
+      Stream.emit(ProviderEvent.Done(StopReason.Complete))
   }
 
   /** Provider that calls `respond` with real content then Done.
