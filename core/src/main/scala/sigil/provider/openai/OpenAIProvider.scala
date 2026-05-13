@@ -96,6 +96,14 @@ case class OpenAIProvider(apiKey: String,
 
   override def call(input: ProviderCall): Stream[ProviderEvent] = {
     val state = new StreamState(new ToolCallAccumulator(input.tools))
+    // `priorMessageCount` for the NEXT turn is recorded as the PMs we'd
+    // already covered when this turn STARTED (= input.messages.size at
+    // call-entry). Server-emitted output items (function_call,
+    // message, reasoning) are NOT added to that count — they're
+    // covered by `previous_response_id` on the next turn. Framework-
+    // emitted ToolResult PMs are temporally interleaved inside the
+    // response's range; the next turn's renderInput role-filters the
+    // post-cutoff tail to extract them. Sigil bug #167 r3.
     state.sentMessageCount = input.messages.size
     Stream.force(
       for {
@@ -179,7 +187,28 @@ case class OpenAIProvider(apiKey: String,
     val trimmed = input.previousResponseId match {
       case Some(_) =>
         val drop = math.min(input.priorMessageCount.getOrElse(0), input.messages.size)
-        input.messages.drop(drop)
+        // Drop the leading prefix OpenAI's prev_id state already
+        // covers, then role-filter the tail. The prior turn's
+        // response output items (Assistant w/ tool_calls, Assistant
+        // text, Reasoning) are server-side via prev_id — re-sending
+        // them duplicates or confuses state. Only User messages and
+        // framework-emitted ToolResults (function_call_output items)
+        // need to ship to drive the next turn forward. The filter
+        // also rescues any ToolResult that fell into the dropped
+        // prefix range (framework's tool dispatch emits Tool-role
+        // events mid-stream during the prior response, putting them
+        // at index positions inside the dropped range). Sigil bug
+        // #167 r3.
+        val (dropped, kept) = input.messages.splitAt(drop)
+        val rescuedToolResults = dropped.collect {
+          case tr: ProviderMessage.ToolResult => tr
+        }
+        val filteredTail = kept.filter {
+          case _: ProviderMessage.User       => true
+          case _: ProviderMessage.ToolResult => true
+          case _                              => false
+        }
+        rescuedToolResults ++ filteredTail
       case None => input.messages
     }
     val inputItems = renderInput(trimmed)
@@ -632,11 +661,15 @@ case class OpenAIProvider(apiKey: String,
           }
         // The captured `response.id` becomes the next turn's
         // `previous_response_id`. The recorded `messageCount` is the
-        // rendered-count this call sent plus the count of output items
-        // the response produced — the next turn drops that many
-        // messages so only the post-response delta (newly-emitted
-        // tool results, fresh user input) lands on the wire.
-        val nextDropCount = state.sentMessageCount + state.outputItemCount
+        // rendered-count this call sent — the next turn's renderInput
+        // drops that many leading PMs and role-filters the tail to
+        // User + ToolResult (the only items that need to ship to
+        // OpenAI; Assistant + Reasoning are already covered by
+        // `previous_response_id`). Framework-emitted ToolResults that
+        // sit BETWEEN server output items get rescued by the role
+        // filter even when their position is within the dropped range.
+        // Sigil bug #167 r3.
+        val nextDropCount = state.sentMessageCount
         val responseStateEv: Vector[ProviderEvent] =
           if (state.responseId.nonEmpty)
             Vector(ProviderEvent.ResponseStateCaptured(Some(state.responseId), nextDropCount))
@@ -697,29 +730,14 @@ case class OpenAIProvider(apiKey: String,
     state.itemIndex = index
     state.nextIndex = math.max(state.nextIndex, index + 1)
 
-    // Sigil bug #167 (round 2) — increment `outputItemCount` only for
-    // output items that produce a frame the framework will render
-    // back onto the wire. The next turn's `priorMessageCount` drops
-    // `sentMessageCount + outputItemCount` ProviderMessages so only
-    // the post-response delta (tool results, fresh user input) is
-    // sent. Server-managed tools (web_search_call, image_generation,
-    // file_search, code_interpreter) are dispatched by OpenAI
-    // server-side and the orchestrator no-ops the corresponding
-    // ProviderEvents — they add ZERO frames. Counting them
-    // over-drops on the next turn, silently skipping a real frame
-    // (typically the `function_call_output` for a vector_lookup or
-    // similar in-band tool), and OpenAI 400s on "No tool output
-    // found for function call <id>".
     itemType match {
       case "function_call" =>
         state.sawFunctionCall = true
-        state.outputItemCount += 1
         val name = item.get("name").map(_.asString).getOrElse("")
         state.acc.start(index, callId, name)
 
       case "message" =>
         // Text-output item — opens a Text content block for subsequent deltas.
-        state.outputItemCount += 1
         Vector(ProviderEvent.ContentBlockStart(callId, "Text", None))
 
       case "web_search_call" =>
@@ -743,7 +761,6 @@ case class OpenAIProvider(apiKey: String,
         // encrypted_content are stashed on the StreamState; we don't
         // emit a ProviderEvent here — the settled record arrives at
         // `output_item.done`.
-        state.outputItemCount += 1
         val pid = item.get("id").map(_.asString).getOrElse(callId.value)
         val initialSummary = item.get("summary").toList.flatMap { s =>
           s.asArr.value.toList.flatMap(_.get("text").map(_.asString))
@@ -785,15 +802,15 @@ case class OpenAIProvider(apiKey: String,
       * next turn's `previous_response_id`. */
     var responseId: String = ""
     /** Full rendered message count for this call (pre-trim) — set by
-      * `call` before the stream starts. The next-turn drop count is
-      * `sentMessageCount + outputItemCount` so iter N+1 trims both
-      * the items we already sent AND the items the response added
-      * (each output_item.added becomes a frame on the framework side
-      * once the response settles). */
+      * `call` before the stream starts. Recorded as the NEXT turn's
+      * `priorMessageCount`. The next turn drops that many PMs from
+      * the head and role-filters the tail to keep only User +
+      * ToolResult items; Assistant + Reasoning output items are
+      * covered by `previous_response_id` server-side. Framework-
+      * emitted ToolResult PMs that sit BETWEEN OpenAI's output
+      * items in the dropped range are recovered by the role filter.
+      * Sigil bug #167 r3. */
     var sentMessageCount: Int = 0
-    /** Number of output items the response produced — incremented on
-      * every `response.output_item.added`. */
-    var outputItemCount: Int = 0
     /** Annotations gathered from `response.output_text.annotation.added`
       * events (web-search citations). Emitted at `response.completed`
       * as a trailing markdown footer so the URLs reach the user
