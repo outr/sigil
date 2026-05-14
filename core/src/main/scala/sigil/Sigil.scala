@@ -1673,6 +1673,68 @@ trait Sigil {
                chosenModelId      = modelId,
                skipReasons        = skipReasons
              )
+        // Sigil bug #175 — when every candidate is skipped (typically
+        // because an expected provider is unavailable, e.g. an env-var
+        // unset took its candidate out of the chain), `chosen` is None
+        // and dispatch falls back to `agent.modelId`. RouteResolved
+        // records the skip reasons but is a ControlPlaneEvent — it
+        // doesn't enter the agent's ContextFrame projection, so the
+        // agent has no way to read "the framework wanted to route
+        // higher but couldn't." The observed failure mode is an
+        // infinite `change_mode` loop: the agent calls `change_mode`,
+        // notices the model didn't change, calls it again, and so on
+        // until the iteration cap fires.
+        //
+        // Emit a Standard-role Message (visibility=All) so the agent
+        // sees the structural failure on its next iteration's
+        // TurnInput and stops retrying. Tool-role would be semantically
+        // closer to "this is framework output," but #174's contract
+        // requires Tool-role events to carry an origin pointing at a
+        // parent ToolInvoke — there's no invoke to pair with here.
+        // The Standard-role message lands as a Text frame in the
+        // agent's context and reads naturally.
+        //
+        // Debounce: routing resolves per agent iteration, but the
+        // chain doesn't change mid-loop. Suppress when a prior
+        // routing-fallback notice already exists later than the
+        // latest user message on this conversation — the agent has
+        // already seen it.
+        _ <- if (chosen.isEmpty && candidateChain.nonEmpty) {
+               val skipBody =
+                 if (skipReasons.isEmpty) "(no skip reasons recorded)"
+                 else skipReasons.map { case (id, why) => s"  - ${id.value}: $why" }.mkString("\n")
+               val alreadyEmittedTask: Task[Boolean] =
+                 withDB(_.events.transaction(_.list)).map { evs =>
+                   val userTs = userMsg.map(_.timestamp.value).getOrElse(0L)
+                   evs.exists {
+                     case m: sigil.event.Message =>
+                       m.conversationId == context.conversation._id &&
+                         m.source.contains("routing-fallback") &&
+                         m.timestamp.value >= userTs
+                     case _ => false
+                   }
+                 }.handleError(_ => Task.pure(false))
+               alreadyEmittedTask.flatMap {
+                 case true  => Task.unit
+                 case false =>
+                   publish(Message(
+                     participantId  = agent.id,
+                     conversationId = context.conversation._id,
+                     topicId        = context.conversation.currentTopicId,
+                     role           = MessageRole.Standard,
+                     state          = EventState.Complete,
+                     source         = Some("routing-fallback"),
+                     content        = Vector(sigil.tool.model.ResponseContent.Text(
+                       s"[Routing notice] Classifier resolved complexity = $complexity, but no candidate in the " +
+                       s"strategy chain supports that tier. Falling back to ${modelId.value}. Skip reasons:\n" +
+                       skipBody +
+                       "\n\nThis usually means an expected provider is unavailable (missing env var / network) " +
+                       "or the strategy's chain doesn't cover this tier. Repeated `change_mode` or `pin_complexity` " +
+                       "calls won't change this — the chain itself is the gap. Tell the user; don't loop."
+                     ))
+                   )).map(_ => ())
+               }
+             } else Task.unit
         // Bug #97 — fold conversation overlays into the effective
         // tool roster. `start_metals` etc. install Active(names) so
         // the LSP/BSP/metals tools are present in subsequent turns
