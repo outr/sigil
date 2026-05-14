@@ -37,7 +37,7 @@ case class GoogleProvider(apiKey: String,
   override protected def sigil: Sigil = sigilRef
 
   override def call(input: ProviderCall): Stream[ProviderEvent] = {
-    val state = new StreamState(new ToolCallAccumulator(input.tools))
+    val state = new StreamState(new ToolCallAccumulator(input.tools, providerKey = Google.Provider))
     Stream.force(
       for {
         raw         <- httpRequestFor(input)

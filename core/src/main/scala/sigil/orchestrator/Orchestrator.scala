@@ -101,7 +101,7 @@ object Orchestrator {
 
     provider(request)
       .flatMap(pe => translate(pe, sigil, request, conversation, toolsByName, state))
-      .onErrorFinalize { _ =>
+      .onErrorFinalize { t =>
         // The `Done`/`Error` ProviderEvent arms emit orphan-settle
         // ToolDeltas via `Stream.emits` so they reach the consumer
         // through the normal `evalTap(publish)` path. Those arms only
@@ -115,7 +115,16 @@ object Orchestrator {
         // Sigil's signal hub before re-raising. Failures during the
         // settle publish are swallowed — we already have the original
         // error to surface, and a corrupt settle shouldn't mask it.
-        val orphans = settleOrphanToolInvoke(state, convId)
+        //
+        // Sigil bug #171 — same treatment for the in-flight streaming
+        // Message (started by ContentBlockDeltas during respond-family
+        // args streaming). A throw after the Message started but before
+        // ToolCallComplete settled it (e.g. ProviderStreamException
+        // from malformed-args detection) used to leave it at Active
+        // forever with a typing-indicator stuck on the client.
+        val errorMsg = Option(t.getMessage).filter(_.nonEmpty)
+        val orphans = settleOrphanToolInvoke(state, convId, error = errorMsg) ++
+                      settleOrphanMessage(state, convId, error = errorMsg)
         orphans.foldLeft(Task.unit) { (acc, sig) =>
           acc.flatMap(_ => sigil.publish(sig).handleError(_ => Task.unit))
         }
@@ -916,6 +925,7 @@ object Orchestrator {
         // ToolDelta so the user-visible chip can render
         // "(invalid args: …)" instead of "(input pending)".
         val orphanSettle = settleOrphanToolInvoke(state, convId, error = Some(msg))
+        val orphanMessageSettle = settleOrphanMessage(state, convId, error = Some(msg))
         // Bug #69 — Tool-role Message MUST have origin. Pair to the
         // active ToolInvoke if one is open (the typical case — the
         // provider's error came mid-tool-call); otherwise fall back
@@ -958,7 +968,7 @@ object Orchestrator {
           visibility     = MessageVisibility.Agents,
           origin         = Some(originId)
         )
-        Stream.emits(orphanSettle ++ preludeSignals :+ (errorMessage: Signal))
+        Stream.emits(orphanSettle ++ orphanMessageSettle ++ preludeSignals :+ (errorMessage: Signal))
     }
   }
 
@@ -989,6 +999,35 @@ object Orchestrator {
     state.activeCalls.clear()
     closes
   }
+
+  /**
+   * Sigil bug #171 — settle the in-flight streaming Message that was
+   * started during respond-family `ContentBlockDelta` flow when the
+   * tool call ultimately failed (parse error, mid-stream throw). Emits
+   * a terminal `MessageDelta(state=Complete, disposition=Failure)` so
+   * the chat bubble stops rendering as "agent is still typing" and
+   * shows the failure inline. Idempotent — returns empty when no
+   * Message was streamed. Always clears `state.activeMessageId`.
+   */
+  private def settleOrphanMessage(state: State,
+                                  convId: lightdb.id.Id[Conversation],
+                                  error: Option[String] = None): List[Signal] =
+    state.activeMessageId match {
+      case None => Nil
+      case Some(msgId) =>
+        state.activeMessageId = None
+        val reason = error.getOrElse("Tool call failed before settling")
+        val delta: Signal = MessageDelta(
+          target             = msgId,
+          conversationId     = convId,
+          contentReplacement = Some(Vector(ResponseContent.Text(
+            s"Model output failed to produce a valid reply: $reason"
+          ))),
+          state              = Some(EventState.Complete),
+          disposition        = Some(sigil.event.MessageDisposition.Failure(recoverable = true))
+        )
+        List(delta)
+    }
 
   /** Bug #126 — decide whether an atomic `respond` should be
     * suppressed and replaced with a refusal-challenge diagnostic.

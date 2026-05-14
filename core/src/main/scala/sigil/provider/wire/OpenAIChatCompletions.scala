@@ -171,7 +171,7 @@ object OpenAIChatCompletions {
                  auth: HttpRequest => HttpRequest,
                  tokenIdleTimeout: FiniteDuration,
                  config: Config): Stream[ProviderEvent] = {
-    val state = new StreamState(new ToolCallAccumulator(input.tools))
+    val state = new StreamState(new ToolCallAccumulator(input.tools, providerKey = config.providerName))
     Stream.force(
       for {
         raw         <- buildHttpRequest(input, sigil, baseUrl, auth, config)

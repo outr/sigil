@@ -95,7 +95,7 @@ case class OpenAIProvider(apiKey: String,
   override def tokenizer: Tokenizer = JtokkitTokenizer.OpenAIChatGpt
 
   override def call(input: ProviderCall): Stream[ProviderEvent] = {
-    val state = new StreamState(new ToolCallAccumulator(input.tools))
+    val state = new StreamState(new ToolCallAccumulator(input.tools, providerKey = "openai"))
     // `priorMessageCount` for the NEXT turn is recorded as the PMs we'd
     // already covered when this turn STARTED (= input.messages.size at
     // call-entry). Server-emitted output items (function_call,
