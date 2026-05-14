@@ -2894,10 +2894,20 @@ trait Sigil {
         updateProjection(ti.conversationId, ti.participantId) { proj =>
           proj.copy(recentTools = ti.toolName :: proj.recentTools.filterNot(_ == ti.toolName))
         }
-      case tr: ToolResults =>
+      case tr: ToolResults if tr.schemas.nonEmpty =>
+        // Sigil bug #169 — replace the overlay only when the tool result
+        // carries a non-empty suggestion set. Tools that don't participate
+        // in natural-progression flows emit `schemas = Nil` (the framework
+        // default) and have no effect on the overlay, so a discovered tool
+        // surviving from a prior `find_capability` stays in scope across
+        // subsequent ToolResults emissions. Tools that DO participate
+        // (e.g. `create_workflow` → `[add_workflow_step, add_trigger]`)
+        // re-emit their suggestions on each call so the relevant follow-
+        // ups stay sticky across multi-step build sequences.
         updateProjection(tr.conversationId, tr.participantId) { proj =>
           proj.copy(suggestedTools = tr.schemas.map(_.name).toList)
         }
+      case _: ToolResults => Task.unit
       case cr: CapabilityResults =>
         updateProjection(cr.conversationId, cr.participantId) { proj =>
           val toolNames = cr.matches.collect {
@@ -4952,7 +4962,11 @@ trait Sigil {
       if (turnExtractorFired.compareAndSet(false, true)) {
         firePostTurnExtraction(agent, convId, claimed.timestamp).startUnit()
       }
-      releaseClaim(claimed)
+      // Sigil bug #169 — clear the suggestedTools overlay at loop release
+      // so leftover suggestions don't bleed into the next user's turn.
+      // Per-iteration decay was removed in the same bug fix; persistence
+      // is loop-scoped and cleared exactly here.
+      clearSuggestedTools(convId, agent.id).flatMap(_ => releaseClaim(claimed))
     }
     // Snapshot the start of THIS iteration. The next iteration uses this as
     // its own `sinceTimestamp`, so events emitted during this iteration
@@ -4988,13 +5002,13 @@ trait Sigil {
         // Extractor isn't fired here — no conversation = nothing to extract.
         releaseClaim(claimed)
       case Some(conv) =>
-        // Snapshot suggestedTools BEFORE the iteration so we can detect
-        // whether a fresh `find_capability` during the turn replaced them.
-        // If it did, the new list survives to the next turn. If it didn't,
-        // the snapshot (which the agent saw in its roster this turn)
-        // decays — suggestions live for exactly ONE turn; an agent that
-        // doesn't call what it discovered loses it.
-        projectionFor(agent.id, convId).map(_.suggestedTools).flatMap { suggestedSnapshot =>
+        // Sigil bug #169 — overlay persists across iterations within the
+        // same user turn. Prerequisite calls (`record_consent`, etc.) and
+        // multi-invocation flows (`create_workflow` → `add_workflow_step` 5×)
+        // keep their discovered tools in scope until the loop terminates
+        // (handled in `terminate()` above) or a new `find_capability` /
+        // suggestion-emitting tool result replaces the list.
+        {
           scribe.info(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext start")
           buildContext(agent, conv, sinceTimestamp = sinceTimestamp, claimedId = claimed._id, isGreeting = greeting && iteration == 1).flatMap {
             case (rawCtx, triggers) =>
@@ -5059,7 +5073,7 @@ trait Sigil {
                 }
                 .evalTap(publish)
                 .drain
-          }.flatMap(_ => decaySuggestedTools(convId, agent.id, suggestedSnapshot))
+          }
         }.flatMap { _ =>
           scribe.info(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration drain done")
           // After the iteration drains, check stop flags before anything
@@ -5694,20 +5708,17 @@ trait Sigil {
         }
     }
 
-  /** One-turn decay for `suggestedTools` on the acting participant's
-    * projection. If the current list equals the snapshot we took before
-    * the iteration started, no fresh `find_capability` ran this turn —
-    * the agent either called a previously-discovered tool (and the list
-    * has served its purpose) or ignored it. Either way, clear so the
-    * suggestion doesn't leak into another turn. If the list differs, a
-    * new discovery landed during the iteration; keep the new list so
-    * the NEXT turn can call it. */
-  private final def decaySuggestedTools(conversationId: Id[Conversation],
-                                         agentId: ParticipantId,
-                                         snapshot: List[sigil.tool.ToolName]): Task[Unit] =
+  /** Clear the `suggestedTools` overlay at loop release. Sigil bug
+    * #169 — the overlay persists across iterations within a single
+    * user turn (so prerequisite-call flows and multi-invocation
+    * progression flows keep their discovered tools in scope) but is
+    * cleared here when the loop terminates so suggestions don't bleed
+    * into the next user's turn. Single chokepoint covers every release
+    * path. */
+  private final def clearSuggestedTools(conversationId: Id[Conversation],
+                                         agentId: ParticipantId): Task[Unit] =
     projectionFor(agentId, conversationId).flatMap { proj =>
-      val current = proj.suggestedTools
-      if (current == snapshot && current.nonEmpty)
+      if (proj.suggestedTools.nonEmpty)
         updateProjection(conversationId, agentId)(_.copy(suggestedTools = Nil))
       else Task.unit
     }
