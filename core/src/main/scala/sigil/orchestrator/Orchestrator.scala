@@ -543,24 +543,58 @@ object Orchestrator {
                     Task.pure(sig)
                 }
               }
+              // Sigil bug #174 (durable fix) — guarantee every atomic-
+              // content tool call (`respond`, `respond_options`, …) is
+              // followed by a Tool-role completion event in the durable
+              // event log. Without this, the conversation's frame trail
+              // can end on an assistant Text frame (the respond's
+              // user-visible Message), and chat templates that interpret
+              // trailing-assistant as response prefill (Qwen3.6 with
+              // `enable_thinking: true`) HTTP 400 the next call. Prior
+              // to this fix, the wire layer synthesized an empty
+              // function_call_output inline (Provider.renderInput) to
+              // satisfy OpenAI's pairing requirement — that synthesis is
+              // wire-side only and doesn't appear in subsequent contexts
+              // as a trailing Tool frame.
+              //
+              // The synthetic Message:
+              //   - `MessageRole.Tool` → produces ContextFrame.ToolResult
+              //   - empty content → renders as empty function_call_output
+              //   - `origin = invokeId` → satisfies #69 origin-stamp invariant
+              //   - `Agents` visibility → never surfaces in user UIs
+              //
               // Bug #167 — guarantee at least one result-shaped event
               // (`role == MessageRole.Tool`) is emitted for non-atomic-
-              // content tools. Atomic content tools (respond,
-              // respond_options, …) emit a `Standard`-role Message that
-              // the frame renderer pairs with a synthetic empty
-              // `function_call_output` (sigil bug #19), so the wire
-              // shape is already satisfied for those. Every other tool
-              // is expected to produce a `Tool`-role Message or
-              // `ToolResults` event; if the tool's executeTyped path
-              // returned a stream that completed without emitting any
-              // result-shaped event (silent-failure path that swallowed
-              // an error into `Task.unit`, or a transform that filtered
-              // results out), inject a synthetic Tool-role Failure so
-              // the wire's function_call ↔ function_call_output pairing
-              // stays valid.
-              val needsResultGuard = !CoreTools.atomicContentToolNames.contains(ToolName(active.toolName))
+              // content tools. Every other tool is expected to produce
+              // a `Tool`-role Message or `ToolResults` event; if the
+              // tool's executeTyped path returned a stream that
+              // completed without emitting any result-shaped event
+              // (silent-failure path that swallowed an error into
+              // `Task.unit`, or a transform that filtered results out),
+              // inject a synthetic Tool-role Failure so the wire's
+              // function_call ↔ function_call_output pairing stays valid.
+              val isAtomic = CoreTools.atomicContentToolNames.contains(ToolName(active.toolName))
               val guarded: Stream[Signal] =
-                if (!needsResultGuard) tracked
+                if (isAtomic) Stream.force(tracked.toList.map { collected =>
+                  // If the tool already emitted a Tool-role event paired to
+                  // this invoke (e.g. an app-specific atomic content tool
+                  // that handles its own pairing), don't duplicate.
+                  val hasResult = collected.exists {
+                    case e: Event if e.role == MessageRole.Tool && e.origin.contains(invokeId) => true
+                    case _ => false
+                  }
+                  if (hasResult) Stream.emits(collected)
+                  else Stream.emits(collected :+ Message(
+                    participantId  = caller,
+                    conversationId = convId,
+                    topicId        = topicId,
+                    role           = MessageRole.Tool,
+                    content        = Vector.empty,  // empty → wire emits empty function_call_output
+                    state          = EventState.Complete,
+                    visibility     = MessageVisibility.Agents,
+                    origin         = Some(invokeId)
+                  ))
+                })
                 else Stream.force(tracked.toList.map { collected =>
                   val hasResult = collected.exists {
                     case e: Event if e.role == MessageRole.Tool => true
