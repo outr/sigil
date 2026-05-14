@@ -43,7 +43,12 @@ case class MessageDelta(target: Id[Event],
                         content: Option[MessageContentDelta] = None,
                         contentReplacement: Option[Vector[ResponseContent]] = None,
                         usage: Option[TokenUsage] = None,
-                        state: Option[EventState] = None)
+                        state: Option[EventState] = None,
+                        /** Sigil bug #171 — set on the terminal delta when the
+                          * Message settles into a non-Success disposition (e.g.
+                          * orphan-Message recovery on tool-call parse failure).
+                          * `None` leaves the prior disposition unchanged. */
+                        disposition: Option[sigil.event.MessageDisposition] = None)
   extends Delta derives RW {
 
   /**
@@ -71,7 +76,8 @@ case class MessageDelta(target: Id[Event],
       }
       val nextUsage = usage.getOrElse(m.usage)
       val nextState = state.getOrElse(m.state)
-      m.copy(content = nextContent, usage = nextUsage, state = nextState)
+      val nextDisposition = disposition.getOrElse(m.disposition)
+      m.copy(content = nextContent, usage = nextUsage, state = nextState, disposition = nextDisposition)
     case other => other
   }
 

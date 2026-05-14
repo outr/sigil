@@ -30,7 +30,8 @@ import scala.collection.mutable
  * Each provider's stream parser is responsible for translating upstream events
  * into calls to [[start]], [[appendArgs]], and at stream end [[complete]].
  */
-final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty) {
+final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
+                                providerKey: String = "unknown") {
   private val calls = mutable.LinkedHashMap.empty[Int, CallState]
   // Keyed by the wire-level tool name string so provider events (which
   // carry `toolName: String`) can look up without converting.
@@ -102,6 +103,42 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty) {
             }
           } catch {
             case t: Throwable =>
+              // Sigil bug #171 — detect the "model emitted a JSON
+              // array when the schema requires an object" degenerate-
+              // args signature (the Kimi-K2.5 / DeepInfra failure
+              // mode where strict mode is silently ignored and the
+              // model emits N copies of a respond-shaped object as an
+              // array). Throw `ProviderStreamException` so the next
+              // attempt routes through `ProviderStrategy.errorClassifier`
+              // — symmetric with `emptyBudgetBurnThrows` for
+              // DigitalOcean's degenerate-output mode (bug #161).
+              //
+              // The detection is best-effort: re-parse the buffer; if
+              // the root is an Arr and the schema's root is an Obj,
+              // raise. Anything else falls through to the generic
+              // diagnostic below.
+              val degenerate: Boolean = try {
+                val reparsed = JsonParser(s.buf.toString)
+                val rootIsArr = reparsed.isArr
+                val schemaWantsObj = tool.inputRW.definition.defType match {
+                  case _: fabric.define.DefType.Obj => true
+                  case _                             => false
+                }
+                rootIsArr && schemaWantsObj
+              } catch { case _: Throwable => false }
+              if (degenerate) {
+                throw new ProviderStreamException(
+                  providerKey = providerKey,
+                  code = 200,
+                  typ  = "malformed_tool_args",
+                  message_ = s"Model emitted a JSON array as `${s.toolName}` arguments " +
+                    s"(${s.buf.length} chars) when the schema requires an object. " +
+                    "Typically an upstream instruction-following degeneration: " +
+                    "strict-mode wire flag is honored by some backends and silently " +
+                    "ignored by others. ErrorClassifier may route the next attempt " +
+                    "to a different candidate via ProviderStrategy."
+                )
+              }
               // Bug #72 — fabric's `RW.write` can throw with a JVM-
               // internal anonymous-class name as `getMessage` (e.g.
               // `sigil/script/UpdateScriptToolInput$$anon$3`) rather

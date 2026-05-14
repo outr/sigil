@@ -59,7 +59,7 @@ case class AnthropicProvider(apiKey: String,
   override def tokenizer: Tokenizer = JtokkitTokenizer.OpenAIChatGpt
 
   override def call(input: ProviderCall): Stream[ProviderEvent] = {
-    val state = new StreamState(new ToolCallAccumulator(input.tools))
+    val state = new StreamState(new ToolCallAccumulator(input.tools, providerKey = "anthropic"))
     Stream.force(
       for {
         raw         <- httpRequestFor(input)
