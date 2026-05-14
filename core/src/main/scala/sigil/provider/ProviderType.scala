@@ -12,4 +12,5 @@ enum ProviderType derives RW {
   case LlamaCpp
   case DigitalOcean
   case DeepInfra
+  case OpenRouter
 }

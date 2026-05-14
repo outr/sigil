@@ -174,7 +174,19 @@ object OpenAIChatCompletions {
       * documented substitute.
       *
       * Sigil bug #173. */
-    forcedCallShape: ForcedCallShape = ForcedCallShape.ToolChoice
+    forcedCallShape: ForcedCallShape = ForcedCallShape.ToolChoice,
+
+    /** Per-provider extra top-level wire fields appended to every
+      * request body. Receives the resolved `ProviderCall` so the
+      * fields can be call-shaped (e.g. derive from the model id or
+      * tool roster); returns key/value pairs merged at the root of
+      * the JSON body alongside `model` / `messages` / `tools`.
+      *
+      * Used by OpenRouter to inject the `provider` routing block
+      * (ignore-list of Chinese-hosted slugs, sort policy, fallbacks).
+      * Default `_ => Vector.empty` is a no-op for every other
+      * chat-completions backend. */
+    extraBody: ProviderCall => Vector[(String, Json)] = _ => Vector.empty
   )
 
   /** How Sigil expresses forced-call semantics on a chat-completions
@@ -328,7 +340,9 @@ object OpenAIChatCompletions {
         gen.topP.toVector.map("top_p" -> num(_)) ++
         (if (gen.stopSequences.nonEmpty) Vector("stop" -> arr(gen.stopSequences.map(str)*)) else Vector.empty)
 
-    obj((baseFields ++ toolFields ++ reasoningFields ++ generationFields)*)
+    val extraFields = config.extraBody(input)
+
+    obj((baseFields ++ toolFields ++ reasoningFields ++ generationFields ++ extraFields)*)
   }
 
   /** Sigil bug #173 — build a `response_format: json_schema` body
