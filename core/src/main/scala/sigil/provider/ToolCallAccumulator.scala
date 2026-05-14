@@ -40,17 +40,58 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
   /**
    * Declare a new tool call at the given stream index. Emits `ToolCallStart`.
    * If the index is already known, this is a no-op and returns empty.
+   *
+   * Convenience wrapper around [[observeHeader]] for the common case
+   * where both `id` and `name` arrive in the same chunk. Most providers
+   * stream the header this way (OpenAI / Anthropic), but some compat
+   * backends (vLLM versions, SGLang variants) split id and name across
+   * chunks — for those, use [[observeHeader]] directly.
    */
   def start(index: Int, callId: CallId, toolName: String): Vector[ProviderEvent] =
-    if (calls.contains(index)) Vector.empty
-    else {
-      val processor =
-        if (toolName == RespondTool.schema.name.value)
-          Some(new RespondStreamProcessor(callId))
-        else None
-      calls(index) = CallState(callId, toolName, new StringBuilder, processor)
-      Vector(ProviderEvent.ToolCallStart(callId, toolName))
+    observeHeader(index, Some(callId), Some(toolName))
+
+  /**
+   * Observe a tool-call header fragment. Either `id` or `name` (or
+   * both) may be supplied. The accumulator buffers partial headers and
+   * emits `ToolCallStart` exactly once, when both fields are known.
+   * Sigil audit H8 — some OpenAI-compat backends (vLLM, SGLang) split
+   * the header across SSE chunks: chunk 1 carries `{id: "call_x"}`,
+   * chunk 2 carries `{function: {name: "foo"}}`. Pre-fix, both
+   * chunks were silently dropped (the existing `start` required both
+   * fields together), and subsequent `arguments` deltas accumulated
+   * to no `CallState`. Net: the entire tool call vanished.
+   *
+   * `appendArgs` works even before the header is complete — args
+   * buffer on the pending-header state and are folded into the
+   * promoted `CallState` once both id + name arrive.
+   */
+  def observeHeader(index: Int, callIdOpt: Option[CallId], nameOpt: Option[String]): Vector[ProviderEvent] = {
+    if (calls.contains(index)) return Vector.empty
+    val pending = pendingHeaders.getOrElse(index, PendingHeader(None, None, new StringBuilder))
+    val merged = pending.copy(
+      callId   = callIdOpt.orElse(pending.callId),
+      toolName = nameOpt.orElse(pending.toolName)
+    )
+    (merged.callId, merged.toolName) match {
+      case (Some(cid), Some(name)) =>
+        // Both fields now known — promote to active CallState.
+        pendingHeaders.remove(index)
+        val processor =
+          if (name == RespondTool.schema.name.value) Some(new RespondStreamProcessor(cid))
+          else None
+        val buf = new StringBuilder
+        if (merged.argsBuffer.nonEmpty) buf.append(merged.argsBuffer.toString)
+        calls(index) = CallState(cid, name, buf, processor)
+        val argFlush =
+          if (merged.argsBuffer.isEmpty) Vector.empty[ProviderEvent]
+          else processor.fold(Vector.empty[ProviderEvent])(_.feed(merged.argsBuffer.toString))
+        Vector(ProviderEvent.ToolCallStart(cid, name): ProviderEvent) ++ argFlush
+      case _ =>
+        // Still partial — stash until the missing field arrives.
+        pendingHeaders(index) = merged
+        Vector.empty
     }
+  }
 
   /**
    * Append a JSON argument fragment to the tool call at the given index. For
@@ -65,7 +106,24 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
         case Some(s) =>
           s.buf.append(fragment)
           s.processor.fold(Vector.empty[ProviderEvent])(_.feed(fragment))
-        case None => Vector.empty
+        case None =>
+          // Sigil audit H8 — args may arrive before the header is
+          // fully observed (split-header compat backends). Buffer on
+          // the pending header; the buffer is flushed into the
+          // promoted CallState when both id + name arrive.
+          pendingHeaders.get(index) match {
+            case Some(pending) =>
+              pending.argsBuffer.append(fragment)
+              Vector.empty
+            case None =>
+              // No header observed yet — bootstrap a pending entry so
+              // a subsequent id-only or name-only header can fold these
+              // args. Without this, args before any header chunk would
+              // be lost.
+              val p = PendingHeader(None, None, new StringBuilder(fragment))
+              pendingHeaders(index) = p
+              Vector.empty
+          }
       }
 
   /**
@@ -180,13 +238,39 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
           Vector(ProviderEvent.Error(s"Unknown tool: ${s.toolName}"))
       }
     }
-    streamFlush ++ completes
+    // Sigil audit H8 — any pending headers still partial at stream
+    // close (one field never arrived) get a diagnostic error so we
+    // surface the bug to the agent + scribe rather than silently
+    // dropping. Should be vanishingly rare in practice; a real
+    // compat-backend bug would manifest this way.
+    val orphanPending: Vector[ProviderEvent] = pendingHeaders.values.toVector.map { p =>
+      ProviderEvent.Error(
+        s"Tool-call header arrived incomplete at stream close: " +
+          s"callId=${p.callId.map(_.value).getOrElse("<missing>")} " +
+          s"toolName=${p.toolName.getOrElse("<missing>")}. " +
+          s"Compat-backend bug (provider split id and name across chunks but didn't ship both before close)."
+      )
+    }
+    pendingHeaders.clear()
+    streamFlush ++ completes ++ orphanPending
   }
 
   private case class CallState(callId: CallId,
                                 toolName: String,
                                 buf: StringBuilder,
                                 processor: Option[RespondStreamProcessor])
+
+  /** Pending header for a tool call whose id and name arrived in
+    * separate chunks. Holds the partial fields plus any args that
+    * arrived before the header completed. Promoted to a full
+    * `CallState` once both `callId` and `toolName` are set. Sigil
+    * audit H8. */
+  private case class PendingHeader(callId: Option[CallId],
+                                   toolName: Option[String],
+                                   argsBuffer: StringBuilder)
+
+  private val pendingHeaders: mutable.LinkedHashMap[Int, PendingHeader] =
+    mutable.LinkedHashMap.empty
 
   /**
    * Streams the `respond` tool's `content` field text out of in-flight JSON
