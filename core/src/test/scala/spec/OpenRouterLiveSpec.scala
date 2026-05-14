@@ -13,10 +13,11 @@ import sigil.provider.openrouter.OpenRouterProvider
  * chat-completions probe cancels the suite rather than failing
  * every test.
  *
- * The default model is `openai/gpt-4o-mini` (cheap, broadly
- * available, well-behaved on the multi-mode + respond-roundtrip
- * coverage in [[AbstractProviderSpec]]). Override via
- * `OPENROUTER_TEST_MODEL` for vendor-specific verification.
+ * Default model is `moonshotai/kimi-k2.6` — the model Sigil is
+ * currently targeting heavily, so the spec exercises OpenRouter's
+ * native strict + tool_choice on the production workload rather than
+ * a generic OpenAI smoke surface. Override via `OPENROUTER_TEST_MODEL`
+ * for vendor-specific verification.
  */
 class OpenRouterLiveSpec extends AbstractProviderSpec {
   override protected val provider: Task[Provider] =
@@ -26,7 +27,7 @@ class OpenRouterLiveSpec extends AbstractProviderSpec {
       .singleton
 
   override protected def modelId: Id[Model] =
-    Model.id(sys.env.getOrElse("OPENROUTER_TEST_MODEL", "openai/gpt-4o-mini"))
+    Model.id(sys.env.getOrElse("OPENROUTER_TEST_MODEL", "moonshotai/kimi-k2.6"))
 
   override def run(testName: Option[String], args: org.scalatest.Args): org.scalatest.Status =
     OpenRouterLiveSupport.runGated(this, testName, args) {

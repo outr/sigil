@@ -18,9 +18,12 @@ import spice.net.*
 object OpenRouterLiveSupport {
   def apiKey: Option[String] = sys.env.get("OPEN_ROUTER_TOKEN").filter(_.nonEmpty)
 
-  /** Cheap chat-completable model for the credential probe. Overridable
-    * via env so deployments can pick whatever's free / cheapest at the
-    * time without recompiling. */
+  /** Cheap, broadly-stable model for the credential probe. This is
+    * deliberately NOT the same as `OPENROUTER_TEST_MODEL` (Kimi-K2.6
+    * by default per OpenRouterLiveSpec) — the probe tests AUTH, not
+    * model behavior, so we want a model that doesn't have its own
+    * reliability blips that would produce false-negative probe
+    * failures. Overridable via env. */
   private val probeModel: String = sys.env.getOrElse("OPENROUTER_PROBE_MODEL", "openai/gpt-4o-mini")
 
   private def probe(key: String): HttpRequest = {
