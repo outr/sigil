@@ -587,11 +587,16 @@ object OpenAIChatCompletions {
             val index   = tc.get("index").map(_.asInt).getOrElse(0)
             val idOpt   = tc.get("id").flatMap(j => if (j.isNull) None else Some(j.asString)).map(config.toolCallIdNormalizer)
             val nameOpt = tc.get("function").flatMap(_.get("name")).flatMap(j => if (j.isNull) None else Some(j.asString))
-            (idOpt, nameOpt) match {
-              case (Some(id), Some(n)) =>
-                events ++= state.acc.start(index, CallId(id), n)
-                state.hasUsefulOutput = true
-              case _                   => ()
+            // Sigil audit H8 — feed both fields through `observeHeader`
+            // so split-header compat backends (vLLM, SGLang) don't
+            // silently drop tool calls. The accumulator emits
+            // ToolCallStart exactly once, when both id+name are
+            // known. Args may arrive before the header completes;
+            // they buffer on the pending state and fold into the
+            // promoted CallState.
+            if (idOpt.isDefined || nameOpt.isDefined) {
+              events ++= state.acc.observeHeader(index, idOpt.map(CallId(_)), nameOpt)
+              state.hasUsefulOutput = true
             }
             tc.get("function").flatMap(_.get("arguments"))
               .flatMap(j => if (j.isNull) None else Some(j.asString))
