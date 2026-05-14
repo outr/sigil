@@ -61,7 +61,21 @@ case class DeepInfraProvider(apiKey: String,
     providerNamespace = DeepInfra.Provider,
     providerName      = "DeepInfra",
     path              = "/v1/openai/chat/completions",
+    // Sigil bug #173 — DeepInfra accepts `strict: true` (HTTP 200)
+    // but doesn't enforce it (verified against Kimi-K2.5 wire logs
+    // where the model emitted JSON arrays despite per-tool strict).
+    // The shaping still happens (strictModeCapable = true → closed-
+    // object schema for the validator), but we don't pretend the
+    // backend honors the flag — strip it from the wire body.
     strictModeCapable = true,
+    honorsStrict      = false,
+    // Sigil bug #173 — DeepInfra's documented `tool_choice` set is
+    // {"auto", "none"}; "required" and the function-form aren't in
+    // their tool-calling docs. Express forced-call via documented
+    // `response_format: json_schema` instead (sigil's structure-first
+    // contract IS forced-call for every turn with tools, so this is
+    // the load-bearing knob).
+    forcedCallShape   = OpenAIChatCompletions.ForcedCallShape.ResponseFormatJsonSchema,
     // DeepInfra exposes the canonical OpenAI `reasoning_effort` field
     // on /v1/openai/chat/completions and honors `none | low | medium |
     // high`. Verified against kimi-k2.5: `none` zeroes

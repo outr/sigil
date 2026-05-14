@@ -138,8 +138,55 @@ object OpenAIChatCompletions {
       * so the framework raises so [[ProviderStrategy.errorClassifier]]
       * can fall through to the next candidate. Reasoning-only output
       * still counts as no useful output. Sigil bug #161. */
-    emptyBudgetBurnThrows: Boolean = false
+    emptyBudgetBurnThrows: Boolean = false,
+
+    /** When `false`, the per-function `"strict": true` flag is OMITTED
+      * from the wire — strict-mode schema reshaping via
+      * [[strictModeCapable]] still happens (so we ship a closed-object
+      * schema that's safe for the validator regardless), but we don't
+      * SEND the flag that asks the backend to grammar-constrain.
+      *
+      * Set `false` for providers that accept the flag silently but
+      * don't actually enforce it (DeepInfra honors neither `strict`
+      * nor `tool_choice: "required"` per their docs — verified
+      * against captured wire logs where Kimi-K2.5 emitted JSON
+      * arrays despite `strict: true` on every function). Distinct
+      * from [[strictModeCapable]] which is Sigil-side ("should we
+      * reshape the schema?"); this is provider-side ("should we
+      * send the flag?"). For honest providers both stay `true`.
+      *
+      * Sigil bug #173. */
+    honorsStrict: Boolean = true,
+
+    /** Shape Sigil uses to express forced-call semantics on the
+      * wire. `ToolChoice` ships the OpenAI-canonical `tool_choice`
+      * field; `ResponseFormatJsonSchema` substitutes a
+      * `response_format: json_schema` constraint over a synthesized
+      * meta-schema and parses the assistant's content as a synthetic
+      * tool call.
+      *
+      * Use `ResponseFormatJsonSchema` for providers whose documented
+      * `tool_choice` vocabulary doesn't include `"required"` /
+      * function-form (DeepInfra). The forced-call contract is Sigil's
+      * structure-first invariant: every turn with tools demands the
+      * model produce a tool call. When the backend won't honor
+      * `tool_choice: "required"` natively, response_format is the
+      * documented substitute.
+      *
+      * Sigil bug #173. */
+    forcedCallShape: ForcedCallShape = ForcedCallShape.ToolChoice
   )
+
+  /** How Sigil expresses forced-call semantics on a chat-completions
+    * wire. Default uses the OpenAI-canonical `tool_choice` field;
+    * `ResponseFormatJsonSchema` substitutes a `response_format`
+    * json_schema constraint over a synthesized meta-schema (and
+    * stream-side parses the assistant content as a synthetic tool
+    * call). Sigil bug #173. */
+  enum ForcedCallShape {
+    case ToolChoice
+    case ResponseFormatJsonSchema
+  }
 
   /** Output of [[Config.preprocess]] — the system content + messages to
     * render. Either field may differ from `ProviderCall.system` /
@@ -171,7 +218,15 @@ object OpenAIChatCompletions {
                  auth: HttpRequest => HttpRequest,
                  tokenIdleTimeout: FiniteDuration,
                  config: Config): Stream[ProviderEvent] = {
-    val state = new StreamState(new ToolCallAccumulator(input.tools, providerKey = config.providerName))
+    val rfMode: Option[ResponseFormatMode] = config.forcedCallShape match {
+      case ForcedCallShape.ToolChoice => None
+      case ForcedCallShape.ResponseFormatJsonSchema => input.toolChoice match {
+        case ToolChoice.Specific(name) => Some(ResponseFormatMode.Specific(name))
+        case ToolChoice.Required       => Some(ResponseFormatMode.Required)
+        case _                         => None
+      }
+    }
+    val state = new StreamState(new ToolCallAccumulator(input.tools, providerKey = config.providerName), rfMode)
     Stream.force(
       for {
         raw         <- buildHttpRequest(input, sigil, baseUrl, auth, config)
@@ -204,13 +259,32 @@ object OpenAIChatCompletions {
       "stream_options" -> obj("include_usage" -> bool(true))
     )
 
-    val toolFields: Vector[(String, Json)] = input.toolChoice match {
-      case ToolChoice.None => Vector.empty
-      case ToolChoice.Auto =>
+    val toolFields: Vector[(String, Json)] = (input.toolChoice, config.forcedCallShape) match {
+      case (ToolChoice.None, _) => Vector.empty
+      case (ToolChoice.Auto, _) =>
         Vector("tools" -> arr(toolsArr*), "tool_choice" -> str("auto"))
-      case ToolChoice.Required =>
+
+      // Sigil bug #173 — forced-call substitution. When the backend
+      // doesn't honor `tool_choice: required` / function-form
+      // (DeepInfra), express forced-call via `response_format:
+      // json_schema` over a synthesized meta-schema. Sigil's structure-
+      // first invariant (every turn with tools must produce a tool
+      // call) is preserved through a documented substitute rather than
+      // an undocumented wire flag the backend silently ignores.
+      case (ToolChoice.Required, ForcedCallShape.ResponseFormatJsonSchema) =>
+        Vector(
+          "tools"           -> arr(toolsArr*),
+          "response_format" -> buildRequiredMetaResponseFormat(input)
+        )
+      case (ToolChoice.Specific(name), ForcedCallShape.ResponseFormatJsonSchema) =>
+        Vector(
+          "tools"           -> arr(toolsArr*),
+          "response_format" -> buildSpecificResponseFormat(input, name)
+        )
+
+      case (ToolChoice.Required, ForcedCallShape.ToolChoice) =>
         Vector("tools" -> arr(toolsArr*), "tool_choice" -> str("required"))
-      case ToolChoice.Specific(name) =>
+      case (ToolChoice.Specific(name), ForcedCallShape.ToolChoice) =>
         Vector(
           "tools" -> arr(toolsArr*),
           "tool_choice" -> obj(
@@ -257,6 +331,67 @@ object OpenAIChatCompletions {
     obj((baseFields ++ toolFields ++ reasoningFields ++ generationFields)*)
   }
 
+  /** Sigil bug #173 — build a `response_format: json_schema` body
+    * fragment for `ToolChoice.Specific`. The synthesized schema is
+    * the named tool's input schema (closed-object, strict-shaped),
+    * with `name = tool name`. Model emits a single JSON object
+    * matching the tool's input directly as its assistant content;
+    * stream-side parses that content as a synthetic
+    * `ToolCallStart` + `ToolCallComplete` for the named tool. */
+  private def buildSpecificResponseFormat(input: ProviderCall, name: sigil.tool.ToolName): Json = {
+    val tool = input.tools.find(_.schema.name == name)
+      .getOrElse(throw new IllegalStateException(
+        s"ToolChoice.Specific(${name.value}) names a tool not in input.tools — wire layer can't synthesize response_format."
+      ))
+    val toolSchema = DefinitionToSchema(tool.schema.input)
+    val strictShape = StrictSchema.forOpenAIStrict(toolSchema)
+    obj(
+      "type" -> str("json_schema"),
+      "json_schema" -> obj(
+        "name"   -> str(name.value),
+        "strict" -> bool(true),
+        "schema" -> strictShape
+      )
+    )
+  }
+
+  /** Sigil bug #173 — build a `response_format: json_schema` body
+    * fragment for `ToolChoice.Required` (force ANY tool from the
+    * roster). The synthesized meta-schema is:
+    *   `{ tool_name: enum[<all roster names>], arguments: oneOf<…> }`
+    * Model emits one JSON object matching this shape as its assistant
+    * content; stream-side looks up `tool_name`, extracts `arguments`,
+    * and emits synthetic `ToolCallStart` + `ToolCallComplete` events
+    * the orchestrator processes identically to native tool calls. */
+  private def buildRequiredMetaResponseFormat(input: ProviderCall): Json = {
+    val names = input.tools.map(_.schema.name.value)
+    val argSchemas = input.tools.map { t =>
+      StrictSchema.forOpenAIStrict(DefinitionToSchema(t.schema.input))
+    }
+    val argumentsSchema =
+      if (argSchemas.size == 1) argSchemas.head
+      else obj("oneOf" -> arr(argSchemas*))
+    obj(
+      "type" -> str("json_schema"),
+      "json_schema" -> obj(
+        "name"   -> str("sigil_tool_call"),
+        "strict" -> bool(true),
+        "schema" -> obj(
+          "type" -> str("object"),
+          "properties" -> obj(
+            "tool_name" -> obj(
+              "type" -> str("string"),
+              "enum" -> arr(names.map(str)*)
+            ),
+            "arguments" -> argumentsSchema
+          ),
+          "required" -> arr(str("tool_name"), str("arguments")),
+          "additionalProperties" -> bool(false)
+        )
+      )
+    )
+  }
+
   /** Render the wire `tools` array. Per-tool dispatch on strict-mode
     * capability: when [[Config.strictModeCapable]] is true AND the
     * tool's input schema has no `DefType.Json` anywhere (bug #64 —
@@ -276,7 +411,7 @@ object OpenAIChatCompletions {
         "name"        -> str(s.name.value),
         "description" -> str(renderDescription(t, input.currentMode, sigil)),
         "parameters"  -> parameters
-      ) ++ (if (canBeStrict) Vector("strict" -> bool(true)) else Vector.empty)
+      ) ++ (if (canBeStrict && config.honorsStrict) Vector("strict" -> bool(true)) else Vector.empty)
       obj(
         "type"     -> str("function"),
         "function" -> obj(fnFields*)
@@ -403,8 +538,21 @@ object OpenAIChatCompletions {
         if (!c.isNull) {
           val text = c.asString
           if (text.nonEmpty) {
-            events += ProviderEvent.TextDelta(text)
-            state.hasUsefulOutput = true
+            // Sigil bug #173 — in response_format mode the content
+            // stream is actually the synthesized tool-call payload,
+            // not user-visible text. Buffer for end-of-stream
+            // synthesis; suppress the TextDelta so the orchestrator
+            // doesn't start a streaming user-visible Message. The
+            // synthetic ToolCallStart/ContentBlockDelta/Complete pair
+            // fired on finish_reason replaces it.
+            state.responseFormatMode match {
+              case Some(_) =>
+                state.responseFormatBuf.append(text)
+                state.hasUsefulOutput = true
+              case None =>
+                events += ProviderEvent.TextDelta(text)
+                state.hasUsefulOutput = true
+            }
           }
         }
       }
@@ -451,6 +599,18 @@ object OpenAIChatCompletions {
             StopReason.Complete
         }
         if (sr == StopReason.ToolCall) events ++= state.acc.complete()
+        // Sigil bug #173 — response_format substitution: the model
+        // finished with `stop` (not `tool_calls`) because we asked
+        // for structured content. Synthesize the tool-call events
+        // from the buffered content so the orchestrator processes
+        // it identically to a native tool call.
+        else if (sr == StopReason.Complete) {
+          state.responseFormatMode match {
+            case Some(mode) =>
+              events ++= synthesizeToolCallFromContent(state, mode, config)
+            case None => ()
+          }
+        }
         state.pendingDone = Some(sr)
       }
     }
@@ -472,9 +632,18 @@ object OpenAIChatCompletions {
   /** Streaming state: pending [[StopReason]] held back until the
     * trailing `usage` chunk (or `[DONE]`) arrives, plus the tool-call
     * accumulator. Public so callers with bespoke pre/post handling
-    * (llama.cpp's pre-flight, etc.) can share it. */
-  final class StreamState(val acc: ToolCallAccumulator) {
+    * (llama.cpp's pre-flight, etc.) can share it.
+    *
+    * `responseFormatMode` carries the bug #173 forced-call substitution
+    * shape (when active). `None` means standard tool_calls flow. The
+    * stream-side handler suppresses TextDelta emission in that mode
+    * (avoid creating a streaming Message UI for what is actually a
+    * tool call) and buffers the content for end-of-stream synthesis
+    * into ToolCallStart/Complete events. */
+  final class StreamState(val acc: ToolCallAccumulator,
+                          val responseFormatMode: Option[ResponseFormatMode] = None) {
     var pendingDone: Option[StopReason] = None
+    val responseFormatBuf: StringBuilder = new StringBuilder
 
     /** Tracks whether the stream emitted any TextDelta with non-empty
       * text OR a tool-call Start event. `reasoning_content` deltas
@@ -499,5 +668,72 @@ object OpenAIChatCompletions {
         Vector(ProviderEvent.Done(sr))
       case None     => Vector.empty
     }
+  }
+
+  /** Sigil bug #173 — at end-of-stream in response_format mode, parse
+    * the buffered content and emit synthetic ToolCallStart +
+    * appendArgs + complete events. The accumulator's downstream
+    * processing (typed input materialisation, malformed-args
+    * detection, etc.) runs identically to a native tool call. */
+  private def synthesizeToolCallFromContent(state: StreamState,
+                                            mode: ResponseFormatMode,
+                                            config: Config): Vector[ProviderEvent] = {
+    val raw = state.responseFormatBuf.toString
+    state.responseFormatBuf.clear()
+    if (raw.trim.isEmpty) return Vector.empty
+
+    val (toolName: String, argsString: String) = mode match {
+      case ResponseFormatMode.Specific(name) =>
+        // Content IS the named tool's args (top-level JSON object).
+        (name.value, raw)
+      case ResponseFormatMode.Required =>
+        // Content is `{tool_name, arguments}` per the meta-schema.
+        try {
+          val parsed = fabric.io.JsonParser(raw)
+          val tn  = parsed.get("tool_name").map(_.asString).getOrElse {
+            throw new ProviderStreamException(
+              providerKey = config.providerNamespace, code = 200,
+              typ = "malformed_response_format",
+              message_ = s"response_format substitution: content lacks tool_name field. Got: ${raw.take(200)}"
+            )
+          }
+          val ar  = parsed.get("arguments").map(j => fabric.io.JsonFormatter.Compact(j)).getOrElse("{}")
+          (tn, ar)
+        } catch {
+          case e: ProviderStreamException => throw e
+          case t: Throwable =>
+            throw new ProviderStreamException(
+              providerKey = config.providerNamespace, code = 200,
+              typ = "malformed_response_format",
+              message_ = s"response_format substitution: content failed to parse as {tool_name, arguments}. Error: ${t.getMessage}. Content: ${raw.take(200)}"
+            )
+        }
+    }
+
+    val callId = CallId(s"sigil-rf-${java.util.UUID.randomUUID().toString.take(8)}")
+    val events = Vector.newBuilder[ProviderEvent]
+    events ++= state.acc.start(0, callId, toolName)
+    events ++= state.acc.appendArgs(0, argsString)
+    events ++= state.acc.complete()
+    state.hasUsefulOutput = true
+    events.result()
+  }
+
+  /** Records the forced-call substitution that's active on this stream
+    * so the end-of-stream handler can synthesize the right
+    * `ToolCallStart` + `ToolCallComplete` events from the buffered
+    * content. Sigil bug #173. */
+  sealed trait ResponseFormatMode
+  object ResponseFormatMode {
+    /** `ToolChoice.Specific(name)` substituted to response_format.
+      * The buffered content is the named tool's typed input JSON
+      * directly — emit one synthetic ToolCallStart(name) + appendArgs
+      * of the entire content. */
+    final case class Specific(name: sigil.tool.ToolName) extends ResponseFormatMode
+    /** `ToolChoice.Required` substituted to response_format with a
+      * meta-schema. The buffered content is
+      * `{tool_name, arguments}`; the synthesizer extracts both and
+      * emits the corresponding pair of events. */
+    case object Required extends ResponseFormatMode
   }
 }
