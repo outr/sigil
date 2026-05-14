@@ -255,19 +255,27 @@ case class OpenAIProvider(apiKey: String,
     // Without these, the API returns `{id, type: "reasoning", summary: []}`
     // with no `encrypted_content`. Replaying a hollow item gives the
     // model no state to resume from and the next response is empty.
-    val reasoningField: Vector[(String, Json)] = (gen.effort, isReasoningModel) match {
-      case (Some(e), true) =>
-        Vector("reasoning" -> obj(
-          "effort"  -> str(Effort.openAIEffortLevel(e)),
-          "summary" -> str("auto")
-        ))
-      case (Some(e), false) =>
-        Vector("reasoning" -> obj("effort" -> str(Effort.openAIEffortLevel(e))))
-      case (None, true) =>
-        Vector("reasoning" -> obj("summary" -> str("auto")))
-      case (None, false) =>
-        Vector.empty
-    }
+    // Sigil audit H7 — `reasoningMode = Off` forces the lowest effort
+    // tier ("minimal") on reasoning-family models. There's no hard
+    // off on the Responses API, but `minimal` is the documented
+    // closest-to-off setting. Apps express "Off" once in
+    // `GenerationSettings.reasoningMode`; each provider translates.
+    val reasoningField: Vector[(String, Json)] =
+      if (gen.reasoningMode == ReasoningMode.Off && isReasoningModel) {
+        Vector("reasoning" -> obj("effort" -> str("minimal"), "summary" -> str("auto")))
+      } else (gen.effort, isReasoningModel) match {
+        case (Some(e), true) =>
+          Vector("reasoning" -> obj(
+            "effort"  -> str(Effort.openAIEffortLevel(e)),
+            "summary" -> str("auto")
+          ))
+        case (Some(e), false) =>
+          Vector("reasoning" -> obj("effort" -> str(Effort.openAIEffortLevel(e))))
+        case (None, true) =>
+          Vector("reasoning" -> obj("summary" -> str("auto")))
+        case (None, false) =>
+          Vector.empty
+      }
     val includeField: Vector[(String, Json)] =
       if (isReasoningModel) Vector("include" -> arr(str("reasoning.encrypted_content")))
       else Vector.empty
@@ -325,6 +333,8 @@ case class OpenAIProvider(apiKey: String,
             obj("type" -> str("input_text"), "text" -> str(t))
           case MessageContent.Image(u, _) =>
             obj("type" -> str("input_image"), "image_url" -> str(u.toString))
+          case MessageContent.ImageBytes(mediaType, base64, _) =>
+            obj("type" -> str("input_image"), "image_url" -> str(s"data:$mediaType;base64,$base64"))
         }
         Vector(obj("role" -> str("user"), "content" -> arr(contentItems*)))
 

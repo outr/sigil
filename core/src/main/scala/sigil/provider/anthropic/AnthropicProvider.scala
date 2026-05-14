@@ -142,8 +142,17 @@ case class AnthropicProvider(apiKey: String,
     // Anthropic thinking: when enabled, temperature must be 1.0 and
     // top_p/top_k are ignored. Fail fast on a conflicting temperature
     // rather than silently overriding the caller's setting.
+    //
+    // Sigil audit H7 — `reasoningMode = Off` suppresses thinking even
+    // when `effort` is set. Anthropic has no hard off switch on the
+    // wire, so "Off" maps to "don't emit the thinking block at all"
+    // (the model's default = thinking disabled). This lets a strategy
+    // route an Off intent past Anthropic without the caller having to
+    // unset `effort` on a per-provider basis.
+    val thinkingEnabled = gen.effort.isDefined && gen.reasoningMode != ReasoningMode.Off
     val thinkingField: Vector[(String, Json)] = gen.effort match {
       case None => Vector.empty
+      case Some(_) if !thinkingEnabled => Vector.empty
       case Some(e) =>
         gen.temperature.foreach { t =>
           if (t != 1.0) throw new IllegalArgumentException(
@@ -158,7 +167,7 @@ case class AnthropicProvider(apiKey: String,
     // to avoid surprising the caller about a value that has no effect.
     val genFields: Vector[(String, Json)] =
       gen.temperature.toVector.map("temperature" -> num(_)) ++
-        (if (gen.effort.isDefined) Vector.empty
+        (if (thinkingEnabled) Vector.empty
          else gen.topP.toVector.map("top_p" -> num(_))) ++
         (if (gen.stopSequences.nonEmpty) Vector("stop_sequences" -> arr(gen.stopSequences.map(str)*)) else Vector.empty)
 
@@ -184,6 +193,15 @@ case class AnthropicProvider(apiKey: String,
             obj(
               "type" -> str("image"),
               "source" -> obj("type" -> str("url"), "url" -> str(u.toString))
+            )
+          case MessageContent.ImageBytes(mediaType, base64, _) =>
+            obj(
+              "type" -> str("image"),
+              "source" -> obj(
+                "type" -> str("base64"),
+                "media_type" -> str(mediaType),
+                "data" -> str(base64)
+              )
             )
         }
         Vector(obj("role" -> str("user"), "content" -> arr(contentItems*)))
