@@ -26,13 +26,16 @@ final case class ToolOutputExpirationSweep(interval: FiniteDuration = 15.minutes
     host.withDB(_.toolOutputs.transaction(_.list)).flatMap { all =>
       val expired = all.toList.filter(_.expiresAt.value <= now.value)
       if (expired.isEmpty) Task.unit
-      else Task.sequence(expired.map { n =>
-        host.withDB(_.toolOutputs.transaction(_.delete(n._id))).unit.handleError { e =>
-          Task { scribe.warn(s"ToolOutputExpirationSweep: delete ${n._id.value} failed: ${e.getMessage}"); () }
+      // Sigil bug #170 — N deletes share one toolOutputs transaction.
+      else host.withDB(_.toolOutputs.transaction { tx =>
+        Task.sequence(expired.map { n =>
+          tx.delete(n._id).unit.handleError { e =>
+            Task { scribe.warn(s"ToolOutputExpirationSweep: delete ${n._id.value} failed: ${e.getMessage}"); () }
+          }
+        }).map { _ =>
+          scribe.info(s"ToolOutputExpirationSweep removed ${expired.size} expired record(s)")
         }
-      }).map { _ =>
-        scribe.info(s"ToolOutputExpirationSweep removed ${expired.size} expired record(s)")
-      }
+      })
     }
   }
 }

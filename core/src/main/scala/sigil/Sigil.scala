@@ -900,10 +900,12 @@ trait Sigil {
       case Some(_) =>
         for {
           // Cascade: any space whose assignment points at this record loses its assignment.
+          // Sigil bug #170 — N deletes share one assignments transaction.
           assigns <- withDB(_.providerAssignments.transaction(_.list))
           orphans  = assigns.toList.filter(_.strategyId == id)
-          _       <- Task.sequence(orphans.map(o =>
-                       withDB(_.providerAssignments.transaction(_.delete(o._id))).unit))
+          _       <- withDB(_.providerAssignments.transaction { tx =>
+                       Task.sequence(orphans.map(o => tx.delete(o._id))).unit
+                     })
           _       <- withDB(_.providerStrategies.transaction(_.delete(id))).unit
         } yield ()
     }
