@@ -109,8 +109,12 @@ case class GoogleProvider(apiKey: String,
     // tokens are billed against maxOutputTokens and routinely truncate
     // tool-call responses before any function call is emitted. When the
     // caller sets `generationSettings.effort`, we translate that to a
-    // positive (or -1 dynamic) budget.
-    val thinkingBudget = gen.effort.fold(0)(Effort.googleThinkingBudget)
+    // positive (or -1 dynamic) budget — UNLESS `reasoningMode = Off`,
+    // which forces budget back to 0 (Sigil audit H7 — `Off` must
+    // suppress thinking on every provider that supports it).
+    val thinkingBudget =
+      if (gen.reasoningMode == ReasoningMode.Off) 0
+      else gen.effort.fold(0)(Effort.googleThinkingBudget)
     genConfig += ("thinkingConfig" -> obj("thinkingBudget" -> num(thinkingBudget)))
     val genConfigFields: Vector[(String, Json)] =
       Vector("generationConfig" -> obj(genConfig.result()*))
@@ -130,8 +134,18 @@ case class GoogleProvider(apiKey: String,
           case MessageContent.Text(t) =>
             obj("text" -> str(t))
           case MessageContent.Image(u, _) =>
-            // Gemini accepts `fileData` references; for URL inputs the shape is:
-            obj("fileData" -> obj("fileUri" -> str(u.toString), "mimeType" -> str("image/png")))
+            // Gemini accepts two image shapes:
+            //   - `fileData{fileUri, mimeType}` for files uploaded via
+            //     the File API (returns `gs://` or
+            //     `https://generativelanguage.googleapis.com/...` URIs).
+            //   - `inlineData{mimeType, data: <base64>}` for inline bytes
+            //     (use [[MessageContent.ImageBytes]] for that path).
+            // Arbitrary HTTPS URLs as `fileUri` are accepted by some
+            // Gemini endpoints but not all — apps that hit a 400 should
+            // pre-upload via the File API and pass the returned URI.
+            GoogleProvider.renderImageUrl(u)
+          case MessageContent.ImageBytes(mediaType, base64, _) =>
+            obj("inlineData" -> obj("mimeType" -> str(mediaType), "data" -> str(base64)))
         }
         Vector(obj("role" -> str("user"), "parts" -> arr(parts*)))
 
@@ -325,4 +339,34 @@ case class GoogleProvider(apiKey: String,
 object GoogleProvider {
   def create(sigil: Sigil, apiKey: String, baseUrl: URL = url"https://generativelanguage.googleapis.com"): Task[GoogleProvider] =
     Task.pure(GoogleProvider(apiKey, sigil, baseUrl))
+
+  /**
+   * Render a Sigil `MessageContent.Image` URL into a Gemini parts entry.
+   *
+   * Emits `fileData{fileUri, mimeType}` with the MIME sniffed from the
+   * URL extension (defaulting to `image/jpeg`). Apps passing public
+   * HTTPS images that aren't File API URIs may hit a Gemini validation
+   * error; the recommended path is to upload via the File API and pass
+   * the returned URI here. For inline bytes use
+   * [[sigil.provider.MessageContent.ImageBytes]].
+   */
+  def renderImageUrl(u: URL): Json = {
+    val raw = u.toString
+    obj("fileData" -> obj("fileUri" -> str(raw), "mimeType" -> str(sniffMimeFromUrl(raw))))
+  }
+
+  private def sniffMimeFromUrl(url: String): String = {
+    val lower = url.toLowerCase
+    val dot = lower.lastIndexOf('.')
+    if (dot < 0) "image/jpeg"
+    else lower.substring(dot + 1).takeWhile(c => c.isLetterOrDigit) match {
+      case "jpg" | "jpeg" => "image/jpeg"
+      case "png"          => "image/png"
+      case "gif"          => "image/gif"
+      case "webp"         => "image/webp"
+      case "heic"         => "image/heic"
+      case "heif"         => "image/heif"
+      case _              => "image/jpeg"
+    }
+  }
 }

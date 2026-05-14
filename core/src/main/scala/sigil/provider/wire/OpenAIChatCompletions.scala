@@ -466,8 +466,9 @@ object OpenAIChatCompletions {
     config.multimodalPolicy match {
       case MultimodalPolicy.TextOnlyWithWarning =>
         val (texts, images) = blocks.foldRight((List.empty[String], 0)) {
-          case (MessageContent.Text(t), (ts, n))     => (t :: ts, n)
-          case (MessageContent.Image(_, _), (ts, n)) => (ts, n + 1)
+          case (MessageContent.Text(t), (ts, n))         => (t :: ts, n)
+          case (_: MessageContent.Image, (ts, n))        => (ts, n + 1)
+          case (_: MessageContent.ImageBytes, (ts, n))   => (ts, n + 1)
         }
         if (images > 0) scribe.warn(
           s"${config.providerName}Provider: dropped $images image block(s) — " +
@@ -475,7 +476,10 @@ object OpenAIChatCompletions {
         )
         obj("role" -> str("user"), "content" -> str(texts.mkString("\n")))
       case MultimodalPolicy.OpenAIArrayForm =>
-        val hasImage = blocks.exists(_.isInstanceOf[MessageContent.Image])
+        val hasImage = blocks.exists {
+          case _: MessageContent.Image | _: MessageContent.ImageBytes => true
+          case _                                                      => false
+        }
         if (!hasImage) {
           val text = blocks.collect { case MessageContent.Text(t) => t }.mkString("\n")
           obj("role" -> str("user"), "content" -> str(text))
@@ -485,6 +489,14 @@ object OpenAIChatCompletions {
               obj("type" -> str("text"), "text" -> str(t))
             case MessageContent.Image(u, _) =>
               obj("type" -> str("image_url"), "image_url" -> obj("url" -> str(u.toString)))
+            case MessageContent.ImageBytes(mediaType, base64, _) =>
+              // OpenAI's chat-completions `image_url` field accepts inline
+              // data URLs (`data:<mime>;base64,<bytes>`). Construct one here
+              // so apps with raw bytes don't need to detour through a host.
+              obj(
+                "type" -> str("image_url"),
+                "image_url" -> obj("url" -> str(s"data:$mediaType;base64,$base64"))
+              )
           }
           obj("role" -> str("user"), "content" -> arr(parts*))
         }
@@ -576,6 +588,21 @@ object OpenAIChatCompletions {
           if (text.nonEmpty) events += ProviderEvent.ThinkingDelta(text)
         }
       }
+      // Sigil audit H3 — OpenAI streams `delta.refusal` as a sibling to
+      // `delta.content` when the model declines to comply with the
+      // request (safety / policy refusal). The previous parser ignored
+      // the field entirely, so a refusal produced an empty assistant
+      // turn that the empty-budget-burn detector might or might not
+      // catch (the model emits no content + finish_reason "stop", not
+      // "length"). Buffer the refusal text and throw on flush so the
+      // strategy can fall through to another candidate (typed exception
+      // classifies as Fallthrough — H5).
+      delta.get("refusal").foreach { r =>
+        if (!r.isNull) {
+          val text = r.asString
+          if (text.nonEmpty) state.refusalBuf.append(text)
+        }
+      }
       delta.get("tool_calls").foreach { tcs =>
         // DeepInfra streams `tool_calls: null` on no-tool-call deltas
         // (the role: "assistant" warmup chunk emits it before any
@@ -664,6 +691,14 @@ object OpenAIChatCompletions {
     var pendingDone: Option[StopReason] = None
     val responseFormatBuf: StringBuilder = new StringBuilder
 
+    /** Accumulates `delta.refusal` text. OpenAI streams this as a
+      * sibling to `delta.content` when the model declines to
+      * comply (safety / policy). The framework treats refusal as a
+      * candidate-level failure: throw at stream close so the
+      * strategy can route to another candidate (the typed exception
+      * classifies as Fallthrough via H5). Sigil audit H3. */
+    val refusalBuf: StringBuilder = new StringBuilder
+
     /** Tracks whether the stream emitted any TextDelta with non-empty
       * text OR a tool-call Start event. `reasoning_content` deltas
       * (ThinkingDelta) do NOT flip this — a stream of pure reasoning
@@ -675,6 +710,16 @@ object OpenAIChatCompletions {
     def flushDone(config: Config): Vector[ProviderEvent] = pendingDone match {
       case Some(sr) =>
         pendingDone = None
+        if (refusalBuf.nonEmpty) {
+          val refusalText = refusalBuf.toString
+          refusalBuf.clear()
+          throw new ProviderStreamException(
+            providerKey = config.providerNamespace,
+            code        = 200,
+            typ         = "refusal",
+            message_    = s"${config.providerName} refused: $refusalText"
+          )
+        }
         if (config.emptyBudgetBurnThrows && sr == StopReason.MaxTokens && !hasUsefulOutput) {
           throw new ProviderStreamException(
             providerKey = config.providerNamespace,

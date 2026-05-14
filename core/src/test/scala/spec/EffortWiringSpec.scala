@@ -233,6 +233,62 @@ class EffortWiringSpec extends AnyWordSpec with Matchers {
       val body = bodyOf(provider, reasoningModelId, GenerationSettings(maxOutputTokens = Some(100), effort = Some(Effort.Max)))
       body should include("\"effort\":\"high\"")
     }
+
+    "force reasoning.effort=minimal when reasoningMode=Off on a reasoning model (H7)" in {
+      // ReasoningMode.Off overrides any explicit effort and maps to
+      // OpenAI's lowest tier on the Responses API.
+      val body = bodyOf(
+        provider,
+        reasoningModelId,
+        GenerationSettings(maxOutputTokens = Some(100), effort = Some(Effort.High), reasoningMode = ReasoningMode.Off)
+      )
+      body should include("\"effort\":\"minimal\"")
+      body should not include "\"effort\":\"high\""
+    }
+  }
+
+  "Sigil audit H7 — ReasoningMode.Off translation per provider" should {
+
+    "AnthropicProvider — Off suppresses the thinking block even when effort is set" in {
+      val provider = AnthropicProvider(apiKey = "k", sigilRef = TestSigil)
+      val modelId = Model.id("anthropic", "claude-haiku-4-5")
+      val body = bodyOf(
+        provider,
+        modelId,
+        GenerationSettings(maxOutputTokens = Some(20000), effort = Some(Effort.High), reasoningMode = ReasoningMode.Off)
+      )
+      body should not include "\"thinking\""
+    }
+
+    "AnthropicProvider — re-enables top_p when Off suppresses thinking" in {
+      val provider = AnthropicProvider(apiKey = "k", sigilRef = TestSigil)
+      val modelId = Model.id("anthropic", "claude-haiku-4-5")
+      val body = bodyOf(
+        provider,
+        modelId,
+        GenerationSettings(
+          maxOutputTokens = Some(20000),
+          effort = Some(Effort.High),
+          reasoningMode = ReasoningMode.Off,
+          topP = Some(0.9)
+        )
+      )
+      // top_p is normally suppressed when thinking is enabled; since Off
+      // suppresses thinking, top_p must flow through.
+      body should include("\"top_p\":0.9")
+    }
+
+    "GoogleProvider — Off forces thinkingBudget=0 even with explicit effort" in {
+      val provider = GoogleProvider(apiKey = "t", sigilRef = TestSigil)
+      val modelId = Model.id("google", "gemini-2.5-flash")
+      val body = bodyOf(
+        provider,
+        modelId,
+        GenerationSettings(maxOutputTokens = Some(100), effort = Some(Effort.Max), reasoningMode = ReasoningMode.Off)
+      )
+      body should include("\"thinkingBudget\":0")
+      body should not include "\"thinkingBudget\":-1"
+    }
   }
 
   "tear down" should {

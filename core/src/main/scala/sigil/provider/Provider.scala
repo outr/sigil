@@ -268,8 +268,9 @@ trait Provider {
   protected def estimateMessage(m: ProviderMessage, tok: Tokenizer): Int = m match {
     case ProviderMessage.System(c)            => tok.count(c) + 4
     case ProviderMessage.User(blocks)         => blocks.iterator.map {
-      case MessageContent.Text(t)     => tok.count(t)
-      case MessageContent.Image(_, _) => 85 // standard low-detail image overhead per OpenAI's docs
+      case MessageContent.Text(t)          => tok.count(t)
+      case _: MessageContent.Image         => 85 // standard low-detail image overhead per OpenAI's docs
+      case _: MessageContent.ImageBytes    => 85
     }.sum + 4
     case ProviderMessage.Assistant(c, calls)  =>
       // Each tool call ships as a JSON-RPC wrapper:
