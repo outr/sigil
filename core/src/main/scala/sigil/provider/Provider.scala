@@ -2,7 +2,7 @@ package sigil.provider
 
 import rapid.{Stream, Task}
 import sigil.Sigil
-import sigil.conversation.{ContextFrame, ContextMemory, TurnInput}
+import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary, TurnInput}
 import sigil.db.Model
 import sigil.diagnostics.RequestProfiler
 import sigil.participant.ParticipantId
@@ -640,13 +640,27 @@ trait Provider {
     * `.summaries` to full records via the DB. Ids that don't resolve are
     * dropped silently. */
   private def resolveReferences(turn: TurnInput): Task[ResolvedReferences] = {
+    // Sigil bug #170 — collapse the prior per-id transaction fan into
+    // two transactions total (one memories, one summaries). On every
+    // turn the renderer resolves criticalMemories + memories + summaries;
+    // pre-fix that was N + M + S transaction setup pairs sequentially.
+    val memTask: Task[(List[Option[ContextMemory]], List[Option[ContextMemory]])] =
+      if (turn.criticalMemories.isEmpty && turn.memories.isEmpty)
+        Task.pure((Nil, Nil))
+      else sigil.withDB(_.memories.transaction { tx =>
+        for {
+          crit    <- Task.sequence(turn.criticalMemories.toList.map(tx.get))
+          regular <- Task.sequence(turn.memories.toList.map(tx.get))
+        } yield (crit, regular)
+      })
+    val sumTask: Task[List[Option[ContextSummary]]] =
+      if (turn.summaries.isEmpty) Task.pure(Nil)
+      else sigil.withDB(_.summaries.transaction { tx =>
+        Task.sequence(turn.summaries.toList.map(tx.get))
+      })
     for {
-      crit <- Task.sequence(turn.criticalMemories.toList.map(id =>
-                sigil.withDB(_.memories.transaction(_.get(id)))))
-      regular <- Task.sequence(turn.memories.toList.map(id =>
-                   sigil.withDB(_.memories.transaction(_.get(id)))))
-      summaries <- Task.sequence(turn.summaries.toList.map(id =>
-                     sigil.withDB(_.summaries.transaction(_.get(id)))))
+      (crit, regular) <- memTask
+      summaries       <- sumTask
     } yield ResolvedReferences(
       criticalMemories = crit.flatten.toVector,
       memories = regular.flatten.toVector,

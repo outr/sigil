@@ -297,9 +297,13 @@ case class StandardContextCurator(sigil: Sigil,
     * provider sees a request that's bigger than the budget computed. */
   private def resolveSummaries(ids: Vector[Id[ContextSummary]]): Task[Vector[ContextSummary]] =
     if (ids.isEmpty) Task.pure(Vector.empty)
-    else Task.sequence(ids.toList.map { id =>
-      sigil.withDB(_.summaries.transaction(_.get(id)))
-    }).map(_.flatten.toVector)
+    else sigil.withDB(_.summaries.transaction { tx =>
+      // Sigil bug #170 — N gets share one transaction. Transaction
+      // setup is the dominant cost (RocksDB snapshot + iterator);
+      // amortising it across the id list collapses an N-step wait
+      // into a single setup pair.
+      Task.sequence(ids.toList.map(tx.get)).map(_.flatten.toVector)
+    })
 
   /** Iterative Stage 3 shed (bug #23 — preserves the iteration model
     * inside the new bug-#26 architecture). Each pass either fits, hits
@@ -353,15 +357,19 @@ case class StandardContextCurator(sigil: Sigil,
     * [[MemoryRetrievalResult]] to full records via the DB. */
   private def resolveMemoriesAndSummaries(memResult: MemoryRetrievalResult): Task[(Vector[ContextMemory], Vector[ContextMemory])] = {
     val now = lightdb.time.Timestamp()
-    for {
-      crit <- Task.sequence(memResult.criticalMemories.toList.map(id =>
-                sigil.withDB(_.memories.transaction(_.get(id)))))
-      regular <- Task.sequence(memResult.memories.toList.map(id =>
-                   sigil.withDB(_.memories.transaction(_.get(id)))))
-    } yield (
-      crit.flatten.iterator.filterNot(StandardMemoryRetriever.isExpired(_, now)).toVector,
-      regular.flatten.iterator.filterNot(StandardMemoryRetriever.isExpired(_, now)).toVector
-    )
+    // Sigil bug #170 — both id buckets share one memories transaction.
+    // Previously each id opened its own RocksDB snapshot; on a turn
+    // with ~32 imported memories in scope the per-id setup cost added
+    // seconds to "Resolving token budget."
+    sigil.withDB(_.memories.transaction { tx =>
+      for {
+        crit    <- Task.sequence(memResult.criticalMemories.toList.map(tx.get))
+        regular <- Task.sequence(memResult.memories.toList.map(tx.get))
+      } yield (
+        crit.flatten.iterator.filterNot(StandardMemoryRetriever.isExpired(_, now)).toVector,
+        regular.flatten.iterator.filterNot(StandardMemoryRetriever.isExpired(_, now)).toVector
+      )
+    })
   }
 
   /** Information ids referenced inside the current frames. */
@@ -443,9 +451,11 @@ case class StandardContextCurator(sigil: Sigil,
     }
 
   private def resolveCriticalForWarning(memResult: MemoryRetrievalResult): Task[Vector[ContextMemory]] =
-    Task.sequence(memResult.criticalMemories.toList.map(id =>
-      sigil.withDB(_.memories.transaction(_.get(id)))
-    )).map(_.flatten.toVector)
+    if (memResult.criticalMemories.isEmpty) Task.pure(Vector.empty)
+    else sigil.withDB(_.memories.transaction { tx =>
+      // Sigil bug #170 — one transaction, N gets.
+      Task.sequence(memResult.criticalMemories.toList.map(tx.get)).map(_.flatten.toVector)
+    })
 
   private def modelFor(modelId: Id[Model]): Task[Option[Model]] =
     Task.pure(sigil.cache.find(modelId))
