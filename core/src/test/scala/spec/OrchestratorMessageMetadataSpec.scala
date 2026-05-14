@@ -88,8 +88,14 @@ class OrchestratorMessageMetadataSpec extends AsyncWordSpec with AsyncTaskSpec w
   "Orchestrator (bug #55)" should {
     "stamp modelId on the agent's Message even when the provider only emits tool_calls (no ContentBlockDelta)" in {
       run().map { signals =>
+        // Filter to Standard-role agent Messages — sigil bug #174's
+        // durable fix adds a synthetic empty Tool-role Message after
+        // every atomic-content tool's emission (paired to the
+        // ToolInvoke via `origin`). The user-visible Message is the
+        // Standard-role one; the synthetic is Agents-visibility
+        // bookkeeping.
         val agentMessages = signals.collect {
-          case m: Message if m.participantId == TestAgent => m
+          case m: Message if m.participantId == TestAgent && m.role == sigil.event.MessageRole.Standard => m
         }
         agentMessages should have size 1
         agentMessages.head.modelId shouldBe Some(modelId)
@@ -99,7 +105,7 @@ class OrchestratorMessageMetadataSpec extends AsyncWordSpec with AsyncTaskSpec w
     "emit a usage MessageDelta targeting the agent Message when no streaming activeMessageId exists" in {
       run().map { signals =>
         val agentMessage = signals.collect {
-          case m: Message if m.participantId == TestAgent => m
+          case m: Message if m.participantId == TestAgent && m.role == sigil.event.MessageRole.Standard => m
         }.head
         val usageDeltas = signals.collect {
           case md: MessageDelta if md.usage.isDefined => md
