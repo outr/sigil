@@ -908,7 +908,14 @@ trait Provider {
         // / framework-emitted calls (where there's no upstream
         // wire id to roundtrip).
         val wireId = tc.wireCallId.getOrElse(tc.callId.value)
-        tc.wireCallId.foreach(w => wireCallIdByEvent(tc.callId.value) = w)
+        // Sigil bug #174 — record EVERY rendered ToolCall (not just those
+        // with an upstream wireCallId) so the ToolResult branch can
+        // distinguish "ToolCall was here, framework id maps to itself"
+        // from "no matching ToolCall in this request" (orphan, drop).
+        // Prior behaviour only recorded when `wireCallId.isDefined`,
+        // which meant the orphan-guard misfired on synthetic /
+        // framework-emitted ToolCalls.
+        wireCallIdByEvent(tc.callId.value) = wireId
         out += ProviderMessage.Assistant(
           content = "",
           toolCalls = List(ToolCallMessage(
@@ -942,11 +949,29 @@ trait Provider {
         // Sigil bug #167 r5 — pair the function_call_output by wire
         // call_id (preferring the upstream provider's id from the
         // matching ContextFrame.ToolCall, captured into
-        // `wireCallIdByEvent` as we walked frames). Falls back to the
-        // framework `Id[Event]` for synthetic results.
-        val wireId = wireCallIdByEvent.getOrElse(callId.value, callId.value)
-        out += ProviderMessage.ToolResult(toolCallId = wireId, content = content)
-        pendingToolCallIds.remove(wireId)
+        // `wireCallIdByEvent` as we walked frames).
+        //
+        // Sigil bug #174 — defensive guard against orphan ToolResults:
+        // if `wireCallIdByEvent` has no entry for this callId, the
+        // matching ToolCall frame wasn't in this turn's render. Emitting
+        // `function_call_output` without its `function_call` causes
+        // every OpenAI-compatible provider to HTTP 400 ("No tool call
+        // found for function call output with call_id ..."). Drop the
+        // orphan rather than ship a malformed request. The upstream
+        // root cause (whatever filter is dropping the ToolCall while
+        // keeping the ToolResult) deserves its own fix; this guard
+        // keeps the wire request well-formed regardless.
+        wireCallIdByEvent.get(callId.value) match {
+          case Some(wireId) =>
+            out += ProviderMessage.ToolResult(toolCallId = wireId, content = content)
+            pendingToolCallIds.remove(wireId)
+          case None =>
+            scribe.warn(
+              s"Provider.renderInput: dropping orphan ToolResult frame callId=${callId.value} " +
+                "(no matching ToolCall in this request — would cause provider 400). " +
+                "See sigil bug #174."
+            )
+        }
 
       case ContextFrame.System(content, _, _) =>
         out += ProviderMessage.System(content)
