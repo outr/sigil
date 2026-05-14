@@ -1,5 +1,7 @@
 package sigil.provider
 
+import sigil.AgentRunawayException
+
 /**
  * Categorize a provider-call failure into "retry the same candidate",
  * "fall through to the next candidate", or "stop the strategy entirely."
@@ -51,12 +53,45 @@ enum ErrorClassification {
 object ErrorClassifier {
 
   /**
-   * Default classifier — string-matches common transient signatures.
-   * Apps with stronger typing (e.g. provider-specific exception
-   * types) override.
+   * Default classifier — typed-exception dispatch first, then string
+   * matching for common transient signatures.
+   *
+   * Apps with stronger provider-specific typing chain their own
+   * classifier on top via [[ErrorClassifier.orElse]].
    */
   val Default: ErrorClassifier = new ErrorClassifier {
     override def classify(throwable: Throwable): ErrorClassification = {
+      // Typed dispatch — recognises framework-thrown exception types
+      // by class, not by message string. Robust against exception
+      // chaining at fiber boundaries that can wrap the original
+      // message and break substring heuristics. Sigil audit H5.
+      throwable match {
+        // Provider-side degeneration (empty_budget_burn, malformed_tool_args,
+        // inline server errors on 200-OK streams). Always fall through to
+        // the next candidate — the current model has produced unusable
+        // output; the same retry won't help.
+        case _: ProviderStreamException =>
+          return ErrorClassification.Fallthrough
+
+        // Pre-flight capacity-gate timeout (configured per provider).
+        // Fall through to the next candidate; this candidate is saturated.
+        case _: CapacityAcquireTimeoutException =>
+          return ErrorClassification.Fallthrough
+
+        // Request was reshaped past every shed stage and still over budget.
+        // Fatal: there's no candidate-level mitigation. The conversation
+        // needs human / app-level intervention.
+        case _: RequestOverBudgetException =>
+          return ErrorClassification.Fatal
+
+        // Run-out — agent loop exhausted iterations. Fatal so the user
+        // sees the cap rather than infinite candidate cycling.
+        case _: AgentRunawayException =>
+          return ErrorClassification.Fatal
+
+        case _ => ()
+      }
+
       val msg = Option(throwable.getMessage).getOrElse("").toLowerCase
       val cls = throwable.getClass.getSimpleName.toLowerCase
       if (msg.contains("rate limit") || msg.contains("429") || msg.contains("too many requests")) ErrorClassification.Retry
