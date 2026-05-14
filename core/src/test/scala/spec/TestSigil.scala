@@ -66,6 +66,11 @@ object TestSigil extends Sigil {
     case None    => workspaceOverrides.remove(conversationId); ()
   }
 
+  /** Spec hook for sigil bug #172 — invoke the boot-time stale-Active
+    * reconciliation against the already-open DB. */
+  def runStaleActiveReconciliation(): rapid.Task[Unit] =
+    runStaleActiveReconciliationTask
+
   override def workspaceFor(conversationId: lightdb.id.Id[sigil.conversation.Conversation])
       : rapid.Task[Option[java.nio.file.Path]] =
     rapid.Task(Option(workspaceOverrides.get(conversationId)))
