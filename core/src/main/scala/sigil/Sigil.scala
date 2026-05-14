@@ -5901,6 +5901,7 @@ trait Sigil {
         )
       )
       _ <- db.init
+      _ <- reconcileStaleActiveEvents(db)
       _ <- if (vectorWired) vectorIndex.ensureCollection(embeddingProvider.dimensions)
            else Task.unit
       _ <- cache.loadFromDisk
@@ -5913,6 +5914,64 @@ trait Sigil {
       db = db
     )
   }.singleton
+
+  /** Sigil bug #172 — at every boot, reconcile any `Event` left at
+    * `state = Active` in `db.events`. A process exit mid-turn (crash,
+    * OOM, SIGKILL, container eviction) strands the in-flight event:
+    * UIs render Messages stuck Active as forever-loading bubbles;
+    * ToolInvokes left Active block subsequent agent logic that
+    * checks "is the agent busy?".
+    *
+    * Bug #171 fixed the in-flight orphan case forward (parse-failure
+    * settle). This is the catch-up for orphans from prior process
+    * exits AND for future hard-crash orphans that bypass #171's
+    * reconciliation point.
+    *
+    * Reconciliation rules:
+    *   - `Message` → state Complete, disposition Failure(recoverable
+    *     = false) with an ErrorContext explaining "stale from prior
+    *     session". Content preserved (whatever partial streamed text
+    *     was persisted) so the user can see what was lost.
+    *   - All other Event types → state Complete via `.withState`.
+    *
+    * Runs synchronously before WS / Notice ingress opens (placed
+    * between `db.init` and the model-refresh / maintenance-task
+    * fibers), so there are no live subscribers to confuse with the
+    * recovery writes. One bulk transaction per bug #170's pattern. */
+  /** Test-only hook to trigger boot-time reconciliation against the
+    * already-opened DB without re-creating the Sigil instance. */
+  protected[sigil] def runStaleActiveReconciliationTask: Task[Unit] =
+    withDB(db => reconcileStaleActiveEvents(db))
+
+  private def reconcileStaleActiveEvents(db: sigil.db.SigilDB): Task[Unit] =
+    db.events.transaction { tx =>
+      tx.list.flatMap { rows =>
+        val stale = rows.iterator.filter(_.state == sigil.signal.EventState.Active).toList
+        if (stale.isEmpty) Task.unit
+        else {
+          val reconciled: List[sigil.event.Event] = stale.map {
+            case m: sigil.event.Message =>
+              m.copy(
+                state = sigil.signal.EventState.Complete,
+                disposition = sigil.event.MessageDisposition.Failure(
+                  recoverable = false,
+                  errorContext = Some(sigil.event.ErrorContext(
+                    classification = sigil.event.ErrorClassification.FrameworkBug,
+                    exceptionClass = None,
+                    message = "stale-from-previous-session: process exited before this Message settled",
+                    suggestion = Some("the prior turn was interrupted; nothing to retry"),
+                    frameworkBugLikelihood = 0.0
+                  ))
+                )
+              )
+            case other => other.withState(sigil.signal.EventState.Complete)
+          }
+          Task.sequence(reconciled.map(tx.upsert)).map { _ =>
+            scribe.info(s"reconcileStaleActiveEvents: closed ${reconciled.size} stale Active event(s)")
+          }
+        }
+      }
+    }
 
   /** Per-mode share of the smallest registered model's context window
     * a Mode's bundled skill content is allowed to consume. Default
