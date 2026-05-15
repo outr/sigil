@@ -146,10 +146,15 @@ class RespondEndsTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         events <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         val agentMessages = events.collect {
-          case m: Message if m.participantId == TestAgent => m
+          case m: Message
+            if m.participantId == TestAgent && m.role == sigil.event.MessageRole.Standard => m
         }.sortBy(_.timestamp.value)
-        // Two iterations → two agent Messages: the progress pulse
-        // (endsTurn=false) AND the final reply (endsTurn=true).
+        // Two iterations → two user-visible (Standard-role) agent
+        // Messages: the progress pulse (endsTurn=false) AND the final
+        // reply (endsTurn=true). The framework also emits Tool-role
+        // empty-content Messages paired to each respond invoke for the
+        // wire's function_call ↔ function_call_output contract; those
+        // are bookkeeping and excluded here.
         agentMessages.size shouldBe 2
         provider.callCount.get() shouldBe 2
 

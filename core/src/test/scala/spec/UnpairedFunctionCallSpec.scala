@@ -81,8 +81,8 @@ class UnpairedFunctionCallSpec extends AnyWordSpec with Matchers {
       }.toMap
       resultsByCall(callA.value) shouldBe "real-result-A"
       resultsByCall.keySet should contain (callB.value)
-      // callB's content is the framework's diagnostic placeholder.
-      resultsByCall(callB.value) should include ("framework error")
+      // callB's content is the framework's brief failure marker.
+      resultsByCall(callB.value) should include ("tool failed")
     }
 
     "tolerate a ToolResult arriving for a call that was never pending (no crash)" in {

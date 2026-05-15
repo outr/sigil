@@ -780,28 +780,26 @@ object Orchestrator {
         state.activeMessageId.orElse(state.lastUserVisibleMessageId) match {
           case Some(msgId) =>
             Stream.emits(List(MessageDelta(target = msgId, conversationId = convId, usage = Some(usage))))
+          case None if state.sawAnyToolCall =>
+            // The turn ran tool calls but none of them produced a
+            // user-visible Message (e.g. change_mode, find_capability,
+            // a side-effect-only tool). Attach the usage to the most
+            // recently settled ToolInvoke so cost attribution still
+            // lands somewhere addressable. Falls back to dropping the
+            // usage if no settled invoke exists either.
+            state.lastSettledInvokeId match {
+              case Some(invokeId) =>
+                Stream.emits(List(MessageDelta(target = invokeId, conversationId = convId, usage = Some(usage))))
+              case None => Stream.empty
+            }
           case None =>
-            // No target Message exists for this turn — the model
-            // emitted no tool call and no streaming content (typical
-            // `finish_reason: stop` with empty content). Synthesize a
-            // user-visible placeholder NOW carrying the usage so
-            // per-turn cost attribution lands on a real Message
-            // instead of being dropped. Also marks the placeholder
-            // with `disposition = Failure(recoverable=true)` so UI
-            // consumers render it distinctly from a normal reply.
-            val placeholder = Message(
-              participantId    = caller,
-              conversationId   = convId,
-              topicId          = topicId,
-              content          = Vector(ResponseContent.Text("(agent completed without a reply)")),
-              disposition      = MessageDisposition.Failure(recoverable = true),
-              state            = EventState.Complete,
-              modelId          = Some(request.modelId),
-              modelDisplayName = modelDisplayName,
-              usage            = usage
-            )
-            state.lastUserVisibleMessageId = Some(placeholder._id)
-            Stream.emit[Signal](placeholder)
+            // Truly silent turn — no Message and no tool call. The
+            // agent loop's silent-turn recovery (forced respond-family
+            // iteration) re-enters the loop; the usage from THIS
+            // turn is dropped since no Message exists to carry it.
+            // The forced iteration will emit a Message that carries
+            // its own usage.
+            Stream.empty
         }
 
       case ProviderEvent.TextDelta(text) =>

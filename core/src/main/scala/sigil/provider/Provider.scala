@@ -533,9 +533,19 @@ trait Provider {
                                         agentId: Option[ParticipantId],
                                         previousResponseId: Option[String],
                                         priorMessageCount: Option[Int]): Task[ProviderCall] = {
+      // When the silent-turn recovery has fired, the model MUST pick a
+      // respond-family terminal call this iteration. Filter the tool
+      // roster to that family + `no_response` and let the wire
+      // `tool_choice: required` enforce one is picked. Any non-respond
+      // tools available this turn are stripped — the agent has had a
+      // normal turn already; this is the final-reply iteration.
+      val effectiveTools: Vector[_root_.sigil.tool.Tool] =
+        if (c.forceResponseSynthesis) {
+          val respondFamily = _root_.sigil.tool.core.CoreTools.atomicContentToolNames
+          c.tools.filter(t => respondFamily.contains(t.schema.name))
+        } else c.tools
       val toolChoice: ToolChoice =
-        if (c.tools.isEmpty) ToolChoice.None
-        else if (c.forceResponseSynthesis) ToolChoice.Specific(_root_.sigil.tool.core.RespondTool.schema.name)
+        if (effectiveTools.isEmpty) ToolChoice.None
         else ToolChoice.Required
       // Adaptive max_tokens — when the paraphrase detector has
       // flagged a planning-without-acting loop on this turn (signal
@@ -572,7 +582,7 @@ trait Provider {
         modelId = c.modelId,
         system = renderSystem(c, resolved),
         messages = messages,
-        tools = c.tools,
+        tools = effectiveTools,
         builtInTools = c.builtInTools,
         toolChoice = toolChoice,
         generationSettings = gen,

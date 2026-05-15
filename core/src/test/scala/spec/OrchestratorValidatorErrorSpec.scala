@@ -90,9 +90,17 @@ class OrchestratorValidatorErrorSpec extends AsyncWordSpec with AsyncTaskSpec wi
         terminalDelta.flatMap(_.state) shouldBe Some(EventState.Complete)
 
         // The actual fix — the validator error reaches the agent as
-        // a Tool-role Message instead of being dropped.
+        // a Tool-role Message instead of being dropped. The orphan-
+        // settle path also emits a paired Tool-role failure Message
+        // for wire-pairing well-formedness; filter to just the
+        // validator-error one carrying "Provider error".
         val errorMessages = signals.collect {
-          case m: Message if m.role == MessageRole.Tool => m
+          case m: Message
+            if m.role == MessageRole.Tool &&
+              m.content.exists {
+                case ResponseContent.Text(t) => t.contains("Provider error")
+                case _ => false
+              } => m
         }
         errorMessages should have size 1
         val msg = errorMessages.head

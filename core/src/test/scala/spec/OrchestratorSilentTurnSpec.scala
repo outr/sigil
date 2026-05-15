@@ -6,14 +6,13 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.conversation.Conversation
 import sigil.db.Model
-import sigil.event.{Event, Message, MessageRole, ToolInvoke}
+import sigil.event.{Message, MessageRole}
 import sigil.participant.{AgentParticipant, DefaultAgentParticipant}
 import sigil.provider.{
-  CallId, ConversationMode, GenerationSettings, Instructions,
+  CallId, GenerationSettings, Instructions,
   Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
 import sigil.signal.{EventState, Signal}
-import sigil.tool.ToolName
 import sigil.tool.core.{CoreTools, NoResponseTool, RespondTool}
 import sigil.tool.model.{NoResponseInput, RespondInput, ResponseContent}
 import spice.http.HttpRequest
@@ -23,80 +22,51 @@ import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 
 /**
- * Regression for bug #46 — when the agent loop terminates without
- * the agent ever calling a user-visible terminal tool (`respond`,
- * `respond_options`, `respond_field`, `respond_failure`,
- * `no_response`), `Sigil.runAgentLoop` synthesizes a placeholder
- * Message so the conversation doesn't go silent.
+ * When the provider's first iteration returns Done with no tool
+ * calls and no content (a "silent turn"), the framework MUST NOT
+ * accept that as a turn outcome. Instead, the agent loop forces ONE
+ * more iteration with `tool_choice` restricted to the respond family
+ * so the model is required to emit a real reply (respond /
+ * respond_options / respond_field / respond_failure / respond_card /
+ * respond_cards / no_response).
  *
- * Drives the full publish → runAgent → runAgentLoop pipeline against
- * a fake provider — the synthesis lives at the loop level (not
- * orchestrator level) because a single iteration ending with a
- * non-terminal tool call (e.g. `change_mode`, `find_capability`) is
- * legitimate mid-task; only the loop knows the conversation is
- * actually closing.
+ * No fake "(agent completed without a reply)" placeholder Message is
+ * synthesized. Either the agent actually responds, or the forced
+ * iteration also fails to call respond — at which point
+ * AgentRunawayException surfaces as a hard failure.
  */
 class OrchestratorSilentTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "model")
 
-  /** Provider that emits `Done` with no tool calls at all. The
-    * orchestrator produces nothing; runAgentLoop sees no user-visible
-    * terminal tool was called this turn — at which point the
-    * silent-turn fallback (sigil bug #46) should fire.
-    *
-    * (Earlier this fixture used an unknown tool name as a proxy for
-    * "silent completion." After sigil bug #167's fix, unknown tool
-    * names produce an explicit Tool-role Failure Message — the wire's
-    * function_call ↔ function_call_output pairing stays valid and
-    * the agent re-iterates with the diagnostic instead of falling
-    * through to the silent-turn placeholder. So the silent case
-    * needs a provider that genuinely emits nothing.) */
-  private class SilentlyCompletingProvider extends Provider {
-    override def `type`: ProviderType = ProviderType.LlamaCpp
-    override def models: List[_root_.sigil.db.Model] = Nil
-    override protected def sigil: _root_.sigil.Sigil = TestSigil
-    override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
-      Task.error(new UnsupportedOperationException("no wire"))
-    override def call(input: ProviderCall): Stream[ProviderEvent] =
-      Stream.emit(ProviderEvent.Done(StopReason.Complete))
-  }
-
-  /** Provider that calls `respond` with real content then Done.
-    * Negative case — synthesis should NOT happen. */
-  private class RespondingProvider extends Provider {
+  /** Provider that's silent on the first call, then emits a respond
+    * on the second call (the forced-synthesis iteration). */
+  private class SilentThenRespondProvider extends Provider {
+    private val callCount = new atomic.AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
     override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
       Task.error(new UnsupportedOperationException("no wire"))
     override def call(input: ProviderCall): Stream[ProviderEvent] = {
-      val callId = CallId("respond-call")
-      Stream.emits(List(
-        ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(callId,
-          RespondInput(topicLabel = "Test", topicSummary = "Test summary", content = "Done.", endsTurn = true)),
-        ProviderEvent.Done(StopReason.Complete)
-      ))
-    }
-  }
-
-  /** Provider that calls `no_response` then Done. Negative case —
-    * `no_response` counts as user-visible terminal so no synthesis. */
-  private class NoResponseProvider extends Provider {
-    override def `type`: ProviderType = ProviderType.LlamaCpp
-    override def models: List[_root_.sigil.db.Model] = Nil
-    override protected def sigil: _root_.sigil.Sigil = TestSigil
-    override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
-      Task.error(new UnsupportedOperationException("no wire"))
-    override def call(input: ProviderCall): Stream[ProviderEvent] = {
-      val callId = CallId("noresp-call")
-      Stream.emits(List(
-        ProviderEvent.ToolCallStart(callId, NoResponseTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(callId, NoResponseInput()),
-        ProviderEvent.Done(StopReason.Complete)
-      ))
+      // Skip classifier subcalls (no respond in tool roster).
+      val isPrimary = input.tools.exists(_.name.value == "respond")
+      if (!isPrimary) return Stream.empty
+      callCount.incrementAndGet() match {
+        case 1 =>
+          // First call: silent (no tool calls, no content).
+          Stream.emit(ProviderEvent.Done(StopReason.Complete))
+        case _ =>
+          // Forced iteration: produce a real respond.
+          val callId = CallId("respond-forced")
+          Stream.emits(List(
+            ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
+            ProviderEvent.ToolCallComplete(callId,
+              RespondInput(topicLabel = "Test", topicSummary = "Forced reply", content = "Forced reply.", endsTurn = true)),
+            ProviderEvent.Done(StopReason.Complete)
+          ))
+      }
     }
   }
 
@@ -124,12 +94,8 @@ class OrchestratorSilentTurnSpec extends AsyncWordSpec with AsyncTaskSpec with M
       .startUnit()
 
     for {
-      _ <- Task.sleep(100.millis) // give the subscriber a moment to attach
+      _ <- Task.sleep(100.millis)
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-      // Trigger the agent loop by publishing a user Message in the
-      // conversation. `publish` runs the agent dispatch (claim → run
-      // → release), so by the time we sleep below the loop has
-      // settled.
       _ <- TestSigil.publish(Message(
              participantId  = TestUser,
              conversationId = convId,
@@ -137,53 +103,38 @@ class OrchestratorSilentTurnSpec extends AsyncWordSpec with AsyncTaskSpec with M
              content        = Vector(ResponseContent.Text("hi")),
              state          = EventState.Complete
            ))
-      // The agent loop runs on a background fiber. Wait for it to
-      // settle — local fake provider is fast, 800ms is plenty.
-      _ <- Task.sleep(800.millis)
+      _ <- Task.sleep(1500.millis)
     } yield {
       running.set(false)
       recorded.iterator().asScala.toList
     }
   }
 
-  "Sigil.runAgentLoop (bug #46)" should {
-    "synthesize a placeholder Message when the loop ends without a user-visible terminal tool" in {
-      runScenario(new SilentlyCompletingProvider, suffix = "silent").map { signals =>
-        val agentMessages = signals.collect {
-          case m: Message if m.participantId == TestAgent => m
-        }
-        val placeholder = agentMessages.find(_.content.exists {
-          case ResponseContent.Text(t) => t.contains("without a reply")
-          case _                       => false
-        })
-        placeholder should not be empty
-        placeholder.get.state shouldBe EventState.Complete
-      }
-    }
+  "Sigil.runAgentLoop silent-turn recovery" should {
 
-    "not synthesize a placeholder when the agent called respond" in {
-      runScenario(new RespondingProvider, suffix = "responding").map { signals =>
-        val syntheticMessages = signals.collect {
-          case m: Message if m.participantId == TestAgent &&
-            m.content.exists {
-              case ResponseContent.Text(t) => t.contains("without a reply")
-              case _                       => false
-            } => m
+    "force a respond-family iteration when the first call is silent" in {
+      runScenario(new SilentThenRespondProvider, suffix = "force").map { signals =>
+        // The forced iteration produces a real respond → a Standard-role
+        // agent Message with the expected content.
+        val agentReplies = signals.collect {
+          case m: Message
+            if m.participantId == TestAgent &&
+              m.role == MessageRole.Standard &&
+              m.content.exists {
+                case ResponseContent.Text(t) => t.contains("Forced reply.")
+                case sigil.tool.model.ResponseContent.Markdown(t) => t.contains("Forced reply.")
+                case _ => false
+              } => m
         }
-        syntheticMessages shouldBe empty
-      }
-    }
-
-    "not synthesize a placeholder when the agent called no_response" in {
-      runScenario(new NoResponseProvider, suffix = "noresp").map { signals =>
-        val syntheticMessages = signals.collect {
-          case m: Message if m.participantId == TestAgent &&
-            m.content.exists {
+        agentReplies should not be empty
+        // No fake placeholder text leaks into the conversation.
+        signals.collect {
+          case m: Message
+            if m.content.exists {
               case ResponseContent.Text(t) => t.contains("without a reply")
-              case _                       => false
+              case _ => false
             } => m
-        }
-        syntheticMessages shouldBe empty
+        } shouldBe empty
       }
     }
   }
