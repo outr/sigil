@@ -3971,6 +3971,18 @@ trait Sigil {
           case Some(conv) => Task.pure(Some(conv))
           case None       => Task.pure(None)
         })).unit
+      case Some(cc: sigil.event.ComplexityChange) =>
+        // Sigil bug #177 — symmetric with ModeChange. The pin/unpin
+        // tools mutate `pinnedComplexity` themselves; this projection
+        // arm keeps the event the source of truth so future emitters
+        // (e.g. classifier-driven auto-escalation) flow through the
+        // same path without duplicating the conversation modify.
+        withDB(_.conversations.transaction(_.modify(cc.conversationId) {
+          case Some(conv) if conv.pinnedComplexity != cc.newTier =>
+            Task.pure(Some(conv.copy(pinnedComplexity = cc.newTier, modified = Timestamp(Nowish()))))
+          case Some(conv) => Task.pure(Some(conv))
+          case None       => Task.pure(None)
+        })).unit
       case Some(tc: TopicChange) =>
         applyTopicChangeToStack(tc)
       case Some(m: Message) =>
