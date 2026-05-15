@@ -70,6 +70,15 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   private def typed[T](events: List[sigil.event.Event])(using rw: RW[T]): T =
     rw.write(extractJson(events))
 
+  /** Extract the single Tool-role Failure Message from the events
+    * a tool emitted. Used for tests of `ToolResult.failure` cases. */
+  private def failureMessage(events: List[sigil.event.Event]): sigil.event.Message =
+    events.collectFirst {
+      case m: sigil.event.Message
+        if m.role == sigil.event.MessageRole.Tool &&
+          m.disposition.isInstanceOf[sigil.event.MessageDisposition.Failure] => m
+    }.getOrElse(fail(s"expected a Tool-role Failure Message; saw: ${events.map(_.getClass.getSimpleName).mkString(", ")}"))
+
   "WriteFileTool + ReadFileTool" should {
     "round-trip a file's contents" in withTempDir { (ctx, _) =>
       val tc = turnContext()
@@ -115,16 +124,35 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       }
     }
 
-    "reject ambiguous edits without replaceAll" in withTempDir { (ctx, _) =>
+    "reject ambiguous edits without replaceAll as a typed Failure (file unchanged)" in withTempDir { (ctx, _) =>
       val tc = turnContext()
       for {
         _      <- new WriteFileTool(ctx).execute(WriteFileInput("d.txt", "foo\nfoo"), tc).toList
         edited <- new EditFileTool(ctx).execute(EditFileInput("d.txt", "foo", "bar"), tc).toList
+        re     <- new ReadFileTool(ctx).execute(ReadFileInput("d.txt"), tc).toList
       } yield {
-        typed[EditFileOutput](edited) match {
-          case EditFileOutput.NotUnique(occ) => occ shouldBe 2
-          case other                         => fail(s"expected NotUnique, got $other")
-        }
+        val msg = failureMessage(edited)
+        msg.disposition shouldBe a[sigil.event.MessageDisposition.Failure]
+        val text = msg.content.collect { case ResponseContent.Text(t) => t }.mkString
+        text should include ("matched 2 times")
+        text should include ("replaceAll: true")
+        typed[ReadFileOutput](re).content shouldBe "foo\nfoo"
+      }
+    }
+
+    "surface a typed Failure when oldString doesn't match (file unchanged, bug #183)" in withTempDir { (ctx, _) =>
+      val tc = turnContext()
+      for {
+        _      <- new WriteFileTool(ctx).execute(WriteFileInput("nm.txt", "abcdef"), tc).toList
+        edited <- new EditFileTool(ctx).execute(EditFileInput("nm.txt", "xyz", "ZZZ"), tc).toList
+        re     <- new ReadFileTool(ctx).execute(ReadFileInput("nm.txt"), tc).toList
+      } yield {
+        val msg = failureMessage(edited)
+        val text = msg.content.collect { case ResponseContent.Text(t) => t }.mkString
+        text should include ("no match for `oldString`")
+        text should include ("Read the file again")
+        // File on disk is unchanged.
+        typed[ReadFileOutput](re).content shouldBe "abcdef"
       }
     }
 
@@ -150,7 +178,7 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       }
     }
 
-    "surface stale on safe-edit when expectedHash is wrong, leaving file unchanged" in withTempDir { (ctx, _) =>
+    "surface stale on safe-edit when expectedHash is wrong as a typed Failure (file unchanged)" in withTempDir { (ctx, _) =>
       val tc = turnContext()
       for {
         _      <- new WriteFileTool(ctx).execute(WriteFileInput("conflict.toml", "x = 1"), tc).toList
@@ -160,12 +188,10 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
                   ).toList
         re     <- new ReadFileTool(ctx).execute(ReadFileInput("conflict.toml"), tc).toList
       } yield {
-        typed[EditFileOutput](edited) match {
-          case EditFileOutput.Stale(currentHash, currentContent) =>
-            currentHash should not be empty
-            currentContent shouldBe "x = 1"
-          case other => fail(s"expected Stale, got $other")
-        }
+        val msg = failureMessage(edited)
+        val text = msg.content.collect { case ResponseContent.Text(t) => t }.mkString
+        text should include ("file changed since")
+        text should include ("Re-read the file")
         // File unchanged
         typed[ReadFileOutput](re).content shouldBe "x = 1"
       }
