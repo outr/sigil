@@ -22,8 +22,8 @@ final class GetWorkflowTool extends TypedTool[GetWorkflowInput](
   description =
     """Fetch a workflow template by id.
       |
-      |`workflowId` is the template's id (from `list_workflows` or `create_workflow`).
-      |Returns the full template — name, description, step list, triggers, variable defs.""".stripMargin,
+      |`workflowId` is the template's id. Returns the full template — name, description,
+      |step list, triggers, variable defs.""".stripMargin,
   examples = List(ToolExample("fetch by id", GetWorkflowInput(workflowId = "wf-abc"))),
   keywords = Set("workflow", "get", "describe")
 ) with WorkflowToolSupport {

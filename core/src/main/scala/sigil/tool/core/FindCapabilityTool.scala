@@ -17,17 +17,17 @@ case object FindCapabilityTool extends TypedTool[FindCapabilityInput](
   name = ToolName("find_capability"),
   description =
     """Search the capability catalog for a tool, mode, or skill that fits the user's task.
-      |Call when no listed mode obviously matches (otherwise call `change_mode("<name>")`
+      |Call when no listed mode obviously matches (otherwise switch to a matching mode
       |first — modes are pre-curated and more precise than a free-form search).
       |
       |Returns matches across every capability kind:
       |  - Tools — call the matched name directly on your next turn.
-      |  - Modes — match carries a `change_mode("name")` hint; call that to enter, then
-      |    the mode's tools and skill become active. Prefer mode entry when a Mode matches
+      |  - Modes — match carries a hint for switching mode; switch to enter, then the
+      |    mode's tools and skill become active. Prefer mode entry when a Mode matches
       |    the user's task — modes are designed end-to-end for their work shape.
       |
-      |Matches are valid for ONE next turn — act on a match (call the tool, or
-      |`change_mode` for a Mode) then, or they're cleared. If the search truly returns
+      |Matches are valid for ONE next turn — act on a match (call the tool, or switch
+      |mode for a Mode match) then, or they're cleared. If the search truly returns
       |nothing, only THEN may you tell the user it isn't available.
       |
       |`keywords` — space-separated lowercase terms describing the action SHAPE (verb +

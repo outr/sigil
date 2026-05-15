@@ -36,9 +36,8 @@ final class ApproveWorkflowTool extends TypedTool[ApproveWorkflowInput](
     """Approve a workflow run paused on an approval step.
       |
       |`runId` is the run id; `stepId` is the id of the waiting approval step (visible
-      |from `list_workflows` or the workflow's lifecycle Events). `comment` is optional
-      |free-form text — passed through as the resume payload so the workflow's branching
-      |can match on it.""".stripMargin,
+      |from the workflow's lifecycle Events). `comment` is optional free-form text —
+      |passed through as the resume payload so the workflow's branching can match on it.""".stripMargin,
   examples = List(
     ToolExample("Approve a pending review",
       ApproveWorkflowInput(runId = "run-abc", stepId = "review")),

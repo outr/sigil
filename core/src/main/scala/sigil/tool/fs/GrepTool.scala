@@ -22,12 +22,12 @@ import sigil.tool.{ToolExample, ToolName}
 final class GrepTool(context: FileSystemContext) extends PaginatedTool[GrepInput, GrepNode](
   name = ToolName("grep"),
   description =
-    """Search files under `path` for a regex pattern. `glob` optionally restricts the file set;
-      |`contextLines` adds surrounding-context lines to each match.
+    """Search files under `path` for a regex pattern. An optional file-set glob restricts the
+      |search; `contextLines` adds surrounding-context lines to each match.
       |
       |Returns a paginated tree: the top-level page lists files (one node per file with
-      |at least one match, with `matchCount`). Expand a file's matches with `next_page`
-      |against the file node's `_id` (carried in the prior page's `nodeIds`).""".stripMargin,
+      |at least one match, with `matchCount`). Expand a file's matches by walking the
+      |paginated tree against the file node's `_id` (carried in the prior page's `nodeIds`).""".stripMargin,
   examples = List(
     ToolExample("Find TODOs in Scala source", GrepInput(path = "src", pattern = "TODO", glob = Some("**/*.scala"))),
     ToolExample("Find function definition with context", GrepInput(path = ".", pattern = "def myFunction", contextLines = 2))

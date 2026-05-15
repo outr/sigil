@@ -54,8 +54,9 @@ case object ListMemoriesTool extends TypedTool[ListMemoriesInput](
       |- `limit`  — page size (default 25, max 100).
       |
       |Returns each memory's `key`, `label`, `summary`, token cost, `spaceId`, and
-      |`pinned`. Use `lookup(capabilityType="Memory", name=key)` to pull a full fact;
-      |use `pin_memory` / `unpin_memory` / `move_memory` / `forget_memory` to act.""".stripMargin,
+      |`pinned`. Use the lookup tool to pull a memory's full fact; use the
+      |memory-pinning / unpinning / moving / forgetting tools to act on individual
+      |entries.""".stripMargin,
   keywords = Set("list", "memories", "browse", "recall", "review", "all", "show")
 ) {
   override def resultTtl: Option[Int] = Some(0)

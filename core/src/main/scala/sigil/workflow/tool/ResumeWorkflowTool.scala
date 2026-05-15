@@ -30,7 +30,7 @@ final class ResumeWorkflowTool extends TypedTool[ResumeWorkflowInput](
     """Resume a workflow run paused on an approval / trigger step.
       |
       |`runId` is the run id; `stepId` is the id of the waiting step (visible from
-      |the workflow's lifecycle Events or `list_workflows`).
+      |the workflow's lifecycle Events).
       |`payload` (optional) is the chosen value — for approval steps, one of the
       |configured options.""".stripMargin,
   examples = List(

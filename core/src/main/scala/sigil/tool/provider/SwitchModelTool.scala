@@ -43,8 +43,8 @@ case object SwitchModelTool extends TypedTool[SwitchModelInput](
       |  - a saved strategy label or id — assigns that strategy
       |  - "auto" or "default" — reverts to the agent's pinned model
       |
-      |Ambiguous matches return a disambiguation list; pair with `respond_options` to surface
-      |the choices to the user.""".stripMargin,
+      |Ambiguous matches return a disambiguation list; surface the choices to the user via
+      |a structured-options reply.""".stripMargin,
   examples = List(
     ToolExample("Switch to a specific model", SwitchModelInput("anthropic/claude-opus-4-7")),
     ToolExample("Use a saved strategy by label", SwitchModelInput("Balanced")),

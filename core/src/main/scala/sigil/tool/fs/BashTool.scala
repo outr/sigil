@@ -21,7 +21,8 @@ final class BashTool(context: FileSystemContext) extends PaginatedTool[BashInput
   description =
     """Execute a shell command (via `bash -c`). Optional `workingDir` sets the cwd; `timeoutMs` defaults
       |to 120 s. Output paginates: stdout lines first (in arrival order), then stderr, then a single
-      |Exit row carrying the exit code. The first page lands inline; subsequent pages via `next_page`.""".stripMargin,
+      |Exit row carrying the exit code. The first page lands inline; subsequent pages walk via the
+      |framework's pagination tools.""".stripMargin,
   examples = List(
     ToolExample("List a directory", BashInput(command = "ls -la /tmp")),
     ToolExample("Run a build with custom timeout", BashInput(command = "cargo build --release", timeoutMs = Some(600000L)))

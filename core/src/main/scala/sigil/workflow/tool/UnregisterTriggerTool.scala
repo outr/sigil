@@ -29,8 +29,7 @@ final class UnregisterTriggerTool extends TypedTool[UnregisterTriggerInput](
     """Remove a trigger from a workflow template by its 0-based index.
       |
       |`workflowId` is the template id; `index` is the position in the template's
-      |`triggers` list (visible from `list_triggers`). Out-of-bounds indices are
-      |a clear error.""".stripMargin,
+      |`triggers` list. Out-of-bounds indices are a clear error.""".stripMargin,
   examples = List(
     ToolExample("remove the first trigger", UnregisterTriggerInput(workflowId = "wf-abc", index = 0))
   ),

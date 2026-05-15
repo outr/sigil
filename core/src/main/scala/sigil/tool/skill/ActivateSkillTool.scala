@@ -33,7 +33,7 @@ case object ActivateSkillTool extends TypedTool[ActivateSkillInput](
   name = ToolName("activate_skill"),
   description =
     """Activate a discovered Skill — a system-prompt overlay that specializes you for a focused
-      |task. Call this AFTER `find_capability` returned a Skill match; pass the match's `name`.
+      |task. Pass the skill's `name` (returned by capability discovery).
       |
       |The skill stays active until you activate a different one or the conversation changes
       |mode. On a mode change the framework archives your active skill under the outgoing

@@ -22,16 +22,17 @@ case object CurrentModelTool extends TypedOutputTool[CurrentModelInput, CurrentM
   description =
     """Report the model and strategy currently in effect for this conversation.
       |Returns:
-      |  - `pinned` — set when `pin_model` is active; otherwise null.
+      |  - `pinned` — set when a specific model is pinned for this conversation;
+      |    otherwise null.
       |  - `assignedStrategy` — saved strategy assigned to this conversation's
-      |    space (from `switch_model` or `assignProviderStrategy`); null if none.
+      |    space; null if none.
       |  - `lastUsed` — the model that produced the most recent agent Message in
       |    this conversation; null for fresh conversations.
       |  - `resolved` — the model dispatch would pick on the next turn after the
       |    pin / strategy / fallback chain.
       |
       |Use when you need to tell the user which model is in effect, or to resolve
-      |"the current model" / "this model" before calling pin_model / switch_model.""".stripMargin,
+      |"the current model" / "this model" before changing model selection.""".stripMargin,
   keywords = Set(
     "current", "active", "running", "model", "what", "which",
     "now", "introspect", "in", "use", "this"

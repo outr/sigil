@@ -20,9 +20,10 @@ final class ProcessSpawnTool(registry: ProcessRegistry)
     name = ToolName("process_spawn"),
     description =
       """Fork a subprocess and detach — call returns immediately with `{handle, pid, startedAt}`.
-        |Use `process_output` to read accumulated stdout/stderr; `process_signal` to terminate.
-        |Optional `workingDir` overrides the conversation workspace; `env` extra env vars; `stdin`
-        |is piped to the child once (the child sees EOF).""".stripMargin,
+        |Read accumulated stdout/stderr or signal the child through the matching process
+        |output / signal tools paired by `handle`. Optional `workingDir` overrides the
+        |conversation workspace; `env` extra env vars; `stdin` is piped to the child once
+        |(the child sees EOF).""".stripMargin,
     examples = List(
       ToolExample("Start tsc --watch",   ProcessSpawnInput(command = "tsc --watch --noEmit")),
       ToolExample("Start a dev server",   ProcessSpawnInput(command = "npm run dev")),
