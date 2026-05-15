@@ -1,7 +1,7 @@
 package sigil.signal
 
 import fabric.rw.*
-import sigil.event.{AgentState, CapabilityResults, Event, Message, ModeChange, ProgressCheckpoint, Reaction, Reasoning, ReadState, RouteResolved, Stop, TopicChange, ToolApproval, ToolInvoke, ToolLog, ToolResults}
+import sigil.event.{AgentState, CapabilityResults, ComplexityChange, Event, Message, ModeChange, ProgressCheckpoint, Reaction, Reasoning, ReadState, RouteResolved, Stop, TopicChange, ToolApproval, ToolInvoke, ToolLog, ToolResults}
 
 /**
  * The framework's built-in Signal subtypes, split into typed sublists so
@@ -37,7 +37,8 @@ object CoreSignals {
     summon[RW[ToolLog]],
     summon[RW[ToolApproval]],
     summon[RW[ProgressCheckpoint]],
-    summon[RW[RouteResolved]]
+    summon[RW[RouteResolved]],
+    summon[RW[ComplexityChange]]
   )
 
   val deltas: List[RW[? <: Delta]] = List(
