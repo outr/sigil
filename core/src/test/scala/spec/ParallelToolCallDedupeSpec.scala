@@ -113,16 +113,19 @@ class ParallelToolCallDedupeSpec extends AsyncWordSpec with AsyncTaskSpec with M
         invokes should have size 2
 
         // Tool-role results paired to BOTH invokes — wire pairing
-        // satisfied. One real execution result + one dedup pointer.
+        // satisfied. Both should carry inlined content from the
+        // original execution, NOT a "see that result" pointer text.
         val toolMessages = signals.collect {
           case m: Message if m.role == MessageRole.Tool => m
         }
         toolMessages.size should be >= 2
 
-        val dupePointer = toolMessages.find(_.content.collect {
-          case ResponseContent.Text(t) => t
-        }.mkString.contains("deduplicated"))
-        dupePointer should not be empty
+        val rendered = toolMessages.flatMap(_.content).collect { case ResponseContent.Text(t) => t }
+        // The genuine result text appears at least once (the original execution).
+        rendered.exists(_.contains("ran with hedged")) shouldBe true
+        // No call_id reference text leaks into the agent's context.
+        all(rendered) should not include "see that result"
+        all(rendered) should not include "(deduplicated:"
       }
     }
   }

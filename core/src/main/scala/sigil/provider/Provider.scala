@@ -991,21 +991,22 @@ trait Provider {
     // but providers reject bare `tool_calls` in the request, so we
     // ensure every dangling pending id has SOMETHING.
     //
-    // Bug #67 — the placeholder text is intentionally diagnostic
-    // rather than blandly true ("no result recorded" tells the agent
-    // nothing about why). When this fallback fires it means the
-    // tool's `executeTyped` returned a stream that didn't include any
-    // `MessageRole.Tool`-shaped event for this call_id — typically a
-    // sync throw escaping the tool's `handleError` (the bug shape
-    // #67 fixes for the script tools). The text frames it as a
-    // framework-level miss so the agent doesn't blame its own input.
+    // Use a recoverable, user-facing failure message rather than a
+    // developer-facing diagnostic. The agent is the reader here, not
+    // a human bug-reporter; "please report it" leaks framework noise
+    // into the model's context and confuses recovery. Log the
+    // developer-side detail via scribe instead.
     pendingToolCallIds.foreach { callId =>
+      scribe.warn(
+        s"orchestrator: tool produced no MessageRole.Tool event for call_id=$callId — " +
+          "likely a sync throw escaping the tool's executeTyped handleError. " +
+          "Synthesizing a recoverable-failure placeholder so the wire stays well-formed."
+      )
       out += ProviderMessage.ToolResult(
         toolCallId = callId,
         content =
-          "(framework error: tool emitted no MessageRole.Tool event for this call_id; " +
-            "this is a bug in the tool's executeTyped — usually a sync throw escaping " +
-            "its handleError. Please report it.)"
+          "The previous tool call did not return a result. This was likely a transient " +
+            "internal error. Retry the call, refine its arguments, or use a different approach."
       )
     }
 

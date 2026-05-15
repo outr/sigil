@@ -220,6 +220,15 @@ object Orchestrator {
       * for every call_id; the underlying execution happens once. */
     val dispatchedKeys: scala.collection.mutable.Map[String, lightdb.id.Id[Event]] =
       scala.collection.mutable.Map.empty
+
+    /** Tool-role result content keyed by the originating ToolInvoke id.
+      * Populated as Tool-role Messages flow through `tracked.evalMap`
+      * so a subsequent duplicate dispatch can inline the original
+      * result into its own paired Tool-role Message rather than
+      * pointing the agent at a `call_id` reference it can't
+      * dereference from inside its prompt. */
+    val dispatchedResultContent: scala.collection.mutable.Map[lightdb.id.Id[Event], Vector[ResponseContent]] =
+      scala.collection.mutable.Map.empty
   }
 
   private def translate(event: ProviderEvent,
@@ -480,15 +489,29 @@ object Orchestrator {
               val argsKey = canonicalArgsKey(toolName, input)
               state.dispatchedKeys.get(argsKey) match {
                 case Some(firstInvokeId) =>
+                  // Inline the original call's result content into the
+                  // duplicate's paired Tool-role Message. Pointing the
+                  // agent at another call_id ("see that result") is a
+                  // dangling reference: the agent's frame projection
+                  // surfaces this message as the entire result for the
+                  // duplicate invoke, and the agent has no way to
+                  // dereference the call_id from inside its own prompt.
+                  // Falls back to a brief note when the original result
+                  // hasn't been observed yet — should be rare since the
+                  // first dispatch's stream is fully consumed before the
+                  // duplicate's translate runs.
+                  val inlinedContent = state.dispatchedResultContent.get(firstInvokeId)
+                    .filter(_.nonEmpty)
+                    .getOrElse(Vector(ResponseContent.Text(
+                      s"This is a duplicate `$toolName` call with identical arguments to an earlier " +
+                        "call in the same completion. The original call ran successfully; reuse its result."
+                    )))
                   val dupeMsg = Message(
                     participantId  = caller,
                     conversationId = convId,
                     topicId        = topicId,
                     role           = MessageRole.Tool,
-                    content        = Vector(ResponseContent.Text(
-                      s"(deduplicated: identical `$toolName` call already dispatched in this completion " +
-                        s"as ${firstInvokeId.value}; see that result)"
-                    )),
+                    content        = inlinedContent,
                     state          = EventState.Complete,
                     visibility     = MessageVisibility.Agents,
                     origin         = Some(invokeId)
@@ -585,6 +608,18 @@ object Orchestrator {
                 sig match {
                   case m: Message if m.role != MessageRole.Tool =>
                     Task { state.lastUserVisibleMessageId = Some(m._id); sig }
+                  case m: Message if m.role == MessageRole.Tool && m.origin.contains(invokeId) =>
+                    Task {
+                      state.dispatchedResultContent(invokeId) = m.content
+                      sig
+                    }
+                  case tr: _root_.sigil.event.ToolResults if tr.origin.contains(invokeId) =>
+                    Task {
+                      val rendered = tr.summary.orElse(tr.typed.map(j => fabric.io.JsonFormatter.Default(j))).getOrElse("")
+                      if (rendered.nonEmpty)
+                        state.dispatchedResultContent(invokeId) = Vector(ResponseContent.Text(rendered))
+                      sig
+                    }
                   case _ =>
                     Task.pure(sig)
                 }
