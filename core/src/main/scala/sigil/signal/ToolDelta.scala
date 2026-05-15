@@ -4,6 +4,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import sigil.conversation.Conversation
 import sigil.event.Event
+import sigil.provider.TokenUsage
 
 /**
  * A transient update to an active [[sigil.event.ToolInvoke]]. Carries the
@@ -29,19 +30,28 @@ case class ToolDelta(target: Id[Event],
                        * own flag, so client UIs that filter the chip
                        * lifecycle have a stable signal across both events.
                        * Bug #56. */
-                     internal: Boolean = false)
+                     internal: Boolean = false,
+                     /** Trailing-usage attribution. The provider's
+                       * [[sigil.provider.ProviderEvent.Usage]] event lands on
+                       * the invoke when no user-visible Message exists to
+                       * carry it (tool-call-only turns: change_mode,
+                       * cancel, find_capability, …). Cost projection picks
+                       * it up off the persisted `ToolInvoke.usage` field
+                       * combined with `ToolInvoke.modelId`. */
+                     usage: Option[TokenUsage] = None)
   extends Delta derives RW {
 
   /**
-   * Apply this delta to a [[sigil.event.ToolInvoke]]. Sets `input` (the parsed args) and
-   * `state` from any present fields. Returns `target` unchanged if it isn't a
-   * `ToolInvoke`.
+   * Apply this delta to a [[sigil.event.ToolInvoke]]. Sets `input` (the parsed args),
+   * `state`, and `usage` from any present fields. Returns `target` unchanged if it
+   * isn't a `ToolInvoke`.
    */
   override def apply(target: Event): Event = target match {
     case t: sigil.event.ToolInvoke =>
       val nextInput = input.orElse(t.input)
       val nextState = state.getOrElse(t.state)
-      t.copy(input = nextInput, state = nextState)
+      val nextUsage = usage.getOrElse(t.usage)
+      t.copy(input = nextInput, state = nextState, usage = nextUsage)
     case other => other
   }
 }

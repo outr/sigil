@@ -22,7 +22,7 @@ import sigil.transport.SignalTransport
 import java.nio.file.Path
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import sigil.tool.consult.{ConsultTool, TopicClassifierTool}
-import sigil.provider.GenerationSettings
+import sigil.provider.{GenerationSettings, TokenUsage}
 import sigil.db.{DefaultSigilDB, Model, SigilDB}
 import sigil.dispatcher.{StopFlag, TriggerFilter}
 import sigil.event.{AgentState, CapabilityResults, Event, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, ToolResults, TopicChange, TopicChangeKind}
@@ -3986,36 +3986,45 @@ trait Sigil {
       case Some(tc: TopicChange) =>
         applyTopicChangeToStack(tc)
       case Some(m: Message) =>
-        applyMessageCostToConversation(m)
+        applyEventCostToConversation(m.conversationId, m.modelId, m.usage)
+      case Some(t: ToolInvoke) =>
+        // For tool-call-only turns (change_mode, cancel, find_capability,
+        // …) the per-turn usage attaches to the ToolInvoke via
+        // [[sigil.signal.ToolDelta]]. Cost projection picks it up off
+        // the same `modelId × usage` pair that drives the Message path.
+        applyEventCostToConversation(t.conversationId, t.modelId, t.usage)
       case _ => Task.unit
     }
   }
 
-  /** Increment [[Conversation.cost]] for a settled [[Message]] whose
-    * `modelId` is known to the [[sigil.cache.ModelRegistry]].
+  /** Increment [[Conversation.cost]] for a settled cost-bearing event
+    * (either a [[Message]] or a [[ToolInvoke]]) whose `modelId` is
+    * known to the [[sigil.cache.ModelRegistry]].
     *
-    * Math: per-token pricing × token counts (USD). Cache miss or
-    * `modelId = None` → no-op (the Message contributes zero). On a
-    * non-zero delta, publishes a
-    * [[sigil.signal.ConversationCostUpdated]] Notice carrying the new
-    * running total + the per-Message delta. */
-  private final def applyMessageCostToConversation(m: Message): Task[Unit] = {
-    // Bug #91 — `findTolerant` lets a Message stamped with a bare id
+    * Math: per-token pricing × token counts (USD). Cache miss,
+    * `modelId = None`, or zero usage → no-op. On a non-zero delta,
+    * publishes a [[sigil.signal.ConversationCostUpdated]] Notice
+    * carrying the new running total + the per-event delta. */
+  private final def applyEventCostToConversation(
+    conversationId: Id[Conversation],
+    modelId: Option[Id[Model]],
+    usage: TokenUsage
+  ): Task[Unit] = {
+    // Bug #91 — `findTolerant` lets an event stamped with a bare id
     // (`gpt-5.5`) match a registry entry indexed by its prefixed id
     // (`openai/gpt-5.5`). Without it, every cost projection on a
-    // bare-id Message silently misses and the conversation's running
+    // bare-id event silently misses and the conversation's running
     // total stays at zero.
-    val deltaOpt: Option[BigDecimal] = m.modelId.flatMap { mid =>
+    val deltaOpt: Option[BigDecimal] = modelId.flatMap { mid =>
       cache.findTolerant(mid).map { model =>
         val pricing = model.pricing
-        val u = m.usage
-        pricing.prompt * u.promptTokens + pricing.completion * u.completionTokens
+        pricing.prompt * usage.promptTokens + pricing.completion * usage.completionTokens
       }
     }.filter(_ > 0)
     deltaOpt match {
       case None => Task.unit
       case Some(delta) =>
-        withDB(_.conversations.transaction(_.modify(m.conversationId) {
+        withDB(_.conversations.transaction(_.modify(conversationId) {
           case None => Task.pure(None)
           case Some(conv) =>
             Task.pure(Some(conv.copy(cost = conv.cost + delta, modified = Timestamp(Nowish()))))
