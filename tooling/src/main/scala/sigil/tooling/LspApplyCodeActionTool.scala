@@ -41,7 +41,11 @@ final class LspApplyCodeActionTool(val manager: LspManager) extends TypedOutputT
       |`languageId` + `filePath` identify the cached action set.
       |`index` is the 0-based position in the prior listing.
       |Returns one of `Applied` / `CommandExecuted` / `Failed` / `CacheEmpty` / `OutOfRange`.""".stripMargin,
-  keywords = Set("lsp", "apply", "fix", "refactor", "code action", "execute fix"),
+  keywords = Set(
+    "lsp", "apply", "fix", "quickfix", "refactor", "refactoring", "code action", "execute fix",
+    "extract method", "extract variable", "organize imports", "missing imports",
+    "modify", "change", "transform"
+  ),
   examples = List(
     ToolExample(
       "apply the first available action",
