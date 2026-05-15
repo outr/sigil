@@ -37,7 +37,15 @@ import sigil.participant.Participant
  */
 object TriggerFilter {
   def isTriggerFor(p: Participant, e: Event): Boolean = e match {
-    case e if e.role == MessageRole.Tool                                     => true
+    // Agent's own EMPTY Tool-role Messages are pairing bookkeeping
+    // (atomic respond synthesis, dedup pointers). Non-empty Tool-role
+    // Messages from self (refusal challenge, validator errors,
+    // orphan-settle failures with diagnostic content) ARE actionable
+    // and SHOULD trigger the next iteration so the agent reads the
+    // diagnostic and recovers.
+    case m: Message
+      if m.role == MessageRole.Tool && m.participantId == p.id && m.content.isEmpty => false
+    case e if e.role == MessageRole.Tool                              => true
     case _: AgentState                                                => false
     case _: Stop                                                      => false
     case m: Message if m.participantId == p.id                        => false

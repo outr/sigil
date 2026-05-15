@@ -165,12 +165,10 @@ class StallInterventionForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskS
         directives should not be empty
         directives.head.visibility shouldBe MessageVisibility.Agents
 
-        // The provider got a Specific(respond) pin at some point —
-        // proves the forced-synthesis turn ran.
-        val forcedChoices = provider.toolChoices.get().collect {
-          case s: ToolChoice.Specific => s.toolName.value
-        }
-        forcedChoices should contain (RespondTool.schema.name.value)
+        // The forced-synthesis turn ran — provider saw tool_choice:
+        // required with the tool roster filtered to the respond family.
+        val seenChoices = provider.toolChoices.get().toList
+        seenChoices should contain (ToolChoice.Required)
 
         // Forced-synthesis emitted a Standard-role respond from the agent.
         val agentReplies = convEvs.collect {

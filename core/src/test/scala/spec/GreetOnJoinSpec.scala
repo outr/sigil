@@ -234,7 +234,17 @@ private object NoOpStubProvider extends Provider {
     Task.error(new UnsupportedOperationException("NoOpStubProvider"))
 
   override def call(input: ProviderCall): Stream[ProviderEvent] = {
+    // Skip classifier subcalls (no `respond` in the tool roster).
+    val isPrimary = input.tools.exists(_.name.value == "respond")
+    if (!isPrimary) return Stream.empty
     callCount.incrementAndGet()
-    Stream.emit(ProviderEvent.Done(StopReason.Complete))
+    val callId = _root_.sigil.provider.CallId(s"noop-call-${callCount.get()}")
+    Stream.emits(List(
+      ProviderEvent.ToolCallStart(callId, _root_.sigil.tool.core.RespondTool.schema.name.value),
+      ProviderEvent.ToolCallComplete(callId, _root_.sigil.tool.model.RespondInput(
+        topicLabel = "Greeting", topicSummary = "Greeting", content = "Hi.", endsTurn = true
+      )),
+      ProviderEvent.Done(StopReason.Complete)
+    ))
   }
 }

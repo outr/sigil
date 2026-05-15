@@ -5123,13 +5123,13 @@ trait Sigil {
                 .evalTap {
                   case ti: ToolInvoke if Orchestrator.UserVisibleTerminalTools.contains(ti.toolName.value) =>
                     Task { activeUserVisibleInvokes.put(ti._id, ti.toolName.value); () }
-                  // ANY agent-emitted Standard-role Message counts as a
-                  // user-visible reply for the silent-turn check —
-                  // covers the orchestrator's no-tool-call placeholder
-                  // path that lands a Message without going through a
-                  // user-visible-terminal-tool's ToolDelta settle.
+                  // Silent-turn placeholder emitted by the orchestrator
+                  // when Usage arrives with no target. Marked via
+                  // `source = "orchestrator-silent-turn"` so the loop
+                  // recognises it as a user-visible reply without
+                  // matching every agent Standard Message.
                   case m: sigil.event.Message
-                    if m.role == sigil.event.MessageRole.Standard && m.participantId == agent.id =>
+                    if m.source.contains("orchestrator-silent-turn") && m.participantId == agent.id =>
                     Task { userVisibleSeen.set(true); () }
                   case td: ToolDelta if td.state.contains(EventState.Complete)
                                      && activeUserVisibleInvokes.containsKey(td.target) =>
@@ -5164,7 +5164,7 @@ trait Sigil {
           // else — a Stop that fired mid-stream means exit now, don't
           // continue looping even if there are new triggers.
           if (stopFlag.exists(_.requested))
-            ensureSilentTurnReply(agent, convId, userVisibleSeen).flatMap(_ => terminate())
+            terminate()
           else if (forceResponseSynthesis) {
             // Sigil bug #125 — the cap-hit soft-stop ran. With
             // `tool_choice: respond` the model SHOULD have called
@@ -5350,14 +5350,42 @@ trait Sigil {
               // (very weak / non-instruction-following local models, or
               // a buggy provider). Soft path exhausted — surface the hard
               // failure so the calling fiber's error boundary logs it.
-              ensureSilentTurnReply(agent, convId, userVisibleSeen).flatMap(_ =>
+              terminate().flatMap(_ =>
+                Task.error(new AgentRunawayException(
+                  s"Agent ${agent.id.value} hit maxAgentIterations ($maxAgentIterations) " +
+                    s"in conversation ${conv._id.value} AND the forced-synthesis turn also " +
+                    s"failed to call `respond`. Check LLM behavior or raise the cap.")))
+            case false =>
+              // No more triggers to chase, no continue requested. If the
+              // agent already spoke this turn we're done. Otherwise the
+              // turn ended silently — instead of synthesizing a
+              // placeholder Message, force ONE more iteration with
+              // tool_choice restricted to the respond family so the
+              // model MUST emit a real reply (respond / respond_options /
+              // respond_field / respond_failure / respond_card / respond_cards
+              // / no_response). If THAT iteration also fails to call
+              // respond, the `case true if forceResponseSynthesis` branch
+              // above raises AgentRunawayException — model is broken,
+              // surface the hard failure instead of papering over it
+              // with a fake "(agent completed without a reply)" Message.
+              if (userVisibleSeen.get()) terminate()
+              else if (forceResponseSynthesis)
                 terminate().flatMap(_ =>
                   Task.error(new AgentRunawayException(
-                    s"Agent ${agent.id.value} hit maxAgentIterations ($maxAgentIterations) " +
-                      s"in conversation ${conv._id.value} AND the forced-synthesis turn also " +
-                      s"failed to call `respond`. Check LLM behavior or raise the cap."))))
-            case false =>
-              ensureSilentTurnReply(agent, convId, userVisibleSeen).flatMap(_ => terminate())
+                    s"Agent ${agent.id.value} silent in ${conv._id.value} even after a forced respond-family turn. " +
+                      "Check LLM behavior — the model isn't following tool_choice: required.")))
+              else
+                runAgentLoop(
+                  agent                  = agent,
+                  convId                 = convId,
+                  claimed                = claimed,
+                  iteration              = iteration + 1,
+                  sinceTimestamp         = thisIterationStart,
+                  greeting               = false,
+                  userVisibleSeen        = userVisibleSeen,
+                  turnExtractorFired     = turnExtractorFired,
+                  forceResponseSynthesis = true
+                )
             }
           }
         }
@@ -5749,54 +5777,6 @@ trait Sigil {
             role           = MessageRole.Standard
           )).map(_ => ())
       }
-    }
-
-  /** Synthesize a placeholder Message when the agent loop terminates
-    * without ever calling a user-visible terminal tool (`respond`,
-    * `respond_options`, `respond_field`, `respond_failure`,
-    * `no_response`). Otherwise the chat goes silent after a chain of
-    * tool calls and the user is stuck — bug #46.
-    *
-    * Idempotent — caller can invoke from any terminal branch
-    * (no-more-triggers, max-iterations, stop-requested) without
-    * worrying about double-emission, because the `userVisibleSeen`
-    * flag is loop-scoped and not mutated after this. */
-  private final def ensureSilentTurnReply(agent: AgentParticipant,
-                                          convId: Id[Conversation],
-                                          userVisibleSeen: java.util.concurrent.atomic.AtomicBoolean): Task[Unit] =
-    if (userVisibleSeen.get()) Task.unit
-    else withDB(_.conversations.transaction(_.get(convId))).flatMap {
-      case None => Task.unit
-      case Some(conv) =>
-        // No-topic conversations are a degenerate state — skip rather
-        // than fabricate a topic id. Caller's release path handles
-        // the rest of the cleanup.
-        conv.topics.headOption match {
-          case None        => Task.unit
-          case Some(topic) =>
-            // Recover the model that actually ran this turn — the most
-            // recent RouteResolved's `chosenModelId` — so the placeholder
-            // attributes its content to the right model rather than the
-            // agent's static default.
-            withDB(_.events.transaction(_.list)).map { evs =>
-              evs.reverseIterator
-                .collectFirst {
-                  case rr: sigil.event.RouteResolved
-                    if rr.conversationId == convId => rr.chosenModelId
-                }
-                .getOrElse(agent.modelId)
-            }.flatMap { resolvedModelId =>
-              publish(Message(
-                participantId  = agent.id,
-                conversationId = convId,
-                topicId        = topic.id,
-                content        = Vector(sigil.tool.model.ResponseContent.Text("(agent completed without a reply)")),
-                disposition    = sigil.event.MessageDisposition.Failure(recoverable = true),
-                state          = EventState.Complete,
-                modelId        = Some(resolvedModelId)
-              )).map(_ => ())
-            }
-        }
     }
 
   /** Clear the `suggestedTools` overlay at loop release. Sigil bug

@@ -115,7 +115,7 @@ class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
         toolMessages should have size 1
         val msg = toolMessages.head
         msg.disposition shouldBe a [MessageDisposition.Failure]
-        msg.failureReason.getOrElse("") should include ("emitted no result")
+        msg.failureReason.getOrElse("") should include ("failed internally")
         msg.failureReason.getOrElse("") should include ("silent_tool")
       }
     }

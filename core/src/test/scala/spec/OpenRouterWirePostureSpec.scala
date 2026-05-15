@@ -92,15 +92,24 @@ class OpenRouterWirePostureSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       }
     }
 
-    "emit function-form tool_choice for ToolChoice.Specific (forced response synthesis)" in {
+    "emit tool_choice: required with the tool roster filtered to the respond family (forced response synthesis)" in {
       bodyOf(provider, modelId, forced = true).map { body =>
         val bodyObj = body.asObj.value
         bodyObj.contains("response_format") shouldBe false
-        val tc = body("tool_choice").asObj.value
-        tc("type").asString shouldBe "function"
-        // ConversationRequest's forceResponseSynthesis substitutes
-        // ToolChoice.Specific(RespondTool.name) under the hood.
-        tc("function").asObj.value("name").asString shouldBe "respond"
+        // Force now filters c.tools to the atomic-content (respond)
+        // family and uses tool_choice: required — the model picks one
+        // of respond / respond_options / respond_field / respond_failure
+        // / respond_card / respond_cards / no_response.
+        body("tool_choice").asString shouldBe "required"
+        val toolNames = body("tools").asVector
+          .map(_.asObj.value("function").asObj.value("name").asString)
+        // Every offered tool is in the atomic-content family.
+        val respondFamily = Set(
+          "respond", "respond_options", "respond_field", "respond_failure",
+          "respond_card", "respond_cards", "no_response"
+        )
+        toolNames.foreach(n => respondFamily should contain (n))
+        succeed
       }
     }
 
