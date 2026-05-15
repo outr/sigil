@@ -5766,21 +5766,28 @@ trait Sigil {
         conv.topics.headOption match {
           case None        => Task.unit
           case Some(topic) =>
-            // Bug #55 — stamp the agent's `modelId` so the synthetic
-            // placeholder carries the same metadata shape as real
-            // agent Messages. Without this, the per-message metadata
-            // strip on the consumer side falls back to "timestamp
-            // only" for tool-call-only iterations that ran out of
-            // triggers without producing a `respond`-family terminal
-            // call.
-            publish(Message(
-              participantId  = agent.id,
-              conversationId = convId,
-              topicId        = topic.id,
-              content        = Vector(sigil.tool.model.ResponseContent.Text("(agent completed without a reply)")),
-              state          = EventState.Complete,
-              modelId        = Some(agent.modelId)
-            )).map(_ => ())
+            // Recover the model that actually ran this turn — the most
+            // recent RouteResolved's `chosenModelId` — so the placeholder
+            // attributes its content to the right model rather than the
+            // agent's static default.
+            withDB(_.events.transaction(_.list)).map { evs =>
+              evs.reverseIterator
+                .collectFirst {
+                  case rr: sigil.event.RouteResolved
+                    if rr.conversationId == convId => rr.chosenModelId
+                }
+                .getOrElse(agent.modelId)
+            }.flatMap { resolvedModelId =>
+              publish(Message(
+                participantId  = agent.id,
+                conversationId = convId,
+                topicId        = topic.id,
+                content        = Vector(sigil.tool.model.ResponseContent.Text("(agent completed without a reply)")),
+                disposition    = sigil.event.MessageDisposition.Failure(recoverable = true),
+                state          = EventState.Complete,
+                modelId        = Some(resolvedModelId)
+              )).map(_ => ())
+            }
         }
     }
 

@@ -662,7 +662,15 @@ object OpenAIChatCompletions {
     }
 
     json.get("usage").foreach { u =>
-      if (!u.isNull) events += ProviderEvent.Usage(parseUsage(u))
+      if (!u.isNull) {
+        val parsed = parseUsage(u)
+        // Track the latest usage block so flushDone can detect a
+        // no-finish-reason / no-content / no-tool-call degenerate-
+        // completion (completion_tokens burned with no useful output)
+        // and throw a typed exception the strategy can route around.
+        state.lastUsage = Some(parsed)
+        events += ProviderEvent.Usage(parsed)
+      }
     }
 
     events.result()
@@ -696,16 +704,21 @@ object OpenAIChatCompletions {
       * comply (safety / policy). The framework treats refusal as a
       * candidate-level failure: throw at stream close so the
       * strategy can route to another candidate (the typed exception
-      * classifies as Fallthrough via H5). Sigil audit H3. */
+      * classifies as Fallthrough). */
     val refusalBuf: StringBuilder = new StringBuilder
 
     /** Tracks whether the stream emitted any TextDelta with non-empty
       * text OR a tool-call Start event. `reasoning_content` deltas
       * (ThinkingDelta) do NOT flip this — a stream of pure reasoning
       * with no content/tool emissions IS the no-useful-output failure
-      * mode the empty-budget-burn detection (sigil bug #161)
-      * surfaces. */
+      * mode the empty-budget-burn detection surfaces. */
     var hasUsefulOutput: Boolean = false
+
+    /** Latest `usage` block observed in the stream. Captured so
+      * [[flushDone]] can detect a degenerate-empty completion shape
+      * (the model burned `completion_tokens` but emitted no content,
+      * no reasoning, no tool calls, and no `finish_reason`). */
+    var lastUsage: Option[sigil.provider.TokenUsage] = None
 
     def flushDone(config: Config): Vector[ProviderEvent] = pendingDone match {
       case Some(sr) =>
@@ -730,7 +743,26 @@ object OpenAIChatCompletions {
           )
         }
         Vector(ProviderEvent.Done(sr))
-      case None     => Vector.empty
+      case None =>
+        // No finish_reason observed but the stream is closing. If the
+        // model burned completion_tokens without emitting any useful
+        // output, treat it as a degenerate completion — symmetric with
+        // the `length`-finish empty-budget-burn detection above but
+        // for the no-finish-reason flavor. Throw a typed exception so
+        // ProviderStrategy can route around it; the typed dispatch
+        // classifies as Fallthrough.
+        if (config.emptyBudgetBurnThrows && !hasUsefulOutput &&
+            lastUsage.exists(_.completionTokens > 0)) {
+          val burned = lastUsage.map(_.completionTokens).getOrElse(0)
+          throw new ProviderStreamException(
+            providerKey = config.providerNamespace,
+            code        = 200,
+            typ         = "empty_completion",
+            message_    = s"${config.providerName} closed the stream after burning $burned completion tokens " +
+              "without emitting any content, reasoning, tool calls, or a finish_reason."
+          )
+        }
+        Vector.empty
     }
   }
 
