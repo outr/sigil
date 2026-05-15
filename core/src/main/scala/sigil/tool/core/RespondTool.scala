@@ -35,9 +35,10 @@ case object RespondTool extends TypedTool[RespondInput](
       |  (b) you've already executed the requested action via another tool and are reporting the outcome.
       |
       |DO NOT use `respond` as a substitute for an action you haven't run. If the user asked you
-      |to DO anything — wait, fetch, save, send, run, edit, look up, etc. — switch to a matching
-      |mode when one is listed, or search the capability catalog otherwise. `respond` is the
-      |final step after the action completes, not a way to skip the action.
+      |to DO anything — wait, fetch, save, send, run, edit, look up, etc. — first check the
+      |listed modes for an obvious match and switch only if one fits the task directly;
+      |otherwise search the capability catalog. `respond` is the final step after the action
+      |completes, not a way to skip the action.
       |
       |DO NOT use `respond` to ask the user to pick from a fixed set of choices. If your reply
       |would contain a bullet list of options the user is meant to choose from ("Would you like

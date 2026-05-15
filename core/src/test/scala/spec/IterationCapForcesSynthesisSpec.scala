@@ -72,9 +72,18 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
       recorder.record(input)
       val n = recorder.callCount.get()
       val callId = CallId(s"call-$n")
-      val emits: List[ProviderEvent] = input.toolChoice match {
-        case ToolChoice.Specific(name) if name == RespondTool.schema.name =>
-          // Forced-synthesis turn — comply with the pin.
+      // Forced-synthesis turn: tool_choice = Required with the tool
+      // roster filtered to the respond family (atomic-content tools).
+      // Detect it via "respond is in the roster AND no other
+      // non-respond-family tools are exposed".
+      val isForcedRespondTurn: Boolean = {
+        val respondFamily = _root_.sigil.tool.core.CoreTools.atomicContentToolNames
+        input.toolChoice == ToolChoice.Required &&
+          input.tools.exists(_.schema.name == RespondTool.schema.name) &&
+          input.tools.forall(t => respondFamily.contains(t.schema.name))
+      }
+      val emits: List[ProviderEvent] = if (isForcedRespondTurn) {
+          // Forced-synthesis turn — comply with the family pin.
           List(
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
             ProviderEvent.ToolCallComplete(
@@ -83,13 +92,13 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
             ),
             ProviderEvent.Done(StopReason.Complete)
           )
-        case _ =>
+        } else {
           List(
             ProviderEvent.ToolCallStart(callId, ChangeModeTool.schema.name.value),
             ProviderEvent.ToolCallComplete(callId, ChangeModeInput(mode = "conversation")),
             ProviderEvent.Done(StopReason.ToolCall)
           )
-      }
+        }
       Stream.emits(emits)
     }
   }
@@ -172,11 +181,10 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
         evs <- eventsFor(convId)
       } yield {
         // The forced-synthesis turn ran exactly one call with the
-        // respond pin; the synthesised respond Message lands.
-        val forcedChoices = recorder.toolChoices.get().collect {
-          case s: ToolChoice.Specific => s.toolName.value
-        }
-        forcedChoices should contain (RespondTool.schema.name.value)
+        // Forced-respond pin: tool_choice: required with c.tools
+        // filtered to the respond family (the synthesised respond
+        // Message lands).
+        recorder.toolChoices.get().toList should contain (ToolChoice.Required)
 
         // The synthesised respond produced a Message authored by the agent.
         val agentMessages = evs.collect {
@@ -240,11 +248,9 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
         _   <- Task.sleep(3.seconds)
         evs <- eventsFor(convId)
       } yield {
-        // Forced-synthesis call DID happen (Specific(respond) pin).
-        val forcedChoices = recorder.toolChoices.get().collect {
-          case s: ToolChoice.Specific => s.toolName.value
-        }
-        forcedChoices should contain (RespondTool.schema.name.value)
+        // Forced-synthesis call DID happen (tool_choice: required with
+        // c.tools filtered to the respond family).
+        recorder.toolChoices.get().toList should contain (ToolChoice.Required)
         // No Success-disposition respond Message was produced (the
         // model refused to comply). The Failure-disposition messages
         // from the AgentRunawayException publish are separate and
