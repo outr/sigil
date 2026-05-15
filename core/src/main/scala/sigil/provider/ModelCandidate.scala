@@ -21,13 +21,6 @@ final case class ModelCandidate(modelId: Id[Model],
                                 retryCount: Int = 3,
                                 retryDelayMs: Long = 0L,
                                 cooldownMs: Long = 60_000L,
-                                /** Per-message complexity tiers this model handles
-                                  * (bug #128). Default `Set(Low, Medium, High)` — backwards-
-                                  * compatible. Apps that route by complexity restrict per
-                                  * candidate (e.g. local quantised model declares
-                                  * `Set(Low)`); the strategy walks the chain in order and
-                                  * skips candidates whose set doesn't include the
-                                  * inferred tier. */
                                 supportedComplexity: Set[Complexity] =
                                   Set(Complexity.Low, Complexity.Medium, Complexity.High))
   derives RW {
