@@ -5,7 +5,9 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import sigil.conversation.{Conversation, Topic}
+import sigil.db.Model
 import sigil.participant.ParticipantId
+import sigil.provider.TokenUsage
 import sigil.signal.EventState
 import sigil.tool.{ToolInput, ToolName}
 
@@ -48,6 +50,20 @@ case class ToolInvoke(toolName: ToolName,
                         * for synthetic / framework-emitted invokes (no
                         * upstream call_id to roundtrip). */
                       callId: Option[String] = None,
+                      /** Per-call token cost. Folded by [[sigil.signal.ToolDelta]]
+                        * when the provider emits its trailing
+                        * [[sigil.provider.ProviderEvent.Usage]] and the turn
+                        * had no user-visible Message to attribute it to
+                        * (e.g. change_mode / cancel / find_capability turns).
+                        * Combined with `modelId`, lets cost projection charge
+                        * the conversation for tool-call-only turns. */
+                      usage: TokenUsage = TokenUsage(0, 0, 0),
+                      /** Model that produced this tool call. Stamped by the
+                        * orchestrator from the active `ProviderRequest`. Pairs
+                        * with `usage` for cost attribution on tool-call-only
+                        * turns. `None` for synthetic / framework-emitted
+                        * invokes (no provider call backing them). */
+                      modelId: Option[Id[Model]] = None,
                       override val origin: Option[Id[Event]] = None,
                       override val source: Option[String] = None,
                       override val contextFrame: Option[sigil.conversation.ContextFrame] = None,

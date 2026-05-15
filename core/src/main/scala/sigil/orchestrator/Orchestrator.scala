@@ -237,6 +237,14 @@ object Orchestrator {
       * dereference from inside its prompt. */
     val dispatchedResultContent: scala.collection.mutable.Map[lightdb.id.Id[Event], Vector[ResponseContent]] =
       scala.collection.mutable.Map.empty
+
+    /** Wire `callId`s whose `ToolCallComplete` has already been
+      * processed in this provider stream. Some OpenAI-compat backends
+      * occasionally emit two complete chunks for the same call (parser
+      * quirk on chunked streams); the duplicate must not re-dispatch
+      * the tool or synthesize a phantom `ToolInvoke`. */
+    val completedCallIds: scala.collection.mutable.Set[CallId] =
+      scala.collection.mutable.Set.empty
   }
 
   private def translate(event: ProviderEvent,
@@ -291,7 +299,13 @@ object Orchestrator {
           // the provider's response so subsequent turns can render
           // function_call_output with the original id (OpenAI's
           // previous_response_id state matches by call_id).
-          callId = Some(callId.value)
+          callId = Some(callId.value),
+          // Pair with the trailing Usage attribution path — for
+          // tool-call-only turns (change_mode / cancel /
+          // find_capability) the per-turn cost lands on this
+          // ToolInvoke via a `ToolDelta(usage=…)`, and the cost
+          // projection needs `modelId` to look up pricing.
+          modelId = Some(request.modelId)
         )
         Stream.emits(List(invoke))
 
@@ -331,7 +345,18 @@ object Orchestrator {
         )
         Stream.emits(createMessageSignal.toList ::: List(delta))
 
+      case ProviderEvent.ToolCallComplete(callId, input) if state.completedCallIds.contains(callId) =>
+        scribe.warn(
+          s"Duplicate ToolCallComplete(callId=${callId.value}) — provider emitted this completion " +
+            "chunk twice in the same stream. Ignoring the second one; the first dispatched and " +
+            "settled normally. (Without this guard the orphan-synth path would emit a phantom " +
+            "Active ToolInvoke with no paired result and the wire would carry the corresponding " +
+            "dangling tool_call.)"
+        )
+        Stream.empty
+
       case ProviderEvent.ToolCallComplete(callId, input) =>
+        state.completedCallIds += callId
         // Sigil bug #176 — some OpenAI-compat backends (observed:
         // OpenRouter passing through Kimi-K2.5, also kindred to
         // bug #163's DeepInfra streaming variance) ship a tool-call
@@ -498,22 +523,24 @@ object Orchestrator {
               state.dispatchedKeys.get(argsKey) match {
                 case Some(firstInvokeId) =>
                   // Inline the original call's result content into the
-                  // duplicate's paired Tool-role Message. Pointing the
-                  // agent at another call_id ("see that result") is a
-                  // dangling reference: the agent's frame projection
-                  // surfaces this message as the entire result for the
-                  // duplicate invoke, and the agent has no way to
-                  // dereference the call_id from inside its own prompt.
-                  // Falls back to a brief note when the original result
-                  // hasn't been observed yet — should be rare since the
-                  // first dispatch's stream is fully consumed before the
-                  // duplicate's translate runs.
-                  val inlinedContent = state.dispatchedResultContent.get(firstInvokeId)
-                    .filter(_.nonEmpty)
-                    .getOrElse(Vector(ResponseContent.Text(
-                      s"This is a duplicate `$toolName` call with identical arguments to an earlier " +
-                        "call in the same completion. The original call ran successfully; reuse its result."
-                    )))
+                  // duplicate's paired Tool-role Message so the agent's
+                  // frame trail carries the same result the original
+                  // ToolInvoke produced — wire pairing is satisfied for
+                  // both call_ids without introducing a separate
+                  // framework-state directive.
+                  //
+                  // When the original tool emitted no result content
+                  // (atomic side-effect tools like `change_mode` that
+                  // emit only their typed event), the inlined content
+                  // is empty. Empty paired content reads to the agent
+                  // as "tool ran, no output" — the same neutral signal
+                  // the original ToolInvoke produced. NEVER fall back
+                  // to a prose directive like "this is a duplicate":
+                  // such text was framework state masquerading as a
+                  // tool result and poisoned the agent's next-turn
+                  // reasoning (sigil bug #189).
+                  val inlinedContent: Vector[ResponseContent] =
+                    state.dispatchedResultContent.getOrElse(firstInvokeId, Vector.empty)
                   val dupeMsg = Message(
                     participantId  = caller,
                     conversationId = convId,
@@ -673,16 +700,23 @@ object Orchestrator {
                     case _ => false
                   }
                   if (hasResult) Stream.emits(collected)
-                  else Stream.emits(collected :+ Message(
-                    participantId  = caller,
-                    conversationId = convId,
-                    topicId        = topicId,
-                    role           = MessageRole.Tool,
-                    content        = Vector.empty,  // empty → wire emits empty function_call_output
-                    state          = EventState.Complete,
-                    visibility     = MessageVisibility.Agents,
-                    origin         = Some(invokeId)
-                  ))
+                  else {
+                    val synth = Message(
+                      participantId  = caller,
+                      conversationId = convId,
+                      topicId        = topicId,
+                      role           = MessageRole.Tool,
+                      content        = Vector.empty,  // empty → wire emits empty function_call_output
+                      state          = EventState.Complete,
+                      visibility     = MessageVisibility.Agents,
+                      origin         = Some(invokeId)
+                    )
+                    // Capture so a subsequent duplicate-call dispatch
+                    // can inline this (empty) content rather than fall
+                    // back to a generic prose directive. See sigil bug #189.
+                    state.dispatchedResultContent(invokeId) = synth.content
+                    Stream.emits(collected :+ synth)
+                  }
                 })
                 else Stream.force(tracked.toList.map { collected =>
                   val hasResult = collected.exists {
@@ -783,13 +817,15 @@ object Orchestrator {
           case None if state.sawAnyToolCall =>
             // The turn ran tool calls but none of them produced a
             // user-visible Message (e.g. change_mode, find_capability,
-            // a side-effect-only tool). Attach the usage to the most
-            // recently settled ToolInvoke so cost attribution still
-            // lands somewhere addressable. Falls back to dropping the
-            // usage if no settled invoke exists either.
+            // a side-effect-only tool). Fold the usage onto the most
+            // recently settled ToolInvoke via ToolDelta so cost
+            // projection has a durable record carrying both `modelId`
+            // (stamped at invoke creation) and `usage`. MessageDelta
+            // can't do this — its `apply` is a no-op on non-Message
+            // events, so the usage data was silently dropped.
             state.lastSettledInvokeId match {
               case Some(invokeId) =>
-                Stream.emits(List(MessageDelta(target = invokeId, conversationId = convId, usage = Some(usage))))
+                Stream.emits(List(ToolDelta(target = invokeId, conversationId = convId, usage = Some(usage))))
               case None => Stream.empty
             }
           case None =>
