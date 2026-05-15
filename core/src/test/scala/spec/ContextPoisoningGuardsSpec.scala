@@ -161,8 +161,12 @@ class ContextPoisoningGuardsSpec extends AsyncWordSpec with AsyncTaskSpec with M
         ).getLines().mkString("\n")
         src should not include "Please report it"
         src should not include "framework error: tool emitted no MessageRole.Tool"
-        // And the new user-facing wording IS present.
-        src should include ("did not return a result")
+        // The prose retry directive that stacked across past turns is
+        // also gone — the architectural fix pairs every ToolInvoke in
+        // the durable log so render-time synthesis stays a safety net
+        // with a brief factual marker.
+        src should not include "The previous tool call did not return a result"
+        src should include ("tool failed: no result emitted")
       }
     }
   }
