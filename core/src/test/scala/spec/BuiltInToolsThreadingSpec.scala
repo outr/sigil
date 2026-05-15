@@ -22,7 +22,8 @@ import sigil.provider.{
 }
 import spice.http.HttpRequest
 
-import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.duration.*
 
 /**
@@ -42,7 +43,9 @@ import scala.concurrent.duration.*
  */
 class BuiltInToolsThreadingSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
-  TestSigil.setProvider(Task.pure(CapturingProvider))
+
+  private val capturing: CapturingProvider = new CapturingProvider
+  TestSigil.setProvider(Task.pure(capturing))
 
   private def freshConvId(suffix: String): Id[Conversation] =
     Conversation.id(s"builtins-$suffix-${rapid.Unique()}")
@@ -50,20 +53,20 @@ class BuiltInToolsThreadingSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   private def agent(builtInTools: Set[BuiltInTool]): AgentParticipant =
     DefaultAgentParticipant(
       id = TestAgent,
-      modelId = CapturingProvider.modelId,
+      modelId = capturing.modelId,
       instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
       builtInTools = builtInTools,
       greetsOnJoin = true
     )
 
-  private def awaitCapture(timeoutMs: Long = 5000): Task[Set[BuiltInTool]] = {
+  private def awaitCapture(convId: Id[Conversation], timeoutMs: Long = 5000): Task[Set[BuiltInTool]] = {
     val deadline = System.currentTimeMillis() + timeoutMs
     def loop: Task[Set[BuiltInTool]] =
-      Option(CapturingProvider.lastBuiltIns.get()) match {
+      Option(capturing.capturesByConv.get(convId)) match {
         case Some(s) => Task.pure(s)
         case None if System.currentTimeMillis() > deadline =>
-          Task.error(new RuntimeException("CapturingProvider never received a request"))
+          Task.error(new RuntimeException(s"CapturingProvider never received a request for $convId"))
         case None =>
           Task.sleep(25.millis).flatMap(_ => loop)
       }
@@ -73,19 +76,17 @@ class BuiltInToolsThreadingSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   "Sigil.defaultProcess" should {
 
     "thread agent.builtInTools straight through to ConversationRequest" in {
-      CapturingProvider.reset()
       val convId = freshConvId("agent-only")
       val a = agent(builtInTools = Set(BuiltInTool.WebSearch))
       for {
         _    <- TestSigil.newConversation(createdBy = TestUser, participants = List(a), conversationId = convId)
-        seen <- awaitCapture()
+        seen <- awaitCapture(convId)
       } yield {
         seen should contain only BuiltInTool.WebSearch
       }
     }
 
     "union agent.builtInTools with the current Mode.builtInTools" in {
-      CapturingProvider.reset()
       val convId = freshConvId("union")
       // Override the active mode for this conversation by passing one that
       // has its own builtInTools set. The framework's
@@ -93,7 +94,7 @@ class BuiltInToolsThreadingSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       // fresh Mode subtype just for this assertion.
       val a = DefaultAgentParticipant(
         id = TestAgent,
-        modelId = CapturingProvider.modelId,
+        modelId = capturing.modelId,
         instructions = Instructions(),
         generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
         builtInTools = Set(BuiltInTool.ImageGeneration),
@@ -102,7 +103,7 @@ class BuiltInToolsThreadingSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       for {
         _    <- TestSigil.newConversation(createdBy = TestUser, participants = List(a),
                                           conversationId = convId, currentMode = WebResearchMode)
-        seen <- awaitCapture()
+        seen <- awaitCapture(convId)
       } yield {
         // ImageGeneration came from agent; WebSearch from mode — both must surface.
         seen should contain allOf (BuiltInTool.ImageGeneration, BuiltInTool.WebSearch)
@@ -111,12 +112,11 @@ class BuiltInToolsThreadingSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     }
 
     "default to empty when neither agent nor mode opts in" in {
-      CapturingProvider.reset()
       val convId = freshConvId("none")
       val a = agent(builtInTools = Set.empty)
       for {
         _    <- TestSigil.newConversation(createdBy = TestUser, participants = List(a), conversationId = convId)
-        seen <- awaitCapture()
+        seen <- awaitCapture(convId)
       } yield {
         seen shouldBe Set.empty[BuiltInTool]
       }
@@ -142,24 +142,18 @@ case object WebResearchMode extends Mode {
 }
 
 /**
- * Stub provider that captures the inbound `ProviderCall` for
- * assertion, then emits a single `Done(StopReason.Complete)` so the
- * agent loop terminates without an LLM round-trip.
+ * Stub provider that captures every inbound `ProviderCall`'s
+ * `builtInTools` keyed by conversation id, then emits a single
+ * `Done(StopReason.Complete)` so the agent loop terminates without
+ * an LLM round-trip. Per-conversation keying isolates each test's
+ * captures from any lingering agent-fiber activity left behind by
+ * a prior test in the same suite.
  */
-private object CapturingProvider extends Provider {
+private final class CapturingProvider extends Provider {
   val modelId: Id[Model] = Model.id("capturing-stub")
   val callCount: AtomicInteger = new AtomicInteger(0)
-  /** The set of [[BuiltInTool]]s the most recent inbound request carried.
-    * Captured directly off the [[ProviderCall]] the framework passes to
-    * `call` — `Sigil.defaultProcess` populates this from
-    * `agent.builtInTools ++ mode.builtInTools`, so reading it here proves
-    * the union threading. */
-  val lastBuiltIns: AtomicReference[Set[BuiltInTool]] = new AtomicReference(null)
-
-  def reset(): Unit = {
-    callCount.set(0)
-    lastBuiltIns.set(null)
-  }
+  val capturesByConv: ConcurrentHashMap[Id[Conversation], Set[BuiltInTool]] =
+    new ConcurrentHashMap()
 
   override def `type`: ProviderType = ProviderType.LlamaCpp
   override def models: List[Model] = Nil
@@ -170,7 +164,7 @@ private object CapturingProvider extends Provider {
 
   override def call(input: ProviderCall): Stream[ProviderEvent] = {
     callCount.incrementAndGet()
-    lastBuiltIns.set(input.builtInTools)
+    input.conversationId.foreach(cid => capturesByConv.put(cid, input.builtInTools))
     Stream.emit(ProviderEvent.Done(StopReason.Complete))
   }
 }
