@@ -1,11 +1,13 @@
 package sigil.tool.fs
 
+import fabric.io.JsonFormatter
+import fabric.rw.*
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.TurnContext
 import sigil.storage.{FileVersion, WriteResult}
+import sigil.tool.{ToolExample, ToolName, ToolResult, TypedOutputTool}
 import sigil.tool.model.{EditFileInput, EditFileOutput}
-import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
 
 import java.util.regex.Pattern
 
@@ -47,13 +49,42 @@ final class EditFileTool(context: FileSystemContext)
     ),
     keywords = Set("file", "edit", "modify", "replace", "rewrite", "patch")
   ) with sigil.tool.DestructiveExternalTool {
-  override protected def executeTyped(input: EditFileInput, ctx: TurnContext): Task[EditFileOutput] =
+
+  /** Non-Success EditFileOutputs (NotFound, NotUnique, Stale, FileNotFound)
+    * are logical failures of the EDIT operation, not failures of the tool
+    * to execute. Surfacing them through `executeTypedResult` lets the
+    * agent's frame projection render them as Tool-role Failure Messages
+    * with actionable hints — instead of a Success-shaped `ToolResults`
+    * whose typed payload the agent might gloss over and incorrectly
+    * report as "I edited the file." */
+  override protected def executeTypedResult(input: EditFileInput, ctx: TurnContext): Task[ToolResult[EditFileOutput]] =
     WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>
       context.readFile(resolved).flatMap { content =>
         val pattern = Pattern.quote(input.oldString)
         val occurrences = pattern.r.findAllIn(content).size
-        if (occurrences == 0) Task.pure(EditFileOutput.NotFound)
-        else if (!input.replaceAll && occurrences > 1) Task.pure(EditFileOutput.NotUnique(occurrences))
+        val argsJson =
+          try Some(JsonFormatter.Compact(summon[RW[EditFileInput]].read(input)))
+          catch { case _: Throwable => None }
+        val preview = input.oldString.linesIterator.take(3).mkString(" / ").take(120)
+        if (occurrences == 0)
+          Task.pure(ToolResult.failure(
+            message = s"edit_file: no match for `oldString` in $resolved (searched: $preview).",
+            hint = Some(
+              "The file may have changed since you read it, the indentation / line-endings may differ, " +
+                "or the snippet may not be present. Read the file again to confirm the exact bytes, " +
+                "or pick a more uniquely-anchored substring."
+            ),
+            args = argsJson
+          ))
+        else if (!input.replaceAll && occurrences > 1)
+          Task.pure(ToolResult.failure(
+            message = s"edit_file: `oldString` matched $occurrences times in $resolved and `replaceAll` is false.",
+            hint = Some(
+              "Set `replaceAll: true` to replace every occurrence, or extend `oldString` with surrounding " +
+                "context so it matches exactly one location."
+            ),
+            args = argsJson
+          ))
         else {
           val replacement = java.util.regex.Matcher.quoteReplacement(input.newString)
           val (next, replaced) = if (input.replaceAll)
@@ -64,17 +95,28 @@ final class EditFileTool(context: FileSystemContext)
           input.expectedHash match {
             case None =>
               context.writeFile(resolved, next).map(_ =>
-                EditFileOutput.Success(replacements = replaced, hash = None)
+                ToolResult.success(EditFileOutput.Success(replacements = replaced, hash = None))
               )
             case Some(hash) =>
               val expected = FileVersion(hash, Timestamp())
               context.writeIfMatch(resolved, next, expected).map {
                 case WriteResult.Written(version) =>
-                  EditFileOutput.Success(replacements = replaced, hash = Some(version.hash))
+                  ToolResult.success(EditFileOutput.Success(replacements = replaced, hash = Some(version.hash)))
                 case WriteResult.Stale(current) =>
-                  EditFileOutput.Stale(currentHash = current.version.hash, currentContent = current.asText)
+                  ToolResult.failure(
+                    message = s"edit_file: file changed since `expectedHash` was issued (resolved: $resolved).",
+                    hint = Some(
+                      s"Re-read the file (current hash ${current.version.hash}) and decide whether the " +
+                        "intended edit still applies, then retry with the fresh hash."
+                    ),
+                    args = argsJson
+                  )
                 case WriteResult.NotFound =>
-                  EditFileOutput.FileNotFound
+                  ToolResult.failure(
+                    message = s"edit_file: file not found at $resolved.",
+                    hint = Some("Check the path or list the directory; the file may have been removed."),
+                    args = argsJson
+                  )
               }
           }
         }
