@@ -42,6 +42,18 @@ ThisBuild / scalacOptions ++= Seq(
 )
 ThisBuild / javaOptions ++= Seq("-Xmx16G", "-Xss4m", "-XX:MaxMetaspaceSize=2g")
 
+// Tests run with one forked JVM per spec (see `testGrouping` in each
+// subproject) and each spec writes to its own RocksDB directory
+// (`db/test/<SimpleClassName>` via `TestSigil.initFor`). The per-suite
+// fork already isolates `PolyType` registrations and the RocksDB lock,
+// so we run forks in parallel — capped at 4 concurrent JVMs so memory
+// pressure stays sane and live-LLM specs (LlamaCpp*Spec) don't pile
+// onto the shared upstream server faster than it can serve them.
+Global / concurrentRestrictions := Seq(
+  Tags.limit(Tags.ForkedTestGroup, 4),
+  Tags.limit(Tags.Test, 4)
+)
+
 ThisBuild / evictionErrorLevel := Level.Info
 
 // sbt 1.12.x's `lintUnused` check flags `Compile / doc / fork` +
@@ -110,14 +122,15 @@ lazy val core = (project in file("core"))
       "com.outr" %% "spice-server-undertow" % spiceVersion % Test
     ),
     fork := true,
-    Test / parallelExecution := false,
+    Test / parallelExecution := true,
     Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
-    // One forked JVM per test suite — gives each spec a clean process so init-once
-    // state (singletons, PolyType registrations, RocksDB locks) is exercised
-    // fresh on every run. Combined with parallelExecution := false above, suites
-    // run serially so they take turns acquiring the RocksDB lock.
-    // ForkOptions().withEnvVars(sys.env) forwards the parent shell's env vars
-    // so SIGIL_LLAMACPP_HOST etc. reach the forked JVM.
+    // One forked JVM per test suite — gives each spec a clean process so
+    // init-once state (singletons, PolyType registrations, RocksDB locks) is
+    // exercised fresh on every run. Forks run concurrently (capped at the
+    // global `Tags.ForkedTestGroup` limit); each spec uses its own RocksDB
+    // path under `db/test/<SimpleClassName>` so there's no lock contention.
+    // ForkOptions().withEnvVars(sys.env) forwards the parent shell's env
+    // vars so SIGIL_LLAMACPP_HOST etc. reach the forked JVM.
     Test / testGrouping := (Test / definedTests).value.map { test =>
       Tests.Group(
         name = test.name,
@@ -138,7 +151,7 @@ lazy val secrets = (project in file("secrets"))
       "com.outr" %% "rapid-test" % rapidVersion % Test
     ),
     fork := true,
-    Test / parallelExecution := false,
+    Test / parallelExecution := true,
     Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
     Test / testGrouping := (Test / definedTests).value.map { test =>
       Tests.Group(
@@ -162,7 +175,7 @@ lazy val script = (project in file("script"))
       "com.outr" %% "rapid-test" % rapidVersion % Test
     ),
     fork := true,
-    Test / parallelExecution := false,
+    Test / parallelExecution := true,
     Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
     Test / testGrouping := (Test / definedTests).value.map { test =>
       Tests.Group(
@@ -183,7 +196,7 @@ lazy val mcp = (project in file("mcp"))
       "com.outr" %% "rapid-test" % rapidVersion % Test
     ),
     fork := true,
-    Test / parallelExecution := false,
+    Test / parallelExecution := true,
     Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
     Test / testGrouping := (Test / definedTests).value.map { test =>
       Tests.Group(
@@ -209,7 +222,7 @@ lazy val metals = (project in file("metals"))
       "com.outr" %% "rapid-test" % rapidVersion % Test
     ),
     fork := true,
-    Test / parallelExecution := false,
+    Test / parallelExecution := true,
     Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
     Test / testGrouping := (Test / definedTests).value.map { test =>
       Tests.Group(
@@ -238,7 +251,7 @@ lazy val tooling = (project in file("tooling"))
       "com.outr" %% "rapid-test" % rapidVersion % Test
     ),
     fork := true,
-    Test / parallelExecution := false,
+    Test / parallelExecution := true,
     Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
     Test / testGrouping := (Test / definedTests).value.map { test =>
       Tests.Group(
@@ -265,7 +278,7 @@ lazy val debug = (project in file("debug"))
       "com.outr" %% "rapid-test" % rapidVersion % Test
     ),
     fork := true,
-    Test / parallelExecution := false,
+    Test / parallelExecution := true,
     Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
     Test / testGrouping := (Test / definedTests).value.map { test =>
       Tests.Group(
@@ -313,7 +326,7 @@ lazy val browser = (project in file("browser"))
       "com.outr" %% "spice-server-undertow" % spiceVersion % Test
     ),
     fork := true,
-    Test / parallelExecution := false,
+    Test / parallelExecution := true,
     Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
     Test / testGrouping := (Test / definedTests).value.map { test =>
       Tests.Group(
