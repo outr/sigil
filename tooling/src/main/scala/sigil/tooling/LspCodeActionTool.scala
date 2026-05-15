@@ -39,7 +39,11 @@ final class LspCodeActionTool(val manager: LspManager) extends TypedOutputTool[L
       |"source.organizeImports", etc.).
       |Returns `{filePath, items: [{index, kind, title}]}`. The listing is cached for a
       |separate apply-by-index tool.""".stripMargin,
-  keywords = Set("lsp", "code action", "fix", "refactor", "suggestion", "quick fix", "auto fix", "improve"),
+  keywords = Set(
+    "lsp", "code action", "fix", "quickfix", "refactor", "refactoring", "suggestion",
+    "quick fix", "auto fix", "improve", "extract method", "extract variable",
+    "organize imports", "transform", "modify", "change"
+  ),
   examples = List(
     ToolExample(
       "scala quick-fixes for a single line",

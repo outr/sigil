@@ -40,8 +40,8 @@ final class LspFindReferencesTool(val manager: LspManager) extends TypedOutputTo
       |
       |Returns `{locations: [{uri, filePath, range}], truncated}`.""".stripMargin,
   keywords = Set(
-    "lsp", "references", "usages", "callers", "who calls", "find usage",
-    "examine", "inspect", "analyze", "review", "uses",
+    "lsp", "references", "usages", "callers", "who calls", "find usage", "find all",
+    "occurrences", "examine", "inspect", "analyze", "review", "uses",
     "where used", "find symbol", "semantic",
     "scala", "language", "code", "navigate"
   ),
