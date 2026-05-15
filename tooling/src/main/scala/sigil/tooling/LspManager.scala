@@ -93,6 +93,28 @@ final class LspManager(sigil: Sigil { type DB <: SigilDB & ToolingCollections },
     Task.sequence(targets.map(_.didChangeWatchedFiles(List(event)).handleError(_ => Task.unit))).unit
   }
 
+  /** Refresh every active session's in-memory copy of a document
+    * whose contents changed externally (e.g. a filesystem-edit tool
+    * just ran). Reads the file from disk and fires
+    * `textDocument/didChange` (full-document update) on each session
+    * whose project root contains the path. Pairs with the
+    * `workspace/didChangeWatchedFiles` signal that [[notifyFileChanged]]
+    * already fires; both are usually needed for the server's
+    * diagnostic / completion state to fully refresh. Errors are
+    * swallowed per session so one failing session doesn't break
+    * others. */
+  def notifyDocumentChanged(absolutePath: String): Task[Unit] = Task.defer {
+    val abs = Paths.get(absolutePath).toAbsolutePath.normalize()
+    val uri = abs.toUri.toString
+    val text =
+      try Files.readString(abs)
+      catch { case _: Throwable => "" }
+    val targets = sessions.entrySet().asScala.toList.collect {
+      case e if abs.startsWith(Paths.get(e.getKey._2).toAbsolutePath.normalize()) => e.getValue
+    }
+    Task.sequence(targets.map(_.didChangeFull(uri, text).handleError(_ => Task.unit))).unit
+  }
+
   /** Same as [[notifyFileChanged]] but for a batch — preferred when
     * a single agent action touches many files (e.g. an apply-edit
     * fan-out). */
