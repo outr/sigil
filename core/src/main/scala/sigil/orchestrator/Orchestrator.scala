@@ -123,7 +123,15 @@ object Orchestrator {
         // from malformed-args detection) used to leave it at Active
         // forever with a typing-indicator stuck on the client.
         val errorMsg = Option(t.getMessage).filter(_.nonEmpty)
-        val orphans = settleOrphanToolInvoke(state, convId, error = errorMsg) ++
+        val callerForOrphan = request.chain.lastOption.getOrElse(
+          throw new IllegalStateException("ProviderRequest.chain is empty; orchestrator needs at least one participant.")
+        )
+        val orphans = settleOrphanToolInvoke(
+          state, convId,
+          caller = callerForOrphan,
+          topicId = request.currentTopic.id,
+          error = errorMsg
+        ) ++
                       settleOrphanMessage(state, convId, error = errorMsg)
         orphans.foldLeft(Task.unit) { (acc, sig) =>
           acc.flatMap(_ => sigil.publish(sig).handleError(_ => Task.unit))
@@ -682,22 +690,30 @@ object Orchestrator {
                     case _                                       => false
                   }
                   if (hasResult) Stream.emits(collected)
-                  else Stream.emits(collected :+ Message(
-                    participantId  = caller,
-                    conversationId = convId,
-                    topicId        = topicId,
-                    role           = MessageRole.Tool,
-                    content        = Vector(ResponseContent.Text(
-                      s"Tool '${active.toolName}' executed but emitted no result. " +
-                        "This is typically a tool-side bug (executeTyped swallowed an error " +
-                        "without surfacing it). The framework's paired-call wire contract " +
-                        "still requires a result entry, so this synthetic placeholder fills it."
-                    )),
-                    state          = EventState.Complete,
-                    disposition    = MessageDisposition.Failure(recoverable = true),
-                    visibility     = MessageVisibility.Agents,
-                    origin         = Some(invokeId)
-                  ))
+                  else {
+                    scribe.warn(
+                      s"orchestrator: tool '${active.toolName}' (invokeId=${invokeId.value}) completed " +
+                        "without emitting a MessageRole.Tool event — likely a sync throw escaping its " +
+                        "executeTyped handleError. Emitting a typed Failure result to keep the wire paired."
+                    )
+                    val argsText = canonicalArgsKey(active.toolName, input)
+                      .stripPrefix(s"${active.toolName}:")
+                      .take(200)
+                    Stream.emits(collected :+ Message(
+                      participantId  = caller,
+                      conversationId = convId,
+                      topicId        = topicId,
+                      role           = MessageRole.Tool,
+                      content        = Vector(ResponseContent.Text(
+                        s"Tool `${active.toolName}` failed internally. Args: $argsText. " +
+                          "Pick a different tool or refine the approach."
+                      )),
+                      state          = EventState.Complete,
+                      disposition    = MessageDisposition.Failure(recoverable = false),
+                      visibility     = MessageVisibility.Agents,
+                      origin         = Some(invokeId)
+                    ))
+                  }
                 })
               Stream.emits(toolDeltaPrefix) ++ guarded
             }
@@ -886,43 +902,19 @@ object Orchestrator {
         // "tool's executeTyped — please report it" framework error
         // instead.
         val orphanedCalls = state.activeCalls.values.toList
-        val closeOrphan = settleOrphanToolInvoke(state, convId)
-        // Sigil bug #123 — when a streaming completion settles with
-        // `finish_reason=length` mid-tool-call-args, the provider
-        // truncated the args before the JSON closed. The orphan
-        // settle's `ToolDelta(input=None, state=Complete)` leaves
-        // the function_call without a paired Tool-role event, so
-        // the frame renderer surfaces the misleading "tool's
-        // executeTyped — please report it" framework error and the
-        // agent has no signal to refine its inputs.
-        //
-        // Emit a Tool-role `Failure` Message paired to each orphan
-        // invoke (via `origin`) with a concrete diagnosis the agent
-        // can act on. Closes the function_call ↔ function_call_output
-        // pair AND replaces the bogus "report it" message.
-        val truncationDiagnostic: List[Signal] = stopReason match {
-          case StopReason.MaxTokens if orphanedCalls.nonEmpty =>
-            orphanedCalls.flatMap { active =>
-              val reason =
-                s"Your `${active.toolName}` call was truncated at max_tokens — the arguments " +
-                  "never fully arrived, so the tool didn't run. Reduce argument size (e.g. don't " +
-                  "inline whole files into a `text:` field — read the file separately), split the " +
-                  "work across multiple smaller calls, or request a larger max_tokens for this turn."
-              val diag = Message(
-                participantId  = caller,
-                conversationId = convId,
-                topicId        = topicId,
-                role           = MessageRole.Tool,
-                content        = Vector(ResponseContent.Text(reason)),
-                disposition    = MessageDisposition.Failure(recoverable = true),
-                state          = EventState.Complete,
-                visibility     = MessageVisibility.Agents,
-                origin         = Some(active.invokeId)
-              )
-              List[Signal](diag)
-            }
-          case _ => Nil
+        val reasonFor: ActiveCall => String = stopReason match {
+          case StopReason.MaxTokens =>
+            active =>
+              s"Your `${active.toolName}` call was truncated at max_tokens — the arguments " +
+                "never fully arrived, so the tool didn't run. Reduce argument size (e.g. don't " +
+                "inline whole files into a `text:` field — read the file separately), split the " +
+                "work across multiple smaller calls, or request a larger max_tokens for this turn."
+          case _ =>
+            active => s"Tool `${active.toolName}` did not produce a result before the stream ended."
         }
+        val orphanRecoverable = stopReason == StopReason.MaxTokens
+        val closeOrphan = settleOrphanToolInvoke(state, convId, caller, topicId, reasonFor = reasonFor, recoverable = orphanRecoverable)
+        val truncationDiagnostic: List[Signal] = Nil
         // Detect token-level repetition loops — the model hit
         // max_tokens AND the accumulated text is dominated by a
         // single repeated sentence. Surface as a Failure-block
@@ -1041,7 +1033,7 @@ object Orchestrator {
         // Bug #51 — pass the error through to the orphan-settle
         // ToolDelta so the user-visible chip can render
         // "(invalid args: …)" instead of "(input pending)".
-        val orphanSettle = settleOrphanToolInvoke(state, convId, error = Some(msg))
+        val orphanSettle = settleOrphanToolInvoke(state, convId, caller, topicId, error = Some(msg))
         val orphanMessageSettle = settleOrphanMessage(state, convId, error = Some(msg))
         // Bug #69 — Tool-role Message MUST have origin. Pair to the
         // active ToolInvoke if one is open (the typical case — the
@@ -1096,11 +1088,24 @@ object Orchestrator {
    * returned list is empty. Clears `state.activeToolInvokeId` /
    * `state.activeToolName` either way.
    */
+  /** Settle every in-flight `ToolInvoke` and pair each with a durable
+    * Tool-role failure Message. The pairing keeps the conversation's
+    * frame trail well-formed; without it, subsequent turns'
+    * `renderInput` finds dangling ToolInvokes and falls into its
+    * defensive synthesis path. `reasonFor` lets the caller customize
+    * the failure text per orphan (e.g. the MaxTokens-truncation path
+    * supplies a more actionable diagnosis); the default is a brief
+    * generic phrasing. */
   private def settleOrphanToolInvoke(state: State,
                                      convId: lightdb.id.Id[Conversation],
-                                     error: Option[String] = None): List[Signal] = {
-    val closes = state.activeCalls.values.toList.map { active =>
-      ToolDelta(
+                                     caller: ParticipantId,
+                                     topicId: lightdb.id.Id[Topic],
+                                     error: Option[String] = None,
+                                     reasonFor: ActiveCall => String =
+                                       a => s"Tool `${a.toolName}` did not produce a result",
+                                     recoverable: Boolean = false): List[Signal] = {
+    val signals = state.activeCalls.values.toList.flatMap { active =>
+      val closeDelta: Signal = ToolDelta(
         target = active.invokeId,
         conversationId = convId,
         input = None,
@@ -1111,10 +1116,22 @@ object Orchestrator {
         // "(invalid args: …)" instead of the "(input pending)"
         // placeholder reserved for genuinely-mid-flight calls.
         error = error
-      ): Signal
+      )
+      val pairedFailure: Signal = Message(
+        participantId  = caller,
+        conversationId = convId,
+        topicId        = topicId,
+        role           = MessageRole.Tool,
+        content        = Vector(ResponseContent.Text(reasonFor(active))),
+        state          = EventState.Complete,
+        disposition    = MessageDisposition.Failure(recoverable = recoverable),
+        visibility     = MessageVisibility.Agents,
+        origin         = Some(active.invokeId)
+      )
+      List(closeDelta, pairedFailure)
     }
     state.activeCalls.clear()
-    closes
+    signals
   }
 
   /**

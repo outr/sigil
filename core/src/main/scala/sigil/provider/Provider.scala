@@ -986,27 +986,20 @@ trait Provider {
     }
 
     // Dangling tool_call without a result — defensive fallback. Should
-    // never fire under the normal flow (every non-terminal tool emits
-    // a `MessageRole.Tool` event that produces a paired `ToolResult` frame),
-    // but providers reject bare `tool_calls` in the request, so we
-    // ensure every dangling pending id has SOMETHING.
-    //
-    // Use a recoverable, user-facing failure message rather than a
-    // developer-facing diagnostic. The agent is the reader here, not
-    // a human bug-reporter; "please report it" leaks framework noise
-    // into the model's context and confuses recovery. Log the
-    // developer-side detail via scribe instead.
+    // never fire when the durable event log is well-formed (every
+    // ToolInvoke pairs with a Tool-role Message via origin, including
+    // failure / orphan-settle paths). Surfaces with brief structured
+    // content per dangling id so the agent can reason about what
+    // happened without reading prose directives.
     pendingToolCallIds.foreach { callId =>
-      scribe.warn(
-        s"orchestrator: tool produced no MessageRole.Tool event for call_id=$callId — " +
-          "likely a sync throw escaping the tool's executeTyped handleError. " +
-          "Synthesizing a recoverable-failure placeholder so the wire stays well-formed."
+      scribe.error(
+        s"renderInput: dangling tool_call wireId=$callId has no paired ToolResult in this turn's frame trail. " +
+          "Synthesizing a brief failure marker — the orchestrator's runtime guard / orphan-settle path " +
+          "should be emitting a paired Tool-role Message and isn't. This is a bug in those paths."
       )
       out += ProviderMessage.ToolResult(
         toolCallId = callId,
-        content =
-          "The previous tool call did not return a result. This was likely a transient " +
-            "internal error. Retry the call, refine its arguments, or use a different approach."
+        content    = "tool failed: no result emitted"
       )
     }
 
