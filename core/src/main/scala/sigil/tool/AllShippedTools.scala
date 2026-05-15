@@ -3,7 +3,7 @@ package sigil.tool
 import sigil.SpaceId
 import sigil.tool.consult.{ConsultTool, ExtractMemoriesTool, RerankTool, SummarizationTool}
 import sigil.tool.core.ChangeModeTool
-import sigil.tool.fs.{BashTool, DeleteFileTool, EditFileTool, FileSystemContext, GlobTool, GrepTool, ReadFileTool, WriteFileTool}
+import sigil.tool.fs.{BashTool, DeleteFileTool, EditAtRangeTool, EditFileTool, FileSystemContext, GlobTool, GrepTool, ReadFileTool, WriteFileTool}
 import sigil.tool.git.{GitBranchTool, GitDiffTool, GitLogTool, GitShowTool, GitStatusTool}
 import sigil.tool.memory.{ForgetMemoryTool, MemoryHistoryTool}
 import sigil.tool.process.{ProcessListTool, ProcessOutputTool, ProcessRegistry, ProcessSignalTool, ProcessSpawnTool}
@@ -112,6 +112,7 @@ object AllShippedTools {
     new BashTool(fs),
     new DeleteFileTool(fs),
     new EditFileTool(fs),
+    new EditAtRangeTool(fs),
     new GlobTool(fs),
     new GrepTool(fs),
     new ReadFileTool(fs),
