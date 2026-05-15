@@ -35,10 +35,11 @@ case class LspApplyCodeActionInput(languageId: String,
 final class LspApplyCodeActionTool(val manager: LspManager) extends TypedOutputTool[LspApplyCodeActionInput, LspApplyCodeActionResult](
   name = ToolName("lsp_apply_code_action"),
   description =
-    """Apply a code action returned by `lsp_code_action`.
+    """Apply a code action by index from the most-recently-cached code-action listing for
+      |a given (languageId, filePath) pair.
       |
       |`languageId` + `filePath` identify the cached action set.
-      |`index` is the 0-based position in the prior `lsp_code_action` listing.
+      |`index` is the 0-based position in the prior listing.
       |Returns one of `Applied` / `CommandExecuted` / `Failed` / `CacheEmpty` / `OutOfRange`.""".stripMargin,
   keywords = Set("lsp", "apply", "fix", "refactor", "code action", "execute fix"),
   examples = List(

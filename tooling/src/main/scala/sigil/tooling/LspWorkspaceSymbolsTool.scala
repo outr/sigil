@@ -29,7 +29,7 @@ final class LspWorkspaceSymbolsTool(val manager: LspManager) extends PaginatedTo
       |`maxResults` (default 100) caps the response.
       |
       |Paginated tree: top-level nodes are symbol hits with `{kind, name, container, uri, position}`.
-      |The first page lands inline; subsequent pages via `next_page`.""".stripMargin,
+      |The first page lands inline; subsequent pages walk via the framework's pagination tools.""".stripMargin,
   keywords = Set(
     "lsp", "workspace", "symbols", "symbol", "find symbol", "search",
     "class", "method", "function", "definition", "signature", "structure",

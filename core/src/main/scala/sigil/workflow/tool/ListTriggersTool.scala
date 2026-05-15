@@ -23,8 +23,8 @@ final class ListTriggersTool extends TypedTool[ListTriggersInput](
     """List the triggers registered on a workflow template.
       |
       |`workflowId` is the template id. Returns each trigger's index, kind, and typed
-      |field values — useful before calling `unregister_trigger` (index-based) or when
-      |reviewing what events fire a workflow.""".stripMargin,
+      |field values — useful before unregistering a trigger by index, or when reviewing
+      |what events fire a workflow.""".stripMargin,
   examples = List(ToolExample("list triggers on a template", ListTriggersInput(workflowId = "wf-abc"))),
   keywords = Set("workflow", "trigger", "list")
 ) with WorkflowToolSupport {

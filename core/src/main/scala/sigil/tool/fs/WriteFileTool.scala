@@ -25,10 +25,10 @@ final class WriteFileTool(context: FileSystemContext)
     description =
       """Write content (UTF-8) to a file. Creates parent directories. Overwrites existing content.
         |
-        |Pass `expectedHash` (SHA-256 of the file's last-known contents, returned by `read_file` /
-        |`edit_file` / `write_file`) to enable safe-edit: the write commits only if no other writer
-        |has modified the file since you saw it. On mismatch, the result carries the file's current
-        |contents so you can re-evaluate the change against the new state.
+        |Pass `expectedHash` (SHA-256 of the file's last-known contents) to enable safe-edit:
+        |the write commits only if no other writer has modified the file since you saw it. On
+        |mismatch, the result carries the file's current contents so you can re-evaluate the
+        |change against the new state.
         |
         |Output: `Success(bytesWritten, hash?) | Stale(currentHash, currentContent) | NotFound`.""".stripMargin,
     examples = List(

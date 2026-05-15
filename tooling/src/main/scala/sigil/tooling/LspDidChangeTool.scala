@@ -24,19 +24,16 @@ case class LspDidChangeInput(languageId: String,
 final class LspDidChangeTool(val manager: LspManager) extends TypedOutputTool[LspDidChangeInput, LspDidChangeResult](
   name = ToolName("lsp_did_change"),
   description =
-    """Notify the language server that a document has changed and pass the new full text.
-      |This OVERWRITES the LSP's in-memory copy of the file with the `text` argument — pass
-      |the file's complete new contents, not a query string.
+    """Update the language server's in-memory copy of a document by passing the file's
+      |complete new contents. The server's diagnostic and completion computations operate
+      |against this in-memory copy until the next change is sent or the document is
+      |closed. Use after any external mutation of the document whose effects the LSP
+      |server should see.
       |
-      |Use AFTER editing a file (via `edit_file` / `write_file`) so subsequent
-      |`lsp_diagnostics` / `lsp_completion` see the new content.
-      |
-      |If you want to READ a file's contents (not edit), use a different tool — search for
-      |`read_file` via `find_capability("view file source contents read code")`.
-      |
-      |`languageId` selects the persisted LspServerConfig.
-      |`filePath` is the absolute path; the server's open-document state for the URI is
-      |refreshed with `text` and the document version is bumped.""".stripMargin,
+      |The `text` argument is the file's COMPLETE new contents, not a query or diff.
+      |`languageId` selects the persisted LspServerConfig. `filePath` is the absolute
+      |path; the server's open-document state for the URI is refreshed with `text` and
+      |the document version is bumped.""".stripMargin,
   keywords = Set("lsp", "did change", "edit", "change", "modify", "document update", "notify edit"),
   examples = List(
     ToolExample(

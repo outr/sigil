@@ -44,8 +44,8 @@ case object CancelTool extends TypedTool[CancelInput](
       |  - You've encountered an unrecoverable failure and continuing would waste effort.
       |
       |This is NOT a turn-flow operation. Do NOT call to:
-      |  - End a normal turn — call `respond`.
-      |  - Yield without a message — call `no_response`.
+      |  - End a normal turn — call the appropriate respond tool.
+      |  - Yield without a message — call the no-response tool.
       |  - "Pause" between steps — there is no pausing; just call the next tool.
       |  - Transition between phases — just continue with the next action.
       |

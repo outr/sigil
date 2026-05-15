@@ -40,11 +40,10 @@ case object PinComplexityTool extends TypedTool[PinComplexityInput](
       |    keeps spend bounded even if the frontier model is in the chain)
       |  - You're diagnosing routing behavior and need a stable tier
       |
-      |Distinct from `pin_model`: that pins a SPECIFIC model;
-      |`pin_complexity` pins a TIER and lets the chain choose the
-      |best fit. If the pinned-tier model is unavailable for a turn,
-      |routing degrades to the next candidate that still supports
-      |the tier — `pin_model` can't degrade.
+      |Distinct from pinning a specific model: this pins a TIER and lets the chain
+      |choose the best fit. If the pinned-tier model is unavailable for a turn,
+      |routing degrades to the next candidate that still supports the tier — pinning
+      |a specific model can't degrade.
       |
       |Use `unpin_complexity` to revert.""".stripMargin,
   examples = List(

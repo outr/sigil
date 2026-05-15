@@ -32,8 +32,8 @@ final class UpdateWorkflowTool extends TypedTool[UpdateWorkflowInput](
     """Update a workflow template's fields. Only set fields are overwritten.
       |
       |Useful for incremental editing — e.g. add a step without resending the full step list.
-      |For step-list edits, fetch the current template first via `get_workflow`,
-      |modify, then pass the full updated list here.""".stripMargin,
+      |For step-list edits, fetch the current template first, modify, then pass the full
+      |updated list here.""".stripMargin,
   examples = List(
     ToolExample(
       "disable a workflow",

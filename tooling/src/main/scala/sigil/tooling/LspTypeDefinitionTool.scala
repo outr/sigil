@@ -23,11 +23,11 @@ case class LspTypeDefinitionInput(languageId: String,
 final class LspTypeDefinitionTool(val manager: LspManager) extends TypedOutputTool[LspTypeDefinitionInput, List[LspLocation]](
   name = ToolName("lsp_type_definition"),
   description =
-    """Find the type of a symbol — its class / trait / struct definition.
+    """Find the type of a symbol — its class / trait / struct definition. Distinct from
+      |the symbol's own definition: this resolves to the symbol's TYPE.
       |
       |`languageId` + `filePath` identify the source document.
       |`line` + `character` (0-based) point at the symbol whose type to look up.
-      |Distinct from `lsp_goto_definition`, which finds the symbol itself.
       |Returns `[{uri, filePath, range}]`.""".stripMargin,
   keywords = Set("lsp", "type definition", "type", "where defined", "type declaration", "examine", "inspect"),
   examples = List(

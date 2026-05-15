@@ -37,7 +37,7 @@ case object RecordConsentTool extends TypedTool[RecordConsentInput](
   name = ToolName("record_consent"),
   description =
     """Record the user's consent decision for a `requiresUserConsent` tool. Call AFTER the
-      |user has answered an approval prompt (typically the agent's own `respond_options`).
+      |user has answered an approval prompt (typically via a structured-options reply).
       |The framework refuses to dispatch consent-gated tools until an approval record exists.
       |
       |- `toolName` — EXACT name of the consent-gated tool. Mistyped names persist a useless

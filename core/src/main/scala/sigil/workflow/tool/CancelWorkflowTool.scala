@@ -23,9 +23,8 @@ final class CancelWorkflowTool extends TypedTool[CancelWorkflowInput](
   description =
     """Cancel a running or scheduled workflow run.
       |
-      |`runId` is the run id (from `run_workflow` or `list_runs`). The run's current
-      |step finishes if mid-execution, then no further steps run. Idempotent — cancelling
-      |a finished run is a no-op.""".stripMargin,
+      |`runId` is the run id. The run's current step finishes if mid-execution, then
+      |no further steps run. Idempotent — cancelling a finished run is a no-op.""".stripMargin,
   examples = List(ToolExample("cancel by run id", CancelWorkflowInput(runId = "run-abc"))),
   keywords = Set("workflow", "cancel", "stop", "abort")
 ) with WorkflowToolSupport {

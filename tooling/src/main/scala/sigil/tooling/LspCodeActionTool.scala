@@ -37,7 +37,8 @@ final class LspCodeActionTool(val manager: LspManager) extends TypedOutputTool[L
       |the selection or cursor span. For a cursor-only invocation, set start == end.
       |`onlyKinds` (optional) filters by LSP code-action kind ("quickfix", "refactor.extract",
       |"source.organizeImports", etc.).
-      |Returns `{filePath, items: [{index, kind, title}]}`. Apply by index with `lsp_apply_code_action`.""".stripMargin,
+      |Returns `{filePath, items: [{index, kind, title}]}`. The listing is cached for a
+      |separate apply-by-index tool.""".stripMargin,
   keywords = Set("lsp", "code action", "fix", "refactor", "suggestion", "quick fix", "auto fix", "improve"),
   examples = List(
     ToolExample(
