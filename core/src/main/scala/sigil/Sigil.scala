@@ -5123,6 +5123,14 @@ trait Sigil {
                 .evalTap {
                   case ti: ToolInvoke if Orchestrator.UserVisibleTerminalTools.contains(ti.toolName.value) =>
                     Task { activeUserVisibleInvokes.put(ti._id, ti.toolName.value); () }
+                  // ANY agent-emitted Standard-role Message counts as a
+                  // user-visible reply for the silent-turn check —
+                  // covers the orchestrator's no-tool-call placeholder
+                  // path that lands a Message without going through a
+                  // user-visible-terminal-tool's ToolDelta settle.
+                  case m: sigil.event.Message
+                    if m.role == sigil.event.MessageRole.Standard && m.participantId == agent.id =>
+                    Task { userVisibleSeen.set(true); () }
                   case td: ToolDelta if td.state.contains(EventState.Complete)
                                      && activeUserVisibleInvokes.containsKey(td.target) =>
                     Task {
