@@ -315,9 +315,51 @@ object Orchestrator {
         Stream.emits(createMessageSignal.toList ::: List(delta))
 
       case ProviderEvent.ToolCallComplete(callId, input) =>
+        // Sigil bug #176 — some OpenAI-compat backends (observed:
+        // OpenRouter passing through Kimi-K2.5, also kindred to
+        // bug #163's DeepInfra streaming variance) ship a tool-call
+        // shape that doesn't trigger `ToolCallStart` upstream — either
+        // the leading `id`+`name` chunk is missing, or its keys arrive
+        // in a shape the accumulator's predicate doesn't recognize.
+        // The previous IllegalStateException tore down the whole agent
+        // loop on the first such request. Recover by synthesizing the
+        // ActiveCall + ToolInvoke event in-line: the typed `input`
+        // carries enough info — its runtime class maps deterministically
+        // to one of `request.tools` (each tool's input type is unique
+        // by construction), and we mint a fresh invokeId here.
+        val synthesizedInvoke: Vector[Signal] =
+          if (state.activeCalls.contains(callId)) Vector.empty
+          else {
+            val toolName = request.tools.iterator.collectFirst {
+              case t if t.inputRW.definition.className.contains(input.getClass.getName) => t.schema.name.value
+            }.getOrElse("(unknown)")
+            val invokeId = Event.id()
+            state.activeCalls(callId) = ActiveCall(toolName, invokeId)
+            state.sawAnyToolCall = true
+            val isInternal = Orchestrator.UserVisibleTerminalTools.contains(toolName)
+            scribe.warn(
+              s"Synthesizing ToolInvoke for orphan ToolCallComplete(callId=${callId.value}, " +
+                s"tool=$toolName) — provider didn't emit a recognizable ToolCallStart upstream. " +
+                "See sigil bug #176."
+            )
+            Vector(ToolInvoke(
+              toolName       = ToolName(toolName),
+              participantId  = caller,
+              conversationId = convId,
+              topicId        = topicId,
+              _id            = invokeId,
+              state          = EventState.Active,
+              internal       = isInternal,
+              callId         = Some(callId.value)
+            ))
+          }
         val active = state.activeCalls.remove(callId).getOrElse {
+          // Synthesis above always populates activeCalls; this branch
+          // only fires if the synthesized entry was somehow removed in
+          // the same step. Keep the throw as a hard invariant for the
+          // genuinely impossible case.
           throw new IllegalStateException(
-            s"ToolCallComplete($callId) without a preceding ToolCallStart. " +
+            s"ToolCallComplete($callId) without a preceding ToolCallStart and synthesis failed. " +
               s"Active calls: [${state.activeCalls.keys.map(_.value).mkString(", ")}]."
           )
         }
@@ -338,7 +380,11 @@ object Orchestrator {
           state = Some(EventState.Complete),
           internal = isInternal
         ))
-        state.activeMessageId match {
+        // Local def so `return` statements inside the streaming /
+        // atomic branches (refusal challenge, repeated-query intercept)
+        // return from THIS def rather than from `translate`. That
+        // preserves the synthesis-prepend at the bottom of this case.
+        def toolCallCompleteInner(): Stream[Signal] = state.activeMessageId match {
           case Some(msgId) =>
             // Streaming path — respond's content streamed live as
             // ContentBlockDeltas. Close the open block, parse the
@@ -670,6 +716,8 @@ object Orchestrator {
             }
             proceedWithAtomicDispatch()
         }
+        if (synthesizedInvoke.isEmpty) toolCallCompleteInner()
+        else Stream.emits(synthesizedInvoke) ++ toolCallCompleteInner()
 
       case ProviderEvent.Usage(usage) =>
         // Bug #55 — fall back to the last user-visible Message id when
