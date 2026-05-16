@@ -99,44 +99,68 @@ object Orchestrator {
     val state = new State()
     val convId = request.conversationId
 
+    // Capture the most recent throwable observed in this stream's
+    // lifecycle so the corruption-resistance cleanup (below) can
+    // surface a useful diagnostic on the orphan-settle messages it
+    // emits. `onErrorFinalize` only fires when the error is on the
+    // OUTER pull's stepTask — rapid's implementation doesn't
+    // recursively wrap inner `Step.Concat` pulls, so errors
+    // originating inside `translate`'s inner streams or inside
+    // `provider(request)`'s appended sub-streams bypass it. The
+    // `guarantee` block below runs on every termination path
+    // (success, outer error, inner-Concat error) and consults this
+    // ref + `state.activeCalls` to publish any unsettled orphans.
+    val capturedError = new java.util.concurrent.atomic.AtomicReference[Option[Throwable]](None)
+
+    /** Publish orphan-settle signals for any tool calls left
+      * in-flight when the stream terminates. Runs at termination
+      * regardless of how the stream ended; idempotent because
+      * `settleOrphanToolInvoke` clears `state.activeCalls` after
+      * walking it. */
+    def reconcileInflight: Task[Unit] = {
+      val errorMsg = capturedError.get().flatMap(t => Option(t.getMessage)).filter(_.nonEmpty)
+      val callerForOrphan = request.chain.lastOption.getOrElse(
+        throw new IllegalStateException("ProviderRequest.chain is empty; orchestrator needs at least one participant.")
+      )
+      val orphans = settleOrphanToolInvoke(
+        state, convId,
+        caller = callerForOrphan,
+        topicId = request.currentTopic.id,
+        error = errorMsg,
+        reasonFor = a =>
+          errorMsg.fold(s"Tool `${a.toolName}` did not produce a result")(
+            err => s"Tool `${a.toolName}` did not complete: $err"
+          ),
+        recoverable = true
+      ) ++ settleOrphanMessage(state, convId, error = errorMsg)
+      orphans.foldLeft(Task.unit) { (acc, sig) =>
+        acc.flatMap(_ => sigil.publish(sig).handleError(_ => Task.unit))
+      }
+    }
+
     provider(request)
       .flatMap(pe => translate(pe, sigil, request, conversation, toolsByName, state))
       .onErrorFinalize { t =>
-        // The `Done`/`Error` ProviderEvent arms emit orphan-settle
-        // ToolDeltas via `Stream.emits` so they reach the consumer
-        // through the normal `evalTap(publish)` path. Those arms only
-        // fire when the provider stream actually reached completion —
-        // a mid-stream Task error (HTTP read fails, context-overflow
-        // 400 thrown by the wire layer, fiber cancellation) skips
-        // them, leaving any in-flight ToolInvoke at state=Active
-        // forever and clients believing the agent is still working.
-        // We can't emit signals into a stream that's already errored,
-        // so we publish the orphan settle directly through the host
-        // Sigil's signal hub before re-raising. Failures during the
-        // settle publish are swallowed — we already have the original
-        // error to surface, and a corrupt settle shouldn't mask it.
-        //
-        // Sigil bug #171 — same treatment for the in-flight streaming
-        // Message (started by ContentBlockDeltas during respond-family
-        // args streaming). A throw after the Message started but before
-        // ToolCallComplete settled it (e.g. ProviderStreamException
-        // from malformed-args detection) used to leave it at Active
-        // forever with a typing-indicator stuck on the client.
-        val errorMsg = Option(t.getMessage).filter(_.nonEmpty)
-        val callerForOrphan = request.chain.lastOption.getOrElse(
-          throw new IllegalStateException("ProviderRequest.chain is empty; orchestrator needs at least one participant.")
-        )
-        val orphans = settleOrphanToolInvoke(
-          state, convId,
-          caller = callerForOrphan,
-          topicId = request.currentTopic.id,
-          error = errorMsg
-        ) ++
-                      settleOrphanMessage(state, convId, error = errorMsg)
-        orphans.foldLeft(Task.unit) { (acc, sig) =>
-          acc.flatMap(_ => sigil.publish(sig).handleError(_ => Task.unit))
-        }
+        // Outer-level errors land here. Capture for the guarantee
+        // block, which actually does the orphan-settle publish — we
+        // need a single place that's guaranteed to run even when the
+        // error originated in an inner `Step.Concat` pull (where
+        // rapid's `onErrorFinalize` wrap doesn't reach).
+        Task { capturedError.set(Some(t)); () }
       }
+      .guarantee(Task.defer {
+        // Sigil bug #190 — corruption-resistance invariant: every
+        // ToolInvoke this orchestrator emitted must reach Complete +
+        // have at least one paired result event by the time the
+        // stream terminates. `guarantee` runs at termination on every
+        // path: clean Stop, outer error, inner-Concat error, fiber
+        // cancellation. Replaces the old `onErrorFinalize`-only
+        // approach that silently missed inner-stream errors and left
+        // ToolInvokes Active in the durable event log, which then
+        // poisoned subsequent turns via the wire renderer's dangling-
+        // tool-call fallback.
+        reconcileInflight
+      })
   }
 
   /** A tool call that's been started but not yet settled. Tracks the
@@ -690,8 +714,32 @@ object Orchestrator {
               // inject a synthetic Tool-role Failure so the wire's
               // function_call ↔ function_call_output pairing stays valid.
               val isAtomic = CoreTools.atomicContentToolNames.contains(ToolName(active.toolName))
+              // Drain the tool's stream into a list, recovering from
+              // mid-stream errors (Bug #49 / #190). The construction-time
+              // `Task(executeAtomic(…)).handleError` above catches
+              // synchronous throws WHILE building the stream value;
+              // errors raised DURING stream evaluation (e.g.
+              // `Stream.force(Task.error(…))` in the tool body, fiber
+              // cancellation, a stream-internal HTTP read failure)
+              // propagate past that wrap and would otherwise leave the
+              // ToolInvoke without a paired result event. Capturing the
+              // throwable here means the synth paths below always run
+              // against a known-good `collected` list and can pair the
+              // invoke even if the tool's stream blew up mid-pull.
+              val drained: Task[(List[Signal], Option[Throwable])] =
+                tracked.toList.map(events => (events, Option.empty[Throwable]))
+                  .handleError { err =>
+                    scribe.error(
+                      s"orchestrator: tool '${active.toolName}' (invokeId=${invokeId.value}) " +
+                        s"stream errored mid-dispatch (${err.getClass.getSimpleName}: ${err.getMessage}). " +
+                        "Pairing the invoke with a typed Failure result so the agent's frame trail stays " +
+                        "well-formed.",
+                      err
+                    )
+                    Task.pure((List.empty[Signal], Some(err)))
+                  }
               val guarded: Stream[Signal] =
-                if (isAtomic) Stream.force(tracked.toList.map { collected =>
+                if (isAtomic) Stream.force(drained.map { case (collected, errOpt) =>
                   // If the tool already emitted a Tool-role event paired to
                   // this invoke (e.g. an app-specific atomic content tool
                   // that handles its own pairing), don't duplicate.
@@ -701,49 +749,64 @@ object Orchestrator {
                   }
                   if (hasResult) Stream.emits(collected)
                   else {
+                    val (content, disposition) = errOpt match {
+                      case None      => (Vector.empty[ResponseContent], MessageDisposition.Success)
+                      case Some(err) =>
+                        (Vector[ResponseContent](ResponseContent.Text(
+                          s"Tool `${active.toolName}` failed during execution: " +
+                            s"${err.getClass.getSimpleName}: ${Option(err.getMessage).getOrElse("(no message)")}"
+                        )), MessageDisposition.Failure(recoverable = true))
+                    }
                     val synth = Message(
                       participantId  = caller,
                       conversationId = convId,
                       topicId        = topicId,
                       role           = MessageRole.Tool,
-                      content        = Vector.empty,  // empty → wire emits empty function_call_output
+                      content        = content,
                       state          = EventState.Complete,
+                      disposition    = disposition,
                       visibility     = MessageVisibility.Agents,
                       origin         = Some(invokeId)
                     )
                     // Capture so a subsequent duplicate-call dispatch
-                    // can inline this (empty) content rather than fall
-                    // back to a generic prose directive. See sigil bug #189.
+                    // can inline this content rather than fall back to
+                    // a generic prose directive. See sigil bug #189.
                     state.dispatchedResultContent(invokeId) = synth.content
                     Stream.emits(collected :+ synth)
                   }
                 })
-                else Stream.force(tracked.toList.map { collected =>
+                else Stream.force(drained.map { case (collected, errOpt) =>
                   val hasResult = collected.exists {
                     case e: Event if e.role == MessageRole.Tool => true
                     case _                                       => false
                   }
                   if (hasResult) Stream.emits(collected)
                   else {
-                    scribe.warn(
-                      s"orchestrator: tool '${active.toolName}' (invokeId=${invokeId.value}) completed " +
-                        "without emitting a MessageRole.Tool event — likely a sync throw escaping its " +
-                        "executeTyped handleError. Emitting a typed Failure result to keep the wire paired."
-                    )
                     val argsText = canonicalArgsKey(active.toolName, input)
                       .stripPrefix(s"${active.toolName}:")
                       .take(200)
+                    val contentText = errOpt match {
+                      case None =>
+                        scribe.warn(
+                          s"orchestrator: tool '${active.toolName}' (invokeId=${invokeId.value}) completed " +
+                            "without emitting a MessageRole.Tool event — likely a sync throw escaping its " +
+                            "executeTyped handleError. Emitting a typed Failure result to keep the wire paired."
+                        )
+                        s"Tool `${active.toolName}` failed internally. Args: $argsText. " +
+                          "Pick a different tool or refine the approach."
+                      case Some(err) =>
+                        s"Tool `${active.toolName}` failed during execution: " +
+                          s"${err.getClass.getSimpleName}: ${Option(err.getMessage).getOrElse("(no message)")}. " +
+                          s"Args: $argsText. Pick a different tool or refine the approach."
+                    }
                     Stream.emits(collected :+ Message(
                       participantId  = caller,
                       conversationId = convId,
                       topicId        = topicId,
                       role           = MessageRole.Tool,
-                      content        = Vector(ResponseContent.Text(
-                        s"Tool `${active.toolName}` failed internally. Args: $argsText. " +
-                          "Pick a different tool or refine the approach."
-                      )),
+                      content        = Vector(ResponseContent.Text(contentText)),
                       state          = EventState.Complete,
-                      disposition    = MessageDisposition.Failure(recoverable = false),
+                      disposition    = MessageDisposition.Failure(recoverable = errOpt.isDefined),
                       visibility     = MessageVisibility.Agents,
                       origin         = Some(invokeId)
                     ))

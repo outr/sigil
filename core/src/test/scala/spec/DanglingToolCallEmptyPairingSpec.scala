@@ -54,18 +54,24 @@ class DanglingToolCallEmptyPairingSpec extends AnyWordSpec with Matchers {
 
   "Provider.renderInput dangling-call synthesis" should {
 
-    "remain a defensive safety net with brief content, not a primary mechanism" in {
+    "remain a defensive safety net with no prose directive in the agent's context" in {
       val src = providerSrc
-      // The prose retry-prompt that stacked across past turns is gone.
+      // The prose retry-prompts that stacked across past turns are gone.
       src should not include "The previous tool call did not return a result"
       src should not include "transient internal error"
       src should not include "Please report it"
       src should not include "framework error: tool emitted no MessageRole.Tool"
-      // A brief, factual marker remains — the orchestrator should
-      // pair every ToolInvoke before this synthesis runs, so this
-      // text appears only when the runtime guard / orphan-settle path
-      // is buggy. The synthesis logs an error in that case.
-      src should include ("tool failed: no result emitted")
+      // The "tool failed: no result emitted" text was itself a prose
+      // directive that poisoned agent reasoning (sigil bug #189
+      // family). Replaced with a short non-directive marker — keeps
+      // wire shape valid (function_call ↔ function_call_output
+      // pairing) without telling the agent how to react. The
+      // scribe.error is the actionable surface for the
+      // framework-bug-detection path; with sigil bug #190's
+      // corruption-resistance invariant in place, this fallback
+      // should be unreachable in well-formed operation.
+      src should not include "tool failed: no result emitted"
+      src should include ("\"(orphan)\"")
       src should include ("renderInput: dangling tool_call")
     }
   }

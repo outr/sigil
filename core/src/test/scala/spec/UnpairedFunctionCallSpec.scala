@@ -81,8 +81,10 @@ class UnpairedFunctionCallSpec extends AnyWordSpec with Matchers {
       }.toMap
       resultsByCall(callA.value) shouldBe "real-result-A"
       resultsByCall.keySet should contain (callB.value)
-      // callB's content is the framework's brief failure marker.
-      resultsByCall(callB.value) should include ("tool failed")
+      // callB's content is the framework's brief non-directive marker
+      // (sigil bug #190 — the prior "tool failed: no result emitted"
+      // text was itself a prose directive that poisoned reasoning).
+      resultsByCall(callB.value) shouldBe "(orphan)"
     }
 
     "tolerate a ToolResult arriving for a call that was never pending (no crash)" in {

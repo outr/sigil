@@ -161,12 +161,17 @@ class ContextPoisoningGuardsSpec extends AsyncWordSpec with AsyncTaskSpec with M
         ).getLines().mkString("\n")
         src should not include "Please report it"
         src should not include "framework error: tool emitted no MessageRole.Tool"
-        // The prose retry directive that stacked across past turns is
-        // also gone — the architectural fix pairs every ToolInvoke in
-        // the durable log so render-time synthesis stays a safety net
-        // with a brief factual marker.
+        // The prose retry directives that stacked across past turns
+        // are gone — the architectural fix (sigil bug #190) pairs
+        // every ToolInvoke in the durable log before render time, so
+        // this fallback is unreachable in well-formed operation. The
+        // earlier "tool failed: no result emitted" text was itself a
+        // prose directive that poisoned reasoning; replaced with a
+        // short non-directive marker that keeps wire pairing valid
+        // without telling the agent how to react.
         src should not include "The previous tool call did not return a result"
-        src should include ("tool failed: no result emitted")
+        src should not include "tool failed: no result emitted"
+        src should include ("\"(orphan)\"")
       }
     }
   }
