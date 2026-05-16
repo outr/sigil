@@ -540,21 +540,30 @@ object SigilAgentDecisionStep {
          |$priorBlock$answersBlock--- Continue ---""".stripMargin
   }
 
-  /** Walk the workflow's persisted step results and pull out every
-    * answer the parent has provided so far. Each AnswerTrigger
-    * settles with `{taskId, questionId, answer}` in its `output`
-    * payload; we project to a typed [[ParentAnswer]] for
-    * `buildUserPrompt`. Returns oldest-to-newest so the LLM sees
-    * answers in the order they arrived. */
+  /** Walk the workflow's trigger payloads and pull out every answer
+    * the parent has provided so far. Strider stores each settled
+    * trigger's payload in `workflow.payloads` keyed by the trigger
+    * step id — [[AnswerTrigger]] settles with
+    * `{taskId, questionId, answer}`. Reading `stepResults` instead
+    * (the prior implementation) silently dropped every answer
+    * because Strider never writes trigger payloads there; the
+    * resumed worker iteration ran without the answer in scope and
+    * either looped until maxIterations or emitted a fabricated
+    * `Complete`. Returns oldest-to-newest so the LLM sees answers
+    * in the order they arrived. */
   def extractParentAnswers(workflow: strider.Workflow): List[ParentAnswer] = {
-    workflow.stepResults.reverse.flatMap { sr =>
-      sr.output.flatMap { json =>
+    // payloads is unordered; sort by the trigger step's position in
+    // workflow.steps so older answers render first.
+    val stepOrder: Map[lightdb.id.Id[strider.step.Step], Int] =
+      workflow.steps.zipWithIndex.map { case (s, i) => s.id -> i }.toMap
+    workflow.payloads.toList
+      .sortBy { case (stepId, _) => stepOrder.getOrElse(stepId, Int.MaxValue) }
+      .flatMap { case (_, json) =>
         for {
           questionId <- json.get("questionId").map(_.asString)
           answer     <- json.get("answer").map(_.asString)
         } yield ParentAnswer(questionId, answer)
       }
-    }
   }
 
   /** Resolve a list of tool names against the host's tool finder.

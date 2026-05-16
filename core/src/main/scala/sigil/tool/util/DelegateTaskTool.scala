@@ -98,18 +98,17 @@ case object DelegateTaskTool
       // events surface with a synthetic source. Not worth a real
       // template row per delegation.
       sourceId = LId[WorkflowParent](s"adhoc-${input.role.name}-${rapid.Unique()}")
+      // Pass conversationId at schedule time — the prior pattern
+      // (schedule, then modify to stamp conversationId) raced with
+      // Strider's monitor picking up the freshly-scheduled run; the
+      // monitor's `txn.upsert` of its working-snapshot wiped the
+      // post-schedule modify, leaving `conversationId = None` at
+      // settle time and silently breaking lifecycle attribution.
       run     <- ws.workflowManager.schedule(
-        name      = workerLabel,
-        steps     = compiled.steps,
-        sourceId  = sourceId
-      ).flatMap(wf =>
-        // Stamp the conversationId on the freshly-scheduled run so
-        // lifecycle events fire into the worker conv (and the cost
-        // projection eventually rolls up via parentConversationId).
-        ws.workflowManager.collection.transaction(_.modify(wf._id) {
-          case Some(current) => Task.pure(Some(current.copy(conversationId = Some(workerConv._id.value))))
-          case None          => Task.pure(None)
-        }).map(_ => wf)
+        name            = workerLabel,
+        steps           = compiled.steps,
+        sourceId        = sourceId,
+        conversationId  = Some(workerConv._id.value)
       )
     } yield emit(ctx, obj(
       "ok"            -> str("true"),
