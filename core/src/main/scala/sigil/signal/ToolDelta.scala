@@ -38,7 +38,14 @@ case class ToolDelta(target: Id[Event],
                        * cancel, find_capability, …). Cost projection picks
                        * it up off the persisted `ToolInvoke.usage` field
                        * combined with `ToolInvoke.modelId`. */
-                     usage: Option[TokenUsage] = None)
+                     usage: Option[TokenUsage] = None,
+                     /** Live tool-author-driven summary update. Set via
+                       * [[sigil.TurnContext.setSummary]] from inside a
+                       * tool's execute path; folded onto
+                       * [[sigil.event.ToolInvoke.summary]]. Sigil bug
+                       * #191 — wire-event channel that drives the inline
+                       * tool-chip tagline UI consumers render. */
+                     summary: Option[String] = None)
   extends Delta derives RW {
 
   /**
@@ -48,10 +55,11 @@ case class ToolDelta(target: Id[Event],
    */
   override def apply(target: Event): Event = target match {
     case t: sigil.event.ToolInvoke =>
-      val nextInput = input.orElse(t.input)
-      val nextState = state.getOrElse(t.state)
-      val nextUsage = usage.getOrElse(t.usage)
-      t.copy(input = nextInput, state = nextState, usage = nextUsage)
+      val nextInput   = input.orElse(t.input)
+      val nextState   = state.getOrElse(t.state)
+      val nextUsage   = usage.getOrElse(t.usage)
+      val nextSummary = summary.getOrElse(t.summary)
+      t.copy(input = nextInput, state = nextState, usage = nextUsage, summary = nextSummary)
     case other => other
   }
 }

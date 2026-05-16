@@ -58,6 +58,23 @@ case class ToolInvoke(toolName: ToolName,
                         * Combined with `modelId`, lets cost projection charge
                         * the conversation for tool-call-only turns. */
                       usage: TokenUsage = TokenUsage(0, 0, 0),
+                      /** Live tool-author-driven summary surfaced inline on
+                        * client tool-call chips. Updated through
+                        * [[sigil.TurnContext.setSummary]] across the
+                        * execution arc:
+                        *
+                        *   - at start with input-derived context
+                        *     ("Searching '<pattern>' in <path>")
+                        *   - mid-flight ("Searched 12 files, 7 matches so far")
+                        *   - at completion ("12 matches across 31 files")
+                        *
+                        * Each update emits a [[sigil.signal.ToolDelta]] that
+                        * folds the new value here, so the persisted invoke
+                        * always carries the most recent summary. Default
+                        * empty — tools that don't opt in leave it as-is and
+                        * the UI falls back to the tool name alone. Sigil
+                        * bug #191. */
+                      summary: String = "",
                       /** Model that produced this tool call. Stamped by the
                         * orchestrator from the active `ProviderRequest`. Pairs
                         * with `usage` for cost attribution on tool-call-only
