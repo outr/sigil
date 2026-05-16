@@ -5,7 +5,7 @@ import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.Model
 import sigil.event.{Event, LogLevel, ToolLog}
 import sigil.participant.ParticipantId
-import sigil.signal.ToolProgress
+import sigil.signal.{ToolDelta, ToolProgress}
 import sigil.tool.ToolName
 
 /**
@@ -165,6 +165,49 @@ case class TurnContext(sigil: Sigil,
           conversationId = conversation.id,
           topicId        = conversation.currentTopicId,
           origin         = Some(invokeId)
+        )).map(_ => ())
+    }
+
+  /**
+   * Update the inline tool-call chip summary across the dispatching
+   * tool's execution arc (sigil bug #191). Tool authors call this at
+   * meaningful points — start of work, mid-flight progress, final
+   * result — to drive what users see on the chip without expanding
+   * it. Each call publishes a [[sigil.signal.ToolDelta]] that folds
+   * the new value onto [[sigil.event.ToolInvoke.summary]], so the
+   * persisted invoke always carries the most recent string.
+   *
+   * Distinct from [[reportProgress]]: progress pulses are transient
+   * Notices (no DB write, fade in the UI as new ones arrive); the
+   * summary is durable invoke state and persists across reload.
+   * Distinct from the final-only [[sigil.event.ToolResults.summary]]
+   * field: that's a snapshot at result-emit time; this drives the
+   * full arc.
+   *
+   * Typical lifecycle:
+   *
+   * {{{
+   *   override def executeTyped(input: GrepInput, ctx: TurnContext): Stream[Event] = {
+   *     Stream.force(ctx.setSummary(s"Searching '${input.pattern}'").map { _ =>
+   *       Stream.eval(searchAsync(input)).flatMap { results =>
+   *         Stream.force(ctx.setSummary(s"${results.matchCount} matches across ${results.fileCount} files")
+   *           .map(_ => Stream.emits(buildResultEvents(results))))
+   *       }
+   *     })
+   *   }
+   * }}}
+   *
+   * No-op outside a tool dispatch — no [[sigil.event.ToolInvoke]] to
+   * pair to.
+   */
+  def setSummary(value: String): rapid.Task[Unit] =
+    currentToolInvokeId match {
+      case None => rapid.Task.unit
+      case Some(invokeId) =>
+        sigil.publish(ToolDelta(
+          target         = invokeId,
+          conversationId = conversation.id,
+          summary        = Some(value)
         )).map(_ => ())
     }
 }
