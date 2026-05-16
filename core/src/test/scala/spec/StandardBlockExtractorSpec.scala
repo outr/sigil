@@ -60,19 +60,19 @@ class StandardBlockExtractorSpec extends AsyncWordSpec with AsyncTaskSpec with M
       }
     }
 
-    "pull long ToolResult content when extractToolResult is on" in {
+    "leave ToolResult frames untouched regardless of size (sigil bug #201)" in {
       val puts = recorder()
       val extractor = StandardBlockExtractor(toInformation = (c, id) => BlockInfo(id, c), minChars = 20)
       val callId = Id[Event]("call-1")
-      val longResult = "Y" * 60
+      val longResult = "Y" * 4000
       val frames = Vector[ContextFrame](
         ContextFrame.ToolResult(callId, longResult, Id[Event]("res-1"))
       )
       extractor.extract(TestSigil, frames).map { result =>
-        val replaced = result.frames.head.asInstanceOf[ContextFrame.ToolResult]
-        replaced.content should include("Information[")
-        result.information should have size 1
-        puts() should have size 1
+        val preserved = result.frames.head.asInstanceOf[ContextFrame.ToolResult]
+        preserved.content shouldBe longResult
+        result.information shouldBe empty
+        puts() shouldBe empty
       }
     }
 

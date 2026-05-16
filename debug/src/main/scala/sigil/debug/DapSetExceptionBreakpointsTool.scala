@@ -33,6 +33,8 @@ final class DapSetExceptionBreakpointsTool(val manager: DapManager) extends Type
     )
   )
 ) with DapToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: DapSetExceptionBreakpointsInput, context: TurnContext): Stream[Event] =
     withSession(input.sessionId, context) { session =>
       session.setExceptionBreakpoints(input.filters).map { bps =>

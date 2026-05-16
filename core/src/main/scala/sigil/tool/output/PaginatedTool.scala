@@ -76,6 +76,11 @@ abstract class PaginatedTool[In <: ToolInput, A](
   def invokeFirstPage(input: In, context: TurnContext): Task[JsonPagedResult] =
     drainAndFirstPage(input, context)
 
+  /** PaginatedTool by definition emits paginated output — every
+    * concrete subclass is iterative by construction. Sigil bug
+    * #201. */
+  final override def paginate: Boolean = true
+
   /** Glue — implements the [[Tool]] trait's `Stream[Event]`
     * contract by draining the typed stream into the DB and
     * emitting a single [[ToolResults]] event with the first page

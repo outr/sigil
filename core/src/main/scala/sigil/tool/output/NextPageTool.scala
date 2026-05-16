@@ -35,6 +35,8 @@ case object NextPageTool extends TypedOutputTool[NextPageInput, JsonPagedResult]
       |Page indexing is zero-based. `pageSize` defaults to 50 (max 500).""".stripMargin,
   keywords = Set("next", "page", "more", "paginate", "results", "navigate", "children", "expand")
 ) {
+  override def paginate: Boolean = false
+
 
   private val maxPageSize = 500
 

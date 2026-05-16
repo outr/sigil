@@ -60,6 +60,8 @@ final class GitPushTool(context: FileSystemContext)
     ),
     keywords = Set("git", "push", "publish", "upload", "remote", "upstream", "deploy", "sync")
   ) with sigil.tool.DestructiveExternalTool {
+  override def paginate: Boolean = false
+
 
   override protected def executeTyped(input: GitPushInput, ctx: TurnContext): Stream[Event] = Stream.force(
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>

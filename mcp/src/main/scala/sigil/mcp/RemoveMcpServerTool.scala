@@ -15,6 +15,8 @@ final class RemoveMcpServerTool(manager: McpManager) extends TypedTool[RemoveMcp
   name = ToolName("remove_mcp_server"),
   description = "Remove a registered MCP server and disconnect any active connection. The persisted config is deleted."
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: RemoveMcpServerInput, context: TurnContext): Stream[Event] =
     Stream.force(manager.removeConfig(input.name).map { _ =>
       Stream.emit[Event](Message(

@@ -28,6 +28,8 @@ case object RespondCardsTool extends TypedTool[RespondCardsInput](
       |- `cards` — the cards, in order.""".stripMargin,
   examples = Nil
 ) with RespondFamilyTool {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: RespondCardsInput, context: TurnContext): rapid.Stream[Event] =
     rapid.Stream.emits(List(Message(
       participantId = context.caller,

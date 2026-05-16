@@ -22,6 +22,8 @@ case object ListProviderStrategiesTool extends TypedTool[ListProviderStrategiesI
       "including a marker for the currently-assigned one.",
   keywords = Set("list", "provider", "strategy", "strategies", "models")
 ) {
+  override def paginate: Boolean = false
+
 
   override protected def executeTyped(input: ListProviderStrategiesInput, ctx: TurnContext): Stream[Event] =
     Stream.force(

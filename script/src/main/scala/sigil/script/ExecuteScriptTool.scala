@@ -60,6 +60,8 @@ class ExecuteScriptTool(executor: ScriptExecutor,
       )
     )
   ) {
+  override def paginate: Boolean = false
+
 
   /** Append the executor's advertised surface (Bug #54) so the LLM
     * knows which library identifiers are pre-imported. Without this

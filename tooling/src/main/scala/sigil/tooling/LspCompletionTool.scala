@@ -41,6 +41,8 @@ final class LspCompletionTool(val manager: LspManager) extends TypedOutputTool[L
     )
   )
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: LspCompletionInput, context: TurnContext): Task[LspCompletionResult] =
     withOpenDocumentTyped[LspCompletionResult](
       input.languageId, input.filePath, context,

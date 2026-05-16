@@ -15,6 +15,8 @@ final class ListMcpPromptsTool(manager: McpManager) extends TypedTool[ListMcpPro
   name = ToolName("list_mcp_prompts"),
   description = "List the prompt templates advertised by a registered MCP server, including their argument names."
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: ListMcpPromptsInput, context: TurnContext): Stream[Event] =
     Stream.force(manager.listPrompts(input.server).map { prompts =>
       val text = if (prompts.isEmpty) "(no prompts advertised)"

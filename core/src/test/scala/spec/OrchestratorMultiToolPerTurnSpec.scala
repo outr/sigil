@@ -37,6 +37,7 @@ class OrchestratorMultiToolPerTurnSpec extends AsyncWordSpec with AsyncTaskSpec 
 
   /** Atomic tool that throws synchronously inside `execute`. */
   private object ThrowingTool extends Tool {
+  override def paginate: Boolean = false
     override val name: ToolName = ToolName("throw_atomic")
     override def description: String = "Always throws on execute."
     override def inputRW: RW[? <: ToolInput] = summon[RW[NoResponseInput]]

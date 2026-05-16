@@ -35,6 +35,8 @@ final class BspSourcesTool(val manager: BspManager) extends TypedOutputTool[BspS
     )
   )
 ) with BspToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: BspSourcesInput, context: TurnContext): Task[BspSourcesResult] =
     withSessionTyped[BspSourcesResult](
       input.projectRoot, context,

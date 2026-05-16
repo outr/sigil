@@ -56,6 +56,8 @@ case object PinComplexityTool extends TypedTool[PinComplexityInput](
     "complexity", "tier", "routing", "cost", "ceiling", "level"
   )
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: PinComplexityInput, ctx: TurnContext): Stream[Event] = {
     val normalized = input.tier.trim.toLowerCase.replaceAll("\\s+|-|_", "")
     val parsed: Option[Complexity] = normalized match {

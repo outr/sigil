@@ -14,6 +14,8 @@ case object FailingTool extends TypedTool[FailingToolInput](
   description = "Test-only tool that always throws an exception when called.",
   keywords = Set("fail", "test", "error")
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: FailingToolInput, ctx: TurnContext): Stream[Event] =
     Stream.force(rapid.Task.error(new RuntimeException("intentional failure for worker error-handling test")))
 }

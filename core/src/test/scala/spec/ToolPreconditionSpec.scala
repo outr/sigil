@@ -41,6 +41,7 @@ class ToolPreconditionSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   }
 
   private object SatisfiedTool extends Tool {
+  override def paginate: Boolean = false
     override val name: ToolName = ToolName("gate_satisfied")
     override def description: String = "tool whose preconditions pass"
     override def inputRW: RW[? <: ToolInput] = summon[RW[NoResponseInput]]
@@ -62,6 +63,7 @@ class ToolPreconditionSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   }
 
   private object BlockedTool extends Tool {
+  override def paginate: Boolean = false
     override val name: ToolName = ToolName("gate_blocked")
     override def description: String = "tool with one unsatisfied precondition"
     override def inputRW: RW[? <: ToolInput] = summon[RW[NoResponseInput]]

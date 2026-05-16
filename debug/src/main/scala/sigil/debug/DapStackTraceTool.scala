@@ -34,6 +34,8 @@ final class DapStackTraceTool(val manager: DapManager) extends TypedTool[DapStac
     )
   )
 ) with DapToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: DapStackTraceInput, context: TurnContext): Stream[Event] =
     withSession(input.sessionId, context) { session =>
       session.stackTrace(input.threadId, input.startFrame, input.levels).map { frames =>

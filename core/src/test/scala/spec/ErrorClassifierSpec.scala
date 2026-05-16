@@ -86,7 +86,7 @@ class ErrorClassifierSpec extends AnyWordSpec with Matchers {
     }
 
     "classify AgentRunawayException as Fatal (cap reached, infinite retry would loop)" in {
-      val ex = new sigil.AgentRunawayException("test/agent hit maxAgentIterations")
+      val ex = new sigil.AgentRunawayException("test/agent hit maxAgentIterations", sigil.ForcedSynthesisReason.CapHit)
       ErrorClassifier.Default.classify(ex) shouldBe ErrorClassification.Fatal
     }
   }

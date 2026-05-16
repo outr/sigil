@@ -17,6 +17,8 @@ final class GetUserInfoTool(state: AtomicReference[BankingEnvironment])
     name = ToolName("get_user_info"),
     description = "Get the user information."
   ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: GetUserInfoInput, context: TurnContext): rapid.Stream[Event] = {
     val u = state.get.userAccount
     rapid.Stream.emits(List[Event](UserInfoRead(

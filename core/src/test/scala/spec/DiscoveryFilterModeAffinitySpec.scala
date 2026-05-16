@@ -33,6 +33,8 @@ class DiscoveryFilterModeAffinitySpec extends AnyWordSpec with Matchers {
     description = s"Stub $n",
     modes       = Set.empty
   ) {
+  override def paginate: Boolean = false
+
     override protected def executeTyped(input: StubInput, context: TurnContext): rapid.Stream[Event] =
       rapid.Stream.empty
   }
@@ -44,6 +46,7 @@ class DiscoveryFilterModeAffinitySpec extends AnyWordSpec with Matchers {
     description = s"Stub $n",
     modes       = Set(restrictTo.id)
   ) {
+  override def paginate: Boolean = false
     override protected def executeTyped(input: StubInput, context: TurnContext): rapid.Stream[Event] =
       rapid.Stream.empty
   }

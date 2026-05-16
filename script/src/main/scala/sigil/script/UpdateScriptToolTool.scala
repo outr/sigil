@@ -33,6 +33,8 @@ case object UpdateScriptToolTool extends TypedTool[UpdateScriptToolInput](
   modes = Set(ScriptAuthoringMode.id),
   keywords = Set("update", "edit", "modify", "tool", "script", "change")
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: UpdateScriptToolInput,
                                       context: TurnContext): Stream[Event] = Stream.force(
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>

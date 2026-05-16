@@ -39,6 +39,8 @@ final class DapEvaluateTool(val manager: DapManager) extends TypedTool[DapEvalua
     )
   )
 ) with DapToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: DapEvaluateInput, context: TurnContext): Stream[Event] =
     withSession(input.sessionId, context) { session =>
       session.evaluate(input.expression, input.frameId, input.context).map { resp =>

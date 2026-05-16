@@ -36,6 +36,8 @@ final class DapSessionStatusTool(val manager: DapManager) extends TypedTool[DapS
     )
   )
 ) with DapToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: DapSessionStatusInput, context: TurnContext): Stream[Event] =
     withSession(input.sessionId, context) { session =>
       val waitTask =

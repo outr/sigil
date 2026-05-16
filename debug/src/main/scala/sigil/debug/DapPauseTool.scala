@@ -26,6 +26,8 @@ final class DapPauseTool(val manager: DapManager) extends TypedTool[DapPauseInpu
     )
   )
 ) with DapToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: DapPauseInput, context: TurnContext): Stream[Event] =
     withSession(input.sessionId, context) { session =>
       session.pause(input.threadId).map(_ => s"Pause requested on thread ${input.threadId}.")

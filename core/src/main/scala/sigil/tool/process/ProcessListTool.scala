@@ -26,6 +26,8 @@ final class ProcessListTool(registry: ProcessRegistry)
     ),
     keywords = Set("process", "list", "running", "background")
   ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: ProcessListInput, ctx: TurnContext): Stream[Event] = Stream.force(
     registry.list(filterByConversation = input.scope match {
       case "all" => None

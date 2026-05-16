@@ -25,6 +25,8 @@ case object ProgressReflectionTool extends TypedTool[ProgressReflectionInput](
       |Be honest — if your status looks identical to the prior status or you're cycling through
       |the same searches, say so (`meaningfulProgress = false`) so the framework can intervene.""".stripMargin
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: ProgressReflectionInput,
                                       context: sigil.TurnContext): rapid.Stream[sigil.event.Event] =
     rapid.Stream.empty

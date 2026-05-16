@@ -18,6 +18,8 @@ final class UpdatePasswordTool(state: AtomicReference[BankingEnvironment])
     name = ToolName("update_password"),
     description = "Update the user password."
   ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: UpdatePasswordInput, context: TurnContext): rapid.Stream[Event] = {
     state.updateAndGet(env => env.copy(userAccount = env.userAccount.copy(password = input.password)))
     rapid.Stream.emits(List[Event](PasswordUpdated(

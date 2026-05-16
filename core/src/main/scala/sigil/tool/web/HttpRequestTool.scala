@@ -52,6 +52,8 @@ case object HttpRequestTool extends TypedOutputTool[HttpRequestInput, HttpReques
   ),
   keywords = Set("http", "request", "api", "rest", "fetch", "curl", "post", "put", "patch", "delete")
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: HttpRequestInput, context: TurnContext): Task[HttpRequestOutput] = Task.defer {
     val timeout = input.timeoutMs.millis
     val parsedUrl = URL.parse(input.url)

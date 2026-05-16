@@ -24,6 +24,8 @@ case object UnpinModelTool extends TypedTool[UnpinModelInput](
       |agent's pinned modelId fallback. No-op when nothing was pinned.""".stripMargin,
   keywords = Set("unpin", "unlock", "clear", "auto", "default", "model")
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: UnpinModelInput, ctx: TurnContext): Stream[Event] =
     Stream.force(
       ctx.sigil.withDB(_.conversations.transaction(_.modify(ctx.conversation.id) {

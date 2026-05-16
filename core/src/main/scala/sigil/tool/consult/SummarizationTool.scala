@@ -21,6 +21,8 @@ case object SummarizationTool extends TypedTool[SummarizationInput](
       |`tokenEstimate` — your best estimate of `summary` length in tokens (~4 chars/token is fine).
       |The framework uses this to budget future turns.""".stripMargin
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: SummarizationInput, context: TurnContext): Stream[Event] =
     Stream.empty
 }

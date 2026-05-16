@@ -49,6 +49,8 @@ final class EditFileTool(context: FileSystemContext)
     ),
     keywords = Set("file", "edit", "modify", "replace", "rewrite", "patch")
   ) with sigil.tool.DestructiveExternalTool {
+  override def paginate: Boolean = false
+
 
   /** Non-Success EditFileOutputs (NotFound, NotUnique, Stale, FileNotFound)
     * are logical failures of the EDIT operation, not failures of the tool

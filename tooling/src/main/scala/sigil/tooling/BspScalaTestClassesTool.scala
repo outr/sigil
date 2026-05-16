@@ -37,6 +37,8 @@ final class BspScalaTestClassesTool(val manager: BspManager) extends TypedOutput
     )
   )
 ) with BspToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: BspScalaTestClassesInput,
                                       context: TurnContext): Task[BspTestClassesResult] =
     withSessionTyped[BspTestClassesResult](

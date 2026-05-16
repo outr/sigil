@@ -44,6 +44,8 @@ case object ActivateSkillTool extends TypedTool[ActivateSkillInput](
       |the failure and changes nothing.""".stripMargin,
   keywords = Set("activate", "skill", "load", "enable", "use")
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: ActivateSkillInput, context: TurnContext): Stream[Event] =
     Stream.force(activate(input, context).map { messageText =>
       Stream.emits(List[Event](Message(

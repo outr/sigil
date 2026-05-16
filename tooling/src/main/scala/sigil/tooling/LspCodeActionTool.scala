@@ -57,6 +57,8 @@ final class LspCodeActionTool(val manager: LspManager) extends TypedOutputTool[L
     )
   )
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: LspCodeActionInput, context: TurnContext): Task[LspCodeActionResult] =
     withOpenDocumentTyped[LspCodeActionResult](
       input.languageId, input.filePath, context,

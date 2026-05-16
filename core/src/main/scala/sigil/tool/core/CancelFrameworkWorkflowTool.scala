@@ -53,6 +53,8 @@ case object CancelFrameworkWorkflowTool extends TypedOutputTool[CancelFrameworkW
   ),
   keywords = Set("cancel", "framework", "workflow", "abort", "stop", "preflight", "compress")
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: CancelFrameworkWorkflowInput,
                                        ctx: TurnContext): Task[CancelFrameworkWorkflowOutput] = Task {
     val sigil = ctx.sigil

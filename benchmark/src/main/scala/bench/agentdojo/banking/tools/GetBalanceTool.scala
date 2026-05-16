@@ -21,6 +21,8 @@ final class GetBalanceTool(state: AtomicReference[BankingEnvironment])
     name = ToolName("get_balance"),
     description = "Get the balance of the account."
   ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: GetBalanceInput, context: TurnContext): rapid.Stream[Event] =
     rapid.Stream.emits(List[Event](BalanceRead(
       balance = state.get.bankAccount.balance,

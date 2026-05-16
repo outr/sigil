@@ -41,6 +41,7 @@ class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
   /** Tool whose execute returns Stream.empty — simulates a tool whose
     * executeTyped path swallowed an error or filtered everything out. */
   private object SilentTool extends Tool {
+  override def paginate: Boolean = false
     override def name: ToolName = ToolName("silent_tool")
     override def description: String = "Returns nothing."
     override def inputRW: RW[? <: ToolInput] = summon[RW[EmptyToolInput]]

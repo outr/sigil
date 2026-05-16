@@ -25,6 +25,8 @@ case object UnpinComplexityTool extends TypedTool[UnpinComplexityInput](
       |when nothing was pinned.""".stripMargin,
   keywords = Set("unpin", "unlock", "clear", "auto", "default", "complexity", "tier")
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: UnpinComplexityInput, ctx: TurnContext): Stream[Event] =
     Stream.force(
       // Sigil bug #177 — emit ComplexityChange alongside the

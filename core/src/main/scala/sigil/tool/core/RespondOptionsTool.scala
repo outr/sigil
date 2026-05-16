@@ -61,6 +61,8 @@ case object RespondOptionsTool extends TypedTool[RespondOptionsInput](
     )
   )
 ) with RespondFamilyTool {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: RespondOptionsInput, context: TurnContext): rapid.Stream[Event] = {
     val block = ResponseContent.Options(
       prompt = input.prompt,

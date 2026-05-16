@@ -29,6 +29,7 @@ class SplitToolCallHeaderSpec extends AnyWordSpec with Matchers {
   case class Args(value: String) extends ToolInput derives RW
 
   private object Foo extends Tool {
+  override def paginate: Boolean = false
     override val name: ToolName = ToolName("foo")
     override def description: String = "test"
     override def inputRW: RW[? <: ToolInput] = summon[RW[Args]].asInstanceOf[RW[ToolInput]]

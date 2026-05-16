@@ -52,6 +52,8 @@ case object SwitchModelTool extends TypedTool[SwitchModelInput](
   ),
   keywords = Set("switch", "model", "strategy", "provider", "change", "use", "auto", "default")
 ) {
+  override def paginate: Boolean = false
+
 
   override protected def executeTyped(input: SwitchModelInput, ctx: TurnContext): Stream[Event] =
     Stream.force(handle(input.query.trim, ctx).map(emit => Stream.emit[Event](emit)))

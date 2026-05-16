@@ -57,6 +57,8 @@ case object RequestEscalationTool
     ),
     keywords = Set("escalate", "tier", "complexity", "harder", "smarter model", "frontier")
   ) {
+  override def paginate: Boolean = false
+
 
   override protected def executeTypedResult(input: RequestEscalationInput,
                                             context: TurnContext): Task[ToolResult[RequestEscalationOutput]] =

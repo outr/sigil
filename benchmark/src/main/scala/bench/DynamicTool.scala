@@ -35,6 +35,8 @@ case class DynamicTool(toolName: String,
   name = ToolName(toolName),
   description = toolDescription
 ) {
+  override def paginate: Boolean = false
+
   /** Override the schema's input definition with the hand-built one
     * (the LLM sees the bench-supplied schema; the parser returns raw
     * JSON via DynamicToolInput.rw regardless). */

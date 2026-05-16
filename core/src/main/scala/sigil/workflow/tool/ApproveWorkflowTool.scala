@@ -46,6 +46,8 @@ final class ApproveWorkflowTool extends TypedTool[ApproveWorkflowInput](
   ),
   keywords = Set("workflow", "approve", "ok", "yes", "continue")
 ) with WorkflowToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: ApproveWorkflowInput, ctx: TurnContext): Stream[Event] = {
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)

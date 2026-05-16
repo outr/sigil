@@ -25,6 +25,8 @@ case object RespondFailureTool extends TypedTool[RespondFailureInput](
       |(transient: rate limits, network); false if permanent (missing permissions, unsupported input).""".stripMargin,
   examples = Nil
 ) with RespondFamilyTool {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: RespondFailureInput, context: TurnContext): rapid.Stream[Event] = {
     rapid.Stream.emits(List(Message(
       participantId  = context.caller,

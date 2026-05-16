@@ -17,6 +17,8 @@ final class GetIbanTool(state: AtomicReference[BankingEnvironment])
     name = ToolName("get_iban"),
     description = "Get the IBAN of the current bank account."
   ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: GetIbanInput, context: TurnContext): rapid.Stream[Event] =
     rapid.Stream.emits(List[Event](IbanRead(
       iban = state.get.bankAccount.iban,

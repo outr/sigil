@@ -45,6 +45,8 @@ case object LibraryLookupTool extends TypedTool[LibraryLookupInput](
   modes = Set(ScriptAuthoringMode.id),
   keywords = Set("lookup", "find", "symbol", "class", "method", "fqn", "library", "api")
 ) {
+  override def paginate: Boolean = false
+
 
   private val MaxCandidates = 25
 

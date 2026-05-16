@@ -28,7 +28,7 @@ import sigil.dispatcher.{StopFlag, TriggerFilter}
 import sigil.event.{AgentState, CapabilityResults, Event, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, ToolResults, TopicChange, TopicChangeKind}
 import sigil.role.Role
 import sigil.orchestrator.Orchestrator
-import sigil.provider.{Complexity, ConversationMode, ConversationRequest, Mode, ProviderStrategy, ToolPolicy, WorkType}
+import sigil.provider.{Complexity, ConversationMode, ConversationRequest, Mode, ProviderStrategy, ReasoningMode, ToolPolicy, WorkType}
 import sigil.information.Information
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant, Participant, ParticipantId}
 import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect, MessageIndexingEffect, RedactLocationTransform, RespondOptionsSelectionFramingTransform, SettledEffect, SignalHub, TopicIndexCanonicalizingTransform, ViewerTransform}
@@ -501,7 +501,8 @@ trait Sigil {
           description = t.description,
           capabilityType = CapabilityType.Tool,
           score = baseScore + boost - penalty + nameMatch,
-          status = CapabilityStatus.Ready
+          status = CapabilityStatus.Ready,
+          paginate = Some(t.paginate)
         )
       }
       val modeMatches = modes.map { case (m, score) =>
@@ -673,8 +674,12 @@ trait Sigil {
     * flow that dynamically generates a `ScriptTool(...)` with the
     * caller's `SpaceId`, then writes it via this helper. Returns the
     * stored tool. */
-  def createTool(tool: sigil.tool.Tool): Task[sigil.tool.Tool] =
-    withDB(_.tools.transaction(_.upsert(tool)))
+  def createTool(tool: sigil.tool.Tool): Task[sigil.tool.Tool] = {
+    sigil.tool.PaginationValidator.validate(tool) match {
+      case Right(_)     => withDB(_.tools.transaction(_.upsert(tool)))
+      case Left(reason) => Task.error(new IllegalArgumentException(reason))
+    }
+  }
 
   // -- conversation tool overlays (#97) --
 
@@ -1778,6 +1783,28 @@ trait Sigil {
       // depend on the tolerant fallback at every read site. No-op
       // when the candidate's id isn't in the registry.
       val canonicalModelId = cache.canonicalIdFor(modelId)
+      // Sigil bug #199 — forced-synthesis is the framework's
+      // last-resort "make the model respond" turn. Tool-call already
+      // narrowed to the respond family at the orchestrator boundary;
+      // here we ALSO bound the output budget and force reasoning
+      // mode off. Reasoning-template local models (qwen3.5-9b via
+      // llama.cpp, DeepSeek-R1 family) otherwise burn the entire
+      // context window on `reasoning_content` and emit zero
+      // `tool_calls` — observed 4-minute hangs that turn a
+      // recoverable hiccup into a permanently failed turn.
+      val effectiveSettings =
+        if (context.forceResponseSynthesis)
+          genSettings.copy(
+            // Cap aggressively even when the caller didn't — forced-
+            // synthesis is supposed to emit ONE respond call, ≤ a
+            // few hundred tokens of content. `orElse` preserves a
+            // tighter caller-supplied cap.
+            maxOutputTokens = genSettings.maxOutputTokens.orElse(Some(2048)),
+            // Hard override (not orElse) — the narrow tool_choice
+            // means there's nothing worth reasoning about anyway.
+            reasoningMode   = ReasoningMode.Off
+          )
+        else genSettings
       val request = ConversationRequest(
         conversationId = context.conversation.id,
         modelId = canonicalModelId,
@@ -1786,7 +1813,7 @@ trait Sigil {
         currentMode = context.conversation.currentMode,
         currentTopic = context.conversation.currentTopic,
         previousTopics = context.conversation.previousTopics,
-        generationSettings = genSettings,
+        generationSettings = effectiveSettings,
         tools = tools,
         builtInTools = agent.builtInTools ++ context.conversation.currentMode.builtInTools,
         chain = effectiveChain,
@@ -5044,7 +5071,15 @@ trait Sigil {
       // flag is threaded through every recursion so a CAS at the
       // terminate path guarantees a single fire across the whole
       // loop.
-      turnExtractorFired = new java.util.concurrent.atomic.AtomicBoolean(false)
+      turnExtractorFired = new java.util.concurrent.atomic.AtomicBoolean(false),
+      // Sigil bug #200 — the post-error `publishFailureMessage` also
+      // needs fire-once semantics. Without this gate, an exception
+      // raised inside an inner recursion level propagates up through
+      // every parent level's `.handleError`, each of which publishes
+      // its own Failure Message — surfacing N identical failure
+      // bubbles in the chat for one failure. CAS-gated like
+      // `turnExtractorFired`.
+      failurePublished = new java.util.concurrent.atomic.AtomicBoolean(false)
     )
 
   /**
@@ -5071,6 +5106,12 @@ trait Sigil {
                                    * turn at the terminate boundary, not
                                    * once per iteration. */
                                  turnExtractorFired: java.util.concurrent.atomic.AtomicBoolean,
+                                 /** Sigil bug #200 — single-shot fire-gate for
+                                   * `publishFailureMessage`. Threaded through
+                                   * every recursion so the inner-most handler
+                                   * publishes once and outer-level handlers
+                                   * skip the duplicate publish on re-throw. */
+                                 failurePublished: java.util.concurrent.atomic.AtomicBoolean,
                                  /** Sigil bug #125 — when `true`, this is the
                                    * forced-synthesis turn invoked by the
                                    * cap-hit soft-stop. The loop runs ONE
@@ -5081,7 +5122,14 @@ trait Sigil {
                                    * [[AgentRunawayException]] throw — at that
                                    * point the soft path has genuinely
                                    * exhausted. */
-                                 forceResponseSynthesis: Boolean = false): Task[Unit] = Task.defer {
+                                 forceResponseSynthesis: Boolean = false,
+                                 /** Sigil bug #198 — which condition triggered
+                                   * the forced-synthesis turn. Threaded so the
+                                   * [[AgentRunawayException]] message describes
+                                   * the actual cause (cap-hit vs no-tool-call
+                                   * vs stall) instead of misattributing every
+                                   * forced-synthesis failure as cap exhaustion. */
+                                 forcedReason: Option[ForcedSynthesisReason] = None): Task[Unit] = Task.defer {
     // Bug #149 — release the agent's claim AND fire the per-turn
     // memory extractor exactly once. The CAS-guard guarantees a
     // single extraction across every terminal exit path of the
@@ -5232,11 +5280,8 @@ trait Sigil {
               terminate()
             else
               terminate().flatMap(_ =>
-                Task.error(new AgentRunawayException(
-                  s"Agent ${agent.id.value} hit maxAgentIterations ($maxAgentIterations) " +
-                    s"in conversation ${conv._id.value} AND the forced-synthesis turn also " +
-                    s"failed to call `respond`. Check LLM behavior or raise the cap."))
-              )
+                Task.error(buildRunawayException(
+                  agent, conv, iteration, maxAgentIterations, forcedReason)))
           }
           else {
             // Bug #74 — `respond(endsTurn = false)` continues the
@@ -5331,12 +5376,16 @@ trait Sigil {
                           greeting               = false,
                           userVisibleSeen        = userVisibleSeen,
                           turnExtractorFired     = turnExtractorFired,
-                          forceResponseSynthesis = true
+                          failurePublished       = failurePublished,
+                          forceResponseSynthesis = true,
+                          forcedReason           = Some(ForcedSynthesisReason.StallIntervention)
                         )
                       }
                   case None =>
                     runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart,
-                      userVisibleSeen = userVisibleSeen, turnExtractorFired = turnExtractorFired)
+                      userVisibleSeen = userVisibleSeen,
+                      turnExtractorFired = turnExtractorFired,
+                      failurePublished = failurePublished)
                 }
               }
             case true if !forceResponseSynthesis =>
@@ -5394,7 +5443,9 @@ trait Sigil {
                     greeting               = false,
                     userVisibleSeen        = userVisibleSeen,
                     turnExtractorFired     = turnExtractorFired,
-                    forceResponseSynthesis = true
+                    failurePublished       = failurePublished,
+                    forceResponseSynthesis = true,
+                    forcedReason           = Some(ForcedSynthesisReason.CapHit)
                   )
                 )
               }
@@ -5405,10 +5456,8 @@ trait Sigil {
               // a buggy provider). Soft path exhausted — surface the hard
               // failure so the calling fiber's error boundary logs it.
               terminate().flatMap(_ =>
-                Task.error(new AgentRunawayException(
-                  s"Agent ${agent.id.value} hit maxAgentIterations ($maxAgentIterations) " +
-                    s"in conversation ${conv._id.value} AND the forced-synthesis turn also " +
-                    s"failed to call `respond`. Check LLM behavior or raise the cap.")))
+                Task.error(buildRunawayException(
+                  agent, conv, iteration, maxAgentIterations, forcedReason)))
             case false =>
               // No more triggers to chase, no continue requested. If the
               // agent already spoke this turn we're done. Otherwise the
@@ -5425,9 +5474,8 @@ trait Sigil {
               if (userVisibleSeen.get()) terminate()
               else if (forceResponseSynthesis)
                 terminate().flatMap(_ =>
-                  Task.error(new AgentRunawayException(
-                    s"Agent ${agent.id.value} silent in ${conv._id.value} even after a forced respond-family turn. " +
-                      "Check LLM behavior — the model isn't following tool_choice: required.")))
+                  Task.error(buildRunawayException(
+                    agent, conv, iteration, maxAgentIterations, forcedReason)))
               else
                 runAgentLoop(
                   agent                  = agent,
@@ -5438,7 +5486,9 @@ trait Sigil {
                   greeting               = false,
                   userVisibleSeen        = userVisibleSeen,
                   turnExtractorFired     = turnExtractorFired,
-                  forceResponseSynthesis = true
+                  failurePublished       = failurePublished,
+                  forceResponseSynthesis = true,
+                  forcedReason           = Some(ForcedSynthesisReason.NoToolCall)
                 )
             }
           }
@@ -5451,11 +5501,53 @@ trait Sigil {
       // independently best-effort: a downstream failure (DB
       // unavailable, hub closed, missing topic, etc.) doesn't mask
       // the original error.
+      //
+      // Sigil bug #200 — `publishFailureMessage` is CAS-gated so an
+      // exception that propagates up through N recursion levels only
+      // surfaces ONE Failure Message in the chat instead of N
+      // identical bubbles. The inner-most handler wins the publish;
+      // outer handlers re-throw silently. `scribe.error` stays per-
+      // level (stack-trace shape differs per recursion depth and is
+      // diagnostically useful in operator logs); `terminate()` stays
+      // per-level (already idempotent). `Task.error(t)` stays
+      // per-level so the failure still propagates to the fiber's
+      // error boundary.
       scribe.error(s"runAgent failed for ${agent.id.value} in ${convId.value}", t)
-      publishFailureMessage(agent, convId, t).handleError(_ => Task.unit)
+      val publishOnce: Task[Unit] =
+        if (failurePublished.compareAndSet(false, true))
+          publishFailureMessage(agent, convId, t).handleError(_ => Task.unit)
+        else Task.unit
+      publishOnce
         .flatMap(_ => terminate().handleError(_ => Task.unit))
         .flatMap(_ => Task.error(t))
     }
+  }
+
+  /** Sigil bug #198 — assemble an [[AgentRunawayException]] whose
+    * message describes the actual failure mode rather than always
+    * misattributing to "hit maxAgentIterations". Reason carries the
+    * trigger condition (`CapHit` / `NoToolCall` / `StallIntervention`);
+    * `iteration` is the actual loop counter at throw time. */
+  private final def buildRunawayException(agent: AgentParticipant,
+                                          conv: Conversation,
+                                          iteration: Int,
+                                          maxIter: Int,
+                                          reasonOpt: Option[ForcedSynthesisReason]): AgentRunawayException = {
+    val reason = reasonOpt.getOrElse(ForcedSynthesisReason.CapHit)
+    val convPart = s"in conversation ${conv._id.value}"
+    val cause = reason match {
+      case ForcedSynthesisReason.CapHit =>
+        s"hit maxAgentIterations ($maxIter) and the forced-synthesis turn at iteration $iteration " +
+          s"also failed to call `respond`. Check LLM behavior or raise the cap."
+      case ForcedSynthesisReason.NoToolCall =>
+        s"returned without calling any tool at iteration $iteration of cap $maxIter despite " +
+          s"`tool_choice: required`, and the forced-synthesis recovery turn also failed to call " +
+          s"`respond`. Check LLM behavior — the model isn't following tool_choice: required."
+      case ForcedSynthesisReason.StallIntervention =>
+        s"stalled at iteration $iteration of cap $maxIter (progress-checkpoint intervention) and " +
+          s"the forced-synthesis recovery turn also failed to call `respond`. Check LLM behavior."
+    }
+    new AgentRunawayException(s"Agent ${agent.id.value} $cause $convPart", reason)
   }
 
   /** Bug #149 — assemble the per-turn extractor's `(userMessage,
@@ -5983,6 +6075,7 @@ trait Sigil {
       // Aggregates after leaves + mixins.
       _ = Participant.register((summon[RW[DefaultAgentParticipant]] :: participants)*)
       _ = sigil.tool.Tool.register((staticTools.map(t => RW.static(t)) ++ toolRegistrations).distinct*)
+      _ = sigil.tool.PaginationValidator.validateAll(staticTools)
       _ = sigil.skill.Skill.register((staticSkills.map(s => RW.static(s)) ++ skillRegistrations).distinct*)
       _ = Signal.register((allEventRWs ++ allDeltaRWs ++ allNoticeRWs ++ signalRegistrations)*)
     } yield ()

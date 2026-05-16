@@ -39,6 +39,8 @@ class ToolchainBoostSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     description = "Generic search.",
     keywords    = Set("grep", "search", "examine", "inspect", "code")
   ) {
+  override def paginate: Boolean = false
+
     override protected def executeTyped(input: GenericInput, ctx: TurnContext): rapid.Stream[Event] =
       rapid.Stream.empty
   }
@@ -49,6 +51,7 @@ class ToolchainBoostSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     description = "LSP-backed inspection.",
     keywords    = Set("lsp", "examine", "inspect", "analyze")
   ) {
+  override def paginate: Boolean = false
     override def toolchain: Option[String] = Some("lsp")
     override protected def executeTyped(input: GenericInput, ctx: TurnContext): rapid.Stream[Event] =
       rapid.Stream.empty

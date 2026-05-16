@@ -50,6 +50,8 @@ class ToolModesDefaultRegressionSpec extends AsyncWordSpec with AsyncTaskSpec wi
     name        = ToolName("vanilla_default_tool"),
     description = "A test tool that doesn't override modes."
   ) {
+  override def paginate: Boolean = false
+
     override protected def executeTyped(input: StubInput, context: TurnContext): rapid.Stream[Event] =
       rapid.Stream.empty
   }

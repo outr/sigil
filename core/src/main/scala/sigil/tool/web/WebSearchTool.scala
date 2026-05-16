@@ -27,6 +27,8 @@ final class WebSearchTool(provider: SearchProvider, defaultMaxResults: Int = 10)
     ),
     keywords = Set("web", "search", "google", "find", "lookup", "query", "internet")
   ) with sigil.tool.NetworkReadOnlyTool {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: WebSearchInput, ctx: TurnContext): Stream[Event] = Stream.force(
     provider.search(input.query, input.maxResults.getOrElse(defaultMaxResults)).map { results =>
       val items = results.toVector.map { r =>

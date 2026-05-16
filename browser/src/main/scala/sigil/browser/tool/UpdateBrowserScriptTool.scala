@@ -28,6 +28,8 @@ case object UpdateBrowserScriptTool extends TypedTool[UpdateBrowserScriptInput](
   modes = Set(WebBrowserMode.id),
   keywords = Set("update", "edit", "modify", "browser", "script")
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: UpdateBrowserScriptInput,
                                       ctx: TurnContext): Stream[Event] = Stream.force(
     ctx.sigil.accessibleSpaces(ctx.chain).flatMap { accessible =>

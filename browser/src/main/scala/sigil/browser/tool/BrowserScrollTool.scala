@@ -21,6 +21,8 @@ final class BrowserScrollTool extends TypedTool[BrowserScrollInput](
   modes = Set(WebBrowserMode.id),
   keywords = Set("browser", "scroll", "viewport")
 ) {
+  override def paginate: Boolean = false
+
 
   override protected def executeTyped(input: BrowserScrollInput, ctx: TurnContext): Stream[Event] =
     Stream.force(

@@ -35,6 +35,8 @@ final class BspInverseSourcesTool(val manager: BspManager) extends TypedOutputTo
     )
   )
 ) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: BspInverseSourcesInput,
                                       context: TurnContext): Task[BspInverseSourcesResult] =
     withSessionTyped[BspInverseSourcesResult](

@@ -35,6 +35,8 @@ final class UnregisterTriggerTool extends TypedTool[UnregisterTriggerInput](
   ),
   keywords = Set("workflow", "trigger", "remove", "unregister")
 ) with WorkflowToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: UnregisterTriggerInput, ctx: TurnContext): Stream[Event] = {
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)

@@ -31,6 +31,8 @@ final class BrowserSaveHtmlTool extends TypedTool[BrowserSaveHtmlInput](
   modes = Set(WebBrowserMode.id),
   keywords = Set("browser", "html", "save", "snapshot", "overview", "structure")
 ) {
+  override def paginate: Boolean = false
+
 
   override protected def executeTyped(input: BrowserSaveHtmlInput, ctx: TurnContext): Stream[Event] =
     Stream.force(

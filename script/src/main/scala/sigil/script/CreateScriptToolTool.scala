@@ -61,6 +61,8 @@ case object CreateScriptToolTool extends TypedTool[CreateScriptToolInput](
   ),
   keywords = Set("create", "tool", "script", "build", "author", "register", "new")
 ) {
+  override def paginate: Boolean = false
+
   /** Append the active executor's advertised surface (Bug #54) so the
     * LLM knows which library identifiers are pre-imported and which
     * Scala-2 idioms to avoid. Without this the model writes

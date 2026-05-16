@@ -44,6 +44,8 @@ class ParallelToolCallDedupeSpec extends AsyncWordSpec with AsyncTaskSpec with M
     name        = ToolName("counting_tool"),
     description = "Records every executeTyped invocation."
   ) {
+  override def paginate: Boolean = false
+
     override protected def executeTyped(input: CountingInput, ctx: TurnContext): Stream[Event] = {
       invocations.incrementAndGet()
       Stream.emit[Event](Message(

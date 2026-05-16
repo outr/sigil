@@ -34,6 +34,8 @@ case object ClassSignaturesTool extends TypedTool[ClassSignaturesInput](
   modes = Set(ScriptAuthoringMode.id),
   keywords = Set("class", "signature", "method", "introspect", "lookup", "api")
 ) {
+  override def paginate: Boolean = false
+
 
   override protected def executeTyped(input: ClassSignaturesInput, context: TurnContext): rapid.Stream[Event] = {
     val text =

@@ -29,6 +29,8 @@ final class StopMetalsTool extends TypedTool[StopMetalsInput](
     "kill", "terminate", "disable", "teardown", "tooling"
   )
 ) {
+  override def paginate: Boolean = false
+
   import MetalsToolSupport.*
 
   override protected def executeTyped(input: StopMetalsInput, context: TurnContext): Stream[Event] = {

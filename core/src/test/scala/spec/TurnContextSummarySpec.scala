@@ -33,6 +33,8 @@ class TurnContextSummarySpec extends AsyncWordSpec with AsyncTaskSpec with Match
     name        = ToolName("summary_probe"),
     description = "Drives ctx.setSummary three times across execution."
   ) {
+  override def paginate: Boolean = false
+
     override protected def executeTyped(input: SummaryProbeInput, ctx: TurnContext): Stream[Event] =
       Stream.force[Event](
         ctx.setSummary("Searching ...").flatMap { _ =>

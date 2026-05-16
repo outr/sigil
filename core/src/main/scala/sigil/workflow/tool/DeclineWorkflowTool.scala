@@ -41,6 +41,8 @@ final class DeclineWorkflowTool extends TypedTool[DeclineWorkflowInput](
   ),
   keywords = Set("workflow", "decline", "reject", "no", "deny", "refuse")
 ) with WorkflowToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: DeclineWorkflowInput, ctx: TurnContext): Stream[Event] = {
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)

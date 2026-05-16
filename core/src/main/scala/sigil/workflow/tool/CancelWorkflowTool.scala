@@ -28,6 +28,8 @@ final class CancelWorkflowTool extends TypedTool[CancelWorkflowInput](
   examples = List(ToolExample("cancel by run id", CancelWorkflowInput(runId = "run-abc"))),
   keywords = Set("workflow", "cancel", "stop", "abort")
 ) with WorkflowToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: CancelWorkflowInput, ctx: TurnContext): Stream[Event] = {
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)

@@ -20,6 +20,8 @@ final class ReadFileTool(state: AtomicReference[BankingEnvironment])
     name = ToolName("read_file"),
     description = "Reads the contents of the file at the given path."
   ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: ReadFileInput, context: TurnContext): rapid.Stream[Event] =
     rapid.Stream.emits(List[Event](FileRead(
       filePath = input.file_path,

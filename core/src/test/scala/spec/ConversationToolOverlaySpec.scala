@@ -31,6 +31,8 @@ class ConversationToolOverlaySpec extends AsyncWordSpec with AsyncTaskSpec with 
     name        = ToolName("pinned_tool_a"),
     description = "Stub pinned by overlay"
   ) {
+  override def paginate: Boolean = false
+
     override protected def executeTyped(input: StubInput, context: TurnContext): rapid.Stream[Event] =
       rapid.Stream.empty
   }
@@ -39,6 +41,7 @@ class ConversationToolOverlaySpec extends AsyncWordSpec with AsyncTaskSpec with 
     name        = ToolName("pinned_tool_b"),
     description = "Stub pinned by overlay"
   ) {
+  override def paginate: Boolean = false
     override protected def executeTyped(input: StubInput, context: TurnContext): rapid.Stream[Event] =
       rapid.Stream.empty
   }

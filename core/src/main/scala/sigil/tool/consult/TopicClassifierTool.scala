@@ -18,6 +18,8 @@ class TopicClassifierTool(priorLabels: List[String]) extends TypedTool[TopicClas
       |  - <prior label> — same subject as one of the prior topics; the user is returning.
       |  - "New"      — a subject genuinely different from Current and all priors.""".stripMargin
 ) {
+  override def paginate: Boolean = false
+
   /** Override the schema's input definition with one whose `kind` field
     * has a dynamic enum populated from the per-call prior labels. */
   override def inputDefinition: Definition = {

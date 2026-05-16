@@ -45,6 +45,8 @@ final class LspDocumentSymbolsTool(val manager: LspManager) extends TypedOutputT
     )
   )
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: LspDocumentSymbolsInput,
                                       context: TurnContext): Task[LspDocumentSymbolsResult] =
     withOpenDocumentTyped[LspDocumentSymbolsResult](

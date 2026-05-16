@@ -22,6 +22,8 @@ case object DeleteScriptToolTool extends TypedTool[DeleteScriptToolInput](
   modes = Set(ScriptAuthoringMode.id),
   keywords = Set("delete", "remove", "tool", "script", "drop")
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: DeleteScriptToolInput,
                                       context: TurnContext): Stream[Event] = Stream.force(
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>

@@ -32,6 +32,8 @@ final class LspDocumentLinkTool(val manager: LspManager) extends TypedOutputTool
     )
   )
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: LspDocumentLinkInput, context: TurnContext): Task[LspDocumentLinkResult] =
     withOpenDocumentTyped[LspDocumentLinkResult](
       input.languageId, input.filePath, context,

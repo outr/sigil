@@ -38,6 +38,8 @@ import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolSchema}
  * would for a local tool.
  */
 class ProxyTool(wrapped: Tool, transport: ToolProxyTransport) extends Tool {
+  override def paginate: Boolean = false
+
   override def name: ToolName                         = wrapped.name
   override def description: String                    = wrapped.description
   override def inputRW: RW[? <: ToolInput]            = wrapped.inputRW

@@ -15,6 +15,8 @@ final class ListMcpServersTool(manager: McpManager) extends TypedTool[ListMcpSer
   name = ToolName("list_mcp_servers"),
   description = "List the registered MCP servers — name, transport, prefix, and the count of tools each currently exposes."
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: ListMcpServersInput, context: TurnContext): Stream[Event] =
     Stream.force(manager.listConfigs().flatMap { configs =>
       Task.sequence(configs.map { cfg =>

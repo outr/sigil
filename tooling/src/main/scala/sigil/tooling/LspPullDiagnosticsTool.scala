@@ -48,6 +48,8 @@ final class LspPullDiagnosticsTool(val manager: LspManager) extends TypedOutputT
     )
   )
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: LspPullDiagnosticsInput, context: TurnContext): Task[LspDiagnosticsResult] =
     withOpenDocumentTyped[LspDiagnosticsResult](
       input.languageId, input.filePath, context,

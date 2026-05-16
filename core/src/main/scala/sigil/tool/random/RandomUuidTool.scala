@@ -20,6 +20,8 @@ case object RandomUuidTool extends TypedOutputTool[RandomUuidInput, RandomUuidOu
   examples = List(ToolExample("fresh uuid", RandomUuidInput())),
   keywords = Set("uuid", "guid", "random", "id", "identifier", "token")
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: RandomUuidInput, context: TurnContext): Task[RandomUuidOutput] =
     Task(RandomUuidOutput(uuid = java.util.UUID.randomUUID().toString))
 }

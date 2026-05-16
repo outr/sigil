@@ -34,6 +34,8 @@ case object ListModelsTool extends TypedOutputTool[ListModelsInput, ListModelsOu
     "switch", "pin", "alternatives", "what", "which", "catalog"
   )
 ) {
+  override def paginate: Boolean = false
+
 
   override protected def executeTyped(input: ListModelsInput, ctx: TurnContext): Task[ListModelsOutput] = Task {
     val all = ctx.sigil.cache.find(provider = input.provider, model = None)

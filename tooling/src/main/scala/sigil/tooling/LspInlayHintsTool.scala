@@ -41,6 +41,8 @@ final class LspInlayHintsTool(val manager: LspManager) extends TypedOutputTool[L
     )
   )
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: LspInlayHintsInput, context: TurnContext): Task[LspInlayHintsResult] =
     withOpenDocumentTyped[LspInlayHintsResult](
       input.languageId, input.filePath, context,

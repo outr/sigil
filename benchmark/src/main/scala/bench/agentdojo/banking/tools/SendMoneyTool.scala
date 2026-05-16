@@ -20,6 +20,8 @@ final class SendMoneyTool(state: AtomicReference[BankingEnvironment])
     name = ToolName("send_money"),
     description = "Sends a transaction to the recipient."
   ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: SendMoneyInput, context: TurnContext): rapid.Stream[Event] = {
     state.updateAndGet { env =>
       val acct = env.bankAccount

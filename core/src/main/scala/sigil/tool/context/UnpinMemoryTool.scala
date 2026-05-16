@@ -34,6 +34,8 @@ case object UnpinMemoryTool extends TypedTool[UnpinMemoryInput](
       |- `space` — optional disambiguator when the same key is pinned in multiple spaces.""".stripMargin,
   keywords = Set("unpin", "remove", "demote", "memory", "directive", "trim")
 ) {
+  override def paginate: Boolean = false
+
   override def resultTtl: Option[Int] = Some(0)
   override val requiresAccessibleSpaces: Boolean = true
 

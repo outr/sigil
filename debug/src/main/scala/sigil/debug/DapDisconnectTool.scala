@@ -33,6 +33,8 @@ final class DapDisconnectTool(val manager: DapManager) extends TypedTool[DapDisc
     )
   )
 ) with DapToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: DapDisconnectInput, context: TurnContext): Stream[Event] =
     withSession(input.sessionId, context) { session =>
       session.disconnect(input.terminateDebuggee).flatMap(_ => manager.disconnect(input.sessionId)).map { _ =>

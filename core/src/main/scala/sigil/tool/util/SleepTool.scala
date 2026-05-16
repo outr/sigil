@@ -25,6 +25,8 @@ case object SleepTool extends TypedTool[SleepInput](
   ),
   keywords = Set("sleep", "wait", "delay", "pause")
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: SleepInput, context: TurnContext): rapid.Stream[Event] =
     rapid.Stream.force(
       rapid.Task.sleep(input.millis.millis).map(_ => rapid.Stream.empty[Event])

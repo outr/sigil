@@ -23,6 +23,8 @@ case object EchoBackTool extends TypedTool[EchoBackInput](
   ),
   keywords = Set("echo", "test")
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: EchoBackInput, ctx: TurnContext): Stream[Event] =
     Stream.emit[Event](Message(
       participantId  = ctx.caller,

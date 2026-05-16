@@ -39,6 +39,8 @@ final class LspHoverTool(val manager: LspManager) extends TypedOutputTool[LspHov
     )
   )
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: LspHoverInput, context: TurnContext): Task[Option[LspHover]] =
     withOpenDocumentTyped[Option[LspHover]](
       input.languageId, input.filePath, context,

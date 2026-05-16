@@ -94,6 +94,8 @@ case object EchoTool extends TypedOutputTool[EchoInput, EchoOutput](
   description = "Echo the input text back with its length.",
   examples = List(ToolExample("echo a string", EchoInput("hello")))
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: EchoInput, ctx: TurnContext): Task[EchoOutput] =
     Task.pure(EchoOutput(echoed = input.text, length = input.text.length))
 }

@@ -28,6 +28,8 @@ final class GitCommitTool(context: FileSystemContext)
     ),
     keywords = Set("git", "commit", "save", "checkpoint")
   ) with sigil.tool.DestructiveExternalTool {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: GitCommitInput, ctx: TurnContext): Stream[Event] = Stream.force(
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val pathsToStage = input.paths.getOrElse(Nil)

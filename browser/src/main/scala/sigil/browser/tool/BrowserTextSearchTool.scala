@@ -45,6 +45,8 @@ final class BrowserTextSearchTool extends TypedTool[BrowserTextSearchInput](
   modes = Set(WebBrowserMode.id),
   keywords = Set("browser", "text", "search", "find", "substring", "query")
 ) {
+  override def paginate: Boolean = false
+
 
   override protected def executeTyped(input: BrowserTextSearchInput, ctx: TurnContext): Stream[Event] =
     Stream.force(

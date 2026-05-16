@@ -32,6 +32,8 @@ final class BspDependencySourcesTool(val manager: BspManager) extends TypedOutpu
     )
   )
 ) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: BspDependencySourcesInput,
                                       context: TurnContext): Task[BspDependencySourcesResult] =
     withSessionTyped[BspDependencySourcesResult](

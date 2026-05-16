@@ -42,6 +42,8 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         ToolExample("doubles its input", FakeToolInput(value = 5))
       )
     ) {
+  override def paginate: Boolean = false
+
     override protected def executeTyped(input: FakeToolInput, context: TurnContext): Stream[Event] =
       Stream.emit(Message(
         participantId = context.caller,

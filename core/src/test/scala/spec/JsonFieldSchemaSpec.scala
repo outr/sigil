@@ -70,6 +70,8 @@ class JsonFieldSchemaSpec extends AnyWordSpec with Matchers {
     name = ToolName("typed_only_test_tool"),
     description = "All-typed input — should ship with strict: true."
   ) {
+  override def paginate: Boolean = false
+
     override protected def executeTyped(input: TypedOnlyInput, context: sigil.TurnContext): rapid.Stream[sigil.event.Event] =
       rapid.Stream.empty
   }
@@ -79,6 +81,7 @@ class JsonFieldSchemaSpec extends AnyWordSpec with Matchers {
     name = ToolName("json_field_test_tool"),
     description = "Has Option[Json] — should ship with strict: false."
   ) {
+  override def paginate: Boolean = false
     override protected def executeTyped(input: JsonFieldInput, context: sigil.TurnContext): rapid.Stream[sigil.event.Event] =
       rapid.Stream.empty
   }

@@ -34,6 +34,32 @@ trait Tool extends RecordDocument[Tool] {
   def inputRW: RW[? <: ToolInput]
   def execute(input: ToolInput, context: TurnContext): rapid.Stream[Event]
 
+  /** Whether this tool returns paginated output. **Required — no
+    * default.** Every Tool author must explicitly declare which
+    * output shape their tool implements (sigil bug #201).
+    *
+    *   - `false` — the tool guarantees its result is self-limited
+    *     to a size the agent can consume in one shot
+    *     ([[sigil.tool.core.FindCapabilityTool]]'s ranked shortlist,
+    *     `lsp_goto_definition`'s single location,
+    *     [[sigil.tool.core.RecordConsentTool]]'s ack).
+    *   - `true` — the tool's output is potentially unbounded; the
+    *     input schema MUST expose pagination fields (offset / limit /
+    *     cursor / pageSize / pageToken) and the agent is responsible
+    *     for re-calling with subsequent pages
+    *     ([[sigil.tool.fs.GrepTool]], [[sigil.tool.fs.BashTool]],
+    *     [[sigil.tool.output.PaginatedTool]] subclasses generally).
+    *
+    * There is no third option. Tools whose output might exceed the
+    * agent's context window without pagination must add pagination;
+    * the framework will NOT silently compress tool output
+    * ([[sigil.conversation.compression.StandardBlockExtractor]] no
+    * longer touches ToolResult frames).
+    *
+    * Surfaced in [[sigil.event.CapabilityMatch]] so the agent learns
+    * from discovery whether a tool is one-shot or iterative. */
+  def paginate: Boolean
+
   // ---- defaults ----
 
   /** Categorical discriminator for client-side filtering — see

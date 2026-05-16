@@ -35,6 +35,8 @@ final class DapVariablesTool(val manager: DapManager) extends TypedTool[DapVaria
     )
   )
 ) with DapToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: DapVariablesInput, context: TurnContext): Stream[Event] =
     withSession(input.sessionId, context) { session =>
       session.variables(input.variablesReference).map { vars =>

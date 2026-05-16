@@ -34,6 +34,8 @@ class PreferIfNoBetterRankingSpec extends AsyncWordSpec with AsyncTaskSpec with 
     description = "Search files by regex.",
     keywords    = Set("grep", "search", "regex", "find", "match", "lines")
   ) {
+  override def paginate: Boolean = false
+
     override def preferIfNoBetter: Boolean = true
     override protected def executeTyped(input: GenericInput, ctx: TurnContext): rapid.Stream[Event] =
       rapid.Stream.empty
@@ -44,6 +46,7 @@ class PreferIfNoBetterRankingSpec extends AsyncWordSpec with AsyncTaskSpec with 
     description = "Read a file's contents.",
     keywords    = Set("read", "file", "open", "load")
   ) {
+  override def paginate: Boolean = false
     override def preferIfNoBetter: Boolean = true
     override protected def executeTyped(input: GenericInput, ctx: TurnContext): rapid.Stream[Event] =
       rapid.Stream.empty

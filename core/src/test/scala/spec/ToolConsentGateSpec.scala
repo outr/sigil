@@ -47,6 +47,8 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     name        = ToolName("gated_demo_tool"),
     description = "A consent-gated demo tool used by the spec."
   ) {
+  override def paginate: Boolean = false
+
     override def requiresUserConsent: Boolean = true
     override protected def executeTyped(input: GatedInput, ctx: TurnContext): Stream[Event] = {
       invocations.incrementAndGet()
@@ -68,6 +70,7 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     name        = ToolName("free_demo_tool"),
     description = "A no-consent demo tool — should always dispatch."
   ) {
+  override def paginate: Boolean = false
     override protected def executeTyped(input: FreeInput, ctx: TurnContext): Stream[Event] =
       Stream.emit[Event](Message(
         participantId  = ctx.caller,

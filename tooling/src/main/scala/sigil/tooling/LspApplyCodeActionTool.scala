@@ -53,6 +53,8 @@ final class LspApplyCodeActionTool(val manager: LspManager) extends TypedOutputT
     )
   )
 ) with sigil.tool.DestructiveExternalTool with LspToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: LspApplyCodeActionInput, context: TurnContext): Task[LspApplyCodeActionResult] =
     withSessionTyped[LspApplyCodeActionResult](
       input.languageId, input.filePath, context,

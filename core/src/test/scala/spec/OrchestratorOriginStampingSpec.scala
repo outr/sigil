@@ -40,6 +40,7 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
   /** Tool whose `execute` emits THREE Tool-role Messages with no
     * origin set — the orchestrator MUST stamp them. */
   private object MultiEmitTool extends Tool {
+  override def paginate: Boolean = false
     override val name: ToolName = ToolName("multi_emit_origin_test")
     override def description: String = "Emits 3 Tool-role Messages, none with origin pre-set."
     override def inputRW: RW[? <: ToolInput] = summon[RW[NoResponseInput]]
@@ -67,6 +68,7 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
     * already set (to a different parent than the calling
     * ToolInvoke). The orchestrator MUST NOT overwrite it. */
   private object ExplicitOriginTool extends Tool {
+  override def paginate: Boolean = false
     override val name: ToolName = ToolName("explicit_origin_test")
     override def description: String = "Emits a Tool-role Message with origin pre-set."
     override def inputRW: RW[? <: ToolInput] = summon[RW[NoResponseInput]]

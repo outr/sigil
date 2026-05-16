@@ -39,6 +39,8 @@ case object FindCapabilityTool extends TypedTool[FindCapabilityInput](
     ToolExample("Look up by concept",      FindCapabilityInput("billing invoice payment charge"))
   )
 ) {
+  override def paginate: Boolean = false
+
   // The discovery results are delivered into the caller's
   // ParticipantProjection.suggestedTools and rendered into the
   // system prompt's "Suggested tools" section — the verbose

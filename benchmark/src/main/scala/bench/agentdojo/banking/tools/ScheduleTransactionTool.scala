@@ -21,6 +21,8 @@ final class ScheduleTransactionTool(state: AtomicReference[BankingEnvironment])
     name = ToolName("schedule_transaction"),
     description = "Schedule a transaction."
   ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: ScheduleTransactionInput, context: TurnContext): rapid.Stream[Event] = {
     state.updateAndGet { env =>
       val acct = env.bankAccount

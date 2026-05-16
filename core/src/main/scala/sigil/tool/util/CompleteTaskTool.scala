@@ -41,5 +41,7 @@ case object CompleteTaskTool
     ),
     keywords = Set("complete", "done", "finish", "terminate", "settle", "result")
   ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: CompleteTaskInput, ctx: TurnContext): Stream[Event] = Stream.empty
 }

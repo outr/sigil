@@ -28,6 +28,8 @@ final class BspReloadTool(val manager: BspManager) extends TypedOutputTool[BspRe
     )
   )
 ) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: BspReloadInput, context: TurnContext): Task[BspReloadResult] =
     withSessionTyped[BspReloadResult](
       input.projectRoot, context,

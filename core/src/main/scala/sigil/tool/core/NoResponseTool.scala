@@ -31,6 +31,8 @@ case object NoResponseTool extends TypedTool[NoResponseInput](
       |`respond` instead; user-directed prose stuffed into `reason` is auto-promoted to a
       |respond and will trigger a warning.""".stripMargin
 ) with RespondFamilyTool {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: NoResponseInput, context: TurnContext): rapid.Stream[Event] =
     input.reason match {
       case Some(reason) if isUserDirectedProse(reason) =>

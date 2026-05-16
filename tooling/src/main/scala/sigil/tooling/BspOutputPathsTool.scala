@@ -32,6 +32,8 @@ final class BspOutputPathsTool(val manager: BspManager) extends TypedOutputTool[
     )
   )
 ) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: BspOutputPathsInput,
                                       context: TurnContext): Task[BspOutputPathsResult] =
     withSessionTyped[BspOutputPathsResult](

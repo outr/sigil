@@ -32,6 +32,8 @@ case object QueryToolOutputTool extends TypedOutputTool[QueryToolOutputInput, Js
       |Pagination is zero-indexed; `pageSize` defaults to 50 (max 500).""".stripMargin,
   keywords = Set("query", "filter", "find", "search", "tool", "output", "paginate", "where", "results")
 ) {
+  override def paginate: Boolean = false
+
 
   private val maxPageSize = 500
 

@@ -3,7 +3,7 @@ package sigil.tool.discovery
 import fabric.rw.*
 
 /**
- * Unified discovery result from `find_capability`. Bug #66.
+ * Unified discovery result from `find_capability`.
  *
  * Carries enough metadata for the agent to decide whether and how to
  * use the matched capability:
@@ -17,15 +17,20 @@ import fabric.rw.*
  *     name); `RequiresSetup(hint)` for modes (the hint carries the
  *     `change_mode("…")` invocation needed to unlock the matching
  *     tool roster).
+ *   - `paginate` — `Some(true)` when the matched tool emits a paged
+ *     `JsonPagedResult` (the agent must walk pages with `next_page`
+ *     to consume the full output); `Some(false)` for single-shot
+ *     tools whose result lands in one [[sigil.event.ToolResults]]
+ *     event. `None` for non-tool capability kinds (modes, skills,
+ *     memories) where pagination is not a meaningful concept.
  *
  * Mirrors Scalagentic's `CapabilityMatch` shape (the framework's
- * predecessor) — keeps Sigil's discovery API recognisable to the
- * earlier work and leaves room to grow categories
- * (`McpServer`, `Agent`, `Marketplace`, …) without changing the
- * result type.
+ * predecessor) and leaves room to grow categories (`McpServer`,
+ * `Agent`, `Marketplace`, …) without changing the result type.
  */
 case class CapabilityMatch(name: String,
                            description: String,
                            capabilityType: CapabilityType,
                            score: Double,
-                           status: CapabilityStatus) derives RW
+                           status: CapabilityStatus,
+                           paginate: Option[Boolean] = None) derives RW

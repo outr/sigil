@@ -30,6 +30,7 @@ class MalformedToolArgsDetectionSpec extends AnyWordSpec with Matchers {
   case class RespondLike(topicLabel: String, content: String) extends ToolInput derives RW
 
   private object RespondTool extends Tool {
+  override def paginate: Boolean = false
     override val name: ToolName = ToolName("respond")
     override def description: String = "Object-rooted respond schema."
     override def inputRW: RW[? <: ToolInput] = summon[RW[RespondLike]].asInstanceOf[RW[ToolInput]]

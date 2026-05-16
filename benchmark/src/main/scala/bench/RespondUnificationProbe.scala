@@ -92,6 +92,8 @@ object RespondUnificationProbe {
         |  - `{"type": "Field", "label": "<l>", "value": "<v>", "icon": null}` for a single labeled key/value
         |  - `{"type": "Options", "prompt": "<q>", "options": [{"label": "...", "value": "...", "description": null, "exclusive": false}, ...], "allowMultiple": false}` for a structured choice""".stripMargin
   ) {
+  override def paginate: Boolean = false
+
     override protected def executeTyped(input: UnifiedRespondInput, ctx: sigil.TurnContext): rapid.Stream[sigil.event.Event] =
       rapid.Stream.empty
   }
@@ -100,6 +102,7 @@ object RespondUnificationProbe {
     name = ToolName("respond"),
     description = "Emit a plain text / markdown reply to the user."
   ) {
+    override def paginate: Boolean = false
     override protected def executeTyped(input: BaselineRespondInput, ctx: sigil.TurnContext): rapid.Stream[sigil.event.Event] =
       rapid.Stream.empty
   }
@@ -108,6 +111,7 @@ object RespondUnificationProbe {
     name = ToolName("respond_failure"),
     description = "Signal that the agent cannot complete the requested task."
   ) {
+    override def paginate: Boolean = false
     override protected def executeTyped(input: BaselineRespondFailureInput, ctx: sigil.TurnContext): rapid.Stream[sigil.event.Event] =
       rapid.Stream.empty
   }
@@ -116,6 +120,7 @@ object RespondUnificationProbe {
     name = ToolName("respond_field"),
     description = "Emit a single labeled key/value field."
   ) {
+    override def paginate: Boolean = false
     override protected def executeTyped(input: BaselineRespondFieldInput, ctx: sigil.TurnContext): rapid.Stream[sigil.event.Event] =
       rapid.Stream.empty
   }
@@ -124,6 +129,7 @@ object RespondUnificationProbe {
     name = ToolName("respond_options"),
     description = "Ask the user to pick from a fixed set of choices."
   ) {
+    override def paginate: Boolean = false
     override protected def executeTyped(input: BaselineRespondOptionsInput, ctx: sigil.TurnContext): rapid.Stream[sigil.event.Event] =
       rapid.Stream.empty
   }

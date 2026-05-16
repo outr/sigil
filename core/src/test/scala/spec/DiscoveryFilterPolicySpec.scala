@@ -14,6 +14,8 @@ final class DiscoveryFilterPolicyStubTool(n: String) extends TypedTool[Discovery
   name = ToolName(n),
   description = s"Stub $n"
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: DiscoveryFilterPolicyStubInput,
                                       context: TurnContext): rapid.Stream[Event] =
     rapid.Stream.empty

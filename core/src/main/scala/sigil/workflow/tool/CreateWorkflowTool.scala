@@ -53,6 +53,8 @@ final class CreateWorkflowTool extends TypedTool[CreateWorkflowInput](
   ),
   keywords = Set("workflow", "create", "compose", "automation")
 ) with WorkflowToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: CreateWorkflowInput, ctx: TurnContext): Stream[Event] = {
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)
