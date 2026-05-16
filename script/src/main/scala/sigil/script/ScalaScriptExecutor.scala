@@ -155,7 +155,31 @@ class ScalaScriptExecutor(classpathOverride: Option[String] = None) extends Scri
       // Reset captured output before the eval so any error markers we
       // see afterwards are from this call only. Bug #55.
       captured.reset()
-      val result = engine.eval(cleaned)
+      // Sigil bug #208 — wrap the user code in a generated `def` whose
+      // body is the user's full source, then call it. Scala's
+      // function-body rules make the body's value EXACTLY the value
+      // of its trailing expression, so a script like
+      // `println(summary); summary` returns `summary` instead of
+      // the println's `Unit` (the prior REPL behaviour anchored on
+      // the last *statement* with a recordable value and silently
+      // surfaced `()` for side-effecting trailing lines).
+      //
+      // Plain `{ … }` wrapping wasn't enough — the dotty REPL's
+      // `ScriptEngine.eval` parses the block contents as a
+      // sequence of top-level statements and returns the value of
+      // the last one it recorded, ignoring block-as-expression
+      // semantics. A def body, by contrast, is compiled as a single
+      // expression whose result type is whatever the trailing
+      // expression evaluates to.
+      //
+      // Caveat: `val`/`var` bindings inside the user's code become
+      // local to the synthesized def rather than persisted in the
+      // REPL's namespace. The [[ScriptAuthoringMode]] skill already
+      // says "No global state" and treats each script as
+      // self-contained, so this is intentional rather than regressive.
+      val defName = s"__sigilScript_${java.lang.Long.toHexString(System.nanoTime())}"
+      val wrapped = s"def $defName() = {\n$cleaned\n}\n$defName()"
+      val result = engine.eval(wrapped)
       val diagnostics = captured.toString.trim
       if (containsErrorDiagnostic(diagnostics)) {
         throw new ScriptCompileException(diagnostics)

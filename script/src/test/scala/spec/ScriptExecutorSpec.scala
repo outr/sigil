@@ -116,5 +116,41 @@ class ScriptExecutorSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       executor.execute("1 + 1", Map.empty).sync() shouldBe "2"
       succeed
     }
+
+    // Sigil bug #208 — the documented contract is "the script's last
+    // expression is its return value". Pre-fix, the Scala 3
+    // ScriptEngine's `eval()` anchored on the last statement with a
+    // recordable value, so scripts that ended with a side-effecting
+    // statement (`println(summary); summary`) returned `Unit`
+    // instead of `summary`. Wrapping the user code in `{ ... }`
+    // makes the trailing expression the block's value by
+    // construction.
+
+    "return the trailing identifier when prior statements are side-effecting (bug #208)" in {
+      val executor = newExecutor()
+      val code =
+        """val summary = "all done"
+          |println(summary)
+          |summary""".stripMargin
+      executor.execute(code, Map.empty).map(_ shouldBe "all done")
+    }
+
+    "return the trailing expression after a foreach loop" in {
+      val executor = newExecutor()
+      val code =
+        """var total = 0
+          |List(1, 2, 3, 4).foreach(n => total += n)
+          |total""".stripMargin
+      executor.execute(code, Map.empty).map(_ shouldBe "10")
+    }
+
+    "return the trailing expression after an early `var` mutation pattern" in {
+      val executor = newExecutor()
+      val code =
+        """var changed = 0
+          |for (_ <- 1 to 5) changed += 1
+          |s"changed=$changed"""".stripMargin
+      executor.execute(code, Map.empty).map(_ shouldBe "changed=5")
+    }
   }
 }

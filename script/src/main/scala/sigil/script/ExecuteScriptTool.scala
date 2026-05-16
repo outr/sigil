@@ -56,7 +56,21 @@ class ExecuteScriptTool(executor: ScriptExecutor,
     examples = List(
       ToolExample(
         "Compute a derived value",
-        ScriptInput(code = "val x = 1 + 2; x * 10")
+        ScriptInput(code = "val x = 1 + 2; x * 10", summary = "demo: small arithmetic")
+      ),
+      ToolExample(
+        "Count matches across files (scan pass)",
+        ScriptInput(
+          code = "// scan code …",
+          summary = "scan: count bug references in Scala files"
+        )
+      ),
+      ToolExample(
+        "Apply edits and report what was changed (edit pass)",
+        ScriptInput(
+          code = "// edit code …",
+          summary = "edit: remove all matched bug refs and report counts"
+        )
       )
     )
   ) {
@@ -149,5 +163,10 @@ object ExecuteScriptTool {
       |
       |`code` is the full source. `language` is an optional hint for routers that wire multiple
       |executors (default Scala). The host's bindings — typically the agent's other tools and any
-      |configured stores — are in scope by name.""".stripMargin
+      |configured stores — are in scope by name.
+      |
+      |`summary` is REQUIRED and should be a short, intent-specific description of THIS execution's
+      |purpose (e.g. "scan: count files matching pattern", "edit: rewrite imports", "verify: re-check
+      |after edit"). Distinct calls in the same turn should have distinct summaries so the chip / log
+      |stream is readable without decoding the code itself. Keep it under ~80 chars.""".stripMargin
 }
