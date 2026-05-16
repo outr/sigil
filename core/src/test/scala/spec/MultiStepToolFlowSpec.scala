@@ -41,7 +41,11 @@ import scala.concurrent.duration.*
  * iteration as required.
  */
 class MultiStepToolFlowSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
-  override implicit protected val testTimeout: FiniteDuration = 2.minutes
+  // 5-min cap so the multi-iteration tool flow (find_capability
+  // optional → get_magic_number → context refold → respond) has
+  // headroom under 4-way fork contention with a contended local
+  // llama.cpp server.
+  override implicit protected val testTimeout: FiniteDuration = 5.minutes
 
   TestSigil.initFor(getClass.getSimpleName)
   TestSigil.setProvider(LlamaCppProvider(TestSigil, TestSigil.llamaCppHost).singleton)
@@ -82,7 +86,7 @@ class MultiStepToolFlowSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- TestSigil.publish(userMsg)
-        _ <- waitForAgentTurn(convId, after = now.value, timeout = 90.seconds)
+        _ <- waitForAgentTurn(convId, after = now.value, timeout = 4.minutes)
         all <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         val window = all.filter(e =>

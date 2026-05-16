@@ -137,4 +137,75 @@ class AgentDecisionStepLogicSpec extends AnyWordSpec with Matchers {
       SigilAgentDecisionStep.parseMarker("Just thinking out loud.") shouldBe SigilAgentDecisionStep.MarkerNone
     }
   }
+
+  "extractParentAnswers" should {
+    import fabric.{obj, str}
+    import lightdb.id.Id
+    import strider.Workflow
+    import strider.step.Step
+    import sigil.workflow.{ParentAnswer, SigilAgentDecisionStep}
+
+    /** Minimal Workflow base — everything extractParentAnswers reads
+      * is overridden in the per-test `copy`. */
+    val baseWorkflow: Workflow = Workflow(
+      name      = "test",
+      steps     = Nil,
+      scheduled = 0L,
+      queue     = Nil,
+      sourceId  = Id("source")
+    )
+
+    /** Build a Workflow with the given trigger payloads (questionId →
+      * answer pairs). The corresponding step ids are placed in
+      * `steps` in payload-iteration order so ordering is
+      * deterministic. */
+    def workflowWith(pairs: (String, String)*): Workflow = {
+      val triggerSteps: List[Step] = pairs.toList.map { case (qid, _) =>
+        new strider.step.Trigger {
+          override val id: Id[Step] = Id[Step](s"trig-$qid")
+          override val name: String = s"trig-$qid"
+          override def register(w: Workflow) = rapid.Task.pure(fabric.Null)
+          override def check(w: Workflow)    = rapid.Task.pure(None)
+        }
+      }
+      val payloads: Map[Id[Step], fabric.Json] =
+        triggerSteps.zip(pairs).map { case (step, (qid, answer)) =>
+          step.id -> obj("taskId" -> str("t"), "questionId" -> str(qid), "answer" -> str(answer))
+        }.toMap
+      baseWorkflow.copy(steps = triggerSteps, payloads = payloads)
+    }
+
+    "read every answer from workflow.payloads (the Strider field that actually carries trigger settle output)" in {
+      val wf = workflowWith("q1" -> "blue", "q2" -> "small")
+      val answers = SigilAgentDecisionStep.extractParentAnswers(wf)
+      answers.map(_.questionId) should contain theSameElementsAs List("q1", "q2")
+      answers.map(_.answer)     should contain theSameElementsAs List("blue", "small")
+    }
+
+    "return them oldest-to-newest by their trigger step's position in workflow.steps" in {
+      val wf = workflowWith("q1" -> "blue", "q2" -> "small", "q3" -> "third")
+      val answers = SigilAgentDecisionStep.extractParentAnswers(wf)
+      answers.map(_.questionId) shouldBe List("q1", "q2", "q3")
+    }
+
+    "ignore stepResults entries — they never carry trigger payloads" in {
+      // Regression for the silent-drop bug: even with a stepResult
+      // that looks shaped like an answer, the extractor's source of
+      // truth is workflow.payloads, not workflow.stepResults.
+      val wf = baseWorkflow.copy(
+        stepResults = List(strider.StepResult(
+          stepId     = Id[Step]("not-a-trigger"),
+          stepName   = "fake",
+          status     = strider.StepResultStatus.Completed,
+          output     = Some(obj("questionId" -> str("ignored"), "answer" -> str("ignored"))),
+          durationMs = 0L
+        ))
+      )
+      SigilAgentDecisionStep.extractParentAnswers(wf) shouldBe empty
+    }
+
+    "return an empty list when there are no trigger payloads" in {
+      SigilAgentDecisionStep.extractParentAnswers(baseWorkflow) shouldBe empty
+    }
+  }
 }
