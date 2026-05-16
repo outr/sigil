@@ -253,7 +253,7 @@ object OpenAIChatCompletions {
         intercepted <- sigil.wireInterceptor.before(raw)
         lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLines()
       } yield {
-        StreamWireInterceptor.attach(lines, sigil.wireInterceptor, intercepted) { line =>
+        StreamWireInterceptor.attach(lines, sigil.wireInterceptor, intercepted, sigil.chunkLogger) { line =>
           Stream.emits(parseLine(line, state, config))
         }
       }

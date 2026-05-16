@@ -70,7 +70,7 @@ case class AnthropicProvider(apiKey: String,
         // (no bytes for the duration); slow-but-working streams keep
         // going as long as tokens flow.
         _root_.sigil.provider.debug.StreamWireInterceptor.attach(
-          lines, sigilRef.wireInterceptor, intercepted
+          lines, sigilRef.wireInterceptor, intercepted, sigilRef.chunkLogger
         ) { line =>
           Stream.emits(parseLine(line, state))
         }

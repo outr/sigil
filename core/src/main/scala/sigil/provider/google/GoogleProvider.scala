@@ -45,7 +45,7 @@ case class GoogleProvider(apiKey: String,
         lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLines()
       } yield {
         _root_.sigil.provider.debug.StreamWireInterceptor.attach(
-          lines, sigilRef.wireInterceptor, intercepted
+          lines, sigilRef.wireInterceptor, intercepted, sigilRef.chunkLogger
         ) { line =>
           Stream.emits(parseLine(line, state))
         }

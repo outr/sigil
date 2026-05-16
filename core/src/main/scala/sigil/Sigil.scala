@@ -2205,6 +2205,26 @@ trait Sigil {
    */
   def wireInterceptor: spice.http.client.intercept.Interceptor = spice.http.client.intercept.Interceptor.empty
 
+  /**
+   * Per-chunk diagnostic hook for streaming SSE provider responses
+   * (sigil bug #194). Default
+   * [[sigil.provider.debug.ChunkLogger.NoOp]] writes nothing and pays
+   * zero overhead; apps that want post-hoc stall diagnosis on
+   * streaming turns override with
+   * [[sigil.provider.debug.FileChunkLogger]] pointing at a separate
+   * JSONL file:
+   *
+   * {{{
+   *   override def chunkLogger: ChunkLogger =
+   *     FileChunkLogger(Paths.get("target/wire-chunks.jsonl"))
+   * }}}
+   *
+   * Decoupled from [[wireInterceptor]] because per-chunk traffic is
+   * 50–100x more lines than the request-aggregated mode and many apps
+   * only need the request/response wire log most of the time.
+   */
+  def chunkLogger: sigil.provider.debug.ChunkLogger = sigil.provider.debug.ChunkLogger.NoOp
+
   // -- participants (registration for polymorphic RW) --
 
   /**
