@@ -995,21 +995,34 @@ trait Provider {
         out += ProviderMessage.Reasoning(providerItemId, summary, encryptedContent)
     }
 
-    // Dangling tool_call without a result — defensive fallback. Should
-    // never fire when the durable event log is well-formed (every
-    // ToolInvoke pairs with a Tool-role Message via origin, including
-    // failure / orphan-settle paths). Surfaces with brief structured
-    // content per dangling id so the agent can reason about what
-    // happened without reading prose directives.
+    // Dangling tool_call without a result — defensive last-resort
+    // fallback. With the orchestrator's corruption-resistance
+    // invariant in place (sigil bug #190) — Phase 1's tool-dispatch
+    // wrapper plus the post-stream `guarantee` orphan-settle — every
+    // ToolInvoke should reach the durable event log with a paired
+    // Tool-role Message before any subsequent turn renders. If we
+    // arrive here, one of those paths is broken; the empty-content
+    // marker keeps the wire shape valid (function_call ↔
+    // function_call_output pairing) so the next turn doesn't HTTP
+    // 400, but does NOT inject a prose directive into the agent's
+    // context — generic "tool failed" strings poisoned reasoning
+    // (sigil bug #189 family) and gave the framework bug nothing to
+    // anchor on in logs. The scribe.error is the actionable surface.
     pendingToolCallIds.foreach { callId =>
       scribe.error(
         s"renderInput: dangling tool_call wireId=$callId has no paired ToolResult in this turn's frame trail. " +
-          "Synthesizing a brief failure marker — the orchestrator's runtime guard / orphan-settle path " +
-          "should be emitting a paired Tool-role Message and isn't. This is a bug in those paths."
+          "The orchestrator's corruption-resistance invariant should have emitted a paired Tool-role Message " +
+          "before this turn was rendered. Emitting an empty-content function_call_output marker to keep the " +
+          "wire shape valid; investigate why the orphan-settle path missed this invoke."
       )
       out += ProviderMessage.ToolResult(
         toolCallId = callId,
-        content    = "tool failed: no result emitted"
+        // Short non-directive marker. Non-empty so it doesn't violate
+        // the "content isn't optional" contract; not a prose directive
+        // ("tool failed, retry, …") so it doesn't poison the agent's
+        // reasoning on subsequent turns. The framework-bug surface is
+        // the scribe.error above, not this string.
+        content    = "(orphan)"
       )
     }
 
