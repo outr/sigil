@@ -10,6 +10,7 @@ import sigil.SpaceId.given
 import sigil.conversation.MemoryType.given
 import sigil.participant.ParticipantId
 import sigil.participant.ParticipantId.given
+import sigil.provider.Mode
 import sigil.spatial.Place
 
 /**
@@ -70,6 +71,20 @@ case class ContextMemory(fact: String,
                          createdBy: Option[ParticipantId] = None,
                          location: Option[Place] = None,
                          extraContext: Map[ContextKey, String] = Map.empty,
+                         /** Per-[[Mode]] retrieval gate. When non-empty, the
+                           * memory only surfaces during turns whose
+                           * [[Conversation.currentMode]] id is in this set.
+                           * Empty (the default) = the memory is universal —
+                           * surfaces regardless of current mode.
+                           *
+                           * Scoping critical directives to the mode they
+                           * apply to avoids loading them into every turn of
+                           * conversations that swap modes — a "always create
+                           * failing tests before fixing" directive captured
+                           * during Coding mode is wasted prompt budget when
+                           * the conversation switches back to Conversation
+                           * mode. Sigil bug #195. */
+                         modeAffinity: Set[Id[Mode]] = Set.empty,
                          created: Timestamp = Timestamp(),
                          modified: Timestamp = Timestamp(),
                          _id: Id[ContextMemory] = ContextMemory.id())

@@ -8,6 +8,7 @@ import rapid.Task
 import sigil.{GlobalSpace, Sigil, SpaceId}
 import sigil.conversation.{ContextFrame, ContextMemory, Conversation}
 import sigil.participant.ParticipantId
+import sigil.provider.Mode
 
 /**
  * Default [[MemoryRetriever]]. Produces two buckets for every turn:
@@ -85,14 +86,31 @@ case class StandardMemoryRetriever(limit: Int = 5,
                            chain: List[ParticipantId]): Task[MemoryRetrievalResult] = {
     val now = Timestamp()
     for {
-      spaces    <- resolveSpaces(sigil, chain, conversationId)
-      criticals <- if (includePinned) loadPinned(sigil, spaces, now) else Task.pure(Vector.empty)
-      regular   <- buildQuery(sigil, conversationId, frames, chain).flatMap {
+      spaces       <- resolveSpaces(sigil, chain, conversationId)
+      currentMode  <- currentModeOf(sigil, conversationId)
+      criticals    <- if (includePinned) loadPinned(sigil, spaces, currentMode, now) else Task.pure(Vector.empty)
+      regular      <- buildQuery(sigil, conversationId, frames, chain).flatMap {
         case None        => Task.pure(Vector.empty)
-        case Some(query) => hybridSearch(sigil, query, spaces, now).map(_.filterNot(criticals.toSet.contains))
+        case Some(query) => hybridSearch(sigil, query, spaces, currentMode, now).map(_.filterNot(criticals.toSet.contains))
       }
     } yield MemoryRetrievalResult(memories = regular, criticalMemories = criticals)
   }
+
+  /** Read the conversation's current mode for the per-turn
+    * [[ContextMemory.modeAffinity]] gate. `None` when the
+    * conversation row has been deleted out from under the retriever
+    * (the modeAffinity filter then degrades to "universal-only" —
+    * mode-scoped memories drop out). */
+  private def currentModeOf(sigil: Sigil, conversationId: Id[Conversation]): Task[Option[Id[Mode]]] =
+    sigil.withDB(_.conversations.transaction(_.get(conversationId)))
+      .map(_.map(_.currentMode.id))
+
+  /** Apply the per-memory mode-affinity gate. A memory with empty
+    * `modeAffinity` is universal — surfaces regardless of mode. A
+    * non-empty set means the memory only surfaces when `currentMode`
+    * is in it. Sigil bug #195. */
+  private def matchesCurrentMode(memory: ContextMemory, currentMode: Option[Id[Mode]]): Boolean =
+    memory.modeAffinity.isEmpty || currentMode.exists(memory.modeAffinity.contains)
 
   /** Resolve the per-turn space set: caller's accessible spaces plus
     * [[GlobalSpace]] (universally accessible — pinned memories in
@@ -137,6 +155,7 @@ case class StandardMemoryRetriever(limit: Int = 5,
   private def hybridSearch(sigil: Sigil,
                            query: String,
                            spaces: Set[SpaceId],
+                           currentMode: Option[Id[Mode]],
                            now: Timestamp): Task[Vector[Id[ContextMemory]]] = {
     val candidatePool = math.max(limit * 4, 10)
     for {
@@ -146,9 +165,11 @@ case class StandardMemoryRetriever(limit: Int = 5,
       val vectorIds  = vectorHits.iterator
         .filterNot(_.pinned)
         .filterNot(StandardMemoryRetriever.isExpired(_, now))
+        .filter(matchesCurrentMode(_, currentMode))
         .map(_._id).toList
       val lexicalIds = lexicalHits.iterator
         .filterNot(StandardMemoryRetriever.isExpired(_, now))
+        .filter(matchesCurrentMode(_, currentMode))
         .map(_._id).toList
       // Confidence shapes the fused score: a 0.5-confidence memory's
       // RRF contributions count for half a 1.0-confidence peer's, so
@@ -202,7 +223,10 @@ case class StandardMemoryRetriever(limit: Int = 5,
     * IN spaces`. Expiry is filtered in-memory on the (small) result.
     * O(N_pinned_in_accessible_spaces) per turn instead of
     * O(N_total_memories). */
-  private def loadPinned(sigil: Sigil, spaces: Set[SpaceId], now: Timestamp): Task[Vector[Id[ContextMemory]]] =
+  private def loadPinned(sigil: Sigil,
+                         spaces: Set[SpaceId],
+                         currentMode: Option[Id[Mode]],
+                         now: Timestamp): Task[Vector[Id[ContextMemory]]] =
     if (spaces.isEmpty) Task.pure(Vector.empty)
     else sigil.withDB(_.memories.transaction { tx =>
       val spaceClauses = spaces.toList.map { space =>
@@ -215,7 +239,10 @@ case class StandardMemoryRetriever(limit: Int = 5,
         )
         .toList
     }).map { rows =>
-      rows.iterator.filterNot(StandardMemoryRetriever.isExpired(_, now)).map(_._id).toVector
+      rows.iterator
+        .filterNot(StandardMemoryRetriever.isExpired(_, now))
+        .filter(matchesCurrentMode(_, currentMode))
+        .map(_._id).toVector
     }
 }
 
