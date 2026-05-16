@@ -1,8 +1,10 @@
 package sigil.tool.util
 
+import lightdb.id.Id
 import rapid.Task
 import sigil.{SpaceId, TurnContext}
 import sigil.conversation.{ContextMemory, MemorySource, UpsertMemoryResult}
+import sigil.provider.Mode
 import sigil.tool.model.{SaveMemoryInput, SaveMemoryOutput}
 import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
 
@@ -53,15 +55,16 @@ final class SaveMemoryTool(space: SpaceId,
   override protected def executeTyped(input: SaveMemoryInput, ctx: TurnContext): Task[SaveMemoryOutput] =
     resolveSpace(input.space, ctx).flatMap { resolvedSpace =>
       val mem = ContextMemory(
-        fact       = input.fact,
-        label      = input.label,
-        summary    = input.summary,
-        source     = source,
-        spaceId    = resolvedSpace,
-        key        = input.key,
-        pinned     = input.permanence.contains(sigil.conversation.Permanence.Always),
-        keywords   = input.keywords,
-        memoryType = input.memoryType
+        fact         = input.fact,
+        label        = input.label,
+        summary      = input.summary,
+        source       = source,
+        spaceId      = resolvedSpace,
+        key          = input.key,
+        pinned       = input.permanence.contains(sigil.conversation.Permanence.Always),
+        keywords     = input.keywords,
+        memoryType   = input.memoryType,
+        modeAffinity = resolveModeAffinity(input.modeAffinity, ctx)
       )
       input.key match {
         case Some(_) =>
@@ -89,6 +92,24 @@ final class SaveMemoryTool(space: SpaceId,
       ctx.sigil.accessibleSpaces(ctx.chain, ctx.conversation.id).map { accessible =>
         accessible.find(_.value == value.trim).getOrElse(space)
       }
+  }
+
+  /** Resolve mode `name`s to `Id[Mode]`. Unknown names are dropped
+    * with a WARN — better to persist the memory as universal (empty
+    * set) than to lose it entirely on a typo. Sigil bug #195. */
+  private def resolveModeAffinity(names: Set[String], ctx: TurnContext): Set[Id[Mode]] = {
+    if (names.isEmpty) Set.empty
+    else {
+      val known = ctx.sigil.availableModes.map(_.name).toSet
+      names.iterator.map(_.trim).filter(_.nonEmpty).flatMap { name =>
+        if (known.contains(name)) Some(Id[Mode](name))
+        else {
+          scribe.warn(s"save_memory: dropping unknown modeAffinity '$name' " +
+            s"— not in availableModes [${known.mkString(", ")}]")
+          None
+        }
+      }.toSet
+    }
   }
 
 }
