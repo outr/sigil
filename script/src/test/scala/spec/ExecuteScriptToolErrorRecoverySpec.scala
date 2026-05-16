@@ -92,7 +92,7 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
   "ExecuteScriptTool (bug #67)" should {
     "emit a ScriptResult with `error` populated when the executor's Task fails" in {
       val tool = new ExecuteScriptTool(FailingExecutor)
-      tool.execute(ScriptInput(code = "anything"), ctx("task-failure")).toList.map { events =>
+      tool.execute(ScriptInput(code = "anything", summary = "test: error path"), ctx("task-failure")).toList.map { events =>
         val results = events.collect { case r: ScriptResult => r }
         results should have size 1
         val r = results.head
@@ -111,7 +111,7 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
       // Post-fix: the outer Task.defer + handleError catches the
       // throw and emits a populated ScriptResult.
       val tool = new ExecuteScriptTool(SyncThrowExecutor)
-      tool.execute(ScriptInput(code = "anything"), ctx("sync-throw")).toList.map { events =>
+      tool.execute(ScriptInput(code = "anything", summary = "test: error path"), ctx("sync-throw")).toList.map { events =>
         val results = events.collect { case r: ScriptResult => r }
         results should have size 1
         val r = results.head
@@ -124,7 +124,7 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
 
     "emit a ScriptResult with `output` populated on the happy path" in {
       val tool = new ExecuteScriptTool(SucceedingExecutor)
-      tool.execute(ScriptInput(code = "1 + 2"), ctx("happy")).toList.map { events =>
+      tool.execute(ScriptInput(code = "1 + 2", summary = "test: happy path"), ctx("happy")).toList.map { events =>
         val results = events.collect { case r: ScriptResult => r }
         results should have size 1
         val r = results.head
@@ -139,7 +139,7 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
       // takes the first 8 lines of `printStackTrace`, which always
       // starts with the throwable line followed by `at` frames.
       val tool = new ExecuteScriptTool(FailingExecutor)
-      tool.execute(ScriptInput(code = "x"), ctx("stack-trace")).toList.map { events =>
+      tool.execute(ScriptInput(code = "x", summary = "test: stack-trace path"), ctx("stack-trace")).toList.map { events =>
         val r = events.collectFirst { case r: ScriptResult => r }.get
         r.error.get should include ("at ")
       }
