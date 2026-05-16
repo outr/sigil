@@ -124,8 +124,16 @@ object OpenAIChatCompletions {
       * stream raises [[ProviderStreamException]] instead of being
       * silently ignored. Surfaces backend-side mid-stream failures
       * (HTTP 200 + JSON error envelope) as user-visible failures via
-      * the agent loop's failure-surface path. llama.cpp. */
-    inlineErrorThrows: Boolean = false,
+      * the agent loop's failure-surface path.
+      *
+      * Sigil bug #193 — default flipped from `false` to `true`. Every
+      * OpenAI-compat upstream gateway observed in practice (OpenRouter,
+      * DeepInfra, DigitalOcean, llama.cpp) emits these chunks on
+      * provider-side timeouts / 502s; silently dropping them masked
+      * the real failure mode behind the model-degenerated empty-
+      * completion placeholder. Apps that want the old silent-drop
+      * behaviour pass `inlineErrorThrows = false` explicitly. */
+    inlineErrorThrows: Boolean = true,
 
     /** When `true`, a stream that closes with `finish_reason: length`
       * having emitted zero content text AND zero tool calls raises
@@ -582,12 +590,22 @@ object OpenAIChatCompletions {
           }
         }
       }
-      delta.get("reasoning_content").foreach { c =>
-        if (!c.isNull) {
+      // Sigil bug #192 — accept either OpenAI's canonical
+      // `reasoning_content` OR OpenRouter's `reasoning` field. The
+      // OpenRouter wire shape (observed via Io Net upstream serving
+      // moonshotai/kimi-k2.6) streams reasoning fragments under
+      // `delta.reasoning` with a parallel `reasoning_details` array;
+      // OpenAI's o1 / o3 / gpt-5 stream under `delta.reasoning_content`.
+      // Prefer the canonical field when both are present so a provider
+      // that emits both (defensive belt-and-suspenders) doesn't
+      // double-emit ThinkingDeltas.
+      delta.get("reasoning_content")
+        .filter(!_.isNull)
+        .orElse(delta.get("reasoning").filter(!_.isNull))
+        .foreach { c =>
           val text = c.asString
           if (text.nonEmpty) events += ProviderEvent.ThinkingDelta(text)
         }
-      }
       // Sigil audit H3 — OpenAI streams `delta.refusal` as a sibling to
       // `delta.content` when the model declines to comply with the
       // request (safety / policy refusal). The previous parser ignored
