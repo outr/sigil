@@ -47,7 +47,7 @@ final class ConversationSession(sigil: Sigil,
     * Message: if the SigilDB-side check passes but the wire saw
     * nothing, the harness raises (broken transport). Skipped if the
     * conversation has no agent participants. */
-  def send(text: String, timeout: FiniteDuration = 60.seconds): Task[Message] = {
+  def send(text: String, timeout: FiniteDuration = 3.minutes): Task[Message] = {
     val now = Timestamp()
     val userMsg = Message(
       participantId = viewer,

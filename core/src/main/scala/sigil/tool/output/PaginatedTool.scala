@@ -43,7 +43,7 @@ import scala.reflect.ClassTag
  */
 abstract class PaginatedTool[In <: ToolInput, A](
   override val name: ToolName,
-  override val description: String,
+  description0: String,
   override val examples: List[ToolExample] = Nil,
   override val modes: Set[Id[Mode]] = Set.empty,
   override val space: SpaceId = GlobalSpace,
@@ -57,6 +57,24 @@ abstract class PaginatedTool[In <: ToolInput, A](
     * them. Default 30 minutes. */
   val rowTtl: FiniteDuration = 30.minutes
 )(using ct: ClassTag[In], inputRwEv: RW[In], outputRwEv: RW[A]) extends Tool {
+
+  /** The author-supplied description before the standardized
+    * navigation footer is appended. Subclasses rarely need this —
+    * exposed for diagnostic / round-trip tooling. */
+  protected val authorDescription: String = description0
+
+  /** Effective description for the agent-facing schema and wire
+    * requests. Sigil bug #202 — every paginated tool's description
+    * is augmented with the same navigation footer so the agent
+    * always knows how to drill into the returned tree using
+    * [[NextPageTool]] / [[QueryToolOutputTool]] regardless of
+    * which `PaginatedTool` subclass produced the result.
+    *
+    * Marked `final` — the navigation contract is part of
+    * [[PaginatedTool]]'s identity; opting out would mean the tool
+    * isn't actually paginated. */
+  final override val description: String =
+    authorDescription.stripTrailing + PaginatedTool.PaginationFooter
 
   override val inputRW: RW[In] = inputRwEv
 
@@ -167,6 +185,23 @@ abstract class PaginatedTool[In <: ToolInput, A](
 }
 
 object PaginatedTool {
+
+  /** Standardized footer auto-appended to every paginated tool's
+    * description so the agent always knows how to drill into the
+    * returned tree. Sigil bug #202 — centralised here so the
+    * phrasing stays consistent and updates to the navigation API
+    * propagate to every subclass automatically. */
+  val PaginationFooter: String =
+    """
+      |
+      |— Paginated output —
+      |This tool's first-page result includes `callId`, `hasMore`, and `nodeIds`.
+      |Walk the tree with `next_page(referenceId)`:
+      |  • `referenceId = callId`     → next sibling page at this level
+      |  • `referenceId = <nodeId>`   → expand a node whose `hasChildren = true`
+      |Use `query_tool_output(callId, containsText?, level?)` for a flat
+      |cross-tree filter when you want matches anywhere in the result
+      |at once (e.g. "all line-matches that contain 'reset_password').""".stripMargin
 
   /** Read a page of paginated output from `db.toolOutputs`. Used
     * by [[PaginatedTool]]'s first-page return, [[NextPageTool]],

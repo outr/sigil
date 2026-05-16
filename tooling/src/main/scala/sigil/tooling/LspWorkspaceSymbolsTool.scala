@@ -20,7 +20,7 @@ case class LspWorkspaceSymbolsInput(languageId: String,
  */
 final class LspWorkspaceSymbolsTool(val manager: LspManager) extends PaginatedTool[LspWorkspaceSymbolsInput, LspWorkspaceSymbol](
   name = ToolName("lsp_workspace_symbols"),
-  description =
+  description0 =
     """Search for symbols by name across the workspace.
       |
       |`languageId` selects the persisted LspServerConfig.
@@ -28,8 +28,7 @@ final class LspWorkspaceSymbolsTool(val manager: LspManager) extends PaginatedTo
       |`query` is the search string — fuzzy / substring depending on server config.
       |`maxResults` (default 100) caps the response.
       |
-      |Paginated tree: top-level nodes are symbol hits with `{kind, name, container, uri, position}`.
-      |The first page lands inline; subsequent pages walk via the framework's pagination tools.""".stripMargin,
+      |Top-level nodes are symbol hits with `{kind, name, container, uri, position}`.""".stripMargin,
   keywords = Set(
     "lsp", "workspace", "symbols", "symbol", "find symbol", "search",
     "class", "method", "function", "definition", "signature", "structure",

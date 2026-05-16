@@ -21,6 +21,9 @@ import sigil.vector.InMemoryVectorIndex
  * time pathway.
  */
 class LlamaCppPerTurnExtractionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
+  override implicit protected val testTimeout: scala.concurrent.duration.FiniteDuration =
+    scala.concurrent.duration.DurationInt(5).minutes
+
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id(sigil.provider.llamacpp.LlamaCpp.Provider, "qwen3.5-9b-q4_k_m")
