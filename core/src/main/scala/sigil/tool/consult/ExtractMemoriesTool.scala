@@ -36,16 +36,8 @@ case object ExtractMemoriesTool extends TypedTool[ExtractMemoriesInput](
       |                across conversations enables versioning. Only omit for one-shot
       |                facts that genuinely have no identity-slot semantics (rare).
       |  - `tags`    — optional categorization tokens (e.g. ["preference", "language"]).
-      |                ALSO use tags to scope a memory to specific operating modes when
-      |                the user's directive is explicitly mode-bound. Use the prefix
-      |                `mode:NAME` where NAME matches one of the available modes shown in
-      |                the system prompt above. Examples:
-      |                  - "always create failing tests when coding"  → tags: ["mode:coding"]
-      |                  - "in research mode, prefer primary sources" → tags: ["mode:research"]
-      |                  - "when coding or writing, never autocomplete" → tags:
-      |                    ["mode:coding", "mode:writing"]
-      |                Without a `mode:` tag the directive loads in every mode — wasted
-      |                prompt budget when it only applies to specific contexts.
+      |                For mode-scoped directives ("always do X when coding"), prefix the
+      |                applicable mode name(s) with `mode:` — e.g. `tags: ["mode:coding"]`.
       |
       |Include only facts that future agents will genuinely need:
       |  - identifiers, names, numbers, URLs explicitly stated → KEY REQUIRED
