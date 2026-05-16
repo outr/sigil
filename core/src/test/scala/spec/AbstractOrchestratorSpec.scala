@@ -288,7 +288,16 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     }
 
     "emit ToolInvoke + ModeChange for an atomic change_mode call" in {
-      orchestrate("I need to write a Scala function.").map { signals =>
+      // Bug #203 — the mode descriptions now spell out "Enter when
+      // [...sustained session...]" and "Don't enter for [...single-
+      // turn actions...]", so a one-off "write a function" prompt no
+      // longer elicits change_mode. Reframe as a sustained-session
+      // request that matches CodingMode's "Enter when" clause.
+      orchestrate(
+        "I'm starting a multi-step coding session on a Scala project — " +
+        "I want to iterate with you on a small library together over the next several turns. " +
+        "Switch into the right operating mode now so we can iterate."
+      ).map { signals =>
         val toolInvokes = signals.collect { case t: ToolInvoke => t }
         toolInvokes should not be empty
         toolInvokes.head.toolName shouldBe sigil.tool.ToolName("change_mode")

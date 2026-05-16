@@ -90,6 +90,18 @@ case class TurnContext(sigil: Sigil,
                        currentToolInvokeId: Option[Id[Event]] = None,
                        currentToolName: Option[ToolName] = None,
                        modelId: Option[Id[Model]] = None,
+                       /** Sigil bug #205 — the model id this turn will
+                         * actually route to, resolved up-front by
+                         * `Sigil.buildContext` from the conversation's
+                         * provider strategy + classifier output. The
+                         * curator uses this to budget against the routed
+                         * model's contextLength rather than the agent's
+                         * nominal `agent.modelId`, which is often a
+                         * small-context default that gets escalated to a
+                         * frontier model by routing. `None` for paths
+                         * that bypass `buildContext` (e.g. direct
+                         * `executeAtomic` from unit tests). */
+                       routedModelId: Option[Id[Model]] = None,
                        isGreeting: Boolean = false,
                        /** Sigil bug #125 — when `true`, the framework forces
                          * the provider's `tool_choice` to `respond` for this

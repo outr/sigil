@@ -3025,11 +3025,23 @@ trait Sigil {
         // because the navigation tools weren't in scope. Promotion is
         // per-iteration; the overlay clears at loop release with the
         // rest of `suggestedTools`.
+        //
+        // Sigil bug #206 — distinguish tool-declared followups
+        // (intentional handoff — REPLACE the overlay) from pagination
+        // navigators (framework-additive — MERGE with the existing
+        // overlay). #202's first cut wholesale-replaced whenever
+        // either signal was non-empty, which clobbered prior
+        // find_capability promotions on the agent's first paginated
+        // call. Now: schema-declared followups still replace (the
+        // tool is intentionally narrowing the agent's next-turn
+        // toolset); pagination navigators merge on top of whatever
+        // the agent was already considering.
         val schemaSuggested = tr.schemas.map(_.name).toList
         val paginationNav   = Sigil.paginationNavigatorsFor(tr.typed)
         if (schemaSuggested.isEmpty && paginationNav.isEmpty) Task.unit
         else updateProjection(tr.conversationId, tr.participantId) { proj =>
-          proj.copy(suggestedTools = (schemaSuggested ++ paginationNav).distinct)
+          val base = if (schemaSuggested.nonEmpty) schemaSuggested else proj.suggestedTools
+          proj.copy(suggestedTools = (base ++ paginationNav).distinct)
         }
       case cr: CapabilityResults =>
         updateProjection(cr.conversationId, cr.participantId) { proj =>
@@ -5987,7 +5999,16 @@ trait Sigil {
           .toList
       }
       chain = buildChain(triggerEvents, agent)
-      input <- curate(conv._id, agent.modelId, chain)
+      // Sigil bug #205 — resolve the actually-routed model up-front so
+      // the curator's budget gate sees the right context window. The
+      // agent's nominal `modelId` is frequently a small-context default
+      // (e.g. a local llama loaded at boot from
+      // `provider.models.headOption`), but per-turn routing escalates
+      // to a frontier candidate via `classifyForRoute`. Budgeting against
+      // `agent.modelId` triggers aggressive compression that strips
+      // context the routed model would have comfortably accepted.
+      routedModelId <- resolveRoutedModelId(agent, conv, chain, claimedId)
+      input         <- curate(conv._id, routedModelId, chain)
     } yield {
       val triggers: Stream[Event] = Stream.emits(triggerEvents)
       val ctx = TurnContext(
@@ -5996,10 +6017,79 @@ trait Sigil {
         conversation = conv,
         turnInput = input,
         currentAgentStateId = Some(claimedId),
+        routedModelId = Some(routedModelId),
         isGreeting = isGreeting
       )
       (ctx, triggers)
     }
+
+  /** Sigil bug #205 — resolve the model id this turn will route to,
+    * before [[curate]] runs. Mirrors the routing logic in `dispatch`
+    * (mode-overrides-agent work type, strategy chain, classifier
+    * output, candidate selection), but uses a stub TurnContext for
+    * the classifier callbacks since the full one (with curated
+    * turnInput) isn't yet available.
+    *
+    * `classifierMemo` keys on the user message id, so the duplicate
+    * classifier call inside `dispatch` later in the turn hits the
+    * cache and adds no LLM round-trip cost. */
+  private final def resolveRoutedModelId(agent: AgentParticipant,
+                                         conv: Conversation,
+                                         chain: List[ParticipantId],
+                                         claimedId: Id[Event]): Task[Id[Model]] = {
+    val effectiveWorkType: WorkType =
+      conv.currentMode.workType.getOrElse(agent.workType)
+    val strategyTask: Task[Option[ProviderStrategy]] =
+      conv.pinnedModelId match {
+        case Some(pinnedId) => Task.pure(Some(ProviderStrategy.single(pinnedId)))
+        case None =>
+          conv.currentMode.strategyId match {
+            case Some(modeStrategyId) =>
+              withDB(_.providerStrategies.transaction(_.get(modeStrategyId)))
+                .map(_.map(materializeStrategy))
+            case None =>
+              resolveProviderStrategy(conv.space)
+          }
+      }
+    val latestUserMessage: Task[Option[sigil.event.Message]] =
+      withDB(_.events.transaction(_.list)).map { evs =>
+        evs.iterator
+          .collect { case m: sigil.event.Message if m.conversationId == conv._id => m }
+          .filter(m => !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId])
+          .filter(_.role == sigil.event.MessageRole.Standard)
+          .toList
+          .sortBy(-_.timestamp.value)
+          .headOption
+      }.handleError(_ => Task.pure(None))
+    for {
+      strategyOpt <- strategyTask
+      userMsg     <- latestUserMessage
+      modelId     <- strategyOpt match {
+        case None => Task.pure(agent.modelId)
+        case Some(strategy) =>
+          // Stub TurnContext for classifier callbacks. `turnInput` is
+          // empty because curate hasn't run yet — classifiers that
+          // need full context override the strategy's classifier
+          // implementation entirely; the default classifiers only
+          // read userText + the conversation reachable through the
+          // stub.
+          val stubCtx = TurnContext(
+            sigil               = this,
+            chain               = chain,
+            conversation        = conv,
+            turnInput           = sigil.conversation.TurnInput(sigil.conversation.ConversationView(conversationId = conv._id)),
+            currentAgentStateId = Some(claimedId)
+          )
+          classifyForRoute(strategy, effectiveWorkType, conv, userMsg, stubCtx).map {
+            case (wt, complexity) =>
+              val chain = strategy.availableCandidates(wt)
+              chain.find(_.supportedComplexity.contains(complexity))
+                .map(_.modelId)
+                .getOrElse(agent.modelId)
+          }
+      }
+    } yield modelId
+  }
 
   private final def newTriggersExist(agent: AgentParticipant,
                                      conv: Conversation,

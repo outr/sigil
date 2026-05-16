@@ -12,5 +12,10 @@ package sigil.provider
  */
 case object ConversationMode extends Mode {
   override val name: String = "conversation"
-  override val description: String = "General chat, Q&A, conversation."
+  override val description: String =
+    "Default mode. Greetings, Q&A, single-turn actions like binding a " +
+      "workspace, opening a file, looking something up, sending a one-off " +
+      "message. Stay here unless the user is starting a multi-turn session " +
+      "in another mode's domain. (No exit clause — this IS the fallback " +
+      "when nothing else fits.)"
 }

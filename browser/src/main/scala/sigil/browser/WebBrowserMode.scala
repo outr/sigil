@@ -26,7 +26,15 @@ case object WebBrowserMode extends Mode {
   override val name: String = "web-browser"
 
   override val description: String =
-    "Drive a real headless browser. Navigate, click, type, scroll, screenshot, save HTML, and run structural queries (XPath / text search) over saved pages."
+    "Driving a real headless browser over multiple turns: navigating pages, " +
+      "clicking, typing, scrolling, taking screenshots, querying saved HTML. " +
+      "Enter when the user wants you to interact with a website. " +
+      "Don't enter for: fetching a single URL (find_capability surfaces " +
+      "fetch tools for that), reading already-saved HTML, or discussing " +
+      "browser behavior in the abstract. " +
+      "Exit when the user has moved on from browser interaction (e.g., " +
+      "they want to analyze the captured content, or do unrelated work) — " +
+      "change_mode back to 'conversation' or whichever mode fits next."
 
   override val workType: Option[WorkType] = Some(AnalysisWork)
 

@@ -33,9 +33,15 @@ case object ScriptAuthoringMode extends Mode {
   override val name: String = "script-authoring"
 
   override val description: String =
-    "Author runtime script tools. Adds library introspection (`library_lookup`, `class_signatures`, " +
-      "`read_source`) and the script-tool management surface (`create_script_tool`, " +
-      "`update_script_tool`, `delete_script_tool`, `list_script_tools`)."
+    "Authoring or editing standalone Scala 3 scripts that will be persisted " +
+      "as runtime tools and invoked by name later. Enter when the user asks " +
+      "to write a new script tool or modify an existing one. Don't enter " +
+      "for: editing existing source files in a project (use coding), " +
+      "running a one-off shell command, looking up library symbols outside " +
+      "of script authoring. " +
+      "Exit once the script is created/updated and the user moves on to " +
+      "anything else (running it is fine to do from any mode; this mode " +
+      "is specifically for authoring)."
 
   override val workType: Option[WorkType] = Some(CodingWork)
 

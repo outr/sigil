@@ -551,8 +551,17 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
             case s: sigil.workflow.SigilAgentDecisionStep => s.input
           }
           val priorReasoning = agentInputs.flatMap(_.priorReasoning).mkString("\n")
-          val emittedStatus  = priorReasoning.toLowerCase.contains("status:")
-          val emittedReport  = priorReasoning.toLowerCase.contains("report:")
+          // Only count line-start marker hits — matches what the
+          // framework's marker parser actually picks up. A broad
+          // `contains("status:")` was firing on prose like "the
+          // status: yes" inside the LLM's narrative and then
+          // failing the assertion below.
+          val emittedStatus = priorReasoning.linesIterator.exists(l =>
+            l.stripLeading().toLowerCase.startsWith("status:")
+          )
+          val emittedReport = priorReasoning.linesIterator.exists(l =>
+            l.stripLeading().toLowerCase.startsWith("report:")
+          )
           if (emittedStatus) statuses should not be empty
           if (emittedReport) reportMessages should not be empty
           succeed

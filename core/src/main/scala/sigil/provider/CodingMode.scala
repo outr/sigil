@@ -28,6 +28,13 @@ package sigil.provider
 case object CodingMode extends Mode {
   override val name: String = "coding"
   override val description: String =
-    "Writing, debugging, or refactoring code. Optimizes for technical accuracy, syntax, and software-engineering principles."
+    "Sustained code-editing session: multi-step changes across files, " +
+      "running tests, debugging build errors, semantic refactoring via LSP. " +
+      "Enter when the user is starting a coding task they'll iterate on. " +
+      "Don't enter for: binding a workspace, opening one file to read, " +
+      "single-question 'what does this function do.' " +
+      "Exit when the current turn is no longer about editing/running/" +
+      "debugging code (e.g., user switched to a meta-question, an admin " +
+      "task, or general chat) — change_mode back to 'conversation'."
   override val workType: Option[WorkType] = Some(CodingWork)
 }

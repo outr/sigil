@@ -116,10 +116,19 @@ trait AbstractConversationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         }
       }
     }
-    "switch to the coding mode over the wire when the user asks to write code" in {
+    "switch to the coding mode over the wire when the user asks to start a coding session" in {
+      // Bug #203 — single-action "write me a function" no longer
+      // triggers change_mode (correctly; CodingMode's "Don't enter
+      // for" clause names exactly that pattern). Reframe as a
+      // multi-turn coding session that matches CodingMode's
+      // "Enter when" clause.
       withClient("mode-switch") { s =>
         for {
-          _ <- s.send("Write me a Scala function that computes the factorial of n.")
+          _ <- s.send(
+            "I'm starting a coding session on a Scala project — let's iterate together over " +
+            "several turns: first design, then write, then test. Switch to coding mode and " +
+            "we'll begin."
+          )
           conv <- s.conversation
         } yield conv.currentMode.name should be(TestCodingMode.name)
       }
