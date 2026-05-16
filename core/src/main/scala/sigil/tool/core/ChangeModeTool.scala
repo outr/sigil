@@ -25,11 +25,15 @@ import sigil.tool.model.ChangeModeInput
 case object ChangeModeTool extends TypedTool[ChangeModeInput](
   name = ToolName("change_mode"),
   description =
-    """Switch operating mode. Call BEFORE find_capability when a listed mode clearly matches the
-      |user's task — Modes are pre-curated tool sets, more precise than free-form search.
+    """Switch operating mode. Call BEFORE find_capability ONLY when the user
+      |is starting a sustained session in a listed mode's domain (multi-turn
+      |work). For single-action requests (one binding, one lookup, one file
+      |edit), stay in the current mode and use find_capability to surface the
+      |tool — most actions don't need a mode switch.
       |
-      |`mode` is the target's stable name from the available-modes list below. After change_mode
-      |succeeds, the new mode's tools are directly callable on the next turn.""".stripMargin,
+      |`mode` is the target's stable name from the available-modes list below.
+      |After change_mode succeeds, the new mode's tools are directly callable
+      |on the next turn.""".stripMargin,
   // Curated keyword surface for discovery ranking. Tight on what
   // `change_mode` actually does — switch the agent's operating
   // posture / toolset — without leaking into adjacent intents like

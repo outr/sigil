@@ -19,8 +19,16 @@ case object WorkflowBuilderMode extends Mode {
   override val name: String = "workflow-builder"
 
   override val description: String =
-    "Composing, editing, and running typed workflows on top of Sigil's workflow runtime. " +
-      "Use the workflow_* tools to author + manage; everything is typed end-to-end."
+    "Authoring Sigil typed workflow definitions (a workflow is a " +
+      "programmatic multi-step recipe stored in the workflow registry, " +
+      "invoked by name later). Enter only when the user explicitly asks " +
+      "to compose, edit, or run a typed workflow. Don't enter for: " +
+      "general 'project setup', running scripts, or any multi-step task " +
+      "that isn't specifically a Sigil workflow. " +
+      "Exit immediately when the current task is anything other than " +
+      "composing or running a typed Sigil workflow — e.g., editing source " +
+      "files (use coding), reading/searching code (use coding or " +
+      "conversation), or general chat (use conversation)."
 
   override val workType: Option[WorkType] = Some(CodingWork)
 

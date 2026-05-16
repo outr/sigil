@@ -301,48 +301,31 @@ object Orchestrator {
 
     event match {
       case ProviderEvent.ToolCallStart(callId, toolName) =>
+        // Sigil bug #204 — defer ToolInvoke emission to
+        // ToolCallComplete so the event carries parsed `input` at
+        // emission time. `ProviderEvent.ToolCallStart` only delivers
+        // `callId` + `toolName`; the args stream as
+        // `ContentBlockDelta` chunks and the parsed `ToolInput` is
+        // only available when `ToolCallComplete` lands at the end of
+        // that window. Consumers that read `ToolInvoke.input` from
+        // the wire previously saw `None` for the entire streaming
+        // window — for reasoning models that think for tens of
+        // seconds before the tool_call lands, the chip stayed at
+        // "input pending" for the full duration. Deferring lands the
+        // populated event on first emission. We still mint the
+        // invokeId here and stash it in `activeCalls` so the
+        // `ToolCallComplete` handler can correlate, and we still
+        // flip `sawAnyToolCall` for the Done handler's drift check.
+        // Stream-abort paths (`settleOrphanToolInvoke`) synthesize a
+        // ToolInvoke for active calls that never reached Complete,
+        // preserving the corruption-resistance invariant.
         val invokeId = Event.id()
         state.activeCalls(callId) = ActiveCall(toolName, invokeId)
         state.activeMessageId = None
         state.currentKind = None
         state.currentArg = None
-        // Bug #75 — flag that a tool call happened this turn. The
-        // Done handler uses this to distinguish "model emitted plain
-        // text and no tool call" (drift; needs framework pushback)
-        // from "model emitted plain text in addition to tool calls"
-        // (some providers leak narration alongside tool args; not a
-        // policy violation).
         state.sawAnyToolCall = true
-        // Bug #56 — mark `respond` / `respond_options` /
-        // `respond_field` / `respond_failure` / `no_response` as
-        // framework-internal so client UIs can filter the chip
-        // (the user-facing speech reaches the wire as a `Message`
-        // + `MessageDelta` already; the tool chip would render the
-        // same content twice). The framework's silent-turn
-        // detector still sees these events for its lifecycle
-        // tracking — this is purely a wire-level rendering hint.
-        val isInternal = Orchestrator.UserVisibleTerminalTools.contains(toolName)
-        val invoke = ToolInvoke(
-          toolName = ToolName(toolName),
-          participantId = caller,
-          conversationId = convId,
-          topicId = topicId,
-          _id = invokeId,
-          state = EventState.Active,
-          internal = isInternal,
-          // Sigil bug #167 r5 — persist the wire-level call_id from
-          // the provider's response so subsequent turns can render
-          // function_call_output with the original id (OpenAI's
-          // previous_response_id state matches by call_id).
-          callId = Some(callId.value),
-          // Pair with the trailing Usage attribution path — for
-          // tool-call-only turns (change_mode / cancel /
-          // find_capability) the per-turn cost lands on this
-          // ToolInvoke via a `ToolDelta(usage=…)`, and the cost
-          // projection needs `modelId` to look up pricing.
-          modelId = Some(request.modelId)
-        )
-        Stream.emits(List(invoke))
+        Stream.empty
 
       case ProviderEvent.ContentBlockStart(_, blockType, arg) =>
         // Close the previous block if one was open, then start tracking the new kind.
@@ -404,32 +387,31 @@ object Orchestrator {
         // carries enough info — its runtime class maps deterministically
         // to one of `request.tools` (each tool's input type is unique
         // by construction), and we mint a fresh invokeId here.
-        val synthesizedInvoke: Vector[Signal] =
-          if (state.activeCalls.contains(callId)) Vector.empty
-          else {
-            val toolName = request.tools.iterator.collectFirst {
-              case t if t.inputRW.definition.className.contains(input.getClass.getName) => t.schema.name.value
-            }.getOrElse("(unknown)")
-            val invokeId = Event.id()
-            state.activeCalls(callId) = ActiveCall(toolName, invokeId)
-            state.sawAnyToolCall = true
-            val isInternal = Orchestrator.UserVisibleTerminalTools.contains(toolName)
-            scribe.warn(
-              s"Synthesizing ToolInvoke for orphan ToolCallComplete(callId=${callId.value}, " +
-                s"tool=$toolName) — provider didn't emit a recognizable ToolCallStart upstream. " +
-                "See sigil bug #176."
-            )
-            Vector(ToolInvoke(
-              toolName       = ToolName(toolName),
-              participantId  = caller,
-              conversationId = convId,
-              topicId        = topicId,
-              _id            = invokeId,
-              state          = EventState.Active,
-              internal       = isInternal,
-              callId         = Some(callId.value)
-            ))
-          }
+        // Sigil bug #176 — some OpenAI-compat backends (observed:
+        // OpenRouter passing through Kimi-K2.5, also kindred to
+        // bug #163's DeepInfra streaming variance) ship a tool-call
+        // shape that doesn't trigger `ToolCallStart` upstream — either
+        // the leading `id`+`name` chunk is missing, or its keys arrive
+        // in a shape the accumulator's predicate doesn't recognize.
+        // The previous IllegalStateException tore down the whole agent
+        // loop on the first such request. Recover by populating
+        // activeCalls with a fresh invokeId here; the deferred
+        // ToolInvoke emission below uses `active.toolName` directly,
+        // so the orphan flow ends up emitting the same shape as the
+        // normal path.
+        if (!state.activeCalls.contains(callId)) {
+          val toolName = request.tools.iterator.collectFirst {
+            case t if t.inputRW.definition.className.contains(input.getClass.getName) => t.schema.name.value
+          }.getOrElse("(unknown)")
+          val invokeId = Event.id()
+          state.activeCalls(callId) = ActiveCall(toolName, invokeId)
+          state.sawAnyToolCall = true
+          scribe.warn(
+            s"Synthesizing ActiveCall entry for orphan ToolCallComplete(callId=${callId.value}, " +
+              s"tool=$toolName) — provider didn't emit a recognizable ToolCallStart upstream. " +
+              "See sigil bug #176."
+          )
+        }
         val active = state.activeCalls.remove(callId).getOrElse {
           // Synthesis above always populates activeCalls; this branch
           // only fires if the synthesized entry was somehow removed in
@@ -450,7 +432,21 @@ object Orchestrator {
         // Complete settle). The flag isn't load-bearing for any
         // framework-internal logic — it's a hint for client UIs.
         val isInternal = Orchestrator.UserVisibleTerminalTools.contains(active.toolName)
-        val toolDeltaPrefix: List[Signal] = List(ToolDelta(
+        // Sigil bug #204 — emit the deferred ToolInvoke NOW with
+        // parsed `input` populated, then the settle delta.
+        val deferredInvoke: Signal = ToolInvoke(
+          toolName       = ToolName(active.toolName),
+          participantId  = caller,
+          conversationId = convId,
+          topicId        = topicId,
+          _id            = invokeId,
+          state          = EventState.Active,
+          internal       = isInternal,
+          input          = Some(input),
+          callId         = Some(callId.value),
+          modelId        = Some(request.modelId)
+        )
+        val toolDeltaPrefix: List[Signal] = List(deferredInvoke, ToolDelta(
           target = invokeId,
           conversationId = convId,
           input = Some(input),
@@ -875,8 +871,7 @@ object Orchestrator {
             }
             proceedWithAtomicDispatch()
         }
-        if (synthesizedInvoke.isEmpty) toolCallCompleteInner()
-        else Stream.emits(synthesizedInvoke) ++ toolCallCompleteInner()
+        toolCallCompleteInner()
 
       case ProviderEvent.Usage(usage) =>
         // Bug #55 — fall back to the last user-visible Message id when
@@ -1234,6 +1229,25 @@ object Orchestrator {
                                        a => s"Tool `${a.toolName}` did not produce a result",
                                      recoverable: Boolean = false): List[Signal] = {
     val signals = state.activeCalls.values.toList.flatMap { active =>
+      val isInternal = Orchestrator.UserVisibleTerminalTools.contains(active.toolName)
+      // Sigil bug #204 — ToolInvoke emission is deferred to
+      // `ToolCallComplete` so the normal path can stamp `input`. For
+      // active calls that never reached Complete (stream abort,
+      // validator rejection mid-call), synthesize the ToolInvoke
+      // here with `input = None` so the closeDelta and pairedFailure
+      // have a real target to refer to — otherwise the corruption-
+      // resistance invariant (#190) breaks: the closeDelta's target
+      // would silently no-op against a non-existent event, and the
+      // pairedFailure's `origin` would dangle.
+      val synthInvoke: Signal = ToolInvoke(
+        toolName       = ToolName(active.toolName),
+        participantId  = caller,
+        conversationId = convId,
+        topicId        = topicId,
+        _id            = active.invokeId,
+        state          = EventState.Active,
+        internal       = isInternal
+      )
       val closeDelta: Signal = ToolDelta(
         target = active.invokeId,
         conversationId = convId,
@@ -1257,7 +1271,7 @@ object Orchestrator {
         visibility     = MessageVisibility.Agents,
         origin         = Some(active.invokeId)
       )
-      List(closeDelta, pairedFailure)
+      List(synthInvoke, closeDelta, pairedFailure)
     }
     state.activeCalls.clear()
     signals
