@@ -115,7 +115,7 @@ case class OpenAIProvider(apiKey: String,
         // catches genuine network stalls — fires when no bytes arrive
         // for `tokenIdleTimeout`. Slow-but-working streams keep going
         // as long as their tokens flow.
-        StreamWireInterceptor.attach(lines, sigilRef.wireInterceptor, intercepted) { line =>
+        StreamWireInterceptor.attach(lines, sigilRef.wireInterceptor, intercepted, sigilRef.chunkLogger) { line =>
           Stream.emits(parseLine(line, state))
         }
       }
