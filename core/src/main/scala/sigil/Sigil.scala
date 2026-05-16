@@ -4205,25 +4205,18 @@ trait Sigil {
     // means the framework doesn't emit a parameter it knows the
     // model will reject.
     //
-    // `maxOutputTokens = 512` — the classifier's actual output is a
-    // single tool call with a one-field arg (≤ ~20 tokens). The
-    // budget covers thinking models (Qwen3.6, DeepSeek-R1, o-series)
-    // that burn output tokens on internal reasoning before emitting
-    // the structured tool_call, even with `enable_thinking: false`
-    // hints — some templates leak reasoning regardless. 50 tokens
-    // (the prior default) cut these models off mid-think and the
-    // classifier returned `finish_reason: length` with no tool call
-    // → ConsultTool returned None → topic resolution silently
-    // defaulted to NoChange.
+    // Sigil bug #196 — the safe-default for classifier consults
+    // (bounded output + reasoning off) moved to
+    // [[GenerationSettings.classifierDefault]], which is now the
+    // `ConsultTool.invoke` default parameter. Only override here to
+    // stamp temperature when the model accepts it.
     val classifierSettings = {
-      val base = GenerationSettings(
-        maxOutputTokens = Some(512),
-        reasoningMode = sigil.provider.ReasoningMode.Off
-      )
+      val base = GenerationSettings.classifierDefault
       if (supportsParameter(modelId, "temperature")) base.copy(temperature = Some(0.0))
       else base
     }
-    ConsultTool.invoke[sigil.tool.consult.TopicClassifierInput](
+    val started = System.currentTimeMillis()
+    ConsultTool.invokeRich[sigil.tool.consult.TopicClassifierInput](
       sigil = this,
       modelId = modelId,
       chain = chain,
@@ -4231,9 +4224,8 @@ trait Sigil {
       userPrompt = userPrompt,
       tool = tool,
       generationSettings = classifierSettings
-    ).map {
-      case None => TopicShiftResult.NoChange
-      case Some(input) => input.kind match {
+    ).flatMap {
+      case sigil.tool.consult.ConsultOutcome.Parsed(input) => Task.pure(input.kind match {
         case "NoChange" => TopicShiftResult.NoChange
         case "Refine"   => TopicShiftResult.Refine
         case "New"      => TopicShiftResult.New
@@ -4258,13 +4250,46 @@ trait Sigil {
                 TopicShiftResult.New
               }
           }
-      }
-    }.handleError { e =>
-      Task {
-        scribe.warn(s"classifyTopicShift failed (${e.getClass.getSimpleName}: ${e.getMessage}) — falling back to NoChange")
-        TopicShiftResult.NoChange
-      }
+      })
+      // Sigil bug #197 — `NoOpinion` is a legitimate "model declined
+      // to call the tool"; default to NoChange silently. `Truncated`
+      // / `Failed` are diagnostic events — surface a Failed
+      // FrameworkWorkflowNotice so the gap is visible to operators
+      // and downstream code rather than being a zero-event silence.
+      case sigil.tool.consult.ConsultOutcome.NoOpinion =>
+        Task.pure(TopicShiftResult.NoChange)
+      case t @ sigil.tool.consult.ConsultOutcome.Truncated(_, _, _) =>
+        emitClassifierFailedNotice(
+          "classifyTopicShift",
+          s"truncated at finish_reason: length (promptTokens=${t.promptTokens.getOrElse("?")}, " +
+            s"completionTokens=${t.completionTokens.getOrElse("?")}) — falling back to NoChange",
+          started
+        ).map(_ => TopicShiftResult.NoChange)
+      case sigil.tool.consult.ConsultOutcome.Failed(cause) =>
+        emitClassifierFailedNotice(
+          "classifyTopicShift",
+          s"${cause.getClass.getSimpleName}: ${Option(cause.getMessage).getOrElse("")} — falling back to NoChange",
+          started
+        ).map(_ => TopicShiftResult.NoChange)
     }
+  }
+
+  /** Surface a `ConsultOutcome.Truncated` / `Failed` from a framework-
+    * internal classifier consult as a [[sigil.signal.FrameworkWorkflowNotice]]
+    * with `Failed` phase. Wire subscribers (clients, dashboards) see
+    * the gap; operator logs get a scribe.warn with the same reason. */
+  private final def emitClassifierFailedNotice(workflowType: String,
+                                               reason: String,
+                                               startedMs: Long): Task[Unit] = {
+    scribe.warn(s"$workflowType $reason")
+    publish(sigil.signal.FrameworkWorkflowNotice(
+      workflowId    = java.util.UUID.randomUUID().toString,
+      workflowType  = workflowType,
+      phase         = sigil.signal.FrameworkWorkflowPhase.Failed(
+        reason     = reason,
+        durationMs = System.currentTimeMillis() - startedMs
+      )
+    )).handleError(_ => Task.unit)
   }
 
   /**

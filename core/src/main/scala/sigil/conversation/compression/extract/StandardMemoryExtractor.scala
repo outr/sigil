@@ -7,7 +7,7 @@ import sigil.conversation.{ContextMemory, Conversation, MemorySource, MemoryStat
 import sigil.SpaceId
 import sigil.db.Model
 import sigil.participant.ParticipantId
-import sigil.provider.{GenerationSettings, ReasoningMode}
+import sigil.provider.{GenerationSettings, Mode, ReasoningMode}
 import sigil.tool.consult.{ConsultTool, ExtractMemoriesInput, ExtractMemoriesTool}
 
 /**
@@ -85,18 +85,41 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
           case None => Task.pure(Nil)
           case Some(result) =>
             val kept = result.memories.filter(_.content.nonEmpty)
+            // Sigil bug #195 — the extractor's tags carry an
+            // optional `mode:NAME` side-channel that scopes the
+            // memory to specific operating modes. Names that don't
+            // match a registered Mode are dropped (with a WARN);
+            // matched names become `Id[Mode]` entries in
+            // `modeAffinity` and the prefix is stripped out of the
+            // keywords. Going through the tags channel (rather than
+            // adding a new field to ExtractedMemory) preserves the
+            // smaller-model extractor's `key` emission — see
+            // bugs/195-extractor-auto-mode-affinity.md for the
+            // earlier discussion.
+            val knownModes: Set[String] = sigil.availableModes.map(_.name).toSet
             Task.sequence(kept.map { m =>
+              val (modeTagsRaw, otherTags) = m.tags.partition(_.startsWith("mode:"))
+              val resolvedModes: Set[Id[Mode]] =
+                modeTagsRaw.iterator.map(_.stripPrefix("mode:").trim).filter(_.nonEmpty).flatMap { name =>
+                  if (knownModes.contains(name)) Some(Id[Mode](name))
+                  else {
+                    scribe.warn(s"extract_memories: dropping unknown mode tag 'mode:$name' " +
+                      s"— not in availableModes [${knownModes.mkString(", ")}]")
+                    None
+                  }
+                }.toSet
               val mem = ContextMemory(
-                fact = m.content,
-                label = m.label,
-                summary = m.content,
-                source = MemorySource.Compression,
-                spaceId = space,
-                key = m.key,
-                keywords = m.tags.toVector,
-                memoryType = defaultType,
-                status = defaultStatus,
-                conversationId = Some(conversationId)
+                fact           = m.content,
+                label          = m.label,
+                summary        = m.content,
+                source         = MemorySource.Compression,
+                spaceId        = space,
+                key            = m.key,
+                keywords       = otherTags.toVector,
+                memoryType     = defaultType,
+                status         = defaultStatus,
+                conversationId = Some(conversationId),
+                modeAffinity   = resolvedModes
               )
               if (m.key.isDefined)
                 sigil.upsertMemoryByKeyFor(mem, chain, conversationId).map(_.memory)
