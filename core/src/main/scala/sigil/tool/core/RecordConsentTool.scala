@@ -60,6 +60,8 @@ case object RecordConsentTool extends TypedTool[RecordConsentInput](
     )
   )
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: RecordConsentInput, ctx: TurnContext): Stream[Event] = {
     val targetName = ToolName(input.toolName)
     Stream.force(

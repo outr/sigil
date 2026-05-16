@@ -57,6 +57,8 @@ final class EditAtRangeTool(context: FileSystemContext)
     keywords = Set("file", "edit", "range", "position", "line", "column", "replace", "modify", "rewrite", "patch", "refactor")
   ) with sigil.tool.DestructiveExternalTool {
 
+  override def paginate: Boolean = false
+
   override protected def executeTypedResult(input: EditAtRangeInput, ctx: TurnContext): Task[ToolResult[EditAtRangeOutput]] = {
     val argsJson =
       try Some(JsonFormatter.Compact(summon[RW[EditAtRangeInput]].read(input)))

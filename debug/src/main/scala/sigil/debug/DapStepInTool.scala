@@ -26,6 +26,8 @@ final class DapStepInTool(val manager: DapManager) extends TypedTool[DapStepInIn
     )
   )
 ) with DapToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: DapStepInInput, context: TurnContext): Stream[Event] =
     withSession(input.sessionId, context) { session =>
       session.stepIn(input.threadId).map(_ => s"Stepped in on thread ${input.threadId}.")

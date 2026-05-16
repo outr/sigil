@@ -30,6 +30,8 @@ final class LspFoldingRangeTool(val manager: LspManager) extends TypedOutputTool
     )
   )
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: LspFoldingRangeInput, context: TurnContext): Task[LspFoldingRangeResult] =
     withOpenDocumentTyped[LspFoldingRangeResult](
       input.languageId, input.filePath, context,

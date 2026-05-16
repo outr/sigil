@@ -56,6 +56,8 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     name = ToolName("adversarial_silent"),
     description = "Adversarial tool: returns empty stream."
   ) {
+  override def paginate: Boolean = false
+
     override protected def executeTyped(input: AdversarialInput, context: TurnContext): Stream[Event] =
       Stream.empty
   }
@@ -67,6 +69,7 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     name = ToolName("adversarial_sync_throw"),
     description = "Adversarial tool: throws at construction."
   ) {
+  override def paginate: Boolean = false
     override protected def executeTyped(input: AnotherInput, context: TurnContext): Stream[Event] =
       throw new RuntimeException("adversarial: sync construction throw")
   }
@@ -81,6 +84,7 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     name = ToolName("adversarial_mid_stream_error"),
     description = "Adversarial tool: errors on first stream pull."
   ) {
+  override def paginate: Boolean = false
     override protected def executeTyped(input: ThirdInput, context: TurnContext): Stream[Event] =
       Stream.force[Event](Task.error(new RuntimeException("adversarial: mid-stream throw")))
   }

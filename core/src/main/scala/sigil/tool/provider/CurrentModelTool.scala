@@ -38,6 +38,8 @@ case object CurrentModelTool extends TypedOutputTool[CurrentModelInput, CurrentM
     "now", "introspect", "in", "use", "this"
   )
 ) {
+  override def paginate: Boolean = false
+
 
   override protected def executeTyped(input: CurrentModelInput, ctx: TurnContext): Task[CurrentModelOutput] = {
     val conv = ctx.conversation

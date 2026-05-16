@@ -38,6 +38,8 @@ case object AnswerWorkerTool
     ),
     keywords = Set("answer", "worker", "respond", "unblock", "clarify")
   ) {
+  override def paginate: Boolean = false
+
 
   override protected def executeTyped(input: AnswerWorkerInput, ctx: TurnContext): Stream[Event] = Stream.force {
     ctx.sigil.publish(WorkerAnswer(input.taskId, input.questionId, input.answer)).map { _ =>

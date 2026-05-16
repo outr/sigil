@@ -26,6 +26,8 @@ final class DapStepOverTool(val manager: DapManager) extends TypedTool[DapStepOv
     )
   )
 ) with DapToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: DapStepOverInput, context: TurnContext): Stream[Event] =
     withSession(input.sessionId, context) { session =>
       session.next(input.threadId).map(_ => s"Stepped over on thread ${input.threadId}.")

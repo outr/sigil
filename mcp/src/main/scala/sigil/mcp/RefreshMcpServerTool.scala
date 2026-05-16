@@ -15,6 +15,8 @@ final class RefreshMcpServerTool(manager: McpManager) extends TypedTool[RefreshM
   name = ToolName("refresh_mcp_server"),
   description = "Force-refresh the cached tool / resource / prompt list for a registered MCP server, bypassing the standard refresh interval."
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: RefreshMcpServerInput, context: TurnContext): Stream[Event] =
     Stream.force(manager.refresh(input.name).map { tools =>
       Stream.emit[Event](Message(

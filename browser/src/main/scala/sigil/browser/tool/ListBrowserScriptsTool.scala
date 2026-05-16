@@ -22,6 +22,8 @@ case object ListBrowserScriptsTool extends TypedTool[ListBrowserScriptsInput](
   modes = Set(WebBrowserMode.id),
   keywords = Set("list", "browser", "scripts", "browse", "find")
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: ListBrowserScriptsInput,
                                       ctx: TurnContext): Stream[Event] = Stream.force(
     ctx.sigil.accessibleSpaces(ctx.chain).flatMap { accessible =>

@@ -28,6 +28,8 @@ final class ListWorkflowsTool extends TypedTool[ListWorkflowsInput](
   ),
   keywords = Set("workflow", "list", "find")
 ) with WorkflowToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: ListWorkflowsInput, ctx: TurnContext): Stream[Event] = {
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)

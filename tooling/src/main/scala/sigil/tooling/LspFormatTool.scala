@@ -42,6 +42,8 @@ final class LspFormatTool(val manager: LspManager) extends TypedOutputTool[LspFo
     )
   )
 ) with sigil.tool.DestructiveExternalTool with LspToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: LspFormatInput, context: TurnContext): Task[LspFormatResult] =
     withOpenDocumentTyped[LspFormatResult](
       input.languageId, input.filePath, context,

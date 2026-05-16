@@ -42,6 +42,8 @@ final class BspRunTool(val manager: BspManager) extends TypedOutputTool[BspRunIn
     )
   )
 ) with sigil.tool.DestructiveExternalTool with BspToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: BspRunInput, context: TurnContext): Task[BspExecResult] =
     withSessionTyped[BspExecResult](
       input.projectRoot, context,

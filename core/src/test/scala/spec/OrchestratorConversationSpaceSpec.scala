@@ -51,6 +51,8 @@ class OrchestratorConversationSpaceSpec extends AsyncWordSpec with AsyncTaskSpec
     name = ToolName("capture"),
     description = "test-only — captures the TurnContext's conversation"
   ) {
+  override def paginate: Boolean = false
+
     override protected def executeTyped(input: CaptureInput, ctx: TurnContext): Stream[Event] = {
       captured.set(Some(ctx.conversation))
       Stream.empty

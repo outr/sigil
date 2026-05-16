@@ -35,6 +35,8 @@ class AutonomousConsentBypassSpec extends AsyncWordSpec with AsyncTaskSpec with 
     name        = ToolName("bypass_demo_tool"),
     description = "A consent-gated demo tool used by the bypass spec."
   ) {
+  override def paginate: Boolean = false
+
     override def requiresUserConsent: Boolean = true
     override protected def executeTyped(input: BypassInput, ctx: TurnContext): Stream[Event] = {
       ranCount.incrementAndGet()

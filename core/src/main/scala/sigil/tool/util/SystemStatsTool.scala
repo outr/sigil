@@ -29,6 +29,8 @@ final class SystemStatsTool(context: FileSystemContext)
     ),
     keywords = Set("system", "stats", "cpu", "memory", "disk", "load", "uptime")
   ) with sigil.tool.ReadOnlyExternalTool {
+  override def paginate: Boolean = false
+
 
   override protected def executeTyped(input: SystemStatsInput, ctx: TurnContext): Task[SystemStatsOutput] = {
     val parts = List(

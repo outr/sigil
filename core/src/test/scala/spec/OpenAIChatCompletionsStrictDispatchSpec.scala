@@ -46,6 +46,8 @@ class OpenAIChatCompletionsStrictDispatchSpec extends AnyWordSpec with Matchers 
     name = ToolName("test_json_tool"),
     description = "Test tool with a Json root input."
   ) {
+  override def paginate: Boolean = false
+
     override protected def executeTyped(input: JsonInput, context: sigil.TurnContext): rapid.Stream[Event] =
       rapid.Stream.empty
   }

@@ -46,6 +46,8 @@ final class LspGotoDefinitionTool(val manager: LspManager) extends TypedOutputTo
     )
   )
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: LspGotoDefinitionInput, context: TurnContext): Task[List[LspLocation]] =
     withOpenDocumentTyped[List[LspLocation]](
       input.languageId, input.filePath, context,

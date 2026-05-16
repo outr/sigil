@@ -59,6 +59,7 @@ class ToolCallAccumulatorErrorDiagnosticSpec extends AnyWordSpec with Matchers {
   }
 
   private object StubTool extends Tool {
+  override def paginate: Boolean = false
     override val name: ToolName = ToolName("throwing_tool")
     override def description: String = "Always throws on inputRW.write."
     override def inputRW: RW[? <: ToolInput] = throwingRW
@@ -69,6 +70,7 @@ class ToolCallAccumulatorErrorDiagnosticSpec extends AnyWordSpec with Matchers {
   }
 
   private object ValidTool extends Tool {
+  override def paginate: Boolean = false
     override val name: ToolName = ToolName("valid_tool")
     override def description: String = "Round-trips ValidInput cleanly."
     override def inputRW: RW[? <: ToolInput] = summon[RW[ValidInput]].asInstanceOf[RW[ToolInput]]
@@ -156,6 +158,7 @@ class ToolCallAccumulatorErrorDiagnosticSpec extends AnyWordSpec with Matchers {
         override def definition: Definition = baseDef
       }
       object WithOptTool extends Tool {
+  override def paginate: Boolean = false
         override val name: ToolName = ToolName("with_opt_tool")
         override def description: String = "Tool with required + optional fields."
         override def inputRW: RW[? <: ToolInput] = throwingOptRW

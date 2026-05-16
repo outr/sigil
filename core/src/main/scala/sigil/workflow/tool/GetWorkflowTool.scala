@@ -27,6 +27,8 @@ final class GetWorkflowTool extends TypedTool[GetWorkflowInput](
   examples = List(ToolExample("fetch by id", GetWorkflowInput(workflowId = "wf-abc"))),
   keywords = Set("workflow", "get", "describe")
 ) with WorkflowToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: GetWorkflowInput, ctx: TurnContext): Stream[Event] = {
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)

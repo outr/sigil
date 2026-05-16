@@ -58,6 +58,8 @@ final class DapLaunchTool(val manager: DapManager) extends TypedTool[DapLaunchIn
     )
   )
 ) with DapToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: DapLaunchInput, context: TurnContext): Stream[Event] = {
     val task = manager.spawn(input.languageId, input.sessionId).flatMap { session =>
       val args = input.launchArguments.map { case (k, v) =>

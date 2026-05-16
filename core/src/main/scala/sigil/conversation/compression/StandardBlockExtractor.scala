@@ -7,12 +7,21 @@ import sigil.conversation.ContextFrame
 import sigil.information.{Information, InformationSummary}
 
 /**
- * Default [[BlockExtractor]] impl. Scans Text and ToolResult frames;
- * anything whose content length is at least [[minChars]] gets pulled
- * into an [[Information]] record (constructed via the app-supplied
+ * Default [[BlockExtractor]] impl. Scans Text frames; anything whose
+ * content length is at least [[minChars]] gets pulled into an
+ * [[Information]] record (constructed via the app-supplied
  * [[toInformation]] factory), persisted via
  * [[sigil.Sigil.putInformation]], and replaced in the frame vector
  * with a placeholder reference.
+ *
+ * **Tool results are out of scope.** Per the tool contract, what
+ * `executeTyped` emits is what the agent sees on its next iteration
+ * — the framework must not silently substitute a placeholder for
+ * arbitrary tool output (sigil bug #201). Tools whose output exceeds
+ * a single-shot consumable size must declare
+ * [[sigil.tool.Tool.paginate]] = `true` and expose pagination
+ * inputs in their schema; tools that don't paginate must self-limit
+ * their output. There is no "framework-summarised" middle ground.
  *
  * Apps must override [[sigil.Sigil.putInformation]] to a functional
  * implementation — without it, the catalog references won't resolve
@@ -20,9 +29,10 @@ import sigil.information.{Information, InformationSummary}
  *
  * Knobs:
  *   - [[minChars]]: size threshold in characters (default 2000 ≈ 500
- *     tokens). Frames shorter than this are left alone.
- *   - [[extractText]] / [[extractToolResult]]: limit extraction to
- *     either kind of frame.
+ *     tokens). Text frames shorter than this are left alone.
+ *   - [[extractText]]: kill switch for the only remaining extraction
+ *     kind. Pre-bug-#201 there was also an `extractToolResult` knob;
+ *     that contract violation has been removed.
  *   - [[placeholder]]: renders the in-frame reference text from the
  *     newly-minted Information id and catalog summary.
  *   - [[summaryOf]]: produces the catalog's 1-2 line teaser. Default
@@ -31,7 +41,6 @@ import sigil.information.{Information, InformationSummary}
 case class StandardBlockExtractor(toInformation: (String, Id[Information]) => Information,
                                   minChars: Int = 2000,
                                   extractText: Boolean = true,
-                                  extractToolResult: Boolean = true,
                                   placeholder: (Id[Information], String) => String =
                                     StandardBlockExtractor.DefaultPlaceholder,
                                   summaryOf: String => String = StandardBlockExtractor.DefaultSummary,
@@ -63,9 +72,13 @@ case class StandardBlockExtractor(toInformation: (String, Id[Information]) => In
           case t: ContextFrame.Text if extractText && t.content.length >= minChars =>
             val (f, s, i) = buildExtraction(t.content, replacement => t.copy(content = replacement))
             (f, Some(s), Some(i))
-          case tr: ContextFrame.ToolResult if extractToolResult && tr.content.length >= minChars =>
-            val (f, s, i) = buildExtraction(tr.content, replacement => tr.copy(content = replacement))
-            (f, Some(s), Some(i))
+          // Tool-result frames are NOT eligible for extraction (sigil
+          // bug #201). What `executeTyped` emits is what the agent
+          // sees on its next iteration — the framework must not
+          // silently substitute a placeholder for tool output. Tools
+          // whose output exceeds a single-shot consumable size
+          // declare `paginate = true` and accept pagination inputs;
+          // tools that don't paginate must self-limit.
           case other =>
             (other, None, None)
         }

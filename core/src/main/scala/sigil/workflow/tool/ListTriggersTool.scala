@@ -28,6 +28,8 @@ final class ListTriggersTool extends TypedTool[ListTriggersInput](
   examples = List(ToolExample("list triggers on a template", ListTriggersInput(workflowId = "wf-abc"))),
   keywords = Set("workflow", "trigger", "list")
 ) with WorkflowToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: ListTriggersInput, ctx: TurnContext): Stream[Event] = {
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)

@@ -33,6 +33,8 @@ case object RandomIntTool extends TypedOutputTool[RandomIntInput, RandomIntOutpu
   ),
   keywords = Set("random", "rand", "int", "integer", "number", "rng", "dice", "roll")
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: RandomIntInput, context: TurnContext): Task[RandomIntOutput] = Task {
     require(input.min <= input.max, s"random_int: min (${input.min}) must be <= max (${input.max})")
     val rng   = input.seed.map(s => new scala.util.Random(s)).getOrElse(scala.util.Random)

@@ -31,6 +31,8 @@ final class ProcessSpawnTool(registry: ProcessRegistry)
     ),
     keywords = Set("process", "spawn", "background", "watch", "tail", "stream", "subprocess")
   ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: ProcessSpawnInput, ctx: TurnContext): Stream[Event] = Stream.force(
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       registry.spawn(

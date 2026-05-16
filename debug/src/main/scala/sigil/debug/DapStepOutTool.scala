@@ -27,6 +27,8 @@ final class DapStepOutTool(val manager: DapManager) extends TypedTool[DapStepOut
     )
   )
 ) with DapToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: DapStepOutInput, context: TurnContext): Stream[Event] =
     withSession(input.sessionId, context) { session =>
       session.stepOut(input.threadId).map(_ => s"Stepped out on thread ${input.threadId}.")

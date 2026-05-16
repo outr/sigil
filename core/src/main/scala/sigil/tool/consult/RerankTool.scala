@@ -21,5 +21,7 @@ case object RerankTool extends TypedTool[RerankInput](
       |from the output are treated as least-relevant (appended at the end in their original
       |order); ids not in the candidate set are ignored.""".stripMargin
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: RerankInput, context: TurnContext): Stream[Event] = Stream.empty
 }

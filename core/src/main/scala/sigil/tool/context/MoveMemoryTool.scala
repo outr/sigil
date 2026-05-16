@@ -39,6 +39,8 @@ case object MoveMemoryTool extends TypedTool[MoveMemoryInput](
       |The record's id, key, and pinned status are preserved.""".stripMargin,
   keywords = Set("move", "rescope", "memory", "space", "transfer")
 ) {
+  override def paginate: Boolean = false
+
   override def resultTtl: Option[Int] = Some(0)
   override val requiresAccessibleSpaces: Boolean = true
 

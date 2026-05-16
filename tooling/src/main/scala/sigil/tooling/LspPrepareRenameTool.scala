@@ -34,6 +34,8 @@ final class LspPrepareRenameTool(val manager: LspManager) extends TypedOutputToo
     )
   )
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: LspPrepareRenameInput, context: TurnContext): Task[LspPrepareRenameResult] =
     withOpenDocumentTyped[LspPrepareRenameResult](
       input.languageId, input.filePath, context,

@@ -43,6 +43,8 @@ final class AddMcpServerTool(manager: McpManager) extends TypedTool[AddMcpServer
     )
   )
 ) {
+  override def paginate: Boolean = false
+
   import spice.net.{TLDValidation, URL}
 
   override protected def executeTyped(input: AddMcpServerInput, context: TurnContext): Stream[Event] = {

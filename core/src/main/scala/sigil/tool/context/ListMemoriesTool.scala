@@ -59,6 +59,8 @@ case object ListMemoriesTool extends TypedTool[ListMemoriesInput](
       |entries.""".stripMargin,
   keywords = Set("list", "memories", "browse", "recall", "review", "all", "show")
 ) {
+  override def paginate: Boolean = false
+
   override def resultTtl: Option[Int] = Some(0)
   override val requiresAccessibleSpaces: Boolean = true
 

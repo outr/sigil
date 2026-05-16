@@ -21,6 +21,8 @@ final class UpdateUserInfoTool(state: AtomicReference[BankingEnvironment])
     name = ToolName("update_user_info"),
     description = "Update the user information."
   ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: UpdateUserInfoInput, context: TurnContext): rapid.Stream[Event] = {
     val updated = state.updateAndGet { env =>
       env.copy(userAccount = env.userAccount.copy(

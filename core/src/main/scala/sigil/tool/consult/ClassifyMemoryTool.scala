@@ -46,6 +46,8 @@ case object ClassifyMemoryTool extends TypedTool[ClassifyMemoryInput](
       |4. `ambiguityReason` — required when `space == "ambiguous"`; one short sentence telling
       |   the user what's unclear ("could apply to user or project; please pick").""".stripMargin
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: ClassifyMemoryInput, context: TurnContext): Stream[Event] =
     Stream.empty
 }

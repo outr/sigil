@@ -33,6 +33,8 @@ case object ContextBreakdownTool extends TypedTool[ContextBreakdownInput](
       |tools available in this conversation.""".stripMargin,
   keywords = Set("context", "breakdown", "tokens", "usage", "share", "where", "why")
 ) {
+  override def paginate: Boolean = false
+
   override def resultTtl: Option[Int] = Some(0)
 
   override protected def executeTyped(input: ContextBreakdownInput, context: TurnContext): Stream[Event] =

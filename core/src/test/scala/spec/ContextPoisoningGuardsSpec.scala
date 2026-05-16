@@ -46,6 +46,7 @@ class ContextPoisoningGuardsSpec extends AsyncWordSpec with AsyncTaskSpec with M
     * input text. Lets the test verify the duplicate inlines that
     * exact text rather than a reference. */
   private final class EchoTool(toolName: ToolName) extends Tool {
+  override def paginate: Boolean = false
     override def description: String = "Echo input"
     override def inputRW: RW[? <: ToolInput] = summon[RW[EchoInput]].asInstanceOf[RW[ToolInput]]
     override def space: SpaceId = GlobalSpace

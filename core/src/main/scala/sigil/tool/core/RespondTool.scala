@@ -69,6 +69,8 @@ case object RespondTool extends TypedTool[RespondInput](
       |  for in-flight status pulses you intend to follow up on the same turn.""".stripMargin,
   examples = Nil
 ) with RespondFamilyTool {
+  override def paginate: Boolean = false
+
 
   override protected def executeTyped(input: RespondInput, context: TurnContext): rapid.Stream[Event] = {
     val blocks = MarkdownContentParser.parse(input.content)

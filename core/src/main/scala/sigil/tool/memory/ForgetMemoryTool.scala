@@ -38,6 +38,8 @@ case object ForgetMemoryTool extends TypedTool[ForgetMemoryInput](
   ),
   keywords = Set("memory", "forget", "delete", "remove")
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: ForgetMemoryInput, context: TurnContext): Stream[Event] = {
     val msgTask: Task[Message] = (input.memoryId, input.key) match {
       case (Some(_), Some(_)) =>

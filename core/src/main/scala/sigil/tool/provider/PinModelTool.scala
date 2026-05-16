@@ -39,6 +39,8 @@ case object PinModelTool extends TypedTool[PinModelInput](
     "model", "llm", "use"
   )
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: PinModelInput, ctx: TurnContext): Stream[Event] =
     Stream.force(
       ModelResolution.resolve(input.modelId, ctx).flatMap {

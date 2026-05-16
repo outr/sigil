@@ -42,6 +42,8 @@ final class LspDidChangeTool(val manager: LspManager) extends TypedOutputTool[Ls
     )
   )
 ) with sigil.tool.DestructiveExternalTool with LspToolSupport {
+  override def paginate: Boolean = false
+
 
   override protected def executeTypedResult(input: LspDidChangeInput,
                                             context: TurnContext): Task[ToolResult[LspDidChangeResult]] = {

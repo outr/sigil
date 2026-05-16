@@ -43,6 +43,8 @@ case object SearchConversationTool extends TypedOutputTool[SearchConversationInp
   ),
   keywords = Set("search", "conversation", "history", "find", "recall")
 ) with sigil.tool.ReadOnlyInternalTool {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: SearchConversationInput, context: TurnContext): Task[SearchConversationOutput] =
     context.sigil
       .searchConversationEvents(

@@ -23,6 +23,8 @@ final class UpdateScheduledTransactionTool(state: AtomicReference[BankingEnviron
     name = ToolName("update_scheduled_transaction"),
     description = "Update a scheduled transaction."
   ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: UpdateScheduledTransactionInput, context: TurnContext): rapid.Stream[Event] = {
     val before = state.get
     val matched = before.bankAccount.scheduledTransactions.exists(_.id == input.id)

@@ -54,6 +54,8 @@ case object ExtractMemoriesTool extends TypedTool[ExtractMemoriesInput](
       |  - intermediate reasoning, small-talk, acknowledgements
       |  - content that belongs in a summary (narrative / ongoing context).""".stripMargin
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: ExtractMemoriesInput, context: TurnContext): Stream[Event] =
     Stream.empty
 }

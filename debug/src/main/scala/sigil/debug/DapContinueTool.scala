@@ -28,6 +28,8 @@ final class DapContinueTool(val manager: DapManager) extends TypedTool[DapContin
     )
   )
 ) with DapToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: DapContinueInput, context: TurnContext): Stream[Event] =
     withSession(input.sessionId, context) { session =>
       session.continueExecution(input.threadId).map { allThreads =>

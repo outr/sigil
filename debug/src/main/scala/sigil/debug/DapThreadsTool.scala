@@ -27,6 +27,8 @@ final class DapThreadsTool(val manager: DapManager) extends TypedTool[DapThreads
     )
   )
 ) with DapToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: DapThreadsInput, context: TurnContext): Stream[Event] =
     withSession(input.sessionId, context) { session =>
       session.threads.map { threads =>

@@ -54,6 +54,8 @@ case object ConsultTool extends TypedTool[ConsultInput](
     )
   )
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: ConsultInput, context: TurnContext): Stream[Event] = Stream.force {
     context.sigil.providerFor(input.modelId, context.chain).flatMap { provider =>
       val request = OneShotRequest(

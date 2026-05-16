@@ -43,6 +43,8 @@ case object ChangeModeTool extends TypedTool[ChangeModeInput](
     "operating", "posture", "kit", "toolset", "tools"
   )
 ) {
+  override def paginate: Boolean = false
+
   // ModeChange Events update Conversation.currentMode and the system
   // prompt's "Current mode" line. The verbose ToolResults pair is
   // redundant after settling — mark ephemeral so the curator elides

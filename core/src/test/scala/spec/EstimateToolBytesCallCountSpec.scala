@@ -31,6 +31,8 @@ class EstimateToolBytesCallCountSpec extends AnyWordSpec with Matchers {
     description = "A short description.",
     keywords    = Set.empty
   ) {
+  override def paginate: Boolean = false
+
     override protected def executeTyped(input: WideInput, context: sigil.TurnContext): Stream[Event] = Stream.empty
   }
 

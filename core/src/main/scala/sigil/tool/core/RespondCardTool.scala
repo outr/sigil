@@ -32,6 +32,8 @@ case object RespondCardTool extends TypedTool[RespondCardInput](
       |- `card.sections` — the building blocks, in order. Recursive: nested Cards are allowed.""".stripMargin,
   examples = Nil
 ) with RespondFamilyTool {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: RespondCardInput, context: TurnContext): rapid.Stream[Event] =
     rapid.Stream.emits(List(Message(
       participantId = context.caller,

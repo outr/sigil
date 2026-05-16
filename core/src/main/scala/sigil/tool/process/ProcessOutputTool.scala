@@ -31,6 +31,8 @@ final class ProcessOutputTool(registry: ProcessRegistry)
     ),
     keywords = Set("process", "output", "stdout", "stderr", "tail", "watch", "stream")
   ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: ProcessOutputInput, ctx: TurnContext): Stream[Event] = Stream.force(
     registry.output(
       handle         = input.handle,

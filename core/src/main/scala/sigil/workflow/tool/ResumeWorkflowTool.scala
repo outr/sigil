@@ -41,6 +41,8 @@ final class ResumeWorkflowTool extends TypedTool[ResumeWorkflowInput](
   ),
   keywords = Set("workflow", "resume", "approve", "continue")
 ) with WorkflowToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: ResumeWorkflowInput, ctx: TurnContext): Stream[Event] = {
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)

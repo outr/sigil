@@ -38,6 +38,8 @@ final class BspDependencyModulesTool(val manager: BspManager) extends TypedOutpu
     )
   )
 ) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: BspDependencyModulesInput,
                                       context: TurnContext): Task[BspDependencyModulesResult] = {
     val cacheKey = BspDependencyModulesTool.cacheKeyFor(input.projectRoot, input.targets)

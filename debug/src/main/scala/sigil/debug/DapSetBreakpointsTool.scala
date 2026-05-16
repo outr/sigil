@@ -33,6 +33,8 @@ final class DapSetBreakpointsTool(val manager: DapManager) extends TypedTool[Dap
     )
   )
 ) with DapToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: DapSetBreakpointsInput, context: TurnContext): Stream[Event] =
     withSession(input.sessionId, context) { session =>
       session.setBreakpoints(input.filePath, input.lines).map { bps =>

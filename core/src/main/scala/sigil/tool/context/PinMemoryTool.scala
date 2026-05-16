@@ -38,6 +38,8 @@ case object PinMemoryTool extends TypedTool[PinMemoryInput](
       |Reversible via `unpin_memory(key)`.""".stripMargin,
   keywords = Set("pin", "promote", "memory", "directive", "always", "permanent")
 ) {
+  override def paginate: Boolean = false
+
   override def resultTtl: Option[Int] = Some(0)
   override val requiresAccessibleSpaces: Boolean = true
 

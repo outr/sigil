@@ -30,6 +30,8 @@ final class DeleteWorkflowTool extends TypedTool[DeleteWorkflowInput](
   examples = List(ToolExample("delete by id", DeleteWorkflowInput(workflowId = "wf-abc"))),
   keywords = Set("workflow", "delete", "remove")
 ) with WorkflowToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: DeleteWorkflowInput, ctx: TurnContext): Stream[Event] = {
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)

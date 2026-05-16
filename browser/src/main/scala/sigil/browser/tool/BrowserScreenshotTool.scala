@@ -36,6 +36,8 @@ final class BrowserScreenshotTool extends TypedTool[BrowserScreenshotInput](
   modes = Set(WebBrowserMode.id),
   keywords = Set("browser", "screenshot", "image", "capture", "render")
 ) {
+  override def paginate: Boolean = false
+
 
   override protected def executeTyped(input: BrowserScreenshotInput, ctx: TurnContext): Stream[Event] =
     Stream.force(

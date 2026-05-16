@@ -29,6 +29,8 @@ final class BspCleanTool(val manager: BspManager) extends TypedOutputTool[BspCle
     )
   )
 ) with sigil.tool.DestructiveExternalTool with BspToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: BspCleanInput, context: TurnContext): Task[BspCleanResult] =
     withSessionTyped[BspCleanResult](
       input.projectRoot, context,

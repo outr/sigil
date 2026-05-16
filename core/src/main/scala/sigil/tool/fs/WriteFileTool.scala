@@ -40,6 +40,8 @@ final class WriteFileTool(context: FileSystemContext)
     ),
     keywords = Set("file", "write", "save", "create", "output")
   ) with sigil.tool.DestructiveExternalTool {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: WriteFileInput, ctx: TurnContext): Task[WriteFileOutput] =
     WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>
       input.expectedHash match {

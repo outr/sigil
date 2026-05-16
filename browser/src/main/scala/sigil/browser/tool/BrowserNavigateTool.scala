@@ -36,6 +36,8 @@ final class BrowserNavigateTool extends TypedTool[BrowserNavigateInput](
   modes = Set(WebBrowserMode.id),
   keywords = Set("browser", "navigate", "open", "goto", "load", "url")
 ) {
+  override def paginate: Boolean = false
+
 
   override protected def executeTyped(input: BrowserNavigateInput, ctx: TurnContext): Stream[Event] =
     Stream.force(

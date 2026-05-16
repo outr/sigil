@@ -29,6 +29,8 @@ final class DapScopesTool(val manager: DapManager) extends TypedTool[DapScopesIn
     )
   )
 ) with DapToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: DapScopesInput, context: TurnContext): Stream[Event] =
     withSession(input.sessionId, context) { session =>
       session.scopes(input.frameId).map { scopes =>

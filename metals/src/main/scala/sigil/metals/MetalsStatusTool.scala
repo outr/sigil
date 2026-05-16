@@ -28,6 +28,8 @@ final class MetalsStatusTool extends TypedTool[MetalsStatusInput](
     "scala", "compile", "subprocess", "running", "lsp"
   )
 ) {
+  override def paginate: Boolean = false
+
   import MetalsToolSupport.*
 
   override protected def executeTyped(input: MetalsStatusInput, context: TurnContext): Stream[Event] = {

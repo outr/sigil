@@ -18,6 +18,8 @@ final class GetMostRecentTransactionsTool(state: AtomicReference[BankingEnvironm
     name = ToolName("get_most_recent_transactions"),
     description = "Get the list of the most recent transactions, e.g. to summarize the last n transactions."
   ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: GetMostRecentTransactionsInput, context: TurnContext): rapid.Stream[Event] =
     rapid.Stream.emits(List[Event](TransactionsRead(
       transactions = state.get.bankAccount.transactions.takeRight(input.n),

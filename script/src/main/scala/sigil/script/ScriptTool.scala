@@ -44,6 +44,8 @@ case class ScriptTool(name: ToolName,
                       override val createdBy: Option[ParticipantId] = None,
                       override val created: Timestamp = Timestamp(Nowish()),
                       override val modified: Timestamp = Timestamp(Nowish())) extends Tool derives RW {
+  override def paginate: Boolean = false
+
 
   /** Stable id derived from `(name, space)` so `Sigil.createTool`'s
     * upsert overwrites in place when an agent re-creates a tool with

@@ -39,6 +39,8 @@ final class RunWorkflowTool extends TypedTool[RunWorkflowInput](
   ),
   keywords = Set("workflow", "run", "schedule", "execute", "trigger")
 ) with WorkflowToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: RunWorkflowInput, ctx: TurnContext): Stream[Event] = {
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)

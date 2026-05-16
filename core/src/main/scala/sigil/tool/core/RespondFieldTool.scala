@@ -24,6 +24,8 @@ case object RespondFieldTool extends TypedTool[RespondFieldInput](
       |is an optional semantic hint.""".stripMargin,
   examples = Nil
 ) with RespondFamilyTool {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: RespondFieldInput, context: TurnContext): rapid.Stream[Event] = {
     val block = ResponseContent.Field(label = input.label, value = input.value, icon = input.icon)
     rapid.Stream.emits(List(Message(

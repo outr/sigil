@@ -23,6 +23,8 @@ case object RandomDoubleTool extends TypedOutputTool[RandomDoubleInput, RandomDo
   ),
   keywords = Set("random", "rand", "double", "float", "decimal", "number", "rng")
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: RandomDoubleInput, context: TurnContext): Task[RandomDoubleOutput] = Task {
     require(input.min < input.max, s"random_double: min (${input.min}) must be < max (${input.max})")
     val rng = input.seed.map(s => new scala.util.Random(s)).getOrElse(scala.util.Random)

@@ -25,6 +25,8 @@ case object MemoryHistoryTool extends TypedTool[MemoryHistoryInput](
   ),
   keywords = Set("memory", "history", "version")
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: MemoryHistoryInput, context: TurnContext): Stream[Event] =
     Stream.force {
       resolveSpace(input, context).flatMap {

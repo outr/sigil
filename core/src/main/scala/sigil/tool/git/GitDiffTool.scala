@@ -28,6 +28,8 @@ final class GitDiffTool(context: FileSystemContext)
     ),
     keywords = Set("git", "diff", "changes", "patch", "hunk")
   ) with sigil.tool.ReadOnlyExternalTool {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: GitDiffInput, ctx: TurnContext): Stream[Event] = Stream.force(
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val stagedFlag = if (input.staged) " --staged" else ""

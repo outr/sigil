@@ -42,6 +42,8 @@ final class BrowserXPathQueryTool extends TypedTool[BrowserXPathQueryInput](
   modes = Set(WebBrowserMode.id),
   keywords = Set("browser", "xpath", "query", "extract", "html", "structure")
 ) {
+  override def paginate: Boolean = false
+
 
   override protected def executeTyped(input: BrowserXPathQueryInput, ctx: TurnContext): Stream[Event] =
     Stream.force(

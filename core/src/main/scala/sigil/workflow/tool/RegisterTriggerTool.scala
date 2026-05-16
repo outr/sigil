@@ -40,6 +40,8 @@ final class RegisterTriggerTool extends TypedTool[RegisterTriggerInput](
   ),
   keywords = Set("workflow", "trigger", "schedule", "register")
 ) with WorkflowToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: RegisterTriggerInput, ctx: TurnContext): Stream[Event] = {
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)

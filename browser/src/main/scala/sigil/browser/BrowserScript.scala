@@ -59,6 +59,8 @@ case class BrowserScript(name: ToolName,
                          override val created: Timestamp = Timestamp(Nowish()),
                          override val modified: Timestamp = Timestamp(Nowish()),
                          override val _id: Id[Tool] = Id(Unique())) extends Tool derives RW {
+  override def paginate: Boolean = false
+
 
   override val inputRW: RW[JsonInput] = summon[RW[JsonInput]]
 

@@ -17,6 +17,8 @@ final class GetScheduledTransactionsTool(state: AtomicReference[BankingEnvironme
     name = ToolName("get_scheduled_transactions"),
     description = "Get the list of scheduled transactions."
   ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: GetScheduledTransactionsInput, context: TurnContext): rapid.Stream[Event] =
     rapid.Stream.emits(List[Event](ScheduledTransactionsRead(
       transactions = state.get.bankAccount.scheduledTransactions,

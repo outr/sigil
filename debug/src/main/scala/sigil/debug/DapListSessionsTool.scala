@@ -23,6 +23,8 @@ final class DapListSessionsTool(val manager: DapManager) extends TypedTool[DapLi
     )
   )
 ) with DapToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: DapListSessionsInput, context: TurnContext): Stream[Event] = {
     val task = Task {
       val sessions = manager.listSessions()

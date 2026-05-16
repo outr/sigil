@@ -25,6 +25,8 @@ final class GitBranchTool(context: FileSystemContext)
     ),
     keywords = Set("git", "branch", "branches", "checkout")
   ) with sigil.tool.ReadOnlyExternalTool {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: GitBranchInput, ctx: TurnContext): Stream[Event] = Stream.force(
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val flag = if (input.includeRemotes) "-a" else ""

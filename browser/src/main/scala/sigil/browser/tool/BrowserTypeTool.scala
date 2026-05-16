@@ -21,6 +21,8 @@ final class BrowserTypeTool extends TypedTool[BrowserTypeInput](
   modes = Set(WebBrowserMode.id),
   keywords = Set("browser", "type", "input", "form", "fill")
 ) {
+  override def paginate: Boolean = false
+
 
   override protected def executeTyped(input: BrowserTypeInput, ctx: TurnContext): Stream[Event] =
     Stream.force(

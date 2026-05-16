@@ -24,6 +24,8 @@ final class GetMcpPromptTool(manager: McpManager) extends TypedTool[GetMcpPrompt
     """Fetch a populated prompt template from a registered MCP server. Provide `server`, `prompt` (template name),
       |and any `arguments` the template requires. Returns the server's GetPromptResult JSON.""".stripMargin
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: GetMcpPromptInput, context: TurnContext): Stream[Event] =
     Stream.force(manager.getPrompt(input.server, input.prompt, input.arguments).map { result =>
       val text = JsonFormatter.Default(result)

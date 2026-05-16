@@ -56,6 +56,8 @@ object ProfilerHarness {
     name = ToolName(toolName),
     description = toolDescription
   ) {
+  override def paginate: Boolean = false
+
     override protected def executeTyped(input: DummyInput, context: sigil.TurnContext): rapid.Stream[Event] =
       rapid.Stream.empty
   }

@@ -19,6 +19,8 @@ case object DeleteBrowserScriptTool extends TypedTool[DeleteBrowserScriptInput](
   modes = Set(WebBrowserMode.id),
   keywords = Set("delete", "remove", "browser", "script")
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: DeleteBrowserScriptInput,
                                       ctx: TurnContext): Stream[Event] = Stream.force(
     ctx.sigil.accessibleSpaces(ctx.chain).flatMap { accessible =>

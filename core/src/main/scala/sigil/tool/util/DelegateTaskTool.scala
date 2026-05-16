@@ -56,6 +56,8 @@ case object DelegateTaskTool
     ),
     keywords = Set("delegate", "worker", "spawn", "task", "research", "background", "subagent")
   ) {
+  override def paginate: Boolean = false
+
 
   override protected def executeTyped(input: DelegateTaskInput, ctx: TurnContext): Stream[Event] = Stream.force {
     ctx.sigil match {

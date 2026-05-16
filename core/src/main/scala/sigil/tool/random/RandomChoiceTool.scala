@@ -27,6 +27,8 @@ case object RandomChoiceTool extends TypedOutputTool[RandomChoiceInput, RandomCh
   ),
   keywords = Set("random", "choose", "pick", "select", "sample", "choice")
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: RandomChoiceInput, context: TurnContext): Task[RandomChoiceOutput] = Task {
     require(input.items.nonEmpty, "random_choice: `items` must be non-empty")
     val rng   = input.seed.map(s => new scala.util.Random(s)).getOrElse(scala.util.Random)

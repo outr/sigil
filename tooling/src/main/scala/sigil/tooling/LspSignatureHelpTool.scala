@@ -41,6 +41,8 @@ final class LspSignatureHelpTool(val manager: LspManager) extends TypedOutputToo
     )
   )
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: LspSignatureHelpInput, context: TurnContext): Task[LspSignatureHelpResult] =
     withOpenDocumentTyped[LspSignatureHelpResult](
       input.languageId, input.filePath, context,

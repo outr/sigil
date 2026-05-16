@@ -42,6 +42,8 @@ final class UpdateWorkflowTool extends TypedTool[UpdateWorkflowInput](
   ),
   keywords = Set("workflow", "update", "edit", "modify")
 ) with WorkflowToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: UpdateWorkflowInput, ctx: TurnContext): Stream[Event] = {
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)

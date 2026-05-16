@@ -35,6 +35,8 @@ final class StartMetalsTool extends TypedTool[StartMetalsInput](
     "code", "tooling", "ide"
   )
 ) {
+  override def paginate: Boolean = false
+
   import MetalsToolSupport.*
 
   override protected def executeTyped(input: StartMetalsInput, context: TurnContext): Stream[Event] = {

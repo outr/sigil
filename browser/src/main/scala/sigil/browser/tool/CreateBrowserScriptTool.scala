@@ -42,6 +42,8 @@ case object CreateBrowserScriptTool extends TypedTool[CreateBrowserScriptInput](
   modes = Set(WebBrowserMode.id),
   keywords = Set("create", "browser", "script", "automate", "record", "save", "replay")
 ) {
+  override def paginate: Boolean = false
+
 
   override protected def executeTyped(input: CreateBrowserScriptInput,
                                       ctx: TurnContext): Stream[Event] = ctx.sigil match {

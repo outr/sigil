@@ -42,6 +42,8 @@ case object ReadSourceTool extends TypedTool[ReadSourceInput](
   modes = Set(ScriptAuthoringMode.id),
   keywords = Set("source", "code", "read", "scaladoc", "implementation", "introspect")
 ) {
+  override def paginate: Boolean = false
+
 
   override protected def executeTyped(input: ReadSourceInput, context: TurnContext): rapid.Stream[Event] = {
     val text = try render(input.fqn)

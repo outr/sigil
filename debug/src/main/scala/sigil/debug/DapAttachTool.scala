@@ -37,6 +37,8 @@ final class DapAttachTool(val manager: DapManager) extends TypedTool[DapAttachIn
     )
   )
 ) with DapToolSupport {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: DapAttachInput, context: TurnContext): Stream[Event] = {
     val task = manager.spawn(input.languageId, input.sessionId).flatMap { session =>
       val args = input.attachArguments.map { case (k, v) =>

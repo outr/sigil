@@ -31,6 +31,8 @@ final class WebFetchTool(timeout: FiniteDuration = 30.seconds)
     ),
     keywords = Set("web", "fetch", "http", "url", "download", "page", "browse")
   ) with sigil.tool.NetworkReadOnlyTool {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: WebFetchInput, ctx: TurnContext): Stream[Event] = Stream.force(
     HttpClient
       .url(URL.parse(input.url))

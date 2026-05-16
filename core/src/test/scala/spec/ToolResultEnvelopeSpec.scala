@@ -45,6 +45,8 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       name = ToolName("legacy_echo"),
       description = "Echoes the payload."
     ) {
+  override def paginate: Boolean = false
+
     override protected def executeTyped(input: EchoInput, context: TurnContext): Task[EchoOutput] =
       throwOn match {
         case Some(msg) => Task.error(new RuntimeException(msg))
@@ -58,6 +60,7 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     name = ToolName("envelope_echo"),
     description = "Echoes the payload via the envelope."
   ) {
+  override def paginate: Boolean = false
     override protected def executeTypedResult(input: EchoInput, context: TurnContext): Task[ToolResult[EchoOutput]] =
       if (input.payload.isEmpty)
         Task.pure(ToolResult.failure(
@@ -171,6 +174,7 @@ class ToolAnnotationsSpec extends AnyWordSpec with Matchers {
       // base trait — every annotation must read as `false` so apps
       // that don't opt in get no behavior change.
       val noop = new sigil.tool.Tool {
+  override def paginate: Boolean = false
         override def name = ToolName("plain")
         override def description = "noop"
         override def inputRW = summon[fabric.rw.RW[PlainInput]]

@@ -16,6 +16,8 @@ case object ProgressEmittingTool extends TypedTool[ToolProgressInput](
   description = "Test-only tool that emits ToolProgress pulses while running.",
   keywords = Set("progress", "test")
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: ToolProgressInput, ctx: TurnContext): Stream[Event] =
     Stream.force(
       ctx.reportProgress("preparing")

@@ -41,6 +41,8 @@ class ConsultToolOutcomeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     name        = ToolName("consult_probe"),
     description = "Probe target for ConsultTool outcome tests."
   ) {
+  override def paginate: Boolean = false
+
     override protected def executeTyped(input: ProbeInput, ctx: sigil.TurnContext): Stream[sigil.event.Event] =
       Stream.empty
   }

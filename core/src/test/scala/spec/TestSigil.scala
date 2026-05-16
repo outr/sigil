@@ -446,6 +446,7 @@ case object SendSlackMessageTool extends sigil.tool.TypedTool[SendSlackMessageIn
   description = "Send a message to a Slack channel on behalf of the user. Takes a channel name and the message text.",
   keywords = Set("slack", "message", "channel")
 ) {
+  override def paginate: Boolean = false
   override protected def executeTyped(input: SendSlackMessageInput, context: TurnContext): rapid.Stream[Event] = rapid.Stream.empty
 }
 

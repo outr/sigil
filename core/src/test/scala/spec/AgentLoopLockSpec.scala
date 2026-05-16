@@ -27,7 +27,7 @@ class AgentLoopLockSpec extends AnyWordSpec with Matchers {
 
   "AgentRunawayException" should {
     "be a RuntimeException carrying its message" in {
-      val e = new AgentRunawayException("Agent foo hit maxAgentIterations (10) in conversation bar")
+      val e = new AgentRunawayException("Agent foo hit maxAgentIterations (10) in conversation bar", sigil.ForcedSynthesisReason.CapHit)
       e shouldBe a [RuntimeException]
       e.getMessage should include("maxAgentIterations")
       e.getMessage should include("foo")

@@ -29,6 +29,8 @@ case object GetMagicNumberTool extends TypedTool[GetMagicNumberInput](
   name = ToolName("get_magic_number"),
   description = "Returns the magic number. Call this first, then tell the user what number you got."
 ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: GetMagicNumberInput, context: TurnContext): rapid.Stream[Event] =
     rapid.Stream.emits(List[Event](
       Message(

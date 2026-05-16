@@ -53,6 +53,8 @@ case object CancelTool extends TypedTool[CancelInput](
       |in-flight call (use for monitor-agent intercepts).""".stripMargin,
   keywords = Set("cancel", "halt", "abort", "user-stop", "interrupt", "stop")
 ) {
+  override def paginate: Boolean = false
+
 
   /** Patterns that signal the caller meant a turn-flow operation
     * (start something, fetch results, wait, advance to the next

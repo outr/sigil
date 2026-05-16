@@ -27,6 +27,8 @@ final class ProcessSignalTool(registry: ProcessRegistry)
     ),
     keywords = Set("process", "signal", "terminate", "kill", "stop")
   ) {
+  override def paginate: Boolean = false
+
   override protected def executeTyped(input: ProcessSignalInput, ctx: TurnContext): Stream[Event] = Stream.force(
     registry.signal(input.handle, input.signal).map { ok =>
       val payload = obj(

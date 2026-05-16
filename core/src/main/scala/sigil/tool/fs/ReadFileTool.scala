@@ -32,6 +32,8 @@ final class ReadFileTool(context: FileSystemContext)
       "code", "text", "lines", "display", "fetch", "look"
     )
   ) with sigil.tool.ReadOnlyExternalTool {
+  override def paginate: Boolean = false
+
   // Bug #86 — generic primitive: ranks below domain-specific
   // tools when both match a query.
   override def preferIfNoBetter: Boolean = true
