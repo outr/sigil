@@ -13,8 +13,7 @@ import sigil.tool.{ToolExample, ToolName}
  */
 final class GlobTool(context: FileSystemContext) extends PaginatedTool[GlobInput, GlobEntry](
   name = ToolName("glob"),
-  description = "List files under a directory matching a glob pattern (e.g. '**/*.scala'). " +
-    "Paginated: first page inline, subsequent pages via `next_page`.",
+  description0 = "List files under a directory matching a glob pattern (e.g. '**/*.scala').",
   examples = List(
     ToolExample("Scala sources under src", GlobInput(basePath = "src", pattern = "**/*.scala")),
     ToolExample("Top-level docs", GlobInput(basePath = ".", pattern = "*.md"))

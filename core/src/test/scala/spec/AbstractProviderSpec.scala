@@ -13,6 +13,12 @@ import sigil.tool.{Tool, ToolInput}
 import sigil.tool.model.{ChangeModeInput, RespondInput, RespondOptionsInput, ResponseContent}
 
 trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
+  // 5-min cap accommodates worst-case live-LLM latency under 4-way
+  // fork contention; the framework's default 1-min routinely killed
+  // healthy in-flight calls.
+  override implicit protected val testTimeout: scala.concurrent.duration.FiniteDuration =
+    scala.concurrent.duration.DurationInt(5).minutes
+
   TestSigil.initFor(getClass.getSimpleName)
 
   protected def provider: Task[Provider]

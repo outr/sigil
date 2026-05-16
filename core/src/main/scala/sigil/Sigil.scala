@@ -3005,7 +3005,7 @@ trait Sigil {
         updateProjection(ti.conversationId, ti.participantId) { proj =>
           proj.copy(recentTools = ti.toolName :: proj.recentTools.filterNot(_ == ti.toolName))
         }
-      case tr: ToolResults if tr.schemas.nonEmpty =>
+      case tr: ToolResults =>
         // Sigil bug #169 — replace the overlay only when the tool result
         // carries a non-empty suggestion set. Tools that don't participate
         // in natural-progression flows emit `schemas = Nil` (the framework
@@ -3015,10 +3015,22 @@ trait Sigil {
         // (e.g. `create_workflow` → `[add_workflow_step, add_trigger]`)
         // re-emit their suggestions on each call so the relevant follow-
         // ups stay sticky across multi-step build sequences.
-        updateProjection(tr.conversationId, tr.participantId) { proj =>
-          proj.copy(suggestedTools = tr.schemas.map(_.name).toList)
+        //
+        // Sigil bug #202 — also auto-promote the universal pagination
+        // navigators (`next_page`, `query_tool_output`) whenever a
+        // paginated tool's first-page result lands with navigable
+        // content (`hasMore` or non-empty `nodeIds`). Without this,
+        // an agent that calls e.g. `grep` (a `PaginatedTool`) gets
+        // back a well-formed tree it has no way to drill into,
+        // because the navigation tools weren't in scope. Promotion is
+        // per-iteration; the overlay clears at loop release with the
+        // rest of `suggestedTools`.
+        val schemaSuggested = tr.schemas.map(_.name).toList
+        val paginationNav   = Sigil.paginationNavigatorsFor(tr.typed)
+        if (schemaSuggested.isEmpty && paginationNav.isEmpty) Task.unit
+        else updateProjection(tr.conversationId, tr.participantId) { proj =>
+          proj.copy(suggestedTools = (schemaSuggested ++ paginationNav).distinct)
         }
-      case _: ToolResults => Task.unit
       case cr: CapabilityResults =>
         updateProjection(cr.conversationId, cr.participantId) { proj =>
           val toolNames = cr.matches.collect {
@@ -6623,6 +6635,44 @@ trait Sigil {
 }
 
 object Sigil {
+
+  /** Sigil bug #202 — given a [[sigil.event.ToolResults.typed]]
+    * payload, return the universal pagination navigators
+    * (`next_page`, `query_tool_output`) when the payload is shaped
+    * like a [[sigil.tool.output.JsonPagedResult]] with navigable
+    * content (`hasMore` true, or a non-empty `nodeIds` list).
+    * Returns `Nil` for non-paginated results — including paginated
+    * results that fit in a single page with no children, where
+    * there's nothing for the agent to navigate to. */
+  private[sigil] def paginationNavigatorsFor(typed: Option[fabric.Json]): List[sigil.tool.ToolName] = {
+    import fabric.{Bool, Arr, Obj}
+    typed match {
+      case Some(o: Obj) =>
+        // Key-presence + shape check on the raw JSON — cheaper than
+        // a full RW decode, and tolerant of forward-compatible shape
+        // changes (extra fields don't break us). The combination of
+        // `callId`, `referenceId`, plus either `hasMore` or
+        // `nodeIds` is the JsonPagedResult fingerprint.
+        val v = o.value
+        val isPaged = v.contains("callId") && v.contains("referenceId")
+        if (!isPaged) Nil
+        else {
+          val hasMore = v.get("hasMore") match {
+            case Some(Bool(true, _)) => true
+            case _                   => false
+          }
+          val hasNodes = v.get("nodeIds") match {
+            case Some(Arr(items, _)) => items.nonEmpty
+            case _                   => false
+          }
+          if (hasMore || hasNodes)
+            List(sigil.tool.output.NextPageTool.name, sigil.tool.output.QueryToolOutputTool.name)
+          else Nil
+        }
+      case _ => Nil
+    }
+  }
+
   /** Default extraction system prompt for [[Sigil.initializeMemories]].
     * Apps that want a domain-specific extraction shape (e.g. medical
     * intake, onboarding survey) override the parameter directly. */
