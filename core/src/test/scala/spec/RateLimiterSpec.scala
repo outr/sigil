@@ -25,35 +25,42 @@ import scala.concurrent.duration.*
  */
 class RateLimiterSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
-  // Sub-millisecond floors so the spec stays cheap.
+  // Sleep durations are bumped to a value that's clearly distinguishable
+  // from "no sleep" even on a JIT-warming CI runner. Earlier the config
+  // used 50ms / 200ms; CI under load consistently took 250ms+ for
+  // `Task.unit` alone, so the < 50ms "return immediately" assertions
+  // failed without representing a real bug. With softSleep = 800ms, the
+  // "no sleep" threshold has comfortable CI-tolerant headroom (< 400ms)
+  // and the "did sleep" assertions stay well within their sleep window.
   private val cfg = RateLimiterConfig(
     softFloor = 0.5,
-    softSleep = 50.millis,
+    softSleep = 800.millis,
     hardFloor = 0.1,
-    hardSleep = 200.millis
+    hardSleep = 1600.millis
   )
+  private val noSleepThresholdMs: Long = 400L
 
   "RateLimiter.NoOp" should {
-    "acquire return immediately" in {
+    "acquire return without sleeping" in {
       val before = System.nanoTime()
       RateLimiter.NoOp.acquire.map { _ =>
         val elapsedMs = (System.nanoTime() - before) / 1_000_000L
-        elapsedMs should be < 50L
+        elapsedMs should be < noSleepThresholdMs
       }
     }
   }
 
   "RateLimiter.default" should {
-    "acquire return immediately when no observations have happened" in {
+    "acquire return without sleeping when no observations have happened" in {
       val limiter = RateLimiter.default(cfg)
       val before = System.nanoTime()
       limiter.acquire.map { _ =>
         val elapsedMs = (System.nanoTime() - before) / 1_000_000L
-        elapsedMs should be < 50L
+        elapsedMs should be < noSleepThresholdMs
       }
     }
 
-    "acquire return immediately when remaining is well above the soft floor" in {
+    "acquire return without sleeping when remaining is well above the soft floor" in {
       val limiter = RateLimiter.default(cfg)
       // Capacity establishes itself from the first observation; subsequent
       // ratios are relative to that running max.
@@ -63,7 +70,7 @@ class RateLimiterSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val before = System.nanoTime()
       limiter.acquire.map { _ =>
         val elapsedMs = (System.nanoTime() - before) / 1_000_000L
-        elapsedMs should be < 50L
+        elapsedMs should be < noSleepThresholdMs
       }
     }
 
@@ -76,8 +83,8 @@ class RateLimiterSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val before = System.nanoTime()
       limiter.acquire.map { _ =>
         val elapsedMs = (System.nanoTime() - before) / 1_000_000L
-        elapsedMs should be >= 40L
-        elapsedMs should be < 200L
+        elapsedMs should be >= 700L  // softSleep - small slack
+        elapsedMs should be < 1600L  // < hardSleep — we didn't drop to the hard floor
       }
     }
 
@@ -88,17 +95,17 @@ class RateLimiterSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val before = System.nanoTime()
       limiter.acquire.map { _ =>
         val elapsedMs = (System.nanoTime() - before) / 1_000_000L
-        elapsedMs should be >= 180L
+        elapsedMs should be >= 1500L  // hardSleep - small slack
       }
     }
 
     "honour an explicit retry-after deadline over the proportional rules" in {
       val limiter = RateLimiter.default(cfg)
-      limiter.observe(remainingRequests = Some(100), remainingTokens = Some(100), resetSeconds = None, retryAfter = Some(150.millis))
+      limiter.observe(remainingRequests = Some(100), remainingTokens = Some(100), resetSeconds = None, retryAfter = Some(600.millis))
       val before = System.nanoTime()
       limiter.acquire.map { _ =>
         val elapsedMs = (System.nanoTime() - before) / 1_000_000L
-        elapsedMs should be >= 130L
+        elapsedMs should be >= 500L  // retry-after - small slack
       }
     }
   }
