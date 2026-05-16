@@ -116,9 +116,20 @@ object Orchestrator {
       * in-flight when the stream terminates. Runs at termination
       * regardless of how the stream ended; idempotent because
       * `settleOrphanToolInvoke` clears `state.activeCalls` after
-      * walking it. */
+      * walking it.
+      *
+      * `settleOrphanMessage` ONLY fires when an error was actually
+      * observed — it stamps the in-flight streaming Message with a
+      * Failure disposition + "Tool call failed before settling"
+      * text, and we must not corrupt a perfectly-good streaming
+      * Message on the success path just because
+      * `state.activeMessageId` hasn't been cleared yet (a respond
+      * turn whose plain-text stream the model emits without
+      * wrapping in a tool call is a legitimate success shape).
+      */
     def reconcileInflight: Task[Unit] = {
-      val errorMsg = capturedError.get().flatMap(t => Option(t.getMessage)).filter(_.nonEmpty)
+      val errOpt = capturedError.get()
+      val errorMsg = errOpt.flatMap(t => Option(t.getMessage)).filter(_.nonEmpty)
       val callerForOrphan = request.chain.lastOption.getOrElse(
         throw new IllegalStateException("ProviderRequest.chain is empty; orchestrator needs at least one participant.")
       )
@@ -132,7 +143,7 @@ object Orchestrator {
             err => s"Tool `${a.toolName}` did not complete: $err"
           ),
         recoverable = true
-      ) ++ settleOrphanMessage(state, convId, error = errorMsg)
+      ) ++ (if (errOpt.isDefined) settleOrphanMessage(state, convId, error = errorMsg) else Nil)
       orphans.foldLeft(Task.unit) { (acc, sig) =>
         acc.flatMap(_ => sigil.publish(sig).handleError(_ => Task.unit))
       }
