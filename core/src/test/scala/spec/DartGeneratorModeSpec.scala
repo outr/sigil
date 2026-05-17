@@ -26,10 +26,15 @@ class DartGeneratorModeSpec extends AnyWordSpec with Matchers {
 
   TestSigil.initFor(getClass.getSimpleName)
 
-  // Register a test-only Mode with a hyphenated name so the codegen exercises
-  // the kebab-case → PascalCase path. RW.static-shaped per Mode.register's
-  // contract.
+  // Register two test-only Modes:
+  //   - hyphenated name → exercises the kebab-case → PascalCase path (#217)
+  //   - single-word lowercase name → exercises the unconditional PascalCase
+  //     pass (#218); without it the emitted Dart base class's `static const
+  //     Mode singleword = singleword();` would fail to parse in Dart's
+  //     const context.
+  // RW.static-shaped per Mode.register's contract.
   Mode.register(RW.static[Mode](TestHyphenatedMode))
+  Mode.register(RW.static[Mode](TestSingleWordMode))
 
   private val ModeWire = "Signal" -> summon[RW[Mode]].definition
 
@@ -82,11 +87,34 @@ class DartGeneratorModeSpec extends AnyWordSpec with Matchers {
         parentSource should not include "json['type'] as String"
       }
     }
+
+    // Sigil bug #218 — single-word lowercase discriminator names (e.g. `coding`,
+    // `conversation`) need their first letter capitalised. The parser accepts
+    // `class coding` at the declaration site, but the parent's
+    // `static const Mode singleword = singleword();` reference becomes a
+    // method-invocation parse error in Dart's const context.
+    "PascalCase a single-word lowercase discriminator (no separator)" in {
+      val files = generate()
+      val classFile = files.find(_.fileName == "singleword.dart")
+      withClue(s"file names: ${files.map(_.fileName).sorted.mkString(", ")}\n") {
+        classFile shouldBe defined
+      }
+      val source = classFile.map(_.source).getOrElse("")
+      source should include("class Singleword")
+      source should not include "class singleword extends"
+    }
   }
 
   "tear down" should {
     "dispose TestSigil" in TestSigil.shutdown.sync()
   }
+}
+
+case object TestSingleWordMode extends Mode {
+  override val name: String = "singleword"
+  override val description: String = "Synthetic mode for the #218 spec — exercises single-word lowercase discriminators."
+  override val skill: Option[ActiveSkillSlot] = None
+  override val tools: ToolPolicy = ToolPolicy.Standard
 }
 
 case object TestHyphenatedMode extends Mode {
