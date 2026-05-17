@@ -3,6 +3,7 @@ package sigil.codegen
 import fabric.define.Definition
 import fabric.rw.*
 import sigil.Sigil
+import sigil.provider.Mode
 import sigil.signal.Signal
 import spice.openapi.generator.dart.{DurableSocketDartConfig, DurableSocketDartGenerator}
 
@@ -83,7 +84,13 @@ final case class DartGenerator(sigil: Sigil,
       wireType = "Signal" -> summon[RW[Signal]].definition,
       clientEventDefs = Nil,
       defTypes = defTypes,
-      durableSubtypes = sigil.eventSubtypeNames
+      durableSubtypes = sigil.eventSubtypeNames,
+      // Mode's polymorphic RW uses `name` as the wire discriminator key (not the
+      // fabric default `type`) so the JSON payload aligns with the value persisted
+      // in `ModeChange` events and resolved by `Sigil.modeByName`. Tell the Dart
+      // generator about it so emitted `toJson` writes / parent `fromJson` reads
+      // the same key.
+      polyDiscriminatorKeys = Map(classOf[Mode].getName -> "name")
     )
 
     val generator = DurableSocketDartGenerator(config)
