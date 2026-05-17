@@ -47,7 +47,12 @@ final class LspRenameSymbolTool(val manager: LspManager)
         |position-based LSP rename tool directly.""".stripMargin,
     keywords = Set(
       "lsp", "rename", "refactor", "symbol", "by name", "high-level",
-      "semantic", "identifier", "across project", "workspace", "change name"
+      "semantic", "identifier", "across project", "workspace", "change name",
+      // Discoverability: surface via find-and-replace queries when the
+      // intent is a semantic rename, and via navigation queries that
+      // are actually rename intents in disguise.
+      "find", "find symbol", "replace name", "change identifier",
+      "update symbol name", "global rename", "search rename"
     ),
     examples = List(
       ToolExample(
