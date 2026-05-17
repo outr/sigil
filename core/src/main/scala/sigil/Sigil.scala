@@ -1424,7 +1424,7 @@ trait Sigil {
    * Sigil ships [[ConversationMode]] and prepends it automatically —
    * apps only list their own modes. Example:
    * {{{
-   *   override protected def modes: List[Mode] = List(CodingMode, WorkflowMode)
+   *   override protected def modes: List[Mode] = List(MyCodingMode, WorkflowMode)
    * }}}
    */
   protected def modes: List[Mode] = Nil

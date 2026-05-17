@@ -7,7 +7,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.Conversation
 import sigil.event.{Event, MessageRole, ToolInvoke, ToolOutcome, ToolResults}
-import sigil.provider.{CodingMode, ConversationMode}
+import sigil.provider.ConversationMode
 import sigil.signal.EventState
 import sigil.tool.ToolName
 import sigil.tool.output.{JsonPagedResult, PaginatedTool}
@@ -76,13 +76,6 @@ class Bugs203To206RegressionSpec extends AsyncWordSpec with AsyncTaskSpec with M
       desc should include("Default mode")
       desc should include("single-turn actions")
       desc should include("Stay here")
-    }
-
-    "CodingMode now spells out Enter / Don't enter / Exit framing" in {
-      val desc = CodingMode.description
-      desc should include("Enter when")
-      desc should include("Don't enter for")
-      desc should include("Exit when")
     }
 
     "ChangeModeTool description now narrows to sustained-session entries" in {
