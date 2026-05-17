@@ -202,11 +202,112 @@ trait Provider {
         }
       }.map { providerCall =>
         preFlightGate(request, providerCall) match {
-          case Right(safe)  => call(safe)
+          case Right(safe)  => callWithTransientRetry(safe)
           case Left(reason) => Stream.force(Task.error(reason))
         }
       }
     )
+  }
+
+  /** Sigil bug #211 — framework-level retry on `Retry`-classified
+    * transient provider errors. The framework already classifies
+    * network timeouts / 502 / 503 / rate-limits as `Retry`
+    * (see [[ErrorClassifier.Default]]); this method ACTS on that
+    * classification by re-attempting the wire call once before
+    * propagating, so a single TLS handshake hiccup / OpenRouter
+    * edge RST / brief rate-limit spike doesn't terminate the user's
+    * turn.
+    *
+    * **Retry-only-on-empty-emission.** Each attempt drains the
+    * call's stream via an evalTap-captured buffer. If the stream
+    * completes successfully the buffered events replay through the
+    * returned stream. If the stream errors:
+    *
+    *   - With zero events emitted AND the classifier returns
+    *     `Retry` AND retries remain → wait `providerRetryDelay`
+    *     and retry the call (re-drains a fresh stream).
+    *   - With at least one event emitted → flush the buffered
+    *     events as a stream prefix, then propagate the error.
+    *     Mid-stream errors aren't retryable — downstream consumers
+    *     (orchestrator's `onErrorFinalize`, the corruption-
+    *     resistance `guarantee` block) need to see the partial
+    *     state and the error to do orphan-settle cleanup.
+    *   - Non-`Retry` error → propagate immediately (with any
+    *     buffered events flushed first).
+    *
+    * Tradeoff: events are buffered for the duration of each
+    * attempt, so streaming-text responses appear in one chunk
+    * instead of progressively. Tool-call-only responses (the bug
+    * repro case) are unaffected — they're a single batch anyway.
+    *
+    * Apps that prefer streaming over retry-correctness override
+    * [[providerRetryAttempts]] to `0` to disable. */
+  protected def providerRetryAttempts: Int = 1
+
+  /** Per-retry backoff. Transient transport flakes typically
+    * resolve in < 1 s; longer waits delay the user without
+    * changing the outcome. */
+  protected def providerRetryDelay: scala.concurrent.duration.FiniteDuration = {
+    import scala.concurrent.duration.*
+    500.millis
+  }
+
+  /** Classifier used to decide which thrown errors are
+    * transient-and-retryable. Defaults to [[ErrorClassifier.Default]]
+    * (matches the system-prompt instruction agents read for the
+    * tool-call layer). Providers with stronger typing
+    * (provider-specific exception types) override and compose via
+    * `.orElse(ErrorClassifier.Default)`. */
+  protected def providerErrorClassifier: ErrorClassifier = ErrorClassifier.Default
+
+  private def callWithTransientRetry(safe: ProviderCall): Stream[ProviderEvent] = {
+    val retries = providerRetryAttempts
+    if (retries <= 0) call(safe)
+    else {
+      val classifier = providerErrorClassifier
+      // Each attempt returns (bufferedEvents, optionalError). If
+      // optionalError is None, the call drained cleanly. If Some,
+      // the call errored after emitting `bufferedEvents` (possibly
+      // empty).
+      def attempt(remaining: Int): Task[(List[ProviderEvent], Option[Throwable])] = {
+        val buffer = scala.collection.mutable.ListBuffer.empty[ProviderEvent]
+        val tapped = call(safe).evalTap(ev => Task { buffer += ev; () })
+        tapped.drain.map(_ => (buffer.toList, Option.empty[Throwable])).handleError { t =>
+          val captured = buffer.toList
+          val cls = classifier.classify(t)
+          if (captured.isEmpty && remaining > 0 && cls == ErrorClassification.Retry) {
+            scribe.warn(
+              s"Sigil bug #211 — retrying transient provider error " +
+                s"(${t.getClass.getSimpleName}: ${Option(t.getMessage).getOrElse("")}); " +
+                s"$remaining retries remaining"
+            )
+            Task.sleep(providerRetryDelay).flatMap(_ => attempt(remaining - 1))
+          } else {
+            // Either we have partial events (can't retry — would
+            // duplicate the work), or the error isn't classified as
+            // Retry. Return the captured events alongside the error
+            // so the consumer sees the partial state PLUS the
+            // failure.
+            Task.pure((captured, Some(t)))
+          }
+        }
+      }
+      Stream.force(attempt(retries).map {
+        case (events, None) => Stream.emits(events)
+        case (events, Some(t)) =>
+          // Use `evalMap(Task.error)` rather than
+          // `Stream.force(Task.error)` for the trailing-error stream.
+          // rapid's `++` evaluates the right-hand stream's `task`
+          // eagerly at left-stream materialization (`task.flatMap { _ =>
+          // that.task.map { ... } }`), so a `Task.error` inside
+          // `Stream.force` fires before the buffered events get a chance
+          // to be consumed by the outer pipeline. `evalMap`'s error
+          // fires on first pull instead, preserving the prefix so
+          // downstream `onErrorFinalize` / `guarantee` blocks see the
+          // partial state.
+          Stream.emits(events) ++ Stream.emit(()).evalMap[ProviderEvent](_ => Task.error[ProviderEvent](t))
+      })
+    }
   }
 
   /** Pre-flight budget validation. Estimates the rendered request via
