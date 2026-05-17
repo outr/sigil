@@ -30,7 +30,8 @@ case object SubmitRefactorDecisionsTool
     name = ToolName("submit_refactor_decisions"),
     description =
       """Submit your per-match decisions for the file you were given. Call this exactly once with
-        |the full list of decisions, then call `complete_task` to finish.
+        |the full list of decisions, then finish your turn with the standard worker-termination
+        |tool call.
         |
         |For each match (one per line passed in the brief), choose one action:
         |  - `Edited` — the change should be applied. Set `newText` to the replacement,

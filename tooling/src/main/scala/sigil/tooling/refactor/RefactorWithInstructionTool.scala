@@ -51,7 +51,7 @@ final class RefactorWithInstructionTool(fs: FileSystemContext)
         |
         |Inputs:
         |  - `path`         — filesystem root for the search.
-        |  - `glob`         — optional file-set glob (e.g. "**/*.scala").
+        |  - file-set glob  — optional path-glob filter on candidate files.
         |  - `findPattern`  — regex; only files containing at least one match are refactored.
         |  - `instruction`  — what the workers should do at each match. The instruction is read
         |                     verbatim by every worker; be specific about what to edit AND what to
