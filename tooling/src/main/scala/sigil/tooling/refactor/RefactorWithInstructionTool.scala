@@ -66,7 +66,15 @@ final class RefactorWithInstructionTool(fs: FileSystemContext)
         |Returns per-file decisions, the worker's reason per decision, and the apply outcome.""".stripMargin,
     keywords = Set(
       "refactor", "rewrite", "modify", "multi-file", "across files", "worker",
-      "judgment", "per-match", "regex", "code change", "edit", "transform"
+      "judgment", "per-match", "regex", "code change", "edit", "transform",
+      // Discoverability: agents shaping a find-and-replace task naturally
+      // query with grep-shape vocabulary. Surface this tool in those
+      // result sets — its value prop is "find AND edit in one call",
+      // and without these terms it ranked 0 against literal find queries.
+      "find", "replace", "find and replace", "search and replace",
+      "search and edit", "find and edit", "bulk edit", "bulk replace",
+      "rewrite across files", "remove", "delete pattern", "substitute",
+      "search", "match"
     ),
     examples = List(
       ToolExample(
