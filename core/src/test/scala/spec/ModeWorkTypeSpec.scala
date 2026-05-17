@@ -3,7 +3,7 @@ package spec
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.provider.{
-  AnalysisWork, CodingMode, CodingWork, ConversationMode, Mode, WorkType
+  AnalysisWork, CodingWork, ConversationMode, Mode, WorkType
 }
 
 /** Coverage for sigil bug #17 — `Mode.workType` lets a mode override
@@ -22,10 +22,6 @@ class ModeWorkTypeSpec extends AnyWordSpec with Matchers {
 
     "be None on ConversationMode (chat is the per-agent default)" in {
       ConversationMode.workType shouldBe None
-    }
-
-    "be Some(CodingWork) on CodingMode" in {
-      CodingMode.workType shouldBe Some(CodingWork)
     }
 
     "be Some(CodingWork) on WorkflowBuilderMode (workflow authoring is coding)" in {

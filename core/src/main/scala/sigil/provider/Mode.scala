@@ -1,7 +1,10 @@
 package sigil.provider
 
+import fabric.*
+import fabric.define.{DefType, Definition}
 import fabric.rw.*
 import lightdb.id.Id
+import scala.collection.immutable.VectorMap
 import sigil.conversation.ActiveSkillSlot
 
 /**
@@ -11,16 +14,21 @@ import sigil.conversation.ActiveSkillSlot
  *
  * `Mode` is an open [[PolyType]] — Sigil ships only [[ConversationMode]]
  * by default. Apps define their own case objects (e.g. `WorkflowMode`,
- * `WebNavigationMode`, `CodingMode`) and register them via
- * `Sigil.modeRegistrations` so the polymorphic serializer resolves them
- * on read.
+ * `WebNavigationMode`, a coding mode) and register them via
+ * `Sigil.modes` so the polymorphic serializer resolves them on read.
  *
  * The `name` field is the stable discriminator persisted in
- * `ModeChange` events and `Conversation.currentMode`. Keep it constant
- * across renames — changing `name` breaks historical records.
+ * `ModeChange` events AND the wire-level type tag for the polymorphic
+ * RW. Keep it constant across renames — changing `name` breaks
+ * historical records and any clients that pinned to the old wire value.
  */
 trait Mode {
-  /** Stable discriminator — what gets persisted. */
+  /** Stable discriminator — persisted in `ModeChange` events AND used
+    * as the wire-level `name` discriminator in the polymorphic
+    * [[Mode]] RW (replaces the Scala class name). Must be unique across
+    * every registered mode in a Sigil instance; duplicates resolve
+    * last-write-wins per the underlying [[fabric.rw.PolyType.register]]
+    * append-only registry. */
   def name: String
 
   /** One-line human-readable description; rendered into the system
@@ -32,7 +40,7 @@ trait Mode {
     * shown to the user, never persisted on conversation events. Useful
     * when the mode's `name`/`description` doesn't include the natural
     * search terms (e.g. `WebResearchMode` should match "browse",
-    * "google", "lookup"; `CodingMode` should match "function",
+    * "google", "lookup"; a coding mode should match "function",
     * "refactor", "debug"). */
   def keywords: Set[String] = Set.empty
 
@@ -61,7 +69,7 @@ trait Mode {
     * the conversation's space resolves to" (typical case).
     *
     * Apps configure mode-pinned strategies for situations where
-    * the work shape itself dictates the model — e.g. a `CodingMode`
+    * the work shape itself dictates the model — e.g. a coding mode
     * that always wants Claude, regardless of who's logged in. */
   def strategyId: Option[Id[ProviderStrategyRecord]] = None
 
@@ -78,4 +86,88 @@ trait Mode {
   final lazy val id: Id[Mode] = Id(name)
 }
 
-object Mode extends PolyType[Mode]()(using scala.reflect.ClassTag(classOf[Mode]))
+/**
+ * Companion for [[Mode]]. Custom polymorphic RW: the wire body uses
+ * [[Mode.name]] as the discriminator (under the JSON key `"name"`),
+ * not the Scala class name. This keeps the wire payload aligned with
+ * the value persisted in `ModeChange` events and with the value
+ * `Sigil.modeByName` resolves, so UIs reading the wire render the
+ * right mode chip and a model parroting the wire value back stays
+ * consistent with what was written.
+ *
+ * Subtypes are still registered through [[register]] (`Sigil` does this
+ * in `polymorphicRegistrations` from its `modes` list). Each registered
+ * RW is expected to be a [[fabric.rw.RW.static]] of a singleton `Mode`
+ * value — we extract that singleton at registration time by invoking
+ * `rw.write(fabric.obj())` (the static RW returns its captured value
+ * regardless of input) and index by `name`. Duplicates resolve
+ * last-write-wins, matching the existing append-only `PolyType`
+ * registry shape.
+ */
+object Mode extends PolyType[Mode]()(using scala.reflect.ClassTag(classOf[Mode])) {
+
+  /** Wire field name carrying the polymorphic discriminator. */
+  private val DiscriminatorField: String = "name"
+
+  /** Name -> instance registry, in registration order. Each
+    * [[register]] call extracts the singleton from each `RW.static`
+    * and appends to this map (last-write-wins on duplicate names). */
+  @volatile private var instancesByName: Map[String, Mode] = Map.empty
+
+  /** Register additional [[Mode]] subtypes. Each `RW` must be built
+    * via [[fabric.rw.RW.static]] over a singleton `Mode` value —
+    * non-static RWs (e.g. case-class derivations) raise at registration
+    * time because we can't extract a canonical name-bearing instance
+    * from them. Concrete `Mode` shapes ship in framework + apps as
+    * `case object`s, so this constraint is non-binding in practice. */
+  override def register(types: RW[? <: Mode]*): Unit = synchronized {
+    val updates: Seq[(String, Mode)] = types.map { rw =>
+      val instance =
+        try rw.write(obj())
+        catch {
+          case t: Throwable =>
+            throw new RuntimeException(
+              s"Mode.register: failed to extract Mode instance from $rw — Mode subtype RWs must be built via RW.static(<singleton>)",
+              t
+            )
+        }
+      instance.name -> instance
+    }
+    super.register(types*)
+    updates.foreach { case (name, m) => instancesByName = instancesByName.updated(name, m) }
+  }
+
+  /** Live snapshot of every registered mode keyed by [[Mode.name]].
+    * Returned defensive copy. */
+  def registered: Map[String, Mode] = instancesByName
+
+  /** Custom polymorphic RW. Serialization writes a single
+    * `{"name": "<mode.name>"}` payload (mode singletons carry no other
+    * fields). Deserialization looks the discriminator up in the
+    * name-indexed registry. The schema [[Definition]] mirrors the
+    * registry as `DefType.Poly` keyed by name so codegen consumers
+    * (the Dart generator) emit dispatchers keyed by the wire
+    * discriminator. */
+  implicit override val rw: RW[Mode] = new RW[Mode] {
+    override def read(t: Mode): Json = obj(DiscriminatorField -> str(t.name))
+
+    override def write(json: Json): Mode = {
+      val nameValue = json(DiscriminatorField).asString
+      instancesByName.getOrElse(
+        nameValue,
+        throw new RuntimeException(
+          s"Mode discriminator '$nameValue' not registered — available: [${instancesByName.keys.toList.sorted.mkString(", ")}]"
+        )
+      )
+    }
+
+    override def definition: Definition = Definition(
+      DefType.Poly(
+        VectorMap.from(instancesByName.toList.map { case (n, _) =>
+          n -> Definition(DefType.Obj(VectorMap.empty), className = Some(n))
+        })
+      ),
+      className = Some(classOf[Mode].getName)
+    )
+  }
+}

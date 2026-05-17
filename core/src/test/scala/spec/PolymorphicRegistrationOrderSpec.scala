@@ -48,11 +48,14 @@ class PolymorphicRegistrationOrderSpec extends AnyWordSpec with Matchers {
 
     "populate Mode subtypes inside DefaultAgentParticipant chain" in {
       // ConversationMode is the only baseline; apps register more.
+      // Mode's polymorphic discriminator is `Mode.name`, not the Scala
+      // class name — so the framework default surfaces as "conversation",
+      // not "ConversationMode".
       val modeDef = summon[RW[sigil.provider.Mode]].definition
       val poly = polyOf(modeDef).getOrElse {
         fail(s"Expected Mode to resolve to DefType.Poly; saw ${modeDef.defType}")
       }
-      poly.values.keySet should contain ("ConversationMode")
+      poly.values.keySet should contain ("conversation")
     }
   }
 
