@@ -103,6 +103,22 @@ class DartGeneratorModeSpec extends AnyWordSpec with Matchers {
       source should include("class Singleword")
       source should not include "class singleword extends"
     }
+
+    // Sigil bug #219 — single-word discriminators must land at the top of the
+    // model tree (no subdirectory), matching the layout the hyphenated path
+    // uses. Routing them into `model/<name>/<name>.dart` desyncs the
+    // polymorphic base's `const` references and produces a mixed-shape output
+    // that the Dart const-context parser rejects.
+    "emit single-word Mode subtypes flat under model/ (not nested in a same-name subdirectory)" in {
+      val files = generate()
+      val singlewordFile = files.find(_.fileName == "singleword.dart")
+      singlewordFile shouldBe defined
+      val path = singlewordFile.map(_.path).getOrElse("")
+      withClue(s"single-word path: $path\n") {
+        path should not endWith "/singleword"
+        path should not include "/model/singleword/"
+      }
+    }
   }
 
   "tear down" should {
