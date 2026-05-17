@@ -58,11 +58,12 @@ class ToolingSigilBootSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       }
     }
 
-    // Sigil bug #214 — the two #212 refactor tools shipped in the jar
-    // but weren't registered in ToolingSigil's staticTools roster, so
-    // `find_capability` could never surface them on the discovery
-    // catalog.
-    "register both #212 refactor tools in staticTools" in {
+    // The framework's refactor / rename family must all surface via
+    // ToolingSigil's staticTools so `find_capability` can advertise them.
+    // The three-tool refactor-session API (prepare / apply / cancel)
+    // needs every member registered for the handshake to work end-to-end
+    // via discovery, alongside the LSP rename tool.
+    "register all four refactor / rename tools in staticTools" in {
       val s = freshSigil()
       for {
         _ <- s.instance
@@ -71,6 +72,8 @@ class ToolingSigilBootSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       } yield {
         toolNames should contain("lsp_rename_symbol")
         toolNames should contain("refactor_with_instruction")
+        toolNames should contain("refactor_apply")
+        toolNames should contain("refactor_cancel")
       }
     }
   }

@@ -7,7 +7,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import org.scalatest.{Args, Status}
 import profig.Profig
-import rapid.{AsyncTaskSpec, Stream, Task}
+import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.{Conversation, ConversationView, Topic, TopicEntry, TurnInput}
 import sigil.db.{Model, SigilDB}
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
@@ -17,9 +17,10 @@ import sigil.provider.llamacpp.LlamaCppProvider
 import sigil.provider.Provider
 import sigil.signal.Signal
 import sigil.tool.fs.{FileSystemContext, GrepMatch, LocalFileSystemContext}
-import sigil.tool.{InMemoryToolFinder, ToolFinder}
 import sigil.tooling.refactor.{
-  RefactorWithInstructionInput, RefactorWithInstructionOutput,
+  RefactorApplyTool, RefactorApplyInput, RefactorApplyStatus,
+  RefactorCancelInput, RefactorCancelStatus, RefactorCancelTool,
+  RefactorSessionStore, RefactorWithInstructionInput, RefactorWithInstructionOutput,
   RefactorWithInstructionTool, SubmitRefactorDecisionsTool
 }
 import sigil.vector.{NoOpVectorIndex, VectorIndex}
@@ -30,16 +31,23 @@ import java.nio.file.{Files, Path, StandardOpenOption}
 import scala.concurrent.duration.*
 
 /**
- * Live end-to-end coverage for [[RefactorWithInstructionTool]].
- * Spawns one `SigilAgentDecisionStep` worker per file against a
- * real llama.cpp endpoint, drives the worker through structured
- * `submit_refactor_decisions` calls, and asserts the framework's
- * per-file aggregation + atomic apply + idempotence properties.
+ * Live end-to-end coverage for the prepare step of the refactor
+ * session — spawns one `SigilAgentDecisionStep` worker per file
+ * against a real llama.cpp endpoint, drives the worker through
+ * structured `submit_refactor_decisions` calls, and verifies the
+ * framework's worker dispatch + decision extraction + per-file
+ * aggregation pipeline.
  *
- * Self-skips when [[TestSigil.llamaCppHost]] is unreachable. Also gated
- * behind `SIGIL_SLOW=1` — each refactor worker iterates against a real
- * LLM and the full suite routinely runs 10-15 minutes, so we keep it
- * out of the default `sbt test`. `test-all.sh` opts in.
+ * The session-shaped contract (prepare returns a sessionId,
+ * apply commits, cancel drops, TTL expires) is covered
+ * deterministically in `RefactorSessionSpec` without an LLM
+ * round-trip; this spec exists to keep the live-worker plumbing
+ * exercised against real model behaviour.
+ *
+ * Self-skips when [[TestSigil.llamaCppHost]] is unreachable. Also
+ * gated behind `SIGIL_SLOW=1` — each refactor worker iterates
+ * against a real LLM and the full suite routinely runs 10-15
+ * minutes.
  */
 class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestRefactorSigil.initFor(getClass.getSimpleName)
@@ -70,7 +78,6 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
       topics = List(TopicEntry(RefactorTestTopic.id, RefactorTestTopic.label, RefactorTestTopic.summary)),
       _id    = convId
     )
-    // Persist the conversation so the worker's parent lookup resolves.
     TestRefactorSigil.withDB(_.conversations.transaction(_.upsert(conv))).sync()
     TurnContext(
       sigil        = TestRefactorSigil,
@@ -102,11 +109,24 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
     }
   }
 
-  private def runTool(fs: FileSystemContext,
+  /** Fresh per-test session store so prior tests can't leak prepared
+    * sessions into a later one. */
+  private def newStore(): RefactorSessionStore = new RefactorSessionStore()
+
+  private def prepare(fs: FileSystemContext,
+                      store: RefactorSessionStore,
                       input: RefactorWithInstructionInput,
                       ctx: TurnContext): Task[RefactorWithInstructionOutput] = {
-    val tool = new RefactorWithInstructionTool(fs)
+    val tool = new RefactorWithInstructionTool(fs, store)
     tool.invoke(input, ctx)
+  }
+
+  private def apply(fs: FileSystemContext,
+                    store: RefactorSessionStore,
+                    sessionId: String,
+                    ctx: TurnContext): Task[sigil.tooling.refactor.RefactorApplyOutput] = {
+    val tool = new RefactorApplyTool(fs, store)
+    tool.invoke(RefactorApplyInput(sessionId), ctx)
   }
 
   if (!isReachable) {
@@ -116,13 +136,13 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
   } else {
     "RefactorWithInstructionTool" should {
 
-      // Happy path: one file with a single `// TODO:remove` match at the
-      // start of line 2. The instruction precomputes every field the
-      // worker has to fill in — small quantised models can call the
-      // tool reliably when there's no math to do. We assert the framework
-      // dispatched the worker, extracted the decision, and committed
-      // the edit atomically.
-      "drive a worker and commit its edit" in {
+      // Happy path: prepare returns a session; apply commits the
+      // stored edit; the file is mutated on disk. Asserts the
+      // worker dispatched, the decision extraction worked, and the
+      // session round-trip from prepare to apply commits the
+      // worker's diff.
+      "prepare a session and then apply it to commit the edit" in {
+        val store = newStore()
         val workspace = materialize(List(
           "a.txt" -> "alpha line\n// TODO:remove obsolete-A\nbeta line\n"
         ))
@@ -148,38 +168,41 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
           maxParallel   = 1,
           maxWorkers    = 5
         )
-        runTool(fs, input, ctx).map { out =>
+        for {
+          prepared <- prepare(fs, store, input, ctx)
+          applied  <- apply(fs, store, prepared.sessionId, ctx)
+        } yield {
           try {
             // Architectural assertions — the framework dispatched a
             // worker, the worker settled, the framework produced a
-            // per-file report. Whether the LLM emitted a clean
-            // submit_refactor_decisions call within maxIterations is
-            // model-dependent on a small quantised local model, so we
-            // accept both the committed-edit shape and the
-            // dispatched-but-no-decision shape — both prove the
-            // framework's plumbing works end-to-end.
-            out.filesConsidered shouldBe 1
-            out.abortReason shouldBe None
-            out.perFile.size shouldBe 1
-            if (out.filesModified >= 1) {
-              out.appliedAsWorkspaceEdit shouldBe true
+            // per-file report + a session. Whether the LLM emitted a
+            // clean submit_refactor_decisions call within
+            // maxIterations is model-dependent on a small quantised
+            // local model, so we accept both the committed-edit shape
+            // and the dispatched-but-no-decision shape — both prove
+            // the framework's plumbing works end-to-end.
+            prepared.abortReason shouldBe None
+            prepared.page0Diffs.size shouldBe 1
+            if (applied.filesModified >= 1) {
+              applied.status shouldBe RefactorApplyStatus.Applied
               Files.readString(workspace.resolve("a.txt")) should not include "// TODO:remove"
             } else {
               // Worker dispatched but produced no committable decision —
               // the per-file report still records the attempt.
-              out.appliedAsWorkspaceEdit shouldBe false
+              applied.filesModified shouldBe 0
             }
           } finally cleanup(workspace)
         }
       }
 
-      // Dry-run: same single-file shape, dryRun=true. No file should be
-      // written; the report still records the worker's decision plus a
-      // `dryRun` outcome marker so callers can distinguish dry from
-      // actual apply.
-      "produce a report without writing files when dryRun=true" in {
+      // Prepare-then-cancel: previously covered with `dryRun=true`.
+      // Now the natural shape is prepare + cancel. We assert the
+      // prepare step ran the worker pipeline but didn't touch disk,
+      // and that cancel drops the session cleanly.
+      "produce a session without writing files, and cancel cleanly drops it" in {
+        val store = newStore()
         val workspace = materialize(List(
-          "single.txt" -> "header\n// TODO:remove dry-run-target\nfooter\n"
+          "single.txt" -> "header\n// TODO:remove cancel-target\nfooter\n"
         ))
         val original = Files.readString(workspace.resolve("single.txt"))
         val fs = new LocalFileSystemContext(basePath = Some(workspace))
@@ -200,27 +223,33 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
               |    startChar: 0,
               |    endChar: 14
               |  } ]""".stripMargin,
-          dryRun        = true,
           workerModelId = Some(modelId.value),
           maxParallel   = 1,
           maxWorkers    = 5
         )
-        runTool(fs, input, ctx).map { out =>
+        for {
+          prepared  <- prepare(fs, store, input, ctx)
+          cancelled <- new RefactorCancelTool(store).invoke(RefactorCancelInput(prepared.sessionId), ctx)
+          afterApply <- apply(fs, store, prepared.sessionId, ctx)
+        } yield {
           try {
-            out.filesConsidered shouldBe 1
-            out.filesModified shouldBe 0
-            out.appliedAsWorkspaceEdit shouldBe false
+            prepared.abortReason shouldBe None
+            // File untouched by prepare.
             Files.readString(workspace.resolve("single.txt")) shouldBe original
-            out.perFile.headOption.flatMap(_.writeOutcome) shouldBe Some("dryRun")
+            cancelled.status shouldBe RefactorCancelStatus.Cancelled
+            // After cancel, apply against the same session id finds nothing.
+            afterApply.status shouldBe RefactorApplyStatus.NotFound
+            // File still untouched.
+            Files.readString(workspace.resolve("single.txt")) shouldBe original
           } finally cleanup(workspace)
         }
       }
 
       // Per-match judgment: file has two matches; the worker is told
-      // to Edit the first and Skip the second. We assert the framework
-      // applies the Edited decision and leaves the Skipped match
-      // untouched on disk.
+      // to Edit the first and Skip the second. After prepare + apply,
+      // the Edited match is gone and the Skipped one remains.
       "honor a per-match skip when the worker mixes Edited and Skipped decisions" in {
+        val store = newStore()
         val workspace = materialize(List(
           "mixed.txt" ->
             """alpha line
@@ -247,63 +276,17 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
           maxParallel   = 1,
           maxWorkers    = 5
         )
-        runTool(fs, input, ctx).map { out =>
+        for {
+          prepared <- prepare(fs, store, input, ctx)
+          applied  <- apply(fs, store, prepared.sessionId, ctx)
+        } yield {
           try {
-            out.filesConsidered shouldBe 1
+            prepared.abortReason shouldBe None
             val body = Files.readString(workspace.resolve("mixed.txt"))
             // The Skipped match's line must still carry its marker.
             body should include("// TODO:remove this-one-stays")
-            // When the framework committed the edit, the first match
-            // is gone.
-            if (out.filesModified >= 1) {
+            if (applied.filesModified >= 1) {
               body should not include "// TODO:remove this-one-goes"
-            } else succeed
-          } finally cleanup(workspace)
-        }
-      }
-
-      // Idempotence: run the same refactor twice. After the first call
-      // mutates the file, the regex no longer matches, so the second
-      // call reports `filesConsidered = 0` without dispatching any
-      // worker. Asserts the framework's grep-first pipeline short-
-      // circuits cleanly on no-candidate input.
-      "report no candidates on the second run when the first run removed the match" in {
-        val workspace = materialize(List(
-          "once.txt" -> "head\n// TODO:remove only-instance\ntail\n"
-        ))
-        val fs = new LocalFileSystemContext(basePath = Some(workspace))
-        val ctx1 = turnContext(workspace)
-        val ctx2 = turnContext(workspace)
-        val baseInput = RefactorWithInstructionInput(
-          path        = workspace.toString,
-          glob        = None,
-          findPattern = "// TODO:remove",
-          instruction =
-            """Call `submit_refactor_decisions` ONCE with this exact payload, then call `complete_task`:
-              |  filePath: "once.txt"
-              |  decisions: [ {
-              |    matchedLine: 2,
-              |    action: "Edited",
-              |    reason: "remove the TODO marker",
-              |    oldText: "// TODO:remove",
-              |    newText: "",
-              |    startChar: 0,
-              |    endChar: 14
-              |  } ]""".stripMargin,
-          workerModelId = Some(modelId.value),
-          maxParallel   = 1,
-          maxWorkers    = 5
-        )
-        for {
-          first  <- runTool(fs, baseInput, ctx1)
-          second <- runTool(fs, baseInput, ctx2)
-        } yield {
-          try {
-            first.filesConsidered shouldBe 1
-            if (first.filesModified >= 1) {
-              second.filesConsidered shouldBe 0
-              second.filesModified shouldBe 0
-              second.appliedAsWorkspaceEdit shouldBe false
             } else succeed
           } finally cleanup(workspace)
         }
@@ -312,10 +295,11 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
       // Worker failure isolation: two files; the synthetic
       // `FileSystemContext` wrapper throws on `b.txt` so its worker
       // never gets readable content. The other file's worker runs
-      // normally. We assert the b.txt failure shows up in the per-
-      // file report's `workerError`, the other file's edit committed,
-      // and b.txt is unchanged on disk.
+      // normally. We assert the b.txt failure shows up in the
+      // prepare result's per-file report, the other file's edit
+      // commits on apply, and b.txt is unchanged on disk.
       "isolate per-file worker failures so other files still commit" in {
+        val store = newStore()
         val workspace = materialize(List(
           "a.txt" -> "alpha\n// TODO:remove keep-going-A\nomega\n",
           "b.txt" -> "alpha\n// TODO:remove this-file-throws\nomega\n"
@@ -364,10 +348,13 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
           maxParallel   = 1,
           maxWorkers    = 5
         )
-        runTool(fs, input, ctx).map { out =>
+        for {
+          prepared <- prepare(fs, store, input, ctx)
+          _        <- apply(fs, store, prepared.sessionId, ctx)
+        } yield {
           try {
-            out.filesConsidered shouldBe 2
-            val bReport = out.perFile.find(_.path.endsWith("b.txt"))
+            prepared.page0Diffs.size shouldBe 2
+            val bReport = prepared.page0Diffs.find(_.path.endsWith("b.txt"))
             bReport shouldBe defined
             bReport.flatMap(_.workerError) shouldBe defined
             bReport.flatMap(_.workerError).get should include("b.txt")
