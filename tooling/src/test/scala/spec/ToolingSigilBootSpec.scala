@@ -57,5 +57,21 @@ class ToolingSigilBootSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         s.isShutdown shouldBe true
       }
     }
+
+    // Sigil bug #214 — the two #212 refactor tools shipped in the jar
+    // but weren't registered in ToolingSigil's staticTools roster, so
+    // `find_capability` could never surface them on the discovery
+    // catalog.
+    "register both #212 refactor tools in staticTools" in {
+      val s = freshSigil()
+      for {
+        _ <- s.instance
+        toolNames = s.staticTools.map(_.name.value).toSet
+        _ <- s.shutdown
+      } yield {
+        toolNames should contain("lsp_rename_symbol")
+        toolNames should contain("refactor_with_instruction")
+      }
+    }
   }
 }

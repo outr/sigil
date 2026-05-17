@@ -4,6 +4,8 @@ import rapid.Task
 import sigil.Sigil
 import sigil.db.SigilDB
 import sigil.tool.Tool
+import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext}
+import sigil.tooling.refactor.{LspRenameSymbolTool, RefactorWithInstructionTool}
 
 import scala.concurrent.duration.*
 
@@ -44,13 +46,19 @@ trait ToolingSigil extends Sigil {
   final lazy val bspManager: BspManager =
     new BspManager(this.asInstanceOf[Sigil { type DB <: SigilDB & ToolingCollections }])
 
+  /** Filesystem context for tools the mixin wires that touch disk
+    * (currently `refactor_with_instruction`). Defaults to a sandbox-
+    * less local filesystem; apps with a workspace root override to
+    * scope the agent's reach. */
+  def fileSystemContext: FileSystemContext = new LocalFileSystemContext(basePath = None)
+
   override def staticTools: List[Tool] = {
     val base = super.staticTools
     if (toolingToolsEnabled) base ++ toolingTools else base
   }
 
   protected def toolingTools: List[Tool] =
-    lspTools ++ bspTools
+    lspTools ++ bspTools ++ refactorTools
 
   /** Every LSP-side tool the framework ships. Apps that want a
     * subset override this and pick. */
@@ -68,6 +76,7 @@ trait ToolingSigil extends Sigil {
     new LspFormatTool(lspManager),
     new LspFormatRangeTool(lspManager),
     new LspRenameTool(lspManager),
+    new LspRenameSymbolTool(lspManager),
     new LspPrepareRenameTool(lspManager),
     // Phase 2 — navigation
     new LspFindReferencesTool(lspManager),
@@ -101,6 +110,17 @@ trait ToolingSigil extends Sigil {
     new BspScalacOptionsTool(bspManager),
     new BspScalaTestClassesTool(bspManager),
     new BspScalaMainClassesTool(bspManager)
+  )
+
+  /** Every refactor-shaped tool the framework ships. Touches disk
+    * via [[fileSystemContext]] (override in app for workspace
+    * sandboxing) and — for the worker-driven case — the host's
+    * workflow runtime via `WorkflowSigil`. Apps mixing this trait
+    * without `WorkflowSigil` see `refactor_with_instruction`
+    * surface a structured "workflow runtime not active" error
+    * rather than crashing. */
+  protected def refactorTools: List[Tool] = List(
+    new RefactorWithInstructionTool(fileSystemContext)
   )
 
   /** Periodic idle sweep — runs forever on a daemon fiber. */
