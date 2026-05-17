@@ -4,10 +4,13 @@ import fabric.rw.*
 import sigil.tool.ToolInput
 
 /**
- * Input for [[RefactorWithInstructionTool]] — a single tool call
- * that drives a per-file LLM worker to apply a natural-language
- * instruction to every grep match in a path glob, then commits
- * the aggregated edits atomically.
+ * Input for [[RefactorWithInstructionTool]] — the prepare step of
+ * the three-tool refactor session. The framework dispatches a
+ * per-file LLM worker, aggregates the worker decisions into a
+ * draft [[ApplyWorkspaceEdit]], and parks the draft in the
+ * per-Sigil session store. Disk is NOT touched at this step — the
+ * agent inspects the returned diffs and either commits via the
+ * apply tool or drops via the cancel tool.
  *
  * @param path         relative or absolute filesystem path; the
  *                     glob below restricts to files within this
@@ -21,9 +24,6 @@ import sigil.tool.ToolInput
  *                     are considered for refactoring.
  * @param instruction  natural-language description of the change to
  *                     apply at each match. Workers read this verbatim.
- * @param dryRun       when true, run the worker pass + aggregate
- *                     edits + return the report WITHOUT writing
- *                     to disk.
  * @param workerModelId optional explicit model id to drive each
  *                     worker. When unset, the framework's routing
  *                     picks the cheapest available candidate at
@@ -39,7 +39,6 @@ case class RefactorWithInstructionInput(path: String,
                                         glob: Option[String] = None,
                                         findPattern: String,
                                         instruction: String,
-                                        dryRun: Boolean = false,
                                         workerModelId: Option[String] = None,
                                         maxParallel: Int = 5,
                                         maxWorkers: Int = 1000) extends ToolInput derives RW

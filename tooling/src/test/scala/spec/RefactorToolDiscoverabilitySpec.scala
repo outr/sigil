@@ -5,7 +5,7 @@ import org.scalatest.wordspec.AnyWordSpec
 import sigil.provider.ConversationMode
 import sigil.tool.fs.{GlobTool, GrepTool, LocalFileSystemContext}
 import sigil.tool.{DiscoveryRequest, InMemoryToolFinder, Tool}
-import sigil.tooling.refactor.{LspRenameSymbolTool, RefactorWithInstructionTool}
+import sigil.tooling.refactor.{LspRenameSymbolTool, RefactorSessionStore, RefactorWithInstructionTool}
 
 /**
  * Field-repro from sigil bug #213 — an agent shaping a "find and
@@ -30,7 +30,7 @@ class RefactorToolDiscoverabilitySpec extends AnyWordSpec with Matchers {
     List(
       new GrepTool(fs),
       new GlobTool(fs),
-      new RefactorWithInstructionTool(fs),
+      new RefactorWithInstructionTool(fs, new RefactorSessionStore()),
       new LspRenameSymbolTool(lspManager)
     )
   }

@@ -5,7 +5,7 @@ import sigil.Sigil
 import sigil.db.SigilDB
 import sigil.tool.Tool
 import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext}
-import sigil.tooling.refactor.{LspRenameSymbolTool, RefactorWithInstructionTool}
+import sigil.tooling.refactor.{LspRenameSymbolTool, RefactorApplyTool, RefactorCancelTool, RefactorSessionStore, RefactorWithInstructionTool}
 
 import scala.concurrent.duration.*
 
@@ -51,6 +51,13 @@ trait ToolingSigil extends Sigil {
     * less local filesystem; apps with a workspace root override to
     * scope the agent's reach. */
   def fileSystemContext: FileSystemContext = new LocalFileSystemContext(basePath = None)
+
+  /** Per-Sigil in-memory store of prepared refactor sessions
+    * (see [[RefactorSessionStore]]). Shared by the three refactor
+    * tools so prepare → apply / cancel resolve consistently. Apps
+    * that want a different TTL or a persistent backing override
+    * this. */
+  lazy val refactorSessionStore: RefactorSessionStore = new RefactorSessionStore()
 
   override def staticTools: List[Tool] = {
     val base = super.staticTools
@@ -120,7 +127,9 @@ trait ToolingSigil extends Sigil {
     * surface a structured "workflow runtime not active" error
     * rather than crashing. */
   protected def refactorTools: List[Tool] = List(
-    new RefactorWithInstructionTool(fileSystemContext)
+    new RefactorWithInstructionTool(fileSystemContext, refactorSessionStore),
+    new RefactorApplyTool(fileSystemContext, refactorSessionStore),
+    new RefactorCancelTool(refactorSessionStore)
   )
 
   /** Periodic idle sweep — runs forever on a daemon fiber. */
