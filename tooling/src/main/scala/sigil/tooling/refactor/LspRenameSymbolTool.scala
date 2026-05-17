@@ -43,8 +43,8 @@ final class LspRenameSymbolTool(val manager: LspManager)
         |    the candidates so you can pass a `kindHint` or a more specific `symbolName`.
         |
         |Use this when you know the symbol's name but not the file / line / column. For
-        |position-driven renames (you already have a cursor location), call `lsp_rename`
-        |directly.""".stripMargin,
+        |position-driven renames (you already have a cursor location), call the
+        |position-based LSP rename tool directly.""".stripMargin,
     keywords = Set(
       "lsp", "rename", "refactor", "symbol", "by name", "high-level",
       "semantic", "identifier", "across project", "workspace", "change name"
