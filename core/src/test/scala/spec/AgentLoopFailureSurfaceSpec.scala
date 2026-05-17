@@ -76,6 +76,29 @@ class AgentLoopFailureSurfaceSpec extends AsyncWordSpec with AsyncTaskSpec with 
       .drain
       .startUnit()
 
+    // Poll the recorder until BOTH the agent's Failure-disposition Message
+    // and an Idle AgentStateDelta have landed (the two surfaces every
+    // spec in this suite asserts on), or a 10s deadline elapses.
+    // Replaces a fixed 800ms sleep that was tight enough to flake on
+    // slow CI runners where the publish-then-record path can take a
+    // full second under contention.
+    def settled: Boolean = {
+      val snapshot = recorded.iterator().asScala.toList
+      val hasFailure = snapshot.exists {
+        case m: Message if m.participantId == TestAgent && m.isFailure => true
+        case _ => false
+      }
+      val hasIdle = snapshot.exists {
+        case d: AgentStateDelta
+          if d.activity.contains(AgentActivity.Idle) && d.state.contains(EventState.Complete) => true
+        case _ => false
+      }
+      hasFailure && hasIdle
+    }
+    def waitForSettle(deadline: Long): Task[Unit] =
+      if (settled || System.currentTimeMillis() > deadline) Task.unit
+      else Task.sleep(50.millis).flatMap(_ => waitForSettle(deadline))
+
     for {
       _ <- Task.sleep(100.millis)
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
@@ -86,7 +109,7 @@ class AgentLoopFailureSurfaceSpec extends AsyncWordSpec with AsyncTaskSpec with 
              content        = Vector(ResponseContent.Text("hi")),
              state          = EventState.Complete
            ))
-      _ <- Task.sleep(800.millis)
+      _ <- waitForSettle(System.currentTimeMillis() + 10_000L)
     } yield {
       running.set(false)
       recorded.iterator().asScala.toList
