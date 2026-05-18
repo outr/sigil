@@ -61,6 +61,14 @@ case object FindCapabilityTool extends TypedTool[FindCapabilityInput](
           conversationId = Some(context.conversation.id)
         )
         context.sigil.findCapabilities(request).map { matches =>
+          // Sigil bug #226 — record matches against the per-agent-loop
+          // cache on the TurnContext. Replaces the prior projection
+          // write path so the cache dies with the loop instead of
+          // leaking into the next turn's system prompt.
+          val toolNames = matches.collect {
+            case m if m.capabilityType == sigil.tool.discovery.CapabilityType.Tool => sigil.tool.ToolName(m.name)
+          }
+          context.recordDiscovery(request.keywords, toolNames)
           val results = CapabilityResults(
             matches        = matches,
             participantId  = context.caller,

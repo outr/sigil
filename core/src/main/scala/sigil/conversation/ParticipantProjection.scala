@@ -8,13 +8,6 @@ import sigil.participant.ParticipantId
 import sigil.provider.Mode
 import sigil.tool.ToolName
 
-/** One entry in [[ParticipantProjection.discoveredCapabilities]] —
-  * the tool matches a `find_capability` query returned, plus the
-  * first / most-recent time the query was issued. */
-case class DiscoveredCapability(matches: List[ToolName],
-                                firstSeen: Timestamp,
-                                lastSeen: Timestamp) derives RW
-
 /**
  * Per-(participant, conversation) projection of materialized state:
  *
@@ -47,12 +40,6 @@ case class ParticipantProjection(participantId: ParticipantId,
                                  discoverySkillMode: Option[Id[Mode]] = None,
                                  recentTools: List[ToolName] = Nil,
                                  suggestedTools: List[ToolName] = Nil,
-                                 /** Accumulated `find_capability` results across the
-                                   * conversation, keyed by normalised query keywords.
-                                   * Surfaces in the system prompt so the agent doesn't
-                                   * re-discover tools it's already seen. Aged out after
-                                   * [[sigil.Sigil.discoveredCapabilityTtl]] turns. */
-                                 discoveredCapabilities: Map[String, DiscoveredCapability] = Map.empty,
                                  /** Per-conversation cache of the most recent provider-
                                    * side response id. Today only OpenAI's Responses API
                                    * uses it — `previous_response_id` chains the prior

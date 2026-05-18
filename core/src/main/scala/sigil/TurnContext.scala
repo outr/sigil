@@ -1,12 +1,15 @@
 package sigil
 
 import lightdb.id.Id
-import sigil.conversation.{Conversation, TurnInput}
+import lightdb.time.Timestamp
+import sigil.conversation.{Conversation, DiscoveredCapability, TurnInput}
 import sigil.db.Model
 import sigil.event.{Event, LogLevel, ToolLog}
 import sigil.participant.ParticipantId
 import sigil.signal.{ToolDelta, ToolProgress}
 import sigil.tool.ToolName
+
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Runtime context supplied at the boundary of a unit of work — both
@@ -109,7 +112,26 @@ case class TurnContext(sigil: Sigil,
                          * the iteration-cap soft-stop path to synthesise a
                          * reply from the agent's gathered context rather than
                          * discarding it via [[sigil.AgentRunawayException]]. */
-                       forceResponseSynthesis: Boolean = false) {
+                       forceResponseSynthesis: Boolean = false,
+                       /** Per-agent-loop cache of `find_capability` matches,
+                         * keyed by the normalised query. Populated when the
+                         * agent invokes `find_capability`; rendered into the
+                         * "Capabilities you've already discovered" section of
+                         * the system prompt so subsequent iterations within
+                         * the same loop don't re-run discovery for tools the
+                         * agent has already seen.
+                         *
+                         * NOT persisted. The same `AtomicReference` is shared
+                         * across every iteration's `TurnContext` of one agent
+                         * loop, so an entry recorded in iteration 1 is
+                         * visible on iteration 2. When the loop terminates,
+                         * the reference goes out of scope and a new loop
+                         * starts with a fresh empty map — preventing the
+                         * cross-turn prompt pollution where unrelated tools
+                         * from a prior task surfaced on every subsequent
+                         * turn. */
+                       discoveredCapabilitiesRef: AtomicReference[Map[String, DiscoveredCapability]] =
+                         new AtomicReference(Map.empty[String, DiscoveredCapability])) {
 
   /**
    * The participant currently acting — `chain.last`.
@@ -222,6 +244,40 @@ case class TurnContext(sigil: Sigil,
           summary        = Some(value)
         )).map(_ => ())
     }
+
+  /** Snapshot of the per-agent-loop `find_capability` cache. Renderers
+    * read this when assembling the "Capabilities you've already
+    * discovered" section of the system prompt. The map is empty on a
+    * fresh loop and grows as the agent invokes `find_capability`
+    * within the loop's iterations. */
+  def discoveredCapabilities: Map[String, DiscoveredCapability] =
+    discoveredCapabilitiesRef.get()
+
+  /** Record a `find_capability` result against the per-loop cache.
+    * Called by [[sigil.tool.core.FindCapabilityTool]] after discovery
+    * runs; preserves `firstSeen` across re-issues of the same query
+    * and advances `lastSeen`. No-op when the query is empty (matches
+    * the prior persisted-projection behaviour). */
+  def recordDiscovery(query: String, matches: List[ToolName]): Unit =
+    if (query.nonEmpty) {
+      val now = Timestamp()
+      val _ = discoveredCapabilitiesRef.updateAndGet { current =>
+        current.updatedWith(query) {
+          case Some(existing) => Some(existing.copy(matches = matches, lastSeen = now))
+          case None           => Some(DiscoveredCapability(matches = matches, firstSeen = now, lastSeen = now))
+        }
+      }
+    }
+
+  /** Drop every entry from the per-loop `find_capability` cache.
+    * Invoked when the agent settles its turn via a terminal respond-
+    * family call so the next iteration (or, more typically, the next
+    * agent loop) starts with a clean prompt. The natural end-of-loop
+    * release also drops the cache implicitly because the
+    * `AtomicReference` goes out of scope; this explicit clear is the
+    * traceable in-loop signal. */
+  def clearDiscoveredCapabilities(): Unit =
+    discoveredCapabilitiesRef.set(Map.empty)
 }
 
 object TurnContext {
