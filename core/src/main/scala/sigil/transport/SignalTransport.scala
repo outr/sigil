@@ -58,6 +58,14 @@ final class SignalTransport(sigil: Sigil) {
     val boundary = new AtomicLong(Long.MinValue)
     val live: Stream[Signal] = sigil.signalsFor(viewer)
 
+    // Latest-status replay for registered services — every fresh
+    // subscriber sees the current state of every registered
+    // [[sigil.service.Service]] before live signals start flowing,
+    // so chips paint with current state without waiting for the next
+    // state transition. Cheap (one map read + one push per service).
+    val serviceStatuses: Stream[Signal] =
+      Stream.emits(sigil.serviceStatusReplay).evalTap(s => sink.push(s))
+
     val replayed: Stream[Signal] = replay(viewer, resume, conversations).evalTap { signal =>
       signal match {
         case e: Event =>
@@ -76,7 +84,7 @@ final class SignalTransport(sigil: Sigil) {
       case _: Notice => true
     }.evalTap(s => sink.push(s))
 
-    val combined = (replayed ++ forwarded).takeWhile(_ => !cancelled.get())
+    val combined = (serviceStatuses ++ replayed ++ forwarded).takeWhile(_ => !cancelled.get())
     combined.drain.startUnit()
 
     new SinkHandle {

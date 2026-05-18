@@ -34,7 +34,8 @@ import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentPart
 import sigil.pipeline.{ContentExternalizationTransform, GeocodingEnrichmentEffect, InboundTransform, LocationCaptureTransform, MemoryCacheInvalidationEffect, MessageIndexingEffect, RedactLocationTransform, RespondOptionsSelectionFramingTransform, SettledEffect, SignalHub, TopicIndexCanonicalizingTransform, ViewerTransform}
 import sigil.render.{ContentRenderer, HtmlRenderer, MarkdownRenderer, PlainTextRenderer, SlackMrkdwnRenderer}
 import sigil.provider.Provider
-import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, Signal, ToolDelta}
+import sigil.service.Service
+import sigil.signal.{AgentActivity, AgentStateDelta, CoreSignals, Delta, EventState, LocationDelta, Notice, ServiceLogSignal, ServiceStatusSignal, Signal, ToolDelta}
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
 import sigil.tool.Tool
 import sigil.tool.core.{CoreTools, FindCapabilityTool}
@@ -2264,6 +2265,97 @@ trait Sigil {
    */
   protected def participants: List[RW[? <: Participant]] = Nil
 
+  // -- services (long-lived background dependencies) --
+
+  /**
+   * Persistent background services Sigil advertises to UIs through
+   * status chips with state controls and (optionally) streaming logs.
+   * Each entry surfaces as one chip; concrete examples are a running
+   * LSP / BSP server, a model server, an MCP connection, a database
+   * pool. The framework caches the most recent
+   * [[ServiceStatusSignal]] per service id and replays it to fresh
+   * clients on connect via [[sigil.transport.SignalTransport.attach]].
+   *
+   * Concrete [[sigil.provider.Provider]] implementations automatically
+   * satisfy the [[Service]] interface (every provider IS a service);
+   * apps wire their resolved providers into this list when they want
+   * provider chips visible in the services panel. Apps that don't use
+   * the services surface leave the default `Nil` and pay nothing —
+   * the framework's status-emit machinery is no-op unless a service
+   * publishes through [[publishServiceStatus]].
+   */
+  def services: List[Service] = Nil
+
+  /** All services keyed by id. Computed once from [[services]];
+    * read by [[serviceById]] / [[serviceStatusReplay]]. */
+  private final lazy val servicesById: Map[Id[Service], Service] =
+    services.map(s => s.id -> s).toMap
+
+  /** Look up a registered service by its stable id. Returns `None`
+    * for unknown ids — apps that need fail-loud semantics check the
+    * result themselves. */
+  final def serviceById(id: Id[Service]): Option[Service] = servicesById.get(id)
+
+  /** Latest [[ServiceStatusSignal]] observed per service id. Populated
+    * by [[publish]] whenever a `ServiceStatusSignal` flows through and
+    * read by [[serviceStatusReplay]] so a fresh client connecting after
+    * a status transition sees the current state immediately rather
+    * than waiting for the next transition. The map is process-local;
+    * no disk persistence. */
+  private final val serviceStatusCache: AtomicReference[Map[Id[Service], ServiceStatusSignal]] =
+    new AtomicReference(Map.empty)
+
+  /** Synchronous read of the cached latest status for a single service.
+    * Returns the cached signal if any has been published in this
+    * process lifetime, otherwise synthesises one from the service's
+    * [[Service.currentState]] so fresh consumers always see something. */
+  final def latestServiceStatus(id: Id[Service]): Option[ServiceStatusSignal] = {
+    serviceStatusCache.get.get(id).orElse {
+      servicesById.get(id).map(s => ServiceStatusSignal(s.id, s.currentState))
+    }
+  }
+
+  /** Latest status snapshot for every registered service — the
+    * payload [[sigil.transport.SignalTransport.attach]] sends to a
+    * freshly-connected subscriber so its chips paint with current
+    * state immediately. Services that have published at least once
+    * report their cached signal; services that haven't fall back to
+    * a synthetic signal derived from [[Service.currentState]]. */
+  final def serviceStatusReplay: List[ServiceStatusSignal] = {
+    val cached = serviceStatusCache.get
+    services.map { svc =>
+      cached.getOrElse(svc.id, ServiceStatusSignal(svc.id, svc.currentState))
+    }
+  }
+
+  /** Publish a [[ServiceStatusSignal]] and update the latest-status
+    * cache. Apps and framework subsystems call this when a service
+    * transitions state. Idempotent — re-publishing the same state
+    * still broadcasts (consumers tracking deltas can dedupe), and
+    * still refreshes the cache so the timestamp behaviour stays
+    * consistent. */
+  final def publishServiceStatus(signal: ServiceStatusSignal): Task[Unit] =
+    publish(signal)
+
+  /** Publish a [[ServiceLogSignal]] as a live-only Notice — never
+    * persisted, never cached. Apps and framework subsystems route
+    * service stdout / stderr through this helper so log-tail UIs
+    * receive the line in real time. */
+  final def publishServiceLog(signal: ServiceLogSignal): Task[Unit] =
+    publish(signal)
+
+  /** Update the latest-status cache when a [[ServiceStatusSignal]]
+    * flows through [[publish]]. Called from the publish pipeline
+    * before the hub emit so a subscribe-then-poll race can't observe
+    * a state where the hub has delivered the new signal but the
+    * cache still reports the old one. */
+  private final def updateServiceStatusCache(signal: Signal): Unit = signal match {
+    case s: ServiceStatusSignal =>
+      serviceStatusCache.updateAndGet(_ + (s.serviceId -> s))
+      ()
+    case _ => ()
+  }
+
   // -- provider resolution --
 
   /**
@@ -2309,7 +2401,7 @@ trait Sigil {
       // want to redact / annotate). Then broadcast through the hub
       // and dispatch to handleNotice.
       applyInboundTransforms(n).flatMap { resolved =>
-        Task { hub.emit(resolved); () }
+        Task { updateServiceStatusCache(resolved); hub.emit(resolved); () }
       }
     case _ =>
       validateEventInvariants(signal).flatMap { _ =>
