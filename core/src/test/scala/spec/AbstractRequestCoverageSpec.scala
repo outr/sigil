@@ -225,9 +225,15 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
       body should include("SKILL_CONTENT_42")
     }
 
-    "include per-participant recentTools (from projections) in the wire body" in {
+    "include per-participant recentToolInvocations (from projections) in the wire body" in {
+      val invocation = sigil.conversation.RecentToolInvocation(
+        toolName    = ToolName("RECENT_TOOL_42"),
+        argsHash    = "hash-42",
+        argsPreview = "{\"q\":\"42\"}",
+        invokedAt   = lightdb.time.Timestamp()
+      )
       val proj = sigil.conversation.ParticipantProjection.empty(TestAgent, conversationId)
-        .copy(recentTools = List(ToolName("RECENT_TOOL_42")))
+        .copy(recentToolInvocations = List(invocation))
       val turn = emptyTurnInput.copy(participantProjections = Map(TestAgent -> proj))
       bodyOf(turn) should include("RECENT_TOOL_42")
     }

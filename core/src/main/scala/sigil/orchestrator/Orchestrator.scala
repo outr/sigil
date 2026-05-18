@@ -556,6 +556,49 @@ object Orchestrator {
             // the agent re-emits a refusal after the reminder, the
             // refusal passes through (that IS the answer).
             def proceedWithAtomicDispatch(): Stream[Signal] = {
+              val toolName = active.toolName
+              // Hard cap on identical (toolName + canonical args)
+              // dispatches across the recent-invocations window. When
+              // the projection already holds N-1 entries matching this
+              // call AND `Sigil.maxIdenticalToolCallsInWindow > 0`,
+              // the orchestrator REFUSES dispatch and emits a Tool-
+              // role Failure paired to the originating ToolInvoke. The
+              // prompt-level warning is advisory; the cap is the
+              // backstop when the agent ignores it.
+              val identicalLimit = sigil.maxIdenticalToolCallsInWindow
+              if (identicalLimit > 0) {
+                val canonicalHash = _root_.sigil.tool.ToolInputCanonicalizer.argsHash(input)
+                val priorIdentical = request.turnInput
+                  .projectionFor(caller)
+                  .recentToolInvocations
+                  .count(inv => inv.toolName.value == toolName && inv.argsHash == canonicalHash)
+                if (priorIdentical >= identicalLimit - 1) {
+                  val attemptedCount = priorIdentical + 1
+                  val preview = _root_.sigil.tool.ToolInputCanonicalizer.argsPreview(input)
+                  val previewText = if (preview.nonEmpty) s" `$preview`" else ""
+                  val body =
+                    s"Refused to dispatch `$toolName` -- you have already called this tool with " +
+                      s"these exact args $priorIdentical times in the recent window (this would " +
+                      s"be call #$attemptedCount).$previewText The result will not change. Try a " +
+                      "different approach: narrow the pattern, paginate via `next_page`, switch " +
+                      "to a different tool, or ask the user for clarification."
+                  val capMsg = Message(
+                    participantId  = caller,
+                    conversationId = convId,
+                    topicId        = topicId,
+                    role           = MessageRole.Tool,
+                    content        = Vector(ResponseContent.Text(body)),
+                    state          = EventState.Complete,
+                    disposition    = MessageDisposition.Failure(recoverable = true),
+                    visibility     = MessageVisibility.Agents,
+                    origin         = Some(invokeId)
+                  )
+                  return Stream.emits(toolDeltaPrefix ::: List[Signal](
+                    capMsg,
+                    StateDelta(target = capMsg._id, conversationId = convId, state = EventState.Complete)
+                  ))
+                }
+              }
               // Bug #87 — dedupe identical (toolName + canonical args
               // JSON) calls within the same completion. When the model
               // emits N parallel function_calls that share a key
@@ -564,7 +607,6 @@ object Orchestrator {
               // route the duplicates to a synthesized Tool-role
               // pointer Message paired to their own ToolInvoke. Wire
               // shape stays well-formed; the underlying tool runs once.
-              val toolName = active.toolName
               val argsKey = canonicalArgsKey(toolName, input)
               state.dispatchedKeys.get(argsKey) match {
                 case Some(firstInvokeId) =>
