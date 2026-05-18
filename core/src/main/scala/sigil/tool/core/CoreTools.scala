@@ -117,7 +117,17 @@ object CoreTools {
       summon[RW[sigil.tool.output.NextPageInput]],
       summon[RW[sigil.tool.output.QueryToolOutputInput]],
       summon[RW[sigil.tool.core.CancelFrameworkWorkflowInput]],
-      summon[RW[RequestEscalationInput]]
+      summon[RW[RequestEscalationInput]],
+      // Framework-internal consult tools — their inputs round-trip
+      // through the polymorphic [[ToolInput]] RW when consumers
+      // (caching layers, debug dumps, persisted projections) inspect
+      // the events the consult call emitted.
+      summon[RW[sigil.tool.consult.ExtractMemoriesInput]],
+      summon[RW[sigil.tool.consult.SummarizationInput]],
+      summon[RW[sigil.tool.consult.TopicClassifierInput]],
+      summon[RW[sigil.tool.consult.ClassifyMemoryInput]],
+      summon[RW[sigil.tool.consult.RerankInput]],
+      summon[RW[sigil.tool.consult.ProgressReflectionInput]]
     )
 
   val coreToolNames: List[sigil.tool.ToolName] = all.map(_.schema.name).toList
