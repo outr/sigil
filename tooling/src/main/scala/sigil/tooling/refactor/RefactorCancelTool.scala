@@ -16,8 +16,9 @@ final class RefactorCancelTool(sessionStore: RefactorSessionStore)
   extends TypedOutputTool[RefactorCancelInput, RefactorCancelOutput](
     name = ToolName("refactor_cancel"),
     description =
-      """Drop a previously prepared refactor session by id. Removes the staged workspace edits
-        |from the in-memory session store without writing anything to disk.
+      """Drop a refactor session returned by `refactor_with_instruction` without writing anything
+        |to disk. Use when the proposed diffs aren't right and you want to re-run
+        |`refactor_with_instruction` with a different `findPattern` or `instruction`.
         |
         |Returns one of:
         |  - `cancelled` — the session was present and has been dropped.
