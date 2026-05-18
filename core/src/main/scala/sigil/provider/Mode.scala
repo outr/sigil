@@ -163,11 +163,19 @@ object Mode extends PolyType[Mode]()(using scala.reflect.ClassTag(classOf[Mode])
 
     override def definition: Definition = Definition(
       DefType.Poly(
-        VectorMap.from(instancesByName.toList.map { case (n, _) =>
-          n -> Definition(DefType.Obj(VectorMap.empty), className = Some(n))
+        VectorMap.from(instancesByName.toList.map { case (n, instance) =>
+          // className is the Scala FQN of the case object (trailing `$` stripped) — NOT
+          // the wire discriminator value. The wire value rides as the VectorMap key (`n`).
+          // Keeping these separate gives the Dart codegen the real Scala type name to
+          // PascalCase into a Dart class identifier, so a Mode named `"conversation"`
+          // emits `class ConversationMode` (not `class Conversation`, which would
+          // shadow the `Conversation` entity record on the Dart side).
+          n -> Definition(DefType.Obj(VectorMap.empty), className = Some(scalaFqn(instance)))
         })
       ),
       className = Some(classOf[Mode].getName)
     )
   }
+
+  private def scalaFqn(m: Mode): String = m.getClass.getName.stripSuffix("$")
 }
