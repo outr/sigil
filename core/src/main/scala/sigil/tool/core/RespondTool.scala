@@ -52,7 +52,8 @@ case object RespondTool extends TypedTool[RespondInput](
       |  prior label when the user returns to a previous topic. Avoid agent names (`Sage`, `Claude`,
       |  `Assistant`) and generic catch-alls (`Chat`, `Help`) — they describe the agent, pollute the
       |  topic-shift classifier, and stick forever. For pure-greeting first turns use `Greeting`;
-      |  pick a real subject as soon as the next user message reveals one.
+      |  pick a real subject as soon as the next user message reveals one. When a named context (project, repo, document,
+      |  ticket id) is visible in your prompt, prefer including it in the label so conversations are self-identifying in history.
       |- `topicSummary` — 1-2 sentences.
       |- `content` — markdown body. Standard markdown (paragraphs, code fences, tables, lists,
       |  links, images, headings) is parsed into typed content blocks. Two markdown extensions
