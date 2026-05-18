@@ -23,14 +23,18 @@ final class RefactorApplyTool(fs: FileSystemContext,
   extends TypedOutputTool[RefactorApplyInput, RefactorApplyOutput](
     name = ToolName("refactor_apply"),
     description =
-      """Commit the workspace edits previously staged by the prior preparation step.
-        |Takes the opaque `sessionId` returned at preparation time and applies the stored edits
+      """Commit the edits returned by `refactor_with_instruction` after you've reviewed the diffs.
+        |Takes the `sessionId` from the prior call and writes the per-file edits to disk
         |atomically — every file succeeds or none do, with full rollback if any write fails.
+        |
+        |Call this when the diffs look right. If they don't, call `refactor_cancel` instead and
+        |re-run `refactor_with_instruction` with a tighter `instruction`.
         |
         |Returns one of:
         |  - `applied`     — all stored edits committed; the session has been consumed.
         |  - `not-found`   — no session matched the id (expired, already applied, or never
-        |                    existed). Re-run the preparation step if you still want the change.
+        |                    existed). Re-run `refactor_with_instruction` if you still want
+        |                    the change.
         |  - `aborted`     — atomic pre-flight or write failed; the per-file detail reports
         |                    which file blocked the apply and why.
         |

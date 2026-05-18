@@ -47,32 +47,41 @@ final class RefactorWithInstructionTool(fs: FileSystemContext,
   extends TypedOutputTool[RefactorWithInstructionInput, RefactorWithInstructionOutput](
     name = ToolName("refactor_with_instruction"),
     description =
-      """Prepare a multi-file refactor: find every regex match across files matching a glob and
-        |dispatch a per-file LLM worker (cheap small model) to decide how the instruction applies
-        |at each match. The framework aggregates the worker decisions into a draft workspace edit
-        |stored under a fresh `sessionId` and returned alongside a paginated first page of diffs.
+      """Find-and-edit across many files in one call. The tool searches under `path` (optionally
+        |filtered by a path glob) for `findPattern`, then dispatches a small-model worker per
+        |file to apply `instruction` at each match. Returns a `sessionId` plus the proposed
+        |per-file diffs — nothing written
+        |to disk yet. Review the diffs, then commit with `refactor_apply` or drop with
+        |`refactor_cancel`. Subsequent pages of diffs are reachable via the standard pagination
+        |tools using the returned `sessionId` as the `referenceId`.
         |
-        |This tool DOES NOT write to disk. Inspect the diffs, then commit the prepared session
-        |with the refactor-apply tool — or drop it with the refactor-cancel tool. Subsequent
-        |pages of diffs are reachable via the standard pagination tools using the returned
-        |`sessionId` as the `referenceId`.
+        |This is the first move for any multi-file pattern change — not the last. DO NOT grep
+        |first to scout the matches; the tool's own grep IS the discovery, and the returned
+        |diffs ARE the preview. A separate pre-grep adds nothing the diffs don't already show
+        |and costs an extra round-trip.
+        |
+        |Use for: "remove all // Bug NNN comments", "rename foo to bar across every .scala",
+        |"replace deprecated API X with Y at every callsite".
+        |Don't use for: single-file edits (use the single-file edit tool), or read-only
+        |inspection where you don't intend to act (use the grep tool — this tool spawns paid
+        |LLM workers per file).
         |
         |Inputs:
         |  - `path`         — filesystem root for the search.
         |  - file-set glob  — optional path-glob filter on candidate files.
-        |  - `findPattern`  — regex; only files containing at least one match are refactored.
-        |  - `instruction`  — what the workers should do at each match. The instruction is read
-        |                     verbatim by every worker; be specific about what to edit AND what to
-        |                     leave alone (e.g. "Remove all `// Bug #NNN` comment markers. Preserve
-        |                     `// Don't fix:` warnings unchanged.").
+        |  - `findPattern`  — regex; files with at least one match get a worker.
+        |  - `instruction`  — what every worker should do at each match. Write it as a self-
+        |                     contained directive — every worker sees ONLY this string plus
+        |                     its file's matches. Be explicit about preserve-vs-edit if the
+        |                     pattern could overmatch (e.g. "Remove // Bug NNN markers. Preserve
+        |                     // Don't fix: warnings unchanged.").
         |  - `workerModelId`— optional explicit model id for the workers; default routes to the
         |                     cheapest available at `Low` complexity for coding work.
         |  - `maxParallel`  — concurrency cap (default 5).
         |  - `maxWorkers`   — hard cost cap (default 1000) — refuses to spawn more.
         |
-        |Returns the `sessionId`, first-page diffs, and pagination cursors. Sessions are kept in
-        |memory for 30 minutes by default; an unconsumed session past that window is treated as
-        |cancelled.""".stripMargin,
+        |Sessions are kept in memory for 30 minutes by default; an unconsumed session past
+        |that window is treated as cancelled.""".stripMargin,
     keywords = Set(
       "refactor", "rewrite", "modify", "multi-file", "across files", "worker",
       "judgment", "per-match", "regex", "code change", "edit", "transform",
