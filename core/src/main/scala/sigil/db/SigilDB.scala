@@ -75,7 +75,10 @@ abstract class SigilDB(override val directory: Option[Path],
   override def upgrades: List[DatabaseUpgrade] = appUpgrades
 
   /**
-   * Apply a [[Signal]] to the events store.
+   * Apply a [[Signal]] to the events store. Events insert; Deltas
+   * upsert a mutated target row; Notices are transient pulses with
+   * no persistence — they fall through as a no-op so callers can
+   * pipe a raw signal stream straight into `apply` without filtering.
    */
   def apply(signal: Signal): Task[Unit] = signal match {
     case e: Event =>
@@ -87,6 +90,7 @@ abstract class SigilDB(override val directory: Option[Path],
           case None => Task.unit
         }
       }
+    case _: sigil.signal.Notice => Task.unit
   }
 }
 
