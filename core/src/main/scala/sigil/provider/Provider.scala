@@ -358,15 +358,20 @@ trait Provider extends Service {
   }
 
   /** Whether the event represents committed work the downstream
-    * consumer may have started rendering. Session-start chunks and
-    * synthetic streaming Usage estimates emit `Usage` / `Error` only —
-    * those don't count, so a transient failure before any text / tool
-    * / reasoning / image / response-state event lands stays
-    * retryable. */
+    * consumer may have started rendering. Reasoning is transient — the
+    * consumer renders it as a "thinking..." placeholder, and a failed
+    * attempt's buffered events are dropped entirely when retry fires
+    * (the orchestrator only ever sees the final attempt's stream), so
+    * a fresh reasoning chain on retry is invisible / desirable rather
+    * than a duplicate. Usage / Error / Done are bookkeeping. Anything
+    * else (text, tool calls, image generation, response-state capture,
+    * server-tool lifecycle) is committed work that retry would shadow. */
   private def isMeaningfulProviderEvent(ev: ProviderEvent): Boolean = ev match {
     case _: ProviderEvent.Usage              => false
     case _: ProviderEvent.Error              => false
     case _: ProviderEvent.Done               => false
+    case _: ProviderEvent.ThinkingDelta      => false
+    case _: ProviderEvent.ReasoningItem      => false
     case _                                   => true
   }
 
