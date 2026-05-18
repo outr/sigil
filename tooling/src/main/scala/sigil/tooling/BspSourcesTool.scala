@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.{BspSourceItem, BspSourcesResult, BspTargetSources}
 
 import scala.jdk.CollectionConverters.*
@@ -27,12 +27,6 @@ final class BspSourcesTool(val manager: BspManager) extends TypedOutputTool[BspS
   keywords = Set(
     "bsp", "sources", "source files", "list sources", "target sources",
     "scala", "sbt", "project", "files", "code", "examine", "inspect"
-  ),
-  examples = List(
-    ToolExample(
-      "list sources for every target",
-      BspSourcesInput(projectRoot = "/abs/path/myproject")
-    )
   )
 ) with BspToolSupport {
   override def paginate: Boolean = false

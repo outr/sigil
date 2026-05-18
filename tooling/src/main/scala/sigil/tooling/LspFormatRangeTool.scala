@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.{FormattingOptions, Position, Range}
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.LspFormatResult
 
 import java.nio.file.{Files, Paths, StandardOpenOption}
@@ -35,17 +35,7 @@ final class LspFormatRangeTool(val manager: LspManager) extends TypedOutputTool[
       |`startLine`/`startCharacter`/`endLine`/`endCharacter` (0-based) define the range.
       |`tabSize` and `insertSpaces` are passed as FormattingOptions.
       |Writes the formatted result back to disk; returns `{filePath, editsApplied}`.""".stripMargin,
-  keywords = Set("lsp", "format", "format range", "prettify", "indent", "beautify", "selection"),
-  examples = List(
-    ToolExample(
-      "format a single method body",
-      LspFormatRangeInput(
-        languageId = "scala", filePath = "/abs/path/Foo.scala",
-        startLine = 10, startCharacter = 0,
-        endLine = 25, endCharacter = 0
-      )
-    )
-  )
+  keywords = Set("lsp", "format", "format range", "prettify", "indent", "beautify", "selection")
 ) with sigil.tool.DestructiveExternalTool with LspToolSupport {
   override def paginate: Boolean = false
 

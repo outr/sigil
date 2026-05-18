@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.CompletionItem
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.{LspCompletionItem, LspCompletionResult}
 
 case class LspCompletionInput(languageId: String,
@@ -33,13 +33,7 @@ final class LspCompletionTool(val manager: LspManager) extends TypedOutputTool[L
       |`filePath` + `line` + `character` (0-based) point at the cursor location.
       |`maxResults` (default 50) caps the response so large catalogs don't flood context.
       |Returns `{filePath, items: [{label, kind, detail}], totalCount, truncated}`.""".stripMargin,
-  keywords = Set("lsp", "completion", "complete", "autocomplete", "suggest", "suggestion", "intellisense"),
-  examples = List(
-    ToolExample(
-      "scala completion at a method-call position",
-      LspCompletionInput(languageId = "scala", filePath = "/abs/path/Foo.scala", line = 10, character = 12)
-    )
-  )
+  keywords = Set("lsp", "completion", "complete", "autocomplete", "suggest", "suggestion", "intellisense")
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override def paginate: Boolean = false
 

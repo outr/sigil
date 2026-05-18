@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.{InlayHint, InlayHintKind, Position, Range}
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.{LspInlayHintItem, LspInlayHintsResult, LspPosition}
 
 import scala.jdk.CollectionConverters.*
@@ -33,13 +33,7 @@ final class LspInlayHintsTool(val manager: LspManager) extends TypedOutputTool[L
       |`startLine`/`startCharacter`/`endLine`/`endCharacter` (0-based) bound the range;
       |defaults to the whole file.
       |Each item: `{kind, position, label}` where kind is `type` / `param` / `hint`.""".stripMargin,
-  keywords = Set("lsp", "inlay", "hints", "type annotation", "parameter hint", "type hint"),
-  examples = List(
-    ToolExample(
-      "scala inlay hints for the whole file",
-      LspInlayHintsInput(languageId = "scala", filePath = "/abs/path/Foo.scala")
-    )
-  )
+  keywords = Set("lsp", "inlay", "hints", "type annotation", "parameter hint", "type hint")
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override def paginate: Boolean = false
 

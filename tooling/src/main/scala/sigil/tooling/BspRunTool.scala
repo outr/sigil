@@ -4,7 +4,7 @@ import ch.epfl.scala.bsp4j.{BuildTargetIdentifier, StatusCode}
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.BspExecResult
 
 case class BspRunInput(projectRoot: String,
@@ -30,17 +30,7 @@ final class BspRunTool(val manager: BspManager) extends TypedOutputTool[BspRunIn
       |`target` is the target URI to run.
       |`arguments` (optional) flows through to the running program.
       |Returns `{status, targetCount: 1, stdout, stderr}` where status is `OK` / `ERROR` / `CANCELLED`.""".stripMargin,
-  keywords = Set("bsp", "run", "execute", "main", "launch", "start"),
-  examples = List(
-    ToolExample(
-      "run a main class",
-      BspRunInput(
-        projectRoot = "/abs/path/myproject",
-        target = "file:///abs/path/myproject/?id=core",
-        arguments = List("--mode", "demo")
-      )
-    )
-  )
+  keywords = Set("bsp", "run", "execute", "main", "launch", "start")
 ) with sigil.tool.DestructiveExternalTool with BspToolSupport {
   override def paginate: Boolean = false
 

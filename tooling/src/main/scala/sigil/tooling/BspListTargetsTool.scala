@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.{BspBuildTarget, BspListTargetsResult}
 
 case class BspListTargetsInput(projectRoot: String) extends ToolInput derives RW
@@ -24,12 +24,6 @@ final class BspListTargetsTool(val manager: BspManager) extends TypedOutputTool[
   keywords = Set(
     "bsp", "targets", "list targets", "build targets", "modules",
     "examine", "inspect", "scala", "sbt", "project", "build"
-  ),
-  examples = List(
-    ToolExample(
-      "list targets in a project",
-      BspListTargetsInput(projectRoot = "/abs/path/myproject")
-    )
   )
 ) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
   override def paginate: Boolean = false

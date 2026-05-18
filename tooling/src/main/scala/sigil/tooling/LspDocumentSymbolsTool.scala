@@ -5,7 +5,7 @@ import org.eclipse.lsp4j.{DocumentSymbol, SymbolInformation}
 import org.eclipse.lsp4j.jsonrpc.messages.{Either => LspEither}
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.{LspDocumentSymbolEntry, LspDocumentSymbolsResult, LspPosition}
 
 import scala.jdk.CollectionConverters.*
@@ -37,12 +37,6 @@ final class LspDocumentSymbolsTool(val manager: LspManager) extends TypedOutputT
     "what's in this file", "classes", "methods", "members",
     "examine", "inspect", "analyze", "review", "explore",
     "code", "semantic", "scala", "language", "navigate"
-  ),
-  examples = List(
-    ToolExample(
-      "outline a Scala file",
-      LspDocumentSymbolsInput(languageId = "scala", filePath = "/abs/path/Foo.scala")
-    )
   )
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override def paginate: Boolean = false

@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.LspLocation
 
 case class LspFindReferencesInput(languageId: String,
@@ -44,15 +44,6 @@ final class LspFindReferencesTool(val manager: LspManager) extends TypedOutputTo
     "occurrences", "examine", "inspect", "analyze", "review", "uses",
     "where used", "find symbol", "semantic",
     "scala", "language", "code", "navigate"
-  ),
-  examples = List(
-    ToolExample(
-      "find references to a method",
-      LspFindReferencesInput(
-        languageId = "scala", filePath = "/abs/path/Foo.scala",
-        line = 10, character = 7
-      )
-    )
   )
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override def paginate: Boolean = false

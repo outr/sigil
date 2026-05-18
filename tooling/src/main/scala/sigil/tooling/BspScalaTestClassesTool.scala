@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.{BspTargetTestClasses, BspTestClassesResult}
 
 import scala.jdk.CollectionConverters.*
@@ -29,13 +29,7 @@ final class BspScalaTestClassesTool(val manager: BspManager) extends TypedOutput
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.
       |Returns each target's test framework + class names.""".stripMargin,
-  keywords = Set("bsp", "test classes", "tests", "scala", "find tests", "test suite"),
-  examples = List(
-    ToolExample(
-      "list test classes",
-      BspScalaTestClassesInput(projectRoot = "/abs/path/myproject")
-    )
-  )
+  keywords = Set("bsp", "test classes", "tests", "scala", "find tests", "test suite")
 ) with BspToolSupport {
   override def paginate: Boolean = false
 

@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.CodeLens
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.{LspCodeLensItem, LspCodeLensResult, LspPosition}
 
 case class LspCodeLensInput(languageId: String,
@@ -24,13 +24,7 @@ final class LspCodeLensTool(val manager: LspManager) extends TypedOutputTool[Lsp
       |
       |`languageId` + `filePath` identify the document.
       |Returns each lens's position, optional title, and whether it carries a runnable command.""".stripMargin,
-  keywords = Set("lsp", "code lens", "lens", "inline action", "above-line action"),
-  examples = List(
-    ToolExample(
-      "list lenses on a Scala file",
-      LspCodeLensInput(languageId = "scala", filePath = "/abs/path/Foo.scala")
-    )
-  )
+  keywords = Set("lsp", "code lens", "lens", "inline action", "above-line action")
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override def paginate: Boolean = false
 

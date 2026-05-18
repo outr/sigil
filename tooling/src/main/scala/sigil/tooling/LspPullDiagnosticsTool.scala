@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.DocumentDiagnosticReport
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.{LspDiagnostic, LspDiagnosticsResult}
 
 import scala.jdk.CollectionConverters.*
@@ -40,12 +40,6 @@ final class LspPullDiagnosticsTool(val manager: LspManager) extends TypedOutputT
     "analyze", "examine", "inspect", "review", "what's broken",
     "fresh", "sync", "synchronous",
     "scala", "type", "fix", "code", "language"
-  ),
-  examples = List(
-    ToolExample(
-      "pull diagnostics for a single file",
-      LspPullDiagnosticsInput(languageId = "scala", filePath = "/abs/path/Foo.scala")
-    )
   )
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override def paginate: Boolean = false

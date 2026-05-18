@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.LspLocation
 
 case class LspImplementationInput(languageId: String,
@@ -31,12 +31,6 @@ final class LspImplementationTool(val manager: LspManager) extends TypedOutputTo
   keywords = Set(
     "lsp", "implementation", "implementations", "who implements", "implementors",
     "concrete", "subclasses", "traits", "interface", "examine", "inspect"
-  ),
-  examples = List(
-    ToolExample(
-      "find all overrides of an abstract method",
-      LspImplementationInput(languageId = "scala", filePath = "/abs/path/Foo.scala", line = 10, character = 7)
-    )
   )
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override def paginate: Boolean = false

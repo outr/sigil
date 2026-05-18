@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.BspInverseSourcesResult
 
 import java.io.File
@@ -24,16 +24,7 @@ final class BspInverseSourcesTool(val manager: BspManager) extends TypedOutputTo
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`filePath` is the absolute source path.""".stripMargin,
-  keywords = Set("bsp", "inverse sources", "target for file", "which target", "owning target"),
-  examples = List(
-    ToolExample(
-      "find which target owns a file",
-      BspInverseSourcesInput(
-        projectRoot = "/abs/path/myproject",
-        filePath = "/abs/path/myproject/core/src/main/scala/Foo.scala"
-      )
-    )
-  )
+  keywords = Set("bsp", "inverse sources", "target for file", "which target", "owning target")
 ) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
   override def paginate: Boolean = false
 

@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.{LspFoldingRangeItem, LspFoldingRangeResult}
 
 case class LspFoldingRangeInput(languageId: String,
@@ -22,13 +22,7 @@ final class LspFoldingRangeTool(val manager: LspManager) extends TypedOutputTool
       |
       |`languageId` + `filePath` identify the document.
       |Returns each fold's `kind` (`region` / `comment` / `imports`), 1-based start/end lines.""".stripMargin,
-  keywords = Set("lsp", "fold", "folding", "collapse", "sections", "regions", "code structure"),
-  examples = List(
-    ToolExample(
-      "outline foldable regions of a Scala file",
-      LspFoldingRangeInput(languageId = "scala", filePath = "/abs/path/Foo.scala")
-    )
-  )
+  keywords = Set("lsp", "fold", "folding", "collapse", "sections", "regions", "code structure")
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override def paginate: Boolean = false
 

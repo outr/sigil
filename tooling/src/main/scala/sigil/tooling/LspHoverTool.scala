@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.LspHover
 
 case class LspHoverInput(languageId: String,
@@ -31,13 +31,7 @@ final class LspHoverTool(val manager: LspManager) extends TypedOutputTool[LspHov
       |`languageId` selects the persisted LspServerConfig.
       |`filePath` + `line` + `character` (0-based) point at any character inside the symbol.
       |Returns `Option[{contents, kind, range?}]` — `None` if the server has no hover info there.""".stripMargin,
-  keywords = Set("lsp", "hover", "type", "type info", "info", "what is", "signature", "docs", "documentation", "explain"),
-  examples = List(
-    ToolExample(
-      "scala hover on a symbol",
-      LspHoverInput(languageId = "scala", filePath = "/abs/path/Foo.scala", line = 10, character = 5)
-    )
-  )
+  keywords = Set("lsp", "hover", "type", "type info", "info", "what is", "signature", "docs", "documentation", "explain")
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override def paginate: Boolean = false
 

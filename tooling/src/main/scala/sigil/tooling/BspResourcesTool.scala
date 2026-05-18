@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.{BspResourcesResult, BspTargetResources}
 
 import scala.jdk.CollectionConverters.*
@@ -24,13 +24,7 @@ final class BspResourcesTool(val manager: BspManager) extends TypedOutputTool[Bs
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin,
-  keywords = Set("bsp", "resources", "target resources", "list resources"),
-  examples = List(
-    ToolExample(
-      "list resources for every target",
-      BspResourcesInput(projectRoot = "/abs/path/myproject")
-    )
-  )
+  keywords = Set("bsp", "resources", "target resources", "list resources")
 ) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
   override def paginate: Boolean = false
 

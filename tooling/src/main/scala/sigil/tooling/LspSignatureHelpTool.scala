@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.{MarkupContent, SignatureHelp, SignatureInformation}
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.{LspSignature, LspSignatureHelpResult, LspSignatureParam}
 
 import scala.jdk.CollectionConverters.*
@@ -33,13 +33,7 @@ final class LspSignatureHelpTool(val manager: LspManager) extends TypedOutputToo
       |inside the parens of a function call).
       |Returns `{signatures: [{label, documentation, parameters}], activeSignature, activeParameter}`.
       |`activeParameter` is `-1` when no parameter is active or signatures is empty.""".stripMargin,
-  keywords = Set("lsp", "signature", "parameters", "args", "arguments", "what does take", "function signature"),
-  examples = List(
-    ToolExample(
-      "scala signature help inside a method call",
-      LspSignatureHelpInput(languageId = "scala", filePath = "/abs/path/Foo.scala", line = 10, character = 7)
-    )
-  )
+  keywords = Set("lsp", "signature", "parameters", "args", "arguments", "what does take", "function signature")
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override def paginate: Boolean = false
 

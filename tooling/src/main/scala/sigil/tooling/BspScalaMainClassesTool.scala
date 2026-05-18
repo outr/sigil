@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.{BspMainClassEntry, BspMainClassesResult, BspTargetMainClasses}
 
 import scala.jdk.CollectionConverters.*
@@ -24,13 +24,7 @@ final class BspScalaMainClassesTool(val manager: BspManager) extends TypedOutput
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin,
-  keywords = Set("bsp", "main classes", "main", "entry points", "scala", "runnable"),
-  examples = List(
-    ToolExample(
-      "list main classes",
-      BspScalaMainClassesInput(projectRoot = "/abs/path/myproject")
-    )
-  )
+  keywords = Set("bsp", "main classes", "main", "entry points", "scala", "runnable")
 ) with BspToolSupport {
   override def paginate: Boolean = false
 
