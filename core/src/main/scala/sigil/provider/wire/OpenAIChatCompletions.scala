@@ -32,6 +32,25 @@ import scala.concurrent.duration.*
  */
 object OpenAIChatCompletions {
 
+  /** Minimum wall-clock interval between two synthetic streaming
+    * usage estimates. Throttles the per-second emission rate on
+    * fast-streaming responses so the event log isn't drowned in
+    * MessageDeltas. Paired with [[streamingEstimateMinDeltas]] — the
+    * first trigger to fire emits. */
+  private val streamingEstimateMinIntervalMs: Long = 250L
+
+  /** Minimum number of accumulated content / reasoning deltas
+    * between two synthetic streaming usage estimates. Catches
+    * slow-streaming responses where the time-based trigger
+    * wouldn't fire often enough to feel "live". */
+  private val streamingEstimateMinDeltas: Int = 16
+
+  /** Chars-per-token ratio for the synthetic streaming estimate.
+    * A flat heuristic that's "close enough" for a live ticker
+    * (5-15% off during stream; snaps to exact at end). Per-model
+    * fidelity is out of scope at the wire-decoder layer. */
+  private val streamingEstimateCharsPerToken: Double = 4.0
+
   /** How a provider forwards [[GenerationSettings.effort]] (if set) to the wire. */
   enum ReasoningPolicy {
 
@@ -587,6 +606,8 @@ object OpenAIChatCompletions {
                 events += ProviderEvent.TextDelta(text)
                 state.hasUsefulOutput = true
             }
+            state.completionChars += text.length
+            state.deltasSinceLastEstimate += 1
           }
         }
       }
@@ -604,7 +625,15 @@ object OpenAIChatCompletions {
         .orElse(delta.get("reasoning").filter(!_.isNull))
         .foreach { c =>
           val text = c.asString
-          if (text.nonEmpty) events += ProviderEvent.ThinkingDelta(text)
+          if (text.nonEmpty) {
+            events += ProviderEvent.ThinkingDelta(text)
+            // Reasoning tokens ARE charged by the provider (see
+            // bug #196's runaway pathology), so they count toward
+            // the synthetic estimate too — the ticker should
+            // reflect total compute, not just user-visible content.
+            state.completionChars += text.length
+            state.deltasSinceLastEstimate += 1
+          }
         }
       // Sigil audit H3 — OpenAI streams `delta.refusal` as a sibling to
       // `delta.content` when the model declines to comply with the
@@ -679,6 +708,40 @@ object OpenAIChatCompletions {
       }
     }
 
+    val hasRealUsage = json.get("usage").exists(!_.isNull)
+
+    // Synthetic streaming token estimate. Fires when the cadence
+    // threshold trips (time-based OR delta-count-based, whichever
+    // comes first) AND no authoritative usage block rides in this
+    // chunk (we'd rather emit the real number than a stale estimate
+    // immediately followed by it). The pre-flight prompt token
+    // count isn't plumbed to this layer; the synthetic emission
+    // reports `promptTokens = 0` and lets `completionTokens` carry
+    // the moving signal — that's the value consumer tickers display.
+    if (!hasRealUsage && state.deltasSinceLastEstimate > 0) {
+      val now = state.nowNanos()
+      // Anchor the time-based clock on the first eligible delta so
+      // the first synthetic emit fires `streamingEstimateMinIntervalMs`
+      // after the stream actually starts producing tokens, not on
+      // the very first chunk (which would emit a near-zero estimate
+      // immediately).
+      if (state.lastEstimateNanos == 0L) state.lastEstimateNanos = now
+      val elapsedMs = (now - state.lastEstimateNanos) / 1000000L
+      val deltaTrigger = state.deltasSinceLastEstimate >= streamingEstimateMinDeltas
+      val timeTrigger = elapsedMs >= streamingEstimateMinIntervalMs
+      if (deltaTrigger || timeTrigger) {
+        val completionTokens = (state.completionChars.toDouble / streamingEstimateCharsPerToken).toInt
+        events += ProviderEvent.Usage(TokenUsage(
+          promptTokens     = 0,
+          completionTokens = completionTokens,
+          totalTokens      = completionTokens,
+          isEstimated      = true
+        ))
+        state.lastEstimateNanos = now
+        state.deltasSinceLastEstimate = 0
+      }
+    }
+
     json.get("usage").foreach { u =>
       if (!u.isNull) {
         val parsed = parseUsage(u)
@@ -713,7 +776,8 @@ object OpenAIChatCompletions {
     * tool call) and buffers the content for end-of-stream synthesis
     * into ToolCallStart/Complete events. */
   final class StreamState(val acc: ToolCallAccumulator,
-                          val responseFormatMode: Option[ResponseFormatMode] = None) {
+                          val responseFormatMode: Option[ResponseFormatMode] = None,
+                          val nowNanos: () => Long = () => System.nanoTime()) {
     var pendingDone: Option[StopReason] = None
     val responseFormatBuf: StringBuilder = new StringBuilder
 
@@ -737,6 +801,25 @@ object OpenAIChatCompletions {
       * (the model burned `completion_tokens` but emitted no content,
       * no reasoning, no tool calls, and no `finish_reason`). */
     var lastUsage: Option[sigil.provider.TokenUsage] = None
+
+    /** Total streamed characters (reasoning_content + content)
+      * accumulated since the start of the response. Drives the
+      * synthetic streaming usage estimate emitted at
+      * [[streamingEstimateMinIntervalMs]] / [[streamingEstimateMinDeltas]]
+      * cadence so consumer UIs can render a live token ticker
+      * during long reasoning streams. */
+    var completionChars: Long = 0L
+
+    /** Number of content / reasoning deltas observed since the
+      * last synthetic streaming usage emission. Reset to 0 each
+      * time the cadence trigger fires. */
+    var deltasSinceLastEstimate: Int = 0
+
+    /** Wall-clock timestamp (System.nanoTime) of the last
+      * synthetic streaming usage emission. Zero means no estimate
+      * has fired yet (the first eligible delta triggers an
+      * emission so the ticker shows movement promptly). */
+    var lastEstimateNanos: Long = 0L
 
     def flushDone(config: Config): Vector[ProviderEvent] = pendingDone match {
       case Some(sr) =>
