@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, ToolResult, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, ToolResult, TypedOutputTool}
 import sigil.tooling.types.LspDidChangeResult
 
 case class LspDidChangeInput(languageId: String,
@@ -34,13 +34,7 @@ final class LspDidChangeTool(val manager: LspManager) extends TypedOutputTool[Ls
       |`languageId` selects the persisted LspServerConfig. `filePath` is the absolute
       |path; the server's open-document state for the URI is refreshed with `text` and
       |the document version is bumped.""".stripMargin,
-  keywords = Set("lsp", "did change", "edit", "change", "modify", "document update", "notify edit"),
-  examples = List(
-    ToolExample(
-      "refresh after editing a Scala file",
-      LspDidChangeInput(languageId = "scala", filePath = "/abs/path/Foo.scala", text = "object Foo")
-    )
-  )
+  keywords = Set("lsp", "did change", "edit", "change", "modify", "document update", "notify edit")
 ) with sigil.tool.DestructiveExternalTool with LspToolSupport {
   override def paginate: Boolean = false
 

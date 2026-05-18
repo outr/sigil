@@ -4,7 +4,7 @@ import ch.epfl.scala.bsp4j.StatusCode
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.{BspCompileResult, BspDiagnostic}
 
 case class BspCompileInput(projectRoot: String,
@@ -33,12 +33,6 @@ final class BspCompileTool(val manager: BspManager) extends TypedOutputTool[BspC
     "analyze", "review",
     "scala", "sbt", "project", "targets", "evaluate", "validate",
     "rebuild", "diagnostics", "fix"
-  ),
-  examples = List(
-    ToolExample(
-      "compile all targets in a project",
-      BspCompileInput(projectRoot = "/abs/path/myproject")
-    )
   )
 ) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
   override def paginate: Boolean = false

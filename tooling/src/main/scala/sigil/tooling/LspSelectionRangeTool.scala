@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.{Position, SelectionRange}
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.{LspRange, LspSelectionRangeChain, LspSelectionRangeResult}
 
 case class LspSelectionRangeInput(languageId: String,
@@ -36,16 +36,7 @@ final class LspSelectionRangeTool(val manager: LspManager) extends TypedOutputTo
       |`languageId` + `filePath` identify the document.
       |`positions` is the list of (line, character) pairs (0-based).
       |Returns `{filePath, chains: [{ranges: [innermost, ..., outermost]}]}` — one chain per input position.""".stripMargin,
-  keywords = Set("lsp", "selection", "expand selection", "smart selection"),
-  examples = List(
-    ToolExample(
-      "expand selection at one position",
-      LspSelectionRangeInput(
-        languageId = "scala", filePath = "/abs/path/Foo.scala",
-        positions = List(LspSelectionRangeInput.Pos(line = 10, character = 7))
-      )
-    )
-  )
+  keywords = Set("lsp", "selection", "expand selection", "smart selection")
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override def paginate: Boolean = false
 

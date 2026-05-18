@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.LspLocation
 
 case class LspGotoDefinitionInput(languageId: String,
@@ -38,12 +38,6 @@ final class LspGotoDefinitionTool(val manager: LspManager) extends TypedOutputTo
     "jump-to", "goto", "go to", "find symbol", "examine", "inspect",
     "navigate", "source", "semantic", "symbol",
     "scala", "language", "code"
-  ),
-  examples = List(
-    ToolExample(
-      "scala goto-def at line 42 col 12",
-      LspGotoDefinitionInput(languageId = "scala", filePath = "/abs/path/Foo.scala", line = 42, character = 12)
-    )
   )
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override def paginate: Boolean = false

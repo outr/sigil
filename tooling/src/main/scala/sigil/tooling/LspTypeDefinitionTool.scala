@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.LspLocation
 
 case class LspTypeDefinitionInput(languageId: String,
@@ -29,13 +29,7 @@ final class LspTypeDefinitionTool(val manager: LspManager) extends TypedOutputTo
       |`languageId` + `filePath` identify the source document.
       |`line` + `character` (0-based) point at the symbol whose type to look up.
       |Returns `[{uri, filePath, range}]`.""".stripMargin,
-  keywords = Set("lsp", "type definition", "type", "where defined", "type declaration", "examine", "inspect"),
-  examples = List(
-    ToolExample(
-      "find the type of a value",
-      LspTypeDefinitionInput(languageId = "scala", filePath = "/abs/path/Foo.scala", line = 10, character = 7)
-    )
-  )
+  keywords = Set("lsp", "type definition", "type", "where defined", "type declaration", "examine", "inspect")
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override def paginate: Boolean = false
 

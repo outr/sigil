@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.CodeAction
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.LspApplyCodeActionResult
 
 import scala.jdk.CollectionConverters.*
@@ -45,12 +45,6 @@ final class LspApplyCodeActionTool(val manager: LspManager) extends TypedOutputT
     "lsp", "apply", "fix", "quickfix", "refactor", "refactoring", "code action", "execute fix",
     "extract method", "extract variable", "organize imports", "missing imports",
     "modify", "change", "transform"
-  ),
-  examples = List(
-    ToolExample(
-      "apply the first available action",
-      LspApplyCodeActionInput(languageId = "scala", filePath = "/abs/path/Foo.scala", index = 0)
-    )
   )
 ) with sigil.tool.DestructiveExternalTool with LspToolSupport {
   override def paginate: Boolean = false

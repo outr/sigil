@@ -5,7 +5,7 @@ import org.eclipse.lsp4j.{CodeAction, Command, Position, Range}
 import org.eclipse.lsp4j.jsonrpc.messages.{Either => LspEither}
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.{LspCodeActionItem, LspCodeActionResult}
 
 case class LspCodeActionInput(languageId: String,
@@ -43,18 +43,6 @@ final class LspCodeActionTool(val manager: LspManager) extends TypedOutputTool[L
     "lsp", "code action", "fix", "quickfix", "refactor", "refactoring", "suggestion",
     "quick fix", "auto fix", "improve", "extract method", "extract variable",
     "organize imports", "transform", "modify", "change"
-  ),
-  examples = List(
-    ToolExample(
-      "scala quick-fixes for a single line",
-      LspCodeActionInput(
-        languageId = "scala",
-        filePath = "/abs/path/Foo.scala",
-        startLine = 10, startCharacter = 0,
-        endLine = 10, endCharacter = 0,
-        onlyKinds = List("quickfix")
-      )
-    )
   )
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override def paginate: Boolean = false

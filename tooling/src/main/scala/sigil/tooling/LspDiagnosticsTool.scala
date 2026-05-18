@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.Diagnostic
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.{LspDiagnostic, LspDiagnosticsResult}
 
 case class LspDiagnosticsInput(languageId: String,
@@ -46,12 +46,6 @@ final class LspDiagnosticsTool(val manager: LspManager) extends TypedOutputTool[
     "lint", "compile-check", "analyze", "examine", "inspect", "review",
     "evaluate", "what's broken", "issues", "semantic",
     "scala", "type", "fix", "code"
-  ),
-  examples = List(
-    ToolExample(
-      "scala diagnostics for a single file",
-      LspDiagnosticsInput(languageId = "scala", filePath = "/abs/path/to/Foo.scala")
-    )
   )
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override def paginate: Boolean = false

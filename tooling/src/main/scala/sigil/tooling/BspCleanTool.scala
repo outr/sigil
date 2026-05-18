@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.BspCleanResult
 
 case class BspCleanInput(projectRoot: String,
@@ -21,13 +21,7 @@ final class BspCleanTool(val manager: BspManager) extends TypedOutputTool[BspCle
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty cleans every workspace target.""".stripMargin,
-  keywords = Set("bsp", "clean", "clean cache", "clear build", "wipe build", "reset"),
-  examples = List(
-    ToolExample(
-      "clean every target",
-      BspCleanInput(projectRoot = "/abs/path/myproject")
-    )
-  )
+  keywords = Set("bsp", "clean", "clean cache", "clear build", "wipe build", "reset")
 ) with sigil.tool.DestructiveExternalTool with BspToolSupport {
   override def paginate: Boolean = false
 

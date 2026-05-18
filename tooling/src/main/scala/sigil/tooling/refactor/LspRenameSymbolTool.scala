@@ -2,7 +2,7 @@ package sigil.tooling.refactor
 
 import rapid.{Stream, Task}
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
+import sigil.tool.{ToolName, TypedOutputTool}
 import sigil.tooling.types.LspWorkspaceSymbol
 import sigil.tooling.{LspManager, LspToolSupport}
 
@@ -53,18 +53,6 @@ final class LspRenameSymbolTool(val manager: LspManager)
       // are actually rename intents in disguise.
       "find", "find symbol", "replace name", "change identifier",
       "update symbol name", "global rename", "search rename"
-    ),
-    examples = List(
-      ToolExample(
-        "Rename a class by name",
-        LspRenameSymbolInput(
-          languageId  = "scala",
-          projectRoot = "/abs/path/myproject",
-          symbolName  = "OldFooConfig",
-          newName     = "FooConfig",
-          kindHint    = Some("class")
-        )
-      )
     )
   ) with sigil.tool.DestructiveExternalTool with LspToolSupport {
 

@@ -4,7 +4,7 @@ import ch.epfl.scala.bsp4j.StatusCode
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.BspExecResult
 
 case class BspTestInput(projectRoot: String,
@@ -32,15 +32,6 @@ final class BspTestTool(val manager: BspManager) extends TypedOutputTool[BspTest
   keywords = Set(
     "bsp", "test", "run tests", "unit test", "execute tests", "verify",
     "scala", "sbt", "project", "targets", "validate"
-  ),
-  examples = List(
-    ToolExample(
-      "run a single sbt suite",
-      BspTestInput(
-        projectRoot = "/abs/path/myproject",
-        arguments = List("-z", "OrchestratorTopicSpec")
-      )
-    )
   )
 ) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
   override def paginate: Boolean = false

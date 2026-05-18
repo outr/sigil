@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.{Stream, Task}
 import sigil.TurnContext
 import sigil.tool.output.{Node, PaginatedTool}
-import sigil.tool.{ToolExample, ToolInput, ToolName}
+import sigil.tool.{ToolInput, ToolName}
 import sigil.tooling.types.{LspPosition, LspWorkspaceSymbol}
 
 case class LspWorkspaceSymbolsInput(languageId: String,
@@ -35,12 +35,6 @@ final class LspWorkspaceSymbolsTool(val manager: LspManager) extends PaginatedTo
     "examine", "inspect", "analyze", "explore", "browse", "lookup",
     "code", "codebase", "semantic", "index", "catalog",
     "scala", "language", "navigate", "project"
-  ),
-  examples = List(
-    ToolExample(
-      "find symbols matching 'Provider'",
-      LspWorkspaceSymbolsInput(languageId = "scala", projectRoot = "/abs/path/myproject", query = "Provider")
-    )
   )
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
 

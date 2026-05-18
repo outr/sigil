@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.LspRenameResult
 
 import scala.jdk.CollectionConverters.*
@@ -37,15 +37,6 @@ final class LspRenameTool(val manager: LspManager) extends TypedOutputTool[LspRe
   keywords = Set(
     "lsp", "rename", "refactor", "refactoring", "rename symbol", "rename across project",
     "identifier", "symbol", "change name", "modify name", "replace name", "update name"
-  ),
-  examples = List(
-    ToolExample(
-      "rename a method",
-      LspRenameInput(
-        languageId = "scala", filePath = "/abs/path/Foo.scala",
-        line = 10, character = 7, newName = "newMethodName"
-      )
-    )
   )
 ) with sigil.tool.DestructiveExternalTool with LspToolSupport {
   override def paginate: Boolean = false

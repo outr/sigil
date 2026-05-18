@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.{BspDependencyModule, BspDependencyModulesResult, BspTargetDependencyModules}
 
 import java.nio.file.{Files, Paths}
@@ -30,13 +30,7 @@ final class BspDependencyModulesTool(val manager: BspManager) extends TypedOutpu
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin,
-  keywords = Set("bsp", "dependencies", "deps", "modules", "library deps"),
-  examples = List(
-    ToolExample(
-      "list dependency modules",
-      BspDependencyModulesInput(projectRoot = "/abs/path/myproject")
-    )
-  )
+  keywords = Set("bsp", "dependencies", "deps", "modules", "library deps")
 ) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
   override def paginate: Boolean = false
 

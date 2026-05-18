@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.{LspPrepareRenameResult, LspRange}
 
 case class LspPrepareRenameInput(languageId: String,
@@ -26,13 +26,7 @@ final class LspPrepareRenameTool(val manager: LspManager) extends TypedOutputToo
       |`languageId` + `filePath` identify the document.
       |`line` + `character` (0-based) point at the candidate symbol.
       |Returns `Renameable(range)` when yes, `NotRenameable` when no.""".stripMargin,
-  keywords = Set("lsp", "rename", "refactor", "can rename", "renameable", "prepare"),
-  examples = List(
-    ToolExample(
-      "check before renaming",
-      LspPrepareRenameInput(languageId = "scala", filePath = "/abs/path/Foo.scala", line = 10, character = 7)
-    )
-  )
+  keywords = Set("lsp", "rename", "refactor", "can rename", "renameable", "prepare")
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override def paginate: Boolean = false
 

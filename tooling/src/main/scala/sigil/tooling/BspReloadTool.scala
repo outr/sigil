@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.BspReloadResult
 
 case class BspReloadInput(projectRoot: String) extends ToolInput derives RW
@@ -20,13 +20,7 @@ final class BspReloadTool(val manager: BspManager) extends TypedOutputTool[BspRe
     """Reload the build server's project model (after build-file edits).
       |
       |`projectRoot` selects the persisted BspBuildConfig.""".stripMargin,
-  keywords = Set("bsp", "reload", "refresh", "rebuild", "reinitialise", "rescan"),
-  examples = List(
-    ToolExample(
-      "reload after editing build.sbt",
-      BspReloadInput(projectRoot = "/abs/path/myproject")
-    )
-  )
+  keywords = Set("bsp", "reload", "refresh", "rebuild", "reinitialise", "rescan")
 ) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
   override def paginate: Boolean = false
 
