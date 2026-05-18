@@ -6,6 +6,7 @@ import lightdb.time.Timestamp
 import rapid.Task
 import sigil.TurnContext
 import sigil.event.Event
+import sigil.provider.{CodingWork, Complexity, ProviderStrategy}
 import sigil.tool.fs.{FileSystemContext, GrepMatch}
 import sigil.tool.output.ToolOutputNode
 import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
@@ -15,27 +16,37 @@ import scala.concurrent.duration.*
 
 /**
  * Multi-file refactor with per-match LLM judgment — the prepare
- * step of the three-tool refactor session.
+ * step of the three-tool refactor session, gated behind a two-
+ * phase confirm so the caller sees the cost before paying it.
  *
- *   1. Greps `path` (optionally restricted by `glob`) for
- *      `findPattern` → list of `(file, matches)`.
- *   2. For each matching file, dispatches a per-file worker via
- *      the configured [[RefactorWorkerDispatcher]]. Default
- *      production dispatcher spawns a Strider worker run; tests
- *      inject a deterministic stub.
- *   3. Builds per-file edited content, parks the draft
- *      [[ApplyWorkspaceEdit.FileEdit]] set in
+ * Flow:
+ *
+ *   1. `confirmed = false` (default): greps `path` (optionally
+ *      filtered by `glob`) for `findPattern`, counts matches per
+ *      file, resolves the worker model id from the input's
+ *      `complexity` against the chain's
+ *      [[sigil.provider.ProviderStrategy]] for [[CodingWork]],
+ *      and returns a [[RefactorWithInstructionOutput.Scope]]
+ *      preview. NO workers run. The agent reviews the resolved
+ *      file count + model id, then re-invokes with `confirmed =
+ *      true` (and the same other parameters) to dispatch.
+ *   2. `confirmed = true`: re-greps the same input, dispatches
+ *      one per-file worker via the configured
+ *      [[RefactorWorkerDispatcher]] (default production
+ *      dispatcher spawns a Strider worker run; tests inject a
+ *      deterministic stub), builds per-file edited content,
+ *      parks the draft [[ApplyWorkspaceEdit.FileEdit]] set in
  *      [[RefactorSessionStore]] under a fresh `sessionId`, and
  *      drains every per-file [[FileRefactorReport]] into
  *      `db.toolOutputs` so the agent can navigate via
- *      `next_page` / `query_tool_output`.
- *   4. Returns a [[RefactorWithInstructionOutput]] carrying the
+ *      `next_page` / `query_tool_output`. Returns a
+ *      [[RefactorWithInstructionOutput.Dispatched]] carrying the
  *      `sessionId` + first-page slice + standard pagination
  *      fields. **Does not write to disk** — that's the apply
  *      step's job.
  *
  * Throughput bound by `maxParallel` (default 5 concurrent workers).
- * Cost bound by `maxWorkers` (default 1000 — refuses to spawn
+ * Cost bound by `maxFiles` (default 10000 — refuses to spawn
  * more than that, returning an `abortReason` so a 50K-file glob
  * can't accidentally explode billing).
  */
@@ -43,36 +54,41 @@ final class RefactorWithInstructionTool(fs: FileSystemContext,
                                         sessionStore: RefactorSessionStore,
                                         workerDispatcher: Option[RefactorWorkerDispatcher] = None,
                                         firstPageSize: Int = 50,
-                                        rowTtl: FiniteDuration = 30.minutes)
+                                        rowTtl: FiniteDuration = 30.minutes,
+                                        scopePreviewLimit: Int = 200)
   extends TypedOutputTool[RefactorWithInstructionInput, RefactorWithInstructionOutput](
     name = ToolName("refactor_with_instruction"),
     description =
-      """Find-and-edit across many files in one call. The tool searches under `path` (optionally
-        |filtered by a path glob) for `findPattern`, then dispatches a small-model worker per
-        |file to apply `instruction` at each match. Returns a `sessionId` plus the proposed
-        |per-file diffs — nothing written
-        |to disk yet. Review the diffs, then commit with `refactor_apply` or drop with
-        |`refactor_cancel`. Subsequent pages of diffs are reachable via the standard pagination
-        |tools using the returned `sessionId` as the `referenceId`.
+      """Find-and-edit across many files in one call, gated behind a two-phase confirm so you
+        |see the cost before paying it. First call with `confirmed = false` (the default): the
+        |tool greps under `path` (optionally filtered by a path glob) for `findPattern`, counts
+        |matches per file, resolves the worker model from the input's `complexity`, and returns
+        |a scope preview — no workers dispatched, no disk writes. Review the preview, then re-call
+        |with `confirmed = true` (and the same other parameters) to dispatch a small-model worker
+        |per file to apply `instruction` at each match. The confirm call returns a `sessionId` plus
+        |the proposed per-file diffs — nothing written to disk yet. Review the diffs, then commit
+        |with `refactor_apply` or drop with `refactor_cancel`. Subsequent pages of diffs are
+        |reachable via the standard pagination tools using the returned `sessionId` as the
+        |`referenceId`.
         |
         |This is the first move for any multi-file pattern change — not the last. DO NOT grep
-        |first to scout the matches; the tool's own grep IS the discovery, and the returned
-        |diffs ARE the preview. A separate pre-grep adds nothing the diffs don't already show
-        |and costs an extra round-trip.
+        |first to scout the matches; the tool's own grep IS the discovery, and the scope preview
+        |IS the cost-aware version of that discovery. A separate pre-grep adds nothing the
+        |preview doesn't already show and costs an extra round-trip.
         |
         |Use for: "remove all // Bug NNN comments", "rename foo to bar across every .scala",
         |"replace deprecated API X with Y at every callsite".
         |Don't use for: single-file edits (use the single-file edit tool), or read-only
-        |inspection where you don't intend to act (use the grep tool — this tool spawns paid
-        |LLM workers per file).
+        |inspection where you don't intend to act (use the grep tool — every file in the scope
+        |preview becomes a paid LLM worker call on confirm).
         |
         |Inputs:
         |  - `path`         — filesystem root for the search.
         |  - file-set glob  — optional path-glob filter on candidate files.
         |  - `findPattern`  — regex; every file with at least one match gets its own paid LLM
-        |                     worker call. Make this AS NARROW AS POSSIBLE — if you can encode
-        |                     the filter in the regex (e.g. anchor to comment syntax like
-        |                     `^[ \\t]*(//|/\\*|\\*).*pattern`), do it there, not in the
+        |                     worker call on confirm. Make this AS NARROW AS POSSIBLE — if you
+        |                     can encode the filter in the regex (e.g. anchor to comment syntax
+        |                     like `^[ \\t]*(//|/\\*|\\*).*pattern`), do it there, not in the
         |                     `instruction`. The worker is paid compute, not free filtering.
         |                     A pattern that matches 1500 files costs 1500 worker calls.
         |  - `instruction`  — what every worker should do at each match. Write it as a self-
@@ -80,10 +96,15 @@ final class RefactorWithInstructionTool(fs: FileSystemContext,
         |                     its file's matches. Be explicit about preserve-vs-edit if the
         |                     pattern could overmatch (e.g. "Remove // Bug NNN markers. Preserve
         |                     // Don't fix: warnings unchanged.").
-        |  - `workerModelId`— optional explicit model id for the workers; when unset, inherits
-        |                     the caller's currently-routed model.
+        |  - `complexity`   — routing tier for the worker model. Use `Low` for mechanical
+        |                     find/replace and `Medium`+ for edits that need to reason about
+        |                     context. Required — no default.
+        |  - `workerModelId`— optional explicit model id; when set, wins over routing. When
+        |                     unset, the framework routes through ProviderStrategy at the
+        |                     input's complexity for CodingWork.
         |  - `maxParallel`  — concurrency cap (default 5).
-        |  - `maxWorkers`   — hard cost cap (default 1000) — refuses to spawn more.
+        |  - `maxFiles`     — hard cost cap (default 10000) — refuses to dispatch more.
+        |  - `confirmed`    — false (default) returns the scope preview; true dispatches.
         |
         |Sessions are kept in memory for 30 minutes by default; an unconsumed session past
         |that window is treated as cancelled.""".stripMargin,
@@ -97,12 +118,24 @@ final class RefactorWithInstructionTool(fs: FileSystemContext,
     ),
     examples = List(
       ToolExample(
-        "Prepare a refactor that removes bug-number comment markers from Scala files",
+        "Preview a refactor that removes bug-number comment markers from Scala files (confirmed=false)",
         RefactorWithInstructionInput(
           path        = "src/main/scala",
           glob        = Some("**/*.scala"),
           findPattern = "// Bug #\\d+",
-          instruction = "Remove the matched `// Bug #NNN` comment fragment. Preserve any surrounding text on the line."
+          instruction = "Remove the matched `// Bug #NNN` comment fragment. Preserve any surrounding text on the line.",
+          complexity  = Complexity.Low
+        )
+      ),
+      ToolExample(
+        "Confirm the same refactor and stage the per-file diffs (confirmed=true)",
+        RefactorWithInstructionInput(
+          path        = "src/main/scala",
+          glob        = Some("**/*.scala"),
+          findPattern = "// Bug #\\d+",
+          instruction = "Remove the matched `// Bug #NNN` comment fragment. Preserve any surrounding text on the line.",
+          complexity  = Complexity.Low,
+          confirmed   = true
         )
       )
     )
@@ -112,6 +145,107 @@ final class RefactorWithInstructionTool(fs: FileSystemContext,
 
   override protected def executeTyped(input: RefactorWithInstructionInput,
                                       ctx: TurnContext): Task[RefactorWithInstructionOutput] = {
+    if (!input.confirmed) {
+      runScopePreview(input, ctx)
+    } else {
+      runConfirmedDispatch(input, ctx)
+    }
+  }
+
+  // ---- scope preview (confirmed = false) ----
+
+  private def runScopePreview(input: RefactorWithInstructionInput,
+                              ctx: TurnContext): Task[RefactorWithInstructionOutput] = {
+    fs.searchFiles(input.path, input.findPattern, input.glob, maxMatches = 5000, contextLines = 0).flatMap { allMatches =>
+      val byFile: List[(String, Int)] =
+        allMatches.groupBy(_.filePath).view.mapValues(_.size).toList.sortBy { case (path, count) => (-count, path) }
+      val totalFiles   = byFile.size
+      val totalMatches = byFile.iterator.map(_._2).sum
+      val capExceeded  = totalFiles > input.maxFiles
+
+      resolveWorkerModelId(input, ctx).map { resolvedModelId =>
+        val truncated   = byFile.size > scopePreviewLimit
+        val previewMap  = byFile.take(scopePreviewLimit).toMap
+        val sessionId   = ctx.currentToolInvokeId.map(_.value).getOrElse(Event.id().value)
+        val abortReason: Option[String] =
+          if (capExceeded)
+            Some(s"found $totalFiles files with matches; refusing to dispatch more than maxFiles=${input.maxFiles}. " +
+              s"Narrow `findPattern` or `glob` to bring the scope under the cap, then re-preview.")
+          else None
+        RefactorWithInstructionOutput.Scope(
+          sessionId                   = sessionId,
+          totalFiles                  = totalFiles,
+          totalMatches                = totalMatches,
+          perFileMatchCounts          = previewMap,
+          perFileMatchCountsTruncated = truncated,
+          resolvedModelId             = resolvedModelId,
+          estimatedWorkerCallCount    = totalFiles,
+          estimatedCostNote           = costNote(input.complexity, totalFiles),
+          confirmCall                 = renderConfirmCall(input),
+          abortReason                 = abortReason
+        )
+      }
+    }
+  }
+
+  /** Resolve the worker model id. Explicit `workerModelId` wins;
+    * otherwise walk the chain's accessible spaces, find the first
+    * resolved `ProviderStrategy`, and pick the first
+    * `candidates(CodingWork)` entry whose `supportedComplexity`
+    * contains the input's complexity. Returns the empty string when
+    * no strategy / candidate resolves — the agent reads the empty
+    * value as "framework didn't route, fall back to your own
+    * choice". */
+  private def resolveWorkerModelId(input: RefactorWithInstructionInput,
+                                   ctx: TurnContext): Task[String] = input.workerModelId match {
+    case Some(explicit) if explicit.nonEmpty => Task.pure(explicit)
+    case _ =>
+      def fromStrategy(strategy: ProviderStrategy): Option[String] =
+        strategy.candidates(CodingWork)
+          .find(_.supportedComplexity.contains(input.complexity))
+          .map(_.modelId.value)
+
+      ctx.sigil.accessibleSpaces(ctx.chain, ctx.conversation.id).flatMap { spaces =>
+        val ordered = spaces.toList
+        def loop(remaining: List[sigil.SpaceId]): Task[Option[String]] = remaining match {
+          case Nil => Task.pure(None)
+          case space :: rest =>
+            ctx.sigil.resolveProviderStrategy(space).flatMap {
+              case Some(strategy) => fromStrategy(strategy) match {
+                case Some(id) => Task.pure(Some(id))
+                case None     => loop(rest)
+              }
+              case None => loop(rest)
+            }
+        }
+        loop(ordered).map(_.getOrElse(""))
+      }
+  }
+
+  private def costNote(complexity: Complexity, files: Int): String = {
+    val tier = complexity match {
+      case Complexity.Low      => "cheapest tier"
+      case Complexity.Medium   => "mid tier"
+      case Complexity.High     => "high tier"
+      case Complexity.VeryHigh => "frontier tier"
+    }
+    s"$files worker call(s) on $tier; one paid LLM call per file"
+  }
+
+  private def renderConfirmCall(input: RefactorWithInstructionInput): String = {
+    val globPart = input.glob.map(g => s""", glob = "$g"""").getOrElse("")
+    val modelPart = input.workerModelId.filter(_.nonEmpty).map(m => s""", workerModelId = "$m"""").getOrElse("")
+    s"""refactor_with_instruction(path = "${input.path}"$globPart, findPattern = "${escape(input.findPattern)}", """ +
+      s"""instruction = "...", complexity = Complexity.${input.complexity}$modelPart, """ +
+      s"maxParallel = ${input.maxParallel}, maxFiles = ${input.maxFiles}, confirmed = true)"
+  }
+
+  private def escape(s: String): String = s.replace("\\", "\\\\").replace("\"", "\\\"")
+
+  // ---- confirmed dispatch (confirmed = true) ----
+
+  private def runConfirmedDispatch(input: RefactorWithInstructionInput,
+                                   ctx: TurnContext): Task[RefactorWithInstructionOutput] = {
     val dispatcherOpt: Option[RefactorWorkerDispatcher] =
       workerDispatcher.orElse(ctx.sigil match {
         case ws: WorkflowSigil => Some(new WorkflowRefactorWorkerDispatcher(fs, ws))
@@ -128,9 +262,9 @@ final class RefactorWithInstructionTool(fs: FileSystemContext,
     }
   }
 
-  private def emptyOutputWithAbort(ctx: TurnContext, reason: String): RefactorWithInstructionOutput = {
+  private def emptyOutputWithAbort(ctx: TurnContext, reason: String): RefactorWithInstructionOutput.Dispatched = {
     val callId = ctx.currentToolInvokeId.getOrElse(Event.id())
-    RefactorWithInstructionOutput(
+    RefactorWithInstructionOutput.Dispatched(
       sessionId      = callId.value,
       totalDiffs     = 0,
       filesAffected  = 0,
@@ -148,46 +282,43 @@ final class RefactorWithInstructionTool(fs: FileSystemContext,
   private def runRefactor(input: RefactorWithInstructionInput,
                           ctx: TurnContext,
                           dispatcher: RefactorWorkerDispatcher): Task[RefactorWithInstructionOutput] = {
-    val resolvedModelId: String =
-      input.workerModelId.getOrElse(ctx.routedModelId.map(_.value).getOrElse(""))
-
-    fs.searchFiles(input.path, input.findPattern, input.glob, maxMatches = 5000, contextLines = 0).flatMap { allMatches =>
-      val byFile: List[(String, List[GrepMatch])] =
-        allMatches.groupBy(_.filePath).view.mapValues(_.sortBy(_.lineNumber)).toList.sortBy(_._1)
-      val totalWorkers = byFile.size
-      if (totalWorkers > input.maxWorkers) {
-        Task.pure(emptyOutputWithAbort(
-          ctx,
-          s"found $totalWorkers files with matches; refusing to spawn more than ${input.maxWorkers} worker calls. " +
-            s"Most likely fix: tighten `findPattern` — every file match = one paid LLM worker call, " +
-            s"so a pattern matching $totalWorkers files costs $totalWorkers calls. " +
-            s"If the pattern is correct and you really want $totalWorkers worker calls, raise the cap explicitly."
-        ))
-      } else if (byFile.isEmpty) {
-        // No candidates — still register an empty session so the
-        // caller's wire shape stays consistent and so a cancel /
-        // apply against the returned id finds something to act on.
-        val callId = ctx.currentToolInvokeId.getOrElse(Event.id())
-        sessionStore.create(RefactorSession(
-          sessionId       = callId.value,
-          edits           = Nil,
-          perFile         = Nil,
-          createdAtMillis = System.currentTimeMillis()
-        ))
-        Task.pure(RefactorWithInstructionOutput(
-          sessionId      = callId.value,
-          totalDiffs     = 0,
-          filesAffected  = 0,
-          page0Diffs     = Nil,
-          hasMore        = false,
-          nodeIds        = Nil,
-          callId         = callId,
-          referenceId    = callId.value,
-          pageSize       = firstPageSize,
-          perFileSummary = Map.empty
-        ))
-      } else {
-        dispatchAndStage(input, ctx, dispatcher, resolvedModelId, byFile)
+    resolveWorkerModelId(input, ctx).flatMap { resolvedModelId =>
+      fs.searchFiles(input.path, input.findPattern, input.glob, maxMatches = 5000, contextLines = 0).flatMap { allMatches =>
+        val byFile: List[(String, List[GrepMatch])] =
+          allMatches.groupBy(_.filePath).view.mapValues(_.sortBy(_.lineNumber)).toList.sortBy(_._1)
+        val totalFiles = byFile.size
+        if (totalFiles > input.maxFiles) {
+          Task.pure(emptyOutputWithAbort(
+            ctx,
+            s"found $totalFiles files with matches; refusing to dispatch more than maxFiles=${input.maxFiles}. " +
+              s"Narrow `findPattern` or `glob` and re-preview."
+          ))
+        } else if (byFile.isEmpty) {
+          // No candidates — still register an empty session so the
+          // caller's wire shape stays consistent and so a cancel /
+          // apply against the returned id finds something to act on.
+          val callId = ctx.currentToolInvokeId.getOrElse(Event.id())
+          sessionStore.create(RefactorSession(
+            sessionId       = callId.value,
+            edits           = Nil,
+            perFile         = Nil,
+            createdAtMillis = System.currentTimeMillis()
+          ))
+          Task.pure(RefactorWithInstructionOutput.Dispatched(
+            sessionId      = callId.value,
+            totalDiffs     = 0,
+            filesAffected  = 0,
+            page0Diffs     = Nil,
+            hasMore        = false,
+            nodeIds        = Nil,
+            callId         = callId,
+            referenceId    = callId.value,
+            pageSize       = firstPageSize,
+            perFileSummary = Map.empty
+          ))
+        } else {
+          dispatchAndStage(input, ctx, dispatcher, resolvedModelId, byFile)
+        }
       }
     }
   }
@@ -237,7 +368,7 @@ final class RefactorWithInstructionTool(fs: FileSystemContext,
 
         drainDiffsToToolOutputs(ctx, callId, perFileReports).map { drainedNodeIds =>
           val page0 = perFileReports.take(firstPageSize)
-          RefactorWithInstructionOutput(
+          RefactorWithInstructionOutput.Dispatched(
             sessionId      = sessId,
             totalDiffs     = perFileReports.size,
             filesAffected  = filesAffected,

@@ -6,12 +6,14 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, ConversationView, TopicEntry, TurnInput}
 import sigil.event.Event
+import sigil.provider.Complexity
 import sigil.tool.fs.{FileSystemContext, GrepMatch, LocalFileSystemContext}
 import sigil.tooling.refactor.{
   MatchAction, MatchDecision,
   RefactorApplyInput, RefactorApplyStatus, RefactorApplyTool,
   RefactorCancelInput, RefactorCancelStatus, RefactorCancelTool,
   RefactorSessionStore, RefactorWithInstructionInput,
+  RefactorWithInstructionOutput,
   RefactorWithInstructionTool, RefactorWorkerDispatcher
 }
 
@@ -125,25 +127,31 @@ class RefactorSessionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         glob        = None,
         findPattern = "// TODO:remove",
         instruction = "stub-driven",
+        complexity  = Complexity.Low,
         maxParallel = 2,
-        maxWorkers  = 5
+        maxFiles    = 5,
+        confirmed   = true
       )
-      tool.invoke(input, ctx).map { out =>
-        try {
-          out.sessionId should not be empty
-          out.abortReason shouldBe None
-          out.totalDiffs shouldBe 2
-          out.page0Diffs.size shouldBe 2
-          out.hasMore shouldBe false
-          out.nodeIds.size shouldBe 2
-          out.referenceId shouldBe out.sessionId
-          out.callId.value shouldBe out.sessionId
-          // The session must be present in the store after prepare.
-          store.peek(out.sessionId) shouldBe defined
-          // No file modified by prepare.
-          Files.readString(workspace.resolve("a.txt")) shouldBe originals("a.txt")
-          Files.readString(workspace.resolve("b.txt")) shouldBe originals("b.txt")
-        } finally cleanup(workspace)
+      tool.invoke(input, ctx).map {
+        case out: RefactorWithInstructionOutput.Dispatched =>
+          try {
+            out.sessionId should not be empty
+            out.abortReason shouldBe None
+            out.totalDiffs shouldBe 2
+            out.page0Diffs.size shouldBe 2
+            out.hasMore shouldBe false
+            out.nodeIds.size shouldBe 2
+            out.referenceId shouldBe out.sessionId
+            out.callId.value shouldBe out.sessionId
+            // The session must be present in the store after prepare.
+            store.peek(out.sessionId) shouldBe defined
+            // No file modified by prepare.
+            Files.readString(workspace.resolve("a.txt")) shouldBe originals("a.txt")
+            Files.readString(workspace.resolve("b.txt")) shouldBe originals("b.txt")
+          } finally cleanup(workspace)
+        case other =>
+          cleanup(workspace)
+          fail(s"expected Dispatched output for confirmed=true, got $other")
       }
     }
   }
@@ -168,11 +176,16 @@ class RefactorSessionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         glob        = None,
         findPattern = "// TODO:remove",
         instruction = "stub-driven",
+        complexity  = Complexity.Low,
         maxParallel = 2,
-        maxWorkers  = 5
+        maxFiles    = 5,
+        confirmed   = true
       )
       for {
-        prepared <- prepareTool.invoke(input, ctx)
+        prepared <- prepareTool.invoke(input, ctx).map {
+          case d: RefactorWithInstructionOutput.Dispatched => d
+          case other => fail(s"expected Dispatched, got $other")
+        }
         applied  <- applyTool.invoke(RefactorApplyInput(prepared.sessionId), ctx)
         twice    <- applyTool.invoke(RefactorApplyInput(prepared.sessionId), ctx)
       } yield {
@@ -215,11 +228,16 @@ class RefactorSessionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         glob        = None,
         findPattern = "// TODO:remove",
         instruction = "stub-driven",
+        complexity  = Complexity.Low,
         maxParallel = 1,
-        maxWorkers  = 5
+        maxFiles    = 5,
+        confirmed   = true
       )
       for {
-        prepared   <- prepareTool.invoke(input, ctx)
+        prepared   <- prepareTool.invoke(input, ctx).map {
+          case d: RefactorWithInstructionOutput.Dispatched => d
+          case other => fail(s"expected Dispatched, got $other")
+        }
         cancelled  <- cancelTool.invoke(RefactorCancelInput(prepared.sessionId), ctx)
         afterApply <- applyTool.invoke(RefactorApplyInput(prepared.sessionId), ctx)
         twice      <- cancelTool.invoke(RefactorCancelInput(prepared.sessionId), ctx)
@@ -263,11 +281,16 @@ class RefactorSessionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         glob        = None,
         findPattern = "// TODO:remove",
         instruction = "stub-driven",
+        complexity  = Complexity.Low,
         maxParallel = 1,
-        maxWorkers  = 5
+        maxFiles    = 5,
+        confirmed   = true
       )
       for {
-        prepared <- prepareTool.invoke(input, ctx)
+        prepared <- prepareTool.invoke(input, ctx).map {
+          case d: RefactorWithInstructionOutput.Dispatched => d
+          case other => fail(s"expected Dispatched, got $other")
+        }
         // Simulate clock advance past TTL — the store evicts based
         // on the supplied `now` argument so the test doesn't have
         // to sleep.
