@@ -54,4 +54,11 @@ case class ProviderCall(modelId: Id[Model],
                           * of `messages` by `priorMessageCount` so the wire body carries
                           * only the delta since that response. Other providers ignore. */
                         previousResponseId: Option[String] = None,
-                        priorMessageCount: Option[Int] = None)
+                        priorMessageCount: Option[Int] = None,
+                        /** Per-attempt retry context populated by the framework's
+                          * transient-retry wrapper. `None` on the first attempt;
+                          * `Some` on every subsequent attempt, carrying the parsed
+                          * upstream-provider name from the prior failure so
+                          * providers with rotation-capable routing (OpenRouter)
+                          * exclude the failed upstream from this attempt. */
+                        retryContext: Option[RetryContext] = None)

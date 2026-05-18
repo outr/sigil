@@ -259,6 +259,25 @@ trait Sigil {
   def profileWireRequests: Boolean = true
 
   /**
+   * Wall-clock budget (ms) the framework allows a streaming provider
+   * call to spend emitting only keepalive / non-meaningful chunks
+   * before the wire layer raises a typed transient
+   * [[sigil.provider.ProviderStreamException]] (`errorType =
+   * upstream_silent`). The retry classifier promotes the typed
+   * exception to `Retry` so the framework's transient-retry wrapper
+   * re-attempts the call. Set to `0` to disable.
+   *
+   * Default `60_000` (60 seconds). Tightening risks false-firing on
+   * legitimately slow first-token paths (reasoning models warming
+   * up); loosening trades early failure detection for keeping the
+   * user waiting longer. The check fires lazily on each incoming
+   * chunk (no timer thread) — so it actually triggers on the NEXT
+   * keepalive after the threshold rather than precisely at the
+   * threshold.
+   */
+  def streamingSilenceTimeoutMs: Long = 60000L
+
+  /**
    * Threshold at which the curator emits
    * [[sigil.signal.PinnedMemoryBudgetWarning]] — pinned memories +
    * static system-prompt overhead occupying more than this fraction of

@@ -306,20 +306,29 @@ trait Provider extends Service {
       // Each attempt returns (bufferedEvents, optionalError). If
       // optionalError is None, the call drained cleanly. If Some,
       // the call errored after emitting `bufferedEvents` (possibly
-      // empty).
-      def attempt(remaining: Int): Task[(List[ProviderEvent], Option[Throwable])] = {
+      // empty / non-meaningful).
+      def attempt(remaining: Int, ctx: Option[RetryContext]): Task[(List[ProviderEvent], Option[Throwable])] = {
+        val perAttempt = ctx.fold(safe)(rc => safe.copy(retryContext = Some(rc)))
         val buffer = scala.collection.mutable.ListBuffer.empty[ProviderEvent]
-        val tapped = call(safe).evalTap(ev => Task { buffer += ev; () })
+        val tapped = call(perAttempt).evalTap(ev => Task { buffer += ev; () })
         tapped.drain.map(_ => (buffer.toList, Option.empty[Throwable])).handleError { t =>
           val captured = buffer.toList
           val cls = classifier.classify(t)
-          if (captured.isEmpty && remaining > 0 && cls == ErrorClassification.Retry) {
+          // A retry is safe when nothing in the captured prefix
+          // represents committed work the consumer has already
+          // observed — session-start chunks (role: assistant) and the
+          // wire decoder's synthetic Usage estimates don't count;
+          // text / tool / reasoning / image / response-state events
+          // do.
+          val meaningful = captured.exists(isMeaningfulProviderEvent)
+          if (!meaningful && remaining > 0 && cls == ErrorClassification.Retry) {
+            val nextCtx = nextRetryContext(t)
             scribe.warn(
               s"Sigil bug #211 — retrying transient provider error " +
                 s"(${t.getClass.getSimpleName}: ${Option(t.getMessage).getOrElse("")}); " +
                 s"$remaining retries remaining"
             )
-            Task.sleep(providerRetryDelay).flatMap(_ => attempt(remaining - 1))
+            Task.sleep(providerRetryDelay).flatMap(_ => attempt(remaining - 1, Some(nextCtx)))
           } else {
             // Either we have partial events (can't retry — would
             // duplicate the work), or the error isn't classified as
@@ -330,7 +339,7 @@ trait Provider extends Service {
           }
         }
       }
-      Stream.force(attempt(retries).map {
+      Stream.force(attempt(retries, None).map {
         case (events, None) => Stream.emits(events)
         case (events, Some(t)) =>
           // Use `evalMap(Task.error)` rather than
@@ -346,6 +355,30 @@ trait Provider extends Service {
           Stream.emits(events) ++ Stream.emit(()).evalMap[ProviderEvent](_ => Task.error[ProviderEvent](t))
       })
     }
+  }
+
+  /** Whether the event represents committed work the downstream
+    * consumer may have started rendering. Session-start chunks and
+    * synthetic streaming Usage estimates emit `Usage` / `Error` only —
+    * those don't count, so a transient failure before any text / tool
+    * / reasoning / image / response-state event lands stays
+    * retryable. */
+  private def isMeaningfulProviderEvent(ev: ProviderEvent): Boolean = ev match {
+    case _: ProviderEvent.Usage              => false
+    case _: ProviderEvent.Error              => false
+    case _: ProviderEvent.Done               => false
+    case _                                   => true
+  }
+
+  /** Derive the next attempt's [[RetryContext]] from the failure that
+    * triggered the retry. Pulls the upstream-provider name out of a
+    * typed [[ProviderStreamException]] when present so providers like
+    * OpenRouter can append it to their `provider.ignore` request
+    * block. Unknown errors yield an empty context. */
+  private def nextRetryContext(t: Throwable): RetryContext = t match {
+    case e: ProviderStreamException =>
+      RetryContext(lastErrorUpstreamProvider = e.errorMetadata.flatMap(_.upstreamProvider))
+    case _ => RetryContext()
   }
 
   /** Pre-flight budget validation. Estimates the rendered request via

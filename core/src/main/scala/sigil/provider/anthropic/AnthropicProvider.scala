@@ -393,7 +393,11 @@ case class AnthropicProvider(apiKey: String,
         val err  = json.get("error").getOrElse(Obj.empty)
         val msg  = err.get("message").map(_.asString).getOrElse("unknown error")
         val typ  = err.get("type").map(_.asString).getOrElse("error")
-        throw new ProviderStreamException(Anthropic.Provider, 0, typ, msg)
+        val metadata = ProviderErrorMetadata(errorType = Some(typ))
+        throw new ProviderStreamException(
+          providerKey = Anthropic.Provider, code = 0, typ = typ, message_ = msg,
+          status = None, errorMetadata = Some(metadata)
+        )
 
       case _ => Vector.empty
     }

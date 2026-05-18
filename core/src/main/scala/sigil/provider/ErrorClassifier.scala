@@ -66,12 +66,24 @@ object ErrorClassifier {
       // chaining at fiber boundaries that can wrap the original
       // message and break substring heuristics. Sigil audit H5.
       throwable match {
-        // Provider-side degeneration (empty_budget_burn, malformed_tool_args,
-        // inline server errors on 200-OK streams). Always fall through to
-        // the next candidate — the current model has produced unusable
-        // output; the same retry won't help.
-        case _: ProviderStreamException =>
-          return ErrorClassification.Fallthrough
+        // Provider-side mid-stream failure. Default disposition is
+        // `Fallthrough` (degenerate model output — no use re-running the
+        // same candidate). Two flavors promote to `Retry`: typed
+        // metadata names a transient upstream category
+        // (`provider_unavailable`, `upstream_silent`, `rate_limited`)
+        // OR the wire-level status is a transient 5xx. Both signal a
+        // sick upstream behind the gateway; the same candidate with a
+        // rotated upstream-provider preference typically clears.
+        case e: ProviderStreamException =>
+          val transientErrorTypes: Set[String] =
+            Set("provider_unavailable", "upstream_silent", "rate_limited")
+          val typedTransient: Boolean =
+            e.errorMetadata.flatMap(_.errorType).exists(transientErrorTypes.contains) ||
+              transientErrorTypes.contains(e.typ)
+          val transientStatus: Boolean =
+            e.status.orElse(Option(e.code).filter(_ > 0)).exists(s => s == 429 || s == 502 || s == 503 || s == 504)
+          if (typedTransient || transientStatus) return ErrorClassification.Retry
+          else return ErrorClassification.Fallthrough
 
         // Pre-flight capacity-gate timeout (configured per provider).
         // Fall through to the next candidate; this candidate is saturated.
