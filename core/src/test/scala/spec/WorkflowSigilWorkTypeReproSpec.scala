@@ -8,13 +8,15 @@ import sigil.provider.WorkType
 import sigil.signal.Signal
 import sigil.workflow.AgentDecisionStepInput
 
-/** Reproducer for sigil bug #18 — Sage (WorkflowSigil mixin) reports an
-  * empty WorkType Dart class. WorkflowSigil's trait body eagerly registers
-  * `WorkflowStepInput` subtypes — including AgentDecisionStepInput, which
-  * carries a Role with a WorkType field. If that registration runs before
-  * `polymorphicRegistrations.sync()`, AgentDecisionStepInput / Role lazy-val
-  * Definitions cache an empty WorkType polytype state. Subsequent codegen
-  * walks may inherit that empty snapshot. */
+/**
+ * Reproducer for sigil bug #18 — Sage (WorkflowSigil mixin) reports an
+ * empty WorkType Dart class. WorkflowSigil's trait body eagerly registers
+ * `WorkflowStepInput` subtypes — including AgentDecisionStepInput, which
+ * carries a Role with a WorkType field. If that registration runs before
+ * `polymorphicRegistrations.sync()`, AgentDecisionStepInput / Role lazy-val
+ * Definitions cache an empty WorkType polytype state. Subsequent codegen
+ * walks may inherit that empty snapshot.
+ */
 class WorkflowSigilWorkTypeReproSpec extends AnyWordSpec with Matchers {
 
   "WorkflowSigil-mixed Sigil after polymorphicRegistrations" should {
@@ -36,19 +38,19 @@ class WorkflowSigilWorkTypeReproSpec extends AnyWordSpec with Matchers {
 
       val roleField = agentStepDefn.defType match {
         case obj: DefType.Obj => obj.map.get("role").getOrElse(fail("no role field"))
-        case other            => fail(s"expected Obj, got $other")
+        case other => fail(s"expected Obj, got $other")
       }
       val roleDefn = roleField.defType match {
         case DefType.Opt(inner) => inner
-        case _                  => roleField
+        case _ => roleField
       }
       val workTypeField = roleDefn.defType match {
         case obj: DefType.Obj => obj.map.get("workType").getOrElse(fail("Role has no workType"))
-        case other            => fail(s"Role expected Obj, got $other")
+        case other => fail(s"Role expected Obj, got $other")
       }
       val workTypeInner = workTypeField.defType match {
         case DefType.Opt(inner) => inner
-        case _                  => workTypeField
+        case _ => workTypeField
       }
       workTypeInner.defType match {
         case p: DefType.Poly =>
@@ -62,11 +64,11 @@ class WorkflowSigilWorkTypeReproSpec extends AnyWordSpec with Matchers {
       val participantDefn = summon[RW[sigil.participant.DefaultAgentParticipant]].definition
       val pWorkType = participantDefn.defType match {
         case obj: DefType.Obj => obj.map.get("workType").getOrElse(fail("no workType"))
-        case other            => fail(s"$other")
+        case other => fail(s"$other")
       }
       val pInner = pWorkType.defType match {
         case DefType.Opt(i) => i
-        case _              => pWorkType
+        case _ => pWorkType
       }
       pInner.defType match {
         case p: DefType.Poly =>
@@ -78,20 +80,20 @@ class WorkflowSigilWorkTypeReproSpec extends AnyWordSpec with Matchers {
       // its Role's workType field should match Role's (cached empty).
       val rolesField = participantDefn.defType match {
         case obj: DefType.Obj => obj.map.get("roles").getOrElse(fail("no roles"))
-        case _                => fail("not Obj")
+        case _ => fail("not Obj")
       }
       // roles is Arr(Role)
       val roleInner = rolesField.defType match {
         case DefType.Arr(inner) => inner
-        case _                  => rolesField
+        case _ => rolesField
       }
       val roleWorkTypeField = roleInner.defType match {
         case obj: DefType.Obj => obj.map.get("workType").getOrElse(fail("no role.workType"))
-        case _                => fail("Role not Obj")
+        case _ => fail("Role not Obj")
       }
       val roleWorkTypeInner = roleWorkTypeField.defType match {
         case DefType.Opt(i) => i
-        case _              => roleWorkTypeField
+        case _ => roleWorkTypeField
       }
       roleWorkTypeInner.defType match {
         case p: DefType.Poly =>

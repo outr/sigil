@@ -40,22 +40,22 @@ import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolSchema}
 class ProxyTool(wrapped: Tool, transport: ToolProxyTransport) extends Tool {
   override def paginate: Boolean = false
 
-  override def name: ToolName                         = wrapped.name
-  override def description: String                    = wrapped.description
-  override def inputRW: RW[? <: ToolInput]            = wrapped.inputRW
+  override def name: ToolName = wrapped.name
+  override def description: String = wrapped.description
+  override def inputRW: RW[? <: ToolInput] = wrapped.inputRW
   override def inputDefinition: fabric.define.Definition = wrapped.inputDefinition
-  override def modes: Set[Id[Mode]]                   = wrapped.modes
-  override def space: SpaceId                         = wrapped.space
-  override def keywords: Set[String]                  = wrapped.keywords
-  override def examples: List[ToolExample]            = wrapped.examples
-  override def createdBy: Option[ParticipantId]       = wrapped.createdBy
-  override def _id: Id[Tool]                          = wrapped._id
-  override def created: Timestamp                     = wrapped.created
-  override def modified: Timestamp                    = wrapped.modified
-  override lazy val schema: ToolSchema                = wrapped.schema
+  override def modes: Set[Id[Mode]] = wrapped.modes
+  override def space: SpaceId = wrapped.space
+  override def keywords: Set[String] = wrapped.keywords
+  override def examples: List[ToolExample] = wrapped.examples
+  override def createdBy: Option[ParticipantId] = wrapped.createdBy
+  override def _id: Id[Tool] = wrapped._id
+  override def created: Timestamp = wrapped.created
+  override def modified: Timestamp = wrapped.modified
+  override lazy val schema: ToolSchema = wrapped.schema
 
   override def execute(input: ToolInput, context: TurnContext): Stream[Event] = {
-    val rw       = wrapped.inputRW.asInstanceOf[RW[ToolInput]]
+    val rw = wrapped.inputRW.asInstanceOf[RW[ToolInput]]
     val rendered = rw.read(input)
     transport.dispatch(wrapped.name, rendered, context)
   }

@@ -36,24 +36,26 @@ class DigitalOceanReasoningModeSpec extends AsyncWordSpec with AsyncTaskSpec wit
   private val topic = TopicEntry(sigil.conversation.Topic.id("t"), label = "t", summary = "t")
   private val convId = Conversation.id("reasoning-mode-spec")
 
-  /** Build a `ConversationRequest` with the given reasoning mode
-    * + model id; route through `requestConverter` to inspect the
-    * wire body. */
+  /**
+   * Build a `ConversationRequest` with the given reasoning mode
+   * + model id; route through `requestConverter` to inspect the
+   * wire body.
+   */
   private def bodyOf(modelId: Id[Model], mode: ReasoningMode): rapid.Task[String] = {
     val req = ConversationRequest(
-      conversationId     = convId,
-      modelId            = modelId,
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId),
-      currentMode        = ConversationMode,
-      currentTopic       = topic,
+      conversationId = convId,
+      modelId = modelId,
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId),
+      currentMode = ConversationMode,
+      currentTopic = topic,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), reasoningMode = mode),
-      tools              = CoreTools.all,
-      chain              = List(TestUser, TestAgent)
+      tools = CoreTools.all,
+      chain = List(TestUser, TestAgent)
     )
     doProvider.requestConverter(req).map(_.content match {
       case Some(c: spice.http.content.StringContent) => c.value
-      case _                                          => ""
+      case _ => ""
     })
   }
 
@@ -64,37 +66,33 @@ class DigitalOceanReasoningModeSpec extends AsyncWordSpec with AsyncTaskSpec wit
 
   "DigitalOceanProvider.buildBody (kimi reasoning toggle)" should {
 
-    "append /no_think to the system prompt for kimi-k2.5 when ReasoningMode.Off" in {
+    "append /no_think to the system prompt for kimi-k2.5 when ReasoningMode.Off" in
       bodyOf(kimi25Id, ReasoningMode.Off).map { body =>
         body should include("/no_think")
-        body shouldNot include("/think\"")  // not a bare /think directive
+        body shouldNot include("/think\"") // not a bare /think directive
       }
-    }
 
-    "append /think for kimi-k2.5 when ReasoningMode.On" in {
+    "append /think for kimi-k2.5 when ReasoningMode.On" in
       bodyOf(kimi25Id, ReasoningMode.On).map { body =>
         body should include("/think")
         body shouldNot include("/no_think")
       }
-    }
 
-    "leave the system prompt unchanged for kimi-k2.5 when ReasoningMode.Auto" in {
+    "leave the system prompt unchanged for kimi-k2.5 when ReasoningMode.Auto" in
       bodyOf(kimi25Id, ReasoningMode.Auto).map { body =>
         body shouldNot include("/no_think")
         body shouldNot include("/think")
       }
-    }
 
-    "apply the same directive to kimi-k2.6" in {
+    "apply the same directive to kimi-k2.6" in
       bodyOf(kimi26Id, ReasoningMode.Off).map { body =>
         body should include("/no_think")
       }
-    }
 
     "leave non-kimi models unchanged regardless of mode" in {
       for {
         offBody <- bodyOf(nonKimiId, ReasoningMode.Off)
-        onBody  <- bodyOf(nonKimiId, ReasoningMode.On)
+        onBody <- bodyOf(nonKimiId, ReasoningMode.On)
       } yield {
         offBody shouldNot include("/no_think")
         offBody shouldNot include("/think")

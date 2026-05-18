@@ -6,10 +6,12 @@ import sigil.tooling.BspDiscovery
 
 import java.nio.file.{Files, Path}
 
-/** Sigil bug #20 — BspManager.session falls back to scanning
-  * .bsp JSON files under the project root when no config is
-  * persisted. The set_workspace → start_metals → bsp_compile flow
-  * works without an out-of-band registration step. */
+/**
+ * Sigil bug #20 — BspManager.session falls back to scanning
+ * .bsp JSON files under the project root when no config is
+ * persisted. The set_workspace → start_metals → bsp_compile flow
+ * works without an out-of-band registration step.
+ */
 class BspDiscoverySpec extends AnyWordSpec with Matchers {
 
   private def withTempProject[T](setup: Path => Unit)(test: Path => T): T = {
@@ -31,10 +33,11 @@ class BspDiscoverySpec extends AnyWordSpec with Matchers {
   }
 
   "BspDiscovery.scan" should {
-    "find sbt.json under .bsp and produce a BspBuildConfig" in {
+    "find sbt.json under .bsp and produce a BspBuildConfig" in
       withTempProject { root =>
         val bspDir = Files.createDirectories(root.resolve(".bsp"))
-        Files.writeString(bspDir.resolve("sbt.json"),
+        Files.writeString(
+          bspDir.resolve("sbt.json"),
           """{"name":"sbt","version":"1.10.7","bspVersion":"2.1.0","languages":["scala"],"argv":["sbt","-Xms100m","-Xmx100m","-classpath","sbt-launcher.jar","xsbt.boot.Boot","-bsp"]}"""
         )
       } { root =>
@@ -44,25 +47,23 @@ class BspDiscoverySpec extends AnyWordSpec with Matchers {
         cfg.get.command shouldBe "sbt"
         cfg.get.args shouldBe List("-Xms100m", "-Xmx100m", "-classpath", "sbt-launcher.jar", "xsbt.boot.Boot", "-bsp")
       }
-    }
 
-    "return None when no .bsp directory exists" in {
+    "return None when no .bsp directory exists" in
       withTempProject(_ => ())(root => BspDiscovery.scan(root.toString) shouldBe None)
-    }
 
-    "return None when .bsp is empty" in {
+    "return None when .bsp is empty" in
       withTempProject { root =>
         Files.createDirectories(root.resolve(".bsp"))
       } { root =>
         BspDiscovery.scan(root.toString) shouldBe None
       }
-    }
 
-    "skip malformed JSON files and try the next one" in {
+    "skip malformed JSON files and try the next one" in
       withTempProject { root =>
         val bspDir = Files.createDirectories(root.resolve(".bsp"))
         Files.writeString(bspDir.resolve("aaa-broken.json"), "{ not json")
-        Files.writeString(bspDir.resolve("bbb-good.json"),
+        Files.writeString(
+          bspDir.resolve("bbb-good.json"),
           """{"name":"bloop","argv":["bloop","bsp"]}"""
         )
       } { root =>
@@ -71,9 +72,8 @@ class BspDiscoverySpec extends AnyWordSpec with Matchers {
         cfg.get.command shouldBe "bloop"
         cfg.get.args shouldBe List("bsp")
       }
-    }
 
-    "return None when argv is missing or empty" in {
+    "return None when argv is missing or empty" in
       withTempProject { root =>
         val bspDir = Files.createDirectories(root.resolve(".bsp"))
         Files.writeString(bspDir.resolve("noargv.json"), """{"name":"weird"}""")
@@ -81,6 +81,5 @@ class BspDiscoverySpec extends AnyWordSpec with Matchers {
       } { root =>
         BspDiscovery.scan(root.toString) shouldBe None
       }
-    }
   }
 }

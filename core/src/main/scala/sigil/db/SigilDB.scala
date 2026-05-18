@@ -6,7 +6,9 @@ import lightdb.id.Id
 import lightdb.store.CollectionManager
 import lightdb.upgrade.DatabaseUpgrade
 import rapid.Task
-import sigil.conversation.{ContextMemory, ContextSummary, Conversation, ConversationToolOverlay, EncodedContext, ParticipantProjection, Topic}
+import sigil.conversation.{
+  ContextMemory, ContextSummary, Conversation, ConversationToolOverlay, EncodedContext, ParticipantProjection, Topic
+}
 import sigil.event.Event
 import sigil.signal.{Delta, Signal}
 import sigil.provider.{ProviderConfig, ProviderStrategyRecord, SpaceProviderAssignment}
@@ -43,7 +45,8 @@ import scala.concurrent.duration.*
  */
 abstract class SigilDB(override val directory: Option[Path],
                        override val storeManager: CollectionManager,
-                       appUpgrades: List[DatabaseUpgrade] = Nil) extends LightDB {
+                       appUpgrades: List[DatabaseUpgrade] = Nil)
+  extends LightDB {
   override type SM = CollectionManager
 
   val events: S[Event, Event.type] = store(Event)()
@@ -65,11 +68,14 @@ abstract class SigilDB(override val directory: Option[Path],
   val viewerStates: S[ViewerState, ViewerState.type] = store(ViewerState).withCache(CacheConfig.lru(500))()
   val conversationToolOverlays: S[ConversationToolOverlay, ConversationToolOverlay.type] =
     store(ConversationToolOverlay).withCache(CacheConfig.lru(500))()
-  /** Per-row paginated tool output — drained from each
-    * [[sigil.tool.output.PaginatedTool]]'s `Stream[Node[A]]` and
-    * read back by `next_page` / `query_tool_output`. Rows carry
-    * an `expiresAt` and get swept by
-    * [[sigil.maintenance.ToolOutputExpirationSweep]]. */
+
+  /**
+   * Per-row paginated tool output — drained from each
+   * [[sigil.tool.output.PaginatedTool]]'s `Stream[Node[A]]` and
+   * read back by `next_page` / `query_tool_output`. Rows carry
+   * an `expiresAt` and get swept by
+   * [[sigil.maintenance.ToolOutputExpirationSweep]].
+   */
   val toolOutputs: S[ToolOutputNode, ToolOutputNode.type] = store(ToolOutputNode)()
 
   override def upgrades: List[DatabaseUpgrade] = appUpgrades

@@ -65,11 +65,13 @@ final case class DartGenerator(sigil: Sigil,
                                defTypes: List[(String, Definition)] = Nil,
                                storedEventMode: Boolean = true) {
 
-  /** Run the generator end-to-end: phase-1 registrations, generate
-    * source files, write to `outputPath`, log every emitted file plus
-    * a count summary. Defaults `outputPath` to `../app` if no CLI arg
-    * is supplied — matches the convention every Sigil consumer's
-    * `GenerateDart` shim uses today. */
+  /**
+   * Run the generator end-to-end: phase-1 registrations, generate
+   * source files, write to `outputPath`, log every emitted file plus
+   * a count summary. Defaults `outputPath` to `../app` if no CLI arg
+   * is supplied — matches the convention every Sigil consumer's
+   * `GenerateDart` shim uses today.
+   */
   def run(args: Array[String]): Unit = {
     val outputPath: Path =
       if (args.nonEmpty) Paths.get(args.head)

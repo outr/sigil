@@ -12,7 +12,8 @@ import strider.step.Step
 
 case class DeclineWorkflowInput(runId: String,
                                 stepId: String,
-                                reason: Option[String] = None) extends ToolInput derives RW
+                                reason: Option[String] = None)
+  extends ToolInput derives RW
 
 /**
  * Decline a workflow run paused on an [[strider.step.Approval]]
@@ -25,25 +26,29 @@ case class DeclineWorkflowInput(runId: String,
  * (rollback, compensation, alternate path, immediate failure).
  * Idempotent against an already-resumed run.
  */
-final class DeclineWorkflowTool extends TypedTool[DeclineWorkflowInput](
-  name = ToolName("decline_workflow"),
-  description =
-    """Decline a workflow run paused on an approval step.
+final class DeclineWorkflowTool
+  extends TypedTool[DeclineWorkflowInput](
+    name = ToolName("decline_workflow"),
+    description =
+      """Decline a workflow run paused on an approval step.
       |
       |`runId` is the run id; `stepId` is the id of the waiting approval step. `reason` is
       |optional free-form text — appended to the resume payload so the workflow's
       |branching can match on it.""".stripMargin,
-  examples = List(
-    ToolExample("Decline a deploy approval",
-      DeclineWorkflowInput(runId = "run-abc", stepId = "deploy-gate")),
-    ToolExample("Decline with a reason",
-      DeclineWorkflowInput(runId = "run-abc", stepId = "deploy-gate", reason = Some("staging tests failing")))
-  ),
-  keywords = Set("workflow", "decline", "reject", "no", "deny", "refuse")
-) with WorkflowToolSupport {
+    examples = List(
+      ToolExample(
+        "Decline a deploy approval",
+        DeclineWorkflowInput(runId = "run-abc", stepId = "deploy-gate")),
+      ToolExample(
+        "Decline with a reason",
+        DeclineWorkflowInput(runId = "run-abc", stepId = "deploy-gate", reason = Some("staging tests failing")))
+    ),
+    keywords = Set("workflow", "decline", "reject", "no", "deny", "refuse")
+  )
+  with WorkflowToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: DeclineWorkflowInput, ctx: TurnContext): Stream[Event] = {
+  override protected def executeTyped(input: DeclineWorkflowInput, ctx: TurnContext): Stream[Event] =
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)
       case Right(host) =>
@@ -62,5 +67,4 @@ final class DeclineWorkflowTool extends TypedTool[DeclineWorkflowInput](
         }
         Stream.force(task.map(text => reply(ctx, text)))
     }
-  }
 }

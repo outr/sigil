@@ -10,7 +10,8 @@ import sigil.tooling.types.{LspDiagnostic, LspDiagnosticsResult}
 import scala.jdk.CollectionConverters.*
 
 case class LspPullDiagnosticsInput(languageId: String,
-                                   filePath: String) extends ToolInput derives RW
+                                   filePath: String)
+  extends ToolInput derives RW
 
 /**
  * Pull-model diagnostics — explicitly request fresh diagnostics for
@@ -27,32 +28,52 @@ case class LspPullDiagnosticsInput(languageId: String,
  *
  * Emits a typed [[LspDiagnosticsResult]].
  */
-final class LspPullDiagnosticsTool(val manager: LspManager) extends TypedOutputTool[LspPullDiagnosticsInput, LspDiagnosticsResult](
-  name = ToolName("lsp_pull_diagnostics"),
-  description =
-    """Pull diagnostics for a file synchronously (LSP 3.17 pull-model).
+final class LspPullDiagnosticsTool(val manager: LspManager)
+  extends TypedOutputTool[LspPullDiagnosticsInput, LspDiagnosticsResult](
+    name = ToolName("lsp_pull_diagnostics"),
+    description =
+      """Pull diagnostics for a file synchronously (LSP 3.17 pull-model).
       |
       |`languageId` + `filePath` identify the document.
       |Returns `{filePath, diagnostics: [...]}`. Servers without pull-model support fall back to
       |a push-snapshot.""".stripMargin,
-  keywords = Set(
-    "lsp", "diagnostics", "errors", "warnings", "problems", "lint",
-    "analyze", "examine", "inspect", "review", "what's broken",
-    "fresh", "sync", "synchronous",
-    "scala", "type", "fix", "code", "language"
-  ),
-  examples = List(
-    ToolExample(
-      "pull diagnostics for a single file",
-      LspPullDiagnosticsInput(languageId = "scala", filePath = "/abs/path/Foo.scala")
+    keywords = Set(
+      "lsp",
+      "diagnostics",
+      "errors",
+      "warnings",
+      "problems",
+      "lint",
+      "analyze",
+      "examine",
+      "inspect",
+      "review",
+      "what's broken",
+      "fresh",
+      "sync",
+      "synchronous",
+      "scala",
+      "type",
+      "fix",
+      "code",
+      "language"
+    ),
+    examples = List(
+      ToolExample(
+        "pull diagnostics for a single file",
+        LspPullDiagnosticsInput(languageId = "scala", filePath = "/abs/path/Foo.scala")
+      )
     )
   )
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  with sigil.tool.ReadOnlyExternalTool
+  with LspToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspPullDiagnosticsInput, context: TurnContext): Task[LspDiagnosticsResult] =
     withOpenDocumentTyped[LspDiagnosticsResult](
-      input.languageId, input.filePath, context,
+      input.languageId,
+      input.filePath,
+      context,
       onError = msg => throw new RuntimeException(msg)
     ) { (session, uri) =>
       // Sigil bug #100 — gate the pull request on the server's
@@ -72,7 +93,7 @@ final class LspPullDiagnosticsTool(val manager: LspManager) extends TypedOutputT
           session.pullDiagnostics(uri).map { report =>
             val items = report match {
               case Some(r) if r.isLeft => Option(r.getLeft.getItems).map(_.asScala.toList).getOrElse(Nil)
-              case _                   => Nil
+              case _ => Nil
             }
             items.map(LspDiagnostic.fromLsp4j(input.filePath, _))
           }

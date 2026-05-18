@@ -36,7 +36,8 @@ import spice.http.{HttpExchange, HttpMethod, HttpStatus}
  * registered templates' `triggers` lists at server startup.
  */
 final class WorkflowWebhookHandler(basePath: String,
-                                   secrets: Map[String, String]) extends HttpHandler {
+                                   secrets: Map[String, String])
+  extends HttpHandler {
   private val SecretHeader = "X-Webhook-Secret"
   private val normalizedBase: String = if (basePath.endsWith("/")) basePath.dropRight(1) else basePath
 
@@ -69,9 +70,8 @@ final class WorkflowWebhookHandler(basePath: String,
     }
   }
 
-  private def reply(exchange: HttpExchange, status: HttpStatus, body: String): Task[HttpExchange] = {
+  private def reply(exchange: HttpExchange, status: HttpStatus, body: String): Task[HttpExchange] =
     exchange.modify { response =>
       Task.pure(response.withStatus(status).withContent(StringContent(body, spice.net.ContentType.`text/plain`)))
     }.map(_.finish())
-  }
 }

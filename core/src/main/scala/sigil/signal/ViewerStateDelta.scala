@@ -20,4 +20,5 @@ import sigil.viewer.ViewerStatePayload
  * safely — they'll get the merged state when their snapshot arrives.
  */
 case class ViewerStateDelta(scope: String,
-                            patch: ViewerStatePayload) extends Notice derives RW
+                            patch: ViewerStatePayload)
+  extends Notice derives RW

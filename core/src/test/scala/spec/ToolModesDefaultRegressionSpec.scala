@@ -44,32 +44,35 @@ class ToolModesDefaultRegressionSpec extends AsyncWordSpec with AsyncTaskSpec wi
   private case class StubInput(text: String = "") extends ToolInput derives RW
   ToolInput.register(RW.static(StubInput()))
 
-  /** Vanilla TypedTool authoring — no `modes` override. The default
-    * must be empty for universal discoverability to hold. */
-  private object VanillaTool extends TypedTool[StubInput](
-    name        = ToolName("vanilla_default_tool"),
-    description = "A test tool that doesn't override modes."
-  ) {
-  override def paginate: Boolean = false
+  /**
+   * Vanilla TypedTool authoring — no `modes` override. The default
+   * must be empty for universal discoverability to hold.
+   */
+  private object VanillaTool
+    extends TypedTool[StubInput](
+      name = ToolName("vanilla_default_tool"),
+      description = "A test tool that doesn't override modes."
+    ) {
+    override def paginate: Boolean = false
 
     override protected def executeTyped(input: StubInput, context: TurnContext): rapid.Stream[Event] =
       rapid.Stream.empty
   }
 
-  private val fs                          = LocalFileSystemContext(basePath = None)
-  private val readFile: Tool              = new ReadFileTool(fs)
-  private val grep: Tool                  = new GrepTool(fs)
-  private val glob: Tool                  = new GlobTool(fs)
+  private val fs = LocalFileSystemContext(basePath = None)
+  private val readFile: Tool = new ReadFileTool(fs)
+  private val grep: Tool = new GrepTool(fs)
+  private val glob: Tool = new GlobTool(fs)
   private val filesystemTools: List[Tool] = List(readFile, grep, glob)
 
   private val finder: ToolFinder = InMemoryToolFinder(filesystemTools :+ VanillaTool)
 
   private def request(keywords: String, mode: Mode): DiscoveryRequest =
     DiscoveryRequest(
-      keywords       = keywords,
-      chain          = List(TestUser, TestAgent),
-      mode           = mode,
-      callerSpaces   = Set(GlobalSpace),
+      keywords = keywords,
+      chain = List(TestUser, TestAgent),
+      mode = mode,
+      callerSpaces = Set(GlobalSpace),
       conversationId = Some(Conversation.id(s"tool-modes-${rapid.Unique()}"))
     )
 
@@ -82,8 +85,8 @@ class ToolModesDefaultRegressionSpec extends AsyncWordSpec with AsyncTaskSpec wi
 
     "be Set.empty for the framework filesystem family — they declare no mode preference" in rapid.Task {
       readFile.modes shouldBe Set.empty[lightdb.id.Id[Mode]]
-      grep.modes     shouldBe Set.empty[lightdb.id.Id[Mode]]
-      glob.modes     shouldBe Set.empty[lightdb.id.Id[Mode]]
+      grep.modes shouldBe Set.empty[lightdb.id.Id[Mode]]
+      glob.modes shouldBe Set.empty[lightdb.id.Id[Mode]]
     }
   }
 
@@ -119,7 +122,7 @@ class ToolModesDefaultRegressionSpec extends AsyncWordSpec with AsyncTaskSpec wi
           val toolMatches = matches.filter(_.capabilityType == CapabilityType.Tool)
           val names = toolMatches.map(_.name)
           withClue(s"matches=${matches.map(m => s"${m.name}(${m.capabilityType})").mkString(", ")}: ") {
-            names should contain ("read_file")
+            names should contain("read_file")
           }
         }
     }
@@ -129,7 +132,7 @@ class ToolModesDefaultRegressionSpec extends AsyncWordSpec with AsyncTaskSpec wi
       TestSigil.findCapabilities(request("search files for text pattern", TestCodingMode))
         .map { matches =>
           val toolMatches = matches.filter(_.capabilityType == CapabilityType.Tool)
-          toolMatches.map(_.name) should contain ("grep")
+          toolMatches.map(_.name) should contain("grep")
         }
     }
 
@@ -142,7 +145,7 @@ class ToolModesDefaultRegressionSpec extends AsyncWordSpec with AsyncTaskSpec wi
           // The contract: the empty-modes tools aren't filtered out.
           val names = toolMatches.map(_.name).toSet
           val anyFs = names("glob") || names("read_file") || names("grep")
-          withClue(s"got ${toolMatches.map(_.name)}: ") { anyFs shouldBe true }
+          withClue(s"got ${toolMatches.map(_.name)}: ")(anyFs shouldBe true)
         }
     }
 
@@ -151,7 +154,7 @@ class ToolModesDefaultRegressionSpec extends AsyncWordSpec with AsyncTaskSpec wi
       TestSigil.findCapabilities(request("read file contents", ConversationMode))
         .map { matches =>
           val toolMatches = matches.filter(_.capabilityType == CapabilityType.Tool)
-          toolMatches.map(_.name) should contain ("read_file")
+          toolMatches.map(_.name) should contain("read_file")
         }
     }
   }

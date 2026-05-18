@@ -44,12 +44,16 @@ case class RefactorWithInstructionOutput(sessionId: String,
                                          referenceId: String,
                                          pageSize: Int,
                                          perFileSummary: Map[String, Int],
-                                         abortReason: Option[String] = None) derives RW
+                                         abortReason: Option[String] = None)
+  derives RW
 
-/** Per-file outcome: the worker's decisions + the resulting unified
-  * diff. Drained one row per file into `db.toolOutputs` so the agent
-  * pages through them via the standard pagination tools. */
+/**
+ * Per-file outcome: the worker's decisions + the resulting unified
+ * diff. Drained one row per file into `db.toolOutputs` so the agent
+ * pages through them via the standard pagination tools.
+ */
 case class FileRefactorReport(path: String,
                               workerDecisions: List[MatchDecision],
                               workerError: Option[String] = None,
-                              appliedDiff: Option[String] = None) derives RW
+                              appliedDiff: Option[String] = None)
+  derives RW

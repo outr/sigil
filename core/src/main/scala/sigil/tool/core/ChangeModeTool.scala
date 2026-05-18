@@ -22,10 +22,11 @@ import sigil.tool.model.ChangeModeInput
  * directly in the tool's documentation — no separate "Other modes
  * available" prompt block needed.
  */
-case object ChangeModeTool extends TypedTool[ChangeModeInput](
-  name = ToolName("change_mode"),
-  description =
-    """Switch operating mode. Call BEFORE find_capability ONLY when the user
+case object ChangeModeTool
+  extends TypedTool[ChangeModeInput](
+    name = ToolName("change_mode"),
+    description =
+      """Switch operating mode. Call BEFORE find_capability ONLY when the user
       |is starting a sustained session in a listed mode's domain (multi-turn
       |work). For single-action requests (one binding, one lookup, one file
       |edit), stay in the current mode and use find_capability to surface the
@@ -34,19 +35,27 @@ case object ChangeModeTool extends TypedTool[ChangeModeInput](
       |`mode` is the target's stable name from the available-modes list below.
       |After change_mode succeeds, the new mode's tools are directly callable
       |on the next turn.""".stripMargin,
-  // Curated keyword surface for discovery ranking. Tight on what
-  // `change_mode` actually does — switch the agent's operating
-  // posture / toolset — without leaking into adjacent intents like
-  // `pin_complexity` (tier / level / complexity / cost), which are
-  // separate tools with their own keyword sets. Without these, the
-  // BM25 ranker would score `change_mode` purely on its description
-  // prose and accidentally match tier-shaped queries (sigil bug
-  // #158).
-  keywords = Set(
-    "mode", "modes", "switch", "change", "transition",
-    "operating", "posture", "kit", "toolset", "tools"
-  )
-) {
+    // Curated keyword surface for discovery ranking. Tight on what
+    // `change_mode` actually does — switch the agent's operating
+    // posture / toolset — without leaking into adjacent intents like
+    // `pin_complexity` (tier / level / complexity / cost), which are
+    // separate tools with their own keyword sets. Without these, the
+    // BM25 ranker would score `change_mode` purely on its description
+    // prose and accidentally match tier-shaped queries (sigil bug
+    // #158).
+    keywords = Set(
+      "mode",
+      "modes",
+      "switch",
+      "change",
+      "transition",
+      "operating",
+      "posture",
+      "kit",
+      "toolset",
+      "tools"
+    )
+  ) {
   override def paginate: Boolean = false
 
   // ModeChange Events update Conversation.currentMode and the system
@@ -73,9 +82,11 @@ case object ChangeModeTool extends TypedTool[ChangeModeInput](
         rapid.Stream.empty
     }
 
-  /** Append the live set of switchable modes to the static
-    * description so the LLM sees the available targets without a
-    * separate prompt-rendering pass. */
+  /**
+   * Append the live set of switchable modes to the static
+   * description so the LLM sees the available targets without a
+   * separate prompt-rendering pass.
+   */
   override def descriptionFor(mode: Mode, sigil: Sigil): String = {
     val others = sigil.availableModes.filterNot(_.name == mode.name)
     if (others.isEmpty) description

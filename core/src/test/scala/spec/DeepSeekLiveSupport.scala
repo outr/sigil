@@ -10,9 +10,11 @@ import spice.net.*
 object DeepSeekLiveSupport {
   def apiKey: Option[String] = sys.env.get("DEEPSEEK_API_KEY").filter(_.nonEmpty)
 
-  /** DeepSeek's `/v1/models` returns 200 even for unfunded keys, so
-    * the only reliable "is this account usable" probe is a minimal
-    * chat-completions request — unfunded keys come back 402. */
+  /**
+   * DeepSeek's `/v1/models` returns 200 even for unfunded keys, so
+   * the only reliable "is this account usable" probe is a minimal
+   * chat-completions request — unfunded keys come back 402.
+   */
   private def probe(key: String): HttpRequest = {
     val body = JsonFormatter.Compact(obj(
       "model" -> str("deepseek-chat"),

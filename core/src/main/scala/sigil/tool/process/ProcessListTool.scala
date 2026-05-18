@@ -22,7 +22,7 @@ final class ProcessListTool(registry: ProcessRegistry)
         |handle includes `{id, pid, startedAt, command}`.""".stripMargin,
     examples = List(
       ToolExample("Processes spawned by this conversation", ProcessListInput()),
-      ToolExample("Every registered process",                ProcessListInput(scope = "all"))
+      ToolExample("Every registered process", ProcessListInput(scope = "all"))
     ),
     keywords = Set("process", "list", "running", "background")
   ) {
@@ -31,14 +31,15 @@ final class ProcessListTool(registry: ProcessRegistry)
   override protected def executeTyped(input: ProcessListInput, ctx: TurnContext): Stream[Event] = Stream.force(
     registry.list(filterByConversation = input.scope match {
       case "all" => None
-      case _     => Some(ctx.conversation.id)
+      case _ => Some(ctx.conversation.id)
     }).map { handles =>
-      val arrJson = arr(handles.map(h => obj(
-        "id"        -> str(h.id),
-        "pid"       -> num(h.pid),
-        "startedAt" -> num(h.startedAt.value),
-        "command"   -> str(h.command)
-      ))*)
+      val arrJson = arr(handles.map(h =>
+        obj(
+          "id" -> str(h.id),
+          "pid" -> num(h.pid),
+          "startedAt" -> num(h.startedAt.value),
+          "command" -> str(h.command)
+        ))*)
       val payload = obj("processes" -> arrJson)
       Stream.emit[Event](FsToolEmit(payload, ctx))
     }

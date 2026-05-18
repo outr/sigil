@@ -17,4 +17,5 @@ import fabric.rw.*
  */
 final case class BankingEnvironment(bankAccount: BankAccount,
                                     filesystem: BankingFilesystem,
-                                    userAccount: BankingUserAccount) derives RW
+                                    userAccount: BankingUserAccount)
+  derives RW

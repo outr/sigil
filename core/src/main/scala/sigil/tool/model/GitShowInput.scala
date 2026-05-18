@@ -9,4 +9,5 @@ import sigil.tool.ToolInput
  * sha, a tag).
  */
 case class GitShowInput(sha: String,
-                        workingDir: Option[String] = None) extends ToolInput derives RW
+                        workingDir: Option[String] = None)
+  extends ToolInput derives RW

@@ -63,10 +63,12 @@ import java.nio.file.{Files, Paths}
  */
 object WireLogReplayBench {
 
-  case object BenchUser  extends ParticipantId       { override val value: String = "bench-user"  }
-  case object BenchAgent extends AgentParticipantId  { override val value: String = "bench-agent" }
+  case object BenchUser extends ParticipantId { override val value: String = "bench-user" }
+  case object BenchAgent extends AgentParticipantId { override val value: String = "bench-agent" }
 
-  /** Lightweight Sigil instance — just enough to publish events + curate. */
+  /**
+   * Lightweight Sigil instance — just enough to publish events + curate.
+   */
   private case class BenchSigil() extends Sigil {
     override type DB = DefaultSigilDB
     override protected def buildDB(directory: Option[java.nio.file.Path],
@@ -75,7 +77,8 @@ object WireLogReplayBench {
       new DefaultSigilDB(directory, storeManager, appUpgrades)
     override protected def signalRegistrations: List[RW[? <: Signal]] = Nil
     override protected def participantIds: List[RW[? <: ParticipantId]] = List(
-      RW.static(BenchUser), RW.static(BenchAgent)
+      RW.static(BenchUser),
+      RW.static(BenchAgent)
     )
     override protected def spaceIds: List[RW[? <: SpaceId]] = Nil
     override protected def participants: List[RW[? <: Participant]] = Nil
@@ -94,30 +97,30 @@ object WireLogReplayBench {
   private val benchModelId: Id[Model] = Model.id("bench/bench-model")
 
   private def benchModel(contextLength: Long = 100_000L): Model = Model(
-    canonicalSlug       = "bench/bench-model",
-    huggingFaceId       = "",
-    name                = "bench-model",
-    displayName         = Some("bench-model"),
-    description         = "",
-    contextLength       = contextLength,
-    architecture        = ModelArchitecture(
-      modality         = "text->text",
-      inputModalities  = List("text"),
+    canonicalSlug = "bench/bench-model",
+    huggingFaceId = "",
+    name = "bench-model",
+    displayName = Some("bench-model"),
+    description = "",
+    contextLength = contextLength,
+    architecture = ModelArchitecture(
+      modality = "text->text",
+      inputModalities = List("text"),
       outputModalities = List("text"),
-      tokenizer        = "Unknown",
-      instructType     = None
+      tokenizer = "Unknown",
+      instructType = None
     ),
-    pricing             = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
-    topProvider         = ModelTopProvider(contextLength = Some(contextLength), maxCompletionTokens = None, isModerated = false),
-    perRequestLimits    = None,
+    pricing = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
+    topProvider = ModelTopProvider(contextLength = Some(contextLength), maxCompletionTokens = None, isModerated = false),
+    perRequestLimits = None,
     supportedParameters = Set.empty,
-    defaultParameters   = ModelDefaultParameters(),
-    knowledgeCutoff     = None,
-    expirationDate      = None,
-    links               = ModelLinks(details = ""),
-    created             = Timestamp(),
-    modified            = Timestamp(),
-    _id                 = benchModelId
+    defaultParameters = ModelDefaultParameters(),
+    knowledgeCutoff = None,
+    expirationDate = None,
+    links = ModelLinks(details = ""),
+    created = Timestamp(),
+    modified = Timestamp(),
+    _id = benchModelId
   )
 
   def main(args: Array[String]): Unit = {
@@ -148,11 +151,13 @@ object WireLogReplayBench {
     }
   }
 
-  /** Extract the most-recently-seen `messages` array from a
-    * sequence of `/v1/chat/completions` requests in the wire log
-    * (later requests subsume earlier ones since each turn's
-    * messages array is a superset of the previous), then convert
-    * each message to a synthetic Sigil Event. */
+  /**
+   * Extract the most-recently-seen `messages` array from a
+   * sequence of `/v1/chat/completions` requests in the wire log
+   * (later requests subsume earlier ones since each turn's
+   * messages array is a superset of the previous), then convert
+   * each message to a synthetic Sigil Event.
+   */
   private def extractEventsFromWireLog(path: java.nio.file.Path): Vector[Event] = {
     val convId = Conversation.id(s"wire-log-replay-${rapid.Unique()}")
     val lines = scala.io.Source.fromFile(path.toFile, StandardCharsets.UTF_8.name()).getLines().toVector
@@ -160,7 +165,7 @@ object WireLogReplayBench {
       scala.util.Try {
         val rec = fabric.io.JsonParser(line)
         val kind = rec.get("kind").map(_.asString).getOrElse("")
-        val url  = rec.get("url").map(_.asString).getOrElse("")
+        val url = rec.get("url").map(_.asString).getOrElse("")
         if (kind == "request" && url.endsWith("/v1/chat/completions")) {
           rec.get("body").flatMap(_.get("messages")).map(_.asVector).getOrElse(Vector.empty)
         } else Vector.empty[fabric.Json]
@@ -170,12 +175,13 @@ object WireLogReplayBench {
     // The chat-completions transcript grows turn-over-turn — every
     // request includes the full history up to that point. Take the
     // LARGEST seen array (= the latest turn's full transcript).
-    val transcript: Vector[fabric.Json] = if (messages.isEmpty) Vector.empty else {
+    val transcript: Vector[fabric.Json] = if (messages.isEmpty) Vector.empty
+    else {
       lines.iterator.flatMap { line =>
         scala.util.Try {
           val rec = fabric.io.JsonParser(line)
           val kind = rec.get("kind").map(_.asString).getOrElse("")
-          val url  = rec.get("url").map(_.asString).getOrElse("")
+          val url = rec.get("url").map(_.asString).getOrElse("")
           if (kind == "request" && url.endsWith("/v1/chat/completions")) {
             rec.get("body").flatMap(_.get("messages")).map(_.asVector)
           } else None
@@ -186,8 +192,8 @@ object WireLogReplayBench {
     transcript.zipWithIndex.flatMap { case (msg, idx) =>
       val role = msg.get("role").map(_.asString).getOrElse("")
       val content: String = msg.get("content") match {
-        case Some(c) if c.isStr  => c.asString
-        case Some(c) if c.isArr  =>
+        case Some(c) if c.isStr => c.asString
+        case Some(c) if c.isArr =>
           c.asVector.iterator.flatMap(_.get("text").map(_.asString)).mkString(" ")
         case _ => ""
       }
@@ -203,34 +209,36 @@ object WireLogReplayBench {
         val participantId: ParticipantId =
           if (role == "assistant" || role == "tool") BenchAgent else BenchUser
         Message(
-          participantId  = participantId,
+          participantId = participantId,
           conversationId = convId,
-          topicId        = topic.id,
-          content        = Vector(ResponseContent.Text(content)),
-          state          = EventState.Complete,
-          role           = MessageRole.Standard,
-          timestamp      = Timestamp(System.currentTimeMillis() + idx)
+          topicId = topic.id,
+          content = Vector(ResponseContent.Text(content)),
+          state = EventState.Complete,
+          role = MessageRole.Standard,
+          timestamp = Timestamp(System.currentTimeMillis() + idx)
         )
       }
     }
   }
 
-  /** Synthesise a vector of `count` Text-only Message events for
-    * scale benchmarking. ~200 chars per event matches typical
-    * Claude-Code session content. */
+  /**
+   * Synthesise a vector of `count` Text-only Message events for
+   * scale benchmarking. ~200 chars per event matches typical
+   * Claude-Code session content.
+   */
   private def synthEvents(convId: Id[Conversation], count: Int): Vector[Event] = {
-    val padding = " content payload " * 12  // ~200 chars
+    val padding = " content payload " * 12 // ~200 chars
     (0 until count).toVector.map { i =>
       val (pid, role) = if (i % 2 == 0) (BenchUser: ParticipantId, MessageRole.Standard)
-                       else (BenchAgent: ParticipantId, MessageRole.Standard)
+      else (BenchAgent: ParticipantId, MessageRole.Standard)
       Message(
-        participantId  = pid,
+        participantId = pid,
         conversationId = convId,
-        topicId        = topic.id,
-        content        = Vector(ResponseContent.Text(s"event $i:$padding")),
-        state          = EventState.Complete,
-        role           = role,
-        timestamp      = Timestamp(System.currentTimeMillis() + i)
+        topicId = topic.id,
+        content = Vector(ResponseContent.Text(s"event $i:$padding")),
+        state = EventState.Complete,
+        role = role,
+        timestamp = Timestamp(System.currentTimeMillis() + i)
       )
     }
   }
@@ -239,32 +247,33 @@ object WireLogReplayBench {
     val convId = events.headOption.map(_.conversationId)
       .getOrElse(Conversation.id(s"$label-empty"))
     val curator = StandardContextCurator(
-      sigil           = sigil,
-      blockExtractor  = NoOpBlockExtractor,
+      sigil = sigil,
+      blockExtractor = NoOpBlockExtractor,
       memoryRetriever = NoOpMemoryRetriever,
-      compressor      = NoOpContextCompressor
+      compressor = NoOpContextCompressor
     )
 
     println(s"\n=== $label ===")
     println(s"  events: ${events.size}")
 
     sigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-      _id = convId, topics = List(topic)
+      _id = convId,
+      topics = List(topic)
     )))).sync()
 
     val tImport0 = System.currentTimeMillis()
     sigil.publishHistorical(events, convId).sync()
     val tImport = System.currentTimeMillis() - tImport0
-    println(f"  publishHistorical:  ${tImport}%6d ms")
+    println(f"  publishHistorical:  $tImport%6d ms")
 
     val tFramesFor0 = System.currentTimeMillis()
     val frames = sigil.framesFor(convId).sync()
     val tFramesFor = System.currentTimeMillis() - tFramesFor0
-    println(f"  framesFor:          ${tFramesFor}%6d ms (returned ${frames.size} frames)")
+    println(f"  framesFor:          $tFramesFor%6d ms (returned ${frames.size} frames)")
 
     val tCurate0 = System.currentTimeMillis()
     val turnInput = curator.curate(convId, benchModelId, chain = List(BenchUser, BenchAgent)).sync()
     val tCurate = System.currentTimeMillis() - tCurate0
-    println(f"  curate (full):      ${tCurate}%6d ms (TurnInput.frames=${turnInput.frames.size})")
+    println(f"  curate (full):      $tCurate%6d ms (TurnInput.frames=${turnInput.frames.size})")
   }
 }

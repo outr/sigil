@@ -24,10 +24,11 @@ import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, ToolExample, Tool
  * just-created script's own schema, so the agent can demo / tweak
  * the script on the next turn (one-turn decay).
  */
-case object CreateBrowserScriptTool extends TypedTool[CreateBrowserScriptInput](
-  name = ToolName("create_browser_script"),
-  description =
-    """Persist a new browser-script tool the agent (or another agent in scope) can later invoke
+case object CreateBrowserScriptTool
+  extends TypedTool[CreateBrowserScriptInput](
+    name = ToolName("create_browser_script"),
+    description =
+      """Persist a new browser-script tool the agent (or another agent in scope) can later invoke
       |through `find_capability`. The script's `steps` run against the per-conversation browser
       |controller — same surface as the primitive `browser_*` tools — so any sequence the agent can
       |demonstrate manually can be saved as a replayable script.
@@ -38,12 +39,11 @@ case object CreateBrowserScriptTool extends TypedTool[CreateBrowserScriptInput](
       |replays restore logged-in state. `space` is an optional string hint asking the framework to
       |pin the tool under a specific space — the active Sigil's `browserScriptSpace` policy
       |decides whether to honor it.""".stripMargin,
-  examples = Nil,
-  modes = Set(WebBrowserMode.id),
-  keywords = Set("create", "browser", "script", "automate", "record", "save", "replay")
-) {
+    examples = Nil,
+    modes = Set(WebBrowserMode.id),
+    keywords = Set("create", "browser", "script", "automate", "record", "save", "replay")
+  ) {
   override def paginate: Boolean = false
-
 
   override protected def executeTyped(input: CreateBrowserScriptInput,
                                       ctx: TurnContext): Stream[Event] = ctx.sigil match {
@@ -51,14 +51,14 @@ case object CreateBrowserScriptTool extends TypedTool[CreateBrowserScriptInput](
       Stream.force(
         bs.browserScriptSpace(ctx.chain, input.space).flatMap { resolvedSpace =>
           val script = BrowserScript(
-            name        = ToolName(input.name),
+            name = ToolName(input.name),
             description = input.description,
-            parameters  = JsonSchemaToDefinition(input.parameters),
-            steps       = input.steps,
-            space       = resolvedSpace,
+            parameters = JsonSchemaToDefinition(input.parameters),
+            steps = input.steps,
+            space = resolvedSpace,
             cookieJarId = input.cookieJarId.map(s => Id[CookieJar](s)),
-            keywords    = input.keywords,
-            createdBy   = Some(ctx.caller)
+            keywords = input.keywords,
+            createdBy = Some(ctx.caller)
           )
           ctx.sigil.createTool(script).map { stored =>
             // Bug #69 — single Message(Tool) carrying the
@@ -75,30 +75,32 @@ case object CreateBrowserScriptTool extends TypedTool[CreateBrowserScriptInput](
             text.append(schemaJson).append("\n\n")
             text.append("Authoring follow-ups: update_browser_script, delete_browser_script.\n")
             val ack = Message(
-              participantId  = ctx.caller,
+              participantId = ctx.caller,
               conversationId = ctx.conversation.id,
-              topicId        = ctx.conversation.currentTopicId,
-              content        = Vector(ResponseContent.Text(text.toString)),
-              state          = EventState.Complete,
-              role           = MessageRole.Tool,
-              visibility     = MessageVisibility.Agents
+              topicId = ctx.conversation.currentTopicId,
+              content = Vector(ResponseContent.Text(text.toString)),
+              state = EventState.Complete,
+              role = MessageRole.Tool,
+              visibility = MessageVisibility.Agents
             )
             Stream.emit[Event](ack)
           }
-        }.handleError(t => Task.pure(Stream.emit[Event](errorReply(ctx,
-          s"Failed to create browser script: ${t.getMessage}"))))
+        }.handleError(t =>
+          Task.pure(Stream.emit[Event](errorReply(
+            ctx,
+            s"Failed to create browser script: ${t.getMessage}"))))
       )
     case _ =>
       Stream.emit(errorReply(ctx, "Sigil instance does not mix in BrowserSigil; cannot create browser scripts."))
   }
 
   private def errorReply(ctx: TurnContext, text: String): Event = Message(
-    participantId  = ctx.caller,
+    participantId = ctx.caller,
     conversationId = ctx.conversation.id,
-    topicId        = ctx.conversation.currentTopicId,
-    content        = Vector(ResponseContent.Text(text)),
-    state          = EventState.Complete,
-    role           = MessageRole.Tool,
-    visibility     = MessageVisibility.Agents
+    topicId = ctx.conversation.currentTopicId,
+    content = Vector(ResponseContent.Text(text)),
+    state = EventState.Complete,
+    role = MessageRole.Tool,
+    visibility = MessageVisibility.Agents
   )
 }

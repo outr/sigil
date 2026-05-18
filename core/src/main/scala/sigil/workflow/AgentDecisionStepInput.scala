@@ -37,4 +37,5 @@ case class AgentDecisionStepInput(id: String,
                                   iteration: Int = 0,
                                   maxIterations: Int = 50,
                                   priorReasoning: List[String] = Nil,
-                                  toolNames: List[String] = Nil) extends WorkflowStepInput derives RW
+                                  toolNames: List[String] = Nil)
+  extends WorkflowStepInput derives RW

@@ -73,9 +73,9 @@ class ListMemoriesSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       reseed()
       val ctx = makeContext(Conversation.id(s"list-all-${rapid.Unique()}"))
       for {
-        _      <- seed("k.a", "Alice prefers blue.")
-        _      <- seed("k.b", "Bob prefers green.", pinned = true)
-        _      <- seed("k.c", "Carol prefers red.")
+        _ <- seed("k.a", "Alice prefers blue.")
+        _ <- seed("k.b", "Bob prefers green.", pinned = true)
+        _ <- seed("k.c", "Carol prefers red.")
         result <- runTool(ListMemoriesInput(), ctx)
       } yield {
         val memories = result("memories").asVector
@@ -92,9 +92,9 @@ class ListMemoriesSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       reseed()
       val ctx = makeContext(Conversation.id(s"list-pinned-${rapid.Unique()}"))
       for {
-        _      <- seed("k.unpinned-1", "First.")
-        _      <- seed("k.pinned-1",   "Second.", pinned = true)
-        _      <- seed("k.unpinned-2", "Third.")
+        _ <- seed("k.unpinned-1", "First.")
+        _ <- seed("k.pinned-1", "Second.", pinned = true)
+        _ <- seed("k.unpinned-2", "Third.")
         pinned <- runTool(ListMemoriesInput(pinned = Some(true)), ctx)
         unpinned <- runTool(ListMemoriesInput(pinned = Some(false)), ctx)
       } yield {
@@ -107,9 +107,9 @@ class ListMemoriesSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       reseed()
       val ctx = makeContext(Conversation.id(s"list-space-${rapid.Unique()}"))
       for {
-        _      <- seed("k.global-1", "Global one.")
-        _      <- seed("k.test-1",   "Test one.", in = TestSpace)
-        _      <- seed("k.test-2",   "Test two.", in = TestSpace)
+        _ <- seed("k.global-1", "Global one.")
+        _ <- seed("k.test-1", "Test one.", in = TestSpace)
+        _ <- seed("k.test-2", "Test two.", in = TestSpace)
         result <- runTool(ListMemoriesInput(spaces = Set(TestSpace)), ctx)
       } yield {
         val keys = result("memories").asVector.map(_("key").asString).toSet
@@ -121,9 +121,9 @@ class ListMemoriesSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       reseed()
       val ctx = makeContext(Conversation.id(s"list-query-${rapid.Unique()}"))
       for {
-        _      <- seed("k.scala", "User likes Scala for backend services.")
-        _      <- seed("k.python", "User uses Python for data work.")
-        _      <- seed("k.colors", "User's favourite colour is blue.", label = "Blue is best")
+        _ <- seed("k.scala", "User likes Scala for backend services.")
+        _ <- seed("k.python", "User uses Python for data work.")
+        _ <- seed("k.colors", "User's favourite colour is blue.", label = "Blue is best")
         result <- runTool(ListMemoriesInput(query = Some("SCALA")), ctx)
       } yield {
         val keys = result("memories").asVector.map(_("key").asString).toSet
@@ -136,10 +136,10 @@ class ListMemoriesSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val ctx = makeContext(Conversation.id(s"list-page-${rapid.Unique()}"))
       val seedAll = (1 to 7).map(i => seed(s"k.$i", s"Memory $i."))
       for {
-        _     <- Task.sequence(seedAll.toList).unit
-        pg1   <- runTool(ListMemoriesInput(offset = 0, limit = 3), ctx)
-        pg2   <- runTool(ListMemoriesInput(offset = 3, limit = 3), ctx)
-        pg3   <- runTool(ListMemoriesInput(offset = 6, limit = 3), ctx)
+        _ <- Task.sequence(seedAll.toList).unit
+        pg1 <- runTool(ListMemoriesInput(offset = 0, limit = 3), ctx)
+        pg2 <- runTool(ListMemoriesInput(offset = 3, limit = 3), ctx)
+        pg3 <- runTool(ListMemoriesInput(offset = 6, limit = 3), ctx)
       } yield {
         pg1("memories").asVector.size shouldBe 3
         pg2("memories").asVector.size shouldBe 3
@@ -158,7 +158,7 @@ class ListMemoriesSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       reseed()
       val ctx = makeContext(Conversation.id(s"list-clamp-${rapid.Unique()}"))
       for {
-        _      <- seed("k.only", "Only memory.")
+        _ <- seed("k.only", "Only memory.")
         result <- runTool(ListMemoriesInput(limit = 9999), ctx)
       } yield {
         // Server clamps the page-info `limit` to the max (100) but the
@@ -181,13 +181,11 @@ class ListMemoriesSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       reseed()
       val ctx = makeContext(Conversation.id(s"list-compose-${rapid.Unique()}"))
       for {
-        _      <- seed("k.pinned-scala",   "Always use Scala for backend.", pinned = true)
-        _      <- seed("k.unpinned-scala", "Soft preference: Scala for scripts.")
-        _      <- seed("k.pinned-python",  "Always use Python for data.", pinned = true)
+        _ <- seed("k.pinned-scala", "Always use Scala for backend.", pinned = true)
+        _ <- seed("k.unpinned-scala", "Soft preference: Scala for scripts.")
+        _ <- seed("k.pinned-python", "Always use Python for data.", pinned = true)
         result <- runTool(ListMemoriesInput(pinned = Some(true), query = Some("scala")), ctx)
-      } yield {
-        result("memories").asVector.map(_("key").asString) shouldBe Vector("k.pinned-scala")
-      }
+      } yield result("memories").asVector.map(_("key").asString) shouldBe Vector("k.pinned-scala")
     }
   }
 

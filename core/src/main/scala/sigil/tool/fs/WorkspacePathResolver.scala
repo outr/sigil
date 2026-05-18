@@ -30,22 +30,26 @@ import java.nio.file.Paths
  */
 object WorkspacePathResolver {
 
-  /** Resolve `path` against the conversation's workspace. */
+  /**
+   * Resolve `path` against the conversation's workspace.
+   */
   def resolve(ctx: TurnContext, path: String): Task[String] = {
     val asPath = Paths.get(path)
     if (asPath.isAbsolute) Task.pure(path)
     else ctx.sigil.workspaceFor(ctx.conversation.id).map {
       case Some(workspace) => workspace.resolve(path).toString
-      case None            => path
+      case None => path
     }
   }
 
-  /** Resolve an optional path field (e.g. `BashInput.workingDir`).
-    * `None` falls through to the configured workspace as cwd when
-    * one exists, otherwise stays `None` (the FS context's existing
-    * "use JVM cwd" default applies). */
+  /**
+   * Resolve an optional path field (e.g. `BashInput.workingDir`).
+   * `None` falls through to the configured workspace as cwd when
+   * one exists, otherwise stays `None` (the FS context's existing
+   * "use JVM cwd" default applies).
+   */
   def resolveOptional(ctx: TurnContext, path: Option[String]): Task[Option[String]] = path match {
     case Some(p) => resolve(ctx, p).map(Some(_))
-    case None    => ctx.sigil.workspaceFor(ctx.conversation.id).map(_.map(_.toString))
+    case None => ctx.sigil.workspaceFor(ctx.conversation.id).map(_.map(_.toString))
   }
 }

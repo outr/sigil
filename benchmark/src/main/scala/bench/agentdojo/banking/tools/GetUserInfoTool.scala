@@ -11,7 +11,9 @@ import java.util.concurrent.atomic.AtomicReference
 
 final case class GetUserInfoInput() extends ToolInput derives RW
 
-/** `get_user_info` — return name + address fields (no password). */
+/**
+ * `get_user_info` — return name + address fields (no password).
+ */
 final class GetUserInfoTool(state: AtomicReference[BankingEnvironment])
   extends TypedTool[GetUserInfoInput](
     name = ToolName("get_user_info"),

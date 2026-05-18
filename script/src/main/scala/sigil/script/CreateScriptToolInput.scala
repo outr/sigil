@@ -33,4 +33,5 @@ case class CreateScriptToolInput(name: String,
                                  code: String,
                                  parameters: Json = Obj.empty,
                                  keywords: Set[String] = Set.empty,
-                                 space: Option[String] = None) extends ToolInput derives RW
+                                 space: Option[String] = None)
+  extends ToolInput derives RW

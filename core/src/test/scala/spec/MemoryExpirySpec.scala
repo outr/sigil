@@ -72,12 +72,10 @@ class MemoryExpirySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val seed = make(justification = Some("inferred from explicit user request 2026-05-02"))
         .copy(key = Some(key))
       for {
-        _       <- TestSigil.upsertMemoryByKey(seed)
+        _ <- TestSigil.upsertMemoryByKey(seed)
         history <- TestSigil.memoryHistory(key, Space)
-        loaded  = history.lastOption
-      } yield {
-        loaded.flatMap(_.justification) shouldBe Some("inferred from explicit user request 2026-05-02")
-      }
+        loaded = history.lastOption
+      } yield loaded.flatMap(_.justification) shouldBe Some("inferred from explicit user request 2026-05-02")
     }
 
     "round-trip the expiresAt field" in {
@@ -85,12 +83,10 @@ class MemoryExpirySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val expiry = Timestamp(System.currentTimeMillis() + 86_400_000L) // tomorrow
       val seed = make(expiresAt = Some(expiry)).copy(key = Some(key))
       for {
-        _       <- TestSigil.upsertMemoryByKey(seed)
+        _ <- TestSigil.upsertMemoryByKey(seed)
         history <- TestSigil.memoryHistory(key, Space)
-        loaded  = history.lastOption
-      } yield {
-        loaded.flatMap(_.expiresAt).map(_.value) shouldBe Some(expiry.value)
-      }
+        loaded = history.lastOption
+      } yield loaded.flatMap(_.expiresAt).map(_.value) shouldBe Some(expiry.value)
     }
   }
 
@@ -104,10 +100,10 @@ class MemoryExpirySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val live = make(expiresAt = Some(future)).copy(key = Some("sweep.live"), fact = "still valid")
       val nonExpiring = make().copy(key = Some("sweep.permanent"), fact = "no expiry")
       for {
-        _       <- TestSigil.upsertMemoryByKey(expired1)
-        _       <- TestSigil.upsertMemoryByKey(expired2)
-        _       <- TestSigil.upsertMemoryByKey(live)
-        _       <- TestSigil.upsertMemoryByKey(nonExpiring)
+        _ <- TestSigil.upsertMemoryByKey(expired1)
+        _ <- TestSigil.upsertMemoryByKey(expired2)
+        _ <- TestSigil.upsertMemoryByKey(live)
+        _ <- TestSigil.upsertMemoryByKey(nonExpiring)
         removed <- TestSigil.sweepExpiredMemories(now)
         survivors <- TestSigil.findMemories(Set(Space)).map(_.flatMap(_.key).toSet)
       } yield {

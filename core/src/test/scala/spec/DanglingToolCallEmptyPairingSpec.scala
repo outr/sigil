@@ -35,20 +35,20 @@ class DanglingToolCallEmptyPairingSpec extends AnyWordSpec with Matchers {
       val src = orchestratorSrc
       // The settle helper now constructs Tool-role Messages with
       // origin = invokeId paired to each orphan.
-      src should include ("private def settleOrphanToolInvoke")
-      src should include ("role           = MessageRole.Tool")
-      src should include ("origin         = Some(active.invokeId)")
+      src should include("private def settleOrphanToolInvoke")
+      src should include("role           = MessageRole.Tool")
+      src should include("origin         = Some(active.invokeId)")
       // The caller-side wiring threads caller + topicId so the
       // synthesized failure can be addressed to a real participant.
-      src should include ("settleOrphanToolInvoke(state, convId, caller, topicId,")
+      src should include("settleOrphanToolInvoke(state, convId, caller, topicId,")
     }
 
     "expose a per-orphan reason builder so callers customize the failure phrasing" in {
       val src = orchestratorSrc
-      src should include ("reasonFor: ActiveCall => String")
+      src should include("reasonFor: ActiveCall => String")
       // MaxTokens path still surfaces its specific truncation
       // guidance via the per-call reason builder.
-      src should include ("truncated at max_tokens")
+      src should include("truncated at max_tokens")
     }
   }
 
@@ -71,8 +71,8 @@ class DanglingToolCallEmptyPairingSpec extends AnyWordSpec with Matchers {
       // corruption-resistance invariant in place, this fallback
       // should be unreachable in well-formed operation.
       src should not include "tool failed: no result emitted"
-      src should include ("\"(orphan)\"")
-      src should include ("renderInput: dangling tool_call")
+      src should include("\"(orphan)\"")
+      src should include("renderInput: dangling tool_call")
     }
   }
 
@@ -83,7 +83,7 @@ class DanglingToolCallEmptyPairingSpec extends AnyWordSpec with Matchers {
       src should not include "This is typically a tool-side bug"
       src should not include "executeTyped swallowed an error"
       src should not include "synthetic placeholder fills it"
-      src should include ("Pick a different tool or refine the approach")
+      src should include("Pick a different tool or refine the approach")
     }
   }
 }

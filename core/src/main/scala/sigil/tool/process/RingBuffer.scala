@@ -9,10 +9,10 @@ import java.util.concurrent.locks.ReentrantLock
  * [[readSince]]. `nextCursor` is total bytes ever written.
  */
 final class RingBuffer(maxBytes: Int) {
-  private val lock      = new ReentrantLock()
-  private val builder   = new StringBuilder
-  private var written   = 0L
-  private var dropped   = 0L
+  private val lock = new ReentrantLock()
+  private val builder = new StringBuilder
+  private var written = 0L
+  private var dropped = 0L
 
   def append(text: String): Unit = {
     if (text.isEmpty) return
@@ -28,15 +28,17 @@ final class RingBuffer(maxBytes: Int) {
     } finally lock.unlock()
   }
 
-  /** Read bytes accumulated since `cursor`. Returns `(text, newCursor, lost)`
-    * where `lost` indicates the requested cursor predated the earliest
-    * retained byte (agent missed some output). */
+  /**
+   * Read bytes accumulated since `cursor`. Returns `(text, newCursor, lost)`
+   * where `lost` indicates the requested cursor predated the earliest
+   * retained byte (agent missed some output).
+   */
   def readSince(cursor: Long): (String, Long, Boolean) = {
     lock.lock()
     try {
       val effective = math.max(cursor, dropped)
-      val from      = (effective - dropped).toInt
-      val text      = if (from >= builder.length) "" else builder.substring(from)
+      val from = (effective - dropped).toInt
+      val text = if (from >= builder.length) "" else builder.substring(from)
       (text, written, cursor < dropped)
     } finally lock.unlock()
   }

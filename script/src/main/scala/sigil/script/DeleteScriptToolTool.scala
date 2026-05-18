@@ -14,14 +14,15 @@ import sigil.tool.model.ResponseContent
  * [[sigil.GlobalSpace]]). No suggestion cascade — once a tool is
  * deleted there's nothing to act on.
  */
-case object DeleteScriptToolTool extends TypedTool[DeleteScriptToolInput](
-  name = ToolName("delete_script_tool"),
-  description =
-    """Remove a previously created script-backed tool. Identified by `name`. Permission is
+case object DeleteScriptToolTool
+  extends TypedTool[DeleteScriptToolInput](
+    name = ToolName("delete_script_tool"),
+    description =
+      """Remove a previously created script-backed tool. Identified by `name`. Permission is
       |denied if the caller doesn't have access to the tool's space.""".stripMargin,
-  modes = Set(ScriptAuthoringMode.id),
-  keywords = Set("delete", "remove", "tool", "script", "drop")
-) {
+    modes = Set(ScriptAuthoringMode.id),
+    keywords = Set("delete", "remove", "tool", "script", "drop")
+  ) {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: DeleteScriptToolInput,
@@ -50,12 +51,12 @@ case object DeleteScriptToolTool extends TypedTool[DeleteScriptToolInput](
 
   private def reply(context: TurnContext, text: String): Stream[Event] =
     Stream.emit(Message(
-      participantId  = context.caller,
+      participantId = context.caller,
       conversationId = context.conversation.id,
-      topicId        = context.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete,
-      role           = MessageRole.Tool,
-      visibility     = MessageVisibility.Agents
+      topicId = context.conversation.currentTopicId,
+      content = Vector(ResponseContent.Text(text)),
+      state = EventState.Complete,
+      role = MessageRole.Tool,
+      visibility = MessageVisibility.Agents
     ))
 }

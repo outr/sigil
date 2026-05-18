@@ -13,16 +13,18 @@ case class DapListSessionsInput() extends ToolInput derives RW
  * Useful when the agent is juggling multiple debug sessions and
  * needs a roster.
  */
-final class DapListSessionsTool(val manager: DapManager) extends TypedTool[DapListSessionsInput](
-  name = ToolName("dap_list_sessions"),
-  description = "List every active debug session in this Sigil instance.",
-  examples = List(
-    ToolExample(
-      "list active sessions",
-      DapListSessionsInput()
+final class DapListSessionsTool(val manager: DapManager)
+  extends TypedTool[DapListSessionsInput](
+    name = ToolName("dap_list_sessions"),
+    description = "List every active debug session in this Sigil instance.",
+    examples = List(
+      ToolExample(
+        "list active sessions",
+        DapListSessionsInput()
+      )
     )
   )
-) with DapToolSupport {
+  with DapToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: DapListSessionsInput, context: TurnContext): Stream[Event] = {

@@ -28,10 +28,13 @@ import scala.util.Success
 case class GoogleProvider(apiKey: String,
                           sigilRef: Sigil,
                           baseUrl: URL = url"https://generativelanguage.googleapis.com",
-                          /** Per-read idle timeout for the SSE stream. Fires
-                            * only when no bytes arrive for the duration —
-                            * slow-but-working streams keep going. */
-                          tokenIdleTimeout: FiniteDuration = 120.seconds) extends Provider {
+                          /**
+                           * Per-read idle timeout for the SSE stream. Fires
+                           * only when no bytes arrive for the duration —
+                           * slow-but-working streams keep going.
+                           */
+                          tokenIdleTimeout: FiniteDuration = 120.seconds)
+  extends Provider {
   override def `type`: ProviderType = ProviderType.Google
   override val providerKey: String = Google.Provider
   override protected def sigil: Sigil = sigilRef
@@ -40,15 +43,16 @@ case class GoogleProvider(apiKey: String,
     val state = new StreamState(new ToolCallAccumulator(input.tools, providerKey = Google.Provider))
     Stream.force(
       for {
-        raw         <- httpRequestFor(input)
+        raw <- httpRequestFor(input)
         intercepted <- sigilRef.wireInterceptor.before(raw)
-        lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLines()
-      } yield {
-        _root_.sigil.provider.debug.StreamWireInterceptor.attach(
-          lines, sigilRef.wireInterceptor, intercepted, sigilRef.chunkLogger
-        ) { line =>
-          Stream.emits(parseLine(line, state))
-        }
+        lines <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLines()
+      } yield _root_.sigil.provider.debug.StreamWireInterceptor.attach(
+        lines,
+        sigilRef.wireInterceptor,
+        intercepted,
+        sigilRef.chunkLogger
+      ) { line =>
+        Stream.emits(parseLine(line, state))
       }
     )
   }
@@ -82,14 +86,14 @@ case class GoogleProvider(apiKey: String,
       if (toolsArr.isEmpty) Vector.empty
       else {
         val functionCallingConfig: Json = input.toolChoice match {
-          case ToolChoice.None     => obj("mode" -> str("NONE"))
-          case ToolChoice.Auto     => obj("mode" -> str("AUTO"))
+          case ToolChoice.None => obj("mode" -> str("NONE"))
+          case ToolChoice.Auto => obj("mode" -> str("AUTO"))
           case ToolChoice.Required => obj("mode" -> str("ANY"))
           case ToolChoice.Specific(name) =>
             // Gemini: pin to a single function via `mode = "ANY"` +
             // `allowedFunctionNames` restricting the surface to one.
             obj(
-              "mode"                 -> str("ANY"),
+              "mode" -> str("ANY"),
               "allowedFunctionNames" -> arr(str(name.value))
             )
         }
@@ -174,22 +178,24 @@ case class GoogleProvider(apiKey: String,
         Vector.empty
     }
 
-  /** Gemini's function-calling path is natively grammar-constrained —
-    * the model emits args matching the parameters schema by virtue of
-    * the function-call output mechanism, so an explicit `strict: true`
-    * isn't required. The schema must still be the supported subset:
-    * we strip `additionalProperties` (Gemini's validator rejects it)
-    * and the unsupported keywords (`pattern`, `format`,
-    * `minLength`/`maxLength`/numeric bounds) that don't compose with
-    * token-level decoding. The latter are also stripped on OpenAI
-    * strict mode — sigil preserves them on the Scala types for
-    * post-decode validation. */
+  /**
+   * Gemini's function-calling path is natively grammar-constrained —
+   * the model emits args matching the parameters schema by virtue of
+   * the function-call output mechanism, so an explicit `strict: true`
+   * isn't required. The schema must still be the supported subset:
+   * we strip `additionalProperties` (Gemini's validator rejects it)
+   * and the unsupported keywords (`pattern`, `format`,
+   * `minLength`/`maxLength`/numeric bounds) that don't compose with
+   * token-level decoding. The latter are also stripped on OpenAI
+   * strict mode — sigil preserves them on the Scala types for
+   * post-decode validation.
+   */
   private def toFunctionDeclaration(t: Tool, mode: Mode): Json = {
     val s = t.schema
     obj(
-      "name"        -> str(s.name.value),
+      "name" -> str(s.name.value),
       "description" -> str(renderDescription(t, mode)),
-      "parameters"  -> StrictSchema.forGemini(DefinitionToSchema(s.input))
+      "parameters" -> StrictSchema.forGemini(DefinitionToSchema(s.input))
     )
   }
 
@@ -213,7 +219,7 @@ case class GoogleProvider(apiKey: String,
 
   private def stripPolyDiscriminator(json: Json): Json = json match {
     case o: Obj => Obj(o.value - "type")
-    case other  => other
+    case other => other
   }
 
   // ---- response parsing ----
@@ -221,14 +227,16 @@ case class GoogleProvider(apiKey: String,
   private def parseLine(line: String, state: StreamState): Vector[ProviderEvent] =
     SSELineParser.parse(line) match {
       case SSELine.Data(json) => parseChunk(json, state)
-      case SSELine.Done       => state.flushDone()
+      case SSELine.Done => state.flushDone()
       case SSELine.MalformedData(_, r) => Vector(ProviderEvent.Error(s"parse: $r"))
       case SSELine.Blank | SSELine.Comment | _: SSELine.Other => Vector.empty
     }
 
-  /** Parse a Gemini streamed chunk. Each chunk is a `GenerateContentResponse`
-    * JSON object with `candidates`, optional `usageMetadata`, and
-    * optional `finishReason` on a candidate. */
+  /**
+   * Parse a Gemini streamed chunk. Each chunk is a `GenerateContentResponse`
+   * JSON object with `candidates`, optional `usageMetadata`, and
+   * optional `finishReason` on a candidate.
+   */
   private def parseChunk(json: Json, state: StreamState): Vector[ProviderEvent] = {
     // Bug #8 — Gemini occasionally embeds an `error` object in an
     // otherwise 200-OK stream (e.g. quota / safety pipeline failures
@@ -238,8 +246,8 @@ case class GoogleProvider(apiKey: String,
     json.get("error").foreach { err =>
       if (!err.isNull) {
         val code = err.get("code").map(_.asInt).getOrElse(0)
-        val msg  = err.get("message").map(_.asString).getOrElse("(no message)")
-        val typ  = err.get("status").map(_.asString).getOrElse("error")
+        val msg = err.get("message").map(_.asString).getOrElse("(no message)")
+        val typ = err.get("status").map(_.asString).getOrElse("error")
         throw new ProviderStreamException(Google.Provider, code, typ, msg)
       }
     }
@@ -280,10 +288,10 @@ case class GoogleProvider(apiKey: String,
       cand.get("finishReason").foreach { reason =>
         if (!reason.isNull) {
           val mapped = reason.asString match {
-            case "STOP"          => StopReason.Complete
-            case "MAX_TOKENS"    => StopReason.MaxTokens
+            case "STOP" => StopReason.Complete
+            case "MAX_TOKENS" => StopReason.MaxTokens
             case "SAFETY" | "RECITATION" | "BLOCKLIST" | "PROHIBITED_CONTENT" | "SPII" => StopReason.ContentFiltered
-            case _               => StopReason.Complete
+            case _ => StopReason.Complete
           }
           val stopReason = if (state.sawFunctionCall) StopReason.ToolCall else mapped
           events ++= state.acc.complete()
@@ -331,7 +339,7 @@ case class GoogleProvider(apiKey: String,
       if (doneEmitted) Vector.empty
       else pendingDone match {
         case Some(sr) => pendingDone = None; doneEmitted = true; Vector(ProviderEvent.Done(sr))
-        case None     => doneEmitted = true; Vector(ProviderEvent.Done(StopReason.Complete))
+        case None => doneEmitted = true; Vector(ProviderEvent.Done(StopReason.Complete))
       }
   }
 }
@@ -361,12 +369,12 @@ object GoogleProvider {
     if (dot < 0) "image/jpeg"
     else lower.substring(dot + 1).takeWhile(c => c.isLetterOrDigit) match {
       case "jpg" | "jpeg" => "image/jpeg"
-      case "png"          => "image/png"
-      case "gif"          => "image/gif"
-      case "webp"         => "image/webp"
-      case "heic"         => "image/heic"
-      case "heif"         => "image/heif"
-      case _              => "image/jpeg"
+      case "png" => "image/png"
+      case "gif" => "image/gif"
+      case "webp" => "image/webp"
+      case "heic" => "image/heic"
+      case "heif" => "image/heif"
+      case _ => "image/jpeg"
     }
   }
 }

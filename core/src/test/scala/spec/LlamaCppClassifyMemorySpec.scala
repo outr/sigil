@@ -5,9 +5,7 @@ import lightdb.time.Timestamp
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
-import sigil.conversation.{
-  ContextMemory, Conversation, MemorySource, TopicEntry
-}
+import sigil.conversation.{ContextMemory, Conversation, MemorySource, TopicEntry}
 import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
 import sigil.event.Message
 import sigil.signal.EventState
@@ -26,7 +24,7 @@ import sigil.provider.llamacpp.LlamaCppProvider
  */
 class LlamaCppClassifyMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
-  override implicit protected val testTimeout: scala.concurrent.duration.FiniteDuration =
+  implicit override protected val testTimeout: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.DurationInt(5).minutes
 
   TestSigil.initFor(getClass.getSimpleName)
@@ -92,7 +90,8 @@ class LlamaCppClassifyMemorySpec extends AsyncWordSpec with AsyncTaskSpec with M
   "ClassifyMemoryTool" should {
     "pin a memory when the user's recent message uses imperative phrasing" in {
       reseed()
-      val convId = freshConversation("imperative",
+      val convId = freshConversation(
+        "imperative",
         userMsg = "From now on, always use rapid Streams for concurrency in our Scala backend code.")
       val draft = ContextMemory(
         fact = "The team's Scala backend uses rapid Streams for concurrency.",
@@ -112,7 +111,8 @@ class LlamaCppClassifyMemorySpec extends AsyncWordSpec with AsyncTaskSpec with M
 
     "leave a memory unpinned when phrasing is non-imperative" in {
       reseed()
-      val convId = freshConversation("soft",
+      val convId = freshConversation(
+        "soft",
         userMsg = "By the way, I tend to prefer the rapid library for backend Scala work.")
       val draft = ContextMemory(
         fact = "User tends to prefer rapid for backend Scala work.",

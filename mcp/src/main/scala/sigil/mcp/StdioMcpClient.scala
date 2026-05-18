@@ -24,7 +24,7 @@ final class StdioMcpClient(override val config: McpServerConfig,
   extends McpClient {
 
   private var process: Option[Process] = None
-  private var rpc: Option[McpJsonRpc]  = None
+  private var rpc: Option[McpJsonRpc] = None
 
   private val stdio: McpTransport.Stdio = config.transport match {
     case s: McpTransport.Stdio => s
@@ -34,15 +34,15 @@ final class StdioMcpClient(override val config: McpServerConfig,
   override def start(): Task[Unit] = Task.defer {
     val pb = new ProcessBuilder((stdio.command :: stdio.args)*)
     pb.redirectErrorStream(false)
-    val proc   = pb.start()
+    val proc = pb.start()
     val reader = new BufferedReader(new InputStreamReader(proc.getInputStream, StandardCharsets.UTF_8))
     val writer = proc.getOutputStream
     process = Some(proc)
 
     val pump = new McpJsonRpc(
-      input               = reader,
-      output              = writer,
-      requestHandler      = handleServerRequest,
+      input = reader,
+      output = writer,
+      requestHandler = handleServerRequest,
       notificationHandler = notificationListener
     )
     rpc = Some(pump)
@@ -121,7 +121,7 @@ final class StdioMcpClient(override val config: McpServerConfig,
       case Some(p) =>
         val params = reason match {
           case Some(r) => obj("requestId" -> num(requestId), "reason" -> str(r))
-          case None    => obj("requestId" -> num(requestId))
+          case None => obj("requestId" -> num(requestId))
         }
         p.notify("notifications/cancelled", params)
       case None => Task.unit
@@ -129,11 +129,14 @@ final class StdioMcpClient(override val config: McpServerConfig,
   }
 
   private def initialize(): Task[Unit] =
-    callRpc("initialize", obj(
-      "protocolVersion" -> str("2024-11-05"),
-      "capabilities"    -> obj("sampling" -> obj()),
-      "clientInfo"      -> obj("name" -> str("sigil"), "version" -> str("1.0.0"))
-    )).flatMap(_ => rpcOrFail.notify("notifications/initialized"))
+    callRpc(
+      "initialize",
+      obj(
+        "protocolVersion" -> str("2024-11-05"),
+        "capabilities" -> obj("sampling" -> obj()),
+        "clientInfo" -> obj("name" -> str("sigil"), "version" -> str("1.0.0"))
+      )
+    ).flatMap(_ => rpcOrFail.notify("notifications/initialized"))
 
   private def rpcOrFail: McpJsonRpc =
     rpc.getOrElse(sys.error(s"MCP client '${config.name}' is not connected"))
@@ -143,7 +146,7 @@ final class StdioMcpClient(override val config: McpServerConfig,
 
   private def handleServerRequest(method: String, params: Json): Task[Json] = method match {
     case "sampling/createMessage" => samplingHandler.handle(config.name, params)
-    case "roots/list"             => Task.pure(obj("roots" -> Arr(config.roots.map(p => obj("uri" -> str(s"file://$p"))).toVector)))
-    case other                    => Task.error(new McpError(-32601, s"Unhandled server request: $other"))
+    case "roots/list" => Task.pure(obj("roots" -> Arr(config.roots.map(p => obj("uri" -> str(s"file://$p"))).toVector)))
+    case other => Task.error(new McpError(-32601, s"Unhandled server request: $other"))
   }
 }

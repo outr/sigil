@@ -40,18 +40,18 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   private def turnContextFor(): Task[TurnContext] = {
     val convId = Conversation.id(s"consent-pair-${rapid.Unique()}")
-    val topic  = TopicEntry(
-      id      = sigil.conversation.Topic.id(s"topic-$convId"),
-      label   = "test",
+    val topic = TopicEntry(
+      id = sigil.conversation.Topic.id(s"topic-$convId"),
+      label = "test",
       summary = "test"
     )
     val conv = Conversation(_id = convId, topics = List(topic))
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv))).map { stored =>
       TurnContext(
-        sigil        = TestSigil,
-        chain        = List(TestUser, TestAgent),
+        sigil = TestSigil,
+        chain = List(TestUser, TestAgent),
         conversation = stored,
-        turnInput    = TurnInput(conversationId = stored._id)
+        turnInput = TurnInput(conversationId = stored._id)
       )
     }
   }
@@ -60,10 +60,13 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
     "emit a ToolApproval AND a Tool-role Message on approve" in {
       for {
-        ctx    <- turnContextFor()
+        ctx <- turnContextFor()
         events <- RecordConsentTool.execute(
-                    RecordConsentInput(toolName = testToolName, approved = true,
-                      reason = Some("user picked Claude state in setup options")), ctx).toList
+          RecordConsentInput(
+            toolName = testToolName,
+            approved = true,
+            reason = Some("user picked Claude state in setup options")),
+          ctx).toList
       } yield {
         val approvals = events.collect { case t: ToolApproval => t }
         approvals should have size 1
@@ -83,10 +86,13 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
     "emit a Tool-role Message on decline carrying the decline reason" in {
       for {
-        ctx    <- turnContextFor()
+        ctx <- turnContextFor()
         events <- RecordConsentTool.execute(
-                    RecordConsentInput(toolName = testToolName, approved = false,
-                      reason = Some("user explicitly did not select")), ctx).toList
+          RecordConsentInput(
+            toolName = testToolName,
+            approved = false,
+            reason = Some("user explicitly did not select")),
+          ctx).toList
       } yield {
         events.collect { case t: ToolApproval => t } should have size 1
         val toolMessages = events.collect {
@@ -101,9 +107,10 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
     "emit a Tool-role Message even when reason is absent" in {
       for {
-        ctx    <- turnContextFor()
+        ctx <- turnContextFor()
         events <- RecordConsentTool.execute(
-                    RecordConsentInput(toolName = testToolName, approved = true), ctx).toList
+          RecordConsentInput(toolName = testToolName, approved = true),
+          ctx).toList
       } yield {
         val toolMessages = events.collect {
           case m: Message if m.role == MessageRole.Tool => m

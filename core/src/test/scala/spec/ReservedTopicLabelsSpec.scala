@@ -37,8 +37,10 @@ import scala.concurrent.duration.*
 class ReservedTopicLabelsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Provider that captures the request body and emits a scripted
-    * topic-classifier response. */
+  /**
+   * Provider that captures the request body and emits a scripted
+   * topic-classifier response.
+   */
   private class CapturingClassifierProvider(scriptedKind: String) extends Provider {
     val capturedSystemPrompt: AtomicReference[String] = new AtomicReference("")
     val capturedUserPrompt: AtomicReference[String] = new AtomicReference("")
@@ -61,8 +63,8 @@ class ReservedTopicLabelsSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
   private val modelId: Id[Model] = Model.id("test", "topic-classifier")
   private val current = TopicEntry(
-    id      = sigil.conversation.Topic.id("topic-current"),
-    label   = "Workspace setup",
+    id = sigil.conversation.Topic.id("topic-current"),
+    label = "Workspace setup",
     summary = "Setting up the workspace."
   )
 
@@ -76,18 +78,18 @@ class ReservedTopicLabelsSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       TestSigil.setProvider(Task.pure(provider))
 
       val priors = List(
-        reservedPrior("Greeting"),     // reserved
+        reservedPrior("Greeting"), // reserved
         reservedPrior("Initial setup"), // reserved
-        reservedPrior("Compiler bug")   // real prior
+        reservedPrior("Compiler bug") // real prior
       )
       TestSigil.classifyTopicShift(
-        modelId         = modelId,
-        chain           = List(TestUser, TestAgent),
-        current         = current,
-        priors          = priors,
-        proposedLabel   = "Type-class derivation",
+        modelId = modelId,
+        chain = List(TestUser, TestAgent),
+        current = current,
+        priors = priors,
+        proposedLabel = "Type-class derivation",
         proposedSummary = "Working on type-class derivation issues.",
-        userMessage     = "Let's look at the type-class derivation."
+        userMessage = "Let's look at the type-class derivation."
       ).map { _ =>
         val sysPrompt = provider.capturedSystemPrompt.get()
         val userPrompt = provider.capturedUserPrompt.get()
@@ -110,13 +112,13 @@ class ReservedTopicLabelsSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       TestSigil.setProvider(Task.pure(provider))
 
       TestSigil.classifyTopicShift(
-        modelId         = modelId,
-        chain           = List(TestUser, TestAgent),
-        current         = current,
-        priors          = List(reservedPrior("Greeting"), reservedPrior("Compiler bug")),
-        proposedLabel   = "Brand new task",
+        modelId = modelId,
+        chain = List(TestUser, TestAgent),
+        current = current,
+        priors = List(reservedPrior("Greeting"), reservedPrior("Compiler bug")),
+        proposedLabel = "Brand new task",
         proposedSummary = "Something genuinely different.",
-        userMessage     = "Let's do something else."
+        userMessage = "Let's do something else."
       ).map { result =>
         // Greeting should never have been a candidate; the
         // unmatched label resolves to New.
@@ -136,13 +138,13 @@ class ReservedTopicLabelsSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
       val priors = List(reservedPrior("Compiler bug"))
       TestSigil.classifyTopicShift(
-        modelId         = modelId,
-        chain           = List(TestUser, TestAgent),
-        current         = current,
-        priors          = priors,
-        proposedLabel   = "Workspace setup refinement",
+        modelId = modelId,
+        chain = List(TestUser, TestAgent),
+        current = current,
+        priors = priors,
+        proposedLabel = "Workspace setup refinement",
         proposedSummary = "Tightening up the workspace.",
-        userMessage     = "Hi Sage, can we refine the workspace?"
+        userMessage = "Hi Sage, can we refine the workspace?"
       ).map { result =>
         TestSigil.reservedTopicLabelsOverride.set(None)
         // Sage is a reserved label; classifier output forced to New.
@@ -159,13 +161,13 @@ class ReservedTopicLabelsSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
       val realPrior = reservedPrior("Compiler bug")
       TestSigil.classifyTopicShift(
-        modelId         = modelId,
-        chain           = List(TestUser, TestAgent),
-        current         = current,
-        priors          = List(reservedPrior("Greeting"), realPrior),
-        proposedLabel   = "Compiler bug investigation",
+        modelId = modelId,
+        chain = List(TestUser, TestAgent),
+        current = current,
+        priors = List(reservedPrior("Greeting"), realPrior),
+        proposedLabel = "Compiler bug investigation",
         proposedSummary = "Continuing the compiler bug.",
-        userMessage     = "Let's keep digging into the compiler bug."
+        userMessage = "Let's keep digging into the compiler bug."
       ).map { result =>
         result shouldBe TopicShiftResult.Return(realPrior)
       }

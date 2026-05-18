@@ -29,10 +29,11 @@ object WorkflowStepInputCompiler {
                             queue: List[Id[Step]],
                             idsByInputId: Map[String, Id[Step]])
 
-  /** Compile a workflow's `List[WorkflowStepInput]` to the
-    * Strider-side flat shape. `stepRWImplicit` supplies the
-    * RW[Step] needed by SubWorkflow's encoded child-steps field.
-    */
+  /**
+   * Compile a workflow's `List[WorkflowStepInput]` to the
+   * Strider-side flat shape. `stepRWImplicit` supplies the
+   * RW[Step] needed by SubWorkflow's encoded child-steps field.
+   */
   def compile(inputs: List[WorkflowStepInput])(implicit stepRW: RW[Step]): Compiled = {
     val builder = new Builder()
     val topLevelIds = inputs.map(builder.compileOne)
@@ -40,15 +41,18 @@ object WorkflowStepInputCompiler {
     Compiled(builder.allSteps.result(), topLevelIds, builder.idsByInputId.toMap)
   }
 
-  /** Mutable accumulator used during the recursive compilation
-    * walk. Builds out the flat step list and the
-    * input-id-to-concrete-id mapping in one pass; condition steps
-    * record their target string ids and resolve them once the full
-    * map is known. */
-  private final class Builder()(implicit stepRW: RW[Step]) {
+  /**
+   * Mutable accumulator used during the recursive compilation
+   * walk. Builds out the flat step list and the
+   * input-id-to-concrete-id mapping in one pass; condition steps
+   * record their target string ids and resolve them once the full
+   * map is known.
+   */
+  final private class Builder()(implicit stepRW: RW[Step]) {
     val allSteps: scala.collection.mutable.ListBuffer[Step] = scala.collection.mutable.ListBuffer.empty
     val idsByInputId: scala.collection.mutable.Map[String, Id[Step]] = scala.collection.mutable.Map.empty
-    private val pendingConditions: scala.collection.mutable.ListBuffer[(Id[Step], ConditionStepInput)] = scala.collection.mutable.ListBuffer.empty
+    private val pendingConditions: scala.collection.mutable.ListBuffer[(Id[Step], ConditionStepInput)] =
+      scala.collection.mutable.ListBuffer.empty
 
     def compileOne(input: WorkflowStepInput): Id[Step] = input match {
       case j: JobStepInput =>
@@ -124,14 +128,18 @@ object WorkflowStepInputCompiler {
       allSteps += step
     }
 
-    /** After every input has been compiled, patch each
-      * SigilCondition's `onTrueId` / `onFalseId` to point at the
-      * concrete step ids resolved from its input-id references. */
+    /**
+     * After every input has been compiled, patch each
+     * SigilCondition's `onTrueId` / `onFalseId` to point at the
+     * concrete step ids resolved from its input-id references.
+     */
     def resolveConditionTargets(): Unit = pendingConditions.foreach { case (placeholderId, input) =>
-      val onTrue = idsByInputId.getOrElse(input.onTrue,
+      val onTrue = idsByInputId.getOrElse(
+        input.onTrue,
         throw new IllegalStateException(s"ConditionStepInput '${input.id}' references unknown step id '${input.onTrue}' in onTrue")
       )
-      val onFalse = idsByInputId.getOrElse(input.onFalse,
+      val onFalse = idsByInputId.getOrElse(
+        input.onFalse,
         throw new IllegalStateException(s"ConditionStepInput '${input.id}' references unknown step id '${input.onFalse}' in onFalse")
       )
       val idx = allSteps.indexWhere(_.id == placeholderId)

@@ -44,26 +44,34 @@ case class LoadBalancedProvider(pool: Vector[Provider],
 
   require(pool.nonEmpty, "LoadBalancedProvider requires at least one provider in the pool")
 
-  /** All pool members must share a [[ProviderType]] for the framework's
+  /**
+   * All pool members must share a [[ProviderType]] for the framework's
    * `providerKey`-based registries to behave coherently. We use the
    * first member's type; mismatched pools will surface odd behavior
-   * at the model-registry layer (rare in practice). */
+   * at the model-registry layer (rare in practice).
+   */
   override def `type`: ProviderType = pool.head.`type`
 
   override def models: List[Model] = pool.head.models
 
-  /** Round-robin cursor — each `apply` increments and reads. */
+  /**
+   * Round-robin cursor — each `apply` increments and reads.
+   */
   private val cursor: AtomicInteger = new AtomicInteger(0)
 
-  /** Pick the next pool member by round-robin position. */
+  /**
+   * Pick the next pool member by round-robin position.
+   */
   private def nextStartIndex: Int = {
     val n = math.floorMod(cursor.getAndIncrement(), pool.size)
     if (n < 0) n + pool.size else n
   }
 
-  /** Walk the pool starting at `startIdx`; if a member's `call`
+  /**
+   * Walk the pool starting at `startIdx`; if a member's `call`
    * fails with a non-Fatal classification, try the next; on Fatal,
-   * propagate the error. Returns the first successful stream. */
+   * propagate the error. Returns the first successful stream.
+   */
   override def call(input: ProviderCall): Stream[ProviderEvent] = {
     val start = nextStartIndex
     val ordered = (0 until pool.size).map(i => pool((start + i) % pool.size)).toList
@@ -73,12 +81,14 @@ case class LoadBalancedProvider(pool: Vector[Provider],
   override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
     pool(nextStartIndex).httpRequestFor(input)
 
-  /** Recursive failover walk. We materialize the head's stream into a
+  /**
+   * Recursive failover walk. We materialize the head's stream into a
    * Task[List[ProviderEvent]] via `toList.attempt` so we can pattern-
    * match on success/failure cleanly; events are buffered until the
    * pool member's call settles. The trade-off: a pool failover loses
    * partial streaming. Since failovers are rare and the agent loop's
-   * downstream subscribers materialize anyway, this is acceptable. */
+   * downstream subscribers materialize anyway, this is acceptable.
+   */
   private def callChain(remaining: List[Provider], input: ProviderCall): Stream[ProviderEvent] =
     remaining match {
       case Nil =>
@@ -97,7 +107,7 @@ case class LoadBalancedProvider(pool: Vector[Provider],
             case scala.util.Failure(err) =>
               errorClassifier.classify(err) match {
                 case ErrorClassification.Fatal => Task.error(err)
-                case _                          => Task.pure(callChain(tail, input))
+                case _ => Task.pure(callChain(tail, input))
               }
           }
         )

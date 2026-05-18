@@ -22,17 +22,21 @@ import java.util.concurrent.locks.ReentrantLock
 class LocalFileStorageProvider(baseDir: Path) extends StorageProvider {
   Files.createDirectories(baseDir)
 
-  /** Per-canonical-path locks. Map entries persist for the lifetime
-    * of the process — bounded by the set of distinct paths ever
-    * touched, which for typical workloads is small. Apps that
-    * generate millions of distinct paths should add their own
-    * cleanup policy. */
+  /**
+   * Per-canonical-path locks. Map entries persist for the lifetime
+   * of the process — bounded by the set of distinct paths ever
+   * touched, which for typical workloads is small. Apps that
+   * generate millions of distinct paths should add their own
+   * cleanup policy.
+   */
   private val locks: ConcurrentHashMap[String, ReentrantLock] = new ConcurrentHashMap()
 
-  /** Diagnostic — number of distinct paths currently holding a lock
-    * record. Useful for ops dashboards (lock-map cardinality is the
-    * memory cost of the safe-edit feature) and for tests asserting
-    * per-path lock independence. */
+  /**
+   * Diagnostic — number of distinct paths currently holding a lock
+   * record. Useful for ops dashboards (lock-map cardinality is the
+   * memory cost of the safe-edit feature) and for tests asserting
+   * per-path lock independence.
+   */
   def lockCount: Int = locks.size()
 
   override def upload(path: String, data: Array[Byte], contentType: String): Task[String] = Task {
@@ -72,7 +76,7 @@ class LocalFileStorageProvider(baseDir: Path) extends StorageProvider {
     val target = baseDir.resolve(path)
     val lock = locks.computeIfAbsent(target.toAbsolutePath.normalize().toString, _ => new ReentrantLock())
     lock.lock()
-    try {
+    try
       if (!Files.exists(target)) WriteResult.NotFound
       else {
         val currentBytes = Files.readAllBytes(target)
@@ -85,7 +89,7 @@ class LocalFileStorageProvider(baseDir: Path) extends StorageProvider {
           WriteResult.Written(versionOf(target, data))
         }
       }
-    } finally lock.unlock()
+    finally lock.unlock()
   }
 
   protected def versionOf(target: Path, bytes: Array[Byte]): FileVersion = {

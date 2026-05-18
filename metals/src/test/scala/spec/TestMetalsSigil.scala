@@ -22,34 +22,36 @@ import sigil.vector.{NoOpVectorIndex, VectorIndex}
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicReference
 
-/** Concrete DB for the metals-module tests — `SigilDB` plus
-  * [[McpCollections]] (transitively required by [[MetalsSigil]])
-  * plus [[ToolingCollections]] so [[MetalsSigil.writeLspServerConfigForMetals]]
-  * (sigil bug #88) actually persists. Without this, the runtime
-  * pattern-match in `writeLspServerConfigForMetals` falls through
-  * to a no-op and bug #93's lsp4j launcher path is uncovered in
-  * tests. */
+/**
+ * Concrete DB for the metals-module tests — `SigilDB` plus
+ * [[McpCollections]] (transitively required by [[MetalsSigil]])
+ * plus [[ToolingCollections]] so [[MetalsSigil.writeLspServerConfigForMetals]]
+ * (sigil bug #88) actually persists. Without this, the runtime
+ * pattern-match in `writeLspServerConfigForMetals` falls through
+ * to a no-op and bug #93's lsp4j launcher path is uncovered in
+ * tests.
+ */
 class TestMetalsDB(directory: Option[Path],
                    storeManager: CollectionManager,
                    upgrades: List[DatabaseUpgrade] = Nil)
-  extends SigilDB(directory, storeManager, upgrades)
-    with McpCollections
-    with ToolingCollections
+  extends SigilDB(directory, storeManager, upgrades) with McpCollections with ToolingCollections
 
-/** Test fixture for the `sigil-metals` spec.
-  *
-  *   - `metalsLauncher` points at `fake-metals.sh` so spawn doesn't
-  *     require a real Metals install.
-  *   - `metalsWorkspace` returns whatever the test sets via
-  *     [[setWorkspace]] — per-test mapping without subclassing.
-  *   - `metalsIdleTimeoutMs` is overridable per-test via
-  *     [[setIdleTimeout]] so the idle-reap behavior can be exercised
-  *     without waiting fifteen real minutes. */
+/**
+ * Test fixture for the `sigil-metals` spec.
+ *
+ *   - `metalsLauncher` points at `fake-metals.sh` so spawn doesn't
+ *     require a real Metals install.
+ *   - `metalsWorkspace` returns whatever the test sets via
+ *     [[setWorkspace]] — per-test mapping without subclassing.
+ *   - `metalsIdleTimeoutMs` is overridable per-test via
+ *     [[setIdleTimeout]] so the idle-reap behavior can be exercised
+ *     without waiting fifteen real minutes.
+ */
 object TestMetalsSigil extends Sigil with MetalsSigil {
   override type DB = TestMetalsDB
   override protected def buildDB(directory: Option[Path],
-                                  storeManager: CollectionManager,
-                                  upgrades: List[DatabaseUpgrade]): TestMetalsDB =
+                                 storeManager: CollectionManager,
+                                 upgrades: List[DatabaseUpgrade]): TestMetalsDB =
     new TestMetalsDB(directory, storeManager, upgrades)
 
   override def testMode: Boolean = true
@@ -80,28 +82,36 @@ object TestMetalsSigil extends Sigil with MetalsSigil {
   override val embeddingProvider: EmbeddingProvider = NoOpEmbeddingProvider
   override val vectorIndex: VectorIndex = NoOpVectorIndex
 
-  /** Per-test workspace override — set by [[setWorkspace]]. */
+  /**
+   * Per-test workspace override — set by [[setWorkspace]].
+   */
   private val workspaceRef: AtomicReference[Option[Path]] = new AtomicReference(None)
   def setWorkspace(p: Option[Path]): Unit = workspaceRef.set(p)
   override def metalsWorkspace(conversationId: lightdb.id.Id[Conversation]): Task[Option[Path]] =
     Task.pure(workspaceRef.get())
 
-  /** Per-test idle-timeout override. Defaults to 15 minutes (the
-    * production value) so idle-reap doesn't fire mid-test unless
-    * explicitly enabled. */
+  /**
+   * Per-test idle-timeout override. Defaults to 15 minutes (the
+   * production value) so idle-reap doesn't fire mid-test unless
+   * explicitly enabled.
+   */
   private val idleTimeoutRef: AtomicReference[Long] = new AtomicReference(15L * 60L * 1000L)
   def setIdleTimeout(ms: Long): Unit = idleTimeoutRef.set(ms)
   override def metalsIdleTimeoutMs: Long = idleTimeoutRef.get()
 
-  /** Per-test launcher override. Default is `fake-metals.sh`
-    * (writes mcp.json + sleeps); specs swap to other fixtures
-    * (e.g. one that exits without writing mcp.json) to exercise
-    * the failure paths in `waitForReady`. */
+  /**
+   * Per-test launcher override. Default is `fake-metals.sh`
+   * (writes mcp.json + sleeps); specs swap to other fixtures
+   * (e.g. one that exits without writing mcp.json) to exercise
+   * the failure paths in `waitForReady`.
+   */
   private val launcherRef: AtomicReference[List[String]] = new AtomicReference(defaultLauncher)
   def setLauncher(parts: List[String]): Unit = launcherRef.set(parts)
   override def metalsLauncher: List[String] = launcherRef.get()
 
-  /** Point at the fake-metals.sh fixture from `src/test/resources`. */
+  /**
+   * Point at the fake-metals.sh fixture from `src/test/resources`.
+   */
   private def defaultLauncher: List[String] = {
     val cwd = java.nio.file.Path.of("metals/src/test/resources/fake-metals.sh").toAbsolutePath.normalize
     List(cwd.toString)
@@ -116,7 +126,7 @@ object TestMetalsSigil extends Sigil with MetalsSigil {
     ()
   }
 
-  private def deleteRecursive(path: java.nio.file.Path): Unit = {
+  private def deleteRecursive(path: java.nio.file.Path): Unit =
     if (java.nio.file.Files.exists(path)) {
       val s = java.nio.file.Files.walk(path)
       try {
@@ -124,5 +134,4 @@ object TestMetalsSigil extends Sigil with MetalsSigil {
         s.iterator().asScala.toList.reverse.foreach(p => java.nio.file.Files.deleteIfExists(p))
       } finally s.close()
     }
-  }
 }

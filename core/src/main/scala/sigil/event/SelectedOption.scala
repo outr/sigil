@@ -11,4 +11,5 @@ import fabric.rw.*
  */
 case class SelectedOption(value: String,
                           label: String,
-                          description: Option[String] = None) derives RW
+                          description: Option[String] = None)
+  derives RW

@@ -35,9 +35,9 @@ class Bugs203To206RegressionSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
   private def setup(convId: Id[Conversation]): Task[Unit] =
     TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-      topics       = TestTopicStack,
+      topics = TestTopicStack,
       participants = List(),
-      _id          = convId
+      _id = convId
     )))).unit
 
   private def publishToolResults(convId: Id[Conversation],
@@ -46,23 +46,23 @@ class Bugs203To206RegressionSpec extends AsyncWordSpec with AsyncTaskSpec with M
                                  schemas: List[sigil.tool.ToolSchema] = Nil): Task[Unit] = {
     val invokeId = Event.id()
     val invoke = ToolInvoke(
-      toolName       = ToolName(toolName),
-      participantId  = TestAgent,
+      toolName = ToolName(toolName),
+      participantId = TestAgent,
       conversationId = convId,
-      topicId        = TestTopicEntry.id,
-      _id            = invokeId,
-      state          = EventState.Complete
+      topicId = TestTopicEntry.id,
+      _id = invokeId,
+      state = EventState.Complete
     )
     val result = ToolResults(
-      schemas        = schemas,
-      participantId  = TestAgent,
+      schemas = schemas,
+      participantId = TestAgent,
       conversationId = convId,
-      topicId        = TestTopicEntry.id,
-      outcome        = ToolOutcome.Success,
-      typed          = typed,
-      state          = EventState.Complete,
-      role           = MessageRole.Tool,
-      origin         = Some(invokeId)
+      topicId = TestTopicEntry.id,
+      outcome = ToolOutcome.Success,
+      typed = typed,
+      state = EventState.Complete,
+      role = MessageRole.Tool,
+      origin = Some(invokeId)
     )
     TestSigil.publish(invoke).flatMap(_ => TestSigil.publish(result)).unit
   }
@@ -104,12 +104,12 @@ class Bugs203To206RegressionSpec extends AsyncWordSpec with AsyncTaskSpec with M
     "ToolInvoke.input is a populated field, not just a delta-only carrier" in {
       case class ProbeInput(query: String) extends sigil.tool.ToolInput derives RW
       val invoke = ToolInvoke(
-        toolName       = ToolName("probe"),
-        participantId  = TestAgent,
+        toolName = ToolName("probe"),
+        participantId = TestAgent,
         conversationId = freshConvId(),
-        topicId        = TestTopicEntry.id,
-        input          = Some(ProbeInput("hello")),
-        state          = EventState.Active
+        topicId = TestTopicEntry.id,
+        input = Some(ProbeInput("hello")),
+        state = EventState.Active
       )
       invoke.input shouldBe Some(ProbeInput("hello"))
     }
@@ -121,10 +121,10 @@ class Bugs203To206RegressionSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
     "TurnContext exposes routedModelId for downstream consumers" in {
       val ctx = sigil.TurnContext(
-        sigil         = TestSigil,
-        chain         = List(TestUser),
-        conversation  = Conversation(topics = TestTopicStack, _id = freshConvId()),
-        turnInput     = sigil.conversation.TurnInput(sigil.conversation.ConversationView(conversationId = freshConvId())),
+        sigil = TestSigil,
+        chain = List(TestUser),
+        conversation = Conversation(topics = TestTopicStack, _id = freshConvId()),
+        turnInput = sigil.conversation.TurnInput(sigil.conversation.ConversationView(conversationId = freshConvId())),
         routedModelId = Some(sigil.db.Model.id("openrouter", "frontier-model"))
       )
       ctx.routedModelId.map(_.value) shouldBe Some("openrouter/frontier-model")
@@ -132,10 +132,10 @@ class Bugs203To206RegressionSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
     "default routedModelId is None (back-compat for paths that bypass buildContext)" in {
       val ctx = sigil.TurnContext(
-        sigil        = TestSigil,
-        chain        = List(TestUser),
+        sigil = TestSigil,
+        chain = List(TestUser),
         conversation = Conversation(topics = TestTopicStack, _id = freshConvId()),
-        turnInput    = sigil.conversation.TurnInput(sigil.conversation.ConversationView(conversationId = freshConvId()))
+        turnInput = sigil.conversation.TurnInput(sigil.conversation.ConversationView(conversationId = freshConvId()))
       )
       ctx.routedModelId shouldBe None
     }
@@ -154,19 +154,19 @@ class Bugs203To206RegressionSpec extends AsyncWordSpec with AsyncTaskSpec with M
       }).unit
 
       val pagedJson = summon[RW[JsonPagedResult]].read(JsonPagedResult(
-        items       = Nil,
-        hasMore     = true,
-        page        = 0,
-        pageSize    = 50,
+        items = Nil,
+        hasMore = true,
+        page = 0,
+        pageSize = 50,
         referenceId = "ref",
-        callId      = Id[Event]("call")
+        callId = Id[Event]("call")
       ))
 
       for {
-        _      <- setup(convId)
-        _      <- preSeed
-        _      <- publishToolResults(convId, "grep", typed = Some(pagedJson))
-        proj   <- TestSigil.projectionFor(TestAgent, convId)
+        _ <- setup(convId)
+        _ <- preSeed
+        _ <- publishToolResults(convId, "grep", typed = Some(pagedJson))
+        proj <- TestSigil.projectionFor(TestAgent, convId)
       } yield {
         val names = proj.suggestedTools.map(_.value)
         // Pre-seeded tools preserved.
@@ -191,19 +191,19 @@ class Bugs203To206RegressionSpec extends AsyncWordSpec with AsyncTaskSpec with M
       // Fabricate a small tool schema-list payload.
       val followupSchemas: List[sigil.tool.ToolSchema] = List(
         sigil.tool.ToolSchema(
-          id          = Id("add_workflow_step"),
-          name        = ToolName("add_workflow_step"),
+          id = Id("add_workflow_step"),
+          name = ToolName("add_workflow_step"),
           description = "Append a step",
-          input       = fabric.define.Definition(fabric.define.DefType.Obj(scala.collection.immutable.VectorMap.empty)),
-          examples    = Nil,
-          output      = None
+          input = fabric.define.Definition(fabric.define.DefType.Obj(scala.collection.immutable.VectorMap.empty)),
+          examples = Nil,
+          output = None
         )
       )
 
       for {
-        _    <- setup(convId)
-        _    <- preSeed
-        _    <- publishToolResults(convId, "create_workflow", schemas = followupSchemas)
+        _ <- setup(convId)
+        _ <- preSeed
+        _ <- publishToolResults(convId, "create_workflow", schemas = followupSchemas)
         proj <- TestSigil.projectionFor(TestAgent, convId)
       } yield {
         val names = proj.suggestedTools.map(_.value)

@@ -39,10 +39,12 @@ class AgentLoopFailureSurfaceSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   private val modelId: Id[Model] = Model.id("test", "model")
 
-  /** Provider whose `call` raises before emitting any event. The
-    * orchestrator's stream evaluates lazily, so the error fires once
-    * `runAgentLoop` starts draining — exactly the path the fix
-    * targets. */
+  /**
+   * Provider whose `call` raises before emitting any event. The
+   * orchestrator's stream evaluates lazily, so the error fires once
+   * `runAgentLoop` starts draining — exactly the path the fix
+   * targets.
+   */
   private class CrashingProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -55,21 +57,21 @@ class AgentLoopFailureSurfaceSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
   private def runScenario(): Task[List[Signal]] = {
     TestSigil.setProvider(Task.pure(new CrashingProvider))
     val convId = Conversation.id(s"failure-surface-${rapid.Unique()}")
-    val agent  = makeAgent()
-    val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+    val agent = makeAgent()
+    val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
 
     val recorded = new ConcurrentLinkedQueue[Signal]()
-    val running  = new atomic.AtomicBoolean(true)
+    val running = new atomic.AtomicBoolean(true)
     TestSigil.signals
       .takeWhile(_ => running.get())
       .evalMap(s => Task { recorded.add(s); () })
@@ -90,7 +92,7 @@ class AgentLoopFailureSurfaceSpec extends AsyncWordSpec with AsyncTaskSpec with 
       }
       val hasIdle = snapshot.exists {
         case d: AgentStateDelta
-          if d.activity.contains(AgentActivity.Idle) && d.state.contains(EventState.Complete) => true
+            if d.activity.contains(AgentActivity.Idle) && d.state.contains(EventState.Complete) => true
         case _ => false
       }
       hasFailure && hasIdle
@@ -103,12 +105,12 @@ class AgentLoopFailureSurfaceSpec extends AsyncWordSpec with AsyncTaskSpec with 
       _ <- Task.sleep(100.millis)
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = TestTopicEntry.id,
-             content        = Vector(ResponseContent.Text("hi")),
-             state          = EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("hi")),
+        state = EventState.Complete
+      ))
       _ <- waitForSettle(System.currentTimeMillis() + 10_000L)
     } yield {
       running.set(false)
@@ -117,7 +119,7 @@ class AgentLoopFailureSurfaceSpec extends AsyncWordSpec with AsyncTaskSpec with 
   }
 
   "Sigil.runAgentLoop (bug #6)" should {
-    "publish a Failure-disposition Message when a turn throws" in {
+    "publish a Failure-disposition Message when a turn throws" in
       runScenario().map { signals =>
         val agentMessages = signals.collect {
           case m: Message if m.participantId == TestAgent => m
@@ -136,17 +138,16 @@ class AgentLoopFailureSurfaceSpec extends AsyncWordSpec with AsyncTaskSpec with 
           case _ => false
         }) shouldBe true
       }
-    }
 
-    "settle the agent state to Idle so clients stop showing the activity indicator" in {
+    "settle the agent state to Idle so clients stop showing the activity indicator" in
       runScenario().map { signals =>
         val idleDeltas = signals.collect {
-          case d: AgentStateDelta if d.activity.contains(AgentActivity.Idle)
-                                  && d.state.contains(EventState.Complete) => d
+          case d: AgentStateDelta
+              if d.activity.contains(AgentActivity.Idle)
+                && d.state.contains(EventState.Complete) => d
         }
         idleDeltas should not be empty
       }
-    }
   }
 
   "tear down" should {

@@ -30,7 +30,8 @@ final class WebFetchTool(timeout: FiniteDuration = 30.seconds)
       ToolExample("Fetch a small JSON endpoint", WebFetchInput(url = "https://api.example.com/status", maxLength = Some(8192)))
     ),
     keywords = Set("web", "fetch", "http", "url", "download", "page", "browse")
-  ) with sigil.tool.NetworkReadOnlyTool {
+  )
+  with sigil.tool.NetworkReadOnlyTool {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: WebFetchInput, ctx: TurnContext): Stream[Event] = Stream.force(
@@ -41,14 +42,14 @@ final class WebFetchTool(timeout: FiniteDuration = 30.seconds)
       .send()
       .flatMap { response =>
         val statusCode = response.status.code
-        val ct         = response.content.map(_.contentType.outputString).getOrElse("text/plain")
-        val maxLen     = input.maxLength.getOrElse(WebFetchTool.DefaultMaxLength)
+        val ct = response.content.map(_.contentType.outputString).getOrElse("text/plain")
+        val maxLen = input.maxLength.getOrElse(WebFetchTool.DefaultMaxLength)
         response.content match {
           case Some(content) =>
             content.asString.map { raw =>
               val processed = if (ct.contains("text/html")) HtmlToMarkdown.convert(raw) else raw
               val truncated = if (processed.length > maxLen) processed.take(maxLen) else processed
-              val payload   = obj("content" -> str(truncated), "contentType" -> str(ct), "statusCode" -> num(statusCode))
+              val payload = obj("content" -> str(truncated), "contentType" -> str(ct), "statusCode" -> num(statusCode))
               Stream.emit[Event](emit(payload, ctx))
             }
           case None =>
@@ -61,12 +62,12 @@ final class WebFetchTool(timeout: FiniteDuration = 30.seconds)
   )
 
   private def emit(payload: fabric.Json, ctx: TurnContext): Message = Message(
-    participantId  = ctx.caller,
+    participantId = ctx.caller,
     conversationId = ctx.conversation.id,
-    topicId        = ctx.conversation.currentTopicId,
-    content        = Vector(ResponseContent.Text(JsonFormatter.Compact(payload))),
-    state          = EventState.Complete,
-    role           = MessageRole.Tool
+    topicId = ctx.conversation.currentTopicId,
+    content = Vector(ResponseContent.Text(JsonFormatter.Compact(payload))),
+    state = EventState.Complete,
+    role = MessageRole.Tool
   )
 }
 

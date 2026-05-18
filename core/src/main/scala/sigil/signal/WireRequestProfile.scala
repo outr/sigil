@@ -22,4 +22,5 @@ import sigil.participant.ParticipantId
 case class WireRequestProfile(conversationId: Id[Conversation],
                               modelId: Id[Model],
                               participantId: ParticipantId,
-                              profile: RequestProfile) extends Notice derives RW
+                              profile: RequestProfile)
+  extends Notice derives RW

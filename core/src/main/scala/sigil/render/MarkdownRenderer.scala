@@ -24,22 +24,22 @@ object MarkdownRenderer extends ContentRenderer[String] {
     if (a.isEmpty) b else if (b.isEmpty) a else s"$a\n\n$b"
 
   override def renderBlock(block: ResponseContent): String = block match {
-    case ResponseContent.Text(text)             => text
-    case ResponseContent.Markdown(text)         => text
-    case ResponseContent.Heading(text)          => s"## $text"
-    case ResponseContent.Code(code, lang)       => s"```${lang.getOrElse("")}\n$code\n```"
-    case ResponseContent.Diff(diff, _)          => s"```diff\n$diff\n```"
-    case ResponseContent.Table(headers, rows)   => renderTable(headers, rows)
-    case ResponseContent.ItemList(items, true)  => items.zipWithIndex.map { case (i, n) => s"${n + 1}. $i" }.mkString("\n")
+    case ResponseContent.Text(text) => text
+    case ResponseContent.Markdown(text) => text
+    case ResponseContent.Heading(text) => s"## $text"
+    case ResponseContent.Code(code, lang) => s"```${lang.getOrElse("")}\n$code\n```"
+    case ResponseContent.Diff(diff, _) => s"```diff\n$diff\n```"
+    case ResponseContent.Table(headers, rows) => renderTable(headers, rows)
+    case ResponseContent.ItemList(items, true) => items.zipWithIndex.map { case (i, n) => s"${n + 1}. $i" }.mkString("\n")
     case ResponseContent.ItemList(items, false) => items.map(i => s"- $i").mkString("\n")
-    case ResponseContent.Link(url, label)       => s"[$label]($url)"
-    case ResponseContent.Image(url, alt)        => s"![${alt.getOrElse("")}]($url)"
+    case ResponseContent.Link(url, label) => s"[$label]($url)"
+    case ResponseContent.Image(url, alt) => s"![${alt.getOrElse("")}]($url)"
     case ResponseContent.Citation(src, exc, u) =>
       val excerpt = exc.fold("")(e => s": $e")
       val link = u.fold(src)(u => s"[$src]($u)")
-      s"_${link}${excerpt}_"
+      s"_$link${excerpt}_"
     case ResponseContent.Field(label, value, _) => s"**$label:** $value"
-    case ResponseContent.Divider                => "---"
+    case ResponseContent.Divider => "---"
     case ResponseContent.Options(prompt, opts, _) =>
       val items = opts.map(o => s"- **${o.label}** — ${o.value}").mkString("\n")
       s"$prompt\n\n$items"
@@ -47,7 +47,7 @@ object MarkdownRenderer extends ContentRenderer[String] {
       val hint = placeholder.orElse(default).fold("")(h => s" _($h)_")
       s"**$label:**$hint"
     case ResponseContent.SecretInput(label, _, _) => s"**$label:** _(secret)_"
-    case ResponseContent.SecretRef(_, label)      => s"**$label:** ••••••••"
+    case ResponseContent.SecretRef(_, label) => s"**$label:** ••••••••"
     case ResponseContent.StoredFileReference(_, title, _, _, size) =>
       s"📎 **$title** (${formatSize(size)})"
     case c: ResponseContent.Card => renderCard(c)
@@ -60,7 +60,7 @@ object MarkdownRenderer extends ContentRenderer[String] {
     if (parts.isEmpty) "" else parts.mkString("\n\n")
   }
 
-  private def renderTable(headers: List[String], rows: List[List[String]]): String = {
+  private def renderTable(headers: List[String], rows: List[List[String]]): String =
     if (headers.isEmpty && rows.isEmpty) ""
     else {
       val head = s"| ${headers.mkString(" | ")} |"
@@ -68,7 +68,6 @@ object MarkdownRenderer extends ContentRenderer[String] {
       val body = rows.map(r => s"| ${r.mkString(" | ")} |").mkString("\n")
       List(head, sep, body).filter(_.nonEmpty).mkString("\n")
     }
-  }
 
   private def formatSize(bytes: Long): String =
     if (bytes < 1024) s"$bytes B"

@@ -94,7 +94,10 @@ class StandardMemoryExtractorSpec extends AsyncWordSpec with AsyncTaskSpec with 
         filter = RejectAll
       )
       extractor.extract(
-        TestSigil, convId, modelId, List(TestUser, TestAgent),
+        TestSigil,
+        convId,
+        modelId,
+        List(TestUser, TestAgent),
         userMessage = "hi",
         agentResponse = "hello"
       ).map(_ shouldBe empty)
@@ -102,14 +105,22 @@ class StandardMemoryExtractorSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
     "persist one memory per extracted entry with default approved status" in {
       val memories = List(
-        ExtractedMemory(content = "User prefers dark mode.", label = "UI theme",
-          key = Some("user.ui.theme"), tags = List("preference")),
-        ExtractedMemory(content = "User lives in US/Pacific.", label = "Time zone",
+        ExtractedMemory(
+          content = "User prefers dark mode.",
+          label = "UI theme",
+          key = Some("user.ui.theme"),
+          tags = List("preference")),
+        ExtractedMemory(
+          content = "User lives in US/Pacific.",
+          label = "Time zone",
           key = Some("user.time_zone"))
       )
       val extractor = extractorFor(memories)
       extractor.extract(
-        TestSigil, convId, modelId, List(TestUser, TestAgent),
+        TestSigil,
+        convId,
+        modelId,
+        List(TestUser, TestAgent),
         userMessage = "dummy user message (filter bypassed)",
         agentResponse = "dummy agent response"
       ).map { produced =>
@@ -130,8 +141,12 @@ class StandardMemoryExtractorSpec extends AsyncWordSpec with AsyncTaskSpec with 
       )
       val extractor = extractorFor(memories)
       extractor.extract(
-        TestSigil, convId, modelId, List(TestUser, TestAgent),
-        userMessage = "dummy", agentResponse = "dummy"
+        TestSigil,
+        convId,
+        modelId,
+        List(TestUser, TestAgent),
+        userMessage = "dummy",
+        agentResponse = "dummy"
       ).map { produced =>
         produced.map(_.fact) should contain allOf ("Good content", "Keyless but valid content")
         produced.map(_.fact) should not contain ""

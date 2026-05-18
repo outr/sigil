@@ -31,11 +31,11 @@ class LocalFileSystemContext(basePath: Option[Path] = None) extends FileSystemCo
                               workingDir: Option[String],
                               timeoutMs: Long): Task[CommandResult] = Task {
     val dir = workingDir.map(d => resolvePath(d).toFile).orElse(basePath.map(_.toFile)).orNull
-    val pb  = new ProcessBuilder("bash", "-c", command)
+    val pb = new ProcessBuilder("bash", "-c", command)
     if (dir != null) pb.directory(dir)
     pb.redirectErrorStream(false)
 
-    val process       = pb.start()
+    val process = pb.start()
     val stdoutBuilder = new StringBuilder
     val stderrBuilder = new StringBuilder
 
@@ -74,16 +74,16 @@ class LocalFileSystemContext(basePath: Option[Path] = None) extends FileSystemCo
   }
 
   override def listFiles(basePath: String, pattern: String, maxResults: Int): Task[List[String]] = Task {
-    val base    = resolvePath(basePath)
+    val base = resolvePath(basePath)
     val matcher = FileSystems.getDefault.getPathMatcher(s"glob:$pattern")
     val results = scala.collection.mutable.ListBuffer.empty[String]
-    val stream  = Files.walk(base)
-    try {
+    val stream = Files.walk(base)
+    try
       stream.iterator().asScala
         .filter(p => matcher.matches(base.relativize(p)) || matcher.matches(p.getFileName))
         .take(maxResults)
         .foreach(p => results += base.relativize(p).toString)
-    } finally stream.close()
+    finally stream.close()
     results.toList
   }
 
@@ -92,41 +92,41 @@ class LocalFileSystemContext(basePath: Option[Path] = None) extends FileSystemCo
                            glob: Option[String],
                            maxMatches: Int,
                            contextLines: Int): Task[List[GrepMatch]] = Task {
-    val base        = resolvePath(basePath)
-    val regex       = Pattern.compile(pattern)
+    val base = resolvePath(basePath)
+    val regex = Pattern.compile(pattern)
     val globMatcher = glob.map(g => FileSystems.getDefault.getPathMatcher(s"glob:$g"))
-    val results     = scala.collection.mutable.ListBuffer.empty[GrepMatch]
-    val stream      = Files.walk(base)
-    try {
+    val results = scala.collection.mutable.ListBuffer.empty[GrepMatch]
+    val stream = Files.walk(base)
+    try
       stream.iterator().asScala
         .filter(p => !isInExcludedDir(base, p))
         .filter(Files.isRegularFile(_))
         .filter(p => globMatcher.forall(m => m.matches(p.getFileName) || m.matches(base.relativize(p))))
         .takeWhile(_ => results.size < maxMatches)
         .foreach { path =>
-          try {
+          try
             if (!isBinary(path)) {
               val lines = readLinesLenient(path)
               lines.zipWithIndex.foreach { case (line, idx) =>
                 if (regex.matcher(line).find() && results.size < maxMatches) {
                   val before = lines.slice(Math.max(0, idx - contextLines), idx)
-                  val after  = lines.slice(idx + 1, Math.min(lines.size, idx + 1 + contextLines))
+                  val after = lines.slice(idx + 1, Math.min(lines.size, idx + 1 + contextLines))
                   results += GrepMatch(
-                    filePath      = base.relativize(path).toString,
-                    lineNumber    = idx + 1,
-                    content       = line,
+                    filePath = base.relativize(path).toString,
+                    lineNumber = idx + 1,
+                    content = line,
                     contextBefore = before,
-                    contextAfter  = after
+                    contextAfter = after
                   )
                 }
               }
             }
-          } catch {
+          catch {
             case t: Throwable =>
               scribe.warn(s"grep: skipping ${base.relativize(path)} — ${t.getClass.getSimpleName}: ${t.getMessage}")
           }
         }
-    } finally stream.close()
+    finally stream.close()
     results.toList
   }
 
@@ -148,7 +148,7 @@ class LocalFileSystemContext(basePath: Option[Path] = None) extends FileSystemCo
     val key = target.toString
     val lock = locks.computeIfAbsent(key, _ => new ReentrantLock())
     lock.lock()
-    try {
+    try
       if (!Files.exists(target)) WriteResult.NotFound
       else {
         val currentBytes = Files.readAllBytes(target)
@@ -162,17 +162,21 @@ class LocalFileSystemContext(basePath: Option[Path] = None) extends FileSystemCo
           WriteResult.Written(versionOf(target, data))
         }
       }
-    } finally lock.unlock()
+    finally lock.unlock()
   }
 
-  /** Per-canonical-path locks for safe-edit. Process-local — see
-    * [[sigil.storage.LocalFileStorageProvider]] for the same pattern
-    * applied to opaque storage paths. */
+  /**
+   * Per-canonical-path locks for safe-edit. Process-local — see
+   * [[sigil.storage.LocalFileStorageProvider]] for the same pattern
+   * applied to opaque storage paths.
+   */
   private val locks: ConcurrentHashMap[String, ReentrantLock] = new ConcurrentHashMap()
 
-  /** Diagnostic — number of distinct paths currently holding a lock
-    * record. Used by tests asserting per-path lock independence;
-    * ops dashboards can also surface it as a memory-cost signal. */
+  /**
+   * Diagnostic — number of distinct paths currently holding a lock
+   * record. Used by tests asserting per-path lock independence;
+   * ops dashboards can also surface it as a memory-cost signal.
+   */
   def lockCount: Int = locks.size()
 
   protected def versionOf(target: Path, bytes: Array[Byte]): FileVersion = {
@@ -205,7 +209,7 @@ class LocalFileSystemContext(basePath: Option[Path] = None) extends FileSystemCo
     } finally reader.close()
   }
 
-  private def isBinary(path: Path): Boolean = {
+  private def isBinary(path: Path): Boolean =
     try {
       val in = Files.newInputStream(path)
       try {
@@ -213,18 +217,31 @@ class LocalFileSystemContext(basePath: Option[Path] = None) extends FileSystemCo
         bytes.exists(_ == 0)
       } finally in.close()
     } catch {
-      case _: Throwable => true  // unreadable → treat as non-text; skip
+      case _: Throwable => true // unreadable → treat as non-text; skip
     }
-  }
 
-  /** Skip directories that almost always contain binary cache
-    * artifacts (compiled bytecode, build-server indexes, package
-    * manager state, version-control metadata). Apps that legitimately
-    * need to grep these subclass and override [[searchFiles]]. */
+  /**
+   * Skip directories that almost always contain binary cache
+   * artifacts (compiled bytecode, build-server indexes, package
+   * manager state, version-control metadata). Apps that legitimately
+   * need to grep these subclass and override [[searchFiles]].
+   */
   private val excludedDirNames: Set[String] = Set(
-    ".git", ".metals", ".bloop", ".idea", ".vscode",
-    "target", "node_modules", "dist", "build", "out",
-    ".venv", "venv", "__pycache__", ".gradle", ".mvn"
+    ".git",
+    ".metals",
+    ".bloop",
+    ".idea",
+    ".vscode",
+    "target",
+    "node_modules",
+    "dist",
+    "build",
+    "out",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".gradle",
+    ".mvn"
   )
 
   private def isInExcludedDir(base: Path, path: Path): Boolean =
@@ -233,12 +250,14 @@ class LocalFileSystemContext(basePath: Option[Path] = None) extends FileSystemCo
       rel.iterator().asScala.exists(seg => excludedDirNames.contains(seg.toString))
     }
 
-  /** Read a file's lines via a UTF-8 decoder configured to REPLACE
-    * malformed sequences with U+FFFD instead of throwing. Survives
-    * Windows-1252 / iso-8859-1 / mixed-encoding text files at the
-    * cost of an occasional `?` character in the result — acceptable
-    * for grep, where the caller is matching a regex, not handing the
-    * bytes back unchanged. */
+  /**
+   * Read a file's lines via a UTF-8 decoder configured to REPLACE
+   * malformed sequences with U+FFFD instead of throwing. Survives
+   * Windows-1252 / iso-8859-1 / mixed-encoding text files at the
+   * cost of an occasional `?` character in the result — acceptable
+   * for grep, where the caller is matching a regex, not handing the
+   * bytes back unchanged.
+   */
   private def readLinesLenient(path: Path): List[String] = {
     val decoder = StandardCharsets.UTF_8.newDecoder()
       .onMalformedInput(java.nio.charset.CodingErrorAction.REPLACE)
@@ -258,7 +277,10 @@ class LocalFileSystemContext(basePath: Option[Path] = None) extends FileSystemCo
 }
 
 object LocalFileSystemContext {
-  /** Maximum bytes captured per stream (stdout / stderr) for shell
-    * commands. Protects against runaway output blowing memory. */
+
+  /**
+   * Maximum bytes captured per stream (stdout / stderr) for shell
+   * commands. Protects against runaway output blowing memory.
+   */
   val OutputTruncationBytes: Int = 100 * 1024
 }

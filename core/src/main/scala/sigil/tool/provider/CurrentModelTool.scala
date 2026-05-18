@@ -16,11 +16,13 @@ import sigil.tool.{ToolName, TypedOutputTool}
  * `"current"` / `"this"` aliases to a real id without round-tripping
  * through rendered text.
  *
- * **Not auto-registered.** Apps add to `staticTools` to expose. */
-case object CurrentModelTool extends TypedOutputTool[CurrentModelInput, CurrentModelOutput](
-  name = ToolName("current_model"),
-  description =
-    """Report the model and strategy currently in effect for this conversation.
+ * **Not auto-registered.** Apps add to `staticTools` to expose.
+ */
+case object CurrentModelTool
+  extends TypedOutputTool[CurrentModelInput, CurrentModelOutput](
+    name = ToolName("current_model"),
+    description =
+      """Report the model and strategy currently in effect for this conversation.
       |Returns:
       |  - `pinned` — set when a specific model is pinned for this conversation;
       |    otherwise null.
@@ -33,13 +35,21 @@ case object CurrentModelTool extends TypedOutputTool[CurrentModelInput, CurrentM
       |
       |Use when you need to tell the user which model is in effect, or to resolve
       |"the current model" / "this model" before changing model selection.""".stripMargin,
-  keywords = Set(
-    "current", "active", "running", "model", "what", "which",
-    "now", "introspect", "in", "use", "this"
-  )
-) {
+    keywords = Set(
+      "current",
+      "active",
+      "running",
+      "model",
+      "what",
+      "which",
+      "now",
+      "introspect",
+      "in",
+      "use",
+      "this"
+    )
+  ) {
   override def paginate: Boolean = false
-
 
   override protected def executeTyped(input: CurrentModelInput, ctx: TurnContext): Task[CurrentModelOutput] = {
     val conv = ctx.conversation
@@ -53,8 +63,8 @@ case object CurrentModelTool extends TypedOutputTool[CurrentModelInput, CurrentM
         host.withDB(_.providerStrategies.transaction(_.get(strategyId))).map { recordOpt =>
           recordOpt.map { record =>
             AssignedStrategySummary(
-              id               = record._id.value,
-              label            = record.label,
+              id = record._id.value,
+              label = record.label,
               primaryCandidate = record.defaultCandidates.headOption.map(c => toReference(host, c.modelId))
             )
           }
@@ -67,19 +77,19 @@ case object CurrentModelTool extends TypedOutputTool[CurrentModelInput, CurrentM
 
     for {
       assignedStrategy <- assignedStrategyTask
-      lastUsed         <- lastUsedTask
-      resolved         <- resolvedTask
+      lastUsed <- lastUsedTask
+      resolved <- resolvedTask
     } yield CurrentModelOutput(
-      pinned           = pinned,
+      pinned = pinned,
       assignedStrategy = assignedStrategy,
-      lastUsed         = lastUsed,
-      resolved         = resolved
+      lastUsed = lastUsed,
+      resolved = resolved
     )
   }
 
   private def toReference(host: _root_.sigil.Sigil, modelId: lightdb.id.Id[_root_.sigil.db.Model]): ModelReference =
     ModelReference(
-      id      = modelId.value,
+      id = modelId.value,
       summary = host.cache.findTolerant(modelId).map(ModelSummary.from)
     )
 }

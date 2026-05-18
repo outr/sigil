@@ -21,7 +21,8 @@ import strider.step.{Approval, Step, TimeoutAction}
  * to); the timeout still fires the configured `TimeoutAction`.
  */
 final case class SigilApproval(input: ApprovalStepInput,
-                               id: Id[Step] = Step.id()) extends Approval derives RW {
+                               id: Id[Step] = Step.id())
+  extends Approval derives RW {
   override def name: String = input.name.getOrElse(input.id)
 
   override def prompt: String = input.prompt
@@ -35,12 +36,12 @@ final case class SigilApproval(input: ApprovalStepInput,
       case Some(convIdStr) =>
         val notice = WorkflowApprovalRequested(
           conversationId = Id[Conversation](convIdStr),
-          runId          = workflow._id.value,
-          stepId         = id.value,
-          stepName       = name,
-          prompt         = prompt,
-          options        = options,
-          timeoutMs      = timeoutMs
+          runId = workflow._id.value,
+          stepId = id.value,
+          stepName = name,
+          prompt = prompt,
+          options = options,
+          timeoutMs = timeoutMs
         )
         WorkflowHost.get.publish(notice)
     }

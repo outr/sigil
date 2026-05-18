@@ -8,7 +8,8 @@ import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
 
 case class DapSetBreakpointsInput(sessionId: String,
                                   filePath: String,
-                                  lines: List[Int]) extends ToolInput derives RW
+                                  lines: List[Int])
+  extends ToolInput derives RW
 
 /**
  * Replace the breakpoints set on a source file. Per the DAP
@@ -17,22 +18,24 @@ case class DapSetBreakpointsInput(sessionId: String,
  * state for each (some lines may move to the nearest valid statement
  * or be marked unverified if the source isn't loaded yet).
  */
-final class DapSetBreakpointsTool(val manager: DapManager) extends TypedTool[DapSetBreakpointsInput](
-  name = ToolName("dap_set_breakpoints"),
-  description =
-    """Set source breakpoints for a file in an active debug session (replaces any prior set).
+final class DapSetBreakpointsTool(val manager: DapManager)
+  extends TypedTool[DapSetBreakpointsInput](
+    name = ToolName("dap_set_breakpoints"),
+    description =
+      """Set source breakpoints for a file in an active debug session (replaces any prior set).
       |
       |`sessionId` selects the active session.
       |`filePath` is the absolute path.
       |`lines` is the list of 1-based line numbers; empty clears the file's breakpoints.
       |Returns each breakpoint's verified state and any line adjustment the adapter made.""".stripMargin,
-  examples = List(
-    ToolExample(
-      "set two breakpoints",
-      DapSetBreakpointsInput(sessionId = "demo-session", filePath = "/abs/path/Foo.scala", lines = List(15, 32))
+    examples = List(
+      ToolExample(
+        "set two breakpoints",
+        DapSetBreakpointsInput(sessionId = "demo-session", filePath = "/abs/path/Foo.scala", lines = List(15, 32))
+      )
     )
   )
-) with DapToolSupport {
+  with DapToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: DapSetBreakpointsInput, context: TurnContext): Stream[Event] =

@@ -20,7 +20,9 @@ import java.util.concurrent.ConcurrentLinkedQueue
 final class RecordingBroadcaster {
   private val buf = new ConcurrentLinkedQueue[Signal]()
 
-  /** Start draining `sigil.signals` into the internal buffer. */
+  /**
+   * Start draining `sigil.signals` into the internal buffer.
+   */
   def attach(sigil: Sigil): Unit = {
     sigil.signals
       .evalMap(sig => Task { buf.add(sig); () })

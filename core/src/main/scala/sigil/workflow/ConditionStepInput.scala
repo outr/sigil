@@ -16,4 +16,5 @@ case class ConditionStepInput(id: String,
                               expression: String,
                               onTrue: String,
                               onFalse: String,
-                              name: Option[String] = None) extends WorkflowStepInput derives RW
+                              name: Option[String] = None)
+  extends WorkflowStepInput derives RW

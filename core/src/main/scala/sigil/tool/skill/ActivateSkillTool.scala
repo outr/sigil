@@ -29,10 +29,11 @@ import sigil.tool.model.ResponseContent
  * tool emits a not-supported message rather than activating
  * silently.
  */
-case object ActivateSkillTool extends TypedTool[ActivateSkillInput](
-  name = ToolName("activate_skill"),
-  description =
-    """Activate a discovered Skill — a system-prompt overlay that specializes you for a focused
+case object ActivateSkillTool
+  extends TypedTool[ActivateSkillInput](
+    name = ToolName("activate_skill"),
+    description =
+      """Activate a discovered Skill — a system-prompt overlay that specializes you for a focused
       |task. Pass the skill's `name` (returned by capability discovery).
       |
       |The skill stays active until you activate a different one or the conversation changes
@@ -42,8 +43,8 @@ case object ActivateSkillTool extends TypedTool[ActivateSkillInput](
       |
       |If the skill isn't found OR isn't available in the current mode, this tool reports
       |the failure and changes nothing.""".stripMargin,
-  keywords = Set("activate", "skill", "load", "enable", "use")
-) {
+    keywords = Set("activate", "skill", "load", "enable", "use")
+  ) {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: ActivateSkillInput, context: TurnContext): Stream[Event] =

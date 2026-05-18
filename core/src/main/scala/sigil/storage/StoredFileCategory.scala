@@ -14,14 +14,19 @@ import fabric.rw.*
  * optional category filter for that purpose.
  */
 enum StoredFileCategory derives RW {
-  /** Files the user uploaded — images, PDFs, attachments, anything
-    * the user opted to persist. Default in "show me my files" UI
-    * surfaces. Persistent (no `expiresAt` by default). */
+
+  /**
+   * Files the user uploaded — images, PDFs, attachments, anything
+   * the user opted to persist. Default in "show me my files" UI
+   * surfaces. Persistent (no `expiresAt` by default).
+   */
   case UserAttachment
 
-  /** Oversized message-content blocks that
-    * `ContentExternalizationTransform` lifted out of the inline event
-    * payload. Persistent (the originating Message references them
-    * forever). */
+  /**
+   * Oversized message-content blocks that
+   * `ContentExternalizationTransform` lifted out of the inline event
+   * payload. Persistent (the originating Message references them
+   * forever).
+   */
   case ExternalizedContent
 }

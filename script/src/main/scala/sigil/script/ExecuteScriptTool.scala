@@ -49,9 +49,18 @@ class ExecuteScriptTool(executor: ScriptExecutor,
       // queries should have surfaced this ad-hoc tool first. The
       // ad-hoc / one-off / inspect terms disambiguate against
       // create_script_tool (which is for persistent registration).
-      "execute", "run", "evaluate", "eval", "script",
-      "scala", "compute", "ad-hoc", "adhoc", "inspect",
-      "one-off", "calculate"
+      "execute",
+      "run",
+      "evaluate",
+      "eval",
+      "script",
+      "scala",
+      "compute",
+      "ad-hoc",
+      "adhoc",
+      "inspect",
+      "one-off",
+      "calculate"
     ),
     examples = List(
       ToolExample(
@@ -76,16 +85,17 @@ class ExecuteScriptTool(executor: ScriptExecutor,
   ) {
   override def paginate: Boolean = false
 
-
-  /** Append the executor's advertised surface (Bug #54) so the LLM
-    * knows which library identifiers are pre-imported. Without this
-    * the model writes Scala-2 idioms that don't exist in the Scala 3
-    * REPL classpath. */
+  /**
+   * Append the executor's advertised surface (Bug #54) so the LLM
+   * knows which library identifiers are pre-imported. Without this
+   * the model writes Scala-2 idioms that don't exist in the Scala 3
+   * REPL classpath.
+   */
   override def descriptionFor(mode: _root_.sigil.provider.Mode,
                               sigilInstance: _root_.sigil.Sigil): String =
     executor.advertisedSurface match {
-      case Some(surface) => s"${description}\n\n$surface"
-      case None          => description
+      case Some(surface) => s"$description\n\n$surface"
+      case None => description
     }
 
   // Bug #86 — generic primitive: ranks below domain-specific
@@ -143,10 +153,13 @@ class ExecuteScriptTool(executor: ScriptExecutor,
 }
 
 object ExecuteScriptTool {
-  /** Format a throwable as a short stack-trace string suitable for a
-    * `ScriptResult.error` field. Trims to the first 8 lines so the
-    * model has the framing + the script-relevant frames without the
-    * ~80-line JVM stack. Bug #67. */
+
+  /**
+   * Format a throwable as a short stack-trace string suitable for a
+   * `ScriptResult.error` field. Trims to the first 8 lines so the
+   * model has the framing + the script-relevant frames without the
+   * ~80-line JVM stack. Bug #67.
+   */
   private[script] def formatThrowable(t: Throwable): String = {
     val sw = new java.io.StringWriter
     t.printStackTrace(new java.io.PrintWriter(sw))

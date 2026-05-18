@@ -26,21 +26,24 @@ class ToolingTypedShapesSpec extends AnyWordSpec with Matchers {
       roundTrip(v) shouldBe v
     }
 
-    "round-trip every LspSeverity case" in {
-      List(LspSeverity.Error, LspSeverity.Warning, LspSeverity.Information,
-           LspSeverity.Hint, LspSeverity.Unknown).foreach { v =>
+    "round-trip every LspSeverity case" in
+      List(
+        LspSeverity.Error,
+        LspSeverity.Warning,
+        LspSeverity.Information,
+        LspSeverity.Hint,
+        LspSeverity.Unknown).foreach { v =>
         roundTrip(v) shouldBe v
       }
-    }
 
     "round-trip LspDiagnostic with optional code/source populated" in {
       val v = LspDiagnostic(
         filePath = "/abs/Foo.scala",
-        range    = LspRange(LspPosition(12, 5), LspPosition(12, 20)),
+        range = LspRange(LspPosition(12, 5), LspPosition(12, 20)),
         severity = LspSeverity.Error,
-        message  = "type mismatch",
-        code     = Some("E007"),
-        source   = Some("scalac")
+        message = "type mismatch",
+        code = Some("E007"),
+        source = Some("scalac")
       )
       roundTrip(v) shouldBe v
     }
@@ -48,9 +51,9 @@ class ToolingTypedShapesSpec extends AnyWordSpec with Matchers {
     "round-trip LspDiagnostic with code/source absent" in {
       val v = LspDiagnostic(
         filePath = "/abs/Foo.scala",
-        range    = LspRange(LspPosition(1, 1), LspPosition(1, 1)),
+        range = LspRange(LspPosition(1, 1), LspPosition(1, 1)),
         severity = LspSeverity.Hint,
-        message  = "unused import"
+        message = "unused import"
       )
       roundTrip(v) shouldBe v
     }
@@ -59,10 +62,17 @@ class ToolingTypedShapesSpec extends AnyWordSpec with Matchers {
       val v = LspDiagnosticsResult(
         filePath = "/abs/Foo.scala",
         diagnostics = List(
-          LspDiagnostic("/abs/Foo.scala", LspRange(LspPosition(10, 1), LspPosition(10, 5)),
-                        LspSeverity.Error, "missing argument"),
-          LspDiagnostic("/abs/Foo.scala", LspRange(LspPosition(15, 3), LspPosition(15, 8)),
-                        LspSeverity.Warning, "deprecated", code = Some("0")),
+          LspDiagnostic(
+            "/abs/Foo.scala",
+            LspRange(LspPosition(10, 1), LspPosition(10, 5)),
+            LspSeverity.Error,
+            "missing argument"),
+          LspDiagnostic(
+            "/abs/Foo.scala",
+            LspRange(LspPosition(15, 3), LspPosition(15, 8)),
+            LspSeverity.Warning,
+            "deprecated",
+            code = Some("0")),
         )
       )
       roundTrip(v) shouldBe v
@@ -70,9 +80,9 @@ class ToolingTypedShapesSpec extends AnyWordSpec with Matchers {
 
     "round-trip LspLocation" in {
       val v = LspLocation(
-        uri      = "file:///abs/Foo.scala",
+        uri = "file:///abs/Foo.scala",
         filePath = "/abs/Foo.scala",
-        range    = LspRange(LspPosition(42, 12), LspPosition(42, 25))
+        range = LspRange(LspPosition(42, 12), LspPosition(42, 25))
       )
       roundTrip(v) shouldBe v
     }
@@ -80,8 +90,8 @@ class ToolingTypedShapesSpec extends AnyWordSpec with Matchers {
     "round-trip LspHover with markdown contents" in {
       val v = LspHover(
         contents = "**def** foo(x: Int): Int",
-        kind     = "markdown",
-        range    = Some(LspRange(LspPosition(1, 1), LspPosition(1, 10)))
+        kind = "markdown",
+        range = Some(LspRange(LspPosition(1, 1), LspPosition(1, 10)))
       )
       roundTrip(v) shouldBe v
     }
@@ -89,13 +99,13 @@ class ToolingTypedShapesSpec extends AnyWordSpec with Matchers {
     "round-trip BspDiagnostic + BspCompileResult" in {
       val v = BspCompileResult(
         projectRoot = "/abs/myproject",
-        status      = "ERROR",
+        status = "ERROR",
         targetCount = 3,
         diagnostics = List(BspDiagnostic(
           filePath = "/abs/myproject/Foo.scala",
-          range    = LspRange(LspPosition(20, 1), LspPosition(20, 5)),
+          range = LspRange(LspPosition(20, 1), LspPosition(20, 5)),
           severity = LspSeverity.Error,
-          message  = "not found: Bar"
+          message = "not found: Bar"
         ))
       )
       roundTrip(v) shouldBe v

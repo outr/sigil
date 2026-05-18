@@ -19,13 +19,13 @@ class RandomToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   private val convId = Conversation.id("random-tool-spec-conv")
   private val ctx: TurnContext = TurnContext(
-    sigil            = TestSigil,
-    chain            = List(TestUser),
-    conversation     = Conversation(
+    sigil = TestSigil,
+    chain = List(TestUser),
+    conversation = Conversation(
       topics = List(TopicEntry(TestTopicId, "test", "test")),
-      _id    = convId
+      _id = convId
     ),
-    turnInput        = TurnInput(ConversationView(conversationId = convId))
+    turnInput = TurnInput(ConversationView(conversationId = convId))
   )
 
   "RandomIntTool" should {
@@ -54,16 +54,13 @@ class RandomToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       for {
         a <- RandomIntTool.invoke(RandomIntInput(min = 0, max = Int.MaxValue.toLong, seed = Some(1L)), ctx)
         b <- RandomIntTool.invoke(RandomIntInput(min = 0, max = Int.MaxValue.toLong, seed = Some(2L)), ctx)
-      } yield {
-        a.value should not be b.value
-      }
+      } yield a.value should not be b.value
     }
 
-    "respect a degenerate min == max range" in {
+    "respect a degenerate min == max range" in
       RandomIntTool.invoke(RandomIntInput(min = 7, max = 7), ctx).map { out =>
         out.value shouldBe 7L
       }
-    }
 
     "fail when min > max" in {
       val attempt = RandomIntTool.invoke(RandomIntInput(min = 10, max = 5), ctx).attempt

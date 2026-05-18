@@ -24,22 +24,23 @@ final class GitCommitTool(context: FileSystemContext)
         |it on top of `AllShippedTools`.""".stripMargin,
     examples = List(
       ToolExample("Commit all tracked changes", GitCommitInput(message = "Fix typo")),
-      ToolExample("Commit specific paths",      GitCommitInput(message = "Add config", paths = Some(List("config/app.yaml"))))
+      ToolExample("Commit specific paths", GitCommitInput(message = "Add config", paths = Some(List("config/app.yaml"))))
     ),
     keywords = Set("git", "commit", "save", "checkpoint")
-  ) with sigil.tool.DestructiveExternalTool {
+  )
+  with sigil.tool.DestructiveExternalTool {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: GitCommitInput, ctx: TurnContext): Stream[Event] = Stream.force(
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val pathsToStage = input.paths.getOrElse(Nil)
       val addCmd = pathsToStage match {
-        case Nil   => "git add -u"
+        case Nil => "git add -u"
         case paths => "git add -- " + paths.map(shellQuote).mkString(" ")
       }
       val emptyFlag = if (input.allowEmpty) " --allow-empty" else ""
       val commitCmd = s"""git commit$emptyFlag -m ${shellQuote(input.message)}"""
-      val shaCmd    = "git rev-parse HEAD"
+      val shaCmd = "git rev-parse HEAD"
 
       for {
         addResult <- context.executeCommand(addCmd, dir)
@@ -53,14 +54,14 @@ final class GitCommitTool(context: FileSystemContext)
         val payload =
           if (commitResult.exitCode != 0 || shaResult.exitCode != 0)
             obj(
-              "success"  -> bool(false),
-              "error"    -> str(if (commitResult.stderr.nonEmpty) commitResult.stderr else shaResult.stderr),
+              "success" -> bool(false),
+              "error" -> str(if (commitResult.stderr.nonEmpty) commitResult.stderr else shaResult.stderr),
               "exitCode" -> num(if (commitResult.exitCode != 0) commitResult.exitCode else shaResult.exitCode)
             )
           else
             obj(
               "success" -> bool(true),
-              "sha"     -> str(shaResult.stdout.trim),
+              "sha" -> str(shaResult.stdout.trim),
               "message" -> str(input.message)
             )
         Stream.emit[Event](FsToolEmit(payload, ctx))

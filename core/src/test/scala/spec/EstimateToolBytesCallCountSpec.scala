@@ -24,14 +24,16 @@ class EstimateToolBytesCallCountSpec extends AnyWordSpec with Matchers {
   case class WideInput(field01: String = "",
                        field02: String = "",
                        field03: String = "",
-                       field04: String = "") extends ToolInput derives RW
+                       field04: String = "")
+    extends ToolInput derives RW
 
-  case object WideTool extends TypedTool[WideInput](
-    name        = ToolName("wide_tool"),
-    description = "A short description.",
-    keywords    = Set.empty
-  ) {
-  override def paginate: Boolean = false
+  case object WideTool
+    extends TypedTool[WideInput](
+      name = ToolName("wide_tool"),
+      description = "A short description.",
+      keywords = Set.empty
+    ) {
+    override def paginate: Boolean = false
 
     override protected def executeTyped(input: WideInput, context: sigil.TurnContext): Stream[Event] = Stream.empty
   }

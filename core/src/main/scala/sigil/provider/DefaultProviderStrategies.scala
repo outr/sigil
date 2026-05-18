@@ -39,62 +39,73 @@ import sigil.db.Model
  */
 object DefaultProviderStrategies {
 
-  /** Convenience — wrap a model-id string in a default
-    * [[ModelCandidate]]. Apps that want per-candidate retry /
-    * cooldown overrides build their own list. */
+  /**
+   * Convenience — wrap a model-id string in a default
+   * [[ModelCandidate]]. Apps that want per-candidate retry /
+   * cooldown overrides build their own list.
+   */
   private def m(id: String): ModelCandidate = ModelCandidate(Id[Model](id))
 
-  /** Mid-cost / mid-quality default. Suits the "general assistant"
-    * shape for most apps. */
+  /**
+   * Mid-cost / mid-quality default. Suits the "general assistant"
+   * shape for most apps.
+   */
   def balanced(space: SpaceId): ProviderStrategyRecord = ProviderStrategyRecord(
     space = space,
     label = "Balanced",
     defaultCandidates = List(m("anthropic/claude-sonnet-4-6"), m("openai/gpt-5.4"), m("anthropic/claude-haiku-4-5")),
     routeCandidates = Map(
-      ConversationWork.value   -> List(m("anthropic/claude-sonnet-4-6"), m("openai/gpt-5.4"), m("anthropic/claude-haiku-4-5")),
-      AnalysisWork.value       -> List(m("anthropic/claude-sonnet-4-6"), m("openai/gpt-5.4"), m("openai/o4-mini"), m("anthropic/claude-haiku-4-5")),
-      CodingWork.value         -> List(m("anthropic/claude-opus-4-7"), m("openai/gpt-5.4"), m("anthropic/claude-sonnet-4-6")),
+      ConversationWork.value -> List(m("anthropic/claude-sonnet-4-6"), m("openai/gpt-5.4"), m("anthropic/claude-haiku-4-5")),
+      AnalysisWork.value ->
+        List(m("anthropic/claude-sonnet-4-6"), m("openai/gpt-5.4"), m("openai/o4-mini"), m("anthropic/claude-haiku-4-5")),
+      CodingWork.value -> List(m("anthropic/claude-opus-4-7"), m("openai/gpt-5.4"), m("anthropic/claude-sonnet-4-6")),
       ClassificationWork.value -> List(m("openai/gpt-5.4-mini"), m("anthropic/claude-haiku-4-5"), m("openai/gpt-5.4-nano")),
-      CreativeWork.value       -> List(m("openai/gpt-5.4"), m("anthropic/claude-sonnet-4-6"), m("openai/gpt-5.4-mini")),
-      SummarizationWork.value  -> List(m("openai/gpt-5.4-mini"), m("anthropic/claude-haiku-4-5"))
+      CreativeWork.value -> List(m("openai/gpt-5.4"), m("anthropic/claude-sonnet-4-6"), m("openai/gpt-5.4-mini")),
+      SummarizationWork.value -> List(m("openai/gpt-5.4-mini"), m("anthropic/claude-haiku-4-5"))
     ),
     metadata = Map("seedKey" -> "default-balanced")
   )
 
-  /** Capability over cost — top-tier models on every work type. */
+  /**
+   * Capability over cost — top-tier models on every work type.
+   */
   def premiumQuality(space: SpaceId): ProviderStrategyRecord = ProviderStrategyRecord(
     space = space,
     label = "Premium Quality",
     defaultCandidates = List(m("anthropic/claude-opus-4-7"), m("openai/gpt-5.4"), m("google/gemini-2.5-pro")),
     routeCandidates = Map(
-      ConversationWork.value   -> List(m("anthropic/claude-opus-4-7"), m("openai/gpt-5.4"), m("google/gemini-2.5-pro")),
-      AnalysisWork.value       -> List(m("anthropic/claude-opus-4-7"), m("openai/gpt-5.4"), m("openai/o4")),
-      CodingWork.value         -> List(m("anthropic/claude-opus-4-7"), m("openai/gpt-5.4"), m("anthropic/claude-sonnet-4-6")),
+      ConversationWork.value -> List(m("anthropic/claude-opus-4-7"), m("openai/gpt-5.4"), m("google/gemini-2.5-pro")),
+      AnalysisWork.value -> List(m("anthropic/claude-opus-4-7"), m("openai/gpt-5.4"), m("openai/o4")),
+      CodingWork.value -> List(m("anthropic/claude-opus-4-7"), m("openai/gpt-5.4"), m("anthropic/claude-sonnet-4-6")),
       ClassificationWork.value -> List(m("anthropic/claude-haiku-4-5"), m("openai/gpt-5.4-mini")),
-      CreativeWork.value       -> List(m("anthropic/claude-opus-4-7"), m("openai/gpt-5.4"), m("google/gemini-2.5-pro")),
-      SummarizationWork.value  -> List(m("anthropic/claude-sonnet-4-6"), m("openai/gpt-5.4-mini"))
+      CreativeWork.value -> List(m("anthropic/claude-opus-4-7"), m("openai/gpt-5.4"), m("google/gemini-2.5-pro")),
+      SummarizationWork.value -> List(m("anthropic/claude-sonnet-4-6"), m("openai/gpt-5.4-mini"))
     ),
     metadata = Map("seedKey" -> "default-premium")
   )
 
-  /** Cheap-first. Falls back to mid-tier only when a cheap candidate
-    * fails. Use for high-volume low-stakes flows. */
+  /**
+   * Cheap-first. Falls back to mid-tier only when a cheap candidate
+   * fails. Use for high-volume low-stakes flows.
+   */
   def economy(space: SpaceId): ProviderStrategyRecord = ProviderStrategyRecord(
     space = space,
     label = "Economy",
     defaultCandidates = List(m("openai/gpt-5.4-mini"), m("anthropic/claude-haiku-4-5"), m("openai/gpt-5.4-nano"), m("openai/gpt-5.4")),
     routeCandidates = Map(
-      ConversationWork.value   -> List(m("openai/gpt-5.4-mini"), m("anthropic/claude-haiku-4-5"), m("openai/gpt-5.4-nano")),
-      AnalysisWork.value       -> List(m("anthropic/claude-haiku-4-5"), m("openai/gpt-5.4-mini"), m("anthropic/claude-sonnet-4-6")),
-      CodingWork.value         -> List(m("anthropic/claude-sonnet-4-6"), m("openai/gpt-5.4"), m("openai/gpt-5.4-mini")),
+      ConversationWork.value -> List(m("openai/gpt-5.4-mini"), m("anthropic/claude-haiku-4-5"), m("openai/gpt-5.4-nano")),
+      AnalysisWork.value -> List(m("anthropic/claude-haiku-4-5"), m("openai/gpt-5.4-mini"), m("anthropic/claude-sonnet-4-6")),
+      CodingWork.value -> List(m("anthropic/claude-sonnet-4-6"), m("openai/gpt-5.4"), m("openai/gpt-5.4-mini")),
       ClassificationWork.value -> List(m("openai/gpt-5.4-nano"), m("anthropic/claude-haiku-4-5"), m("openai/gpt-5.4-mini")),
-      CreativeWork.value       -> List(m("openai/gpt-5.4-mini"), m("anthropic/claude-haiku-4-5")),
-      SummarizationWork.value  -> List(m("openai/gpt-5.4-nano"), m("anthropic/claude-haiku-4-5"), m("openai/gpt-5.4-mini"))
+      CreativeWork.value -> List(m("openai/gpt-5.4-mini"), m("anthropic/claude-haiku-4-5")),
+      SummarizationWork.value -> List(m("openai/gpt-5.4-nano"), m("anthropic/claude-haiku-4-5"), m("openai/gpt-5.4-mini"))
     ),
     metadata = Map("seedKey" -> "default-economy")
   )
 
-  /** All three preset records for a given space. */
+  /**
+   * All three preset records for a given space.
+   */
   def all(space: SpaceId): List[ProviderStrategyRecord] =
     List(balanced(space), premiumQuality(space), economy(space))
 
@@ -118,7 +129,7 @@ object DefaultProviderStrategies {
         val key = preset.metadata.getOrElse("seedKey", "")
         existingByKey.get(key) match {
           case Some(extant) => Task.pure(extant)
-          case None         => sigil.saveProviderStrategy(preset)
+          case None => sigil.saveProviderStrategy(preset)
         }
       })
     }
@@ -138,7 +149,6 @@ object DefaultProviderStrategies {
    *   sigil.saveProviderStrategy(mine)
    * }}}
    */
-  def customize(record: ProviderStrategyRecord)
-               (f: ProviderStrategyRecord => ProviderStrategyRecord): ProviderStrategyRecord =
+  def customize(record: ProviderStrategyRecord)(f: ProviderStrategyRecord => ProviderStrategyRecord): ProviderStrategyRecord =
     f(record)
 }

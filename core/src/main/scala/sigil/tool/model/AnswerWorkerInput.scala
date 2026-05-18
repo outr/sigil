@@ -17,4 +17,5 @@ import sigil.tool.ToolInput
  */
 case class AnswerWorkerInput(taskId: String,
                              questionId: String,
-                             answer: String) extends ToolInput derives RW
+                             answer: String)
+  extends ToolInput derives RW

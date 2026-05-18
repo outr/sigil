@@ -29,23 +29,27 @@ case class BenchmarkHarness(embeddingProvider: EmbeddingProvider,
                             vectorIndex: VectorIndex,
                             reset: () => Task[Unit]) {
 
-  /** Ensure the underlying index is initialized for this embedder's
-    * dimensions. Idempotent. */
+  /**
+   * Ensure the underlying index is initialized for this embedder's
+   * dimensions. Idempotent.
+   */
   def ensureCollection(): Task[Unit] =
     vectorIndex.ensureCollection(embeddingProvider.dimensions)
 
-  /** Embed `text`, upsert a point into the index with `payload`.
-    * Also stores the original text under
-    * [[sigil.vector.HybridSearch.TextKey]] so the hybrid-search
-    * wrapper can compute keyword overlap at query time.
-    *
-    * Qdrant requires point ids to be UUIDs or unsigned ints —
-    * arbitrary benchmark ids (like `msg-12-session-3-turn-4`) are
-    * rejected silently. We normalize the caller's id to a
-    * deterministic UUID via `UUID.nameUUIDFromBytes` and stash the
-    * original under [[BenchmarkHarness.OrigIdKey]] so search results
-    * restore the user's id. InMemoryVectorIndex accepts either, so
-    * this normalization is a no-op on that backend semantically. */
+  /**
+   * Embed `text`, upsert a point into the index with `payload`.
+   * Also stores the original text under
+   * [[sigil.vector.HybridSearch.TextKey]] so the hybrid-search
+   * wrapper can compute keyword overlap at query time.
+   *
+   * Qdrant requires point ids to be UUIDs or unsigned ints —
+   * arbitrary benchmark ids (like `msg-12-session-3-turn-4`) are
+   * rejected silently. We normalize the caller's id to a
+   * deterministic UUID via `UUID.nameUUIDFromBytes` and stash the
+   * original under [[BenchmarkHarness.OrigIdKey]] so search results
+   * restore the user's id. InMemoryVectorIndex accepts either, so
+   * this normalization is a no-op on that backend semantically.
+   */
   def embedAndIndex(id: String, text: String, payload: Map[String, String]): Task[Unit] =
     embeddingProvider.embed(text).flatMap { vec =>
       val enriched = payload
@@ -55,19 +59,21 @@ case class BenchmarkHarness(embeddingProvider: EmbeddingProvider,
       vectorIndex.upsert(VectorPoint(id = pointId, vector = vec, payload = enriched))
     }
 
-  /** Embed + upsert a batch of items in a single round-trip. OpenAI
-    * accepts up to ~2048 inputs per embeddings request; we chunk at
-    * `batchSize` (default 64 to stay well under request-size limits
-    * while still reducing RTT by ~50x over single-item embeds).
-    *
-    * Each individual text is also truncated to
-    * `maxCharsPerInput` (default 20000 — conservative at ~2.4
-    * chars/token to stay under text-embedding-3-small's 8192-token
-    * cap on dense technical/code-heavy content) so one oversized
-    * haystack item doesn't crash the whole run. */
+  /**
+   * Embed + upsert a batch of items in a single round-trip. OpenAI
+   * accepts up to ~2048 inputs per embeddings request; we chunk at
+   * `batchSize` (default 64 to stay well under request-size limits
+   * while still reducing RTT by ~50x over single-item embeds).
+   *
+   * Each individual text is also truncated to
+   * `maxCharsPerInput` (default 20000 — conservative at ~2.4
+   * chars/token to stay under text-embedding-3-small's 8192-token
+   * cap on dense technical/code-heavy content) so one oversized
+   * haystack item doesn't crash the whole run.
+   */
   def embedAndIndexBatch(items: List[(String, String, Map[String, String])],
                          batchSize: Int = 64,
-                         maxCharsPerInput: Int = 20000): Task[Unit] = {
+                         maxCharsPerInput: Int = 20000): Task[Unit] =
     if (items.isEmpty) Task.unit
     else {
       // Drop empty / whitespace-only inputs — OpenAI embeddings
@@ -95,10 +101,11 @@ case class BenchmarkHarness(embeddingProvider: EmbeddingProvider,
         }
       }).unit
     }
-  }
 
-  /** Embed `query`, search the index, return raw results with the
-    * caller's original ids restored from payload. */
+  /**
+   * Embed `query`, search the index, return raw results with the
+   * caller's original ids restored from payload.
+   */
   def searchByQuery(query: String,
                     limit: Int = 10,
                     filter: Map[String, String] = Map.empty): Task[List[VectorSearchResult]] =
@@ -107,10 +114,11 @@ case class BenchmarkHarness(embeddingProvider: EmbeddingProvider,
     }
 
   private def restoreOrigIds(results: List[VectorSearchResult]): List[VectorSearchResult] =
-    results.map(r => r.payload.get(BenchmarkHarness.OrigIdKey) match {
-      case Some(orig) => r.copy(id = orig)
-      case None       => r
-    })
+    results.map(r =>
+      r.payload.get(BenchmarkHarness.OrigIdKey) match {
+        case Some(orig) => r.copy(id = orig)
+        case None => r
+      })
 
   /**
    * Hybrid / temporal / LLM-rerank pipeline. Pass `Retrieval` flags
@@ -142,7 +150,7 @@ case class BenchmarkHarness(embeddingProvider: EmbeddingProvider,
     val temporalStep: Task[List[VectorSearchResult]] = base.map { candidates =>
       retrieval.temporal match {
         case Some(cfg) => cfg.boost.rerank(candidates, referenceTimeMs.getOrElse(System.currentTimeMillis()))
-        case None      => candidates
+        case None => candidates
       }
     }
     // 3. LLM reranker — requires a Sigil for the consult call.
@@ -156,9 +164,11 @@ case class BenchmarkHarness(embeddingProvider: EmbeddingProvider,
     reranked.map(_.take(limit))
   }
 
-  /** Reset the underlying store so the next benchmark iteration starts
-    * clean. For Qdrant-backed runs this deletes and recreates the
-    * collection; for in-memory runs it flushes the map. */
+  /**
+   * Reset the underlying store so the next benchmark iteration starts
+   * clean. For Qdrant-backed runs this deletes and recreates the
+   * collection; for in-memory runs it flushes the map.
+   */
   def resetCollection(): Task[Unit] = reset().flatMap(_ => ensureCollection())
 }
 
@@ -190,20 +200,23 @@ object Retrieval {
 
 object BenchmarkHarness {
 
-  /** Payload key under which [[embedAndIndex]] stashes the caller's
-    * original id so search results can present user-friendly ids
-    * (Qdrant rejects non-UUID point ids). */
+  /**
+   * Payload key under which [[embedAndIndex]] stashes the caller's
+   * original id so search results can present user-friendly ids
+   * (Qdrant rejects non-UUID point ids).
+   */
   val OrigIdKey: String = "_origId"
 
-  /** Construct a harness from env / args:
-    *   - `SIGIL_QDRANT_URL` (default `http://localhost:6333`)
-    *   - `OPENAI_API_KEY` (required)
-    *   - `SIGIL_EMBEDDING_MODEL` (default `text-embedding-3-small`)
-    *   - `SIGIL_EMBEDDING_DIMENSIONS` (default `1536`)
-    *
-    * Terminates with a clear error message when `OPENAI_API_KEY` is
-    * missing; the benchmarks are unusable without it.
-    */
+  /**
+   * Construct a harness from env / args:
+   *   - `SIGIL_QDRANT_URL` (default `http://localhost:6333`)
+   *   - `OPENAI_API_KEY` (required)
+   *   - `SIGIL_EMBEDDING_MODEL` (default `text-embedding-3-small`)
+   *   - `SIGIL_EMBEDDING_DIMENSIONS` (default `1536`)
+   *
+   * Terminates with a clear error message when `OPENAI_API_KEY` is
+   * missing; the benchmarks are unusable without it.
+   */
   def fromEnv(collection: String): BenchmarkHarness = {
     val qdrantUrl: URL = qdrantUrlFromEnv
     val openaiKey = Option(System.getenv("OPENAI_API_KEY")).filter(_.nonEmpty).getOrElse {
@@ -224,12 +237,13 @@ object BenchmarkHarness {
       dimensions = dims
     )
     val vectorIndex = QdrantVectorIndex(qdrantUrl, collection)
-    val reset: () => Task[Unit] = () => Task {
-      try {
-        HttpClient.url(qdrantUrl.withPath(s"/collections/$collection"))
-          .method(HttpMethod.Delete).send().sync()
-      } catch { case _: Exception => () }
-    }
+    val reset: () => Task[Unit] = () =>
+      Task {
+        try
+          HttpClient.url(qdrantUrl.withPath(s"/collections/$collection"))
+            .method(HttpMethod.Delete).send().sync()
+        catch { case _: Exception => () }
+      }
     BenchmarkHarness(embedder, vectorIndex, reset)
   }
 
@@ -239,14 +253,15 @@ object BenchmarkHarness {
       .flatMap(s => URL.get(s, tldValidation = TLDValidation.Off).toOption)
       .getOrElse(url"http://localhost:6333")
 
-  /** Sanity-check that Qdrant is reachable; terminates with a clear
-    * error otherwise. Cheap to call at benchmark start. */
-  def ensureQdrantReachable(qdrantUrl: URL): Unit = {
+  /**
+   * Sanity-check that Qdrant is reachable; terminates with a clear
+   * error otherwise. Cheap to call at benchmark start.
+   */
+  def ensureQdrantReachable(qdrantUrl: URL): Unit =
     try QdrantOps.healthCheck(qdrantUrl).sync()
     catch {
       case e: Exception =>
         System.err.println(s"ERROR: Qdrant not reachable at $qdrantUrl — ${e.getMessage}")
         sys.exit(1)
     }
-  }
 }

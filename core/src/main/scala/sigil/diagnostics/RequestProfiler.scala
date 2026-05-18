@@ -19,11 +19,13 @@ import sigil.tool.Tool
  */
 object RequestProfiler {
 
-  /** Profile a request using a Sigil instance (typical Provider call site).
-    * `descriptionFor` calls hit `Tool.descriptionFor(currentMode, sigil)` —
-    * which is the wire-accurate string for tools like `change_mode` that
-    * fold runtime context into their description. Adds insights derived
-    * from the model's `contextLength` (looked up via `sigil.cache`). */
+  /**
+   * Profile a request using a Sigil instance (typical Provider call site).
+   * `descriptionFor` calls hit `Tool.descriptionFor(currentMode, sigil)` —
+   * which is the wire-accurate string for tools like `change_mode` that
+   * fold runtime context into their description. Adds insights derived
+   * from the model's `contextLength` (looked up via `sigil.cache`).
+   */
   def profile(request: ConversationRequest,
               resolved: ResolvedReferences,
               tokenizer: Tokenizer,
@@ -42,10 +44,12 @@ object RequestProfiler {
     raw.copy(insights = insights)
   }
 
-  /** Profile a request with an explicit description supplier. Used by
-    * synthetic benches that don't want to spin up a full Sigil — pass
-    * `_.description` to fall back to static descriptions, or supply a
-    * custom mapping for richer scenarios. */
+  /**
+   * Profile a request with an explicit description supplier. Used by
+   * synthetic benches that don't want to spin up a full Sigil — pass
+   * `_.description` to fall back to static descriptions, or supply a
+   * custom mapping for richer scenarios.
+   */
   def profileWith(request: ConversationRequest,
                   resolved: ResolvedReferences,
                   tokenizer: Tokenizer,
@@ -58,8 +62,10 @@ object RequestProfiler {
       if (text.nonEmpty) sections(section) = sections.getOrElse(section, 0) + tokenizer.count(text)
 
     // 1. Tool framing prefix
-    if (request.tools.nonEmpty) add(ProfileSection.ToolFramingPrefix,
-      "You communicate exclusively through tool calls. Plain text output is never delivered to the user — always pick a tool.\n\n")
+    if (request.tools.nonEmpty) add(
+      ProfileSection.ToolFramingPrefix,
+      "You communicate exclusively through tool calls. Plain text output is never delivered to the user — always pick a tool.\n\n"
+    )
 
     // 2. Mode + topic block
     val modeText = new StringBuilder
@@ -163,11 +169,11 @@ object RequestProfiler {
     // 13. Frames (the message array)
     val frameProfiles = turn.frames.map { f =>
       val (kind, text, eventId) = f match {
-        case t: ContextFrame.Text        => ("Text", t.content, t.sourceEventId)
-        case tc: ContextFrame.ToolCall   => ("ToolCall", tc.argsJson, tc.sourceEventId)
+        case t: ContextFrame.Text => ("Text", t.content, t.sourceEventId)
+        case tc: ContextFrame.ToolCall => ("ToolCall", tc.argsJson, tc.sourceEventId)
         case tr: ContextFrame.ToolResult => ("ToolResult", tr.content, tr.sourceEventId)
-        case s: ContextFrame.System      => ("System", s.content, s.sourceEventId)
-        case r: ContextFrame.Reasoning   => ("Reasoning", r.summary.mkString("\n"), r.sourceEventId)
+        case s: ContextFrame.System => ("System", s.content, s.sourceEventId)
+        case r: ContextFrame.Reasoning => ("Reasoning", r.summary.mkString("\n"), r.sourceEventId)
       }
       FrameProfile(kind, eventId, tokenizer.count(text))
     }
@@ -188,10 +194,12 @@ object RequestProfiler {
     RequestProfile(total = total, sections = sections.toMap, frames = frameProfiles)
   }
 
-  /** Mirrors `Provider.renderSystem`'s memory-render policy: prefer
-    * `summary` when set, fall back to `fact`. Apps writing concise
-    * pinned directives via the `summary` field shrink per-turn
-    * rendered cost; the full `fact` remains recoverable via `lookup`. */
+  /**
+   * Mirrors `Provider.renderSystem`'s memory-render policy: prefer
+   * `summary` when set, fall back to `fact`. Apps writing concise
+   * pinned directives via the `summary` field shrink per-turn
+   * rendered cost; the full `fact` remains recoverable via `lookup`.
+   */
   private def memoryRenderText(m: ContextMemory): String =
     if (m.summary.trim.nonEmpty) m.summary else m.fact
 }

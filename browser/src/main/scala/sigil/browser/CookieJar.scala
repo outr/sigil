@@ -48,7 +48,9 @@ object CookieJar extends RecordDocumentModel[CookieJar] with JsonConversion[Cook
 
   override def id(value: String = Unique()): Id[CookieJar] = Id(value)
 
-  /** Tenant-key index — string form of `SpaceId.value`. */
+  /**
+   * Tenant-key index — string form of `SpaceId.value`.
+   */
   val spaceKey: I[String] = field.index("spaceKey", _.space.value)
   val createdAt: I[Long] = field.index("createdAt", _.created.value)
 }

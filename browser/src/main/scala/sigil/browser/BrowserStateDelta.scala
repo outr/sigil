@@ -26,7 +26,8 @@ case class BrowserStateDelta(target: Id[Event],
                              title: Option[String] = None,
                              loading: Option[Boolean] = None,
                              screenshotFileId: Option[Id[StoredFile]] = None,
-                             htmlFileId: Option[Id[StoredFile]] = None) extends Delta derives RW {
+                             htmlFileId: Option[Id[StoredFile]] = None)
+  extends Delta derives RW {
   override def apply(target: Event): Event = target match {
     case b: BrowserState =>
       b.copy(

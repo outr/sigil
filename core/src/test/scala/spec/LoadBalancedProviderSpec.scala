@@ -29,8 +29,10 @@ class LoadBalancedProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Counts call-attempts per instance; emits a single Done event with
-   * a sentinel `id` so the spec can identify which member ran. */
+  /**
+   * Counts call-attempts per instance; emits a single Done event with
+   * a sentinel `id` so the spec can identify which member ran.
+   */
   private class CountingProvider(label: String) extends Provider {
     val counter: AtomicInteger = new AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -150,9 +152,9 @@ class LoadBalancedProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         val acquired = new AtomicInteger(0)
         override def acquire: Task[Unit] = Task { acquired.incrementAndGet(); () }
         override def observe(remainingRequests: Option[Long],
-                              remainingTokens: Option[Long],
-                              resetSeconds: Option[Long],
-                              retryAfter: Option[scala.concurrent.duration.FiniteDuration]): Unit = ()
+                             remainingTokens: Option[Long],
+                             resetSeconds: Option[Long],
+                             retryAfter: Option[scala.concurrent.duration.FiniteDuration]): Unit = ()
       }
       class TrackedLimiterProvider extends Provider {
         val callerLimiter = new TrackingLimiter

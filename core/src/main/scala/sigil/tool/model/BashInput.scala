@@ -9,4 +9,5 @@ import sigil.tool.ToolInput
  */
 case class BashInput(command: String,
                      workingDir: Option[String] = None,
-                     timeoutMs: Option[Long] = None) extends ToolInput derives RW
+                     timeoutMs: Option[Long] = None)
+  extends ToolInput derives RW

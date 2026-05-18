@@ -34,16 +34,19 @@ import scala.concurrent.duration.*
 class RefactorSessionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  override implicit val testTimeout: FiniteDuration = 30.seconds
+  implicit override val testTimeout: FiniteDuration = 30.seconds
 
-  /** Worker dispatcher that returns a fixed `Edited` decision for
-    * every match handed to it. Tests pass the precomputed
-    * (start, end, newText) so the framework's `buildEdit`
-    * verification step accepts the decision. */
-  private final class FixedDispatcher(startChar: Int,
+  /**
+   * Worker dispatcher that returns a fixed `Edited` decision for
+   * every match handed to it. Tests pass the precomputed
+   * (start, end, newText) so the framework's `buildEdit`
+   * verification step accepts the decision.
+   */
+  final private class FixedDispatcher(startChar: Int,
                                       endChar: Int,
                                       oldText: String,
-                                      newText: String) extends RefactorWorkerDispatcher {
+                                      newText: String)
+    extends RefactorWorkerDispatcher {
     override def dispatch(ctx: TurnContext,
                           modelId: String,
                           filePath: String,
@@ -52,12 +55,12 @@ class RefactorSessionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       val decisions = matches.map { m =>
         MatchDecision(
           matchedLine = m.lineNumber,
-          action      = MatchAction.Edited,
-          reason      = "stub",
-          oldText     = oldText,
-          newText     = Some(newText),
-          startChar   = Some(startChar),
-          endChar     = Some(endChar)
+          action = MatchAction.Edited,
+          reason = "stub",
+          oldText = oldText,
+          newText = Some(newText),
+          startChar = Some(startChar),
+          endChar = Some(endChar)
         )
       }
       Right(decisions)
@@ -69,34 +72,36 @@ class RefactorSessionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     files.foreach { case (rel, content) =>
       val target = root.resolve(rel)
       Files.createDirectories(target.getParent)
-      Files.writeString(target, content,
-        StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+      Files.writeString(
+        target,
+        content,
+        StandardOpenOption.CREATE,
+        StandardOpenOption.TRUNCATE_EXISTING)
     }
     root
   }
 
-  private def cleanup(root: Path): Unit = {
+  private def cleanup(root: Path): Unit =
     if (Files.exists(root)) {
       import scala.jdk.CollectionConverters.*
       val s = Files.walk(root)
       try s.iterator().asScala.toList.reverse.foreach(p => Files.deleteIfExists(p))
       finally s.close()
     }
-  }
 
   private def turnContext(): TurnContext = {
-    val convId  = Conversation.id(s"refactor-session-${rapid.Unique()}")
-    val callId  = Event.id()
+    val convId = Conversation.id(s"refactor-session-${rapid.Unique()}")
+    val callId = Event.id()
     val conv = Conversation(
       topics = List(TopicEntry(TestTopicId, "test", "test")),
-      _id    = convId
+      _id = convId
     )
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv))).sync()
     TurnContext(
-      sigil               = TestSigil,
-      chain               = List(TestUser),
-      conversation        = conv,
-      turnInput           = TurnInput(ConversationView(conversationId = convId)),
+      sigil = TestSigil,
+      chain = List(TestUser),
+      conversation = conv,
+      turnInput = TurnInput(ConversationView(conversationId = convId)),
       currentToolInvokeId = Some(callId)
     )
   }
@@ -107,7 +112,7 @@ class RefactorSessionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     // page; no file is modified. Wires a stub dispatcher so the
     // worker path is deterministic.
     "return a sessionId and first-page diffs without writing files" in {
-      val store     = new RefactorSessionStore()
+      val store = new RefactorSessionStore()
       val workspace = materialize(List(
         "a.txt" -> "alpha\n// TODO:remove first\nbeta\n",
         "b.txt" -> "gamma\n// TODO:remove second\ndelta\n"
@@ -116,17 +121,17 @@ class RefactorSessionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         "a.txt" -> Files.readString(workspace.resolve("a.txt")),
         "b.txt" -> Files.readString(workspace.resolve("b.txt"))
       )
-      val fs  = new LocalFileSystemContext(basePath = Some(workspace))
+      val fs = new LocalFileSystemContext(basePath = Some(workspace))
       val ctx = turnContext()
       val dispatcher = new FixedDispatcher(startChar = 0, endChar = 14, oldText = "// TODO:remove", newText = "")
       val tool = new RefactorWithInstructionTool(fs, store, workerDispatcher = Some(dispatcher))
       val input = RefactorWithInstructionInput(
-        path        = workspace.toString,
-        glob        = None,
+        path = workspace.toString,
+        glob = None,
         findPattern = "// TODO:remove",
         instruction = "stub-driven",
         maxParallel = 2,
-        maxWorkers  = 5
+        maxWorkers = 5
       )
       tool.invoke(input, ctx).map { out =>
         try {
@@ -153,29 +158,29 @@ class RefactorSessionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     // Acceptance #2: apply commits the prepared diffs atomically;
     // session disappears (a second apply returns not-found).
     "commit the prepared diffs and remove the session" in {
-      val store     = new RefactorSessionStore()
+      val store = new RefactorSessionStore()
       val workspace = materialize(List(
         "a.txt" -> "alpha\n// TODO:remove first\nbeta\n",
         "b.txt" -> "gamma\n// TODO:remove second\ndelta\n"
       ))
-      val fs  = new LocalFileSystemContext(basePath = Some(workspace))
+      val fs = new LocalFileSystemContext(basePath = Some(workspace))
       val ctx = turnContext()
       val dispatcher = new FixedDispatcher(startChar = 0, endChar = 14, oldText = "// TODO:remove", newText = "")
       val prepareTool = new RefactorWithInstructionTool(fs, store, workerDispatcher = Some(dispatcher))
-      val applyTool   = new RefactorApplyTool(fs, store)
+      val applyTool = new RefactorApplyTool(fs, store)
       val input = RefactorWithInstructionInput(
-        path        = workspace.toString,
-        glob        = None,
+        path = workspace.toString,
+        glob = None,
         findPattern = "// TODO:remove",
         instruction = "stub-driven",
         maxParallel = 2,
-        maxWorkers  = 5
+        maxWorkers = 5
       )
       for {
         prepared <- prepareTool.invoke(input, ctx)
-        applied  <- applyTool.invoke(RefactorApplyInput(prepared.sessionId), ctx)
-        twice    <- applyTool.invoke(RefactorApplyInput(prepared.sessionId), ctx)
-      } yield {
+        applied <- applyTool.invoke(RefactorApplyInput(prepared.sessionId), ctx)
+        twice <- applyTool.invoke(RefactorApplyInput(prepared.sessionId), ctx)
+      } yield
         try {
           applied.status shouldBe RefactorApplyStatus.Applied
           applied.filesModified shouldBe 2
@@ -190,7 +195,6 @@ class RefactorSessionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
           // Session no longer in the store.
           store.peek(prepared.sessionId) shouldBe None
         } finally cleanup(workspace)
-      }
     }
   }
 
@@ -199,31 +203,31 @@ class RefactorSessionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     // Acceptance #3: cancel drops the session cleanly; no file
     // modified; subsequent apply returns not-found.
     "drop the session without writing files" in {
-      val store     = new RefactorSessionStore()
+      val store = new RefactorSessionStore()
       val workspace = materialize(List(
         "a.txt" -> "alpha\n// TODO:remove first\nbeta\n"
       ))
       val original = Files.readString(workspace.resolve("a.txt"))
-      val fs  = new LocalFileSystemContext(basePath = Some(workspace))
+      val fs = new LocalFileSystemContext(basePath = Some(workspace))
       val ctx = turnContext()
       val dispatcher = new FixedDispatcher(startChar = 0, endChar = 14, oldText = "// TODO:remove", newText = "")
       val prepareTool = new RefactorWithInstructionTool(fs, store, workerDispatcher = Some(dispatcher))
-      val cancelTool  = new RefactorCancelTool(store)
-      val applyTool   = new RefactorApplyTool(fs, store)
+      val cancelTool = new RefactorCancelTool(store)
+      val applyTool = new RefactorApplyTool(fs, store)
       val input = RefactorWithInstructionInput(
-        path        = workspace.toString,
-        glob        = None,
+        path = workspace.toString,
+        glob = None,
         findPattern = "// TODO:remove",
         instruction = "stub-driven",
         maxParallel = 1,
-        maxWorkers  = 5
+        maxWorkers = 5
       )
       for {
-        prepared   <- prepareTool.invoke(input, ctx)
-        cancelled  <- cancelTool.invoke(RefactorCancelInput(prepared.sessionId), ctx)
+        prepared <- prepareTool.invoke(input, ctx)
+        cancelled <- cancelTool.invoke(RefactorCancelInput(prepared.sessionId), ctx)
         afterApply <- applyTool.invoke(RefactorApplyInput(prepared.sessionId), ctx)
-        twice      <- cancelTool.invoke(RefactorCancelInput(prepared.sessionId), ctx)
-      } yield {
+        twice <- cancelTool.invoke(RefactorCancelInput(prepared.sessionId), ctx)
+      } yield
         try {
           cancelled.status shouldBe RefactorCancelStatus.Cancelled
           // File untouched.
@@ -236,7 +240,6 @@ class RefactorSessionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
           // Store empty.
           store.peek(prepared.sessionId) shouldBe None
         } finally cleanup(workspace)
-      }
     }
   }
 
@@ -247,33 +250,33 @@ class RefactorSessionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     // test is deterministic; production paths call this on a
     // background sweep.
     "evict expired sessions so apply returns not-found and no files change" in {
-      val ttl       = 100.millis
-      val store     = new RefactorSessionStore(ttl = ttl)
+      val ttl = 100.millis
+      val store = new RefactorSessionStore(ttl = ttl)
       val workspace = materialize(List(
         "a.txt" -> "alpha\n// TODO:remove first\nbeta\n"
       ))
       val original = Files.readString(workspace.resolve("a.txt"))
-      val fs  = new LocalFileSystemContext(basePath = Some(workspace))
+      val fs = new LocalFileSystemContext(basePath = Some(workspace))
       val ctx = turnContext()
       val dispatcher = new FixedDispatcher(startChar = 0, endChar = 14, oldText = "// TODO:remove", newText = "")
       val prepareTool = new RefactorWithInstructionTool(fs, store, workerDispatcher = Some(dispatcher))
-      val applyTool   = new RefactorApplyTool(fs, store)
+      val applyTool = new RefactorApplyTool(fs, store)
       val input = RefactorWithInstructionInput(
-        path        = workspace.toString,
-        glob        = None,
+        path = workspace.toString,
+        glob = None,
         findPattern = "// TODO:remove",
         instruction = "stub-driven",
         maxParallel = 1,
-        maxWorkers  = 5
+        maxWorkers = 5
       )
       for {
         prepared <- prepareTool.invoke(input, ctx)
         // Simulate clock advance past TTL — the store evicts based
         // on the supplied `now` argument so the test doesn't have
         // to sleep.
-        evicted   = store.evictExpired(System.currentTimeMillis() + ttl.toMillis + 1000)
-        applied  <- applyTool.invoke(RefactorApplyInput(prepared.sessionId), ctx)
-      } yield {
+        evicted = store.evictExpired(System.currentTimeMillis() + ttl.toMillis + 1000)
+        applied <- applyTool.invoke(RefactorApplyInput(prepared.sessionId), ctx)
+      } yield
         try {
           evicted shouldBe 1
           applied.status shouldBe RefactorApplyStatus.NotFound
@@ -282,7 +285,6 @@ class RefactorSessionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
           Files.readString(workspace.resolve("a.txt")) shouldBe original
           store.peek(prepared.sessionId) shouldBe None
         } finally cleanup(workspace)
-      }
     }
   }
 }

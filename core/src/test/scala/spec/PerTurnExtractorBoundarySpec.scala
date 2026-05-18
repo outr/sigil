@@ -47,9 +47,11 @@ class PerTurnExtractorBoundarySpec extends AsyncWordSpec with AsyncTaskSpec with
 
   private val modelId: Id[Model] = Model.id("test", "per-turn-extractor-model")
 
-  /** Counts every extractor call so the spec can prove the fix
-    * collapses N per-iteration fires into exactly one. */
-  private final class CountingExtractor extends MemoryExtractor {
+  /**
+   * Counts every extractor call so the spec can prove the fix
+   * collapses N per-iteration fires into exactly one.
+   */
+  final private class CountingExtractor extends MemoryExtractor {
     val calls = new atomic.AtomicInteger(0)
     val lastUser = new atomic.AtomicReference[String]("")
     val lastAgent = new atomic.AtomicReference[String]("")
@@ -66,8 +68,10 @@ class PerTurnExtractorBoundarySpec extends AsyncWordSpec with AsyncTaskSpec with
     }
   }
 
-  /** Two-iteration provider: change_mode then respond. Forces the
-    * agent loop through ≥ 2 iterations under one outer claim. */
+  /**
+   * Two-iteration provider: change_mode then respond. Forces the
+   * agent loop through ≥ 2 iterations under one outer claim.
+   */
   private class TwoIterationProvider extends Provider {
     private val callCount = new atomic.AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -100,28 +104,31 @@ class PerTurnExtractorBoundarySpec extends AsyncWordSpec with AsyncTaskSpec with
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = ToolName("change_mode") :: CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = ToolName("change_mode") :: CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
-  /** Wait for the outer claim's terminal `AgentStateDelta(Idle,
-    * Complete)` — fires from `releaseClaim` at the loop's
-    * terminate point. The post-terminate extractor fiber runs
-    * concurrently; a short additional sleep gives it room to
-    * complete its (synchronous, in-memory) counter increment. */
+  /**
+   * Wait for the outer claim's terminal `AgentStateDelta(Idle,
+   * Complete)` — fires from `releaseClaim` at the loop's
+   * terminate point. The post-terminate extractor fiber runs
+   * concurrently; a short additional sleep gives it room to
+   * complete its (synchronous, in-memory) counter increment.
+   */
   private def waitForTerminal(recorded: ConcurrentLinkedQueue[Signal],
                               convId: Id[Conversation],
                               deadline: Long): Task[Unit] = Task.defer {
     val terminal = recorded.iterator().asScala.exists {
-      case d: AgentStateDelta if d.activity.contains(AgentActivity.Idle)
-                              && d.state.contains(EventState.Complete)
-                              && d.conversationId == convId => true
+      case d: AgentStateDelta
+          if d.activity.contains(AgentActivity.Idle)
+            && d.state.contains(EventState.Complete)
+            && d.conversationId == convId => true
       case _ => false
     }
-    if (terminal) Task.sleep(500.millis)  // let the extractor fiber settle
+    if (terminal) Task.sleep(500.millis) // let the extractor fiber settle
     else if (System.currentTimeMillis() > deadline) Task.unit
     else Task.sleep(50.millis).flatMap(_ => waitForTerminal(recorded, convId, deadline))
   }
@@ -136,11 +143,11 @@ class PerTurnExtractorBoundarySpec extends AsyncWordSpec with AsyncTaskSpec with
       TestSigil.setProvider(Task.pure(provider))
 
       val convId = Conversation.id(s"per-turn-${rapid.Unique()}")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
 
       val recorded = new ConcurrentLinkedQueue[Signal]()
-      val running  = new atomic.AtomicBoolean(true)
+      val running = new atomic.AtomicBoolean(true)
       TestSigil.signals
         .takeWhile(_ => running.get())
         .evalMap(s => Task { recorded.add(s); () })
@@ -151,12 +158,12 @@ class PerTurnExtractorBoundarySpec extends AsyncWordSpec with AsyncTaskSpec with
         _ <- Task.sleep(100.millis)
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("Switch to coding then say hi.")),
-               state          = EventState.Complete
-             ))
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Switch to coding then say hi.")),
+          state = EventState.Complete
+        ))
         _ <- waitForTerminal(recorded, convId, System.currentTimeMillis() + 10_000L)
       } yield {
         running.set(false)

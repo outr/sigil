@@ -42,7 +42,8 @@ import strider.step.{Job, Step}
  * process-wide singleton set by [[WorkflowSigil]] at init.
  */
 final case class SigilJobStep(input: JobStepInput,
-                              id: Id[Step] = Step.id()) extends Job[Json] derives RW {
+                              id: Id[Step] = Step.id())
+  extends Job[Json] derives RW {
   override def name: String = input.name.getOrElse(input.id)
 
   override def continueOnError: Boolean = input.continueOnError
@@ -58,17 +59,19 @@ final case class SigilJobStep(input: JobStepInput,
     toolName match {
       case Some(t) => runTool(host, workflow, t)
       case None => resolvedPrompt match {
-        case Some(p) => runPrompt(host, workflow, p)
-        case None    => Task.pure(Null)
-      }
+          case Some(p) => runPrompt(host, workflow, p)
+          case None => Task.pure(Null)
+        }
     }
   }
 
-  /** Resolve `tool` against the host Sigil's `findTools.byName`,
-    * decode the workflow-substituted `arguments` through the tool's
-    * `inputRW`, run `tool.execute` against a synthetic TurnContext,
-    * and coalesce the result. */
-  private def runTool(host: Sigil, workflow: Workflow, toolName: String): Task[Json] = {
+  /**
+   * Resolve `tool` against the host Sigil's `findTools.byName`,
+   * decode the workflow-substituted `arguments` through the tool's
+   * `inputRW`, run `tool.execute` against a synthetic TurnContext,
+   * and coalesce the result.
+   */
+  private def runTool(host: Sigil, workflow: Workflow, toolName: String): Task[Json] =
     host.findTools.byName(ToolName(toolName)).flatMap {
       case None =>
         Task.error(new RuntimeException(s"Workflow step '${input.id}' references unknown tool '$toolName'."))
@@ -93,12 +96,11 @@ final case class SigilJobStep(input: JobStepInput,
                   m.content.collect { case ResponseContent.Text(text) => text }.mkString
                 }.filter(_.nonEmpty)
                 if (texts.isEmpty) obj("ok" -> str("done"))
-                else obj("results" -> fabric.Arr(texts.map(t => (str(t): Json)).toVector, None))
+                else obj("results" -> fabric.Arr(texts.map(t => str(t): Json).toVector, None))
               }
             }
         }
     }
-  }
 
   private def runPrompt(host: Sigil, workflow: Workflow, prompt: String): Task[Json] = {
     // Bug #65 — step's `modelId` falls back to a workflow-level
@@ -126,9 +128,9 @@ final case class SigilJobStep(input: JobStepInput,
           )
           val acc = new java.lang.StringBuilder
           provider(request).evalMap {
-            case ProviderEvent.TextDelta(t)            => Task { acc.append(t); () }
+            case ProviderEvent.TextDelta(t) => Task { acc.append(t); () }
             case ProviderEvent.ContentBlockDelta(_, t) => Task { acc.append(t); () }
-            case _                                     => Task.unit
+            case _ => Task.unit
           }.drain.map(_ => str(acc.toString): Json)
         }
     }

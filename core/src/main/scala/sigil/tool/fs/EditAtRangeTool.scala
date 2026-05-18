@@ -40,22 +40,38 @@ final class EditAtRangeTool(context: FileSystemContext)
     examples = List(
       ToolExample(
         "Replace a single line",
-        EditAtRangeInput(filePath = "src/main.scala", startLine = 4, startChar = 0, endLine = 5, endChar = 0,
+        EditAtRangeInput(
+          filePath = "src/main.scala",
+          startLine = 4,
+          startChar = 0,
+          endLine = 5,
+          endChar = 0,
           newText = "  val x = 42\n")
       ),
       ToolExample(
         "Insert at a specific column",
-        EditAtRangeInput(filePath = "config.toml", startLine = 0, startChar = 0, endLine = 0, endChar = 0,
+        EditAtRangeInput(
+          filePath = "config.toml",
+          startLine = 0,
+          startChar = 0,
+          endLine = 0,
+          endChar = 0,
           newText = "# header\n")
       ),
       ToolExample(
         "Delete a multi-line block",
-        EditAtRangeInput(filePath = "src/util.scala", startLine = 10, startChar = 0, endLine = 14, endChar = 0,
+        EditAtRangeInput(
+          filePath = "src/util.scala",
+          startLine = 10,
+          startChar = 0,
+          endLine = 14,
+          endChar = 0,
           newText = "")
       )
     ),
     keywords = Set("file", "edit", "range", "position", "line", "column", "replace", "modify", "rewrite", "patch", "refactor")
-  ) with sigil.tool.DestructiveExternalTool {
+  )
+  with sigil.tool.DestructiveExternalTool {
 
   override def paginate: Boolean = false
 
@@ -82,8 +98,7 @@ final class EditAtRangeTool(context: FileSystemContext)
             input.expectedHash match {
               case None =>
                 context.writeFile(resolved, next).map(_ =>
-                  ToolResult.success(EditAtRangeOutput.Success(hash = None, lineDelta = lineDelta, byteDelta = byteDelta))
-                )
+                  ToolResult.success(EditAtRangeOutput.Success(hash = None, lineDelta = lineDelta, byteDelta = byteDelta)))
               case Some(hash) =>
                 val expected = FileVersion(hash, Timestamp())
                 context.writeIfMatch(resolved, next, expected).map {
@@ -118,14 +133,18 @@ final class EditAtRangeTool(context: FileSystemContext)
 
 object EditAtRangeTool {
 
-  /** Apply a half-open `[start, end)` range edit to `content`,
-    * returning the new content or a human-readable failure reason.
-    * Pure; no IO. */
+  /**
+   * Apply a half-open `[start, end)` range edit to `content`,
+   * returning the new content or a human-readable failure reason.
+   * Pure; no IO.
+   */
   def applyRange(content: String, input: EditAtRangeInput): Either[String, String] = {
     if (input.startLine < 0 || input.startChar < 0 || input.endLine < 0 || input.endChar < 0)
       return Left("negative line / character index")
-    if (input.endLine < input.startLine ||
-        (input.endLine == input.startLine && input.endChar < input.startChar))
+    if (
+      input.endLine < input.startLine ||
+      (input.endLine == input.startLine && input.endChar < input.startChar)
+    )
       return Left(s"end position (${input.endLine}:${input.endChar}) precedes start (${input.startLine}:${input.startChar})")
 
     val lines = content.split("\n", -1)

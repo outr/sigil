@@ -31,7 +31,7 @@ class LlamaCppMemoryExtractionSpec extends AsyncWordSpec with AsyncTaskSpec with
   // 5-min cap so legitimate live-LLM round-trips under 4-way fork
   // contention finish before the framework's default 1-min timeout
   // kills them.
-  override implicit protected val testTimeout: scala.concurrent.duration.FiniteDuration =
+  implicit override protected val testTimeout: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.DurationInt(5).minutes
 
   TestSigil.initFor(getClass.getSimpleName)
@@ -72,7 +72,8 @@ class LlamaCppMemoryExtractionSpec extends AsyncWordSpec with AsyncTaskSpec with
 
       val convId = Conversation.id(s"mem-extract-${rapid.Unique()}")
       TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-        _id = convId, topics = List(TestTopicEntry)
+        _id = convId,
+        topics = List(TestTopicEntry)
       )))).sync()
 
       val frames = Vector(
@@ -106,7 +107,8 @@ class LlamaCppMemoryExtractionSpec extends AsyncWordSpec with AsyncTaskSpec with
           .map(_.filter(_.spaceId == MemoryTestSpace))
         darkModeHits <- TestSigil.searchMemories("what color theme does alice prefer", Set(MemoryTestSpace), limit = 5)
       } yield {
-        withClue(s"compressor summary: ${result.map(_.text).getOrElse("(none)")}, memories: ${memoriesInSpace.map(_.fact).mkString(" | ")}") {
+        withClue(
+          s"compressor summary: ${result.map(_.text).getOrElse("(none)")}, memories: ${memoriesInSpace.map(_.fact).mkString(" | ")}") {
           // Compressor returned a summary
           result should not be None
           // At least one extracted memory landed in the space

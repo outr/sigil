@@ -49,12 +49,12 @@ class TopicIndexCanonicalizationSpec extends AsyncWordSpec with AsyncTaskSpec wi
       for {
         conv <- freshConv(List("Topic A", "Topic B", "Topic C"))
         msg = Message(
-          participantId  = TestUser,
+          participantId = TestUser,
           conversationId = conv._id,
-          topicId        = conv.topics(2).id,  // 3rd topic on the stack
-          topicIndex     = 0,                  // wrong / stale
-          content        = Vector(ResponseContent.Text("hello")),
-          state          = EventState.Complete
+          topicId = conv.topics(2).id, // 3rd topic on the stack
+          topicIndex = 0, // wrong / stale
+          content = Vector(ResponseContent.Text("hello")),
+          state = EventState.Complete
         )
         _ <- TestSigil.publish(msg)
         loaded <- fetchPersisted(msg._id)
@@ -68,12 +68,12 @@ class TopicIndexCanonicalizationSpec extends AsyncWordSpec with AsyncTaskSpec wi
       for {
         conv <- freshConv(List("First", "Second"))
         msg = Message(
-          participantId  = TestUser,
+          participantId = TestUser,
           conversationId = conv._id,
-          topicId        = conv.topics.head.id,  // index 0
-          topicIndex     = 99,                   // wildly wrong
-          content        = Vector(ResponseContent.Text("hi")),
-          state          = EventState.Complete
+          topicId = conv.topics.head.id, // index 0
+          topicIndex = 99, // wildly wrong
+          content = Vector(ResponseContent.Text("hi")),
+          state = EventState.Complete
         )
         _ <- TestSigil.publish(msg)
         loaded <- fetchPersisted(msg._id)
@@ -84,12 +84,12 @@ class TopicIndexCanonicalizationSpec extends AsyncWordSpec with AsyncTaskSpec wi
       for {
         conv <- freshConv(List("Only"))
         msg = Message(
-          participantId  = TestUser,
+          participantId = TestUser,
           conversationId = conv._id,
-          topicId        = Topic.id("orphan-topic-id"),
-          topicIndex     = 5,
-          content        = Vector(ResponseContent.Text("orphan")),
-          state          = EventState.Complete
+          topicId = Topic.id("orphan-topic-id"),
+          topicIndex = 5,
+          content = Vector(ResponseContent.Text("orphan")),
+          state = EventState.Complete
         )
         _ <- TestSigil.publish(msg)
         loaded <- fetchPersisted(msg._id)
@@ -99,35 +99,35 @@ class TopicIndexCanonicalizationSpec extends AsyncWordSpec with AsyncTaskSpec wi
     "canonicalize across multiple event types in the same conversation" in {
       for {
         conv <- freshConv(List("Alpha", "Beta", "Gamma"))
-        topicIdMid = conv.topics(1).id  // index 1
+        topicIdMid = conv.topics(1).id // index 1
         msg = Message(
-          participantId  = TestUser,
+          participantId = TestUser,
           conversationId = conv._id,
-          topicId        = topicIdMid,
-          content        = Vector(ResponseContent.Text("mid")),
-          state          = EventState.Complete
+          topicId = topicIdMid,
+          content = Vector(ResponseContent.Text("mid")),
+          state = EventState.Complete
         )
         ti = ToolInvoke(
-          toolName       = ToolName("test"),
-          participantId  = TestUser,
+          toolName = ToolName("test"),
+          participantId = TestUser,
           conversationId = conv._id,
-          topicId        = topicIdMid,
-          state          = EventState.Complete
+          topicId = topicIdMid,
+          state = EventState.Complete
         )
         mc = ModeChange(
-          mode           = sigil.provider.ConversationMode,
-          participantId  = TestUser,
+          mode = sigil.provider.ConversationMode,
+          participantId = TestUser,
           conversationId = conv._id,
-          topicId        = topicIdMid,
-          timestamp      = Timestamp(),
-          state          = EventState.Complete
+          topicId = topicIdMid,
+          timestamp = Timestamp(),
+          state = EventState.Complete
         )
         _ <- TestSigil.publish(msg)
         _ <- TestSigil.publish(ti)
         _ <- TestSigil.publish(mc)
         loadedMsg <- fetchPersisted(msg._id)
-        loadedTi  <- fetchPersisted(ti._id)
-        loadedMc  <- fetchPersisted(mc._id)
+        loadedTi <- fetchPersisted(ti._id)
+        loadedMc <- fetchPersisted(mc._id)
       } yield {
         loadedMsg.get.topicIndex shouldBe 1
         loadedTi.get.topicIndex shouldBe 1

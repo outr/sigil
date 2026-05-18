@@ -14,10 +14,11 @@ import sigil.tool.{ToolName, TypedTool}
  * Never registered on any agent's roster — the framework calls it via
  * [[ConsultTool.invoke]] with `tool_choice = required`.
  */
-case object ClassifyMemoryTool extends TypedTool[ClassifyMemoryInput](
-  name = ToolName("classify_memory"),
-  description =
-    """Classify a memory the framework is about to persist. Produce three decisions in one call:
+case object ClassifyMemoryTool
+  extends TypedTool[ClassifyMemoryInput](
+    name = ToolName("classify_memory"),
+    description =
+      """Classify a memory the framework is about to persist. Produce three decisions in one call:
       |
       |1. `keywords` — 5–10 retrieval-shaped tokens for this memory. Pick terms a future query
       |   will plausibly mention: identifiers, names, languages, frameworks, file types,
@@ -45,7 +46,7 @@ case object ClassifyMemoryTool extends TypedTool[ClassifyMemoryInput](
       |
       |4. `ambiguityReason` — required when `space == "ambiguous"`; one short sentence telling
       |   the user what's unclear ("could apply to user or project; please pick").""".stripMargin
-) {
+  ) {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: ClassifyMemoryInput, context: TurnContext): Stream[Event] =

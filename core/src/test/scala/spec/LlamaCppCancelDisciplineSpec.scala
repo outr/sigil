@@ -31,10 +31,9 @@ import scala.concurrent.duration.*
  * canonical `CancelTool` in the roster, a small local model
  * doesn't reach for it mid-task.
  */
-class LlamaCppCancelDisciplineSpec
-  extends AsyncWordSpec with AsyncTaskSpec with Matchers with BeforeAndAfterAll {
+class LlamaCppCancelDisciplineSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers with BeforeAndAfterAll {
 
-  override implicit protected val testTimeout: FiniteDuration = 3.minutes
+  implicit override protected val testTimeout: FiniteDuration = 3.minutes
 
   TestSigil.initFor(getClass.getSimpleName)
 
@@ -47,22 +46,23 @@ class LlamaCppCancelDisciplineSpec
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                = TestAgent,
-      modelId           = modelId,
-      toolNames         = CoreTools.coreToolNames,
-      instructions      = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(2000), temperature = Some(0.0))
     )
 
   private lazy val harness: ConversationHarness =
     ConversationHarness(
-      sigil  = TestSigil,
+      sigil = TestSigil,
       viewer = TestUser,
-      conversationFactory = convId => Conversation(
-        topics       = List(TestTopicEntry),
-        _id          = convId,
-        participants = List(makeAgent())
-      )
+      conversationFactory = convId =>
+        Conversation(
+          topics = List(TestTopicEntry),
+          _id = convId,
+          participants = List(makeAgent())
+        )
     )
 
   private var harnessStarted: Boolean = false

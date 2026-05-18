@@ -9,4 +9,5 @@ import sigil.tool.ToolInput
  */
 case class ReadFileInput(filePath: String,
                          offset: Option[Int] = None,
-                         limit: Option[Int] = None) extends ToolInput derives RW
+                         limit: Option[Int] = None)
+  extends ToolInput derives RW

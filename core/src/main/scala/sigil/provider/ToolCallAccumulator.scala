@@ -69,7 +69,7 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
     if (calls.contains(index)) return Vector.empty
     val pending = pendingHeaders.getOrElse(index, PendingHeader(None, None, new StringBuilder))
     val merged = pending.copy(
-      callId   = callIdOpt.orElse(pending.callId),
+      callId = callIdOpt.orElse(pending.callId),
       toolName = nameOpt.orElse(pending.toolName)
     )
     (merged.callId, merged.toolName) match {
@@ -180,7 +180,7 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
                 val rootIsArr = reparsed.isArr
                 val schemaWantsObj = tool.inputRW.definition.defType match {
                   case _: fabric.define.DefType.Obj => true
-                  case _                             => false
+                  case _ => false
                 }
                 rootIsArr && schemaWantsObj
               } catch { case _: Throwable => false }
@@ -188,7 +188,7 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
                 throw new ProviderStreamException(
                   providerKey = providerKey,
                   code = 200,
-                  typ  = "malformed_tool_args",
+                  typ = "malformed_tool_args",
                   message_ = s"Model emitted a JSON array as `${s.toolName}` arguments " +
                     s"(${s.buf.length} chars) when the schema requires an object. " +
                     "Typically an upstream instruction-following degeneration: " +
@@ -256,15 +256,17 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
   }
 
   private case class CallState(callId: CallId,
-                                toolName: String,
-                                buf: StringBuilder,
-                                processor: Option[RespondStreamProcessor])
+                               toolName: String,
+                               buf: StringBuilder,
+                               processor: Option[RespondStreamProcessor])
 
-  /** Pending header for a tool call whose id and name arrived in
-    * separate chunks. Holds the partial fields plus any args that
-    * arrived before the header completed. Promoted to a full
-    * `CallState` once both `callId` and `toolName` are set. Sigil
-    * audit H8. */
+  /**
+   * Pending header for a tool call whose id and name arrived in
+   * separate chunks. Holds the partial fields plus any args that
+   * arrived before the header completed. Promoted to a full
+   * `CallState` once both `callId` and `toolName` are set. Sigil
+   * audit H8.
+   */
   private case class PendingHeader(callId: Option[CallId],
                                    toolName: Option[String],
                                    argsBuffer: StringBuilder)
@@ -304,21 +306,23 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
 
 object ToolCallAccumulator {
 
-  /** Compact human-readable summary of a fabric [[Definition]] —
-    * field names + types — for use in tool-arg error diagnostics
-    * (bug #72). Optional and required fields are listed separately
-    * so the agent can quickly cross-check its emitted JSON against
-    * the expected shape. Falls back to a minimal description for
-    * non-object root definitions.
-    *
-    * Examples:
-    *   `{ required: [name: string, count: integer], optional: [description: string] }`
-    *   `(any JSON value)` — for `DefType.Json` roots
-    *   `<string>` — for primitive-typed roots
-    *
-    * Intentionally lossy — the agent already has the full schema in
-    * the tool definition that came down on the wire. The summary's
-    * job is to remind, not duplicate. */
+  /**
+   * Compact human-readable summary of a fabric [[Definition]] —
+   * field names + types — for use in tool-arg error diagnostics
+   * (bug #72). Optional and required fields are listed separately
+   * so the agent can quickly cross-check its emitted JSON against
+   * the expected shape. Falls back to a minimal description for
+   * non-object root definitions.
+   *
+   * Examples:
+   *   `{ required: [name: string, count: integer], optional: [description: string] }`
+   *   `(any JSON value)` — for `DefType.Json` roots
+   *   `<string>` — for primitive-typed roots
+   *
+   * Intentionally lossy — the agent already has the full schema in
+   * the tool definition that came down on the wire. The summary's
+   * job is to remind, not duplicate.
+   */
   private[provider] def summarizeSchema(definition: fabric.define.Definition): String = {
     import fabric.define.DefType
     definition.defType match {
@@ -335,27 +339,29 @@ object ToolCallAccumulator {
         ).flatten
         if (parts.isEmpty) "{}" else parts.mkString("{ ", "; ", " }")
       case DefType.Json => "(any JSON value)"
-      case other         => s"<${typeName(other)}>"
+      case other => s"<${typeName(other)}>"
     }
   }
 
-  /** One-word type name for the schema summary. Recurses into
-    * `Opt` and `Arr`; abbreviates `Obj` / `Poly` to `object` /
-    * `oneOf` since spelling out nested shapes inside a one-line
-    * summary defeats the purpose. */
+  /**
+   * One-word type name for the schema summary. Recurses into
+   * `Opt` and `Arr`; abbreviates `Obj` / `Poly` to `object` /
+   * `oneOf` since spelling out nested shapes inside a one-line
+   * summary defeats the purpose.
+   */
   private def typeName(defType: fabric.define.DefType): String = {
     import fabric.define.DefType
     defType match {
-      case DefType.Str         => "string"
-      case DefType.Int         => "integer"
-      case DefType.Dec         => "number"
-      case DefType.Bool        => "boolean"
-      case DefType.Null        => "null"
-      case DefType.Json        => "any"
-      case DefType.Arr(t)      => s"array<${typeName(t.defType)}>"
-      case DefType.Opt(t)      => typeName(t.defType)
-      case DefType.Obj(_)      => "object"
-      case DefType.Poly(_, _)  => "oneOf"
+      case DefType.Str => "string"
+      case DefType.Int => "integer"
+      case DefType.Dec => "number"
+      case DefType.Bool => "boolean"
+      case DefType.Null => "null"
+      case DefType.Json => "any"
+      case DefType.Arr(t) => s"array<${typeName(t.defType)}>"
+      case DefType.Opt(t) => typeName(t.defType)
+      case DefType.Obj(_) => "object"
+      case DefType.Poly(_, _) => "oneOf"
     }
   }
 }

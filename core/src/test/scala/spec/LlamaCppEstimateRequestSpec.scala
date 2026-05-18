@@ -24,22 +24,23 @@ class LlamaCppEstimateRequestSpec extends AnyWordSpec with Matchers {
   // Definitely-unreachable port forces the `/apply-template`
   // round-trip to fail; the override falls back to `super.estimateRequest`.
   // Test-friendly subclass exposing the protected hook.
-  private class ExposedProvider extends LlamaCppProvider(
-    url        = url"http://127.0.0.1:1",
-    models     = Nil,
-    sigilRef   = TestSigil
-  ) {
+  private class ExposedProvider
+    extends LlamaCppProvider(
+      url = url"http://127.0.0.1:1",
+      models = Nil,
+      sigilRef = TestSigil
+    ) {
     def measure(call: ProviderCall): Int = estimateRequest(call)
   }
   private val exposed = new ExposedProvider
 
   private val sampleCall = ProviderCall(
     modelId = Id[Model]("llamacpp/test"),
-    system  = "You are a helpful assistant.",
+    system = "You are a helpful assistant.",
     messages = Vector(
       ProviderMessage.User("What is 2+2?"),
       ProviderMessage.Assistant(
-        content   = "Let me think.",
+        content = "Let me think.",
         toolCalls = List(ToolCallMessage(id = "call-1", name = "compute", argsJson = "{\"x\":2,\"y\":2}"))
       ),
       ProviderMessage.ToolResult(toolCallId = "call-1", content = "4")

@@ -50,10 +50,10 @@ class WorkspaceRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       _id = convId
     )
     TurnContext(
-      sigil            = TestSigil,
-      chain            = List(TestUser),
-      conversation     = conv,
-      turnInput        = TurnInput(ConversationView(conversationId = convId))
+      sigil = TestSigil,
+      chain = List(TestUser),
+      conversation = conv,
+      turnInput = TurnInput(ConversationView(conversationId = convId))
     )
   }
 
@@ -81,23 +81,20 @@ class WorkspaceRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
   "WorkspacePathResolver" should {
 
-    "resolve a relative path against the conversation's workspace" in {
+    "resolve a relative path against the conversation's workspace" in
       WorkspacePathResolver.resolve(turnCtx(convA), "build.sbt").map { resolved =>
         Path.of(resolved).normalize shouldBe projectA.resolve("build.sbt").normalize
       }
-    }
 
-    "leave an absolute path untouched even when a workspace is configured" in {
+    "leave an absolute path untouched even when a workspace is configured" in
       WorkspacePathResolver.resolve(turnCtx(convA), "/etc/hosts").map { resolved =>
         resolved shouldBe "/etc/hosts"
       }
-    }
 
-    "fall through to the relative path when no workspace is configured" in {
+    "fall through to the relative path when no workspace is configured" in
       WorkspacePathResolver.resolve(turnCtx(convNoWorkspace), "build.sbt").map { resolved =>
         resolved shouldBe "build.sbt"
       }
-    }
   }
 
   "FS tools with per-conversation workspaces" should {
@@ -132,21 +129,19 @@ class WorkspaceRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       val read = new ReadFileTool(fs)
       for {
         out <- read.execute(ReadFileInput(absScratch.toString), turnCtx(convA)).toList
-      } yield {
-        try {
+      } yield
+        try
           extractJson(out).get("content").map(_.asString) shouldBe Some("absolute-passthrough")
-        } finally Files.deleteIfExists(absScratch)
-      }
+        finally Files.deleteIfExists(absScratch)
     }
   }
 
-  override protected def afterAll(): Unit = {
+  override protected def afterAll(): Unit =
     List(projectA, projectB).foreach { p =>
       if (Files.exists(p)) {
         Files.walk(p).iterator().asScala.toList.reverse.foreach(Files.deleteIfExists)
       }
     }
-  }
 
   "tear down" should {
     "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)

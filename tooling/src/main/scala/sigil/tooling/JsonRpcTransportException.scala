@@ -26,15 +26,17 @@ final class JsonRpcTransportException(val operation: String,
 
 object JsonRpcTransportException {
 
-  /** Convenience constructor with a structured default message. */
+  /**
+   * Convenience constructor with a structured default message.
+   */
   def silenceExhausted(operation: String,
                        attempts: Int,
                        silenceWindow: FiniteDuration): JsonRpcTransportException =
     new JsonRpcTransportException(
-      operation     = operation,
-      attempts      = attempts,
+      operation = operation,
+      attempts = attempts,
       silenceWindow = silenceWindow,
-      message       = s"$operation: no response after $attempts attempt(s), silence window $silenceWindow. " +
+      message = s"$operation: no response after $attempts attempt(s), silence window $silenceWindow. " +
         "Either the wire is broken (try the matching reload tool) or the operation genuinely takes longer than the silence window."
     )
 }

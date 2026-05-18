@@ -27,9 +27,9 @@ import sigil.tool.model.ResponseContent
  */
 final class McpTool(manager: McpManager,
                     serverConfig: McpServerConfig,
-                    definition: McpToolDefinition) extends Tool {
+                    definition: McpToolDefinition)
+  extends Tool {
   override def paginate: Boolean = false
-
 
   override val name: ToolName = ToolName(serverConfig.prefix.getOrElse("") + definition.name)
   override val description: String = definition.description.getOrElse("")

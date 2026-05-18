@@ -17,14 +17,18 @@ import sigil.information.Information
 class StandardBlockExtractorSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Minimal Information subtype for the spec. */
+  /**
+   * Minimal Information subtype for the spec.
+   */
   case class BlockInfo(id: Id[Information], content: String) extends Information derives RW
 
   private def textFrame(s: String, id: String): ContextFrame.Text =
     ContextFrame.Text(s, TestUser, Id[Event](id))
 
-  /** Reset TestSigil and wire a fresh recorder for each test. Returns
-    * a getter that yields everything captured during the test body. */
+  /**
+   * Reset TestSigil and wire a fresh recorder for each test. Returns
+   * a getter that yields everything captured during the test body.
+   */
   private def recorder(): () => Vector[Information] = {
     TestSigil.reset()
     val puts = new java.util.concurrent.atomic.AtomicReference(Vector.empty[Information])

@@ -62,8 +62,11 @@ object ContentExternalizationTransform extends InboundTransform {
       val title = language.map(l => s"code.$l").getOrElse("code.txt")
       val contentType = language.map(l => s"text/x-$l").getOrElse("text/plain")
       self.externalizationSpace(m).flatMap { space =>
-        self.storeBytes(space, bytes, contentType,
-                        metadata = Map("kind" -> "externalized-code", "conversationId" -> m.conversationId.value))
+        self.storeBytes(
+          space,
+          bytes,
+          contentType,
+          metadata = Map("kind" -> "externalized-code", "conversationId" -> m.conversationId.value))
           .map { stored =>
             ResponseContent.StoredFileReference(
               fileId = stored._id,
@@ -79,8 +82,11 @@ object ContentExternalizationTransform extends InboundTransform {
       val bytes = diff.getBytes("UTF-8")
       val title = filename.getOrElse("diff.patch")
       self.externalizationSpace(m).flatMap { space =>
-        self.storeBytes(space, bytes, "text/x-diff",
-                        metadata = Map("kind" -> "externalized-diff", "conversationId" -> m.conversationId.value))
+        self.storeBytes(
+          space,
+          bytes,
+          "text/x-diff",
+          metadata = Map("kind" -> "externalized-diff", "conversationId" -> m.conversationId.value))
           .map { stored =>
             ResponseContent.StoredFileReference(
               fileId = stored._id,
@@ -100,9 +106,13 @@ object ContentExternalizationTransform extends InboundTransform {
         case Some(parsed) if parsed.bytes.length.toLong > threshold =>
           val title = alt.getOrElse(s"image.${DataUrl.extFor(parsed.contentType)}")
           self.externalizationSpace(m).flatMap { space =>
-            self.storeBytes(space, parsed.bytes, parsed.contentType,
-                            metadata = Map("kind" -> "externalized-image",
-                                           "conversationId" -> m.conversationId.value))
+            self.storeBytes(
+              space,
+              parsed.bytes,
+              parsed.contentType,
+              metadata = Map(
+                "kind" -> "externalized-image",
+                "conversationId" -> m.conversationId.value))
               .map { stored =>
                 ResponseContent.StoredFileReference(
                   fileId = stored._id,
@@ -146,12 +156,12 @@ object ContentExternalizationTransform extends InboundTransform {
       }
 
     def extFor(mime: String): String = mime.toLowerCase match {
-      case "image/png"  => "png"
+      case "image/png" => "png"
       case "image/jpeg" => "jpg"
-      case "image/gif"  => "gif"
+      case "image/gif" => "gif"
       case "image/webp" => "webp"
       case "image/svg+xml" => "svg"
-      case _            => "bin"
+      case _ => "bin"
     }
   }
 }

@@ -28,8 +28,10 @@ object LiveProbe {
 
   def slowEnabled: Boolean = sys.env.get("SIGIL_SLOW").exists(v => v == "1" || v.equalsIgnoreCase("true"))
 
-  /** Skip cleanly when SIGIL_LIVE isn't set. Call at the top of each
-    * provider-specific `runGated`. */
+  /**
+   * Skip cleanly when SIGIL_LIVE isn't set. Call at the top of each
+   * provider-specific `runGated`.
+   */
   def requireLiveEnabled(suite: Suite): Option[Status] =
     if (liveEnabled) None
     else {
@@ -37,10 +39,12 @@ object LiveProbe {
       Some(SucceededStatus)
     }
 
-  /** Skip cleanly when SIGIL_SLOW isn't set. Wrap a suite's `run`
-    * with this when the spec routinely takes more than a few minutes
-    * (live LLM workers iterating to settle, multi-iteration loops,
-    * etc.) so day-to-day `sbt test` stays snappy. */
+  /**
+   * Skip cleanly when SIGIL_SLOW isn't set. Wrap a suite's `run`
+   * with this when the spec routinely takes more than a few minutes
+   * (live LLM workers iterating to settle, multi-iteration loops,
+   * etc.) so day-to-day `sbt test` stays snappy.
+   */
   def requireSlowEnabled(suite: Suite): Option[Status] =
     if (slowEnabled) None
     else {

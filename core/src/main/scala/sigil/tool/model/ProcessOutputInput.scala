@@ -15,4 +15,5 @@ case class ProcessOutputInput(handle: String,
                               sinceCursor: Long = 0L,
                               waitForLines: Option[Int] = None,
                               waitForPattern: Option[String] = None,
-                              waitTimeoutMs: Long = 0L) extends ToolInput derives RW
+                              waitTimeoutMs: Long = 0L)
+  extends ToolInput derives RW

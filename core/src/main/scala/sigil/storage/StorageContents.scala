@@ -14,7 +14,9 @@ import java.nio.charset.StandardCharsets
  */
 final case class StorageContents(bytes: Array[Byte], version: FileVersion) {
 
-  /** Decode the bytes as UTF-8 text. Throws on invalid sequences —
-    * tools should only call this for content known to be text. */
+  /**
+   * Decode the bytes as UTF-8 text. Throws on invalid sequences —
+   * tools should only call this for content known to be text.
+   */
   def asText: String = new String(bytes, StandardCharsets.UTF_8)
 }

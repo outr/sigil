@@ -16,22 +16,36 @@ import sigil.tool.{ToolExample, ToolName}
  * Apps that want sandboxing pass a `LocalFileSystemContext(basePath)`
  * that confines the command's working directory.
  */
-final class BashTool(context: FileSystemContext) extends PaginatedTool[BashInput, BashLine](
-  name = ToolName("bash"),
-  description0 =
-    """Execute a shell command (via `bash -c`). Optional `workingDir` sets the cwd; `timeoutMs` defaults
+final class BashTool(context: FileSystemContext)
+  extends PaginatedTool[BashInput, BashLine](
+    name = ToolName("bash"),
+    description0 =
+      """Execute a shell command (via `bash -c`). Optional `workingDir` sets the cwd; `timeoutMs` defaults
       |to 120 s. Output rows: stdout lines first (in arrival order), then stderr, then a single
       |Exit row carrying the exit code.""".stripMargin,
-  examples = List(
-    ToolExample("List a directory", BashInput(command = "ls -la /tmp")),
-    ToolExample("Run a build with custom timeout", BashInput(command = "cargo build --release", timeoutMs = Some(600000L)))
-  ),
-  keywords = Set(
-    "bash", "shell", "command", "exec", "run", "sh",
-    "script", "terminal", "execute", "invoke", "system",
-    "cli", "process", "spawn", "subprocess"
+    examples = List(
+      ToolExample("List a directory", BashInput(command = "ls -la /tmp")),
+      ToolExample("Run a build with custom timeout", BashInput(command = "cargo build --release", timeoutMs = Some(600000L)))
+    ),
+    keywords = Set(
+      "bash",
+      "shell",
+      "command",
+      "exec",
+      "run",
+      "sh",
+      "script",
+      "terminal",
+      "execute",
+      "invoke",
+      "system",
+      "cli",
+      "process",
+      "spawn",
+      "subprocess"
+    )
   )
-) with sigil.tool.DestructiveExternalTool {
+  with sigil.tool.DestructiveExternalTool {
   // Bug #86 — generic primitive: ranks below domain-specific
   // tools when both match a query.
   override def preferIfNoBetter: Boolean = true

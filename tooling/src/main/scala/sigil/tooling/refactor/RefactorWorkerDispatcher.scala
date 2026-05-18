@@ -13,11 +13,13 @@ import sigil.tool.fs.GrepMatch
  */
 trait RefactorWorkerDispatcher {
 
-  /** Decide for each grep match in `filePath` how the refactor
-    * should apply. The framework verifies each `Edited` decision's
-    * `oldText` against the current file contents before writing —
-    * a stub dispatcher in tests can therefore return precomputed
-    * decisions without re-reading the file. */
+  /**
+   * Decide for each grep match in `filePath` how the refactor
+   * should apply. The framework verifies each `Edited` decision's
+   * `oldText` against the current file contents before writing —
+   * a stub dispatcher in tests can therefore return precomputed
+   * decisions without re-reading the file.
+   */
   def dispatch(ctx: TurnContext,
                modelId: String,
                filePath: String,

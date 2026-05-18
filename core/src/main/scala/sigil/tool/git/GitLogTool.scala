@@ -22,20 +22,21 @@ final class GitLogTool(context: FileSystemContext)
         |git-date expression (`"2 weeks ago"`, `"2026-04-01"`); `limit` defaults to 20. Set `includeBody`
         |to true for the full commit body. Returns `{commits: [{sha, author, date, subject, body?}]}`.""".stripMargin,
     examples = List(
-      ToolExample("20 most recent commits",     GitLogInput()),
-      ToolExample("Last 5 commits on a path",   GitLogInput(path = Some("src/main"), limit = Some(5))),
-      ToolExample("Commits since last Friday",  GitLogInput(since = Some("last friday"), includeBody = true))
+      ToolExample("20 most recent commits", GitLogInput()),
+      ToolExample("Last 5 commits on a path", GitLogInput(path = Some("src/main"), limit = Some(5))),
+      ToolExample("Commits since last Friday", GitLogInput(since = Some("last friday"), includeBody = true))
     ),
     keywords = Set("git", "log", "history", "commits", "blame")
-  ) with sigil.tool.ReadOnlyExternalTool {
+  )
+  with sigil.tool.ReadOnlyExternalTool {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: GitLogInput, ctx: TurnContext): Stream[Event] = Stream.force(
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
-      val limit  = input.limit.getOrElse(20)
+      val limit = input.limit.getOrElse(20)
       val format = "%H%x00%an%x00%aI%x00%s%x00%b%x1e"
       val sinceArg = input.since.fold("")(s => s" --since=${shellQuote(s)}")
-      val pathArg  = input.path.fold("")(p => s" -- ${shellQuote(p)}")
+      val pathArg = input.path.fold("")(p => s" -- ${shellQuote(p)}")
       val cmd = s"""git log --pretty=format:$format -n $limit$sinceArg$pathArg"""
       context.executeCommand(cmd, dir).map { r =>
         val payload =

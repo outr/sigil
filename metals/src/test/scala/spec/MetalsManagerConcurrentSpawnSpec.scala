@@ -29,28 +29,28 @@ import scala.concurrent.duration.*
 class MetalsManagerConcurrentSpawnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestMetalsSigil.initFor(getClass.getSimpleName)
 
-  override implicit val testTimeout: FiniteDuration = 60.seconds
+  implicit override val testTimeout: FiniteDuration = 60.seconds
 
   private def newWorkspace(): Path = {
     val p = Files.createTempDirectory(s"metals-concurrent-${rapid.Unique()}-")
     p.toAbsolutePath.normalize
   }
 
-  private def deleteRecursive(p: Path): Unit = {
+  private def deleteRecursive(p: Path): Unit =
     if (Files.exists(p)) {
       import scala.jdk.CollectionConverters.*
       val s = Files.walk(p)
       try s.iterator().asScala.toList.reverse.foreach(x => Files.deleteIfExists(x))
       finally s.close()
     }
-  }
 
   private def awaitNoStaleProcess(workspace: Path): Task[Unit] = Task {
     val deadline = System.currentTimeMillis() + 2000L
-    while (System.currentTimeMillis() < deadline &&
-           TestMetalsSigil.metalsManager.status.sync().exists(_.workspace == workspace)) {
+    while (
+      System.currentTimeMillis() < deadline &&
+      TestMetalsSigil.metalsManager.status.sync().exists(_.workspace == workspace)
+    )
       Thread.sleep(50)
-    }
   }
 
   "ensureRunning concurrency (#94)" should {
@@ -67,11 +67,11 @@ class MetalsManagerConcurrentSpawnSpec extends AsyncWordSpec with AsyncTaskSpec 
       )
 
       for {
-        names  <- Task.sequence(parallelCalls)
+        names <- Task.sequence(parallelCalls)
         status <- TestMetalsSigil.metalsManager.status
-        _      <- TestMetalsSigil.metalsManager.stop(workspace)
-        _      <- awaitNoStaleProcess(workspace)
-      } yield {
+        _ <- TestMetalsSigil.metalsManager.stop(workspace)
+        _ <- awaitNoStaleProcess(workspace)
+      } yield
         try {
           // Every caller saw the same workspaceKey.
           names.distinct.size shouldBe 1
@@ -80,26 +80,24 @@ class MetalsManagerConcurrentSpawnSpec extends AsyncWordSpec with AsyncTaskSpec 
           // not N duplicates from racing spawns.
           status.count(_.workspace == workspace) shouldBe 1
         } finally deleteRecursive(workspace)
-      }
     }
 
     "re-spawn cleanly when the prior subprocess has died" in {
       val workspace = newWorkspace()
       for {
-        first  <- TestMetalsSigil.metalsManager.ensureRunning(workspace)
+        first <- TestMetalsSigil.metalsManager.ensureRunning(workspace)
         // Hard-kill via stop, then call ensureRunning again — the
         // map should be empty, computeIfAbsent should re-insert,
         // and the second call should drive a fresh spawn.
-        _      <- TestMetalsSigil.metalsManager.stop(workspace)
-        _      <- awaitNoStaleProcess(workspace)
+        _ <- TestMetalsSigil.metalsManager.stop(workspace)
+        _ <- awaitNoStaleProcess(workspace)
         second <- TestMetalsSigil.metalsManager.ensureRunning(workspace)
-        _      <- TestMetalsSigil.metalsManager.stop(workspace)
-        _      <- awaitNoStaleProcess(workspace)
-      } yield {
-        try {
-          first shouldBe second  // same canonical workspaceKey
-        } finally deleteRecursive(workspace)
-      }
+        _ <- TestMetalsSigil.metalsManager.stop(workspace)
+        _ <- awaitNoStaleProcess(workspace)
+      } yield
+        try
+          first shouldBe second // same canonical workspaceKey
+        finally deleteRecursive(workspace)
     }
   }
 

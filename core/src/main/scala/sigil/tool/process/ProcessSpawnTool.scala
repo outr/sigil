@@ -25,9 +25,9 @@ final class ProcessSpawnTool(registry: ProcessRegistry)
         |conversation workspace; `env` extra env vars; `stdin` is piped to the child once
         |(the child sees EOF).""".stripMargin,
     examples = List(
-      ToolExample("Start tsc --watch",   ProcessSpawnInput(command = "tsc --watch --noEmit")),
-      ToolExample("Start a dev server",   ProcessSpawnInput(command = "npm run dev")),
-      ToolExample("Tail a log",           ProcessSpawnInput(command = "tail -F app.log"))
+      ToolExample("Start tsc --watch", ProcessSpawnInput(command = "tsc --watch --noEmit")),
+      ToolExample("Start a dev server", ProcessSpawnInput(command = "npm run dev")),
+      ToolExample("Tail a log", ProcessSpawnInput(command = "tail -F app.log"))
     ),
     keywords = Set("process", "spawn", "background", "watch", "tail", "stream", "subprocess")
   ) {
@@ -36,15 +36,15 @@ final class ProcessSpawnTool(registry: ProcessRegistry)
   override protected def executeTyped(input: ProcessSpawnInput, ctx: TurnContext): Stream[Event] = Stream.force(
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       registry.spawn(
-        command        = input.command,
-        workingDir     = dir,
-        env            = input.env.getOrElse(Map.empty),
-        stdin          = input.stdin,
+        command = input.command,
+        workingDir = dir,
+        env = input.env.getOrElse(Map.empty),
+        stdin = input.stdin,
         conversationId = ctx.conversation.id
       ).map { handle =>
         val payload = obj(
-          "handle"    -> str(handle.id),
-          "pid"       -> num(handle.pid),
+          "handle" -> str(handle.id),
+          "pid" -> num(handle.pid),
           "startedAt" -> num(handle.startedAt.value)
         )
         Stream.emit[Event](FsToolEmit(payload, ctx))

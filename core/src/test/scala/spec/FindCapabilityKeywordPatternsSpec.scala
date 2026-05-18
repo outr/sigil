@@ -27,16 +27,16 @@ class FindCapabilityKeywordPatternsSpec extends AnyWordSpec with Matchers {
   // anchor at least one of each so the model has a seed for that
   // discovery path.
   private val expectedIntents: List[(String, List[String])] = List(
-    "Read a file's contents"         -> List("view", "file", "source", "contents", "read", "code"),
-    "Search files for a pattern"     -> List("grep", "search", "find", "text", "pattern", "match"),
-    "List files / discover paths"    -> List("glob", "files", "directory", "paths", "list"),
-    "Run a shell command"            -> List("bash", "shell", "command", "execute", "run"),
-    "Navigate code symbols"          -> List("lsp", "definition", "reference", "symbol"),
-    "Edit / modify a file"           -> List("edit", "modify", "update", "file", "patch"),
-    "Web / HTTP fetch"               -> List("http", "fetch", "download", "url"),
-    "Switch the model"               -> List("model", "switch", "pin", "change"),
-    "Save / recall memory"           -> List("memory", "save", "recall", "persist"),
-    "Schedule / wait / time"         -> List("sleep", "wait", "delay", "timer", "schedule")
+    "Read a file's contents" -> List("view", "file", "source", "contents", "read", "code"),
+    "Search files for a pattern" -> List("grep", "search", "find", "text", "pattern", "match"),
+    "List files / discover paths" -> List("glob", "files", "directory", "paths", "list"),
+    "Run a shell command" -> List("bash", "shell", "command", "execute", "run"),
+    "Navigate code symbols" -> List("lsp", "definition", "reference", "symbol"),
+    "Edit / modify a file" -> List("edit", "modify", "update", "file", "patch"),
+    "Web / HTTP fetch" -> List("http", "fetch", "download", "url"),
+    "Switch the model" -> List("model", "switch", "pin", "change"),
+    "Save / recall memory" -> List("memory", "save", "recall", "persist"),
+    "Schedule / wait / time" -> List("sleep", "wait", "delay", "timer", "schedule")
   )
 
   "Instructions.DefaultToolsGuidance" should {
@@ -45,13 +45,12 @@ class FindCapabilityKeywordPatternsSpec extends AnyWordSpec with Matchers {
       Instructions.DefaultToolsGuidance should include("not a CONTENT search")
     }
 
-    "ship every intent template's anchor keyword" in {
+    "ship every intent template's anchor keyword" in
       expectedIntents.foreach { case (intent, atoms) =>
         withClue(s"intent '$intent' must seed at least one anchor keyword: ") {
           atoms.exists(Instructions.DefaultToolsGuidance.toLowerCase.contains) shouldBe true
         }
       }
-    }
 
     "include the bad-vs-good query worked example" in {
       // The negative example from the wire log — kept verbatim so

@@ -11,19 +11,33 @@ import sigil.tool.{ToolExample, ToolName}
  * top-level nodes are [[GlobEntry]] (one per file). The first page
  * is inline; the rest paginate via `next_page`.
  */
-final class GlobTool(context: FileSystemContext) extends PaginatedTool[GlobInput, GlobEntry](
-  name = ToolName("glob"),
-  description0 = "List files under a directory matching a glob pattern (e.g. '**/*.scala').",
-  examples = List(
-    ToolExample("Scala sources under src", GlobInput(basePath = "src", pattern = "**/*.scala")),
-    ToolExample("Top-level docs", GlobInput(basePath = ".", pattern = "*.md"))
-  ),
-  keywords = Set(
-    "glob", "find", "list", "files", "pattern",
-    "directory", "tree", "match", "wildcard", "path", "discover",
-    "ls", "look", "browse", "enumerate"
+final class GlobTool(context: FileSystemContext)
+  extends PaginatedTool[GlobInput, GlobEntry](
+    name = ToolName("glob"),
+    description0 = "List files under a directory matching a glob pattern (e.g. '**/*.scala').",
+    examples = List(
+      ToolExample("Scala sources under src", GlobInput(basePath = "src", pattern = "**/*.scala")),
+      ToolExample("Top-level docs", GlobInput(basePath = ".", pattern = "*.md"))
+    ),
+    keywords = Set(
+      "glob",
+      "find",
+      "list",
+      "files",
+      "pattern",
+      "directory",
+      "tree",
+      "match",
+      "wildcard",
+      "path",
+      "discover",
+      "ls",
+      "look",
+      "browse",
+      "enumerate"
+    )
   )
-) with sigil.tool.ReadOnlyExternalTool {
+  with sigil.tool.ReadOnlyExternalTool {
   // Bug #86 — generic primitive: ranks below domain-specific
   // tools when both match a query.
   override def preferIfNoBetter: Boolean = true

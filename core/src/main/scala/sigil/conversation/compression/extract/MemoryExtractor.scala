@@ -32,12 +32,14 @@ trait MemoryExtractor {
               userMessage: String,
               agentResponse: String): Task[List[ContextMemory]]
 
-  /** Compression-time extraction over the about-to-be-shed frame
-    * slice. Default reduces the slice to a transcript and delegates
-    * to [[extract]] with the user-side text concatenated as
-    * `userMessage` and the agent-side text as `agentResponse`.
-    * Apps override for frame-aware extraction (e.g. type-aware
-    * branching by `ContextFrame` subtype). */
+  /**
+   * Compression-time extraction over the about-to-be-shed frame
+   * slice. Default reduces the slice to a transcript and delegates
+   * to [[extract]] with the user-side text concatenated as
+   * `userMessage` and the agent-side text as `agentResponse`.
+   * Apps override for frame-aware extraction (e.g. type-aware
+   * branching by `ContextFrame` subtype).
+   */
   def extractFromFrames(sigil: Sigil,
                         conversationId: Id[Conversation],
                         modelId: Id[Model],
@@ -47,10 +49,10 @@ trait MemoryExtractor {
     val (userText, agentText) = frames.foldLeft((List.empty[String], List.empty[String])) {
       case ((users, agents), frame) =>
         val text = frame match {
-          case t: ContextFrame.Text       => Some(t.content -> Option(t.participantId))
+          case t: ContextFrame.Text => Some(t.content -> Option(t.participantId))
           case tr: ContextFrame.ToolResult => Some(tr.content -> None)
-          case s: ContextFrame.System     => Some(s.content -> None)
-          case _                          => None
+          case s: ContextFrame.System => Some(s.content -> None)
+          case _ => None
         }
         text match {
           case Some((c, Some(pid))) if callerOpt.contains(pid) =>
@@ -62,12 +64,12 @@ trait MemoryExtractor {
         }
     }
     extract(
-      sigil          = sigil,
+      sigil = sigil,
       conversationId = conversationId,
-      modelId        = modelId,
-      chain          = chain,
-      userMessage    = userText.mkString("\n"),
-      agentResponse  = agentText.mkString("\n")
+      modelId = modelId,
+      chain = chain,
+      userMessage = userText.mkString("\n"),
+      agentResponse = agentText.mkString("\n")
     )
   }
 }

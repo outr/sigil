@@ -47,13 +47,13 @@ class AnswerTriggerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   private def turnContext(): TurnContext = {
     val conv = Conversation(
       topics = List(TopicEntry(TestTopicId, "test", "test")),
-      _id    = convId
+      _id = convId
     )
     TurnContext(
-      sigil            = TestSigil,
-      chain            = List(TestUser),
-      conversation     = conv,
-      turnInput        = TurnInput(conversationId = convId)
+      sigil = TestSigil,
+      chain = List(TestUser),
+      conversation = conv,
+      turnInput = TurnInput(conversationId = convId)
     )
   }
 
@@ -103,9 +103,9 @@ class AnswerTriggerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           import scala.jdk.CollectionConverters.*
           received.iterator().asScala.collectFirst { case w: WorkerAnswer => w }
         }
-        answer.map(_.taskId)     shouldBe Some("wf-1")
+        answer.map(_.taskId) shouldBe Some("wf-1")
         answer.map(_.questionId) shouldBe Some("q1")
-        answer.map(_.answer)     shouldBe Some("go ahead with OAuth")
+        answer.map(_.answer) shouldBe Some("go ahead with OAuth")
       }
     }
   }

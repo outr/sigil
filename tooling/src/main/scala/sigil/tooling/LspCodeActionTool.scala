@@ -14,7 +14,8 @@ case class LspCodeActionInput(languageId: String,
                               startCharacter: Int,
                               endLine: Int,
                               endCharacter: Int,
-                              onlyKinds: List[String] = Nil) extends ToolInput derives RW
+                              onlyKinds: List[String] = Nil)
+  extends ToolInput derives RW
 
 /**
  * Request available code actions for a range — quick fixes,
@@ -27,10 +28,11 @@ case class LspCodeActionInput(languageId: String,
  * `["quickfix"]`, `["refactor.extract"]`, `["source.organizeImports"]`
  * — defined in the spec under "CodeActionKind".
  */
-final class LspCodeActionTool(val manager: LspManager) extends TypedOutputTool[LspCodeActionInput, LspCodeActionResult](
-  name = ToolName("lsp_code_action"),
-  description =
-    """List code actions (quick fixes / refactors) available for a range.
+final class LspCodeActionTool(val manager: LspManager)
+  extends TypedOutputTool[LspCodeActionInput, LspCodeActionResult](
+    name = ToolName("lsp_code_action"),
+    description =
+      """List code actions (quick fixes / refactors) available for a range.
       |
       |`languageId` + `filePath` identify the document.
       |`startLine`/`startCharacter`/`endLine`/`endCharacter` are 0-based; the range covers
@@ -39,29 +41,48 @@ final class LspCodeActionTool(val manager: LspManager) extends TypedOutputTool[L
       |"source.organizeImports", etc.).
       |Returns `{filePath, items: [{index, kind, title}]}`. The listing is cached for a
       |separate apply-by-index tool.""".stripMargin,
-  keywords = Set(
-    "lsp", "code action", "fix", "quickfix", "refactor", "refactoring", "suggestion",
-    "quick fix", "auto fix", "improve", "extract method", "extract variable",
-    "organize imports", "transform", "modify", "change"
-  ),
-  examples = List(
-    ToolExample(
-      "scala quick-fixes for a single line",
-      LspCodeActionInput(
-        languageId = "scala",
-        filePath = "/abs/path/Foo.scala",
-        startLine = 10, startCharacter = 0,
-        endLine = 10, endCharacter = 0,
-        onlyKinds = List("quickfix")
+    keywords = Set(
+      "lsp",
+      "code action",
+      "fix",
+      "quickfix",
+      "refactor",
+      "refactoring",
+      "suggestion",
+      "quick fix",
+      "auto fix",
+      "improve",
+      "extract method",
+      "extract variable",
+      "organize imports",
+      "transform",
+      "modify",
+      "change"
+    ),
+    examples = List(
+      ToolExample(
+        "scala quick-fixes for a single line",
+        LspCodeActionInput(
+          languageId = "scala",
+          filePath = "/abs/path/Foo.scala",
+          startLine = 10,
+          startCharacter = 0,
+          endLine = 10,
+          endCharacter = 0,
+          onlyKinds = List("quickfix")
+        )
       )
     )
   )
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  with sigil.tool.ReadOnlyExternalTool
+  with LspToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspCodeActionInput, context: TurnContext): Task[LspCodeActionResult] =
     withOpenDocumentTyped[LspCodeActionResult](
-      input.languageId, input.filePath, context,
+      input.languageId,
+      input.filePath,
+      context,
       onError = msg => throw new RuntimeException(msg)
     ) { (session, uri) =>
       val range = new Range(
@@ -71,7 +92,7 @@ final class LspCodeActionTool(val manager: LspManager) extends TypedOutputTool[L
       session.codeAction(uri, range, input.onlyKinds).map { actions =>
         LspCodeActionResult(
           filePath = input.filePath,
-          items    = actions.zipWithIndex.map { case (a, idx) => toItem(a, idx) }
+          items = actions.zipWithIndex.map { case (a, idx) => toItem(a, idx) }
         )
       }
     }

@@ -53,71 +53,78 @@ import spice.http.durable.DurableSession
  */
 object SessionBridge {
 
-  /** Default ephemeral handler: try to deserialize the payload as a
-    * [[Notice]] (the framework's wire vocabulary for client→server
-    * pulses). If it parses, dispatch to [[Sigil.handleNotice]]; if it
-    * doesn't, warn-log. Apps can override for non-Notice ephemeral
-    * traffic (heartbeats, ping/pong, debug telemetry). */
-  def noticeOrWarn(sigil: Sigil, viewer: ParticipantId): Json => Task[Unit] = json => Task.defer {
-    val rw = summon[RW[Signal]]
-    scala.util.Try(rw.write(json)) match {
-      case scala.util.Success(n: Notice) =>
-        sigil.handleNotice(n, viewer)
-          .handleError(t => Task {
-            scribe.warn(s"SessionBridge: handleNotice failed for $viewer: ${t.getMessage}", t)
-          })
-      case _ =>
-        Task {
-          scribe.warn(
-            s"SessionBridge: unexpected ephemeral payload (not a Notice): $json"
-          )
-        }
+  /**
+   * Default ephemeral handler: try to deserialize the payload as a
+   * [[Notice]] (the framework's wire vocabulary for client→server
+   * pulses). If it parses, dispatch to [[Sigil.handleNotice]]; if it
+   * doesn't, warn-log. Apps can override for non-Notice ephemeral
+   * traffic (heartbeats, ping/pong, debug telemetry).
+   */
+  def noticeOrWarn(sigil: Sigil, viewer: ParticipantId): Json => Task[Unit] = json =>
+    Task.defer {
+      val rw = summon[RW[Signal]]
+      scala.util.Try(rw.write(json)) match {
+        case scala.util.Success(n: Notice) =>
+          sigil.handleNotice(n, viewer)
+            .handleError(t =>
+              Task {
+                scribe.warn(s"SessionBridge: handleNotice failed for $viewer: ${t.getMessage}", t)
+              })
+        case _ =>
+          Task {
+            scribe.warn(
+              s"SessionBridge: unexpected ephemeral payload (not a Notice): $json"
+            )
+          }
+      }
     }
-  }
 
-  /** Default replay budget for new sessions. 50 most recent Messages
-    * (plus any non-Message events that interleave with them) gives a
-    * fresh-connect / reconnect enough context that the user sees what
-    * was published while disconnected — including agent greetings
-    * fired before the wire connected. Apps tune via the `resume`
-    * parameter on [[attach]]. */
+  /**
+   * Default replay budget for new sessions. 50 most recent Messages
+   * (plus any non-Message events that interleave with them) gives a
+   * fresh-connect / reconnect enough context that the user sees what
+   * was published while disconnected — including agent greetings
+   * fired before the wire connected. Apps tune via the `resume`
+   * parameter on [[attach]].
+   */
   val DefaultResume: ResumeRequest = ResumeRequest.RecentMessages(50)
 
-  /** Wire a fresh session to `sigil`. Returns a `Task[Unit]` that
-    * completes once the outbound sink is attached and the inbound
-    * listeners are registered. Apps typically call `.start()` on the
-    * returned task inside their `onSession` callback so the
-    * session-handler doesn't block; the listeners themselves run on
-    * spice's reactive channels.
-    *
-    * @param sigil           the Sigil instance to bridge into
-    * @param session         the freshly accepted DurableSocketServer session
-    * @param viewer          the [[ParticipantId]] whose `signalsFor` filter +
-    *                        viewer transforms apply to outbound delivery
-    * @param onSessionStart  app hook invoked once after the sink is
-    *                        attached; typical use is lazy-creating
-    *                        the conversation record. Default: no-op.
-    * @param onEphemeral     handler for inbound ephemeral payloads.
-    *                        Default: [[WarnUnexpectedEphemeral]].
-    * @param resume          history-replay shape applied when the
-    *                        session opens. Default
-    *                        [[DefaultResume]] (50 most recent
-    *                        Messages plus interleaved non-Message
-    *                        events) — gives the client enough context
-    *                        on (re)connect that agent greetings and
-    *                        prior turns aren't invisible. Pass
-    *                        [[ResumeRequest.None]] to skip replay
-    *                        entirely (live-only).
-    */
+  /**
+   * Wire a fresh session to `sigil`. Returns a `Task[Unit]` that
+   * completes once the outbound sink is attached and the inbound
+   * listeners are registered. Apps typically call `.start()` on the
+   * returned task inside their `onSession` callback so the
+   * session-handler doesn't block; the listeners themselves run on
+   * spice's reactive channels.
+   *
+   * @param sigil           the Sigil instance to bridge into
+   * @param session         the freshly accepted DurableSocketServer session
+   * @param viewer          the [[ParticipantId]] whose `signalsFor` filter +
+   *                        viewer transforms apply to outbound delivery
+   * @param onSessionStart  app hook invoked once after the sink is
+   *                        attached; typical use is lazy-creating
+   *                        the conversation record. Default: no-op.
+   * @param onEphemeral     handler for inbound ephemeral payloads.
+   *                        Default: [[WarnUnexpectedEphemeral]].
+   * @param resume          history-replay shape applied when the
+   *                        session opens. Default
+   *                        [[DefaultResume]] (50 most recent
+   *                        Messages plus interleaved non-Message
+   *                        events) — gives the client enough context
+   *                        on (re)connect that agent greetings and
+   *                        prior turns aren't invisible. Pass
+   *                        [[ResumeRequest.None]] to skip replay
+   *                        entirely (live-only).
+   */
   def attach[Info: RW](sigil: Sigil,
                        session: DurableSession[Id[Conversation], Signal, Info],
                        viewer: ParticipantId,
                        onSessionStart: Id[Conversation] => Task[Unit] = (_: Id[Conversation]) => Task.unit,
                        onEphemeral: Option[Json => Task[Unit]] = None,
                        resume: ResumeRequest = DefaultResume): Task[Unit] = {
-    val convId       = session.channelId
-    val sink         = new DurableSocketSink[Id[Conversation], Info](session)
-    val ephemeralFn  = onEphemeral.getOrElse(noticeOrWarn(sigil, viewer))
+    val convId = session.channelId
+    val sink = new DurableSocketSink[Id[Conversation], Info](session)
+    val ephemeralFn = onEphemeral.getOrElse(noticeOrWarn(sigil, viewer))
 
     val attached: Task[Unit] = sigil.signalTransport.attach(
       viewer = viewer,
@@ -135,11 +142,13 @@ object SessionBridge {
         session.protocol.onEvent.attach { case (seq, signal) =>
           sigil
             .publish(signal)
-            .handleError(t => Task {
-              scribe.warn(
-                s"SessionBridge: publish failed for inbound signal seq=$seq on ${convId}: ${t.getMessage}", t
-              )
-            })
+            .handleError(t =>
+              Task {
+                scribe.warn(
+                  s"SessionBridge: publish failed for inbound signal seq=$seq on $convId: ${t.getMessage}",
+                  t
+                )
+              })
             .start()
           ()
         }
@@ -147,9 +156,10 @@ object SessionBridge {
         // sigil.handleNotice. Apps can override with their own handler.
         session.protocol.onEphemeral.attach { json =>
           ephemeralFn(json)
-            .handleError(t => Task {
-              scribe.warn(s"SessionBridge: onEphemeral handler failed: ${t.getMessage}", t)
-            })
+            .handleError(t =>
+              Task {
+                scribe.warn(s"SessionBridge: onEphemeral handler failed: ${t.getMessage}", t)
+              })
             .start()
           ()
         }
@@ -170,7 +180,8 @@ object SessionBridge {
           s"SessionBridge: attach failed for conversation=${convId.value} viewer=${viewer.value}: ${t.getMessage}",
           t
         )
-        try session.protocol.close() catch { case _: Throwable => () }
+        try session.protocol.close()
+        catch { case _: Throwable => () }
       }
     }
   }

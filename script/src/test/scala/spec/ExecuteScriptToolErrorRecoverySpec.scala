@@ -38,8 +38,10 @@ import sigil.tool.{JsonInput, JsonSchemaToDefinition, ToolName}
 class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestScriptSigil.initFor(getClass.getSimpleName)
 
-  /** Executor whose `execute` returns a Task that fails — the
-    * standard "script threw a runtime exception" case. */
+  /**
+   * Executor whose `execute` returns a Task that fails — the
+   * standard "script threw a runtime exception" case.
+   */
   private object FailingExecutor extends ScriptExecutor {
     override def execute(code: String, bindings: Map[String, Any]): Task[String] =
       Task.error(new RuntimeException("synthetic script failure"))
@@ -49,12 +51,14 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
     override def advertisedSurface: Option[String] = None
   }
 
-  /** Executor whose `execute` THROWS synchronously before returning a
-    * Task. Covers the case where the executor's argument-binding /
-    * classloader-resolution path fails before reaching deferred Task
-    * machinery. Pre-fix, the throw escaped `Stream.force` and the
-    * orchestrator delivered `(no result recorded)`; post-fix the
-    * outer `handleError` catches it. */
+  /**
+   * Executor whose `execute` THROWS synchronously before returning a
+   * Task. Covers the case where the executor's argument-binding /
+   * classloader-resolution path fails before reaching deferred Task
+   * machinery. Pre-fix, the throw escaped `Stream.force` and the
+   * orchestrator delivered `(no result recorded)`; post-fix the
+   * outer `handleError` catches it.
+   */
   private object SyncThrowExecutor extends ScriptExecutor {
     override def execute(code: String, bindings: Map[String, Any]): Task[String] =
       throw new RuntimeException("synthetic synchronous throw before Task construction")
@@ -64,8 +68,10 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
     override def advertisedSurface: Option[String] = None
   }
 
-  /** Executor whose `execute` returns success — sanity check that the
-    * happy path still produces exactly one ScriptResult with output. */
+  /**
+   * Executor whose `execute` returns success — sanity check that the
+   * happy path still produces exactly one ScriptResult with output.
+   */
   private object SucceedingExecutor extends ScriptExecutor {
     override def execute(code: String, bindings: Map[String, Any]): Task[String] =
       Task.pure(s"ran:$code")
@@ -98,8 +104,8 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
         val r = results.head
         r.error shouldBe defined
         // Error carries the throwable's class name (full stack-trace formatting).
-        r.error.get should include ("RuntimeException")
-        r.error.get should include ("synthetic script failure")
+        r.error.get should include("RuntimeException")
+        r.error.get should include("synthetic script failure")
         r.output shouldBe None
       }
     }
@@ -116,8 +122,8 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
         results should have size 1
         val r = results.head
         r.error shouldBe defined
-        r.error.get should include ("RuntimeException")
-        r.error.get should include ("synthetic synchronous throw")
+        r.error.get should include("RuntimeException")
+        r.error.get should include("synthetic synchronous throw")
         r.output shouldBe None
       }
     }
@@ -141,7 +147,7 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
       val tool = new ExecuteScriptTool(FailingExecutor)
       tool.execute(ScriptInput(code = "x", summary = "test: stack-trace path"), ctx("stack-trace")).toList.map { events =>
         val r = events.collectFirst { case r: ScriptResult => r }.get
-        r.error.get should include ("at ")
+        r.error.get should include("at ")
       }
     }
   }
@@ -174,8 +180,8 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
           // `RuntimeException`, `ScriptCompileException` all
           // legitimate depending on REPL phase + reflection
           // plumbing.
-          r.error.get should include ("Exception")
-          r.error.get should include ("at ")
+          r.error.get should include("Exception")
+          r.error.get should include("at ")
           r.output shouldBe None
         }
       }

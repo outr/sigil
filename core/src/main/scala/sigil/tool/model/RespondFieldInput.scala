@@ -20,4 +20,5 @@ import sigil.tool.ToolInput
  */
 case class RespondFieldInput(label: String,
                              value: String,
-                             icon: Option[String] = None) extends ToolInput derives RW
+                             icon: Option[String] = None)
+  extends ToolInput derives RW

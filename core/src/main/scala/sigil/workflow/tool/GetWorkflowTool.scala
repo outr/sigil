@@ -17,19 +17,21 @@ case class GetWorkflowInput(workflowId: String) extends ToolInput derives RW
  * caller's chain isn't authorized for its space (avoids leaking
  * existence across tenant boundaries).
  */
-final class GetWorkflowTool extends TypedTool[GetWorkflowInput](
-  name = ToolName("get_workflow"),
-  description =
-    """Fetch a workflow template by id.
+final class GetWorkflowTool
+  extends TypedTool[GetWorkflowInput](
+    name = ToolName("get_workflow"),
+    description =
+      """Fetch a workflow template by id.
       |
       |`workflowId` is the template's id. Returns the full template — name, description,
       |step list, triggers, variable defs.""".stripMargin,
-  examples = List(ToolExample("fetch by id", GetWorkflowInput(workflowId = "wf-abc"))),
-  keywords = Set("workflow", "get", "describe")
-) with WorkflowToolSupport {
+    examples = List(ToolExample("fetch by id", GetWorkflowInput(workflowId = "wf-abc"))),
+    keywords = Set("workflow", "get", "describe")
+  )
+  with WorkflowToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: GetWorkflowInput, ctx: TurnContext): Stream[Event] = {
+  override protected def executeTyped(input: GetWorkflowInput, ctx: TurnContext): Stream[Event] =
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)
       case Right(host) =>
@@ -37,13 +39,12 @@ final class GetWorkflowTool extends TypedTool[GetWorkflowInput](
           case None => Task.pure(s"Workflow '${input.workflowId}' not found.")
           case Some(template) =>
             authorizeAccess(host, template, ctx.chain).map {
-              case Left(reason) => s"Workflow '${input.workflowId}' not found."  // hide cross-space existence
-              case Right(t)     => render(t)
+              case Left(reason) => s"Workflow '${input.workflowId}' not found." // hide cross-space existence
+              case Right(t) => render(t)
             }
         }
         Stream.force(task.map(text => reply(ctx, text)))
     }
-  }
 
   private def render(t: WorkflowTemplate): String = {
     val sb = new StringBuilder

@@ -19,7 +19,7 @@ class DigitalOceanModelListSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     }
 
   "DigitalOcean.refreshModels" should {
-    "fetch /v1/models and populate the registry under the digitalocean/ namespace" in {
+    "fetch /v1/models and populate the registry under the digitalocean/ namespace" in
       DigitalOcean.refreshModels(TestSigil, DigitalOceanLiveSupport.apiKey.getOrElse("")).map { models =>
         models should not be empty
         // Every model is namespaced under digitalocean/.
@@ -36,7 +36,6 @@ class DigitalOceanModelListSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         val ids = models.map(_._id.value).toSet
         ids should contain(s"${DigitalOcean.Provider}/kimi-k2.5")
       }
-    }
   }
 
   "tear down" should {

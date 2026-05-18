@@ -15,22 +15,24 @@ case class ListWorkflowsInput(tag: Option[String] = None) extends ToolInput deri
  * `accessibleSpaces` so cross-tenant isolation holds. `tag`
  * (optional) narrows to templates carrying a matching tag.
  */
-final class ListWorkflowsTool extends TypedTool[ListWorkflowsInput](
-  name = ToolName("list_workflows"),
-  description =
-    """List the workflow templates visible to the caller (filtered by accessible spaces).
+final class ListWorkflowsTool
+  extends TypedTool[ListWorkflowsInput](
+    name = ToolName("list_workflows"),
+    description =
+      """List the workflow templates visible to the caller (filtered by accessible spaces).
       |
       |`tag` (optional) restricts the result to templates carrying that tag.
       |Returns each template's id, name, description, step count, and whether it's enabled.""".stripMargin,
-  examples = List(
-    ToolExample("list every visible workflow", ListWorkflowsInput()),
-    ToolExample("filter by tag", ListWorkflowsInput(tag = Some("nightly")))
-  ),
-  keywords = Set("workflow", "list", "find")
-) with WorkflowToolSupport {
+    examples = List(
+      ToolExample("list every visible workflow", ListWorkflowsInput()),
+      ToolExample("filter by tag", ListWorkflowsInput(tag = Some("nightly")))
+    ),
+    keywords = Set("workflow", "list", "find")
+  )
+  with WorkflowToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: ListWorkflowsInput, ctx: TurnContext): Stream[Event] = {
+  override protected def executeTyped(input: ListWorkflowsInput, ctx: TurnContext): Stream[Event] =
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)
       case Right(host) =>
@@ -41,14 +43,12 @@ final class ListWorkflowsTool extends TypedTool[ListWorkflowsInput](
           filtered = all.toList
             .filter(t => allowedSpaceValues.contains(t.space.value))
             .filter(t => input.tag.forall(t.tags.contains))
-        } yield {
+        } yield
           if (filtered.isEmpty) "No workflows visible."
           else filtered.map { t =>
             val flags = if (t.enabled) "" else " [disabled]"
             s"  [${t._id.value}] ${t.name}$flags — ${t.steps.size} step(s) — ${t.description}"
           }.mkString("\n")
-        }
         Stream.force(task.map(text => reply(ctx, text)))
     }
-  }
 }

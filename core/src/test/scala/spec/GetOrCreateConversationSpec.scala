@@ -30,12 +30,12 @@ class GetOrCreateConversationSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val convId = freshId("create")
       for {
         created <- TestSigil.getOrCreateConversation(
-                     conversationId = convId,
-                     createdBy = TestUser,
-                     label = "Greeting label",
-                     summary = "Greeting summary"
-                   )
-        loaded  <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
+          conversationId = convId,
+          createdBy = TestUser,
+          label = "Greeting label",
+          summary = "Greeting summary"
+        )
+        loaded <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
       } yield {
         created._id shouldBe convId
         // Topic invariant — a fresh conversation always has at least one Topic.
@@ -48,21 +48,21 @@ class GetOrCreateConversationSpec extends AsyncWordSpec with AsyncTaskSpec with 
     "return the existing Conversation when one already exists, ignoring new defaults" in {
       val convId = freshId("existing")
       for {
-        first  <- TestSigil.getOrCreateConversation(
-                    conversationId = convId,
-                    createdBy = TestUser,
-                    label = "First label",
-                    summary = "First summary"
-                  )
+        first <- TestSigil.getOrCreateConversation(
+          conversationId = convId,
+          createdBy = TestUser,
+          label = "First label",
+          summary = "First summary"
+        )
         // Second call with different defaults — should NOT mutate
         // the existing record. The returned Conversation should be
         // the original, not a new one with the new label/summary.
         second <- TestSigil.getOrCreateConversation(
-                    conversationId = convId,
-                    createdBy = TestUser,
-                    label = "Different label",
-                    summary = "Different summary"
-                  )
+          conversationId = convId,
+          createdBy = TestUser,
+          label = "Different label",
+          summary = "Different summary"
+        )
       } yield {
         first._id shouldBe convId
         second._id shouldBe convId

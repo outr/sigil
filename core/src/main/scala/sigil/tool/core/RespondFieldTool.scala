@@ -17,13 +17,15 @@ import sigil.tool.model.{RespondFieldInput, ResponseContent}
  * [[sigil.tool.model.MarkdownContentParser]]. This standalone tool
  * stays in core for apps that prefer typed-emission paths.
  */
-case object RespondFieldTool extends TypedTool[RespondFieldInput](
-  name = ToolName("respond_field"),
-  description =
-    """Emit a labeled key/value field — for compact metadata (status, source, timestamp). `icon`
+case object RespondFieldTool
+  extends TypedTool[RespondFieldInput](
+    name = ToolName("respond_field"),
+    description =
+      """Emit a labeled key/value field — for compact metadata (status, source, timestamp). `icon`
       |is an optional semantic hint.""".stripMargin,
-  examples = Nil
-) with RespondFamilyTool {
+    examples = Nil
+  )
+  with RespondFamilyTool {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: RespondFieldInput, context: TurnContext): rapid.Stream[Event] = {

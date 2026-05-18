@@ -25,26 +25,32 @@ case class ToolDelta(target: Id[Event],
                      input: Option[sigil.tool.ToolInput] = None,
                      state: Option[EventState] = None,
                      error: Option[String] = None,
-                     /** Mirror of [[sigil.event.ToolInvoke.internal]] — set
-                       * by the orchestrator to match the target invoke's
-                       * own flag, so client UIs that filter the chip
-                       * lifecycle have a stable signal across both events.
-                       * Bug #56. */
+                     /**
+                      * Mirror of [[sigil.event.ToolInvoke.internal]] — set
+                      * by the orchestrator to match the target invoke's
+                      * own flag, so client UIs that filter the chip
+                      * lifecycle have a stable signal across both events.
+                      * Bug #56.
+                      */
                      internal: Boolean = false,
-                     /** Trailing-usage attribution. The provider's
-                       * [[sigil.provider.ProviderEvent.Usage]] event lands on
-                       * the invoke when no user-visible Message exists to
-                       * carry it (tool-call-only turns: change_mode,
-                       * cancel, find_capability, …). Cost projection picks
-                       * it up off the persisted `ToolInvoke.usage` field
-                       * combined with `ToolInvoke.modelId`. */
+                     /**
+                      * Trailing-usage attribution. The provider's
+                      * [[sigil.provider.ProviderEvent.Usage]] event lands on
+                      * the invoke when no user-visible Message exists to
+                      * carry it (tool-call-only turns: change_mode,
+                      * cancel, find_capability, …). Cost projection picks
+                      * it up off the persisted `ToolInvoke.usage` field
+                      * combined with `ToolInvoke.modelId`.
+                      */
                      usage: Option[TokenUsage] = None,
-                     /** Live tool-author-driven summary update. Set via
-                       * [[sigil.TurnContext.setSummary]] from inside a
-                       * tool's execute path; folded onto
-                       * [[sigil.event.ToolInvoke.summary]]. Sigil bug
-                       * #191 — wire-event channel that drives the inline
-                       * tool-chip tagline UI consumers render. */
+                     /**
+                      * Live tool-author-driven summary update. Set via
+                      * [[sigil.TurnContext.setSummary]] from inside a
+                      * tool's execute path; folded onto
+                      * [[sigil.event.ToolInvoke.summary]]. Sigil bug
+                      * #191 — wire-event channel that drives the inline
+                      * tool-chip tagline UI consumers render.
+                      */
                      summary: Option[String] = None)
   extends Delta derives RW {
 
@@ -55,9 +61,9 @@ case class ToolDelta(target: Id[Event],
    */
   override def apply(target: Event): Event = target match {
     case t: sigil.event.ToolInvoke =>
-      val nextInput   = input.orElse(t.input)
-      val nextState   = state.getOrElse(t.state)
-      val nextUsage   = usage.getOrElse(t.usage)
+      val nextInput = input.orElse(t.input)
+      val nextState = state.getOrElse(t.state)
+      val nextUsage = usage.getOrElse(t.usage)
       val nextSummary = summary.getOrElse(t.summary)
       t.copy(input = nextInput, state = nextState, usage = nextUsage, summary = nextSummary)
     case other => other

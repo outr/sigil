@@ -12,5 +12,6 @@ package sigil.role
  */
 val GeneralistRole: Role = Role(
   name = "generalist",
-  description = "You are a general-purpose assistant. Answer questions, follow instructions, and use the tools available to you as appropriate to fulfill the request."
+  description =
+    "You are a general-purpose assistant. Answer questions, follow instructions, and use the tools available to you as appropriate to fulfill the request."
 )

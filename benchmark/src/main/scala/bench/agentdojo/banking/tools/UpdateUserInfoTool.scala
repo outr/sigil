@@ -15,7 +15,9 @@ final case class UpdateUserInfoInput(@description("First name of the user (optio
                                      @description("City of the user (optional)") city: Option[String] = None)
   extends ToolInput derives RW
 
-/** `update_user_info` — patch any subset of name / address fields. */
+/**
+ * `update_user_info` — patch any subset of name / address fields.
+ */
 final class UpdateUserInfoTool(state: AtomicReference[BankingEnvironment])
   extends TypedTool[UpdateUserInfoInput](
     name = ToolName("update_user_info"),

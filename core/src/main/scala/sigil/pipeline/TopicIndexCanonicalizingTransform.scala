@@ -42,7 +42,7 @@ object TopicIndexCanonicalizingTransform extends InboundTransform {
         case Some(conv) =>
           val canonical = conv.topics.indexWhere(_.id == e.topicId) match {
             case n if n >= 0 => n
-            case _           => 0
+            case _ => 0
           }
           if (e.topicIndex == canonical) e
           else withTopicIndex(e, canonical)
@@ -51,31 +51,33 @@ object TopicIndexCanonicalizingTransform extends InboundTransform {
     case other => Task.pure(other)
   }
 
-  /** Pattern-match dispatch for `withTopicIndex(idx)`. The trait
-    * doesn't carry the method (would force an abstract on every
-    * Event subtype to implement, churning unrelated callsites);
-    * each concrete subtype copies through here. New event types
-    * must be added — the catch-all returns the event unchanged
-    * so downstream consumers don't break, but the canonical
-    * index won't apply until the case is added. */
+  /**
+   * Pattern-match dispatch for `withTopicIndex(idx)`. The trait
+   * doesn't carry the method (would force an abstract on every
+   * Event subtype to implement, churning unrelated callsites);
+   * each concrete subtype copies through here. New event types
+   * must be added — the catch-all returns the event unchanged
+   * so downstream consumers don't break, but the canonical
+   * index won't apply until the case is added.
+   */
   private def withTopicIndex(e: Event, idx: Int): Event = e match {
-    case m: Message            => m.copy(topicIndex = idx)
-    case ti: ToolInvoke        => ti.copy(topicIndex = idx)
-    case tr: ToolResults       => tr.copy(topicIndex = idx)
-    case tl: ToolLog           => tl.copy(topicIndex = idx)
-    case mc: ModeChange        => mc.copy(topicIndex = idx)
-    case tc: TopicChange       => tc.copy(topicIndex = idx)
+    case m: Message => m.copy(topicIndex = idx)
+    case ti: ToolInvoke => ti.copy(topicIndex = idx)
+    case tr: ToolResults => tr.copy(topicIndex = idx)
+    case tl: ToolLog => tl.copy(topicIndex = idx)
+    case mc: ModeChange => mc.copy(topicIndex = idx)
+    case tc: TopicChange => tc.copy(topicIndex = idx)
     case cr: CapabilityResults => cr.copy(topicIndex = idx)
-    case s: Stop               => s.copy(topicIndex = idx)
-    case as: AgentState        => as.copy(topicIndex = idx)
-    case r: Reaction           => r.copy(topicIndex = idx)
-    case rs: ReadState         => rs.copy(topicIndex = idx)
-    case rr: Reasoning         => rr.copy(topicIndex = idx)
-    case te: sigil.workflow.event.TaskExecuted          => te.copy(topicIndex = idx)
-    case wc: sigil.workflow.event.WorkflowRunCompleted  => wc.copy(topicIndex = idx)
-    case wf: sigil.workflow.event.WorkflowRunFailed     => wf.copy(topicIndex = idx)
-    case wt: sigil.workflow.event.WorkflowRunStarted    => wt.copy(topicIndex = idx)
+    case s: Stop => s.copy(topicIndex = idx)
+    case as: AgentState => as.copy(topicIndex = idx)
+    case r: Reaction => r.copy(topicIndex = idx)
+    case rs: ReadState => rs.copy(topicIndex = idx)
+    case rr: Reasoning => rr.copy(topicIndex = idx)
+    case te: sigil.workflow.event.TaskExecuted => te.copy(topicIndex = idx)
+    case wc: sigil.workflow.event.WorkflowRunCompleted => wc.copy(topicIndex = idx)
+    case wf: sigil.workflow.event.WorkflowRunFailed => wf.copy(topicIndex = idx)
+    case wt: sigil.workflow.event.WorkflowRunStarted => wt.copy(topicIndex = idx)
     case ws: sigil.workflow.event.WorkflowStepCompleted => ws.copy(topicIndex = idx)
-    case other                                          => other
+    case other => other
   }
 }

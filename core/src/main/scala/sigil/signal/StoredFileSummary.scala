@@ -22,7 +22,8 @@ case class StoredFileSummary(fileId: Id[StoredFile],
                              size: Long,
                              createdMs: Long,
                              modifiedMs: Long,
-                             metadata: Map[String, String] = Map.empty) derives RW
+                             metadata: Map[String, String] = Map.empty)
+  derives RW
 
 object StoredFileSummary {
   def fromStoredFile(file: StoredFile): StoredFileSummary = StoredFileSummary(

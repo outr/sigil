@@ -20,4 +20,5 @@ import sigil.participant.ParticipantId
  * Emitted from `Sigil.removeParticipant` after the DB upsert succeeds.
  */
 case class ParticipantRemoved(conversationId: Id[Conversation],
-                              participantId: ParticipantId) extends Notice derives RW
+                              participantId: ParticipantId)
+  extends Notice derives RW

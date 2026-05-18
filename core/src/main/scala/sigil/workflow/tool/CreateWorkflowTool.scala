@@ -12,7 +12,8 @@ case class CreateWorkflowInput(name: String,
                                steps: List[WorkflowStepInput] = Nil,
                                triggers: List[WorkflowTrigger] = Nil,
                                variableDefs: List[strider.WorkflowVariable] = Nil,
-                               tags: List[String] = Nil) extends ToolInput derives RW
+                               tags: List[String] = Nil)
+  extends ToolInput derives RW
 
 /**
  * Persist a new [[WorkflowTemplate]]. The agent supplies the
@@ -26,10 +27,11 @@ case class CreateWorkflowInput(name: String,
  * `GlobalSpace`-only callers (the framework default), the
  * template is global.
  */
-final class CreateWorkflowTool extends TypedTool[CreateWorkflowInput](
-  name = ToolName("create_workflow"),
-  description =
-    """Create a new workflow template.
+final class CreateWorkflowTool
+  extends TypedTool[CreateWorkflowInput](
+    name = ToolName("create_workflow"),
+    description =
+      """Create a new workflow template.
       |
       |`name` is the template's identifier. `steps` is the typed step list (Job / Condition /
       |Approval / Parallel / Loop / SubWorkflow / Trigger). `triggers` registers external
@@ -37,25 +39,26 @@ final class CreateWorkflowTool extends TypedTool[CreateWorkflowInput](
       |plus app-defined ones).
       |
       |Returns the persisted template's id.""".stripMargin,
-  examples = List(
-    ToolExample(
-      "minimal LLM-prompt workflow",
-      CreateWorkflowInput(
-        name = "summarize-input",
-        steps = List(sigil.workflow.JobStepInput(
-          id = "summarize",
-          prompt = Some("Summarize: {{input}}"),
-          modelId = Some("openai/gpt-5.4-mini"),
-          output = Some("summary")
-        ))
+    examples = List(
+      ToolExample(
+        "minimal LLM-prompt workflow",
+        CreateWorkflowInput(
+          name = "summarize-input",
+          steps = List(sigil.workflow.JobStepInput(
+            id = "summarize",
+            prompt = Some("Summarize: {{input}}"),
+            modelId = Some("openai/gpt-5.4-mini"),
+            output = Some("summary")
+          ))
+        )
       )
-    )
-  ),
-  keywords = Set("workflow", "create", "compose", "automation")
-) with WorkflowToolSupport {
+    ),
+    keywords = Set("workflow", "create", "compose", "automation")
+  )
+  with WorkflowToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: CreateWorkflowInput, ctx: TurnContext): Stream[Event] = {
+  override protected def executeTyped(input: CreateWorkflowInput, ctx: TurnContext): Stream[Event] =
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)
       case Right(host) =>
@@ -78,5 +81,4 @@ final class CreateWorkflowTool extends TypedTool[CreateWorkflowInput](
         }
         Stream.force(task.map(text => reply(ctx, text)))
     }
-  }
 }

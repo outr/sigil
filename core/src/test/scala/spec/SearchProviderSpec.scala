@@ -62,13 +62,13 @@ class SearchProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     "construct without error against default base URLs" in {
       // Smoke-test that each factory's eager arguments are accepted.
       // No requests are sent — `provider` is just instantiated.
-      val brave   = SearchProvider.brave(apiKey = "test-key")
-      val google  = SearchProvider.google(apiKey = "test-key", cx = "test-cx")
+      val brave = SearchProvider.brave(apiKey = "test-key")
+      val google = SearchProvider.google(apiKey = "test-key", cx = "test-cx")
       val serpApi = SearchProvider.serpApi(apiKey = "test-key")
-      val serper  = SearchProvider.serper(apiKey = "test-key")
+      val serper = SearchProvider.serper(apiKey = "test-key")
       val searxng = SearchProvider.searxng(baseUrl = url"https://searx.example.com")
-      val tavily  = SearchProvider.tavily(apiKey = "test-key")
-      val ddg     = SearchProvider.duckDuckGo()
+      val tavily = SearchProvider.tavily(apiKey = "test-key")
+      val ddg = SearchProvider.duckDuckGo()
 
       List(brave, google, serpApi, serper, searxng, tavily, ddg).foreach(_ should not be null)
       Task.unit.map(_ => succeed)

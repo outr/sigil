@@ -23,18 +23,22 @@ import sigil.participant.ParticipantId
  */
 class AccessibleSpacesPerConversationSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
-  /** A workspace-scoped space, per the bug doc's Sage example. */
+  /**
+   * A workspace-scoped space, per the bug doc's Sage example.
+   */
   case class WorkspaceSpace(workspaceId: String) extends SpaceId {
     override val value: String = s"workspace:$workspaceId"
   }
 
-  /** A Sigil that scopes accessible spaces per conversation: each
-    * conversation id maps to a different workspace. */
+  /**
+   * A Sigil that scopes accessible spaces per conversation: each
+   * conversation id maps to a different workspace.
+   */
   private object PerConversationSigil extends Sigil {
     override type DB = sigil.db.DefaultSigilDB
     override protected def buildDB(directory: Option[java.nio.file.Path],
-                                    storeManager: lightdb.store.CollectionManager,
-                                    appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
+                                   storeManager: lightdb.store.CollectionManager,
+                                   appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
       new sigil.db.DefaultSigilDB(directory, storeManager, appUpgrades)
     override def providerFor(modelId: Id[sigil.db.Model], chain: List[ParticipantId]): Task[sigil.provider.Provider] =
       Task.error(new RuntimeException("not used"))
@@ -44,17 +48,19 @@ class AccessibleSpacesPerConversationSpec extends AsyncWordSpec with AsyncTaskSp
       conversationId.value match {
         case "conv-A" => Task.pure(Set[SpaceId](GlobalSpace, WorkspaceSpace("repo-a")))
         case "conv-B" => Task.pure(Set[SpaceId](GlobalSpace, WorkspaceSpace("repo-b")))
-        case _        => Task.pure(Set[SpaceId](GlobalSpace))
+        case _ => Task.pure(Set[SpaceId](GlobalSpace))
       }
   }
 
-  /** A Sigil that ONLY overrides the single-arg method — verifies
-    * the bridge keeps existing apps working. */
+  /**
+   * A Sigil that ONLY overrides the single-arg method — verifies
+   * the bridge keeps existing apps working.
+   */
   private object LegacySingleArgSigil extends Sigil {
     override type DB = sigil.db.DefaultSigilDB
     override protected def buildDB(directory: Option[java.nio.file.Path],
-                                    storeManager: lightdb.store.CollectionManager,
-                                    appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
+                                   storeManager: lightdb.store.CollectionManager,
+                                   appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
       new sigil.db.DefaultSigilDB(directory, storeManager, appUpgrades)
     override def providerFor(modelId: Id[sigil.db.Model], chain: List[ParticipantId]): Task[sigil.provider.Provider] =
       Task.error(new RuntimeException("not used"))
@@ -71,12 +77,12 @@ class AccessibleSpacesPerConversationSpec extends AsyncWordSpec with AsyncTaskSp
         a <- PerConversationSigil.accessibleSpaces(Nil, convA)
         b <- PerConversationSigil.accessibleSpaces(Nil, convB)
       } yield {
-        a should contain (WorkspaceSpace("repo-a"))
+        a should contain(WorkspaceSpace("repo-a"))
         a should not contain WorkspaceSpace("repo-b")
-        b should contain (WorkspaceSpace("repo-b"))
+        b should contain(WorkspaceSpace("repo-b"))
         b should not contain WorkspaceSpace("repo-a")
-        a should contain (GlobalSpace.asInstanceOf[SpaceId])
-        b should contain (GlobalSpace.asInstanceOf[SpaceId])
+        a should contain(GlobalSpace.asInstanceOf[SpaceId])
+        b should contain(GlobalSpace.asInstanceOf[SpaceId])
       }
     }
 

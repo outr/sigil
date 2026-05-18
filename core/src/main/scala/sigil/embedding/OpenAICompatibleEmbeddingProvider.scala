@@ -21,16 +21,17 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 case class OpenAICompatibleEmbeddingProvider(apiKey: String,
                                              baseUrl: URL,
                                              model: String,
-                                             dimensions: Int) extends EmbeddingProvider {
+                                             dimensions: Int)
+  extends EmbeddingProvider {
 
   override def embed(text: String): Task[Vector[Double]] = {
     val body = obj("model" -> str(model), "input" -> str(text))
     postJson(baseUrl.withPath("/v1/embeddings"), body).flatMap { json =>
       json("data").asVector.headOption match {
         case Some(item) => Task.pure(item("embedding").asVector.map(_.asDouble))
-        case None       => Task.error(new RuntimeException(
-          s"Embedding response had an empty `data` array — model=$model, url=$baseUrl"
-        ))
+        case None => Task.error(new RuntimeException(
+            s"Embedding response had an empty `data` array — model=$model, url=$baseUrl"
+          ))
       }
     }
   }
@@ -96,9 +97,11 @@ case class OpenAICompatibleEmbeddingProvider(apiKey: String,
         }
       }
 
-  /** Exponential backoff between retries: 200ms / 800ms / 2000ms for
-    * the typical 3-attempt cycle. Keeps the worst-case retry window
-    * under 3s so a benchmark loop doesn't stall noticeably. */
+  /**
+   * Exponential backoff between retries: 200ms / 800ms / 2000ms for
+   * the typical 3-attempt cycle. Keeps the worst-case retry window
+   * under 3s so a benchmark loop doesn't stall noticeably.
+   */
   private def backoff(attemptsLeft: Int): FiniteDuration = attemptsLeft match {
     case 3 => 200.millis
     case 2 => 800.millis

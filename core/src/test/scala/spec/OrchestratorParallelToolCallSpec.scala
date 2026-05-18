@@ -48,7 +48,9 @@ class OrchestratorParallelToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
 
   private val modelId: Id[Model] = Model.id("test", "model")
 
-  /** Provider that emits two interleaved tool calls. */
+  /**
+   * Provider that emits two interleaved tool calls.
+   */
   private class ParallelProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -75,24 +77,24 @@ class OrchestratorParallelToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
     val conv = Conversation(topics = TestTopicStack, _id = convId)
     val viewConvId = convId
     val request = ConversationRequest(
-      conversationId     = convId,
-      modelId            = modelId,
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = viewConvId),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
+      conversationId = convId,
+      modelId = modelId,
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = viewConvId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
       generationSettings = GenerationSettings(),
-      tools              = Vector(NoResponseTool),
-      chain              = List(TestUser, TestAgent)
+      tools = Vector(NoResponseTool),
+      chain = List(TestUser, TestAgent)
     )
     Orchestrator.process(TestSigil, provider, request, conv).toList
   }
 
   "Orchestrator (parallel tool calls)" should {
-    "route each ToolCallComplete to its matching ToolCallStart's invokeId" in {
+    "route each ToolCallComplete to its matching ToolCallStart's invokeId" in
       runWith(new ParallelProvider).map { signals =>
         val invokes = signals.collect { case t: ToolInvoke => t }
-        val deltas  = signals.collect { case d: ToolDelta if d.state.contains(EventState.Complete) => d }
+        val deltas = signals.collect { case d: ToolDelta if d.state.contains(EventState.Complete) => d }
 
         // Two starts → two ToolInvoke Active events with distinct ids.
         invokes should have size 2
@@ -108,7 +110,6 @@ class OrchestratorParallelToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
         // killed the surrounding agent loop.
         succeed
       }
-    }
   }
 
   "tear down" should {

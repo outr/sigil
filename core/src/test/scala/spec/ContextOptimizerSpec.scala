@@ -48,7 +48,7 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
       )
       opt.optimize(frames).count {
         case _: ContextFrame.Text => true
-        case _                    => false
+        case _ => false
       } shouldBe 2
     }
 
@@ -66,7 +66,7 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
       // strip even the latest pair, trapping the agent in a
       // discovery loop.
       val out = opt.optimize(frames, Set("find_capability"))
-      out.count { case _: ContextFrame.ToolCall   => true; case _ => false } shouldBe 1
+      out.count { case _: ContextFrame.ToolCall => true; case _ => false } shouldBe 1
       out.count { case _: ContextFrame.ToolResult => true; case _ => false } shouldBe 1
       out.collect { case t: ContextFrame.Text => t.content } shouldBe Vector("looking up tools", "got it")
     }
@@ -81,15 +81,15 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
       val c2 = Id[Event]("fc-old-2")
       val c3 = Id[Event]("fc-latest")
       val frames = Vector[ContextFrame](
-        ContextFrame.ToolCall(ToolName("find_capability"), "{\"keywords\":[\"a\"]}",   c1, TestUser, c1),
+        ContextFrame.ToolCall(ToolName("find_capability"), "{\"keywords\":[\"a\"]}", c1, TestUser, c1),
         ContextFrame.ToolResult(c1, "old result 1", Id[Event]("fc-old-1-r")),
-        ContextFrame.ToolCall(ToolName("find_capability"), "{\"keywords\":[\"b\"]}",   c2, TestUser, c2),
+        ContextFrame.ToolCall(ToolName("find_capability"), "{\"keywords\":[\"b\"]}", c2, TestUser, c2),
         ContextFrame.ToolResult(c2, "old result 2", Id[Event]("fc-old-2-r")),
-        ContextFrame.ToolCall(ToolName("find_capability"), "{\"keywords\":[\"c\"]}",   c3, TestUser, c3),
+        ContextFrame.ToolCall(ToolName("find_capability"), "{\"keywords\":[\"c\"]}", c3, TestUser, c3),
         ContextFrame.ToolResult(c3, "latest result", Id[Event]("fc-latest-r"))
       )
       val out = opt.optimize(frames, Set("find_capability"))
-      out.collect { case tc: ContextFrame.ToolCall   => tc.callId } shouldBe Vector(c3)
+      out.collect { case tc: ContextFrame.ToolCall => tc.callId } shouldBe Vector(c3)
       out.collect { case tr: ContextFrame.ToolResult => tr.callId } shouldBe Vector(c3)
     }
 
@@ -103,11 +103,11 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
       val frames = Vector[ContextFrame](
         ContextFrame.ToolCall(ToolName("find_capability"), "{}", fc1, TestUser, fc1),
         ContextFrame.ToolResult(fc1, "old", Id[Event]("fc-old-r")),
-        ContextFrame.ToolCall(ToolName("change_mode"),     "{}", cm1, TestUser, cm1),
+        ContextFrame.ToolCall(ToolName("change_mode"), "{}", cm1, TestUser, cm1),
         ContextFrame.ToolResult(cm1, "old mode", Id[Event]("cm-old-r")),
         ContextFrame.ToolCall(ToolName("find_capability"), "{}", fc2, TestUser, fc2),
         ContextFrame.ToolResult(fc2, "latest", Id[Event]("fc-latest-r")),
-        ContextFrame.ToolCall(ToolName("change_mode"),     "{}", cm2, TestUser, cm2),
+        ContextFrame.ToolCall(ToolName("change_mode"), "{}", cm2, TestUser, cm2),
         ContextFrame.ToolResult(cm2, "latest mode", Id[Event]("cm-latest-r"))
       )
       val out = opt.optimize(frames, Set("find_capability", "change_mode"))
@@ -171,7 +171,7 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
         ContextFrame.ToolResult(fc2, "result 2", Id[Event]("fc-2-r"))
       )
       val out = opt.optimize(frames, Set("find_capability"), Some(TestUser))
-      out.collect { case tc: ContextFrame.ToolCall   => tc.callId }.toSet shouldBe Set(fc1, fc2)
+      out.collect { case tc: ContextFrame.ToolCall => tc.callId }.toSet shouldBe Set(fc1, fc2)
       out.collect { case tr: ContextFrame.ToolResult => tr.callId }.toSet shouldBe Set(fc1, fc2)
     }
 
@@ -181,7 +181,7 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
       // only one — under existing #44 logic the latest-per-name rule
       // applies WITHIN prior turns). Current stays.
       val userMsg1 = Id[Event]("user-msg-1")
-      val fcPrior  = Id[Event]("fc-prior")
+      val fcPrior = Id[Event]("fc-prior")
       val userMsg2 = Id[Event]("user-msg-2")
       val fcCurrent = Id[Event]("fc-current")
       val frames = Vector[ContextFrame](
@@ -209,7 +209,7 @@ class ContextOptimizerSpec extends AnyWordSpec with Matchers {
       // both within-turn calls survive (bug #73).
       val u1 = Id[Event]("u1")
       val fcOldA = Id[Event]("fc-old-a")
-      val fcOldB = Id[Event]("fc-old-b")  // latest of prior turn
+      val fcOldB = Id[Event]("fc-old-b") // latest of prior turn
       val u2 = Id[Event]("u2")
       val fcCur1 = Id[Event]("fc-cur-1")
       val fcCur2 = Id[Event]("fc-cur-2")

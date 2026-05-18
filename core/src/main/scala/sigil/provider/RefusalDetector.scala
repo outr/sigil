@@ -21,22 +21,26 @@ import scala.util.matching.Regex
  */
 trait RefusalDetector {
 
-  /** Inspect the respond's rendered text and return `true` when it
-    * reads as a refusal. Conservative — false negatives are
-    * preferable to false positives (a false positive challenges a
-    * non-refusal and forces an unnecessary iteration; a false
-    * negative misses a refusal but leaves the user's experience
-    * unchanged). */
+  /**
+   * Inspect the respond's rendered text and return `true` when it
+   * reads as a refusal. Conservative — false negatives are
+   * preferable to false positives (a false positive challenges a
+   * non-refusal and forces an unnecessary iteration; a false
+   * negative misses a refusal but leaves the user's experience
+   * unchanged).
+   */
   def isRefusal(content: String): Boolean
 }
 
 object RefusalDetector {
 
-  /** Default pattern-matcher tuned against the bug #126 wire-log
-    * scenario (Qwen3.6-35B refusing "switch to gpt-5.5" with
-    * `I can't switch to GPT-5.5…`). Conservative enough that
-    * shipped apps haven't observed false positives on productive
-    * respond emissions in the bug's reference corpus. */
+  /**
+   * Default pattern-matcher tuned against the bug #126 wire-log
+   * scenario (Qwen3.6-35B refusing "switch to gpt-5.5" with
+   * `I can't switch to GPT-5.5…`). Conservative enough that
+   * shipped apps haven't observed false positives on productive
+   * respond emissions in the bug's reference corpus.
+   */
   case object Default extends RefusalDetector {
     private val patterns: List[Regex] = List(
       raw"^\s*(?i)i\s+(can'?t|cannot|am\s+(not\s+able|unable))\b".r,
@@ -53,10 +57,12 @@ object RefusalDetector {
     }
   }
 
-  /** Pass-through detector — never reports a refusal. Apps where
-    * the agent is allowed (or expected) to refuse without first
-    * consulting `find_capability` wire this to bypass the
-    * challenge mechanism. */
+  /**
+   * Pass-through detector — never reports a refusal. Apps where
+   * the agent is allowed (or expected) to refuse without first
+   * consulting `find_capability` wire this to bypass the
+   * challenge mechanism.
+   */
   case object Never extends RefusalDetector {
     override def isRefusal(content: String): Boolean = false
   }

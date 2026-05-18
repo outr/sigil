@@ -9,13 +9,15 @@ import _root_.sigil.event.Event
 import _root_.sigil.tool.ToolName
 import _root_.sigil.tool.core.{CoreTools, RespondOptionsTool}
 
-/** Coverage for sigil bug #19 — atomic content tools like
-  * `respond_options` emit a Standard-role Message instead of a
-  * Tool-role ToolResults, leaving the model's `function_call`
-  * orphaned in wire history. OpenAI's Responses API rejects on the
-  * next request. The framework's frame renderer pairs each atomic
-  * call with an empty synthetic `function_call_output` so the wire
-  * shape stays valid. */
+/**
+ * Coverage for sigil bug #19 — atomic content tools like
+ * `respond_options` emit a Standard-role Message instead of a
+ * Tool-role ToolResults, leaving the model's `function_call`
+ * orphaned in wire history. OpenAI's Responses API rejects on the
+ * next request. The framework's frame renderer pairs each atomic
+ * call with an empty synthetic `function_call_output` so the wire
+ * shape stays valid.
+ */
 class AtomicContentToolWirePairingSpec extends AnyWordSpec with Matchers {
 
   // Test-only Provider exposing `renderFrames` (which is
@@ -73,8 +75,13 @@ class AtomicContentToolWirePairingSpec extends AnyWordSpec with Matchers {
     "list all 7 atomic content tools" in {
       CoreTools.atomicContentToolNames should have size 7
       CoreTools.atomicContentToolNames.map(_.value) shouldBe Set(
-        "respond", "respond_options", "respond_field",
-        "respond_failure", "respond_card", "respond_cards", "no_response"
+        "respond",
+        "respond_options",
+        "respond_field",
+        "respond_failure",
+        "respond_card",
+        "respond_cards",
+        "no_response"
       )
     }
   }

@@ -133,25 +133,32 @@ object LlamaCpp {
       }
     }
 
-  /** Subset of `/props` Sigil cares about: runtime context budget +
-    * concurrent-slot count. Bug #42 reads the context length;
-    * bug #49 adds `totalSlots` to drive `Provider.maxConcurrent`. */
+  /**
+   * Subset of `/props` Sigil cares about: runtime context budget +
+   * concurrent-slot count. Bug #42 reads the context length;
+   * bug #49 adds `totalSlots` to drive `Provider.maxConcurrent`.
+   */
   case class RuntimeProps(nCtx: Long, totalSlots: Long) {
-    /** Per-slot context budget — the hard limit any single request
-      * can occupy. llama-server's `/props` already reports
-      * `default_generation_settings.n_ctx` as the per-slot value
-      * (total `--ctx-size` ÷ `--parallel`), so we surface it
-      * directly. Prior implementation divided by `totalSlots`
-      * again, producing a value `1/parallel` of the real budget
-      * whenever `--parallel > 1`; that drove pre-flight false
-      * positives on multi-slot setups. */
+
+    /**
+     * Per-slot context budget — the hard limit any single request
+     * can occupy. llama-server's `/props` already reports
+     * `default_generation_settings.n_ctx` as the per-slot value
+     * (total `--ctx-size` ÷ `--parallel`), so we surface it
+     * directly. Prior implementation divided by `totalSlots`
+     * again, producing a value `1/parallel` of the real budget
+     * whenever `--parallel > 1`; that drove pre-flight false
+     * positives on multi-slot setups.
+     */
     def perSlotContext: Long = math.max(1L, nCtx)
   }
 
-  /** Read the running server's `default_generation_settings.n_ctx`
-    * and `total_slots` from `/props`. Returns `None` when the
-    * endpoint is unreachable or the fields are missing — callers
-    * fall back to safe defaults. */
+  /**
+   * Read the running server's `default_generation_settings.n_ctx`
+   * and `total_slots` from `/props`. Returns `None` when the
+   * endpoint is unreachable or the fields are missing — callers
+   * fall back to safe defaults.
+   */
   def fetchProps(baseUrl: URL): Task[Option[RuntimeProps]] =
     // Bug #54 — hard timeout so an unreachable backend can't block
     // provider construction indefinitely. Falls through to `None` →
@@ -172,16 +179,18 @@ object LlamaCpp {
     if (basename.toLowerCase.endsWith(".gguf")) basename.dropRight(5) else basename
   }
 
-  /** Heuristic friendly name for a llama.cpp model loaded from a gguf
-    * basename. Drops common quantization suffixes (`-iq4_xs`,
-    * `-q4_k_m`, `-q5_k_s`, `-bf16`, `-f16`, `-f32`), collapses
-    * vendor-prefix duplicates (`qwen_qwen3.6-...` → `qwen3.6-...`),
-    * replaces underscores with spaces, and title-cases the first
-    * letter. Returns `None` when the cleanup yields an empty string.
-    *
-    * Always best-effort — apps that need a guaranteed pretty label
-    * override the LlamaCpp seed (or post-process via their own model
-    * registry override). */
+  /**
+   * Heuristic friendly name for a llama.cpp model loaded from a gguf
+   * basename. Drops common quantization suffixes (`-iq4_xs`,
+   * `-q4_k_m`, `-q5_k_s`, `-bf16`, `-f16`, `-f32`), collapses
+   * vendor-prefix duplicates (`qwen_qwen3.6-...` → `qwen3.6-...`),
+   * replaces underscores with spaces, and title-cases the first
+   * letter. Returns `None` when the cleanup yields an empty string.
+   *
+   * Always best-effort — apps that need a guaranteed pretty label
+   * override the LlamaCpp seed (or post-process via their own model
+   * registry override).
+   */
   def displayNameFromBasename(basename: String): Option[String] = {
     val quantPattern =
       raw"(?i)[-_](iq?\d+([-_][xkmlsq0-9]+)*|q\d+([-_][kmsxlqf0-9]+)*|bf16|f16|f32)$$".r

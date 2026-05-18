@@ -16,7 +16,8 @@ case class LspFormatRangeInput(languageId: String,
                                endLine: Int,
                                endCharacter: Int,
                                tabSize: Int = 2,
-                               insertSpaces: Boolean = true) extends ToolInput derives RW
+                               insertSpaces: Boolean = true)
+  extends ToolInput derives RW
 
 /**
  * Format a specific range within a file. Useful when the agent has
@@ -26,32 +27,40 @@ case class LspFormatRangeInput(languageId: String,
  * Same writeback semantics as [[LspFormatTool]]: applies the edits
  * to disk and notifies the server.
  */
-final class LspFormatRangeTool(val manager: LspManager) extends TypedOutputTool[LspFormatRangeInput, LspFormatResult](
-  name = ToolName("lsp_format_range"),
-  description =
-    """Format a specific range within a file via the language server.
+final class LspFormatRangeTool(val manager: LspManager)
+  extends TypedOutputTool[LspFormatRangeInput, LspFormatResult](
+    name = ToolName("lsp_format_range"),
+    description =
+      """Format a specific range within a file via the language server.
       |
       |`languageId` + `filePath` identify the document.
       |`startLine`/`startCharacter`/`endLine`/`endCharacter` (0-based) define the range.
       |`tabSize` and `insertSpaces` are passed as FormattingOptions.
       |Writes the formatted result back to disk; returns `{filePath, editsApplied}`.""".stripMargin,
-  keywords = Set("lsp", "format", "format range", "prettify", "indent", "beautify", "selection"),
-  examples = List(
-    ToolExample(
-      "format a single method body",
-      LspFormatRangeInput(
-        languageId = "scala", filePath = "/abs/path/Foo.scala",
-        startLine = 10, startCharacter = 0,
-        endLine = 25, endCharacter = 0
+    keywords = Set("lsp", "format", "format range", "prettify", "indent", "beautify", "selection"),
+    examples = List(
+      ToolExample(
+        "format a single method body",
+        LspFormatRangeInput(
+          languageId = "scala",
+          filePath = "/abs/path/Foo.scala",
+          startLine = 10,
+          startCharacter = 0,
+          endLine = 25,
+          endCharacter = 0
+        )
       )
     )
   )
-) with sigil.tool.DestructiveExternalTool with LspToolSupport {
+  with sigil.tool.DestructiveExternalTool
+  with LspToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspFormatRangeInput, context: TurnContext): Task[LspFormatResult] =
     withOpenDocumentTyped[LspFormatResult](
-      input.languageId, input.filePath, context,
+      input.languageId,
+      input.filePath,
+      context,
       onError = msg => throw new RuntimeException(msg)
     ) { (session, uri) =>
       val range = new Range(

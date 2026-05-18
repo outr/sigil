@@ -12,39 +12,53 @@ sealed trait ProviderMessage
 
 object ProviderMessage {
 
-  /** Out-of-band framework context (e.g. mode change, title change). Most
-    * providers render this as a `tool` role result paired to a preceding
-    * tool call when one is open, otherwise as `system`. */
+  /**
+   * Out-of-band framework context (e.g. mode change, title change). Most
+   * providers render this as a `tool` role result paired to a preceding
+   * tool call when one is open, otherwise as `system`.
+   */
   case class System(content: String) extends ProviderMessage
 
-  /** A message from the user (or any non-acting participant). Renders
-    * as `role: "user"`. Content is a vector of blocks so text and
-    * images can interleave for multimodal providers — providers that
-    * don't support images drop them. Most callers construct the
-    * text-only case via [[User.apply(text: String)]]. */
+  /**
+   * A message from the user (or any non-acting participant). Renders
+   * as `role: "user"`. Content is a vector of blocks so text and
+   * images can interleave for multimodal providers — providers that
+   * don't support images drop them. Most callers construct the
+   * text-only case via [[User.apply(text: String)]].
+   */
   case class User(content: Vector[MessageContent]) extends ProviderMessage
 
   object User {
-    /** Shortcut for the common single-text-block case. */
+
+    /**
+     * Shortcut for the common single-text-block case.
+     */
     def apply(text: String): User = User(Vector(MessageContent.Text(text)))
   }
 
-  /** A message from the acting agent. May carry text content, tool
-    * calls, or both. Renders as `role: "assistant"`. */
+  /**
+   * A message from the acting agent. May carry text content, tool
+   * calls, or both. Renders as `role: "assistant"`.
+   */
   case class Assistant(content: String, toolCalls: List[ToolCallMessage] = Nil) extends ProviderMessage
 
-  /** A tool's result, paired to a prior assistant tool call by
-    * `toolCallId`. Renders as `role: "tool"`. */
+  /**
+   * A tool's result, paired to a prior assistant tool call by
+   * `toolCallId`. Renders as `role: "tool"`.
+   */
   case class ToolResult(toolCallId: String, content: String) extends ProviderMessage
 
-  /** Provider-internal reasoning state from a prior turn (bug #61 —
-    * OpenAI Responses API `reasoning` output items). The originating
-    * provider re-serializes this onto the wire to preserve its
-    * round-trip state; non-originating providers silently drop the
-    * entry. `providerItemId` is the wire-level id (`rs_…`).
-    * `encryptedContent` is the opaque CoT blob (o1 / o3); `summary`
-    * may be empty. */
+  /**
+   * Provider-internal reasoning state from a prior turn (bug #61 —
+   * OpenAI Responses API `reasoning` output items). The originating
+   * provider re-serializes this onto the wire to preserve its
+   * round-trip state; non-originating providers silently drop the
+   * entry. `providerItemId` is the wire-level id (`rs_…`).
+   * `encryptedContent` is the opaque CoT blob (o1 / o3); `summary`
+   * may be empty.
+   */
   case class Reasoning(providerItemId: String,
                        summary: List[String],
-                       encryptedContent: Option[String]) extends ProviderMessage
+                       encryptedContent: Option[String])
+    extends ProviderMessage
 }

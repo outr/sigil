@@ -17,10 +17,11 @@ import sigil.tool.{ToolName, TypedOutputTool}
  * Scoped to the current conversation — rows from other
  * conversations are not reachable.
  */
-case object QueryToolOutputTool extends TypedOutputTool[QueryToolOutputInput, JsonPagedResult](
-  name = ToolName("query_tool_output"),
-  description =
-    """Query a paginated tool result with filters and pagination beyond what `next_page` exposes.
+case object QueryToolOutputTool
+  extends TypedOutputTool[QueryToolOutputInput, JsonPagedResult](
+    name = ToolName("query_tool_output"),
+    description =
+      """Query a paginated tool result with filters and pagination beyond what `next_page` exposes.
       |
       |`callId` is required — every `PaginatedTool` first-page result echoes the
       |originating call's id in its `callId` field. The query scope is that one call.
@@ -30,24 +31,23 @@ case object QueryToolOutputTool extends TypedOutputTool[QueryToolOutputInput, Js
       |  - `level`         — limit to a specific tree depth (0 = top-level, 1 = direct children)
       |
       |Pagination is zero-indexed; `pageSize` defaults to 50 (max 500).""".stripMargin,
-  keywords = Set("query", "filter", "find", "search", "tool", "output", "paginate", "where", "results")
-) {
+    keywords = Set("query", "filter", "find", "search", "tool", "output", "paginate", "where", "results")
+  ) {
   override def paginate: Boolean = false
-
 
   private val maxPageSize = 500
 
   override protected def executeTyped(input: QueryToolOutputInput, ctx: TurnContext): Task[JsonPagedResult] = {
     val pageSize = math.max(1, math.min(input.pageSize, maxPageSize))
     val safePage = math.max(0, input.page)
-    val convId   = ctx.conversation.id
+    val convId = ctx.conversation.id
 
     ctx.sigil.withDB(_.toolOutputs.transaction(_.list)).map { all =>
       val callRows = all.filter(n => n.conversationId == convId && n.callId.value == input.callId)
       val filtered = callRows.filter { n =>
         val levelOk = input.level.forall(_ == n.level)
-        val textOk  = input.containsText match {
-          case None    => true
+        val textOk = input.containsText match {
+          case None => true
           case Some(q) =>
             val needle = q.toLowerCase
             JsonFormatter.Compact(n.payload).toLowerCase.contains(needle)
@@ -59,14 +59,14 @@ case object QueryToolOutputTool extends TypedOutputTool[QueryToolOutputInput, Js
       val window = filtered.slice(safePage * pageSize, (safePage + 1) * pageSize)
       val callIdEvent: Id[Event] = window.headOption.map(_.callId).getOrElse(Id[Event](input.callId))
       JsonPagedResult(
-        items       = window.map(_.payload).toList,
-        hasMore     = ((safePage + 1) * pageSize) < total,
-        page        = safePage,
-        pageSize    = pageSize,
+        items = window.map(_.payload).toList,
+        hasMore = ((safePage + 1) * pageSize) < total,
+        page = safePage,
+        pageSize = pageSize,
         referenceId = input.callId,
-        callId      = callIdEvent,
-        totalCount  = Some(total),
-        nodeIds     = window.map(_._id.value).toList,
+        callId = callIdEvent,
+        totalCount = Some(total),
+        nodeIds = window.map(_._id.value).toList,
         hasChildren = window.map(_.hasChildren).toList
       )
     }

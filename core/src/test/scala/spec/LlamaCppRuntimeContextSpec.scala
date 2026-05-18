@@ -61,13 +61,15 @@ class LlamaCppRuntimeContextSpec extends AnyWordSpec with Matchers {
     }
   }
 
-  /** llama-server's `/props` reports `default_generation_settings.n_ctx`
-    * as the value an individual request can occupy — total
-    * `--ctx-size` divided across `--parallel` slots before being
-    * surfaced. `RuntimeProps.perSlotContext` must surface that
-    * directly; a prior bug divided again, producing
-    * `1/parallel` of the real budget on multi-slot servers and
-    * tripping pre-flight false positives. */
+  /**
+   * llama-server's `/props` reports `default_generation_settings.n_ctx`
+   * as the value an individual request can occupy — total
+   * `--ctx-size` divided across `--parallel` slots before being
+   * surfaced. `RuntimeProps.perSlotContext` must surface that
+   * directly; a prior bug divided again, producing
+   * `1/parallel` of the real budget on multi-slot servers and
+   * tripping pre-flight false positives.
+   */
   "RuntimeProps.perSlotContext" should {
     "return n_ctx unchanged on a single-slot server" in {
       LlamaCpp.RuntimeProps(nCtx = 65536L, totalSlots = 1L).perSlotContext shouldBe 65536L

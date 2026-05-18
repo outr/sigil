@@ -21,34 +21,36 @@ import java.lang.reflect.{Constructor, Field, Method, Modifier}
  * scaladoc; those would require Scala 3 TASTy or the `-sources.jar`
  * (see [[ReadSourceTool]]).
  */
-case object ClassSignaturesTool extends TypedTool[ClassSignaturesInput](
-  name = ToolName("class_signatures"),
-  description =
-    """Return the constructors, public methods, and public fields of a known fully-qualified class.
+case object ClassSignaturesTool
+  extends TypedTool[ClassSignaturesInput](
+    name = ToolName("class_signatures"),
+    description =
+      """Return the constructors, public methods, and public fields of a known fully-qualified class.
       |Use after `library_lookup` resolves a symbol to its FQN — e.g. lookup `HttpClient` →
       |`spice.http.client.HttpClient`, then `class_signatures("spice.http.client.HttpClient")`
       |to see what methods you can call.
       |
       |The trailing `$` for Scala objects is optional. Output is plain text formatted as
       |Scala-style method signatures.""".stripMargin,
-  modes = Set(ScriptAuthoringMode.id),
-  keywords = Set("class", "signature", "method", "introspect", "lookup", "api")
-) {
+    modes = Set(ScriptAuthoringMode.id),
+    keywords = Set("class", "signature", "method", "introspect", "lookup", "api")
+  ) {
   override def paginate: Boolean = false
-
 
   override protected def executeTyped(input: ClassSignaturesInput, context: TurnContext): rapid.Stream[Event] = {
     val text =
       try render(loadClass(input.fqn))
       catch {
         case _: ClassNotFoundException => s"(class not found on classpath: ${input.fqn})"
-        case e: Throwable               => s"(introspection failed: ${e.getClass.getSimpleName}: ${e.getMessage})"
+        case e: Throwable => s"(introspection failed: ${e.getClass.getSimpleName}: ${e.getMessage})"
       }
     rapid.Stream.emit(reply(context, text))
   }
 
-  /** Resolve `fqn` to a `Class[_]`. For Scala objects, callers may pass
-    * either `Foo` or `Foo$` — try both. */
+  /**
+   * Resolve `fqn` to a `Class[_]`. For Scala objects, callers may pass
+   * either `Foo` or `Foo$` — try both.
+   */
   private def loadClass(fqn: String): Class[?] =
     try Class.forName(fqn)
     catch { case _: ClassNotFoundException => Class.forName(fqn + "$") }
@@ -71,8 +73,8 @@ case object ClassSignaturesTool extends TypedTool[ClassSignaturesInput](
 
     val sb = new StringBuilder
     sb.append(s"# $name\n")
-    if (ctors.nonEmpty)   sb.append("\n## Constructors\n").append(ctors.mkString("\n"))
-    if (fields.nonEmpty)  sb.append("\n\n## Public fields\n").append(fields.mkString("\n"))
+    if (ctors.nonEmpty) sb.append("\n## Constructors\n").append(ctors.mkString("\n"))
+    if (fields.nonEmpty) sb.append("\n\n## Public fields\n").append(fields.mkString("\n"))
     if (methods.nonEmpty) sb.append("\n\n## Public methods\n").append(methods.mkString("\n"))
     if (ctors.isEmpty && fields.isEmpty && methods.isEmpty)
       sb.append("\n(no public surface — likely a hidden / synthetic / module class)")
@@ -97,8 +99,10 @@ case object ClassSignaturesTool extends TypedTool[ClassSignaturesInput](
     s"  $staticTag${f.getName}: $tpe"
   }
 
-  /** Drop package prefix for readability. Keep generics cosmetic for now;
-    * full Scala type info would require parsing TASTy. */
+  /**
+   * Drop package prefix for readability. Keep generics cosmetic for now;
+   * full Scala type info would require parsing TASTy.
+   */
   private def simple(t: Class[?]): String = {
     val n = t.getName
     val short = n.substring(n.lastIndexOf('.') + 1).replace('$', '.')
@@ -107,12 +111,12 @@ case object ClassSignaturesTool extends TypedTool[ClassSignaturesInput](
 
   private def reply(context: TurnContext, text: String): Message =
     Message(
-      participantId  = context.caller,
+      participantId = context.caller,
       conversationId = context.conversation.id,
-      topicId        = context.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete,
-      role           = MessageRole.Tool,
-      visibility     = MessageVisibility.Agents
+      topicId = context.conversation.currentTopicId,
+      content = Vector(ResponseContent.Text(text)),
+      state = EventState.Complete,
+      role = MessageRole.Tool,
+      visibility = MessageVisibility.Agents
     )
 }

@@ -77,7 +77,9 @@ import sigil.tool.skill.{ActivateSkillInput, ActivateSkillTool}
  */
 object CoreTools {
 
-  /** The tool instances — pass to `ProviderRequest.tools`. */
+  /**
+   * The tool instances — pass to `ProviderRequest.tools`.
+   */
   val all: Vector[Tool] =
     Vector(
       RespondTool,
@@ -87,13 +89,15 @@ object CoreTools {
       RecordConsentTool
     )
 
-  /** The ToolInput RWs for polymorphic registration. Sigil registers these
-    * automatically during `instance.sync()`; apps don't need to touch this.
-    *
-    * Includes `ChangeModeInput` so apps that opt into [[ChangeModeTool]]
-    * via their own `staticTools` round-trip without further wiring —
-    * the input RW is cheap to register and harmless when the tool
-    * itself isn't in the roster. */
+  /**
+   * The ToolInput RWs for polymorphic registration. Sigil registers these
+   * automatically during `instance.sync()`; apps don't need to touch this.
+   *
+   * Includes `ChangeModeInput` so apps that opt into [[ChangeModeTool]]
+   * via their own `staticTools` round-trip without further wiring —
+   * the input RW is cheap to register and harmless when the tool
+   * itself isn't in the roster.
+   */
   val inputRWs: List[RW[? <: ToolInput]] =
     List(
       summon[RW[RespondInput]],
@@ -122,16 +126,18 @@ object CoreTools {
 
   val coreToolNames: List[sigil.tool.ToolName] = all.map(_.schema.name).toList
 
-  /** Names of the atomic content tools — those whose output IS the
-    * agent's user-facing content rather than a tool result feeding
-    * back to the model. Their `executeTyped` emits a `Standard`-role
-    * `Message` (not a `Tool`-role `ToolResults`), so no
-    * `function_call_output` follows the model's invoking
-    * `function_call` in wire history. The framework's frame renderer
-    * pairs each such call with a synthetic empty output to satisfy
-    * providers (notably OpenAI Responses) that strictly require every
-    * `function_call` to have a matching `function_call_output`
-    * (sigil bug #19). */
+  /**
+   * Names of the atomic content tools — those whose output IS the
+   * agent's user-facing content rather than a tool result feeding
+   * back to the model. Their `executeTyped` emits a `Standard`-role
+   * `Message` (not a `Tool`-role `ToolResults`), so no
+   * `function_call_output` follows the model's invoking
+   * `function_call` in wire history. The framework's frame renderer
+   * pairs each such call with a synthetic empty output to satisfy
+   * providers (notably OpenAI Responses) that strictly require every
+   * `function_call` to have a matching `function_call_output`
+   * (sigil bug #19).
+   */
   val atomicContentToolNames: Set[sigil.tool.ToolName] = Set(
     RespondTool.schema.name,
     RespondOptionsTool.schema.name,

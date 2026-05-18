@@ -39,7 +39,8 @@ final class WriteFileTool(context: FileSystemContext)
       )
     ),
     keywords = Set("file", "write", "save", "create", "output")
-  ) with sigil.tool.DestructiveExternalTool {
+  )
+  with sigil.tool.DestructiveExternalTool {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: WriteFileInput, ctx: TurnContext): Task[WriteFileOutput] =
@@ -53,8 +54,9 @@ final class WriteFileTool(context: FileSystemContext)
           val expected = FileVersion(hash, Timestamp())
           context.writeIfMatch(resolved, input.content, expected).map {
             case WriteResult.Written(version) =>
-              WriteFileOutput.Success(bytesWritten = input.content.getBytes("UTF-8").length.toLong,
-                                       hash         = Some(version.hash))
+              WriteFileOutput.Success(
+                bytesWritten = input.content.getBytes("UTF-8").length.toLong,
+                hash = Some(version.hash))
             case WriteResult.Stale(current) =>
               WriteFileOutput.Stale(currentHash = current.version.hash, currentContent = current.asText)
             case WriteResult.NotFound =>

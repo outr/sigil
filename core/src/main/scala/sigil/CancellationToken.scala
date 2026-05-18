@@ -27,35 +27,45 @@ final class CancellationToken(val workflowId: String) {
   private val flag: AtomicBoolean = new AtomicBoolean(false)
   @volatile private var cancellationReason: String = ""
 
-  /** Has cancellation been requested? Snapshot read; safe to call
-    * from any thread. */
+  /**
+   * Has cancellation been requested? Snapshot read; safe to call
+   * from any thread.
+   */
   def isCancelled: Boolean = flag.get()
 
-  /** The reason cancellation was requested ("user", "agent",
-    * tool-call attribution string), or empty if not cancelled. */
+  /**
+   * The reason cancellation was requested ("user", "agent",
+   * tool-call attribution string), or empty if not cancelled.
+   */
   def reason: String = cancellationReason
 
-  /** Mark the workflow as cancelled. Idempotent — first reason
-    * wins. Returns `true` if this call flipped the flag, `false`
-    * if it was already cancelled. */
+  /**
+   * Mark the workflow as cancelled. Idempotent — first reason
+   * wins. Returns `true` if this call flipped the flag, `false`
+   * if it was already cancelled.
+   */
   def cancel(reason: String): Boolean = {
     val flipped = flag.compareAndSet(false, true)
     if (flipped) cancellationReason = reason
     flipped
   }
 
-  /** Raise [[CancellationException]] right now if cancellation has
-    * been requested. Use at decision boundaries. Returns `Task.unit`
-    * when not cancelled, so the caller can chain in a
-    * for-comprehension cleanly. */
+  /**
+   * Raise [[CancellationException]] right now if cancellation has
+   * been requested. Use at decision boundaries. Returns `Task.unit`
+   * when not cancelled, so the caller can chain in a
+   * for-comprehension cleanly.
+   */
   def checkpoint: Task[Unit] =
     if (isCancelled) Task.error(new CancellationException(workflowId, cancellationReason))
     else Task.unit
 
-  /** Wrap a Task so it raises `CancellationException` BEFORE the
-    * inner task runs if cancellation has been requested. The inner
-    * task itself isn't interrupted mid-execution — that requires
-    * cooperation from whatever it does (HTTP client cancellation
-    * handles, etc.). */
+  /**
+   * Wrap a Task so it raises `CancellationException` BEFORE the
+   * inner task runs if cancellation has been requested. The inner
+   * task itself isn't interrupted mid-execution — that requires
+   * cooperation from whatever it does (HTTP client cancellation
+   * handles, etc.).
+   */
   def guard[A](task: Task[A]): Task[A] = checkpoint.flatMap(_ => task)
 }

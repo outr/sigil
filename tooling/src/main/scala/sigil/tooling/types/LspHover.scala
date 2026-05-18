@@ -5,19 +5,22 @@ import org.eclipse.lsp4j.Hover
 
 import scala.jdk.CollectionConverters.*
 
-/** Sigil-flavored mirror of LSP4J's `Hover`. The agent typically
-  * cares about `contents` (the markdown / plain-text body the IDE
-  * tooltip renders) and optionally `range` (the source span the
-  * hover applies to).
-  *
-  * LSP4J's hover contents is a union (string | MarkedString |
-  * MarkupContent | List of any of the above). We flatten everything
-  * to `contents: String` (rendered as markdown) for agent
-  * consumption — apps that need to distinguish markdown from plain
-  * text can inspect `kind`. */
+/**
+ * Sigil-flavored mirror of LSP4J's `Hover`. The agent typically
+ * cares about `contents` (the markdown / plain-text body the IDE
+ * tooltip renders) and optionally `range` (the source span the
+ * hover applies to).
+ *
+ * LSP4J's hover contents is a union (string | MarkedString |
+ * MarkupContent | List of any of the above). We flatten everything
+ * to `contents: String` (rendered as markdown) for agent
+ * consumption — apps that need to distinguish markdown from plain
+ * text can inspect `kind`.
+ */
 case class LspHover(contents: String,
                     kind: String = "markdown",
-                    range: Option[LspRange] = None) derives RW
+                    range: Option[LspRange] = None)
+  derives RW
 
 object LspHover {
   def fromLsp4j(h: Hover): LspHover = {

@@ -79,11 +79,9 @@ class BuiltInToolsThreadingSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val convId = freshConvId("agent-only")
       val a = agent(builtInTools = Set(BuiltInTool.WebSearch))
       for {
-        _    <- TestSigil.newConversation(createdBy = TestUser, participants = List(a), conversationId = convId)
+        _ <- TestSigil.newConversation(createdBy = TestUser, participants = List(a), conversationId = convId)
         seen <- awaitCapture(convId)
-      } yield {
-        seen should contain only BuiltInTool.WebSearch
-      }
+      } yield seen should contain only BuiltInTool.WebSearch
     }
 
     "union agent.builtInTools with the current Mode.builtInTools" in {
@@ -101,8 +99,11 @@ class BuiltInToolsThreadingSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         greetsOnJoin = true
       )
       for {
-        _    <- TestSigil.newConversation(createdBy = TestUser, participants = List(a),
-                                          conversationId = convId, currentMode = WebResearchMode)
+        _ <- TestSigil.newConversation(
+          createdBy = TestUser,
+          participants = List(a),
+          conversationId = convId,
+          currentMode = WebResearchMode)
         seen <- awaitCapture(convId)
       } yield {
         // ImageGeneration came from agent; WebSearch from mode — both must surface.
@@ -115,11 +116,9 @@ class BuiltInToolsThreadingSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val convId = freshConvId("none")
       val a = agent(builtInTools = Set.empty)
       for {
-        _    <- TestSigil.newConversation(createdBy = TestUser, participants = List(a), conversationId = convId)
+        _ <- TestSigil.newConversation(createdBy = TestUser, participants = List(a), conversationId = convId)
         seen <- awaitCapture(convId)
-      } yield {
-        seen shouldBe Set.empty[BuiltInTool]
-      }
+      } yield seen shouldBe Set.empty[BuiltInTool]
     }
   }
 
@@ -149,7 +148,7 @@ case object WebResearchMode extends Mode {
  * captures from any lingering agent-fiber activity left behind by
  * a prior test in the same suite.
  */
-private final class CapturingProvider extends Provider {
+final private class CapturingProvider extends Provider {
   val modelId: Id[Model] = Model.id("capturing-stub")
   val callCount: AtomicInteger = new AtomicInteger(0)
   val capturesByConv: ConcurrentHashMap[Id[Conversation], Set[BuiltInTool]] =

@@ -31,28 +31,28 @@ class FindCapabilityNormalisationSpec extends AnyWordSpec with Matchers {
   "FindCapabilityTool.normaliseKeywords (bug #52)" should {
     "lowercase + split snake_case identifiers" in {
       normalise("get_random_dog_image") shouldBe "get random dog image"
-      normalise("HTTP_RETRY_COUNT")     shouldBe "http retry count"
+      normalise("HTTP_RETRY_COUNT") shouldBe "http retry count"
     }
 
     "split camelCase / PascalCase identifiers" in {
-      normalise("getRandomDogImage")    shouldBe "get random dog image"
-      normalise("HTTPRetryCount")       shouldBe "httpretry count"
-      normalise("oneTwoThree")          shouldBe "one two three"
+      normalise("getRandomDogImage") shouldBe "get random dog image"
+      normalise("HTTPRetryCount") shouldBe "httpretry count"
+      normalise("oneTwoThree") shouldBe "one two three"
     }
 
     "split kebab-case identifiers" in {
-      normalise("send-slack-message")   shouldBe "send slack message"
+      normalise("send-slack-message") shouldBe "send slack message"
     }
 
     "collapse runs of punctuation / whitespace into single spaces" in {
-      normalise("send  slack    message")    shouldBe "send slack message"
-      normalise("billing/invoice,payment")   shouldBe "billing invoice payment"
-      normalise("  trim  edges  ")           shouldBe "trim edges"
+      normalise("send  slack    message") shouldBe "send slack message"
+      normalise("billing/invoice,payment") shouldBe "billing invoice payment"
+      normalise("  trim  edges  ") shouldBe "trim edges"
     }
 
     "leave already-normalised input untouched" in {
       normalise("send slack channel message") shouldBe "send slack channel message"
-      normalise("sleep wait delay pause")     shouldBe "sleep wait delay pause"
+      normalise("sleep wait delay pause") shouldBe "sleep wait delay pause"
     }
   }
 }

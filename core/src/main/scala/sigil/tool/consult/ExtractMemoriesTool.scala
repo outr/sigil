@@ -19,10 +19,11 @@ import sigil.tool.{ToolName, TypedTool}
  * new row every time the same fact shows up. Omit the key for
  * one-shot facts that don't represent a durable identity slot.
  */
-case object ExtractMemoriesTool extends TypedTool[ExtractMemoriesInput](
-  name = ToolName("extract_memories"),
-  description =
-    """Extract durable facts from a conversation excerpt. Each fact must be self-contained
+case object ExtractMemoriesTool
+  extends TypedTool[ExtractMemoriesInput](
+    name = ToolName("extract_memories"),
+    description =
+      """Extract durable facts from a conversation excerpt. Each fact must be self-contained
       |(a reader seeing the fact alone must still be able to act on it).
       |
       |For each fact, return:
@@ -53,7 +54,7 @@ case object ExtractMemoriesTool extends TypedTool[ExtractMemoriesInput](
       |Do NOT include:
       |  - intermediate reasoning, small-talk, acknowledgements
       |  - content that belongs in a summary (narrative / ongoing context).""".stripMargin
-) {
+  ) {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: ExtractMemoriesInput, context: TurnContext): Stream[Event] =

@@ -53,15 +53,15 @@ final class GitPushTool(context: FileSystemContext)
         |programmatically without parsing raw stderr.""".stripMargin,
     examples = List(
       ToolExample("Push current branch to its upstream", GitPushInput()),
-      ToolExample("First push of a feature branch",      GitPushInput(setUpstream = true)),
-      ToolExample("Push tags too",                       GitPushInput(tags = true)),
-      ToolExample("Force-with-lease (safer force)",      GitPushInput(forceWithLease = true)),
-      ToolExample("Explicit remote and branch",          GitPushInput(remote = Some("upstream"), branch = Some("feature/x")))
+      ToolExample("First push of a feature branch", GitPushInput(setUpstream = true)),
+      ToolExample("Push tags too", GitPushInput(tags = true)),
+      ToolExample("Force-with-lease (safer force)", GitPushInput(forceWithLease = true)),
+      ToolExample("Explicit remote and branch", GitPushInput(remote = Some("upstream"), branch = Some("feature/x")))
     ),
     keywords = Set("git", "push", "publish", "upload", "remote", "upstream", "deploy", "sync")
-  ) with sigil.tool.DestructiveExternalTool {
+  )
+  with sigil.tool.DestructiveExternalTool {
   override def paginate: Boolean = false
-
 
   override protected def executeTyped(input: GitPushInput, ctx: TurnContext): Stream[Event] = Stream.force(
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
@@ -70,12 +70,12 @@ final class GitPushTool(context: FileSystemContext)
           rapid.Task.pure(Stream.emit[Event](FsToolEmit(obj("error" -> str(reason)), ctx)))
         case None =>
           val flagsParts = List(
-            if (input.setUpstream)    Some("--set-upstream") else None,
-            if (input.force)          Some("--force") else None,
+            if (input.setUpstream) Some("--set-upstream") else None,
+            if (input.force) Some("--force") else None,
             if (input.forceWithLease) Some("--force-with-lease") else None,
-            if (input.tags)           Some("--tags") else None
+            if (input.tags) Some("--tags") else None
           ).flatten
-          val flagsStr   = if (flagsParts.isEmpty) "" else " " + flagsParts.mkString(" ")
+          val flagsStr = if (flagsParts.isEmpty) "" else " " + flagsParts.mkString(" ")
           // `--set-upstream` REQUIRES an explicit `<remote> <branch>`
           // pair on the command line (git refuses with "no upstream
           // branch" otherwise). When the caller didn't pass them
@@ -92,9 +92,9 @@ final class GitPushTool(context: FileSystemContext)
           val targetArgsTask: rapid.Task[String] = branchTask.map { branchOpt =>
             (input.remote, branchOpt) match {
               case (Some(r), Some(b)) => s" $r $b"
-              case (Some(r), None)    => s" $r"
-              case (None, Some(b))    => s" origin $b" // explicit branch needs an explicit remote
-              case (None, None)       => ""
+              case (Some(r), None) => s" $r"
+              case (None, Some(b)) => s" origin $b" // explicit branch needs an explicit remote
+              case (None, None) => ""
             }
           }
           // Materialize the command lazily so `branchTask` runs first.
@@ -104,9 +104,9 @@ final class GitPushTool(context: FileSystemContext)
               val payload =
                 if (r.exitCode != 0)
                   obj(
-                    "error"    -> str(classifyPushError(r.stderr)),
+                    "error" -> str(classifyPushError(r.stderr)),
                     "exitCode" -> num(r.exitCode),
-                    "stderr"   -> str(r.stderr)
+                    "stderr" -> str(r.stderr)
                   )
                 else
                   // git reports progress on stderr even on success — surface it
@@ -123,32 +123,38 @@ final class GitPushTool(context: FileSystemContext)
     }
   )
 
-  /** Protected-branch gating. Force / force-with-lease on main /
-    * master / develop without `confirmForcePush = true` returns a
-    * structured error. Apps override by subclassing and replacing
-    * this method (e.g. allow force on `release/...` branches). */
+  /**
+   * Protected-branch gating. Force / force-with-lease on main /
+   * master / develop without `confirmForcePush = true` returns a
+   * structured error. Apps override by subclassing and replacing
+   * this method (e.g. allow force on `release/...` branches).
+   */
   protected def validateForcePushGate(input: GitPushInput): Option[String] = {
     val protectedBranches = Set("main", "master", "develop")
     val isProtected = input.branch.exists(protectedBranches.contains)
-    val isForcing   = input.force || input.forceWithLease
+    val isForcing = input.force || input.forceWithLease
     if (isProtected && isForcing && !input.confirmForcePush)
       Some(s"Refusing to force-push protected branch '${input.branch.get}' without confirmForcePush = true. " +
-           "Set confirmForcePush = true to override, or push a non-protected branch.")
+        "Set confirmForcePush = true to override, or push a non-protected branch.")
     else None
   }
 
-  /** Map git's stderr signals onto a structured `error` string the
-    * agent can react to programmatically. Falls through to "push
-    * failed" with raw stderr in the payload when no specific signal
-    * matches. */
+  /**
+   * Map git's stderr signals onto a structured `error` string the
+   * agent can react to programmatically. Falls through to "push
+   * failed" with raw stderr in the payload when no specific signal
+   * matches.
+   */
   private def classifyPushError(stderr: String): String = stderr match {
-    case s if s.contains("non-fast-forward")        => "non-fast-forward (remote has commits you don't; run git_pull then retry)"
-    case s if s.contains("rejected")                => "remote rejected the push (likely branch protection or hook)"
-    case s if s.contains("does not exist") &&
-              s.contains("upstream")                => "no upstream branch (pass setUpstream = true on first push)"
-    case s if s.contains("no upstream branch")      => "no upstream branch (pass setUpstream = true on first push)"
-    case s if s.contains("Permission denied") ||
-              s.contains("authentication")          => "authentication failed (ssh key / credential)"
-    case _                                          => "push failed"
+    case s if s.contains("non-fast-forward") => "non-fast-forward (remote has commits you don't; run git_pull then retry)"
+    case s if s.contains("rejected") => "remote rejected the push (likely branch protection or hook)"
+    case s
+        if s.contains("does not exist") &&
+          s.contains("upstream") => "no upstream branch (pass setUpstream = true on first push)"
+    case s if s.contains("no upstream branch") => "no upstream branch (pass setUpstream = true on first push)"
+    case s
+        if s.contains("Permission denied") ||
+          s.contains("authentication") => "authentication failed (ssh key / credential)"
+    case _ => "push failed"
   }
 }

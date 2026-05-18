@@ -45,7 +45,7 @@ class MultiStepToolFlowSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
   // optional → get_magic_number → context refold → respond) has
   // headroom under 4-way fork contention with a contended local
   // llama.cpp server.
-  override implicit protected val testTimeout: FiniteDuration = 5.minutes
+  implicit override protected val testTimeout: FiniteDuration = 5.minutes
 
   TestSigil.initFor(getClass.getSimpleName)
   TestSigil.setProvider(LlamaCppProvider(TestSigil, TestSigil.llamaCppHost).singleton)
@@ -92,8 +92,7 @@ class MultiStepToolFlowSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         val window = all.filter(e =>
           e.conversationId == convId
             && e.timestamp.value >= now.value
-            && e.state == EventState.Complete
-        ).sortBy(_.timestamp.value)
+            && e.state == EventState.Complete).sortBy(_.timestamp.value)
         val toolInvokes = window.collect { case ti: ToolInvoke => ti }
         val toolNames = toolInvokes.map(_.toolName.value).toSet
         val respondInvokes = toolInvokes.filter(_.toolName.value == "respond")
@@ -108,11 +107,13 @@ class MultiStepToolFlowSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     }
   }
 
-  /** Poll `SigilDB.events` until either an `AgentState(Complete)` for
-    * `convId` newer than `after` exists, or the deadline passes. We
-    * don't fail on no-AgentState — for the bug-demonstrating case the
-    * agent loop SHOULD release a Complete AgentState even when it
-    * fails to respond, so this just bounds the wait. */
+  /**
+   * Poll `SigilDB.events` until either an `AgentState(Complete)` for
+   * `convId` newer than `after` exists, or the deadline passes. We
+   * don't fail on no-AgentState — for the bug-demonstrating case the
+   * agent loop SHOULD release a Complete AgentState even when it
+   * fails to respond, so this just bounds the wait.
+   */
   private def waitForAgentTurn(convId: Id[Conversation], after: Long, timeout: FiniteDuration): Task[Unit] = {
     val deadline = System.currentTimeMillis() + timeout.toMillis
     def loop: Task[Unit] = TestSigil.withDB(_.events.transaction(_.list)).flatMap { all =>
@@ -122,7 +123,7 @@ class MultiStepToolFlowSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       }
       if (settled) Task.unit
       else if (System.currentTimeMillis() < deadline) Task.sleep(200.millis).flatMap(_ => loop)
-      else Task.unit   // bound the wait; the assertion inspects what's there.
+      else Task.unit // bound the wait; the assertion inspects what's there.
     }
     loop
   }

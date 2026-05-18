@@ -32,11 +32,10 @@ class ContextMemoryVersioningSpec extends AsyncWordSpec with AsyncTaskSpec with 
     )
 
   "Sigil.upsertMemoryByKey" should {
-    "reject an empty key" in {
+    "reject an empty key" in
       TestSigil.upsertMemoryByKey(seed("x", key = "")).attempt.map { attempted =>
         attempted.isFailure should be(true)
       }
-    }
 
     "insert the first record with validFrom populated" in {
       val key = "pref.lang.insert"

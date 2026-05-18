@@ -9,7 +9,8 @@ import sigil.tooling.types.{BspResourcesResult, BspTargetResources}
 import scala.jdk.CollectionConverters.*
 
 case class BspResourcesInput(projectRoot: String,
-                             targets: List[String] = Nil) extends ToolInput derives RW
+                             targets: List[String] = Nil)
+  extends ToolInput derives RW
 
 /**
  * List resource directories / files for the given targets — non-code
@@ -17,26 +18,30 @@ case class BspResourcesInput(projectRoot: String,
  * Distinct from sources: resources don't compile, they're packaged
  * verbatim.
  */
-final class BspResourcesTool(val manager: BspManager) extends TypedOutputTool[BspResourcesInput, BspResourcesResult](
-  name = ToolName("bsp_resources"),
-  description =
-    """List resource directories / files for the given build targets.
+final class BspResourcesTool(val manager: BspManager)
+  extends TypedOutputTool[BspResourcesInput, BspResourcesResult](
+    name = ToolName("bsp_resources"),
+    description =
+      """List resource directories / files for the given build targets.
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin,
-  keywords = Set("bsp", "resources", "target resources", "list resources"),
-  examples = List(
-    ToolExample(
-      "list resources for every target",
-      BspResourcesInput(projectRoot = "/abs/path/myproject")
+    keywords = Set("bsp", "resources", "target resources", "list resources"),
+    examples = List(
+      ToolExample(
+        "list resources for every target",
+        BspResourcesInput(projectRoot = "/abs/path/myproject")
+      )
     )
   )
-) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  with sigil.tool.ReadOnlyExternalTool
+  with BspToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: BspResourcesInput, context: TurnContext): Task[BspResourcesResult] =
     withSessionTyped[BspResourcesResult](
-      input.projectRoot, context,
+      input.projectRoot,
+      context,
       onError = _ => BspResourcesResult(input.projectRoot, Nil)
     ) { session =>
       targetsFromInput(session, input.targets).flatMap { targets =>
@@ -46,7 +51,7 @@ final class BspResourcesTool(val manager: BspManager) extends TypedOutputTool[Bs
             projectRoot = input.projectRoot,
             items = items.map { item =>
               BspTargetResources(
-                target    = item.getTarget.getUri,
+                target = item.getTarget.getUri,
                 resources = Option(item.getResources).map(_.asScala.toList).getOrElse(Nil)
               )
             }

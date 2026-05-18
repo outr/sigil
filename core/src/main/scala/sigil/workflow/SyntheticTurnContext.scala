@@ -33,7 +33,7 @@ import strider.Workflow
  */
 object SyntheticTurnContext {
 
-  def build(host: Sigil, workflow: Workflow): Task[TurnContext] = {
+  def build(host: Sigil, workflow: Workflow): Task[TurnContext] =
     workflow.conversationId match {
       case None => Task.pure(emptyContext(host))
       case Some(convIdStr) =>
@@ -56,7 +56,7 @@ object SyntheticTurnContext {
             case _ => Task.pure(Nil)
           }
         } yield maybeConv match {
-          case None       => emptyContext(host)
+          case None => emptyContext(host)
           case Some(conv) =>
             val createdByValue = workflow.createdBy.getOrElse("")
             val matched = conv.participants.find(_.id.value == createdByValue).map(_.id)
@@ -71,12 +71,13 @@ object SyntheticTurnContext {
             )
         }
     }
-  }
 
-  /** Fallback when no conversation context exists — synthesize a
-    * placeholder conversation with no participants. Useful for
-    * cron-fired workflows whose tools don't need conversational
-    * grounding (e.g. the file-system or web-fetch tool families). */
+  /**
+   * Fallback when no conversation context exists — synthesize a
+   * placeholder conversation with no participants. Useful for
+   * cron-fired workflows whose tools don't need conversational
+   * grounding (e.g. the file-system or web-fetch tool families).
+   */
   private def emptyContext(host: Sigil): TurnContext = {
     val convId: Id[Conversation] = Conversation.id("workflow-synthetic-" + rapid.Unique())
     val now = lightdb.time.Timestamp()

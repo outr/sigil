@@ -12,7 +12,8 @@ import java.nio.file.{Files, Paths, StandardOpenOption}
 case class LspFormatInput(languageId: String,
                           filePath: String,
                           tabSize: Int = 2,
-                          insertSpaces: Boolean = true) extends ToolInput derives RW
+                          insertSpaces: Boolean = true)
+  extends ToolInput derives RW
 
 /**
  * Format an entire file via the language server's formatting
@@ -24,29 +25,34 @@ case class LspFormatInput(languageId: String,
  * Rust, etc.). Servers that don't have formatting support return an
  * empty edit list — the file is unchanged.
  */
-final class LspFormatTool(val manager: LspManager) extends TypedOutputTool[LspFormatInput, LspFormatResult](
-  name = ToolName("lsp_format"),
-  description =
-    """Format a file via the language server's formatting provider.
+final class LspFormatTool(val manager: LspManager)
+  extends TypedOutputTool[LspFormatInput, LspFormatResult](
+    name = ToolName("lsp_format"),
+    description =
+      """Format a file via the language server's formatting provider.
       |
       |`languageId` + `filePath` identify the document.
       |`tabSize` (default 2) and `insertSpaces` (default true) are passed as
       |FormattingOptions to the server; many servers honor only the project's
       |configured formatter and ignore these.
       |Writes the formatted result back to disk; returns `{filePath, editsApplied}`.""".stripMargin,
-  keywords = Set("lsp", "format", "prettify", "indent", "beautify", "reformat", "style"),
-  examples = List(
-    ToolExample(
-      "format a Scala file",
-      LspFormatInput(languageId = "scala", filePath = "/abs/path/Foo.scala")
+    keywords = Set("lsp", "format", "prettify", "indent", "beautify", "reformat", "style"),
+    examples = List(
+      ToolExample(
+        "format a Scala file",
+        LspFormatInput(languageId = "scala", filePath = "/abs/path/Foo.scala")
+      )
     )
   )
-) with sigil.tool.DestructiveExternalTool with LspToolSupport {
+  with sigil.tool.DestructiveExternalTool
+  with LspToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspFormatInput, context: TurnContext): Task[LspFormatResult] =
     withOpenDocumentTyped[LspFormatResult](
-      input.languageId, input.filePath, context,
+      input.languageId,
+      input.filePath,
+      context,
       onError = msg => throw new RuntimeException(msg)
     ) { (session, uri) =>
       val opts = new FormattingOptions(input.tabSize, input.insertSpaces)

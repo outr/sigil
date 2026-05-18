@@ -40,29 +40,29 @@ class ProgressCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         createdBy = TestUser
       )
       val checkpoint = ProgressCheckpoint(
-        participantId        = TestAgent,
-        conversationId       = convId,
-        topicId              = topic._id,
-        iterationCount       = 15,
+        participantId = TestAgent,
+        conversationId = convId,
+        topicId = topic._id,
+        iterationCount = 15,
         prevCheckpointStatus = Some("looking up the right tool"),
-        currentStatus        = "ran grep across the codebase, found 3 candidate files",
-        meaningfulProgress   = true,
-        remainingSteps       = "narrow to the actual call site and read it",
-        stuckOn              = None,
-        shouldAskUser        = false
+        currentStatus = "ran grep across the codebase, found 3 candidate files",
+        meaningfulProgress = true,
+        remainingSteps = "narrow to the actual call site and read it",
+        stuckOn = None,
+        shouldAskUser = false
       )
       for {
-        _      <- TestSigil.withDB(_.topics.transaction(_.upsert(topic))).unit
-        _      <- TestSigil.publish(checkpoint)
+        _ <- TestSigil.withDB(_.topics.transaction(_.upsert(topic))).unit
+        _ <- TestSigil.publish(checkpoint)
         loaded <- TestSigil.withDB(_.events.transaction(_.get(checkpoint._id)))
       } yield {
         loaded shouldBe defined
-        loaded.get shouldBe a [ProgressCheckpoint]
+        loaded.get shouldBe a[ProgressCheckpoint]
         val rt = loaded.get.asInstanceOf[ProgressCheckpoint]
-        rt.iterationCount       shouldBe 15
+        rt.iterationCount shouldBe 15
         rt.prevCheckpointStatus shouldBe Some("looking up the right tool")
-        rt.meaningfulProgress   shouldBe true
-        rt.stuckOn              shouldBe None
+        rt.meaningfulProgress shouldBe true
+        rt.stuckOn shouldBe None
       }
     }
 
@@ -75,27 +75,37 @@ class ProgressCheckpointSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         createdBy = TestUser
       )
       val first = ProgressCheckpoint(
-        participantId = TestAgent, conversationId = convId, topicId = topic._id,
-        iterationCount = 15, prevCheckpointStatus = None,
+        participantId = TestAgent,
+        conversationId = convId,
+        topicId = topic._id,
+        iterationCount = 15,
+        prevCheckpointStatus = None,
         currentStatus = "searching for the auth filter",
         meaningfulProgress = false,
-        remainingSteps = "find the file", stuckOn = Some("can't find the tool"), shouldAskUser = false
+        remainingSteps = "find the file",
+        stuckOn = Some("can't find the tool"),
+        shouldAskUser = false
       )
       val second = ProgressCheckpoint(
-        participantId = TestAgent, conversationId = convId, topicId = topic._id,
-        iterationCount = 30, prevCheckpointStatus = Some(first.currentStatus),
+        participantId = TestAgent,
+        conversationId = convId,
+        topicId = topic._id,
+        iterationCount = 30,
+        prevCheckpointStatus = Some(first.currentStatus),
         currentStatus = "still searching for the auth filter",
         meaningfulProgress = false,
-        remainingSteps = "find the file", stuckOn = Some("can't find the tool"), shouldAskUser = false
+        remainingSteps = "find the file",
+        stuckOn = Some("can't find the tool"),
+        shouldAskUser = false
       )
       for {
         _ <- TestSigil.withDB(_.topics.transaction(_.upsert(topic))).unit
         _ <- TestSigil.publish(first)
         _ <- TestSigil.publish(second)
-        loadedFirst  <- TestSigil.withDB(_.events.transaction(_.get(first._id)))
+        loadedFirst <- TestSigil.withDB(_.events.transaction(_.get(first._id)))
         loadedSecond <- TestSigil.withDB(_.events.transaction(_.get(second._id)))
       } yield {
-        loadedFirst.collect  { case c: ProgressCheckpoint => c.currentStatus } shouldBe Some(first.currentStatus)
+        loadedFirst.collect { case c: ProgressCheckpoint => c.currentStatus } shouldBe Some(first.currentStatus)
         loadedSecond.collect { case c: ProgressCheckpoint => c.prevCheckpointStatus }.flatten shouldBe Some(first.currentStatus)
       }
     }

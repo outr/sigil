@@ -34,51 +34,66 @@ import fabric.*
  */
 object StrictSchema {
 
-  /** Keywords that strict-mode decoders (OpenAI strict, DeepSeek,
-    * Gemini) reject because they constrain character-level content
-    * that doesn't compose with token-level sampling. Sigil keeps these
-    * on the Scala types for [[sigil.tool.ToolInputValidator]]'s
-    * post-decode check; on the wire they're stripped per provider. */
+  /**
+   * Keywords that strict-mode decoders (OpenAI strict, DeepSeek,
+   * Gemini) reject because they constrain character-level content
+   * that doesn't compose with token-level sampling. Sigil keeps these
+   * on the Scala types for [[sigil.tool.ToolInputValidator]]'s
+   * post-decode check; on the wire they're stripped per provider.
+   */
   val UnsupportedKeys: Set[String] = Set(
-    "pattern", "format",
-    "minLength", "maxLength",
-    "minimum", "maximum",
-    "exclusiveMinimum", "exclusiveMaximum",
+    "pattern",
+    "format",
+    "minLength",
+    "maxLength",
+    "minimum",
+    "maximum",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
     "multipleOf",
-    "minItems", "maxItems",
+    "minItems",
+    "maxItems",
     "uniqueItems"
   )
 
-  /** OpenAI Responses with `strict: true`: every property becomes
-    * required (optionals widened to nullable), `additionalProperties:
-    * false`, and grammar-incompatible keywords stripped. Strict mode
-    * enables full grammar-constrained decoding — the model can't emit
-    * JSON that doesn't match. */
+  /**
+   * OpenAI Responses with `strict: true`: every property becomes
+   * required (optionals widened to nullable), `additionalProperties:
+   * false`, and grammar-incompatible keywords stripped. Strict mode
+   * enables full grammar-constrained decoding — the model can't emit
+   * JSON that doesn't match.
+   */
   def forOpenAIStrict(schema: Json): Json = transform(schema)
 
-  /** DeepSeek mirrors OpenAI's strict-mode dialect — same transforms. */
+  /**
+   * DeepSeek mirrors OpenAI's strict-mode dialect — same transforms.
+   */
   def forDeepSeek(schema: Json): Json = forOpenAIStrict(schema)
 
-  /** Gemini natively grammar-constrains function-call args but rejects
-    * the unsupported keywords AND `additionalProperties` (any value).
-    * Required fields stay required (Gemini doesn't enforce
-    * "everything required" the way OpenAI strict does); just clean
-    * up the keys Gemini doesn't tolerate. */
+  /**
+   * Gemini natively grammar-constrains function-call args but rejects
+   * the unsupported keywords AND `additionalProperties` (any value).
+   * Required fields stay required (Gemini doesn't enforce
+   * "everything required" the way OpenAI strict does); just clean
+   * up the keys Gemini doesn't tolerate.
+   */
   def forGemini(schema: Json): Json =
     constToEnum(stripAdditionalProperties(stripUnsupportedKeys(schema)))
 
-  /** Recursively rewrite `const: x` to `enum: [x]`. Google's
-    * function-call schema validator doesn't support the `const`
-    * keyword (rejected with "Unknown name 'const'") even though it
-    * accepts `enum`. fabric's polymorphic encoding uses `const` on
-    * each subtype's discriminator field; this rewrite produces the
-    * single-element `enum` form Google accepts without changing the
-    * matched-shape semantics. */
+  /**
+   * Recursively rewrite `const: x` to `enum: [x]`. Google's
+   * function-call schema validator doesn't support the `const`
+   * keyword (rejected with "Unknown name 'const'") even though it
+   * accepts `enum`. fabric's polymorphic encoding uses `const` on
+   * each subtype's discriminator field; this rewrite produces the
+   * single-element `enum` form Google accepts without changing the
+   * matched-shape semantics.
+   */
   def constToEnum(schema: Json): Json = schema match {
     case Obj(map) =>
       val rewritten = map.iterator.map {
         case ("const", v) => ("enum", arr(v))
-        case (k, v)       => (k, constToEnum(v))
+        case (k, v) => (k, constToEnum(v))
       }.toList
       obj(rewritten*)
     case Arr(items, _) =>
@@ -86,16 +101,20 @@ object StrictSchema {
     case other => other
   }
 
-  /** Anthropic doesn't grammar-constrain tool-call args at the schema
-    * level. The post-decode validator is the real safety net. We strip
-    * grammar-only keywords for schema hygiene (Anthropic's API tolerates
-    * unknown keys but the cleaner shape avoids confusing surface area). */
+  /**
+   * Anthropic doesn't grammar-constrain tool-call args at the schema
+   * level. The post-decode validator is the real safety net. We strip
+   * grammar-only keywords for schema hygiene (Anthropic's API tolerates
+   * unknown keys but the cleaner shape avoids confusing surface area).
+   */
   def forAnthropic(schema: Json): Json = stripUnsupportedKeys(schema)
 
-  /** Recursively strip [[UnsupportedKeys]] from a JSON Schema without
-    * altering its required / property / object shape. Building block
-    * for the per-provider helpers; exposed here so apps with custom
-    * provider implementations can compose their own rewrites. */
+  /**
+   * Recursively strip [[UnsupportedKeys]] from a JSON Schema without
+   * altering its required / property / object shape. Building block
+   * for the per-provider helpers; exposed here so apps with custom
+   * provider implementations can compose their own rewrites.
+   */
   def stripUnsupportedKeys(schema: Json): Json = schema match {
     case Obj(map) =>
       val cleaned = map.iterator.collect {
@@ -107,8 +126,10 @@ object StrictSchema {
     case other => other
   }
 
-  /** Recursively remove `additionalProperties` (any value) from a
-    * schema. Gemini's validator rejects schemas containing it. */
+  /**
+   * Recursively remove `additionalProperties` (any value) from a
+   * schema. Gemini's validator rejects schemas containing it.
+   */
   def stripAdditionalProperties(json: Json): Json = json match {
     case Obj(map) =>
       val kept = map.iterator.collect {
@@ -130,12 +151,14 @@ object StrictSchema {
     case other => other
   }
 
-  /** Rewrite an `{type: "object", properties, required, additionalProperties}`
-    * shape: every property becomes required, optionals become nullable. */
+  /**
+   * Rewrite an `{type: "object", properties, required, additionalProperties}`
+   * shape: every property becomes required, optionals become nullable.
+   */
   private def transformObject(map: Map[String, Json]): Json = {
     val originalRequired: Set[String] = map.get("required") match {
       case Some(Arr(arr, _)) => arr.collect { case Str(s, _) => s }.toSet
-      case _              => Set.empty
+      case _ => Set.empty
     }
     val transformedProps: List[(String, Json)] = map.get("properties") match {
       case Some(Obj(props)) =>
@@ -150,29 +173,31 @@ object StrictSchema {
     }
     val allKeys = transformedProps.map(_._1)
     val rebuilt = map ++ Map(
-      "properties"           -> obj(transformedProps*),
-      "required"             -> arr(allKeys.map(str)*),
+      "properties" -> obj(transformedProps*),
+      "required" -> arr(allKeys.map(str)*),
       "additionalProperties" -> bool(false)
     )
     obj(stripUnsupported(rebuilt).toList*)
   }
 
-  /** Recurse into arrays / oneOf / anyOf branches; strip unsupported
-    * keywords. Convert `oneOf` → `anyOf`: OpenAI strict mode rejects
-    * `oneOf` nested under `anyOf` (which Option-wrapped polymorphic
-    * fields produce — `Option[ParticipantId]` becomes
-    * `anyOf: [{oneOf: [...subtypes...]}, {type: null}]`). For
-    * fabric's discriminated polymorphic encoding the two are
-    * semantically equivalent — every branch has a unique
-    * `type`-discriminator `const`, so at most one matches and `anyOf`
-    * accepts the same shapes as `oneOf` would. */
+  /**
+   * Recurse into arrays / oneOf / anyOf branches; strip unsupported
+   * keywords. Convert `oneOf` → `anyOf`: OpenAI strict mode rejects
+   * `oneOf` nested under `anyOf` (which Option-wrapped polymorphic
+   * fields produce — `Option[ParticipantId]` becomes
+   * `anyOf: [{oneOf: [...subtypes...]}, {type: null}]`). For
+   * fabric's discriminated polymorphic encoding the two are
+   * semantically equivalent — every branch has a unique
+   * `type`-discriminator `const`, so at most one matches and `anyOf`
+   * accepts the same shapes as `oneOf` would.
+   */
   private def transformOther(map: Map[String, Json]): Json = {
     val recursed = map.map {
-      case ("items", v)         => "items" -> transform(v)
+      case ("items", v) => "items" -> transform(v)
       case ("oneOf", Arr(a, _)) => "anyOf" -> arr(a.map(transform)*)
       case ("anyOf", Arr(a, _)) => "anyOf" -> arr(a.map(transform)*)
       case ("allOf", Arr(a, _)) => "allOf" -> arr(a.map(transform)*)
-      case kv                   => kv
+      case kv => kv
     }
     obj(stripUnsupported(recursed).toList*)
   }
@@ -180,9 +205,11 @@ object StrictSchema {
   private def stripUnsupported(map: Map[String, Json]): Map[String, Json] =
     map.filterNot { case (k, _) => UnsupportedKeys.contains(k) }
 
-  /** Wrap a schema so it accepts `null`. For primitive `type` strings we
-    * widen to a `[t, "null"]` array; for compound shapes we use
-    * `anyOf` so we don't accidentally drop the original constraints. */
+  /**
+   * Wrap a schema so it accepts `null`. For primitive `type` strings we
+   * widen to a `[t, "null"]` array; for compound shapes we use
+   * `anyOf` so we don't accidentally drop the original constraints.
+   */
   private def makeNullable(schema: Json): Json = schema match {
     case Obj(m) =>
       m.get("type") match {

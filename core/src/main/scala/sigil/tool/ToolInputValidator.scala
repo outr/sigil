@@ -23,9 +23,11 @@ import java.util.regex.Pattern
  */
 object ToolInputValidator {
 
-  /** Validate `json` against `definition`. Returns an empty list when
-    * everything passes; otherwise a list of `field-path: reason`
-    * messages. */
+  /**
+   * Validate `json` against `definition`. Returns an empty list when
+   * everything passes; otherwise a list of `field-path: reason`
+   * messages.
+   */
   def validate(json: Json, definition: Definition): List[String] =
     walk(path = Nil, json = json, definition = definition).toList
 
@@ -36,7 +38,7 @@ object ToolInputValidator {
         fields.iterator.flatMap { case (key, fieldDef) =>
           map.get(key) match {
             case Some(value) => walk(path :+ key, value, fieldDef)
-            case None        => Vector.empty // missing-required is the parser's job
+            case None => Vector.empty // missing-required is the parser's job
           }
         }.toVector
       case (Arr(items, _), DefType.Arr(itemDef)) =>

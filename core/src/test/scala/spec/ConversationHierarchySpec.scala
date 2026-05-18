@@ -39,14 +39,12 @@ class ConversationHierarchySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
     "round-trip through the conversations store when set" in {
       val parent = fresh()
-      val child  = fresh(parentId = Some(parent._id))
+      val child = fresh(parentId = Some(parent._id))
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(parent)))
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(child)))
         loaded <- TestSigil.withDB(_.conversations.transaction(_.get(child._id)))
-      } yield {
-        loaded.flatMap(_.parentConversationId) shouldBe Some(parent._id)
-      }
+      } yield loaded.flatMap(_.parentConversationId) shouldBe Some(parent._id)
     }
 
     "let apps locate a conversation's children by scanning the store" in {
@@ -75,7 +73,7 @@ class ConversationHierarchySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     }
 
     "round-trip through the store" in {
-      val live     = fresh(archived = false)
+      val live = fresh(archived = false)
       val archived = fresh(archived = true)
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(live)))

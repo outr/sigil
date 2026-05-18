@@ -44,12 +44,15 @@ case class StandardBlockExtractor(toInformation: (String, Id[Information]) => In
                                   placeholder: (Id[Information], String) => String =
                                     StandardBlockExtractor.DefaultPlaceholder,
                                   summaryOf: String => String = StandardBlockExtractor.DefaultSummary,
-                                  /** Emit a progress callback every N frames inspected.
-                                    * Default 500 keeps the activity-bar pulse cheap on small
-                                    * runs but visible on imports. Apps with very wide UIs
-                                    * tighten; apps with no progress surface keep the
-                                    * default — the callback is a no-op by default. */
-                                  progressEvery: Int = 500) extends BlockExtractor {
+                                  /**
+                                   * Emit a progress callback every N frames inspected.
+                                   * Default 500 keeps the activity-bar pulse cheap on small
+                                   * runs but visible on imports. Apps with very wide UIs
+                                   * tighten; apps with no progress surface keep the
+                                   * default — the callback is a no-op by default.
+                                   */
+                                  progressEvery: Int = 500)
+  extends BlockExtractor {
 
   override def extract(sigil: Sigil,
                        frames: Vector[ContextFrame],
@@ -63,7 +66,7 @@ case class StandardBlockExtractor(toInformation: (String, Id[Information]) => In
     // activity-bar label reflects forward motion.
     val outcomes = new Array[ContextFrame](total)
     val summariesBuilder = Vector.newBuilder[InformationSummary]
-    val infosBuilder     = Vector.newBuilder[Information]
+    val infosBuilder = Vector.newBuilder[Information]
 
     def walk(remaining: List[(ContextFrame, Int)]): Task[Unit] = remaining match {
       case Nil => Task.unit
@@ -104,21 +107,23 @@ case class StandardBlockExtractor(toInformation: (String, Id[Information]) => In
     } yield BlockExtractionResult(outcomes.toVector, summariesBuilder.result())
   }
 
-  /** Allocate an Information id, build the record via the factory,
-    * and return the replaced frame + the catalog summary + the
-    * record to be persisted at the end of the pass. No I/O here. */
+  /**
+   * Allocate an Information id, build the record via the factory,
+   * and return the replaced frame + the catalog summary + the
+   * record to be persisted at the end of the pass. No I/O here.
+   */
   private def buildExtraction(content: String,
                               replace: String => ContextFrame): (ContextFrame, InformationSummary, Information) = {
-    val newId   = Id[Information]()
-    val info    = toInformation(content, newId)
+    val newId = Id[Information]()
+    val info = toInformation(content, newId)
     val summary = summaryOf(content)
     val refText = placeholder(newId, summary)
     (
       replace(refText),
       InformationSummary(
-        id              = newId,
+        id = newId,
         informationType = info.informationType,
-        summary         = summary
+        summary = summary
       ),
       info
     )
@@ -127,7 +132,8 @@ case class StandardBlockExtractor(toInformation: (String, Id[Information]) => In
 
 object StandardBlockExtractor {
   val DefaultPlaceholder: (Id[Information], String) => String =
-    (id, summary) => s"(large content stored as Information[${id.value}]. Summary: $summary. Use `lookup(capabilityType=\"Information\", name=\"${id.value}\")` to retrieve full content.)"
+    (id, summary) =>
+      s"(large content stored as Information[${id.value}]. Summary: $summary. Use `lookup(capabilityType=\"Information\", name=\"${id.value}\")` to retrieve full content.)"
 
   val DefaultSummary: String => String = content => {
     val firstLine = content.linesIterator.find(_.trim.nonEmpty).getOrElse("").trim

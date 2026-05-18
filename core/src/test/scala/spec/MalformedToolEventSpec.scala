@@ -24,20 +24,20 @@ class MalformedToolEventSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
   private def freshConversation(label: String): Task[Conversation] = {
     val convId = Conversation.id(s"malformed-$label-${rapid.Unique()}")
-    val topic  = TopicEntry(id = Topic.id(s"topic-$convId"), label = "test", summary = "test")
-    val conv   = Conversation(_id = convId, topics = List(topic))
+    val topic = TopicEntry(id = Topic.id(s"topic-$convId"), label = "test", summary = "test")
+    val conv = Conversation(_id = convId, topics = List(topic))
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
   }
 
   private def buildBadToolMessage(conv: Conversation): Message =
     Message(
-      participantId  = TestAgent,
+      participantId = TestAgent,
       conversationId = conv._id,
-      topicId        = conv.currentTopicId,
-      content        = Vector(ResponseContent.Text("rogue")),
-      role           = MessageRole.Tool,
-      state          = EventState.Complete,
-      visibility     = MessageVisibility.Agents
+      topicId = conv.currentTopicId,
+      content = Vector(ResponseContent.Text("rogue")),
+      role = MessageRole.Tool,
+      state = EventState.Complete,
+      visibility = MessageVisibility.Agents
       // origin = None — this is the invariant violation.
     )
 
@@ -46,7 +46,7 @@ class MalformedToolEventSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     "reject a Tool-role event without origin, with diagnostic stack trace" in {
       for {
         conv <- freshConversation("publish")
-        bad  = buildBadToolMessage(conv)
+        bad = buildBadToolMessage(conv)
         result <- TestSigil.publish(bad).map(_ => Right(())).handleError(t => Task.pure(Left(t)))
         listed <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
@@ -78,21 +78,21 @@ class MalformedToolEventSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     "reject a batch containing any malformed Tool-role event" in {
       for {
         conv <- freshConversation("hist")
-        bad   = buildBadToolMessage(conv)
-        good  = Message(
-                  participantId  = TestUser,
-                  conversationId = conv._id,
-                  topicId        = conv.currentTopicId,
-                  content        = Vector(ResponseContent.Text("hi")),
-                  state          = EventState.Complete
-                )
+        bad = buildBadToolMessage(conv)
+        good = Message(
+          participantId = TestUser,
+          conversationId = conv._id,
+          topicId = conv.currentTopicId,
+          content = Vector(ResponseContent.Text("hi")),
+          state = EventState.Complete
+        )
         result <- TestSigil.publishHistoricalSilent(Seq(good, bad), conv._id)
-                    .map(_ => Right(())).handleError(t => Task.pure(Left(t)))
+          .map(_ => Right(())).handleError(t => Task.pure(Left(t)))
         listed <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         result.isLeft shouldBe true
         // Whole-batch reject — neither event lands.
-        listed.exists(_._id == bad._id)  shouldBe false
+        listed.exists(_._id == bad._id) shouldBe false
         listed.exists(_._id == good._id) shouldBe false
       }
     }
@@ -104,13 +104,13 @@ class MalformedToolEventSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val convId = Conversation.id("framebuilder-recover")
       val topicId = Topic.id("topic-recover")
       val bad = Message(
-        participantId  = TestAgent,
+        participantId = TestAgent,
         conversationId = convId,
-        topicId        = topicId,
-        content        = Vector(ResponseContent.Text("rogue")),
-        role           = MessageRole.Tool,
-        state          = EventState.Complete,
-        visibility     = MessageVisibility.Agents
+        topicId = topicId,
+        content = Vector(ResponseContent.Text("rogue")),
+        role = MessageRole.Tool,
+        state = EventState.Complete,
+        visibility = MessageVisibility.Agents
       )
       val frame = FrameBuilder.computeFrame(bad)
       // Doesn't throw.
@@ -126,14 +126,14 @@ class MalformedToolEventSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val topicId = Topic.id("topic-happy")
       val parent = Event.id()
       val ok = Message(
-        participantId  = TestAgent,
+        participantId = TestAgent,
         conversationId = convId,
-        topicId        = topicId,
-        content        = Vector(ResponseContent.Text("real result")),
-        role           = MessageRole.Tool,
-        state          = EventState.Complete,
-        visibility     = MessageVisibility.Agents,
-        origin         = Some(parent)
+        topicId = topicId,
+        content = Vector(ResponseContent.Text("real result")),
+        role = MessageRole.Tool,
+        state = EventState.Complete,
+        visibility = MessageVisibility.Agents,
+        origin = Some(parent)
       )
       val frame = FrameBuilder.computeFrame(ok)
       frame.get shouldBe a[ContextFrame.ToolResult]

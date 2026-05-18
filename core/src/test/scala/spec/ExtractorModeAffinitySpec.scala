@@ -38,9 +38,11 @@ class ExtractorModeAffinitySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   private val extractorModel: Id[Model] = Model.id("test", "extractor-probe-model")
 
-  /** Provider that emits a scripted `extract_memories` tool_call
-    * carrying the supplied [[ExtractedMemory]] list. */
-  private final class ScriptedExtractorProvider(memories: List[ExtractedMemory]) extends Provider {
+  /**
+   * Provider that emits a scripted `extract_memories` tool_call
+   * carrying the supplied [[ExtractedMemory]] list.
+   */
+  final private class ScriptedExtractorProvider(memories: List[ExtractedMemory]) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -64,21 +66,21 @@ class ExtractorModeAffinitySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       // Always-on filter — the test drives extraction directly with
       // crafted ExtractedMemory payloads; the high-signal gate is
       // tested separately in DefaultHighSignalFilterSpec.
-      filter     = new HighSignalFilter {
+      filter = new HighSignalFilter {
         override def isHighSignal(userMessage: String): Boolean = true
       },
       spaceIdFor = (_: Id[Conversation]) => Task.pure(Some(GlobalSpace: SpaceId))
     )
     for {
-      _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       out <- extractor.extract(
-               sigil          = TestSigil,
-               conversationId = convId,
-               modelId        = extractorModel,
-               chain          = List(TestUser, TestAgent),
-               userMessage    = "Always create failing unit tests when coding before fixing a bug.",
-               agentResponse  = "Understood — I'll do that going forward."
-             )
+        sigil = TestSigil,
+        conversationId = convId,
+        modelId = extractorModel,
+        chain = List(TestUser, TestAgent),
+        userMessage = "Always create failing unit tests when coding before fixing a bug.",
+        agentResponse = "Understood — I'll do that going forward."
+      )
     } yield out
   }
 
@@ -88,9 +90,9 @@ class ExtractorModeAffinitySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val convId = Conversation.id(s"extractor-mode-single-${rapid.Unique()}")
       val mems = List(ExtractedMemory(
         content = "Always create failing tests before fixing a bug.",
-        label   = "tdd",
-        key     = Some("rules.tdd"),
-        tags    = List("rule", "mode:coding")
+        label = "tdd",
+        key = Some("rules.tdd"),
+        tags = List("rule", "mode:coding")
       ))
       runExtractor(mems, convId).map { persisted =>
         persisted should have size 1
@@ -105,9 +107,9 @@ class ExtractorModeAffinitySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val convId = Conversation.id(s"extractor-mode-multi-${rapid.Unique()}")
       val mems = List(ExtractedMemory(
         content = "When coding or doing research, prefer primary sources.",
-        label   = "primary-sources",
-        key     = Some("rules.primary_sources"),
-        tags    = List("mode:coding", "rule", "mode:web-research")
+        label = "primary-sources",
+        key = Some("rules.primary_sources"),
+        tags = List("mode:coding", "rule", "mode:web-research")
       ))
       runExtractor(mems, convId).map { persisted =>
         val m = persisted.head
@@ -123,9 +125,9 @@ class ExtractorModeAffinitySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val convId = Conversation.id(s"extractor-mode-none-${rapid.Unique()}")
       val mems = List(ExtractedMemory(
         content = "User prefers metric units.",
-        label   = "user-units",
-        key     = Some("user.units"),
-        tags    = List("preference", "units")
+        label = "user-units",
+        key = Some("user.units"),
+        tags = List("preference", "units")
       ))
       runExtractor(mems, convId).map { persisted =>
         val m = persisted.head
@@ -138,9 +140,9 @@ class ExtractorModeAffinitySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val convId = Conversation.id(s"extractor-mode-typo-${rapid.Unique()}")
       val mems = List(ExtractedMemory(
         content = "Always cite sources.",
-        label   = "cite",
-        key     = Some("rules.cite"),
-        tags    = List("rule", "mode:not-a-real-mode")
+        label = "cite",
+        key = Some("rules.cite"),
+        tags = List("rule", "mode:not-a-real-mode")
       ))
       runExtractor(mems, convId).map { persisted =>
         val m = persisted.head

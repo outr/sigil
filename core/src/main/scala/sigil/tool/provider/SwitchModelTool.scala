@@ -34,10 +34,11 @@ import sigil.tool.{ToolExample, ToolName, TypedTool}
  * to gate switching by user role override their own `accessibleSpaces`
  * resolution to control which spaces a chain can mutate.
  */
-case object SwitchModelTool extends TypedTool[SwitchModelInput](
-  name = ToolName("switch_model"),
-  description =
-    """Switch the AI model or provider strategy used for this conversation. Accepts:
+case object SwitchModelTool
+  extends TypedTool[SwitchModelInput](
+    name = ToolName("switch_model"),
+    description =
+      """Switch the AI model or provider strategy used for this conversation. Accepts:
       |  - a model id (e.g. "anthropic/claude-opus-4-7", "openai/gpt-5.4") — creates an ad-hoc
       |    single-model override and assigns it
       |  - a saved strategy label or id — assigns that strategy
@@ -45,15 +46,14 @@ case object SwitchModelTool extends TypedTool[SwitchModelInput](
       |
       |Ambiguous matches return a disambiguation list; surface the choices to the user via
       |a structured-options reply.""".stripMargin,
-  examples = List(
-    ToolExample("Switch to a specific model", SwitchModelInput("anthropic/claude-opus-4-7")),
-    ToolExample("Use a saved strategy by label", SwitchModelInput("Balanced")),
-    ToolExample("Revert to default", SwitchModelInput("auto"))
-  ),
-  keywords = Set("switch", "model", "strategy", "provider", "change", "use", "auto", "default")
-) {
+    examples = List(
+      ToolExample("Switch to a specific model", SwitchModelInput("anthropic/claude-opus-4-7")),
+      ToolExample("Use a saved strategy by label", SwitchModelInput("Balanced")),
+      ToolExample("Revert to default", SwitchModelInput("auto"))
+    ),
+    keywords = Set("switch", "model", "strategy", "provider", "change", "use", "auto", "default")
+  ) {
   override def paginate: Boolean = false
-
 
   override protected def executeTyped(input: SwitchModelInput, ctx: TurnContext): Stream[Event] =
     Stream.force(handle(input.query.trim, ctx).map(emit => Stream.emit[Event](emit)))
@@ -79,31 +79,33 @@ case object SwitchModelTool extends TypedTool[SwitchModelInput](
             saved.filter(_.label.equalsIgnoreCase(rawQuery)) match {
               case Nil =>
                 fuzzyStrategyMatch(rawQuery, saved) match {
-                  case Nil          => createAdHocOrRefuse(rawQuery, ctx)
+                  case Nil => createAdHocOrRefuse(rawQuery, ctx)
                   case List(single) => assign(single, ctx)
-                  case multiple     => Task.pure(disambiguateStrategies(rawQuery, multiple, ctx))
+                  case multiple => Task.pure(disambiguateStrategies(rawQuery, multiple, ctx))
                 }
               case List(single) => assign(single, ctx)
-              case multiple     => Task.pure(disambiguateStrategies(rawQuery, multiple, ctx))
+              case multiple => Task.pure(disambiguateStrategies(rawQuery, multiple, ctx))
             }
         }
       }
   }
 
-  /** Resolve a non-strategy input to a registered model id via the
-    * shared [[ModelResolution]] chain (alias → exact id → bare-model
-    * lookup). Refuses with the resolver's guidance message when none
-    * matches — eliminates the prior silent-fallthrough that stamped
-    * phantom modelIds and routed to llama by accident. */
+  /**
+   * Resolve a non-strategy input to a registered model id via the
+   * shared [[ModelResolution]] chain (alias → exact id → bare-model
+   * lookup). Refuses with the resolver's guidance message when none
+   * matches — eliminates the prior silent-fallthrough that stamped
+   * phantom modelIds and routed to llama by accident.
+   */
   private def createAdHocOrRefuse(rawQuery: String, ctx: TurnContext): Task[Message] =
     ModelResolution.resolve(rawQuery, ctx).flatMap {
       case ModelResolutionResult.Unresolved(_, guidance) =>
         Task.pure(reply(ctx, guidance))
       case ModelResolutionResult.Resolved(modelId, via) =>
         val noteVia = via match {
-          case ModelResolutionResult.Resolution.Alias     => s" (resolved alias '$rawQuery' → ${modelId.value})"
+          case ModelResolutionResult.Resolution.Alias => s" (resolved alias '$rawQuery' → ${modelId.value})"
           case ModelResolutionResult.Resolution.BareModel => s" (interpreted '$rawQuery' as ${modelId.value})"
-          case ModelResolutionResult.Resolution.ExactId   => ""
+          case ModelResolutionResult.Resolution.ExactId => ""
         }
         createAdHoc(modelId, rawQuery, noteVia, ctx)
     }
@@ -125,7 +127,7 @@ case object SwitchModelTool extends TypedTool[SwitchModelInput](
     )
     for {
       saved <- ctx.sigil.saveProviderStrategy(record)
-      _     <- ctx.sigil.assignProviderStrategy(ctx.conversation.space, saved._id, ctx.chain)
+      _ <- ctx.sigil.assignProviderStrategy(ctx.conversation.space, saved._id, ctx.chain)
     } yield reply(ctx, s"Switching to '${modelId.value}'$noteVia. The next message will use that model.")
   }
 
@@ -139,19 +141,21 @@ case object SwitchModelTool extends TypedTool[SwitchModelInput](
                                      options: List[ProviderStrategyRecord],
                                      ctx: TurnContext): Message = {
     val list = options.map(s => s"  - ${s.label} (id=${s._id.value})").mkString("\n")
-    reply(ctx,
+    reply(
+      ctx,
       s"Multiple strategies match '$query':\n$list\n\n" +
-        "Re-run `switch_model` with the exact label or id, or pair with `respond_options` to ask the user.")
+        "Re-run `switch_model` with the exact label or id, or pair with `respond_options` to ask the user."
+    )
   }
 
   private def reply(ctx: TurnContext, text: String): Message = Message(
-    participantId  = ctx.caller,
+    participantId = ctx.caller,
     conversationId = ctx.conversation.id,
-    topicId        = ctx.conversation.currentTopicId,
-    content        = Vector(ResponseContent.Text(text)),
-    state          = EventState.Complete,
-    role           = MessageRole.Tool,
-    visibility     = MessageVisibility.Agents
+    topicId = ctx.conversation.currentTopicId,
+    content = Vector(ResponseContent.Text(text)),
+    state = EventState.Complete,
+    role = MessageRole.Tool,
+    visibility = MessageVisibility.Agents
   )
 
   private def normalize(s: String): String = s.toLowerCase.replaceAll("[\\s\\-_.]", "")

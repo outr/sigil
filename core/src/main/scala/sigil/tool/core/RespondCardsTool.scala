@@ -16,18 +16,20 @@ import sigil.tool.model.RespondCardsInput
  * the Message's `content` carries them in order so renderers project
  * each card with its own native grouping.
  */
-case object RespondCardsTool extends TypedTool[RespondCardsInput](
-  name = ToolName("respond_cards"),
-  description =
-    """Emit a sequence of composite Cards in one reply — for dashboards (multiple metric tiles),
+case object RespondCardsTool
+  extends TypedTool[RespondCardsInput](
+    name = ToolName("respond_cards"),
+    description =
+      """Emit a sequence of composite Cards in one reply — for dashboards (multiple metric tiles),
       |result sets (one card per hit), or any response composed of several distinct grouped units.
       |Each card carries its own optional title + kind + sections.
       |
       |- `topicLabel` — 3-6 words.
       |- `topicSummary` — 1-2 sentences.
       |- `cards` — the cards, in order.""".stripMargin,
-  examples = Nil
-) with RespondFamilyTool {
+    examples = Nil
+  )
+  with RespondFamilyTool {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: RespondCardsInput, context: TurnContext): rapid.Stream[Event] =

@@ -17,4 +17,5 @@ case class UpdateScriptToolInput(name: String,
                                  description: Option[String] = None,
                                  code: Option[String] = None,
                                  parameters: Option[Json] = None,
-                                 keywords: Option[Set[String]] = None) extends ToolInput derives RW
+                                 keywords: Option[Set[String]] = None)
+  extends ToolInput derives RW

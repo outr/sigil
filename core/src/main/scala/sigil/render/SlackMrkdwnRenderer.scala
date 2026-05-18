@@ -24,21 +24,21 @@ object SlackMrkdwnRenderer extends ContentRenderer[String] {
     if (a.isEmpty) b else if (b.isEmpty) a else s"$a\n\n$b"
 
   override def renderBlock(block: ResponseContent): String = block match {
-    case ResponseContent.Text(text)             => text
-    case ResponseContent.Markdown(text)         => convertMarkdownToMrkdwn(text)
-    case ResponseContent.Heading(text)          => s"*$text*"
-    case ResponseContent.Code(code, _)          => s"```\n$code\n```"
-    case ResponseContent.Diff(diff, _)          => s"```\n$diff\n```"
-    case ResponseContent.Table(headers, rows)   => s"```\n${renderTable(headers, rows)}\n```"
-    case ResponseContent.ItemList(items, true)  => items.zipWithIndex.map { case (i, n) => s"${n + 1}. $i" }.mkString("\n")
+    case ResponseContent.Text(text) => text
+    case ResponseContent.Markdown(text) => convertMarkdownToMrkdwn(text)
+    case ResponseContent.Heading(text) => s"*$text*"
+    case ResponseContent.Code(code, _) => s"```\n$code\n```"
+    case ResponseContent.Diff(diff, _) => s"```\n$diff\n```"
+    case ResponseContent.Table(headers, rows) => s"```\n${renderTable(headers, rows)}\n```"
+    case ResponseContent.ItemList(items, true) => items.zipWithIndex.map { case (i, n) => s"${n + 1}. $i" }.mkString("\n")
     case ResponseContent.ItemList(items, false) => items.map(i => s"• $i").mkString("\n")
-    case ResponseContent.Link(url, label)       => s"<$url|$label>"
-    case ResponseContent.Image(url, alt)        => s"<$url|${alt.getOrElse("image")}>"
+    case ResponseContent.Link(url, label) => s"<$url|$label>"
+    case ResponseContent.Image(url, alt) => s"<$url|${alt.getOrElse("image")}>"
     case ResponseContent.Citation(src, exc, u) =>
       val link = u.fold(src)(u => s"<$u|$src>")
-      exc.fold(s"_${link}_")(e => s"_${link}: ${e}_")
+      exc.fold(s"_${link}_")(e => s"_$link: ${e}_")
     case ResponseContent.Field(label, value, _) => s"*$label:* $value"
-    case ResponseContent.Divider                => "──────────"
+    case ResponseContent.Divider => "──────────"
     case ResponseContent.Options(prompt, opts, _) =>
       val items = opts.map(o => s"• *${o.label}* — ${o.value}").mkString("\n")
       s"$prompt\n$items"
@@ -46,7 +46,7 @@ object SlackMrkdwnRenderer extends ContentRenderer[String] {
       val hint = placeholder.orElse(default).fold("")(h => s" _($h)_")
       s"*$label:*$hint"
     case ResponseContent.SecretInput(label, _, _) => s"*$label:* _(secret)_"
-    case ResponseContent.SecretRef(_, label)      => s"*$label:* ••••••••"
+    case ResponseContent.SecretRef(_, label) => s"*$label:* ••••••••"
     case ResponseContent.StoredFileReference(_, title, _, _, size) =>
       s":paperclip: *$title* (${formatSize(size)})"
     case c: ResponseContent.Card => renderCard(c)

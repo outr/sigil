@@ -10,21 +10,25 @@ import spice.net.*
 object DigitalOceanLiveSupport {
   def apiKey: Option[String] = sys.env.get("DO_ACCESS_KEY").filter(_.nonEmpty)
 
-  /** Minimum hosted model worth probing for credential validity. The
-    * actual integration suite picks its own model via
-    * `DIGITALOCEAN_TEST_MODEL` — this is just an "is the key live"
-    * check that costs one short completion. */
+  /**
+   * Minimum hosted model worth probing for credential validity. The
+   * actual integration suite picks its own model via
+   * `DIGITALOCEAN_TEST_MODEL` — this is just an "is the key live"
+   * check that costs one short completion.
+   */
   private val probeModel: String = sys.env.getOrElse("DIGITALOCEAN_PROBE_MODEL", "kimi-k2.5")
 
-  /** DO's `/v1/models` returns 200 even for revoked keys (returns the
-    * catalog), so the only reliable "is this account usable" probe is
-    * a minimal chat-completions request. */
+  /**
+   * DO's `/v1/models` returns 200 even for revoked keys (returns the
+   * catalog), so the only reliable "is this account usable" probe is
+   * a minimal chat-completions request.
+   */
   private def probe(key: String): HttpRequest = {
     val body = JsonFormatter.Compact(obj(
-      "model"      -> str(probeModel),
-      "messages"   -> arr(obj("role" -> str("user"), "content" -> str("hi"))),
+      "model" -> str(probeModel),
+      "messages" -> arr(obj("role" -> str("user"), "content" -> str("hi"))),
       "max_tokens" -> num(1),
-      "stream"     -> bool(false)
+      "stream" -> bool(false)
     ))
     HttpRequest(
       method = HttpMethod.Post,

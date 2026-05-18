@@ -26,10 +26,12 @@ import sigil.tool.ToolName
  */
 class OrphanToolResultRenderSpec extends AnyWordSpec with Matchers {
 
-  /** Stub Provider exposing the protected `renderFrames` for direct
-    * testing. The Provider trait declares `renderFrames` as
-    * `protected[provider]`, so this stub lives in the same package
-    * spec-side via a thin shim. */
+  /**
+   * Stub Provider exposing the protected `renderFrames` for direct
+   * testing. The Provider trait declares `renderFrames` as
+   * `protected[provider]`, so this stub lives in the same package
+   * spec-side via a thin shim.
+   */
   private object Probe extends Provider {
     override def `type` = _root_.sigil.provider.ProviderType.LlamaCpp
     override def models = Nil
@@ -77,7 +79,7 @@ class OrphanToolResultRenderSpec extends AnyWordSpec with Matchers {
           callId = callId,
           participantId = TestAgent,
           sourceEventId = Id[Event]("tc-event"),
-          wireCallId = Some("call_wire_abc")  // upstream wire id
+          wireCallId = Some("call_wire_abc") // upstream wire id
         ),
         ContextFrame.ToolResult(
           callId = callId,

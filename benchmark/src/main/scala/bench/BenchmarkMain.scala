@@ -23,7 +23,7 @@ package bench
  * completion — `guard` only intervenes on failure.
  */
 object BenchmarkMain {
-  def guard(body: => Unit): Unit = {
+  def guard(body: => Unit): Unit =
     try body
     catch {
       case e: Throwable =>
@@ -31,5 +31,4 @@ object BenchmarkMain {
         e.printStackTrace(System.err)
         System.exit(2)
     }
-  }
 }

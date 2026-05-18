@@ -13,16 +13,23 @@ import rapid.Task
  * reference semantics live in [[DiscoveryFilter]].
  */
 trait ToolFinder {
-  /** Polymorphic-RW registrations for every [[ToolInput]] subclass the
-    * finder's tools may emit. Sigil registers these into the
-    * `ToolInput` poly at init. */
+
+  /**
+   * Polymorphic-RW registrations for every [[ToolInput]] subclass the
+   * finder's tools may emit. Sigil registers these into the
+   * `ToolInput` poly at init.
+   */
   def toolInputRWs: List[RW[? <: ToolInput]]
 
-  /** Find tools matching a discovery request: keyword + mode + space
-    * filters, scored. */
+  /**
+   * Find tools matching a discovery request: keyword + mode + space
+   * filters, scored.
+   */
   def apply(request: DiscoveryRequest): Task[List[Tool]]
 
-  /** Exact-name lookup. Used by the orchestrator and the agent
-    * dispatcher to resolve a tool the caller already named. */
+  /**
+   * Exact-name lookup. Used by the orchestrator and the agent
+   * dispatcher to resolve a tool the caller already named.
+   */
   def byName(name: ToolName): Task[Option[Tool]]
 }

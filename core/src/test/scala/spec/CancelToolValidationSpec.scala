@@ -27,13 +27,13 @@ class CancelToolValidationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     val convId = Conversation.id(s"$suffix-${rapid.Unique()}")
     val topic = Topic(
       conversationId = convId,
-      label          = "spec",
-      summary        = "spec",
-      createdBy      = TestUser
+      label = "spec",
+      summary = "spec",
+      createdBy = TestUser
     )
     val conv = Conversation(
       topics = List(TopicEntry(topic._id, topic.label, topic.summary)),
-      _id    = convId
+      _id = convId
     )
     for {
       _ <- TestSigil.withDB(_.topics.transaction(_.upsert(topic))).unit
@@ -43,10 +43,10 @@ class CancelToolValidationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   private def ctx(conv: Conversation): TurnContext =
     TurnContext(
-      sigil        = TestSigil,
-      chain        = List(TestUser, TestAgent),
+      sigil = TestSigil,
+      chain = List(TestUser, TestAgent),
       conversation = conv,
-      turnInput    = TurnInput(conversationId = conv.id)
+      turnInput = TurnInput(conversationId = conv.id)
     )
 
   private def runCancel(conv: Conversation, reason: String): Task[List[sigil.event.Event]] =
@@ -60,25 +60,25 @@ class CancelToolValidationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   "CancelTool.detectTransition" should {
     "match transition-shaped reasons" in Task {
       // Case 1 from the bug report — "Starting Metals server".
-      CancelTool.detectTransition("Starting Metals server — user requested it")  should not be empty
+      CancelTool.detectTransition("Starting Metals server — user requested it") should not be empty
       // Case 2 from the bug report — "Need to read grep output".
-      CancelTool.detectTransition("Need to read grep output")                    should not be empty
+      CancelTool.detectTransition("Need to read grep output") should not be empty
       // Other transition shapes.
-      CancelTool.detectTransition("waiting for tool output")                     should not be empty
-      CancelTool.detectTransition("transitioning to coding mode")                should not be empty
-      CancelTool.detectTransition("next step is to compile")                     should not be empty
-      CancelTool.detectTransition("then I will analyze the diff")                should not be empty
-      CancelTool.detectTransition("yielding to user input")                      should not be empty
-      CancelTool.detectTransition("checkpoint before continuing")                should not be empty
+      CancelTool.detectTransition("waiting for tool output") should not be empty
+      CancelTool.detectTransition("transitioning to coding mode") should not be empty
+      CancelTool.detectTransition("next step is to compile") should not be empty
+      CancelTool.detectTransition("then I will analyze the diff") should not be empty
+      CancelTool.detectTransition("yielding to user input") should not be empty
+      CancelTool.detectTransition("checkpoint before continuing") should not be empty
       succeed
     }
 
     "let legitimate cancel reasons through" in Task {
-      CancelTool.detectTransition("user requested halt via stop button")     shouldBe None
+      CancelTool.detectTransition("user requested halt via stop button") shouldBe None
       CancelTool.detectTransition("unrecoverable failure: db connection lost") shouldBe None
-      CancelTool.detectTransition("aborting per user instruction")           shouldBe None
-      CancelTool.detectTransition("user clicked stop")                       shouldBe None
-      CancelTool.detectTransition("")                                        shouldBe None
+      CancelTool.detectTransition("aborting per user instruction") shouldBe None
+      CancelTool.detectTransition("user clicked stop") shouldBe None
+      CancelTool.detectTransition("") shouldBe None
     }
   }
 
@@ -88,38 +88,38 @@ class CancelToolValidationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
     "refuse the 'Starting Metals server' reason with a Failure block" in {
       for {
-        conv   <- freshConversation("refuse-start")
+        conv <- freshConversation("refuse-start")
         events <- runCancel(conv, "Starting Metals server — user requested it")
       } yield {
         events.size shouldBe 1
-        events.head shouldBe a [Message]
+        events.head shouldBe a[Message]
         events.exists {
           case _: Stop => true
-          case _       => false
+          case _ => false
         } shouldBe false
         val text = failureText(events).getOrElse("")
-        text should include ("refused")
-        text should include ("start")
+        text should include("refused")
+        text should include("start")
       }
     }
 
     "refuse the 'Need to read grep output' reason with a Failure block" in {
       for {
-        conv   <- freshConversation("refuse-need-to-read")
+        conv <- freshConversation("refuse-need-to-read")
         events <- runCancel(conv, "Need to read grep output")
       } yield {
         events.size shouldBe 1
-        failureText(events).getOrElse("") should include ("need-to")
+        failureText(events).getOrElse("") should include("need-to")
       }
     }
 
     "emit a Stop event for a legitimate user-halt reason" in {
       for {
-        conv   <- freshConversation("legit-halt")
+        conv <- freshConversation("legit-halt")
         events <- runCancel(conv, "User requested halt via Stop button")
       } yield {
         events.size shouldBe 1
-        events.head shouldBe a [Stop]
+        events.head shouldBe a[Stop]
         events.head.asInstanceOf[Stop].force shouldBe true
         events.head.asInstanceOf[Stop].reason shouldBe Some("User requested halt via Stop button")
       }
@@ -127,21 +127,21 @@ class CancelToolValidationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
     "emit a Stop event for an unrecoverable-failure reason" in {
       for {
-        conv   <- freshConversation("legit-failure")
+        conv <- freshConversation("legit-failure")
         events <- runCancel(conv, "Unrecoverable failure: provider returned 500 on retry 3")
       } yield {
         events.size shouldBe 1
-        events.head shouldBe a [Stop]
+        events.head shouldBe a[Stop]
       }
     }
 
     "emit a Stop event when no reason is supplied" in {
       for {
-        conv   <- freshConversation("no-reason")
+        conv <- freshConversation("no-reason")
         events <- CancelTool.execute(CancelInput(), ctx(conv)).toList
       } yield {
         events.size shouldBe 1
-        events.head shouldBe a [Stop]
+        events.head shouldBe a[Stop]
       }
     }
   }

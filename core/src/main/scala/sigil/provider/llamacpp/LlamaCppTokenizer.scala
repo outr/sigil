@@ -55,7 +55,8 @@ final case class LlamaCppTokenizer(baseUrl: URL,
                                    cacheSize: Int = 4096,
                                    breakerThreshold: Int = 3,
                                    breakerCooldown: FiniteDuration = 30.seconds,
-                                   interceptor: Interceptor = Interceptor.empty) extends Tokenizer {
+                                   interceptor: Interceptor = Interceptor.empty)
+  extends Tokenizer {
 
   private val cache: java.util.LinkedHashMap[String, Int] =
     new java.util.LinkedHashMap[String, Int](cacheSize, 0.75f, true) {
@@ -65,7 +66,7 @@ final case class LlamaCppTokenizer(baseUrl: URL,
   private val consecutiveFailures: AtomicInteger = new AtomicInteger(0)
   private val breakerOpenUntil: AtomicLong = new AtomicLong(0L)
 
-  override def count(text: String): Int = {
+  override def count(text: String): Int =
     if (text.isEmpty) 0
     else if (breakerOpen) fallback.count(text)
     else {
@@ -93,7 +94,6 @@ final case class LlamaCppTokenizer(baseUrl: URL,
           n
       }
     }
-  }
 
   private def breakerOpen: Boolean = {
     val until = breakerOpenUntil.get()

@@ -23,7 +23,7 @@ class StaticSkillSyncUpgrade(staticSkills: List[Skill]) extends DatabaseUpgrade 
 
   override def upgrade(ldb: LightDB): Task[Unit] = ldb match {
     case sigilDb: SigilDB => syncSkills(sigilDb)
-    case _                => Task.unit
+    case _ => Task.unit
   }
 
   private def syncSkills(db: SigilDB): Task[Unit] = {

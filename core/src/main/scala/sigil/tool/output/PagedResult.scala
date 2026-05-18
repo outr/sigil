@@ -62,4 +62,5 @@ final case class JsonPagedResult(items: List[Json],
                                  callId: Id[Event],
                                  totalCount: Option[Int] = None,
                                  nodeIds: List[String] = Nil,
-                                 hasChildren: List[Boolean] = Nil) derives RW
+                                 hasChildren: List[Boolean] = Nil)
+  derives RW

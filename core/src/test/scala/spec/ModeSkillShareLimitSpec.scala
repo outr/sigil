@@ -27,44 +27,46 @@ class ModeSkillShareLimitSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   TestSigil.initFor(getClass.getSimpleName)
 
   private def model(slug: String, contextLength: Long): Model = Model(
-    canonicalSlug       = slug,
-    huggingFaceId       = "",
-    name                = slug,
-    displayName         = Some(slug),
-    description         = "",
-    contextLength       = contextLength,
-    architecture        = ModelArchitecture(
-      modality         = "text->text",
-      inputModalities  = List("text"),
+    canonicalSlug = slug,
+    huggingFaceId = "",
+    name = slug,
+    displayName = Some(slug),
+    description = "",
+    contextLength = contextLength,
+    architecture = ModelArchitecture(
+      modality = "text->text",
+      inputModalities = List("text"),
       outputModalities = List("text"),
-      tokenizer        = "Unknown",
-      instructType     = None
+      tokenizer = "Unknown",
+      instructType = None
     ),
-    pricing             = ModelPricing(
-      prompt = BigDecimal(0), completion = BigDecimal(0),
-      webSearch = None, inputCacheRead = None
+    pricing = ModelPricing(
+      prompt = BigDecimal(0),
+      completion = BigDecimal(0),
+      webSearch = None,
+      inputCacheRead = None
     ),
-    topProvider         = ModelTopProvider(
-      contextLength       = Some(contextLength),
+    topProvider = ModelTopProvider(
+      contextLength = Some(contextLength),
       maxCompletionTokens = None,
-      isModerated         = false
+      isModerated = false
     ),
-    perRequestLimits    = None,
+    perRequestLimits = None,
     supportedParameters = Set.empty,
-    defaultParameters   = ModelDefaultParameters(),
-    knowledgeCutoff     = None,
-    expirationDate      = None,
-    links               = ModelLinks(details = ""),
-    created             = lightdb.time.Timestamp(),
-    modified            = lightdb.time.Timestamp(),
-    _id                 = Id[Model](slug)
+    defaultParameters = ModelDefaultParameters(),
+    knowledgeCutoff = None,
+    expirationDate = None,
+    links = ModelLinks(details = ""),
+    created = lightdb.time.Timestamp(),
+    modified = lightdb.time.Timestamp(),
+    _id = Id[Model](slug)
   )
 
   "CoreContextValidator.largestModelContext" should {
 
     "return the model with the highest contextLength" in {
-      val small = model("test/tiny",     2_820L)
-      val mid   = model("test/mid",     32_768L)
+      val small = model("test/tiny", 2_820L)
+      val mid = model("test/mid", 32_768L)
       val large = model("test/frontier", 1_000_000L)
       for {
         _ <- TestSigil.cache.replace(List(small, mid, large))
@@ -78,9 +80,9 @@ class ModeSkillShareLimitSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       // DigitalOcean's /v1/models lists embedding / image models with
       // no context_length; those got contextLength = 0 in the registry.
       // Validators must not pick those as smallest / largest.
-      val zero  = model("test/embed-zero",   0L)
-      val small = model("test/llama-small",  4_096L)
-      val large = model("test/opus-large",   200_000L)
+      val zero = model("test/embed-zero", 0L)
+      val small = model("test/llama-small", 4_096L)
+      val large = model("test/opus-large", 200_000L)
       for {
         _ <- TestSigil.cache.replace(List(zero, small, large))
       } yield {
@@ -96,15 +98,15 @@ class ModeSkillShareLimitSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       // The previous behaviour used minBy, yielding limit = 282 tok
       // against a 1382-tok skill — boot threw. Largest-model basis
       // yields ~20K tok limit which the skill comfortably clears.
-      val small = model("test/llama-small",  2_820L)
-      val large = model("test/opus-large",   200_000L)
+      val small = model("test/llama-small", 2_820L)
+      val large = model("test/opus-large", 200_000L)
       for {
         _ <- TestSigil.cache.replace(List(small, large))
       } yield {
         val largest = CoreContextValidator.largestModelContext(TestSigil).get
-        val limit   = (largest.contextLength.toDouble * TestSigil.modeSkillShareLimit).toInt
+        val limit = (largest.contextLength.toDouble * TestSigil.modeSkillShareLimit).toInt
         val skillText = WorkflowBuilderMode.skill.get.content
-        val tokens    = sigil.tokenize.HeuristicTokenizer.count(skillText)
+        val tokens = sigil.tokenize.HeuristicTokenizer.count(skillText)
         withClue(s"WorkflowBuilder skill: $tokens tok / limit $limit") {
           tokens should be < limit
         }

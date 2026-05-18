@@ -50,9 +50,11 @@ class RunawayAttributionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
   private val modelId: Id[Model] = Model.id("test", "runaway-attribution")
 
-  /** Records each ProviderCall so the spec can inspect generation
-    * settings used per turn. */
-  private final class CallRecorder {
+  /**
+   * Records each ProviderCall so the spec can inspect generation
+   * settings used per turn.
+   */
+  final private class CallRecorder {
     val calls: atomic.AtomicReference[Vector[ProviderCall]] =
       new atomic.AtomicReference(Vector.empty)
     def record(input: ProviderCall): Unit = {
@@ -61,10 +63,12 @@ class RunawayAttributionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     }
   }
 
-  /** Stubborn provider — always emits a non-terminal `change_mode`
-    * (never `respond`). Drives the cap-hit path through the
-    * forced-synthesis turn and into the hard-throw fallback. */
-  private final class StubbornProvider(recorder: CallRecorder) extends Provider {
+  /**
+   * Stubborn provider — always emits a non-terminal `change_mode`
+   * (never `respond`). Drives the cap-hit path through the
+   * forced-synthesis turn and into the hard-throw fallback.
+   */
+  final private class StubbornProvider(recorder: CallRecorder) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -84,14 +88,14 @@ class RunawayAttributionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = ToolName("change_mode") :: CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = ToolName("change_mode") :: CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(
         maxOutputTokens = None,
-        temperature     = Some(0.0),
-        reasoningMode   = ReasoningMode.On
+        temperature = Some(0.0),
+        reasoningMode = ReasoningMode.On
       )
     )
 
@@ -102,25 +106,25 @@ class RunawayAttributionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     val recorder = new CallRecorder
     TestSigil.setProvider(Task.pure(new StubbornProvider(recorder)))
     val convId = Conversation.id(s"runaway-${rapid.Unique()}")
-    val agent  = makeAgent()
-    val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+    val agent = makeAgent()
+    val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
     for {
-      _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-      _   <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("Trigger cap-hit")),
-               state          = EventState.Complete
-             ))
-      _   <- Task.sleep(3.seconds)
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.publish(Message(
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("Trigger cap-hit")),
+        state = EventState.Complete
+      ))
+      _ <- Task.sleep(3.seconds)
       evs <- eventsFor(convId)
     } yield (recorder, convId, evs)
   }
 
   "AgentRunawayException attribution (sigil bug #198)" should {
 
-    "surface a CapHit-attributed Failure Message after a stubborn cap-hit" in {
+    "surface a CapHit-attributed Failure Message after a stubborn cap-hit" in
       driveCapHit().map { case (_, _, evs) =>
         val failureMessages = evs.collect {
           case m: Message if m.isFailure && m.failureReason.exists(_.contains("AgentRunaway")) => m
@@ -131,12 +135,11 @@ class RunawayAttributionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         // CapHit message phrasing.
         reason should include("maxAgentIterations")
       }
-    }
   }
 
   "Forced-synthesis settings override (sigil bug #199)" should {
 
-    "set bounded maxOutputTokens and ReasoningMode.Off on the forced-synthesis call" in {
+    "set bounded maxOutputTokens and ReasoningMode.Off on the forced-synthesis call" in
       driveCapHit().map { case (recorder, _, _) =>
         val recorded = recorder.calls.get().toList
         // The forced-synthesis call is the one with tool_choice =
@@ -144,8 +147,8 @@ class RunawayAttributionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         val forcedCall = recorded.find { c =>
           val respondFamily = sigil.tool.core.CoreTools.atomicContentToolNames
           c.toolChoice == ToolChoice.Required &&
-            c.tools.exists(_.schema.name.value == "respond") &&
-            c.tools.forall(t => respondFamily.contains(t.schema.name))
+          c.tools.exists(_.schema.name.value == "respond") &&
+          c.tools.forall(t => respondFamily.contains(t.schema.name))
         }
         withClue(s"recorded ${recorded.size} calls; none matched the forced-respond pattern: ") {
           forcedCall should not be None
@@ -154,22 +157,20 @@ class RunawayAttributionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         gen.maxOutputTokens should not be empty
         gen.reasoningMode shouldBe ReasoningMode.Off
       }
-    }
   }
 
   "Single failure publish (sigil bug #200)" should {
 
-    "publish exactly one AgentRunaway Failure Message even though the exception propagates through multiple recursion levels" in {
+    "publish exactly one AgentRunaway Failure Message even though the exception propagates through multiple recursion levels" in
       driveCapHit().map { case (_, _, evs) =>
         val runawayFailures = evs.collect {
           case m: Message
-            if m.isFailure &&
-               m.role == MessageRole.Standard &&
-               m.failureReason.exists(_.contains("AgentRunaway")) => m
+              if m.isFailure &&
+                m.role == MessageRole.Standard &&
+                m.failureReason.exists(_.contains("AgentRunaway")) => m
         }
         runawayFailures should have size 1
       }
-    }
   }
 
   "tear down" should {

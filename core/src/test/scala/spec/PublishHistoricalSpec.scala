@@ -42,13 +42,15 @@ class PublishHistoricalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val convId = freshConvId("persist")
       val events: Seq[Event] = (1 to 25).map(i => msg(convId, s"line-$i", 1_000_000L + i))
       for {
-        _    <- TestSigil.publishHistorical(events, convId)
+        _ <- TestSigil.publishHistorical(events, convId)
         rows <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         val mine = rows.filter(_.conversationId == convId)
         mine should have size events.size
         mine.collect { case m: Message => m.content.collect { case t: ResponseContent.Text => t.text }.mkString }
-          .sorted shouldBe events.collect { case m: Message => m.content.collect { case t: ResponseContent.Text => t.text }.mkString }.sorted
+          .sorted shouldBe events.collect { case m: Message =>
+          m.content.collect { case t: ResponseContent.Text => t.text }.mkString
+        }.sorted
       }
     }
 
@@ -56,7 +58,7 @@ class PublishHistoricalSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val convId = freshConvId("view")
       val events: Seq[Event] = (1 to 8).map(i => msg(convId, s"frame-$i", 2_000_000L + i))
       for {
-        _      <- TestSigil.publishHistorical(events, convId)
+        _ <- TestSigil.publishHistorical(events, convId)
         frames <- TestSigil.framesFor(convId)
       } yield {
         val texts = frames.collect { case t: ContextFrame.Text => t.content }

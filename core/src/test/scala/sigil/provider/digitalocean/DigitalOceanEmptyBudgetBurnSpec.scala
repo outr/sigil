@@ -21,18 +21,20 @@ class DigitalOceanEmptyBudgetBurnSpec extends AsyncWordSpec with AsyncTaskSpec w
   spec.TestSigil.initFor(getClass.getSimpleName)
 
   private val doConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
-    providerNamespace     = DigitalOcean.Provider,
-    providerName          = "DigitalOcean",
+    providerNamespace = DigitalOcean.Provider,
+    providerName = "DigitalOcean",
     emptyBudgetBurnThrows = true
   )
 
   private val controlConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
-    providerNamespace     = "control",
-    providerName          = "Control",
+    providerNamespace = "control",
+    providerName = "Control",
     emptyBudgetBurnThrows = false
   )
 
-  /** Drive a sequence of SSE lines through one StreamState. */
+  /**
+   * Drive a sequence of SSE lines through one StreamState.
+   */
   private def drive(lines: Vector[String], config: OpenAIChatCompletions.Config): Vector[sigil.provider.ProviderEvent] = {
     val state = new OpenAIChatCompletions.StreamState(new ToolCallAccumulator(Vector.empty))
     lines.flatMap(line => OpenAIChatCompletions.parseLine(line, state, config))
@@ -41,18 +43,22 @@ class DigitalOceanEmptyBudgetBurnSpec extends AsyncWordSpec with AsyncTaskSpec w
   private def dataLine(j: fabric.Json): String =
     "data: " + fabric.io.JsonFormatter.Compact(j)
 
-  /** A chunk that streams a finish_reason without any delta content. */
+  /**
+   * A chunk that streams a finish_reason without any delta content.
+   */
   private val finishLengthChunk = obj(
     "choices" -> arr(
       obj(
-        "delta"         -> obj("content" -> Null, "reasoning_content" -> Null),
+        "delta" -> obj("content" -> Null, "reasoning_content" -> Null),
         "finish_reason" -> str("length"),
-        "index"         -> num(0)
+        "index" -> num(0)
       )
     )
   )
 
-  /** A chunk with a non-empty reasoning_content delta only. */
+  /**
+   * A chunk with a non-empty reasoning_content delta only.
+   */
   private val reasoningOnlyChunk = obj(
     "choices" -> arr(
       obj(
@@ -62,7 +68,9 @@ class DigitalOceanEmptyBudgetBurnSpec extends AsyncWordSpec with AsyncTaskSpec w
     )
   )
 
-  /** Chunk that emits a normal content delta. */
+  /**
+   * Chunk that emits a normal content delta.
+   */
   private val contentChunk = obj(
     "choices" -> arr(
       obj(
@@ -72,7 +80,9 @@ class DigitalOceanEmptyBudgetBurnSpec extends AsyncWordSpec with AsyncTaskSpec w
     )
   )
 
-  /** Chunk that streams a tool call. */
+  /**
+   * Chunk that streams a tool call.
+   */
   private def toolCallChunk(callId: String, name: String) = obj(
     "choices" -> arr(
       obj(
@@ -80,8 +90,8 @@ class DigitalOceanEmptyBudgetBurnSpec extends AsyncWordSpec with AsyncTaskSpec w
           "tool_calls" -> arr(
             obj(
               "index" -> num(0),
-              "id"    -> str(callId),
-              "type"  -> str("function"),
+              "id" -> str(callId),
+              "type" -> str("function"),
               "function" -> obj("name" -> str(name), "arguments" -> str("{}"))
             )
           )
@@ -152,9 +162,9 @@ class DigitalOceanEmptyBudgetBurnSpec extends AsyncWordSpec with AsyncTaskSpec w
       val stopChunk = obj(
         "choices" -> arr(
           obj(
-            "delta"         -> obj("content" -> Null),
+            "delta" -> obj("content" -> Null),
             "finish_reason" -> str("stop"),
-            "index"         -> num(0)
+            "index" -> num(0)
           )
         )
       )
@@ -181,7 +191,10 @@ class DigitalOceanEmptyBudgetBurnSpec extends AsyncWordSpec with AsyncTaskSpec w
     }
 
     "default ErrorClassifier classifies the empty_budget_burn exception as Fallthrough" in {
-      val exc = new ProviderStreamException("digitalocean", 200, "empty_budget_burn",
+      val exc = new ProviderStreamException(
+        "digitalocean",
+        200,
+        "empty_budget_burn",
         "DigitalOcean consumed max_tokens budget without emitting any content or tool calls")
       sigil.provider.ErrorClassifier.Default.classify(exc) shouldBe sigil.provider.ErrorClassification.Fallthrough
     }

@@ -9,10 +9,11 @@ import sigil.tool.{ToolInput, ToolName, TypedTool}
 
 import java.util.concurrent.atomic.AtomicReference
 
-final case class GetMostRecentTransactionsInput(@description("Number of transactions to return") n: Int = 100)
-  extends ToolInput derives RW
+final case class GetMostRecentTransactionsInput(@description("Number of transactions to return") n: Int = 100) extends ToolInput derives RW
 
-/** `get_most_recent_transactions` — return the trailing `n` settled transactions. */
+/**
+ * `get_most_recent_transactions` — return the trailing `n` settled transactions.
+ */
 final class GetMostRecentTransactionsTool(state: AtomicReference[BankingEnvironment])
   extends TypedTool[GetMostRecentTransactionsInput](
     name = ToolName("get_most_recent_transactions"),

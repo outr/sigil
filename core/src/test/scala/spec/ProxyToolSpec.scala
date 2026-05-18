@@ -29,8 +29,8 @@ import java.util.concurrent.atomic.{AtomicReference, AtomicInteger}
 class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  private val convId   = Conversation.id("proxy-conv")
-  private val topicId  = TestTopicId
+  private val convId = Conversation.id("proxy-conv")
+  private val topicId = TestTopicId
 
   case class FakeToolInput(value: Int) extends ToolInput derives RW
 
@@ -42,7 +42,7 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         ToolExample("doubles its input", FakeToolInput(value = 5))
       )
     ) {
-  override def paginate: Boolean = false
+    override def paginate: Boolean = false
 
     override protected def executeTyped(input: FakeToolInput, context: TurnContext): Stream[Event] =
       Stream.emit(Message(
@@ -57,7 +57,7 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   "ProxyTool" should {
     "preserve the wrapped tool's name, description, and schema" in rapid.Task {
       val transport = new RecordingTransport
-      val proxy     = new ProxyTool(FakeWrappedTool, transport)
+      val proxy = new ProxyTool(FakeWrappedTool, transport)
       proxy.name shouldBe FakeWrappedTool.name
       proxy.description shouldBe FakeWrappedTool.description
       proxy.schema.input shouldBe FakeWrappedTool.schema.input
@@ -67,8 +67,8 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "route execute through the transport with the input rendered to Json" in {
       val transport = new RecordingTransport
-      val proxy     = new ProxyTool(FakeWrappedTool, transport)
-      val ctx       = makeContext()
+      val proxy = new ProxyTool(FakeWrappedTool, transport)
+      val ctx = makeContext()
       val resultMessage = Message(
         participantId = TestUser,
         conversationId = convId,
@@ -90,8 +90,8 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "pass the original ToolName through to the transport" in {
       val transport = new RecordingTransport
-      val proxy     = new ProxyTool(FakeWrappedTool, transport)
-      val ctx       = makeContext()
+      val proxy = new ProxyTool(FakeWrappedTool, transport)
+      val ctx = makeContext()
       transport.respondWith(Stream.empty)
 
       proxy.execute(FakeToolInput(value = 1), ctx).toList.map { _ =>
@@ -116,7 +116,9 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     )
   }
 
-  /** Test transport — records each dispatch call, replays a configured stream. */
+  /**
+   * Test transport — records each dispatch call, replays a configured stream.
+   */
   private class RecordingTransport extends ToolProxyTransport {
     private val response = new AtomicReference[Stream[Event]](Stream.empty)
     val lastCall: AtomicReference[(ToolName, Json, TurnContext)] =

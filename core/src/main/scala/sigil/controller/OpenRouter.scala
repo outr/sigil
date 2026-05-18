@@ -25,7 +25,7 @@ object OpenRouter {
           // without falling back to the raw id tail.
           val displayNameJson: Json = json.get("name") match {
             case Some(n) => obj("displayName" -> n)
-            case None    => obj()
+            case None => obj()
           }
           json
             .merge(obj("_id" -> json("id")))

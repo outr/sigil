@@ -27,11 +27,26 @@ final class ReadFileTool(context: FileSystemContext)
       ToolExample("Read lines 200-300", ReadFileInput(filePath = "data.log", offset = Some(200), limit = Some(100)))
     ),
     keywords = Set(
-      "file", "read", "open", "cat", "view",
-      "contents", "source", "examine", "inspect", "load", "show",
-      "code", "text", "lines", "display", "fetch", "look"
+      "file",
+      "read",
+      "open",
+      "cat",
+      "view",
+      "contents",
+      "source",
+      "examine",
+      "inspect",
+      "load",
+      "show",
+      "code",
+      "text",
+      "lines",
+      "display",
+      "fetch",
+      "look"
     )
-  ) with sigil.tool.ReadOnlyExternalTool {
+  )
+  with sigil.tool.ReadOnlyExternalTool {
   override def paginate: Boolean = false
 
   // Bug #86 — generic primitive: ranks below domain-specific
@@ -46,10 +61,10 @@ final class ReadFileTool(context: FileSystemContext)
       context.readFile(resolved).map { content =>
         val lines = content.split('\n').length
         ReadFileOutput(
-          content    = content,
+          content = content,
           totalLines = lines,
-          linesRead  = lines,
-          hash       = Some(FileVersion.hashOf(content))
+          linesRead = lines,
+          hash = Some(FileVersion.hashOf(content))
         )
       }
     case (off, lim) =>
@@ -59,10 +74,10 @@ final class ReadFileTool(context: FileSystemContext)
           // full file's bytes; passing it as `expectedHash` after a
           // windowed read would silently mismatch on commit.
           ReadFileOutput(
-            content    = lines.mkString("\n"),
+            content = lines.mkString("\n"),
             totalLines = total,
-            linesRead  = lines.size,
-            hash       = None
+            linesRead = lines.size,
+            hash = None
           )
       }
   }

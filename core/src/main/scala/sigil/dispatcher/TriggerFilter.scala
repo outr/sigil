@@ -44,13 +44,13 @@ object TriggerFilter {
     // and SHOULD trigger the next iteration so the agent reads the
     // diagnostic and recovers.
     case m: Message
-      if m.role == MessageRole.Tool && m.participantId == p.id && m.content.isEmpty => false
-    case e if e.role == MessageRole.Tool                              => true
-    case _: AgentState                                                => false
-    case _: Stop                                                      => false
-    case m: Message if m.participantId == p.id                        => false
-    case tc: TopicChange if tc.participantId == p.id                  => false
-    case _: Message | _: ModeChange | _: TopicChange                  => true
-    case _                                                            => false
+        if m.role == MessageRole.Tool && m.participantId == p.id && m.content.isEmpty => false
+    case e if e.role == MessageRole.Tool => true
+    case _: AgentState => false
+    case _: Stop => false
+    case m: Message if m.participantId == p.id => false
+    case tc: TopicChange if tc.participantId == p.id => false
+    case _: Message | _: ModeChange | _: TopicChange => true
+    case _ => false
   }
 }

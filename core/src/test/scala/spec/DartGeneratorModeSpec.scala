@@ -41,8 +41,8 @@ class DartGeneratorModeSpec extends AnyWordSpec with Matchers {
   private def generate(): List[spice.openapi.generator.SourceFile] =
     spice.openapi.generator.dart.DurableSocketDartGenerator(
       spice.openapi.generator.dart.DurableSocketDartConfig(
-        serviceName           = "Test",
-        wireType              = ModeWire,
+        serviceName = "Test",
+        wireType = ModeWire,
         polyDiscriminatorKeys = Map(classOf[Mode].getName -> "name")
       )
     ).generate()

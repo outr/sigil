@@ -26,22 +26,26 @@ import scala.concurrent.duration.*
 class SignalTransportSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Threadsafe recording sink used by the live-attach tests. */
-  private final class RecordingSink extends SignalSink {
+  /**
+   * Threadsafe recording sink used by the live-attach tests.
+   */
+  final private class RecordingSink extends SignalSink {
     private val seen = new AtomicReference[Vector[Signal]](Vector.empty)
     private val closed = new AtomicReference[Boolean](false)
     override def push(signal: Signal): Task[Unit] = Task {
       seen.updateAndGet(_ :+ signal)
       ()
     }
-    override def close: Task[Unit] = Task { closed.set(true) }
+    override def close: Task[Unit] = Task(closed.set(true))
     def signals: Vector[Signal] = seen.get()
     def isClosed: Boolean = closed.get()
   }
 
   private val transport = new SignalTransport(TestSigil)
 
-  /** Convenience: build a Message with a controlled `timestamp`. */
+  /**
+   * Convenience: build a Message with a controlled `timestamp`.
+   */
   private def msg(convId: Id[Conversation], ts: Long, text: String): Message =
     Message(
       participantId = TestUser,
@@ -52,7 +56,9 @@ class SignalTransportSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       timestamp = Timestamp(ts)
     )
 
-  /** Convenience: build a ToolInvoke with a controlled `timestamp`. */
+  /**
+   * Convenience: build a ToolInvoke with a controlled `timestamp`.
+   */
   private def tool(convId: Id[Conversation], ts: Long, name: String): ToolInvoke =
     ToolInvoke(
       toolName = ToolName(name),
@@ -73,8 +79,10 @@ class SignalTransportSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       val convId = freshConv("none")
       for {
         _ <- TestSigil.publish(msg(convId, 1000L, "hello"))
-        signals <- transport.replay(TestUser, ResumeRequest.None,
-                                    Some(Set(convId))).toList
+        signals <- transport.replay(
+          TestUser,
+          ResumeRequest.None,
+          Some(Set(convId))).toList
       } yield signals shouldBe Vector.empty
     }
 
@@ -85,8 +93,10 @@ class SignalTransportSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         _ <- TestSigil.publish(msg(convId, 200L, "boundary"))
         _ <- TestSigil.publish(msg(convId, 300L, "new1"))
         _ <- TestSigil.publish(msg(convId, 400L, "new2"))
-        signals <- transport.replay(TestUser, ResumeRequest.After(200L),
-                                    Some(Set(convId))).toList
+        signals <- transport.replay(
+          TestUser,
+          ResumeRequest.After(200L),
+          Some(Set(convId))).toList
       } yield {
         val texts = signals.collect {
           case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString
@@ -124,10 +134,12 @@ class SignalTransportSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       for {
         _ <- Task.sequence(schedule.map {
           case ("m", ts, label) => TestSigil.publish(msg(convId, ts, label))
-          case (_, ts, label)   => TestSigil.publish(tool(convId, ts, label))
+          case (_, ts, label) => TestSigil.publish(tool(convId, ts, label))
         })
-        signals <- transport.replay(TestUser, ResumeRequest.RecentMessages(5),
-                                    Some(Set(convId))).toList
+        signals <- transport.replay(
+          TestUser,
+          ResumeRequest.RecentMessages(5),
+          Some(Set(convId))).toList
       } yield {
         val messages = signals.collect { case m: Message =>
           m.content.collect { case ResponseContent.Text(t) => t }.mkString
@@ -148,8 +160,10 @@ class SignalTransportSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       val convId = freshConv("zero")
       for {
         _ <- TestSigil.publish(msg(convId, 100L, "anything"))
-        signals <- transport.replay(TestUser, ResumeRequest.RecentMessages(0),
-                                    Some(Set(convId))).toList
+        signals <- transport.replay(
+          TestUser,
+          ResumeRequest.RecentMessages(0),
+          Some(Set(convId))).toList
       } yield signals shouldBe Vector.empty
     }
 
@@ -168,8 +182,10 @@ class SignalTransportSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         _ <- TestSigil.publish(placed)
         // Viewer is TestUser, who is NOT the sender — RedactLocationTransform
         // should strip location on replay.
-        signals <- transport.replay(TestUser, ResumeRequest.After(0L),
-                                    Some(Set(convId))).toList
+        signals <- transport.replay(
+          TestUser,
+          ResumeRequest.After(0L),
+          Some(Set(convId))).toList
       } yield {
         val redactedMsg = signals.collectFirst { case m: Message => m }
         redactedMsg shouldBe defined
@@ -197,13 +213,16 @@ class SignalTransportSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       val sink = new RecordingSink
       val publishCount = 50
       for {
-        handle <- transport.attach(TestUser, sink, ResumeRequest.None,
-                                   conversations = Some(Set(convId)))
+        handle <- transport.attach(
+          TestUser,
+          sink,
+          ResumeRequest.None,
+          conversations = Some(Set(convId)))
         // Synchronous publish loop with NO sleep between attach() and
         // the first publish — exercises the race window.
         _ <- Task.sequence((1 to publishCount).toList.map { i =>
-               TestSigil.publish(msg(convId, 1000L + i, s"race-$i"))
-             })
+          TestSigil.publish(msg(convId, 1000L + i, s"race-$i"))
+        })
         // Drain window for the consumer fiber.
         _ <- Task.sleep(250.millis)
         _ <- handle.detach
@@ -213,7 +232,7 @@ class SignalTransportSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         }
         // Every published signal must reach the sink — none lost to the race.
         texts should have size publishCount.toLong
-        texts.toSet should be(((1 to publishCount).map(i => s"race-$i")).toSet)
+        texts.toSet should be((1 to publishCount).map(i => s"race-$i").toSet)
       }
     }
 
@@ -226,8 +245,11 @@ class SignalTransportSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       val convId = freshConv("notice")
       val sink = new RecordingSink
       for {
-        handle <- transport.attach(TestUser, sink, ResumeRequest.None,
-                                   conversations = Some(Set(convId)))
+        handle <- transport.attach(
+          TestUser,
+          sink,
+          ResumeRequest.None,
+          conversations = Some(Set(convId)))
         // Notice first — pre-fix this would kill the drain fiber.
         _ <- TestSigil.publish(ConversationCreated(convId, TestUser))
         // Now publish ordinary Events; with the fix they must still flow.
@@ -251,8 +273,11 @@ class SignalTransportSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       for {
         _ <- TestSigil.publish(msg(convId, 1000L, "history-1"))
         _ <- TestSigil.publish(msg(convId, 2000L, "history-2"))
-        handle <- transport.attach(TestUser, sink, ResumeRequest.After(0L),
-                                   conversations = Some(Set(convId)))
+        handle <- transport.attach(
+          TestUser,
+          sink,
+          ResumeRequest.After(0L),
+          conversations = Some(Set(convId)))
         // Allow the replay fiber to drain the seeded events before publishing live.
         _ <- Task.sleep(150.millis)
         // Publish a fresh live signal — should arrive at the sink AFTER replay.

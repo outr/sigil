@@ -57,7 +57,7 @@ object BFCLBench {
       loadJsonl(answerFile).map(a => a("id").asString -> a("ground_truth")).toMap
 
     println("=== Sigil BFCL Benchmark ===")
-    println(s"Data: ${dataDir}")
+    println(s"Data: $dataDir")
     println(s"Category: $category")
     println(s"Model: $modelStr")
     println(s"Cases: ${tests.size}")
@@ -120,7 +120,7 @@ object BFCLBench {
       val (result, observedCall) = runCaseVerbose(benchSigil, request, originalName, answersById.get(testId))
       total += 1
       result match {
-        case Right(true)  => correct += 1
+        case Right(true) => correct += 1
         case Right(false) =>
           if (dumpFailures) failures += ((testId, "wrong-args", observedCall, answersById(testId)))
         case Left(e) =>
@@ -130,13 +130,13 @@ object BFCLBench {
 
       result match {
         case Left(e) => println(s"  $testId: ${e.getMessage}")
-        case _       => ()
+        case _ => ()
       }
       if (idx % 25 == 0 || idx == tests.size - 1) {
         val elapsed = (System.currentTimeMillis() - startTime) / 1000.0
         val pct = if (total > 0) correct.toDouble / total * 100 else 0.0
         println(f"[$idx/${tests.size}] $testId — ${if (result == Right(true)) "✓" else "✗"} | " +
-          f"running: $correct/$total (${pct}%.1f%%) parseFail=$parseFail | ${elapsed}%.0fs")
+          f"running: $correct/$total ($pct%.1f%%) parseFail=$parseFail | $elapsed%.0fs")
       }
     }
 
@@ -146,7 +146,7 @@ object BFCLBench {
     val accPct = if (total > 0) correct.toDouble / total * 100 else 0.0
     println(f"Accuracy: $correct/$total ($accPct%.1f%%)")
     println(f"Parse failures (no tool call emitted): $parseFail")
-    println(f"Time: ${elapsed}%.0fs")
+    println(f"Time: $elapsed%.0fs")
 
     if (dumpFailures && failures.nonEmpty) {
       println()
@@ -155,7 +155,7 @@ object BFCLBench {
         println(s"--- $id ($kind) ---")
         obs match {
           case Some((n, args)) => println(s"  observed: $n(${fabric.io.JsonFormatter.Compact(args)})")
-          case None            => println(s"  observed: <no tool call>")
+          case None => println(s"  observed: <no tool call>")
         }
         println(s"  ground_truth: ${fabric.io.JsonFormatter.Compact(gt)}")
       }
@@ -174,7 +174,7 @@ object BFCLBench {
         sb.append(s"### `$id` — $kind\n\n")
         obs match {
           case Some((n, a)) => sb.append(s"- observed: `$n(${fabric.io.JsonFormatter.Compact(a)})`\n")
-          case None         => sb.append("- observed: _no tool call_\n")
+          case None => sb.append("- observed: _no tool call_\n")
         }
         sb.append(s"- ground_truth: `${fabric.io.JsonFormatter.Compact(gt)}`\n\n")
       }
@@ -188,7 +188,7 @@ object BFCLBench {
   private def runCaseVerbose(sigil: Sigil,
                              request: OneShotRequest,
                              expectedToolName: String,
-                             groundTruthOpt: Option[Json]): (Either[Throwable, Boolean], Option[(String, Json)]) = {
+                             groundTruthOpt: Option[Json]): (Either[Throwable, Boolean], Option[(String, Json)]) =
     try {
       val events = sigil.providerFor(request.modelId, Nil).flatMap(_.apply(request).toList).sync()
       val toolCall = events.collectFirst {
@@ -201,30 +201,28 @@ object BFCLBench {
       }
       val observed = (observedName, toolCall) match {
         case (Some(n), Some(input)) => Some(n -> input.args)
-        case _                      => None
+        case _ => None
       }
       val result = groundTruthOpt match {
         case None => Right(false)
         case Some(gt) => toolCall match {
-          case None =>
-            val summary = events.collect {
-              case ProviderEvent.ToolCallStart(_, name) => s"ToolCallStart($name)"
-              case ProviderEvent.ToolCallComplete(_, input) => s"ToolCallComplete(${input.getClass.getSimpleName})"
-              case ProviderEvent.ContentBlockDelta(_, t) if t.nonEmpty => s"ContentBlockDelta(${t.take(80)})"
-              case ProviderEvent.TextDelta(t) if t.nonEmpty => s"TextDelta(${t.take(80)})"
-              case ProviderEvent.Error(msg) => s"Error($msg)"
-              case ProviderEvent.Done(sr) => s"Done($sr)"
-            }.mkString(" | ")
-            Left(new RuntimeException(s"no tool call; events: $summary"))
-          case Some(input) => Right(BFCLScorer.scoreSimple(expectedToolName -> input.args, gt))
-        }
+            case None =>
+              val summary = events.collect {
+                case ProviderEvent.ToolCallStart(_, name) => s"ToolCallStart($name)"
+                case ProviderEvent.ToolCallComplete(_, input) => s"ToolCallComplete(${input.getClass.getSimpleName})"
+                case ProviderEvent.ContentBlockDelta(_, t) if t.nonEmpty => s"ContentBlockDelta(${t.take(80)})"
+                case ProviderEvent.TextDelta(t) if t.nonEmpty => s"TextDelta(${t.take(80)})"
+                case ProviderEvent.Error(msg) => s"Error($msg)"
+                case ProviderEvent.Done(sr) => s"Done($sr)"
+              }.mkString(" | ")
+              Left(new RuntimeException(s"no tool call; events: $summary"))
+            case Some(input) => Right(BFCLScorer.scoreSimple(expectedToolName -> input.args, gt))
+          }
       }
       (result, observed)
     } catch {
       case e: Throwable => (Left(e), None)
     }
-  }
-
 
   private def loadJsonl(file: File): List[Json] = {
     val src = Source.fromFile(file)(using Codec.UTF8)

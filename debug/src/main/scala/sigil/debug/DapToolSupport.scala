@@ -16,10 +16,11 @@ import sigil.tool.model.ResponseContent
 trait DapToolSupport {
   protected def manager: DapManager
 
-  /** Run `body` against the named session. If no session with that
-    * id is active, reply with an error. */
-  protected def withSession(sessionId: String, context: TurnContext)
-                           (body: DapSession => Task[String]): Stream[Event] = {
+  /**
+   * Run `body` against the named session. If no session with that
+   * id is active, reply with an error.
+   */
+  protected def withSession(sessionId: String, context: TurnContext)(body: DapSession => Task[String]): Stream[Event] = {
     val task = manager.get(sessionId) match {
       case None =>
         Task.pure(reply(context, s"No active debug session '$sessionId'. Launch one with `dap_launch` first.", isError = true))

@@ -13,4 +13,5 @@ import sigil.tool.ToolInput
 case class GitDiffInput(path: Option[String] = None,
                         staged: Boolean = false,
                         format: String = "text",
-                        workingDir: Option[String] = None) extends ToolInput derives RW
+                        workingDir: Option[String] = None)
+  extends ToolInput derives RW

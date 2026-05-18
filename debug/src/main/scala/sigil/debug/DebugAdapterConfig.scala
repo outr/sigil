@@ -59,6 +59,8 @@ object DebugAdapterConfig extends RecordDocumentModel[DebugAdapterConfig] with J
 
   override def id(value: String = rapid.Unique()): Id[DebugAdapterConfig] = Id(value)
 
-  /** Stable id derived from `languageId` — one record per language. */
+  /**
+   * Stable id derived from `languageId` — one record per language.
+   */
   def idFor(languageId: String): Id[DebugAdapterConfig] = Id(languageId)
 }

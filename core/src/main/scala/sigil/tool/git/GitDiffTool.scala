@@ -27,14 +27,15 @@ final class GitDiffTool(context: FileSystemContext)
       ToolExample("Structured hunks", GitDiffInput(format = "hunks"))
     ),
     keywords = Set("git", "diff", "changes", "patch", "hunk")
-  ) with sigil.tool.ReadOnlyExternalTool {
+  )
+  with sigil.tool.ReadOnlyExternalTool {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: GitDiffInput, ctx: TurnContext): Stream[Event] = Stream.force(
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val stagedFlag = if (input.staged) " --staged" else ""
-      val pathArg    = input.path.fold("")(p => s" -- $p")
-      val cmd        = s"git diff$stagedFlag$pathArg"
+      val pathArg = input.path.fold("")(p => s" -- $p")
+      val cmd = s"git diff$stagedFlag$pathArg"
       context.executeCommand(cmd, dir).map { r =>
         val payload =
           if (r.exitCode != 0)

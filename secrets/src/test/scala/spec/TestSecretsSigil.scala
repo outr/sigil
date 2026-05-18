@@ -6,7 +6,7 @@ import lightdb.upgrade.DatabaseUpgrade
 import profig.Profig
 import rapid.Task
 import sigil.{Sigil, SpaceId, TurnContext}
-import sigil.conversation.{TurnInput}
+import sigil.conversation.TurnInput
 import sigil.db.{Model, SigilDB}
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
 import sigil.information.{InMemoryInformation, Information}
@@ -19,38 +19,45 @@ import sigil.vector.{NoOpVectorIndex, VectorIndex}
 
 import java.nio.file.Path
 
-/** Test-only submitter participant id used by `SecretSubmissionFlowSpec`. */
+/**
+ * Test-only submitter participant id used by `SecretSubmissionFlowSpec`.
+ */
 case object SubmittingUser extends ParticipantId {
   override val value: String = "submitting-user"
 }
 
-/** Concrete DB for the secrets-module tests — `SigilDB` plus
-  * [[SecretsCollections]]. */
+/**
+ * Concrete DB for the secrets-module tests — `SigilDB` plus
+ * [[SecretsCollections]].
+ */
 class TestSecretsDB(directory: Option[Path],
                     storeManager: CollectionManager,
                     upgrades: List[DatabaseUpgrade] = Nil)
-  extends SigilDB(directory, storeManager, upgrades)
-    with SecretsCollections
+  extends SigilDB(directory, storeManager, upgrades) with SecretsCollections
 
-/** Test-only Sigil for the `sigil-secrets` spec. Refines `type DB` to
-  * a [[TestSecretsDB]] so `db.secrets` is reachable from
-  * `DatabaseSecretStore` inside the test. Mirrors the bare-minimum
-  * shape of `TestSigil` (no app participants / spaces / modes); the
-  * test only exercises the secret store, not the full conversation
-  * surface. */
+/**
+ * Test-only Sigil for the `sigil-secrets` spec. Refines `type DB` to
+ * a [[TestSecretsDB]] so `db.secrets` is reachable from
+ * `DatabaseSecretStore` inside the test. Mirrors the bare-minimum
+ * shape of `TestSigil` (no app participants / spaces / modes); the
+ * test only exercises the secret store, not the full conversation
+ * surface.
+ */
 object TestSecretsSigil extends Sigil with SecretsSigil {
   override type DB = TestSecretsDB
   override protected def buildDB(directory: Option[Path],
-                                  storeManager: CollectionManager,
-                                  upgrades: List[DatabaseUpgrade]): TestSecretsDB =
+                                 storeManager: CollectionManager,
+                                 upgrades: List[DatabaseUpgrade]): TestSecretsDB =
     new TestSecretsDB(directory, storeManager, upgrades)
 
   override def testMode: Boolean = true
 
-  /** Fixed test-only crypto key. Real apps source this from config,
-    * env, KMS, Vault, etc. — see [[SecretsSigil.secretStoreKey]]
-    * for the patterns. The literal here is fine for tests because
-    * the per-suite DB is wiped in [[initFor]]. */
+  /**
+   * Fixed test-only crypto key. Real apps source this from config,
+   * env, KMS, Vault, etc. — see [[SecretsSigil.secretStoreKey]]
+   * for the patterns. The literal here is fine for tests because
+   * the per-suite DB is wiped in [[initFor]].
+   */
   override def secretStoreKey: String = "test-crypto-key-do-not-use-in-production"
 
   override protected def signalRegistrations: List[RW[? <: Signal]] = Nil
@@ -81,7 +88,9 @@ object TestSecretsSigil extends Sigil with SecretsSigil {
   override val embeddingProvider: EmbeddingProvider = NoOpEmbeddingProvider
   override val vectorIndex: VectorIndex = NoOpVectorIndex
 
-  /** Initialize the DB at a per-suite path; mirrors `TestSigil.initFor`. */
+  /**
+   * Initialize the DB at a per-suite path; mirrors `TestSigil.initFor`.
+   */
   def initFor(testClassName: String): Unit = {
     val name = testClassName.replace("$", "")
     val dbPath = java.nio.file.Path.of("db", "test", name)
@@ -91,7 +100,7 @@ object TestSecretsSigil extends Sigil with SecretsSigil {
     ()
   }
 
-  private def deleteRecursive(path: java.nio.file.Path): Unit = {
+  private def deleteRecursive(path: java.nio.file.Path): Unit =
     if (java.nio.file.Files.exists(path)) {
       val s = java.nio.file.Files.walk(path)
       try {
@@ -99,5 +108,4 @@ object TestSecretsSigil extends Sigil with SecretsSigil {
         s.iterator().asScala.toList.reverse.foreach(p => java.nio.file.Files.deleteIfExists(p))
       } finally s.close()
     }
-  }
 }

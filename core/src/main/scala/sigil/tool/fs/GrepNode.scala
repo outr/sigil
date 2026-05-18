@@ -15,12 +15,17 @@ sealed trait GrepNode derives RW
 
 object GrepNode {
 
-  /** Top-level node — one per file with at least one match. */
+  /**
+   * Top-level node — one per file with at least one match.
+   */
   case class FileMatch(filePath: String, matchCount: Int) extends GrepNode
 
-  /** Child node — one per individual match within a file. */
+  /**
+   * Child node — one per individual match within a file.
+   */
   case class LineMatch(lineNumber: Int,
                        content: String,
                        contextBefore: List[String] = Nil,
-                       contextAfter: List[String] = Nil) extends GrepNode
+                       contextAfter: List[String] = Nil)
+    extends GrepNode
 }

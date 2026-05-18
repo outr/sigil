@@ -90,25 +90,29 @@ case class TurnContext(sigil: Sigil,
                        currentToolInvokeId: Option[Id[Event]] = None,
                        currentToolName: Option[ToolName] = None,
                        modelId: Option[Id[Model]] = None,
-                       /** Sigil bug #205 — the model id this turn will
-                         * actually route to, resolved up-front by
-                         * `Sigil.buildContext` from the conversation's
-                         * provider strategy + classifier output. The
-                         * curator uses this to budget against the routed
-                         * model's contextLength rather than the agent's
-                         * nominal `agent.modelId`, which is often a
-                         * small-context default that gets escalated to a
-                         * frontier model by routing. `None` for paths
-                         * that bypass `buildContext` (e.g. direct
-                         * `executeAtomic` from unit tests). */
+                       /**
+                        * Sigil bug #205 — the model id this turn will
+                        * actually route to, resolved up-front by
+                        * `Sigil.buildContext` from the conversation's
+                        * provider strategy + classifier output. The
+                        * curator uses this to budget against the routed
+                        * model's contextLength rather than the agent's
+                        * nominal `agent.modelId`, which is often a
+                        * small-context default that gets escalated to a
+                        * frontier model by routing. `None` for paths
+                        * that bypass `buildContext` (e.g. direct
+                        * `executeAtomic` from unit tests).
+                        */
                        routedModelId: Option[Id[Model]] = None,
                        isGreeting: Boolean = false,
-                       /** Sigil bug #125 — when `true`, the framework forces
-                         * the provider's `tool_choice` to `respond` for this
-                         * turn so the model can't pick another tool. Set by
-                         * the iteration-cap soft-stop path to synthesise a
-                         * reply from the agent's gathered context rather than
-                         * discarding it via [[sigil.AgentRunawayException]]. */
+                       /**
+                        * Sigil bug #125 — when `true`, the framework forces
+                        * the provider's `tool_choice` to `respond` for this
+                        * turn so the model can't pick another tool. Set by
+                        * the iteration-cap soft-stop path to synthesise a
+                        * reply from the agent's gathered context rather than
+                        * discarding it via [[sigil.AgentRunawayException]].
+                        */
                        forceResponseSynthesis: Boolean = false) {
 
   /**
@@ -142,11 +146,11 @@ case class TurnContext(sigil: Sigil,
       case None => rapid.Task.unit
       case Some(invokeId) =>
         sigil.publish(ToolProgress(
-          invokeId       = invokeId,
+          invokeId = invokeId,
           conversationId = conversation.id,
-          message        = message,
-          percent        = percent,
-          attribution    = currentToolName
+          message = message,
+          percent = percent,
+          attribution = currentToolName
         )).map(_ => ())
     }
 
@@ -171,12 +175,12 @@ case class TurnContext(sigil: Sigil,
       case None => rapid.Task.unit
       case Some(invokeId) =>
         sigil.publish(ToolLog(
-          content        = content,
-          level          = level,
-          participantId  = caller,
+          content = content,
+          level = level,
+          participantId = caller,
           conversationId = conversation.id,
-          topicId        = conversation.currentTopicId,
-          origin         = Some(invokeId)
+          topicId = conversation.currentTopicId,
+          origin = Some(invokeId)
         )).map(_ => ())
     }
 
@@ -217,15 +221,17 @@ case class TurnContext(sigil: Sigil,
       case None => rapid.Task.unit
       case Some(invokeId) =>
         sigil.publish(ToolDelta(
-          target         = invokeId,
+          target = invokeId,
           conversationId = conversation.id,
-          summary        = Some(value)
+          summary = Some(value)
         )).map(_ => ())
     }
 }
 
 object TurnContext {
-  /** Generate a fresh correlation id for a turn that didn't inherit one
+
+  /**
+   * Generate a fresh correlation id for a turn that didn't inherit one
    * from an upstream context (HTTP request, queued job, etc.). The id
    * is opaque short-form — 8 chars sliced from `rapid.Unique()`; apps
    * that wire scribe MDC integration can read
@@ -236,6 +242,7 @@ object TurnContext {
    * bus) should construct `TurnContext` with a `correlationId`
    * derived from the inbound request id so the entire flow — wire
    * call → orchestrator → tool execution → settled effects — shares
-   * one trace id. */
+   * one trace id.
+   */
   def freshCorrelationId(): String = rapid.Unique().take(8)
 }

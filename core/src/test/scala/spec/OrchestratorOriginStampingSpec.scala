@@ -37,10 +37,12 @@ import fabric.rw.*
 class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Tool whose `execute` emits THREE Tool-role Messages with no
-    * origin set — the orchestrator MUST stamp them. */
+  /**
+   * Tool whose `execute` emits THREE Tool-role Messages with no
+   * origin set — the orchestrator MUST stamp them.
+   */
   private object MultiEmitTool extends Tool {
-  override def paginate: Boolean = false
+    override def paginate: Boolean = false
     override val name: ToolName = ToolName("multi_emit_origin_test")
     override def description: String = "Emits 3 Tool-role Messages, none with origin pre-set."
     override def inputRW: RW[? <: ToolInput] = summon[RW[NoResponseInput]]
@@ -60,15 +62,19 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
     override def _id: Id[Tool] = Id[Tool](name.value)
   }
 
-  /** A different parent — used to test the orchestrator's
-    * "respect explicit origin" override path. */
+  /**
+   * A different parent — used to test the orchestrator's
+   * "respect explicit origin" override path.
+   */
   private val explicitOrigin: Id[Event] = Id("explicit-parent-pointer")
 
-  /** Tool whose `execute` emits a Tool-role Message with origin
-    * already set (to a different parent than the calling
-    * ToolInvoke). The orchestrator MUST NOT overwrite it. */
+  /**
+   * Tool whose `execute` emits a Tool-role Message with origin
+   * already set (to a different parent than the calling
+   * ToolInvoke). The orchestrator MUST NOT overwrite it.
+   */
   private object ExplicitOriginTool extends Tool {
-  override def paginate: Boolean = false
+    override def paginate: Boolean = false
     override val name: ToolName = ToolName("explicit_origin_test")
     override def description: String = "Emits a Tool-role Message with origin pre-set."
     override def inputRW: RW[? <: ToolInput] = summon[RW[NoResponseInput]]
@@ -106,28 +112,28 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
     val convId = Conversation.id(s"origin-stamp-$suffix")
     val conv = Conversation(topics = TestTopicStack, _id = convId)
     val request = ConversationRequest(
-      conversationId     = convId,
-      modelId            = Model.id("test", "model"),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(ConversationView(conversationId = convId)),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
+      conversationId = convId,
+      modelId = Model.id("test", "model"),
+      instructions = Instructions(),
+      turnInput = TurnInput(ConversationView(conversationId = convId)),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      chain              = List(TestUser, TestAgent),
-      tools              = tools
+      chain = List(TestUser, TestAgent),
+      tools = tools
     )
     for {
-      _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
     } yield signals
   }
 
   "Orchestrator.executeAtomic stamping (bug #69)" should {
-    "stamp origin = invokeId on every Tool-role event a tool emitted without one" in {
+    "stamp origin = invokeId on every Tool-role event a tool emitted without one" in
       runWith(
         provider = new StubProvider(MultiEmitTool.name.value, "multi-emit-call"),
-        tools    = Vector(MultiEmitTool),
-        suffix   = "multi-emit"
+        tools = Vector(MultiEmitTool),
+        suffix = "multi-emit"
       ).map { signals =>
         val invokes = signals.collect { case ti: ToolInvoke => ti }
         invokes should have size 1
@@ -143,17 +149,18 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
           }
         }
         toolMessages.flatMap(_.content.collect { case ResponseContent.Text(t) => t }) shouldBe List(
-          "first", "second", "third"
+          "first",
+          "second",
+          "third"
         )
         succeed
       }
-    }
 
-    "preserve a tool's explicit origin (orchestrator only stamps when origin is None)" in {
+    "preserve a tool's explicit origin (orchestrator only stamps when origin is None)" in
       runWith(
         provider = new StubProvider(ExplicitOriginTool.name.value, "explicit-origin-call"),
-        tools    = Vector(ExplicitOriginTool),
-        suffix   = "explicit-origin"
+        tools = Vector(ExplicitOriginTool),
+        suffix = "explicit-origin"
       ).map { signals =>
         val toolMessages = signals.collect {
           case m: Message if m.role == MessageRole.Tool => m
@@ -165,7 +172,6 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
         toolMessages.head.origin shouldBe Some(explicitOrigin)
         succeed
       }
-    }
   }
 
   "tear down" should {

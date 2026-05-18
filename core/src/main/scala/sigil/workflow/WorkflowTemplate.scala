@@ -58,12 +58,12 @@ object WorkflowTemplate extends RecordDocumentModel[WorkflowTemplate] with JsonC
 
   // String-projected indexes — Lucene's filter generator can't query
   // polymorphic / case-class fields directly.
-  val nameIndex: I[String]            = field.index(_.name)
-  val spaceIdValue: I[String]         = field.index(_.space.value)
+  val nameIndex: I[String] = field.index(_.name)
+  val spaceIdValue: I[String] = field.index(_.space.value)
   val createdByValue: I[Option[String]] = field.index(_.createdBy.map(_.value))
   val conversationIdValue: I[Option[String]] = field.index(_.conversationId.map(_.value))
-  val enabledIndex: I[Boolean]        = field.index(_.enabled)
-  val tagsIndex: I[Set[String]]       = field.index(_.tags)
+  val enabledIndex: I[Boolean] = field.index(_.enabled)
+  val tagsIndex: I[Set[String]] = field.index(_.tags)
 
   override def id(value: String = rapid.Unique()): Id[WorkflowTemplate] = Id(value)
 }

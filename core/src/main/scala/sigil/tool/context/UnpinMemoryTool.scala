@@ -23,17 +23,18 @@ import sigil.tool.model.ResponseContent
  *      where the agent received a UUID-style id from
  *      `list_memories(pinned=true)`).
  */
-case object UnpinMemoryTool extends TypedTool[UnpinMemoryInput](
-  name = ToolName("unpin_memory"),
-  description =
-    """Unpin a memory so it stops rendering every turn. The record stays on disk —
+case object UnpinMemoryTool
+  extends TypedTool[UnpinMemoryInput](
+    name = ToolName("unpin_memory"),
+    description =
+      """Unpin a memory so it stops rendering every turn. The record stays on disk —
       |the agent / user can re-pin later. Use this when the user reviews `list_memories(pinned=true)`
       |and decides a directive is no longer applicable.
       |
       |- `key`   — the memory's stable key (preferred) or `_id` value if no key.
       |- `space` — optional disambiguator when the same key is pinned in multiple spaces.""".stripMargin,
-  keywords = Set("unpin", "remove", "demote", "memory", "directive", "trim")
-) {
+    keywords = Set("unpin", "remove", "demote", "memory", "directive", "trim")
+  ) {
   override def paginate: Boolean = false
 
   override def resultTtl: Option[Int] = Some(0)
@@ -79,7 +80,7 @@ case object UnpinMemoryTool extends TypedTool[UnpinMemoryInput](
           // Fallback: maybe the agent passed an _id (UUID-style) from list_memories(pinned=true)
           context.sigil.withDB(_.memories.transaction(_.get(Id[ContextMemory](key)))).map {
             case some @ Some(m) if spaces.contains(m.spaceId) => some
-            case _                                            => None
+            case _ => None
           }
       }
     }

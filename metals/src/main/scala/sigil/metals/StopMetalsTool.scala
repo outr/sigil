@@ -17,18 +17,27 @@ case class StopMetalsInput() extends ToolInput derives RW
  * No-op when no Metals is running for the workspace. Use
  * `metals_status` first to see what's live.
  */
-final class StopMetalsTool extends TypedTool[StopMetalsInput](
-  name = ToolName("stop_metals"),
-  description =
-    """Stop the Metals (Scala LSP) MCP server for this conversation's workspace.
+final class StopMetalsTool
+  extends TypedTool[StopMetalsInput](
+    name = ToolName("stop_metals"),
+    description =
+      """Stop the Metals (Scala LSP) MCP server for this conversation's workspace.
       |Tears down the subprocess and removes its McpServerConfig.
       |No-op if Metals isn't running for the workspace.""".stripMargin,
-  examples = List(ToolExample("stop metals", StopMetalsInput())),
-  keywords = Set(
-    "metals", "stop", "scala", "lsp", "shutdown",
-    "kill", "terminate", "disable", "teardown", "tooling"
-  )
-) {
+    examples = List(ToolExample("stop metals", StopMetalsInput())),
+    keywords = Set(
+      "metals",
+      "stop",
+      "scala",
+      "lsp",
+      "shutdown",
+      "kill",
+      "terminate",
+      "disable",
+      "teardown",
+      "tooling"
+    )
+  ) {
   override def paginate: Boolean = false
 
   import MetalsToolSupport.*

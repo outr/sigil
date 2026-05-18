@@ -27,4 +27,5 @@ import sigil.tool.ToolInput
  */
 case class RecordConsentInput(toolName: String,
                               approved: Boolean,
-                              reason: Option[String] = None) extends ToolInput derives RW
+                              reason: Option[String] = None)
+  extends ToolInput derives RW

@@ -42,11 +42,12 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
 
   private val modelId: Id[Model] = Model.id("test", "cap-soft-stop")
 
-  /** Records every call's tool_choice value (for the spec's
-    * "forced turn pins respond" assertion) and the running call
-    * count (for the "always emits change_mode" provider below).
-    */
-  private final class CallRecorder {
+  /**
+   * Records every call's tool_choice value (for the spec's
+   * "forced turn pins respond" assertion) and the running call
+   * count (for the "always emits change_mode" provider below).
+   */
+  final private class CallRecorder {
     val toolChoices: atomic.AtomicReference[Vector[ToolChoice]] =
       new atomic.AtomicReference(Vector.empty)
     val callCount: atomic.AtomicInteger = new atomic.AtomicInteger(0)
@@ -57,12 +58,14 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
     }
   }
 
-  /** Always emits a non-terminal `change_mode` tool call —
-    * forces the loop to iterate forever until the cap fires.
-    * On the FORCED-synthesis iteration (signalled by
-    * `toolChoice = Specific(respond)`), emits respond instead so
-    * the cap-hit soft-stop completes successfully. */
-  private final class CompliantOnForceProvider(recorder: CallRecorder) extends Provider {
+  /**
+   * Always emits a non-terminal `change_mode` tool call —
+   * forces the loop to iterate forever until the cap fires.
+   * On the FORCED-synthesis iteration (signalled by
+   * `toolChoice = Specific(respond)`), emits respond instead so
+   * the cap-hit soft-stop completes successfully.
+   */
+  final private class CompliantOnForceProvider(recorder: CallRecorder) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -79,34 +82,36 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
       val isForcedRespondTurn: Boolean = {
         val respondFamily = _root_.sigil.tool.core.CoreTools.atomicContentToolNames
         input.toolChoice == ToolChoice.Required &&
-          input.tools.exists(_.schema.name == RespondTool.schema.name) &&
-          input.tools.forall(t => respondFamily.contains(t.schema.name))
+        input.tools.exists(_.schema.name == RespondTool.schema.name) &&
+        input.tools.forall(t => respondFamily.contains(t.schema.name))
       }
       val emits: List[ProviderEvent] = if (isForcedRespondTurn) {
-          // Forced-synthesis turn — comply with the family pin.
-          List(
-            ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(
-              callId,
-              RespondInput(topicLabel = "Cap", topicSummary = "cap-hit synth", content = "synthesized from gathered context", endsTurn = true)
-            ),
-            ProviderEvent.Done(StopReason.Complete)
-          )
-        } else {
-          List(
-            ProviderEvent.ToolCallStart(callId, ChangeModeTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(callId, ChangeModeInput(mode = "conversation")),
-            ProviderEvent.Done(StopReason.ToolCall)
-          )
-        }
+        // Forced-synthesis turn — comply with the family pin.
+        List(
+          ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
+          ProviderEvent.ToolCallComplete(
+            callId,
+            RespondInput(topicLabel = "Cap", topicSummary = "cap-hit synth", content = "synthesized from gathered context", endsTurn = true)
+          ),
+          ProviderEvent.Done(StopReason.Complete)
+        )
+      } else {
+        List(
+          ProviderEvent.ToolCallStart(callId, ChangeModeTool.schema.name.value),
+          ProviderEvent.ToolCallComplete(callId, ChangeModeInput(mode = "conversation")),
+          ProviderEvent.Done(StopReason.ToolCall)
+        )
+      }
       Stream.emits(emits)
     }
   }
 
-  /** Even on the forced-synthesis turn, refuses to call respond
-    * — keeps emitting change_mode. Drives the hard-throw
-    * fallback path. */
-  private final class StubbornProvider(recorder: CallRecorder) extends Provider {
+  /**
+   * Even on the forced-synthesis turn, refuses to call respond
+   * — keeps emitting change_mode. Drives the hard-throw
+   * fallback path.
+   */
+  final private class StubbornProvider(recorder: CallRecorder) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -126,35 +131,37 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = ToolName("change_mode") :: CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = ToolName("change_mode") :: CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
-  /** Drive the agent loop to cap-hit. Returns the (recorder,
-    * outcome) — outcome is `Right(())` for a soft-stop success or
-    * `Left(throwable)` for the hard-throw fallback. */
+  /**
+   * Drive the agent loop to cap-hit. Returns the (recorder,
+   * outcome) — outcome is `Right(())` for a soft-stop success or
+   * `Left(throwable)` for the hard-throw fallback.
+   */
   private def runScenario(provider: CallRecorder => Provider): Task[(CallRecorder, Either[Throwable, Unit])] = {
     val recorder = new CallRecorder
     TestSigil.setProvider(Task.pure(provider(recorder)))
     val convId = Conversation.id(s"cap-soft-stop-${rapid.Unique()}")
-    val agent  = makeAgent()
-    val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+    val agent = makeAgent()
+    val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = TestTopicEntry.id,
-             content        = Vector(ResponseContent.Text("Do something")),
-             state          = EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("Do something")),
+        state = EventState.Complete
+      ))
       _ <- Task.sleep(2.seconds)
       // Inspect SigilDB.events to find what landed.
       _ <- Task.unit
-    } yield (recorder, Right(()))  // The agent loop runs on a background fiber; we observe via events below.
+    } yield (recorder, Right(())) // The agent loop runs on a background fiber; we observe via events below.
   }
 
   private def eventsFor(convId: Id[Conversation]): Task[List[sigil.event.Event]] =
@@ -166,25 +173,25 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
       val recorder = new CallRecorder
       TestSigil.setProvider(Task.pure(new CompliantOnForceProvider(recorder)))
       val convId = Conversation.id(s"cap-compliant-${rapid.Unique()}")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("Do something")),
-               state          = EventState.Complete
-             ))
-        _   <- Task.sleep(3.seconds)
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Do something")),
+          state = EventState.Complete
+        ))
+        _ <- Task.sleep(3.seconds)
         evs <- eventsFor(convId)
       } yield {
         // The forced-synthesis turn ran exactly one call with the
         // Forced-respond pin: tool_choice: required with c.tools
         // filtered to the respond family (the synthesised respond
         // Message lands).
-        recorder.toolChoices.get().toList should contain (ToolChoice.Required)
+        recorder.toolChoices.get().toList should contain(ToolChoice.Required)
 
         // The synthesised respond produced a Message authored by the agent.
         val agentMessages = evs.collect {
@@ -194,10 +201,10 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
           agentMessages should not be empty
         }
         val texts = agentMessages.flatMap(_.content.collect {
-          case ResponseContent.Text(t)     => t
+          case ResponseContent.Text(t) => t
           case ResponseContent.Markdown(t) => t
         })
-        texts.mkString(" ") should include ("synthesized")
+        texts.mkString(" ") should include("synthesized")
       }
     }
 
@@ -205,26 +212,27 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
       val recorder = new CallRecorder
       TestSigil.setProvider(Task.pure(new CompliantOnForceProvider(recorder)))
       val convId = Conversation.id(s"cap-diagnostic-${rapid.Unique()}")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
       for {
-        _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _   <- TestSigil.publish(Message(
-                 participantId  = TestUser,
-                 conversationId = convId,
-                 topicId        = TestTopicEntry.id,
-                 content        = Vector(ResponseContent.Text("Do something")),
-                 state          = EventState.Complete
-               ))
-        _   <- Task.sleep(3.seconds)
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(Message(
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Do something")),
+          state = EventState.Complete
+        ))
+        _ <- Task.sleep(3.seconds)
         evs <- eventsFor(convId)
       } yield {
         val capDiagnostics = evs.collect {
-          case m: Message if m.role == MessageRole.Tool &&
-                              m.content.exists {
-                                case ResponseContent.Text(t) => t.contains("iteration cap")
-                                case _                       => false
-                              } => m
+          case m: Message
+              if m.role == MessageRole.Tool &&
+                m.content.exists {
+                  case ResponseContent.Text(t) => t.contains("iteration cap")
+                  case _ => false
+                } => m
         }
         capDiagnostics should have size 1
       }
@@ -234,33 +242,33 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
       val recorder = new CallRecorder
       TestSigil.setProvider(Task.pure(new StubbornProvider(recorder)))
       val convId = Conversation.id(s"cap-stubborn-${rapid.Unique()}")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
       for {
-        _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _   <- TestSigil.publish(Message(
-                 participantId  = TestUser,
-                 conversationId = convId,
-                 topicId        = TestTopicEntry.id,
-                 content        = Vector(ResponseContent.Text("Do something")),
-                 state          = EventState.Complete
-               ))
-        _   <- Task.sleep(3.seconds)
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(Message(
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Do something")),
+          state = EventState.Complete
+        ))
+        _ <- Task.sleep(3.seconds)
         evs <- eventsFor(convId)
       } yield {
         // Forced-synthesis call DID happen (tool_choice: required with
         // c.tools filtered to the respond family).
-        recorder.toolChoices.get().toList should contain (ToolChoice.Required)
+        recorder.toolChoices.get().toList should contain(ToolChoice.Required)
         // No Success-disposition respond Message was produced (the
         // model refused to comply). The Failure-disposition messages
         // from the AgentRunawayException publish are separate and
         // expected — they don't represent a "respond" call.
         val agentRespondMessages = evs.collect {
           case m: Message
-            if m.participantId == TestAgent &&
-               m.role == MessageRole.Standard &&
-               m.isSuccess &&
-               m.content.collectFirst { case ResponseContent.Text(_) => true }.contains(true) =>
+              if m.participantId == TestAgent &&
+                m.role == MessageRole.Standard &&
+                m.isSuccess &&
+                m.content.collectFirst { case ResponseContent.Text(_) => true }.contains(true) =>
             m
         }
         agentRespondMessages shouldBe empty

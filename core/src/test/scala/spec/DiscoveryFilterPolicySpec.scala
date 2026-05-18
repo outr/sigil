@@ -10,10 +10,11 @@ import sigil.tool.{DiscoveryFilter, Tool, ToolInput, ToolName, TypedTool}
 
 case class DiscoveryFilterPolicyStubInput(text: String = "") extends ToolInput derives RW
 
-final class DiscoveryFilterPolicyStubTool(n: String) extends TypedTool[DiscoveryFilterPolicyStubInput](
-  name = ToolName(n),
-  description = s"Stub $n"
-) {
+final class DiscoveryFilterPolicyStubTool(n: String)
+  extends TypedTool[DiscoveryFilterPolicyStubInput](
+    name = ToolName(n),
+    description = s"Stub $n"
+  ) {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: DiscoveryFilterPolicyStubInput,

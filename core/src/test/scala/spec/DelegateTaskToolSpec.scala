@@ -29,13 +29,13 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   private def turnContext(): TurnContext = {
     val conv = Conversation(
       topics = List(TopicEntry(TestTopicId, "test", "test")),
-      _id    = convId
+      _id = convId
     )
     TurnContext(
-      sigil            = TestSigil,
-      chain            = List(TestUser),
-      conversation     = conv,
-      turnInput        = TurnInput(ConversationView(conversationId = convId))
+      sigil = TestSigil,
+      chain = List(TestUser),
+      conversation = conv,
+      turnInput = TurnInput(ConversationView(conversationId = convId))
     )
   }
 
@@ -64,13 +64,12 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   }
 
   "DelegateTaskTool" should {
-    "return a structured error when the host Sigil doesn't mix in WorkflowSigil" in {
+    "return a structured error when the host Sigil doesn't mix in WorkflowSigil" in
       DelegateTaskTool.execute(sampleInput, turnContext()).toList.map { events =>
         val payload = extractJson(events)
         payload.get("ok").map(_.asString) shouldBe Some("false")
         payload.get("error").map(_.asString.contains("WorkflowSigil")).getOrElse(false) shouldBe true
       }
-    }
   }
 
   "tear down" should {

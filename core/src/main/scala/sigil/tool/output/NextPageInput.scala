@@ -17,4 +17,5 @@ import sigil.tool.ToolInput
  */
 case class NextPageInput(referenceId: String,
                          page: Int = 0,
-                         pageSize: Int = 50) extends ToolInput derives RW
+                         pageSize: Int = 50)
+  extends ToolInput derives RW

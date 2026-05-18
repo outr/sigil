@@ -21,21 +21,20 @@ import scala.concurrent.duration.*
 class MetalsStartupFailureSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestMetalsSigil.initFor(getClass.getSimpleName)
 
-  override implicit val testTimeout: FiniteDuration = 10.seconds
+  implicit override val testTimeout: FiniteDuration = 10.seconds
 
   private def newWorkspace(): Path = {
     val p = Files.createTempDirectory(s"metals-startup-spec-${rapid.Unique()}-")
     p.toAbsolutePath.normalize
   }
 
-  private def deleteRecursive(p: Path): Unit = {
+  private def deleteRecursive(p: Path): Unit =
     if (Files.exists(p)) {
       import scala.jdk.CollectionConverters.*
       val s = Files.walk(p)
       try s.iterator().asScala.toList.reverse.foreach(x => Files.deleteIfExists(x))
       finally s.close()
     }
-  }
 
   "MetalsManager startup failure (bug #68)" should {
 
@@ -50,7 +49,7 @@ class MetalsStartupFailureSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         .map(_ => Right("unexpected success"): Either[Throwable, String])
         .handleError(t => Task.pure(Left(t)))
         .map { result =>
-          try {
+          try
             result match {
               case Left(t) =>
                 val msg = t.getMessage
@@ -59,7 +58,7 @@ class MetalsStartupFailureSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
                 msg should include("FATAL: simulated crash")
               case Right(_) => fail("expected startup-failure exception")
             }
-          } finally {
+          finally {
             TestMetalsSigil.setLauncher(List(
               java.nio.file.Path.of("metals/src/test/resources/fake-metals.sh").toAbsolutePath.normalize.toString
             ))

@@ -71,8 +71,8 @@ final class SignalTransport(sigil: Sigil) {
     }
 
     val forwarded: Stream[Signal] = live.filter {
-      case e: Event  => e.timestamp.value > boundary.get()
-      case _: Delta  => true
+      case e: Event => e.timestamp.value > boundary.get()
+      case _: Delta => true
       case _: Notice => true
     }.evalTap(s => sink.push(s))
 
@@ -81,7 +81,7 @@ final class SignalTransport(sigil: Sigil) {
 
     new SinkHandle {
       override def detach: Task[Unit] =
-        Task { cancelled.set(true) }.flatMap(_ => sink.close)
+        Task(cancelled.set(true)).flatMap(_ => sink.close)
     }
   }
 
@@ -98,7 +98,7 @@ final class SignalTransport(sigil: Sigil) {
              resume: ResumeRequest,
              conversations: ConversationFilter = None): Stream[Signal] = resume match {
     case ResumeRequest.None => Stream.empty
-    case _                  => Stream.force(loadReplay(viewer, resume, conversations))
+    case _ => Stream.force(loadReplay(viewer, resume, conversations))
   }
 
   private def loadReplay(viewer: ParticipantId,
@@ -107,7 +107,7 @@ final class SignalTransport(sigil: Sigil) {
     sigil.withDB(_.events.transaction(_.list)).map { all =>
       val scoped: List[Event] = convFilter match {
         case Some(cs) => all.filter(e => cs.contains(e.conversationId))
-        case None     => all
+        case None => all
       }
       // Apply visibility BEFORE the RecentMessages walk so the count reflects
       // what the viewer actually receives — otherwise an Agents-only message

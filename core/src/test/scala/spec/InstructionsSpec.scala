@@ -17,30 +17,30 @@ class InstructionsSpec extends AnyWordSpec with Matchers {
     val rendered = Instructions().render
 
     "include the SAFETY block" in {
-      rendered should include ("SAFETY")
+      rendered should include("SAFETY")
     }
 
     "include the BEHAVIOR block" in {
-      rendered should include ("BEHAVIOR")
+      rendered should include("BEHAVIOR")
     }
 
     "include the TOOLS discovery block" in {
-      rendered should include ("TOOLS")
-      rendered should include ("find_capability")
-      rendered should include ("discovery-first")
+      rendered should include("TOOLS")
+      rendered should include("find_capability")
+      rendered should include("discovery-first")
     }
   }
 
   "Instructions(tools = \"\")" should {
     "drop the TOOLS block when explicitly disabled" in {
       val rendered = Instructions(tools = "").render
-      rendered should not include ("TOOLS\n-")
+      rendered should not include "TOOLS\n-"
     }
   }
 
   "Instructions.autonomous()" should {
     "still include the TOOLS block (autonomy is about safety, not discovery)" in {
-      Instructions.autonomous().render should include ("TOOLS")
+      Instructions.autonomous().render should include("TOOLS")
     }
   }
 
@@ -48,26 +48,26 @@ class InstructionsSpec extends AnyWordSpec with Matchers {
     "drop the TOOLS discovery block but keep the rest" in {
       val r = Instructions().renderWithoutTools
       // Discovery block's distinctive opening should be gone.
-      r should not include ("TOOLS — discovery-first")
-      r should include ("SAFETY")
-      r should include ("BEHAVIOR")
+      r should not include "TOOLS — discovery-first"
+      r should include("SAFETY")
+      r should include("BEHAVIOR")
     }
 
     "still include the trailing toolsTrailer recap" in {
       val r = Instructions().renderWithoutTools
-      r should include ("REMINDER:")
-      r should include ("Plain text")
+      r should include("REMINDER:")
+      r should include("Plain text")
     }
   }
 
   "Instructions toolsTrailer" should {
     "render the recap LAST in the system prompt by default" in {
       val r = Instructions().render
-      r should include ("REMINDER:")
-      r should include ("Plain text")
+      r should include("REMINDER:")
+      r should include("Plain text")
       // Tool-neutral: naming a specific tool family biases the model
       // away from the others.
-      r should not include ("respond-family")
+      r should not include "respond-family"
       val recapIdx = r.indexOf("REMINDER:")
       val toolsIdx = r.indexOf("TOOLS")
       recapIdx should be > toolsIdx
@@ -88,15 +88,15 @@ class InstructionsSpec extends AnyWordSpec with Matchers {
     "be suppressible via toolsTrailer = \"\"" in {
       // Frontier-model apps that don't need the recap can opt out.
       val r = Instructions(toolsTrailer = "").render
-      r should not include ("REMINDER:")
-      r should not include ("plain text")
+      r should not include "REMINDER:"
+      r should not include "plain text"
     }
 
     "carry through `withToolsTrailer`" in {
       val custom = "REMINDER: this is a custom trailer."
       val r = Instructions().withToolsTrailer(custom).render
-      r should include ("custom trailer.")
-      r should not include ("plain text")
+      r should include("custom trailer.")
+      r should not include "plain text"
     }
   }
 }

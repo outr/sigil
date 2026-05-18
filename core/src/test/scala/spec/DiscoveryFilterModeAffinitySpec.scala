@@ -20,46 +20,52 @@ import sigil.tool.{DiscoveryFilter, DiscoveryRequest, Tool, ToolInput, ToolName,
 class DiscoveryFilterModeAffinitySpec extends AnyWordSpec with Matchers {
 
   private case object SpecCustomMode extends Mode {
-    override val name: String        = "spec-custom-mode"
+    override val name: String = "spec-custom-mode"
     override val description: String = "test-only mode for #95"
   }
 
   private case class StubInput(text: String = "") extends ToolInput derives RW
 
-  /** Tool that doesn't restrict its modes — should be discoverable
-    * everywhere post-#95. */
-  private final class UnrestrictedTool(n: String) extends TypedTool[StubInput](
-    name        = ToolName(n),
-    description = s"Stub $n",
-    modes       = Set.empty
-  ) {
-  override def paginate: Boolean = false
+  /**
+   * Tool that doesn't restrict its modes — should be discoverable
+   * everywhere post-#95.
+   */
+  final private class UnrestrictedTool(n: String)
+    extends TypedTool[StubInput](
+      name = ToolName(n),
+      description = s"Stub $n",
+      modes = Set.empty
+    ) {
+    override def paginate: Boolean = false
 
     override protected def executeTyped(input: StubInput, context: TurnContext): rapid.Stream[Event] =
       rapid.Stream.empty
   }
 
-  /** Tool that explicitly opts into one mode — discoverable only
-    * under that mode (the existing gating behaviour). */
-  private final class ModeRestrictedTool(n: String, restrictTo: Mode) extends TypedTool[StubInput](
-    name        = ToolName(n),
-    description = s"Stub $n",
-    modes       = Set(restrictTo.id)
-  ) {
-  override def paginate: Boolean = false
+  /**
+   * Tool that explicitly opts into one mode — discoverable only
+   * under that mode (the existing gating behaviour).
+   */
+  final private class ModeRestrictedTool(n: String, restrictTo: Mode)
+    extends TypedTool[StubInput](
+      name = ToolName(n),
+      description = s"Stub $n",
+      modes = Set(restrictTo.id)
+    ) {
+    override def paginate: Boolean = false
     override protected def executeTyped(input: StubInput, context: TurnContext): rapid.Stream[Event] =
       rapid.Stream.empty
   }
 
-  private val unrestricted: Tool          = new UnrestrictedTool("unrestricted_tool")
-  private val customOnly: Tool            = new ModeRestrictedTool("custom_only_tool", SpecCustomMode)
-  private val conversationOnly: Tool      = new ModeRestrictedTool("conversation_only_tool", ConversationMode)
+  private val unrestricted: Tool = new UnrestrictedTool("unrestricted_tool")
+  private val customOnly: Tool = new ModeRestrictedTool("custom_only_tool", SpecCustomMode)
+  private val conversationOnly: Tool = new ModeRestrictedTool("conversation_only_tool", ConversationMode)
 
   private def request(mode: Mode): DiscoveryRequest =
     DiscoveryRequest(
-      keywords     = "anything",
-      chain        = Nil,
-      mode         = mode,
+      keywords = "anything",
+      chain = Nil,
+      mode = mode,
       callerSpaces = Set(GlobalSpace)
     )
 
@@ -67,14 +73,14 @@ class DiscoveryFilterModeAffinitySpec extends AnyWordSpec with Matchers {
 
     "treat tool.modes.isEmpty as discoverable under any mode" in {
       DiscoveryFilter.passesAffinity(unrestricted, request(ConversationMode)) shouldBe true
-      DiscoveryFilter.passesAffinity(unrestricted, request(SpecCustomMode))   shouldBe true
+      DiscoveryFilter.passesAffinity(unrestricted, request(SpecCustomMode)) shouldBe true
     }
 
     "still gate tools that explicitly populate `modes`" in {
-      DiscoveryFilter.passesAffinity(customOnly,       request(SpecCustomMode))   shouldBe true
-      DiscoveryFilter.passesAffinity(customOnly,       request(ConversationMode)) shouldBe false
+      DiscoveryFilter.passesAffinity(customOnly, request(SpecCustomMode)) shouldBe true
+      DiscoveryFilter.passesAffinity(customOnly, request(ConversationMode)) shouldBe false
       DiscoveryFilter.passesAffinity(conversationOnly, request(ConversationMode)) shouldBe true
-      DiscoveryFilter.passesAffinity(conversationOnly, request(SpecCustomMode))   shouldBe false
+      DiscoveryFilter.passesAffinity(conversationOnly, request(SpecCustomMode)) shouldBe false
     }
 
     "leave space-affinity gating unchanged" in {

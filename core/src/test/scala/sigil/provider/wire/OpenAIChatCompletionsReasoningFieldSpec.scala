@@ -31,7 +31,7 @@ class OpenAIChatCompletionsReasoningFieldSpec extends AsyncWordSpec with AsyncTa
 
   private val config = OpenAIChatCompletions.Config(
     providerNamespace = "test",
-    providerName      = "Test"
+    providerName = "Test"
   )
 
   private def freshState = new OpenAIChatCompletions.StreamState(new ToolCallAccumulator(Vector.empty))
@@ -42,11 +42,11 @@ class OpenAIChatCompletionsReasoningFieldSpec extends AsyncWordSpec with AsyncTa
       val chunk = obj(
         "choices" -> arr(obj(
           "delta" -> obj(
-            "content"           -> str(""),
+            "content" -> str(""),
             "reasoning_content" -> str(" hello")
           ),
           "finish_reason" -> Null,
-          "index"         -> num(0)
+          "index" -> num(0)
         ))
       )
       val events = OpenAIChatCompletions.parseChunk(chunk, freshState, config)
@@ -60,18 +60,18 @@ class OpenAIChatCompletionsReasoningFieldSpec extends AsyncWordSpec with AsyncTa
       val chunk = obj(
         "choices" -> arr(obj(
           "delta" -> obj(
-            "content"            -> str(""),
-            "role"               -> str("assistant"),
-            "reasoning"          -> str(" The"),
-            "reasoning_details"  -> arr(obj(
-              "type"   -> str("reasoning.text"),
-              "text"   -> str(" The"),
+            "content" -> str(""),
+            "role" -> str("assistant"),
+            "reasoning" -> str(" The"),
+            "reasoning_details" -> arr(obj(
+              "type" -> str("reasoning.text"),
+              "text" -> str(" The"),
               "format" -> str("unknown"),
-              "index"  -> num(0)
+              "index" -> num(0)
             ))
           ),
           "finish_reason" -> Null,
-          "index"         -> num(0)
+          "index" -> num(0)
         ))
       )
       val events = OpenAIChatCompletions.parseChunk(chunk, freshState, config)
@@ -89,10 +89,10 @@ class OpenAIChatCompletionsReasoningFieldSpec extends AsyncWordSpec with AsyncTa
         "choices" -> arr(obj(
           "delta" -> obj(
             "reasoning_content" -> str(" canonical"),
-            "reasoning"         -> str(" router-flavored")
+            "reasoning" -> str(" router-flavored")
           ),
           "finish_reason" -> Null,
-          "index"         -> num(0)
+          "index" -> num(0)
         ))
       )
       val events = OpenAIChatCompletions.parseChunk(chunk, freshState, config)
@@ -106,11 +106,11 @@ class OpenAIChatCompletionsReasoningFieldSpec extends AsyncWordSpec with AsyncTa
       val chunk = obj(
         "choices" -> arr(obj(
           "delta" -> obj(
-            "reasoning"         -> Null,
+            "reasoning" -> Null,
             "reasoning_content" -> Null
           ),
           "finish_reason" -> Null,
-          "index"         -> num(0)
+          "index" -> num(0)
         ))
       )
       noException should be thrownBy OpenAIChatCompletions.parseChunk(chunk, freshState, config)
@@ -124,11 +124,11 @@ class OpenAIChatCompletionsReasoningFieldSpec extends AsyncWordSpec with AsyncTa
         val chunk = obj(
           "choices" -> arr(obj(
             "delta" -> obj(
-              "content"   -> str(""),
+              "content" -> str(""),
               "reasoning" -> str(frag)
             ),
             "finish_reason" -> Null,
-            "index"         -> num(0)
+            "index" -> num(0)
           ))
         )
         OpenAIChatCompletions.parseChunk(chunk, state, config).collect {

@@ -10,18 +10,22 @@ import sigil.tool.model.ResponseContent
 
 case class ListMcpPromptsInput(server: String) extends ToolInput derives RW
 
-/** List the prompt templates advertised by a registered MCP server. */
-final class ListMcpPromptsTool(manager: McpManager) extends TypedTool[ListMcpPromptsInput](
-  name = ToolName("list_mcp_prompts"),
-  description = "List the prompt templates advertised by a registered MCP server, including their argument names."
-) {
+/**
+ * List the prompt templates advertised by a registered MCP server.
+ */
+final class ListMcpPromptsTool(manager: McpManager)
+  extends TypedTool[ListMcpPromptsInput](
+    name = ToolName("list_mcp_prompts"),
+    description = "List the prompt templates advertised by a registered MCP server, including their argument names."
+  ) {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: ListMcpPromptsInput, context: TurnContext): Stream[Event] =
     Stream.force(manager.listPrompts(input.server).map { prompts =>
       val text = if (prompts.isEmpty) "(no prompts advertised)"
       else prompts.map { p =>
-        val args = if (p.arguments.isEmpty) "" else p.arguments.map { a =>
+        val args = if (p.arguments.isEmpty) ""
+        else p.arguments.map { a =>
           val req = if (a.required) "*" else ""
           s"${a.name}$req"
         }.mkString("(", ", ", ")")

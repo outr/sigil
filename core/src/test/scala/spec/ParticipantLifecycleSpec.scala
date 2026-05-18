@@ -34,7 +34,8 @@ class ParticipantLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   // shape downstream apps will use (Voidcraft / Sage user records).
   case class DisplayUser(override val id: ParticipantId,
                          override val displayName: String,
-                         override val avatarUrl: Option[String] = None) extends Participant derives RW
+                         override val avatarUrl: Option[String] = None)
+    extends Participant derives RW
   Participant.register(summon[RW[DisplayUser]])
 
   private def freshConvId(suffix: String): Id[Conversation] =
@@ -134,7 +135,7 @@ class ParticipantLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "replace the conversation's participant record and broadcast ParticipantUpdated" in {
       val convId = freshConvId("update")
       val before = DisplayUser(TestUser, displayName = "Old Name", avatarUrl = None)
-      val after  = DisplayUser(TestUser, displayName = "New Name", avatarUrl = Some("https://example.invalid/v2.png"))
+      val after = DisplayUser(TestUser, displayName = "New Name", avatarUrl = Some("https://example.invalid/v2.png"))
       val seed = Conversation(topics = TestTopicStack, participants = List(before), _id = convId)
       val (recorded, stop) = subscribe()
       for {
@@ -178,9 +179,9 @@ class ParticipantLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   "Participant default display info" should {
     "default displayName to id.value and avatarUrl to None for headless agents" in Task {
       val agent = DefaultAgentParticipant(
-        id                 = TestAgent,
-        modelId            = Model.id("test", "model"),
-        instructions       = Instructions(),
+        id = TestAgent,
+        modelId = Model.id("test", "model"),
+        instructions = Instructions(),
         generationSettings = GenerationSettings()
       )
       agent.displayName shouldBe TestAgent.value
@@ -193,9 +194,9 @@ class ParticipantLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "surface displayName and avatarUrl as RW fields so cross-language codegen can emit them" in Task {
       import fabric.define.DefType
       val defn = summon[RW[DefaultAgentParticipant]].definition
-      val obj  = defn.defType match {
+      val obj = defn.defType match {
         case o: DefType.Obj => o
-        case other          => fail(s"Expected DefType.Obj; saw $other")
+        case other => fail(s"Expected DefType.Obj; saw $other")
       }
       // Fabric's `@serialized override def` on the subtype is what
       // promotes these to fields on the case-class Definition.

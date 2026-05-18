@@ -27,33 +27,36 @@ class GrepToolBinaryFileSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
   private def writeBytes(p: Path, bytes: Array[Byte]): Unit = {
     Files.createDirectories(p.getParent)
-    Files.write(p, bytes,
-      StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+    Files.write(
+      p,
+      bytes,
+      StandardOpenOption.CREATE,
+      StandardOpenOption.TRUNCATE_EXISTING)
     ()
   }
 
-  private def cleanup(root: Path): Unit = {
+  private def cleanup(root: Path): Unit =
     if (Files.exists(root)) {
       import scala.jdk.CollectionConverters.*
       val s = Files.walk(root)
       try s.iterator().asScala.toList.reverse.foreach(p => Files.deleteIfExists(p))
       finally s.close()
     }
-  }
 
   "searchFiles" should {
 
     "skip files with NUL bytes (binary cache artifacts) without crashing" in {
       val root = newRoot()
       writeBytes(root.resolve("good.scala"), "object Foo extends App".getBytes("UTF-8"))
-      writeBytes(root.resolve("bad.bin"),
-        Array[Byte](0x00, 0x01, 0x02, 0xFF.toByte, 'F'.toByte, 'o'.toByte, 'o'.toByte))
+      writeBytes(
+        root.resolve("bad.bin"),
+        Array[Byte](0x00, 0x01, 0x02, 0xff.toByte, 'F'.toByte, 'o'.toByte, 'o'.toByte))
 
       fs.searchFiles(root.toString, "Foo", glob = None, maxMatches = 100, contextLines = 0)
         .map { matches =>
           try {
             val paths = matches.map(_.filePath)
-            paths should contain ("good.scala")
+            paths should contain("good.scala")
             paths should not contain "bad.bin"
           } finally cleanup(root)
         }
@@ -63,7 +66,8 @@ class GrepToolBinaryFileSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val root = newRoot()
       val excludedDirs = List(".bloop", "target", ".git", "node_modules", ".metals")
       excludedDirs.foreach { d =>
-        writeBytes(root.resolve(s"$d/cache.bin"),
+        writeBytes(
+          root.resolve(s"$d/cache.bin"),
           Array[Byte](0x00, 0x01, 0x02, 'M'.toByte, 'a'.toByte, 'i'.toByte, 'n'.toByte))
       }
       writeBytes(root.resolve("Main.scala"), "object Main".getBytes("UTF-8"))
@@ -72,7 +76,7 @@ class GrepToolBinaryFileSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         .map { matches =>
           try {
             val paths = matches.map(_.filePath)
-            paths should contain ("Main.scala")
+            paths should contain("Main.scala")
             // None of the excluded-dir files should appear, even if
             // their contents (binary or not) match the regex.
             paths.foreach { p =>
@@ -91,12 +95,12 @@ class GrepToolBinaryFileSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       // byte is invalid UTF-8 standalone — strict UTF-8 decode would
       // throw MalformedInputException; the lenient decoder substitutes
       // U+FFFD and the prefix "caf" still matches.
-      val cp1252 = Array[Byte]('/'.toByte, '/'.toByte, ' '.toByte, 'c'.toByte, 'a'.toByte, 'f'.toByte, 0xE9.toByte)
+      val cp1252 = Array[Byte]('/'.toByte, '/'.toByte, ' '.toByte, 'c'.toByte, 'a'.toByte, 'f'.toByte, 0xe9.toByte)
       writeBytes(root.resolve("Legacy.java"), cp1252)
 
       fs.searchFiles(root.toString, "caf", glob = None, maxMatches = 100, contextLines = 0)
         .map { matches =>
-          try matches.map(_.filePath) should contain ("Legacy.java")
+          try matches.map(_.filePath) should contain("Legacy.java")
           finally cleanup(root)
         }
     }
@@ -110,23 +114,28 @@ class GrepToolBinaryFileSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       // readable file.
       val unreadable = root.resolve("unreadable.scala")
       writeBytes(unreadable, "object Unreadable".getBytes("UTF-8"))
-      try {
+      try
         Files.setPosixFilePermissions(unreadable, java.util.Set.of())
-      } catch {
-        case _: UnsupportedOperationException => ()  // Windows / non-POSIX FS — test still meaningful otherwise
+      catch {
+        case _: UnsupportedOperationException => () // Windows / non-POSIX FS — test still meaningful otherwise
       }
 
       fs.searchFiles(root.toString, "object", glob = None, maxMatches = 100, contextLines = 0)
         .map { matches =>
           try {
             val paths = matches.map(_.filePath)
-            paths should contain ("readable.scala")
+            paths should contain("readable.scala")
             // unreadable.scala may or may not appear depending on the
             // running user (root reads regardless of bits); the
             // critical assertion is just that searchFiles returned
             // without throwing.
           } finally {
-            try Files.setPosixFilePermissions(unreadable, java.util.Set.of(java.nio.file.attribute.PosixFilePermission.OWNER_READ, java.nio.file.attribute.PosixFilePermission.OWNER_WRITE)) catch { case _: Throwable => () }
+            try Files.setPosixFilePermissions(
+                unreadable,
+                java.util.Set.of(
+                  java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                  java.nio.file.attribute.PosixFilePermission.OWNER_WRITE))
+            catch { case _: Throwable => () }
             cleanup(root)
           }
         }

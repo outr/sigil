@@ -21,64 +21,82 @@ import sigil.storage.{FileVersion, StorageContents, WriteResult}
  */
 trait FileSystemContext {
 
-  /** Execute `command` (typically via `bash -c`) with optional
-    * working directory and timeout. Return stdout/stderr/exit. */
+  /**
+   * Execute `command` (typically via `bash -c`) with optional
+   * working directory and timeout. Return stdout/stderr/exit.
+   */
   def executeCommand(command: String,
                      workingDir: Option[String] = None,
                      timeoutMs: Long = 120000L): Task[CommandResult]
 
-  /** Read the entire file as UTF-8 text. */
+  /**
+   * Read the entire file as UTF-8 text.
+   */
   def readFile(filePath: String): Task[String]
 
-  /** Read a window of lines (zero-indexed offset, exclusive limit).
-    * Returns `(selectedLines, totalLines)`. */
+  /**
+   * Read a window of lines (zero-indexed offset, exclusive limit).
+   * Returns `(selectedLines, totalLines)`.
+   */
   def readFileLines(filePath: String, offset: Int, limit: Int): Task[(List[String], Int)]
 
-  /** Write `content` (UTF-8). Creates parent directories. Returns
-    * bytes written. */
+  /**
+   * Write `content` (UTF-8). Creates parent directories. Returns
+   * bytes written.
+   */
   def writeFile(filePath: String, content: String): Task[Long]
 
-  /** List paths under `basePath` matching `pattern` (glob syntax).
-    * Returns paths relative to `basePath`. */
+  /**
+   * List paths under `basePath` matching `pattern` (glob syntax).
+   * Returns paths relative to `basePath`.
+   */
   def listFiles(basePath: String, pattern: String, maxResults: Int = 1000): Task[List[String]]
 
-  /** Search files for a regex pattern. `glob` optionally restricts
-    * the file set; `contextLines` controls before/after lines per
-    * match. */
+  /**
+   * Search files for a regex pattern. `glob` optionally restricts
+   * the file set; `contextLines` controls before/after lines per
+   * match.
+   */
   def searchFiles(basePath: String,
                   pattern: String,
                   glob: Option[String] = None,
                   maxMatches: Int = 500,
                   contextLines: Int = 0): Task[List[GrepMatch]]
 
-  /** Delete a single file. Returns true if the file existed and was
-    * deleted; false if it did not exist. */
+  /**
+   * Delete a single file. Returns true if the file existed and was
+   * deleted; false if it did not exist.
+   */
   def deleteFile(filePath: String): Task[Boolean]
 
-  /** Read the file's bytes plus a [[FileVersion]] verification
-    * token. The token is suitable to pass back to [[writeIfMatch]]
-    * for a compare-and-set commit. Returns `None` when no file
-    * exists at `filePath`.
-    *
-    * Implementations rooted at the local filesystem hash the bytes
-    * with SHA-256; remote-backed implementations may use the
-    * backend's native version stamp (S3 ETag, etc.) so the
-    * comparison happens server-side. */
+  /**
+   * Read the file's bytes plus a [[FileVersion]] verification
+   * token. The token is suitable to pass back to [[writeIfMatch]]
+   * for a compare-and-set commit. Returns `None` when no file
+   * exists at `filePath`.
+   *
+   * Implementations rooted at the local filesystem hash the bytes
+   * with SHA-256; remote-backed implementations may use the
+   * backend's native version stamp (S3 ETag, etc.) so the
+   * comparison happens server-side.
+   */
   def readContents(filePath: String): Task[Option[StorageContents]]
 
-  /** Conditional write — replace the file's contents iff its current
-    * version still matches `expected`. Returns one of:
-    *
-    *   - [[WriteResult.Written]] — the write committed; carries the
-    *     fresh verification token.
-    *   - [[WriteResult.Stale]] — another writer modified the file
-    *     since `expected` was issued; carries the freshest snapshot
-    *     so the caller can re-evaluate without a separate read.
-    *   - [[WriteResult.NotFound]] — there's no file to compare against.
-    *
-    * The lock window covers only the verify-and-write steps;
-    * preparation (reads, computing the new content) runs unlocked
-    * so multiple agents can plan edits concurrently and only
-    * serialize at commit time. */
+  /**
+   * Conditional write — replace the file's contents iff its current
+   * version still matches `expected`. Returns one of:
+   *
+   *   - [[WriteResult.Written]] — the write committed; carries the
+   *     fresh verification token.
+   *   - [[WriteResult.Stale]] — another writer modified the file
+   *     since `expected` was issued; carries the freshest snapshot
+   *     so the caller can re-evaluate without a separate read.
+   *   - [[WriteResult.NotFound]] — there's no file to compare against.
+   *
+   * The lock window covers only the verify-and-write steps;
+   * preparation (reads, computing the new content) runs unlocked
+   * so multiple agents can plan edits concurrently and only
+   * serialize at commit time.
+   */
   def writeIfMatch(filePath: String, content: String, expected: FileVersion): Task[WriteResult]
 }

@@ -10,11 +10,14 @@ import sigil.tool.model.ResponseContent
 
 case class TestMcpServerInput(name: String) extends ToolInput derives RW
 
-/** Force a connection attempt and report success or failure. */
-final class TestMcpServerTool(manager: McpManager) extends TypedTool[TestMcpServerInput](
-  name = ToolName("test_mcp_server"),
-  description = "Connect to a registered MCP server (or use the cached connection if active) and report success or failure."
-) {
+/**
+ * Force a connection attempt and report success or failure.
+ */
+final class TestMcpServerTool(manager: McpManager)
+  extends TypedTool[TestMcpServerInput](
+    name = ToolName("test_mcp_server"),
+    description = "Connect to a registered MCP server (or use the cached connection if active) and report success or failure."
+  ) {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: TestMcpServerInput, context: TurnContext): Stream[Event] =

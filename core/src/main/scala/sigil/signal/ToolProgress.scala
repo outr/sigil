@@ -40,4 +40,5 @@ case class ToolProgress(invokeId: Id[Event],
                         conversationId: Id[Conversation],
                         message: String,
                         percent: Option[Double] = None,
-                        attribution: Option[ToolName] = None) extends Notice derives RW
+                        attribution: Option[ToolName] = None)
+  extends Notice derives RW

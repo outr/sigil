@@ -44,36 +44,33 @@ class BrowserModeAffinitySpec extends AnyWordSpec with Matchers {
 
   private def request(mode: Mode): DiscoveryRequest =
     DiscoveryRequest(
-      keywords     = "anything",
-      chain        = Nil,
-      mode         = mode,
+      keywords = "anything",
+      chain = Nil,
+      mode = mode,
       callerSpaces = Set(GlobalSpace)
     )
 
   "Every browser tool" should {
 
-    "declare modes = Set(WebBrowserMode.id) so it's only discoverable inside web-browser mode" in {
+    "declare modes = Set(WebBrowserMode.id) so it's only discoverable inside web-browser mode" in
       browserTools.foreach { t =>
         withClue(s"${t.name.value}: ") {
           t.modes shouldBe Set(WebBrowserMode.id)
         }
       }
-    }
 
-    "pass affinity in WebBrowserMode" in {
+    "pass affinity in WebBrowserMode" in
       browserTools.foreach { t =>
         withClue(s"${t.name.value} in WebBrowserMode: ") {
           DiscoveryFilter.passesAffinity(t, request(WebBrowserMode)) shouldBe true
         }
       }
-    }
 
-    "FAIL affinity in ConversationMode (the wire-log #122 scenario)" in {
+    "FAIL affinity in ConversationMode (the wire-log #122 scenario)" in
       browserTools.foreach { t =>
         withClue(s"${t.name.value} in ConversationMode: ") {
           DiscoveryFilter.passesAffinity(t, request(ConversationMode)) shouldBe false
         }
       }
-    }
   }
 }

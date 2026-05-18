@@ -20,11 +20,12 @@ final class GitBranchTool(context: FileSystemContext)
       """List branches. `includeRemotes` extends the listing with remote-tracking refs. Returns
         |`{current, branches: [{name, sha, isCurrent, isRemote, tracking?}]}`.""".stripMargin,
     examples = List(
-      ToolExample("Local branches",            GitBranchInput()),
-      ToolExample("Local + remote-tracking",   GitBranchInput(includeRemotes = true))
+      ToolExample("Local branches", GitBranchInput()),
+      ToolExample("Local + remote-tracking", GitBranchInput(includeRemotes = true))
     ),
     keywords = Set("git", "branch", "branches", "checkout")
-  ) with sigil.tool.ReadOnlyExternalTool {
+  )
+  with sigil.tool.ReadOnlyExternalTool {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: GitBranchInput, ctx: TurnContext): Stream[Event] = Stream.force(
@@ -37,7 +38,7 @@ final class GitBranchTool(context: FileSystemContext)
         val payload =
           if (branchResult.exitCode != 0 || currentResult.exitCode != 0)
             obj(
-              "error"    -> str(if (branchResult.stderr.nonEmpty) branchResult.stderr else currentResult.stderr),
+              "error" -> str(if (branchResult.stderr.nonEmpty) branchResult.stderr else currentResult.stderr),
               "exitCode" -> num(if (branchResult.exitCode != 0) branchResult.exitCode else currentResult.exitCode)
             )
           else GitOps.parseBranches(branchResult.stdout, currentResult.stdout, input.includeRemotes)

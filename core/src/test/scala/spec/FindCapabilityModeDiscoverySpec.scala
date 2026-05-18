@@ -42,7 +42,7 @@ class FindCapabilityModeDiscoverySpec extends AsyncWordSpec with AsyncTaskSpec w
     )
 
   "Sigil.findCapabilities (bug #66)" should {
-    "return Mode-typed matches when keywords match a registered mode's name" in {
+    "return Mode-typed matches when keywords match a registered mode's name" in
       // TestSigil registers TestCodingMode (`name = "coding"`,
       // description mentions "code generation, editing, review").
       TestSigil.findCapabilities(request("coding")).map { matches =>
@@ -54,17 +54,15 @@ class FindCapabilityModeDiscoverySpec extends AsyncWordSpec with AsyncTaskSpec w
           coding.get.status shouldBe CapabilityStatus.RequiresSetup("""change_mode("coding")""")
         }
       }
-    }
 
-    "return Mode-typed matches when keywords match a mode's skill content" in {
+    "return Mode-typed matches when keywords match a mode's skill content" in
       // TestSkilledMode's skill content includes "test agent" + "test skill".
       TestSigil.findCapabilities(request("test agent skill")).map { matches =>
         val modeMatches = matches.filter(_.capabilityType == CapabilityType.Mode)
-        modeMatches.map(_.name) should contain ("skilled")
+        modeMatches.map(_.name) should contain("skilled")
       }
-    }
 
-    "exclude the currently-active mode from results (no-op switch)" in {
+    "exclude the currently-active mode from results (no-op switch)" in
       // Set `request.mode = TestCodingMode` and search for "coding"
       // — the active mode is the one we're already in, so it shouldn't
       // come back as a discovery suggestion.
@@ -74,9 +72,8 @@ class FindCapabilityModeDiscoverySpec extends AsyncWordSpec with AsyncTaskSpec w
         }
         modeNames should not contain "coding"
       }
-    }
 
-    "return Mode matches sorted by score (descending) interleaved with Tool matches" in {
+    "return Mode matches sorted by score (descending) interleaved with Tool matches" in
       // No tool registrations to compete here; the test asserts the
       // sort invariant directly. With only Mode matches, scores are
       // monotonically non-increasing.
@@ -84,9 +81,8 @@ class FindCapabilityModeDiscoverySpec extends AsyncWordSpec with AsyncTaskSpec w
         val scores = matches.map(_.score)
         scores shouldBe scores.sorted(using Ordering[Double].reverse)
       }
-    }
 
-    "return empty list when no keywords match anything" in {
+    "return empty list when no keywords match anything" in
       TestSigil.findCapabilities(request("zzzzznonexistentkeyword")).map { matches =>
         // Tool finder may return matches based on its own scoring;
         // for this test we only assert that no Mode match appears
@@ -94,7 +90,6 @@ class FindCapabilityModeDiscoverySpec extends AsyncWordSpec with AsyncTaskSpec w
         val modeMatches = matches.filter(_.capabilityType == CapabilityType.Mode)
         modeMatches shouldBe empty
       }
-    }
   }
 
   "Sigil.findModes default scoring" should {
@@ -107,7 +102,7 @@ class FindCapabilityModeDiscoverySpec extends AsyncWordSpec with AsyncTaskSpec w
         substringScored <- TestSigil.findModes(request("ode"))
       } yield {
         val exactCoding = exactScored.find(_._1.name == "coding").map(_._2)
-        val subCoding   = substringScored.find(_._1.name == "coding").map(_._2)
+        val subCoding = substringScored.find(_._1.name == "coding").map(_._2)
         // The exact-word path scores at least 5; the substring path
         // scores at most 2 if it scores at all.
         exactCoding.exists(_ >= 5.0) shouldBe true

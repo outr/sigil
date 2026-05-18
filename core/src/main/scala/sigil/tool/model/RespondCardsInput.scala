@@ -14,4 +14,5 @@ import sigil.tool.ToolInput
  */
 case class RespondCardsInput(topicLabel: String,
                              topicSummary: String,
-                             cards: Vector[ResponseContent.Card]) extends ToolInput derives RW
+                             cards: Vector[ResponseContent.Card])
+  extends ToolInput derives RW

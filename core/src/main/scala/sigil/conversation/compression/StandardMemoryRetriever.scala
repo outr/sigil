@@ -55,22 +55,27 @@ case class StandardMemoryRetriever(limit: Int = 5,
                                    queryFrom: Option[StandardMemoryRetriever.QueryBuilder] = None,
                                    includePinned: Boolean = true,
                                    rrfK: Int = 60,
-                                   /** Per-signal weight on the Lucene leg of RRF.
-                                     * Default 2.0 — BM25 scores are semantically
-                                     * grounded (keyword match means keyword match),
-                                     * while vector signal quality depends on
-                                     * embedding model + dimension count. When the
-                                     * pools are small (a few candidates), pure-
-                                     * symmetric ranking lets a noisy vector
-                                     * embedding override a clear lexical match;
-                                     * giving Lucene more weight prevents that
-                                     * inversion. Apps with high-quality semantic
-                                     * embeddings can set both to 1.0 for
-                                     * traditional RRF. */
+                                   /**
+                                    * Per-signal weight on the Lucene leg of RRF.
+                                    * Default 2.0 — BM25 scores are semantically
+                                    * grounded (keyword match means keyword match),
+                                    * while vector signal quality depends on
+                                    * embedding model + dimension count. When the
+                                    * pools are small (a few candidates), pure-
+                                    * symmetric ranking lets a noisy vector
+                                    * embedding override a clear lexical match;
+                                    * giving Lucene more weight prevents that
+                                    * inversion. Apps with high-quality semantic
+                                    * embeddings can set both to 1.0 for
+                                    * traditional RRF.
+                                    */
                                    lexicalWeight: Double = 2.0,
-                                   /** Per-signal weight on the vector leg of RRF.
-                                     * Default 1.0. Pair with `lexicalWeight`. */
-                                   vectorWeight: Double = 1.0) extends MemoryRetriever {
+                                   /**
+                                    * Per-signal weight on the vector leg of RRF.
+                                    * Default 1.0. Pair with `lexicalWeight`.
+                                    */
+                                   vectorWeight: Double = 1.0)
+  extends MemoryRetriever {
 
   override def retrieve(sigil: Sigil,
                         conversationId: Id[Conversation],
@@ -78,65 +83,75 @@ case class StandardMemoryRetriever(limit: Int = 5,
                         chain: List[ParticipantId]): Task[MemoryRetrievalResult] =
     sigil.cachedMemoryRetrieve(conversationId, computeFresh(sigil, conversationId, frames, chain))
 
-  /** The uncached retrieval path — runs once per (conversation,
-    * cache lifetime) under [[Sigil.cachedMemoryRetrieve]]. */
+  /**
+   * The uncached retrieval path — runs once per (conversation,
+   * cache lifetime) under [[Sigil.cachedMemoryRetrieve]].
+   */
   private def computeFresh(sigil: Sigil,
                            conversationId: Id[Conversation],
                            frames: Vector[ContextFrame],
                            chain: List[ParticipantId]): Task[MemoryRetrievalResult] = {
     val now = Timestamp()
     for {
-      spaces       <- resolveSpaces(sigil, chain, conversationId)
-      currentMode  <- currentModeOf(sigil, conversationId)
-      criticals    <- if (includePinned) loadPinned(sigil, spaces, currentMode, now) else Task.pure(Vector.empty)
-      regular      <- buildQuery(sigil, conversationId, frames, chain).flatMap {
-        case None        => Task.pure(Vector.empty)
+      spaces <- resolveSpaces(sigil, chain, conversationId)
+      currentMode <- currentModeOf(sigil, conversationId)
+      criticals <- if (includePinned) loadPinned(sigil, spaces, currentMode, now) else Task.pure(Vector.empty)
+      regular <- buildQuery(sigil, conversationId, frames, chain).flatMap {
+        case None => Task.pure(Vector.empty)
         case Some(query) => hybridSearch(sigil, query, spaces, currentMode, now).map(_.filterNot(criticals.toSet.contains))
       }
     } yield MemoryRetrievalResult(memories = regular, criticalMemories = criticals)
   }
 
-  /** Read the conversation's current mode for the per-turn
-    * [[ContextMemory.modeAffinity]] gate. `None` when the
-    * conversation row has been deleted out from under the retriever
-    * (the modeAffinity filter then degrades to "universal-only" —
-    * mode-scoped memories drop out). */
+  /**
+   * Read the conversation's current mode for the per-turn
+   * [[ContextMemory.modeAffinity]] gate. `None` when the
+   * conversation row has been deleted out from under the retriever
+   * (the modeAffinity filter then degrades to "universal-only" —
+   * mode-scoped memories drop out).
+   */
   private def currentModeOf(sigil: Sigil, conversationId: Id[Conversation]): Task[Option[Id[Mode]]] =
     sigil.withDB(_.conversations.transaction(_.get(conversationId)))
       .map(_.map(_.currentMode.id))
 
-  /** Apply the per-memory mode-affinity gate. A memory with empty
-    * `modeAffinity` is universal — surfaces regardless of mode. A
-    * non-empty set means the memory only surfaces when `currentMode`
-    * is in it. Sigil bug #195. */
+  /**
+   * Apply the per-memory mode-affinity gate. A memory with empty
+   * `modeAffinity` is universal — surfaces regardless of mode. A
+   * non-empty set means the memory only surfaces when `currentMode`
+   * is in it. Sigil bug #195.
+   */
   private def matchesCurrentMode(memory: ContextMemory, currentMode: Option[Id[Mode]]): Boolean =
     memory.modeAffinity.isEmpty || currentMode.exists(memory.modeAffinity.contains)
 
-  /** Resolve the per-turn space set: caller's accessible spaces plus
-    * [[GlobalSpace]] (universally accessible — pinned memories in
-    * Global render across every conversation that can see them). */
+  /**
+   * Resolve the per-turn space set: caller's accessible spaces plus
+   * [[GlobalSpace]] (universally accessible — pinned memories in
+   * Global render across every conversation that can see them).
+   */
   private def resolveSpaces(sigilArg: Sigil,
                             chain: List[ParticipantId],
                             conversationId: lightdb.id.Id[sigil.conversation.Conversation]): Task[Set[SpaceId]] =
     sigilArg.accessibleSpaces(chain, conversationId).map(_ + GlobalSpace)
 
-  /** Compose the per-turn retrieval query. Caller-supplied
-    * [[queryFrom]] takes precedence; otherwise read the topic state
-    * from the conversation + the last non-agent message from frames. */
+  /**
+   * Compose the per-turn retrieval query. Caller-supplied
+   * [[queryFrom]] takes precedence; otherwise read the topic state
+   * from the conversation + the last non-agent message from frames.
+   */
   private def buildQuery(sigil: Sigil,
                          conversationId: Id[Conversation],
                          frames: Vector[ContextFrame],
                          chain: List[ParticipantId]): Task[Option[String]] =
     queryFrom match {
       case Some(builder) => Task.pure(builder(frames, chain))
-      case None          =>
+      case None =>
         sigil.withDB(_.conversations.transaction(_.get(conversationId))).map {
           case None => StandardMemoryRetriever.lastNonAgentMessage(frames, chain)
           case Some(conv) =>
             val topic = conv.topics.lastOption
             val parts = scala.collection.mutable.ListBuffer.empty[String]
             topic.foreach { t =>
-              if (t.label.nonEmpty)   parts += t.label
+              if (t.label.nonEmpty) parts += t.label
               if (t.summary.nonEmpty) parts += t.summary
             }
             if (conv.currentKeywords.nonEmpty) parts += conv.currentKeywords.mkString(" ")
@@ -146,12 +161,14 @@ case class StandardMemoryRetriever(limit: Int = 5,
         }
     }
 
-  /** Run vector + Lucene retrieval in parallel, fuse via RRF. Drops
-    * memories outside `spaces`, expired records, and pinned memories
-    * (those render in the Pinned section already; topical retrieval
-    * mustn't double-render). The Lucene leg pushes the `pinned ==
-    * false` filter into the index; the vector leg filters post-fetch
-    * since the vector payload doesn't carry pinned status. */
+  /**
+   * Run vector + Lucene retrieval in parallel, fuse via RRF. Drops
+   * memories outside `spaces`, expired records, and pinned memories
+   * (those render in the Pinned section already; topical retrieval
+   * mustn't double-render). The Lucene leg pushes the `pinned ==
+   * false` filter into the index; the vector leg filters post-fetch
+   * since the vector payload doesn't carry pinned status.
+   */
   private def hybridSearch(sigil: Sigil,
                            query: String,
                            spaces: Set[SpaceId],
@@ -162,7 +179,7 @@ case class StandardMemoryRetriever(limit: Int = 5,
       vectorHits <- sigil.searchMemories(query, spaces, candidatePool)
       lexicalHits <- luceneHits(sigil, query, spaces, candidatePool)
     } yield {
-      val vectorIds  = vectorHits.iterator
+      val vectorIds = vectorHits.iterator
         .filterNot(_.pinned)
         .filterNot(StandardMemoryRetriever.isExpired(_, now))
         .filter(matchesCurrentMode(_, currentMode))
@@ -176,8 +193,8 @@ case class StandardMemoryRetriever(limit: Int = 5,
       // ties break toward higher-confidence facts. Default 1.0 (the
       // norm) means apps that don't write confidence get RRF-only
       // ranking — backward-compatible.
-      val confidenceById: Map[Id[ContextMemory], Double] =
-        (vectorHits.iterator ++ lexicalHits.iterator).map(m => m._id -> m.confidence).toMap
+      val confidenceById: Map[Id[ContextMemory], Double] = (vectorHits.iterator ++ lexicalHits.iterator).map(m =>
+        m._id -> m.confidence).toMap
       val weight: Id[ContextMemory] => Double = id => confidenceById.getOrElse(id, 1.0)
       // Per-signal weights — lexical defaults heavier than vector so a
       // noisy hash embedding can't override a clear BM25 keyword match
@@ -191,10 +208,12 @@ case class StandardMemoryRetriever(limit: Int = 5,
     }
   }
 
-  /** Lucene BM25 query over `ContextMemory.searchText`. Splits `query`
-    * into whitespace tokens and OR-matches; result order is BM25
-    * relevance. Filters to the supplied spaces and excludes pinned
-    * memories (those render in the Pinned section already). */
+  /**
+   * Lucene BM25 query over `ContextMemory.searchText`. Splits `query`
+   * into whitespace tokens and OR-matches; result order is BM25
+   * relevance. Filters to the supplied spaces and excludes pinned
+   * memories (those render in the Pinned section already).
+   */
   private def luceneHits(sigil: Sigil,
                          query: String,
                          spaces: Set[SpaceId],
@@ -208,7 +227,7 @@ case class StandardMemoryRetriever(limit: Int = 5,
             FilterClause(ContextMemory.searchText.exactly(kw), Condition.Should, None)
           }
           Filter.Multi(minShould = 1, filters = clauses) &&
-            (ContextMemory.pinned === false)
+          (ContextMemory.pinned === false)
         }
         .scored
         .sort(Sort.BestMatch())
@@ -217,12 +236,14 @@ case class StandardMemoryRetriever(limit: Int = 5,
     }).map(_.filter(m => spaces.contains(m.spaceId)))
   }
 
-  /** Load every pinned memory in the supplied spaces. Pushes the
-    * filter into Lucene via the indexed `pinned` boolean and the
-    * `spaceIdValue` string projection: `pinned == true AND spaceIdValue
-    * IN spaces`. Expiry is filtered in-memory on the (small) result.
-    * O(N_pinned_in_accessible_spaces) per turn instead of
-    * O(N_total_memories). */
+  /**
+   * Load every pinned memory in the supplied spaces. Pushes the
+   * filter into Lucene via the indexed `pinned` boolean and the
+   * `spaceIdValue` string projection: `pinned == true AND spaceIdValue
+   * IN spaces`. Expiry is filtered in-memory on the (small) result.
+   * O(N_pinned_in_accessible_spaces) per turn instead of
+   * O(N_total_memories).
+   */
   private def loadPinned(sigil: Sigil,
                          spaces: Set[SpaceId],
                          currentMode: Option[Id[Mode]],
@@ -235,8 +256,7 @@ case class StandardMemoryRetriever(limit: Int = 5,
       tx.query
         .filter(_ =>
           Filter.Multi(minShould = 1, filters = spaceClauses) &&
-            (ContextMemory.pinned === true)
-        )
+            (ContextMemory.pinned === true))
         .toList
     }).map { rows =>
       rows.iterator
@@ -247,23 +267,30 @@ case class StandardMemoryRetriever(limit: Int = 5,
 }
 
 object StandardMemoryRetriever {
-  /** Function that derives a retrieval query from the turn's frames +
-    * participant chain. Returning `None` or an empty string skips
-    * the retrieval call for this turn. */
+
+  /**
+   * Function that derives a retrieval query from the turn's frames +
+   * participant chain. Returning `None` or an empty string skips
+   * the retrieval call for this turn.
+   */
   type QueryBuilder = (Vector[ContextFrame], List[ParticipantId]) => Option[String]
 
-  /** Memory is expired (and should be skipped on retrieval) when its
-    * `expiresAt` field is set and not in the future. Records with
-    * `expiresAt = None` never expire. The store row stays — only the
-    * per-turn surfaced set excludes it. Apps that want hard eviction
-    * (DB-level deletion) wire a separate sweep effect. */
+  /**
+   * Memory is expired (and should be skipped on retrieval) when its
+   * `expiresAt` field is set and not in the future. Records with
+   * `expiresAt = None` never expire. The store row stays — only the
+   * per-turn surfaced set excludes it. Apps that want hard eviction
+   * (DB-level deletion) wire a separate sweep effect.
+   */
   def isExpired(m: ContextMemory, now: Timestamp): Boolean =
     m.expiresAt.exists(_.value <= now.value)
 
-  /** Walk frames back-to-front; take the first `Text` frame whose
-    * participant isn't `chain.last` (the agent about to act). That's
-    * typically the user's latest message — the most natural retrieval
-    * query. */
+  /**
+   * Walk frames back-to-front; take the first `Text` frame whose
+   * participant isn't `chain.last` (the agent about to act). That's
+   * typically the user's latest message — the most natural retrieval
+   * query.
+   */
   val lastNonAgentMessage: QueryBuilder = (frames, chain) => {
     val agent = chain.lastOption
     frames.reverseIterator.collectFirst {
@@ -271,21 +298,25 @@ object StandardMemoryRetriever {
     }
   }
 
-  /** Reciprocal Rank Fusion of N ranked id lists. Standard formula:
-    * `score(d) = sum over rankers r of weight(d) / (k + rank_r(d))`,
-    * where rank starts at 1. A document only ranked by one signal
-    * still contributes; documents ranked highly across multiple
-    * signals accumulate the most score. The `weightOf` hook lets
-    * callers shape the fused score with per-document signals like
-    * confidence — default 1.0 reproduces the standard RRF formula.
-    * Returns ids in descending fused-score order. */
+  /**
+   * Reciprocal Rank Fusion of N ranked id lists. Standard formula:
+   * `score(d) = sum over rankers r of weight(d) / (k + rank_r(d))`,
+   * where rank starts at 1. A document only ranked by one signal
+   * still contributes; documents ranked highly across multiple
+   * signals accumulate the most score. The `weightOf` hook lets
+   * callers shape the fused score with per-document signals like
+   * confidence — default 1.0 reproduces the standard RRF formula.
+   * Returns ids in descending fused-score order.
+   */
   def rrfFuse[A](rankings: List[List[A]], k: Int, weightOf: A => Double = (_: A) => 1.0): List[A] =
     rrfFuse(rankings.map(r => (r, 1.0)), k, weightOf)
 
-  /** Weighted RRF — each ranker carries its own multiplier on top
-    * of the per-document `weightOf`. Used to give one signal more
-    * influence than another (e.g. lexical BM25 over hash-vector
-    * cosine on small candidate pools). */
+  /**
+   * Weighted RRF — each ranker carries its own multiplier on top
+   * of the per-document `weightOf`. Used to give one signal more
+   * influence than another (e.g. lexical BM25 over hash-vector
+   * cosine on small candidate pools).
+   */
   @scala.annotation.targetName("rrfFuseWeighted")
   def rrfFuse[A](weightedRankings: List[(List[A], Double)], k: Int, weightOf: A => Double): List[A] = {
     val accum = scala.collection.mutable.LinkedHashMap.empty[A, Double]
@@ -295,7 +326,7 @@ object StandardMemoryRetriever {
         val contribution = weightOf(id) * rankerWeight / (k + rank)
         accum.updateWith(id) {
           case Some(v) => Some(v + contribution)
-          case None    => Some(contribution)
+          case None => Some(contribution)
         }
       }
     }

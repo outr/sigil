@@ -65,10 +65,10 @@ class DeepInfraCatalogSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       (cached * BigDecimal(1_000_000)).toDouble shouldBe (0.07 +- 0.001)
 
       model.architecture.modality shouldBe "text+image->text"
-      model.architecture.inputModalities should contain ("text")
-      model.architecture.inputModalities should contain ("image")
-      model.supportedParameters should contain ("tools")
-      model.supportedParameters should contain ("tool_choice")
+      model.architecture.inputModalities should contain("text")
+      model.architecture.inputModalities should contain("image")
+      model.supportedParameters should contain("tools")
+      model.supportedParameters should contain("tool_choice")
       model.expirationDate shouldBe None
       succeed
     }

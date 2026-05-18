@@ -51,7 +51,7 @@ class WorkflowEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         .takeWhile(_ => running)
         .drain
         .startUnit()
-      Thread.sleep(100)  // give the subscription a moment to attach
+      Thread.sleep(100) // give the subscription a moment to attach
 
       val template = WorkflowTemplate(
         name = "noop",
@@ -79,19 +79,21 @@ class WorkflowEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       )
 
       for {
-        _      <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _      <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
-        _      <- sigil.workflow.WorkflowScheduler.scheduleTemplate(
-                    TestWorkflowSigil, TestWorkflowSigil.workflowDb, template
-                  )
-        _      <- waitForCompletion(recorded, 10.seconds)
+        _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
+        _ <- sigil.workflow.WorkflowScheduler.scheduleTemplate(
+          TestWorkflowSigil,
+          TestWorkflowSigil.workflowDb,
+          template
+        )
+        _ <- waitForCompletion(recorded, 10.seconds)
       } yield {
         running = false
         import scala.jdk.CollectionConverters.*
         val all = recorded.iterator().asScala.toList
-        val starts = all.collect { case e: WorkflowRunStarted   => e }
-        val steps  = all.collect { case e: WorkflowStepCompleted => e }
-        val ends   = all.collect { case e: WorkflowRunCompleted  => e }
+        val starts = all.collect { case e: WorkflowRunStarted => e }
+        val steps = all.collect { case e: WorkflowStepCompleted => e }
+        val ends = all.collect { case e: WorkflowRunCompleted => e }
         starts should have size 1
         steps should have size 1
         steps.head.success shouldBe true
@@ -101,9 +103,11 @@ class WorkflowEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     }
   }
 
-  /** Poll the recorded queue until a `WorkflowRunCompleted` shows up
-    * (or the timeout fires). Cheaper than a fixed sleep for fast
-    * runs and bounded for slow ones. */
+  /**
+   * Poll the recorded queue until a `WorkflowRunCompleted` shows up
+   * (or the timeout fires). Cheaper than a fixed sleep for fast
+   * runs and bounded for slow ones.
+   */
   private def waitForCompletion(recorded: ConcurrentLinkedQueue[Signal], timeout: FiniteDuration): Task[Unit] = {
     val deadline = System.currentTimeMillis() + timeout.toMillis
     def loop: Task[Unit] = Task.defer {
@@ -130,9 +134,11 @@ object WorkflowTestTopic {
   val summary: String = "Synthetic topic for the workflow E2E spec."
 }
 
-/** Minimal `WorkflowSigil` instance for the integration test —
-  * uses Sigil's default DB layout under a per-suite path, no
-  * real provider, no participants list except the test user. */
+/**
+ * Minimal `WorkflowSigil` instance for the integration test —
+ * uses Sigil's default DB layout under a per-suite path, no
+ * real provider, no participants list except the test user.
+ */
 object TestWorkflowSigil extends Sigil with WorkflowSigil {
   override type DB = TestWorkflowDB
 
@@ -146,30 +152,35 @@ object TestWorkflowSigil extends Sigil with WorkflowSigil {
   override protected def participantIds: List[RW[? <: ParticipantId]] =
     List(RW.static(WorkflowTestUser))
 
-  /** Mutable provider hook — defaults to throwing for specs that
-    * don't drive LLM calls. The worker integration spec calls
-    * `setProvider(Task.pure(realProvider))` to plug in llama.cpp. */
-  private val providerRef = new java.util.concurrent.atomic.AtomicReference[() => Task[Provider]](
-    () => Task.error(new RuntimeException("TestWorkflowSigil — no provider configured (call setProvider to wire one)"))
-  )
+  /**
+   * Mutable provider hook — defaults to throwing for specs that
+   * don't drive LLM calls. The worker integration spec calls
+   * `setProvider(Task.pure(realProvider))` to plug in llama.cpp.
+   */
+  private val providerRef = new java.util.concurrent.atomic.AtomicReference[() => Task[Provider]](() =>
+    Task.error(new RuntimeException("TestWorkflowSigil — no provider configured (call setProvider to wire one)")))
 
   def setProvider(p: => Task[Provider]): Unit = providerRef.set(() => p)
 
   override def providerFor(modelId: Id[Model], chain: List[ParticipantId]): Task[Provider] =
     providerRef.get()()
 
-  /** Test-only tool surface — adds [[EchoBackTool]] (used by the
-    * worker tool-dispatch coverage in [[LlamaCppWorkerSpec]]),
-    * [[sigil.tool.util.DelegateTaskTool]] (sub-worker delegation
-    * coverage), and [[FailingTool]] (worker error-handling coverage)
-    * on top of the standard CoreTools.all roster. Other specs that
-    * don't touch these ignore them. */
+  /**
+   * Test-only tool surface — adds [[EchoBackTool]] (used by the
+   * worker tool-dispatch coverage in [[LlamaCppWorkerSpec]]),
+   * [[sigil.tool.util.DelegateTaskTool]] (sub-worker delegation
+   * coverage), and [[FailingTool]] (worker error-handling coverage)
+   * on top of the standard CoreTools.all roster. Other specs that
+   * don't touch these ignore them.
+   */
   override def staticTools: List[sigil.tool.Tool] =
     super.staticTools ++ List(EchoBackTool, sigil.tool.util.DelegateTaskTool, FailingTool)
 
-  /** Per-suite init: wipes any prior DB at the per-suite path, points
-    * `sigil.dbPath` at it, and forces the Sigil instance to start so
-    * the workflow manager + Strider engine wire up before tests run. */
+  /**
+   * Per-suite init: wipes any prior DB at the per-suite path, points
+   * `sigil.dbPath` at it, and forces the Sigil instance to start so
+   * the workflow manager + Strider engine wire up before tests run.
+   */
   def initFor(testClassName: String): Unit = {
     val name = testClassName.replace("$", "")
     val dbPath = java.nio.file.Path.of("db", "test", name)
@@ -179,7 +190,7 @@ object TestWorkflowSigil extends Sigil with WorkflowSigil {
     ()
   }
 
-  private def deleteRecursive(path: java.nio.file.Path): Unit = {
+  private def deleteRecursive(path: java.nio.file.Path): Unit =
     if (java.nio.file.Files.exists(path)) {
       import scala.jdk.CollectionConverters.*
       if (java.nio.file.Files.isDirectory(path)) {
@@ -187,11 +198,9 @@ object TestWorkflowSigil extends Sigil with WorkflowSigil {
       }
       java.nio.file.Files.delete(path)
     }
-  }
 }
 
 class TestWorkflowDB(directory: Option[java.nio.file.Path],
                      storeManager: lightdb.store.CollectionManager,
                      upgrades: List[lightdb.upgrade.DatabaseUpgrade] = Nil)
-  extends SigilDB(directory, storeManager, upgrades)
-  with WorkflowCollections
+  extends SigilDB(directory, storeManager, upgrades) with WorkflowCollections

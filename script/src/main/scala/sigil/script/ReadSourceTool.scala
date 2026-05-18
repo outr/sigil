@@ -30,20 +30,20 @@ import scala.util.boundary.break
  * (or `.java`). Methods inside the file aren't separately extractable
  * without a parser; the agent reads the whole class.
  */
-case object ReadSourceTool extends TypedTool[ReadSourceInput](
-  name = ToolName("read_source"),
-  description =
-    """Return the source code for a fully-qualified class. Falls back to `(source not available)`
+case object ReadSourceTool
+  extends TypedTool[ReadSourceInput](
+    name = ToolName("read_source"),
+    description =
+      """Return the source code for a fully-qualified class. Falls back to `(source not available)`
       |when no `-sources.jar` on the classpath ships the symbol.
       |
       |Use this when [[ClassSignaturesTool]]'s parameter-type listing isn't enough to figure
       |out semantics — e.g. understanding what a builder method actually configures, or how
       |a polymorphic API dispatches.""".stripMargin,
-  modes = Set(ScriptAuthoringMode.id),
-  keywords = Set("source", "code", "read", "scaladoc", "implementation", "introspect")
-) {
+    modes = Set(ScriptAuthoringMode.id),
+    keywords = Set("source", "code", "read", "scaladoc", "implementation", "introspect")
+  ) {
   override def paginate: Boolean = false
-
 
   override protected def executeTyped(input: ReadSourceInput, context: TurnContext): rapid.Stream[Event] = {
     val text = try render(input.fqn)
@@ -57,7 +57,7 @@ case object ReadSourceTool extends TypedTool[ReadSourceInput](
     val candidates = List(s"$relPath.scala", s"$relPath.java")
     findInClasspath(candidates) match {
       case Some((path, body)) => s"# $fqn\n# (source: $path)\n\n$body"
-      case None               => s"(source not available for $fqn — no `-sources.jar` on the classpath ships $relPath.scala or .java)"
+      case None => s"(source not available for $fqn — no `-sources.jar` on the classpath ships $relPath.scala or .java)"
     }
   }
 
@@ -96,15 +96,19 @@ case object ReadSourceTool extends TypedTool[ReadSourceInput](
             val buf = new Array[Byte](8192)
             var n = is.read(buf)
             while (n != -1) { baos.write(buf, 0, n); n = is.read(buf) }
-          } finally try is.close() catch { case _: Throwable => () }
+          } finally
+            try is.close()
+            catch { case _: Throwable => () }
           (s"${file.getName}!$rel", baos.toString("UTF-8"))
         }
       }.nextOption()
     } catch { case _: Throwable => None }
-    finally if (jar != null) try jar.close() catch { case _: Throwable => () }
+    finally
+      if (jar != null) try jar.close()
+      catch { case _: Throwable => () }
   }
 
-  private def findInDir(root: File, candidates: List[String]): Option[(String, String)] = {
+  private def findInDir(root: File, candidates: List[String]): Option[(String, String)] =
     candidates.iterator.flatMap { rel =>
       val f = new File(root, rel)
       if (f.isFile) {
@@ -112,16 +116,15 @@ case object ReadSourceTool extends TypedTool[ReadSourceInput](
         catch { case _: Throwable => None }
       } else None
     }.nextOption()
-  }
 
   private def reply(context: TurnContext, text: String): Message =
     Message(
-      participantId  = context.caller,
+      participantId = context.caller,
       conversationId = context.conversation.id,
-      topicId        = context.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete,
-      role           = MessageRole.Tool,
-      visibility     = MessageVisibility.Agents
+      topicId = context.conversation.currentTopicId,
+      content = Vector(ResponseContent.Text(text)),
+      state = EventState.Complete,
+      role = MessageRole.Tool,
+      visibility = MessageVisibility.Agents
     )
 }

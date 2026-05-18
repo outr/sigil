@@ -41,7 +41,7 @@ class DegenerateGenerationDetectionSpec extends AnyWordSpec with Matchers {
       }
       hit.get.occurrences shouldBe 60
       hit.get.share should be > 0.4
-      hit.get.repeatedSentence should include ("Let me pull up")
+      hit.get.repeatedSentence should include("Let me pull up")
     }
 
     "NOT fire on a short response (below minLength)" in {
@@ -79,13 +79,13 @@ class DegenerateGenerationDetectionSpec extends AnyWordSpec with Matchers {
 
     "render a diagnostic that names the loop and instructs the agent" in {
       val sentence = "Repeated sentence. " * 30
-      val padded   = sentence + " " * (5000 - sentence.length max 0)
-      val text     = padded * 2  // ensure > minLength comfortably
-      val hit      = DegenerateContentDetector.Default.detect(text).get
-      val diag     = hit.renderDiagnostic(text.length)
-      diag should include ("repetition loop")
-      diag should include ("max_tokens")
-      diag should include ("find_capability")  // self-correction suggestion
+      val padded = sentence + " " * (5000 - sentence.length max 0)
+      val text = padded * 2 // ensure > minLength comfortably
+      val hit = DegenerateContentDetector.Default.detect(text).get
+      val diag = hit.renderDiagnostic(text.length)
+      diag should include("repetition loop")
+      diag should include("max_tokens")
+      diag should include("find_capability") // self-correction suggestion
     }
   }
 

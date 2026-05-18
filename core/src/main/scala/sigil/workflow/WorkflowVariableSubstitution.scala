@@ -26,20 +26,23 @@ object WorkflowVariableSubstitution {
 
   def substitute(template: String, variables: Map[String, Json]): String =
     if (template.isEmpty || variables.isEmpty) template
-    else Pattern.replaceAllIn(template, m => {
-      val key = m.group(1)
-      variables.get(key) match {
-        case None       => Regex.quoteReplacement(m.matched)
-        case Some(json) => Regex.quoteReplacement(render(json))
+    else Pattern.replaceAllIn(
+      template,
+      m => {
+        val key = m.group(1)
+        variables.get(key) match {
+          case None => Regex.quoteReplacement(m.matched)
+          case Some(json) => Regex.quoteReplacement(render(json))
+        }
       }
-    })
+    )
 
   private def render(j: Json): String = j match {
-    case fabric.Str(s, _)    => s
+    case fabric.Str(s, _) => s
     case fabric.NumInt(n, _) => n.toString
     case fabric.NumDec(d, _) => d.toString
-    case fabric.Bool(b, _)   => b.toString
-    case fabric.Null         => ""
-    case other               => fabric.io.JsonFormatter.Compact(other)
+    case fabric.Bool(b, _) => b.toString
+    case fabric.Null => ""
+    case other => fabric.io.JsonFormatter.Compact(other)
   }
 }

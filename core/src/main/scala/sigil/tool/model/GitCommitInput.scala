@@ -12,4 +12,5 @@ import sigil.tool.ToolInput
 case class GitCommitInput(message: String,
                           paths: Option[List[String]] = None,
                           allowEmpty: Boolean = false,
-                          workingDir: Option[String] = None) extends ToolInput derives RW
+                          workingDir: Option[String] = None)
+  extends ToolInput derives RW

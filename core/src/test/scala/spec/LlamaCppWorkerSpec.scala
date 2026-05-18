@@ -38,18 +38,20 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
   // republishUntilSettled, waitForTerminal) can fire first and
   // surface a specific diagnostic instead of a generic
   // "Async test timed out".
-  override implicit protected val testTimeout: FiniteDuration = 5.minutes
+  implicit override protected val testTimeout: FiniteDuration = 5.minutes
 
   private val convId = Conversation.id("worker-llamacpp-conv")
   private val modelId = Model.id("qwen3.5-9b-q4_k_m")
 
-  /** Schedule + wait for terminal status, then return the settled run. */
+  /**
+   * Schedule + wait for terminal status, then return the settled run.
+   */
   private def runWorker(role: Role, brief: String): Task[Workflow] = {
     val stepInput = AgentDecisionStepInput(
-      id            = "decision-0",
-      role          = role,
-      brief         = brief,
-      modelId       = modelId.value,
+      id = "decision-0",
+      role = role,
+      brief = brief,
+      modelId = modelId.value,
       maxIterations = 6
     )
     import sigil.workflow.SigilWorkflowModel.stepRW
@@ -59,28 +61,30 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     for {
       conv <- Task.pure(Conversation(
         topics = List(TopicEntry(WorkflowTestTopic.id, WorkflowTestTopic.label, WorkflowTestTopic.summary)),
-        _id    = convId
+        _id = convId
       ))
       _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       // Pass conversationId at schedule time — the prior pattern
       // (schedule then modify) raced with Strider's monitor picking
       // up the freshly-scheduled run before the modify landed.
       run <- TestWorkflowSigil.workflowManager.schedule(
-        name           = "live-worker",
-        steps          = compiled.steps,
-        sourceId       = sourceId,
+        name = "live-worker",
+        steps = compiled.steps,
+        sourceId = sourceId,
         conversationId = Some(conv._id.value)
       )
       settled <- waitForTerminal(run._id)
     } yield settled
   }
 
-  /** Active-wait for a [[sigil.workflow.event.TaskExecuted]] with the
-    * given `taskId` to land in the recorder queue. Replaces fixed
-    * `Task.sleep`s after `waitForTerminal` — the workflow's
-    * `wf.finished` flag flips BEFORE `onWorkflowCompleted` publishes
-    * the Event, so a tight sleep races under contention. 100ms poll,
-    * 30 s cap. */
+  /**
+   * Active-wait for a [[sigil.workflow.event.TaskExecuted]] with the
+   * given `taskId` to land in the recorder queue. Replaces fixed
+   * `Task.sleep`s after `waitForTerminal` — the workflow's
+   * `wf.finished` flag flips BEFORE `onWorkflowCompleted` publishes
+   * the Event, so a tight sleep races under contention. 100ms poll,
+   * 30 s cap.
+   */
   private def pollForRecordedTaskExecuted(
     recorded: java.util.concurrent.ConcurrentLinkedQueue[sigil.workflow.event.TaskExecuted],
     taskId: String
@@ -99,9 +103,11 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     loop()
   }
 
-  /** Poll the workflow run until its status becomes terminal (Success
-    * / Failure / Cancelled / TimedOut). 200ms poll, 2-min cap so a
-    * stuck run fails the test rather than hanging forever. */
+  /**
+   * Poll the workflow run until its status becomes terminal (Success
+   * / Failure / Cancelled / TimedOut). 200ms poll, 2-min cap so a
+   * stuck run fails the test rather than hanging forever.
+   */
   private def waitForTerminal(runId: Id[Workflow]): Task[Workflow] = {
     val deadline = System.currentTimeMillis() + 120_000L
     def loop(): Task[Workflow] =
@@ -118,7 +124,7 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
   private def isReachable: Boolean =
     scala.util.Try {
-      val url  = java.net.URI.create(TestSigil.llamaCppHost.toString).toURL
+      val url = java.net.URI.create(TestSigil.llamaCppHost.toString).toURL
       val conn = url.openConnection().asInstanceOf[java.net.HttpURLConnection]
       conn.setConnectTimeout(2000)
       conn.setReadTimeout(2000)
@@ -227,12 +233,12 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
         val brief = "Call echo_back with text 'marker-42-via-tool', then complete with a confirmation summary."
 
         val stepInput = AgentDecisionStepInput(
-          id            = "decision-0",
-          role          = role,
-          brief         = brief,
-          modelId       = modelId.value,
+          id = "decision-0",
+          role = role,
+          brief = brief,
+          modelId = modelId.value,
           maxIterations = 6,
-          toolNames     = List("echo_back")
+          toolNames = List("echo_back")
         )
         import sigil.workflow.SigilWorkflowModel.stepRW
         val compiled = WorkflowStepInputCompiler.compile(List(stepInput))
@@ -252,9 +258,9 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
           ))
           _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(conv)))
           run <- TestWorkflowSigil.workflowManager.schedule(
-            name           = "tool-worker",
-            steps          = compiled.steps,
-            sourceId       = sourceId,
+            name = "tool-worker",
+            steps = compiled.steps,
+            sourceId = sourceId,
             conversationId = Some(conv._id.value)
           )
           settled <- waitForTerminal(run._id)
@@ -320,10 +326,10 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
         val brief = "Reply with `Complete: settled-via-worker` and nothing else."
 
         val stepInput = AgentDecisionStepInput(
-          id            = "decision-0",
-          role          = role,
-          brief         = brief,
-          modelId       = modelId.value,
+          id = "decision-0",
+          role = role,
+          brief = brief,
+          modelId = modelId.value,
           maxIterations = 6
         )
         import sigil.workflow.SigilWorkflowModel.stepRW
@@ -351,9 +357,9 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
           _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(parentConv)))
           _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(workerConv)))
           run <- TestWorkflowSigil.workflowManager.schedule(
-            name           = "taskexec-worker",
-            steps          = compiled.steps,
-            sourceId       = sourceId,
+            name = "taskexec-worker",
+            steps = compiled.steps,
+            sourceId = sourceId,
             conversationId = Some(workerConvId.value)
           )
           settled <- waitForTerminal(run._id)
@@ -362,8 +368,8 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
           // return before the Event reaches our recorder. Actively
           // poll the recorder for the matching event instead of
           // hoping a fixed sleep is long enough.
-          _   <- pollForRecordedTaskExecuted(recorded, run._id.value)
-          _   <- Task { running = false; () }
+          _ <- pollForRecordedTaskExecuted(recorded, run._id.value)
+          _ <- Task { running = false; () }
         } yield {
           settled.status shouldBe WorkflowStatus.Success
           import scala.jdk.CollectionConverters.*
@@ -411,10 +417,10 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
         val brief = "Reply with `Complete: delegated-and-settled` and nothing else."
 
         val ctx = TurnContext(
-          sigil            = TestWorkflowSigil,
-          chain            = List(WorkflowTestUser),
-          conversation     = parentConv,
-          turnInput        = TurnInput(ConversationView(conversationId = parentConvId))
+          sigil = TestWorkflowSigil,
+          chain = List(WorkflowTestUser),
+          conversation = parentConv,
+          turnInput = TurnInput(ConversationView(conversationId = parentConvId))
         )
 
         for {
@@ -430,7 +436,7 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
             payload.get("ok").map(_.asString) shouldBe Some("true")
             ()
           }
-          taskId       = payload.get("taskId").map(_.asString).getOrElse("")
+          taskId = payload.get("taskId").map(_.asString).getOrElse("")
           workerConvId = payload.get("workerConvId").map(_.asString).getOrElse("")
           _ <- Task {
             taskId should not be empty
@@ -493,8 +499,11 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
         Thread.sleep(100)
 
         val stepInput = AgentDecisionStepInput(
-          id = "decision-0", role = role, brief = brief,
-          modelId = modelId.value, maxIterations = 6
+          id = "decision-0",
+          role = role,
+          brief = brief,
+          modelId = modelId.value,
+          maxIterations = 6
         )
         import sigil.workflow.SigilWorkflowModel.stepRW
         val compiled = WorkflowStepInputCompiler.compile(List(stepInput))
@@ -521,9 +530,9 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
           _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(parentConv)))
           _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(workerConv)))
           run <- TestWorkflowSigil.workflowManager.schedule(
-            name           = "report-worker",
-            steps          = compiled.steps,
-            sourceId       = sourceId,
+            name = "report-worker",
+            steps = compiled.steps,
+            sourceId = sourceId,
             conversationId = Some(workerConvId.value)
           )
           settled <- waitForTerminal(run._id)
@@ -557,11 +566,9 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
           // status: yes" inside the LLM's narrative and then
           // failing the assertion below.
           val emittedStatus = priorReasoning.linesIterator.exists(l =>
-            l.stripLeading().toLowerCase.startsWith("status:")
-          )
+            l.stripLeading().toLowerCase.startsWith("status:"))
           val emittedReport = priorReasoning.linesIterator.exists(l =>
-            l.stripLeading().toLowerCase.startsWith("report:")
-          )
+            l.stripLeading().toLowerCase.startsWith("report:"))
           if (emittedStatus) statuses should not be empty
           if (emittedReport) reportMessages should not be empty
           succeed
@@ -598,8 +605,11 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
         val brief = "Spawn a child worker that finishes immediately, then complete."
 
         val stepInput = AgentDecisionStepInput(
-          id = "decision-0", role = role, brief = brief,
-          modelId = modelId.value, maxIterations = 6,
+          id = "decision-0",
+          role = role,
+          brief = brief,
+          modelId = modelId.value,
+          maxIterations = 6,
           toolNames = List("delegate_task")
         )
         import sigil.workflow.SigilWorkflowModel.stepRW
@@ -627,9 +637,9 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
           _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(parentConv)))
           _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(workerConv)))
           run <- TestWorkflowSigil.workflowManager.schedule(
-            name           = "delegator-worker",
-            steps          = compiled.steps,
-            sourceId       = sourceId,
+            name = "delegator-worker",
+            steps = compiled.steps,
+            sourceId = sourceId,
             conversationId = Some(workerConvId.value)
           )
           settled <- waitForTerminal(run._id)
@@ -689,8 +699,11 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
         val brief = "Call intentional_failure with no args."
 
         val stepInput = AgentDecisionStepInput(
-          id = "decision-0", role = role, brief = brief,
-          modelId = modelId.value, maxIterations = 4,
+          id = "decision-0",
+          role = role,
+          brief = brief,
+          modelId = modelId.value,
+          maxIterations = 4,
           toolNames = List("intentional_failure")
         )
         import sigil.workflow.SigilWorkflowModel.stepRW
@@ -718,9 +731,9 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
           _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(parentConv)))
           _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(workerConv)))
           run <- TestWorkflowSigil.workflowManager.schedule(
-            name           = "failing-tool-worker",
-            steps          = compiled.steps,
-            sourceId       = sourceId,
+            name = "failing-tool-worker",
+            steps = compiled.steps,
+            sourceId = sourceId,
             conversationId = Some(workerConvId.value)
           )
           settled <- waitForTerminal(run._id)
@@ -768,9 +781,11 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
             _id = workerConvId
           )
           val stepInput = AgentDecisionStepInput(
-            id = "decision-0", role = role,
+            id = "decision-0",
+            role = role,
             brief = s"Reply with `Complete: $label-done` and nothing else.",
-            modelId = modelId.value, maxIterations = 4
+            modelId = modelId.value,
+            maxIterations = 4
           )
           import sigil.workflow.SigilWorkflowModel.stepRW
           val compiled = WorkflowStepInputCompiler.compile(List(stepInput))
@@ -778,16 +793,16 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
           for {
             _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(workerConv)))
             wf <- TestWorkflowSigil.workflowManager.schedule(
-              name           = s"conc-$label",
-              steps          = compiled.steps,
-              sourceId       = sourceId,
+              name = s"conc-$label",
+              steps = compiled.steps,
+              sourceId = sourceId,
               conversationId = Some(workerConvId.value)
             )
           } yield wf
         }
 
         for {
-          _   <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(parentConv)))
+          _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(parentConv)))
           // Schedule both workers in parallel — Task.parSequence runs
           // them on separate fibers, mirroring how a parent agent
           // would call delegate_task twice in the same turn.
@@ -829,8 +844,11 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
         val brief = "Pick a color for the user. Ask the parent first."
 
         val stepInput = AgentDecisionStepInput(
-          id = "decision-0", role = role, brief = brief,
-          modelId = modelId.value, maxIterations = 6
+          id = "decision-0",
+          role = role,
+          brief = brief,
+          modelId = modelId.value,
+          maxIterations = 6
         )
         import sigil.workflow.SigilWorkflowModel.stepRW
         val compiled = WorkflowStepInputCompiler.compile(List(stepInput))
@@ -850,18 +868,22 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
           _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(parentConv)))
           _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(workerConv)))
           run <- TestWorkflowSigil.workflowManager.schedule(
-            name           = "askparent-worker",
-            steps          = compiled.steps,
-            sourceId       = sourceId,
+            name = "askparent-worker",
+            steps = compiled.steps,
+            sourceId = sourceId,
             conversationId = Some(workerConvId.value)
           )
 
           questionIdOpt <- pollForQuestionOrTerminal(run._id)
           settled <- questionIdOpt match {
             case Some(qid) =>
-              republishUntilSettled(run._id, sigil.signal.WorkerAnswer(
-                taskId = run._id.value, questionId = qid, answer = "blue"
-              ))
+              republishUntilSettled(
+                run._id,
+                sigil.signal.WorkerAnswer(
+                  taskId = run._id.value,
+                  questionId = qid,
+                  answer = "blue"
+                ))
             case None =>
               TestWorkflowSigil.workflowManager.collection.transaction(_.get(run._id)).map(_.get)
           }
@@ -892,14 +914,16 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     }
   }
 
-  /** Re-publish the answer Notice every 2s and wait for the
-    * workflow to reach a terminal state — defensive against the
-    * historical eviction race in lightdb's LockManager (fixed in
-    * 4.36.1) and the subscription-timing window where the very
-    * first publish lands before the AnswerTrigger's signal
-    * subscription is hot. 3-min cap accommodates worst-case live-
-    * LLM latency under 4-way fork contention; a hung resume still
-    * surfaces as a clear test failure rather than hanging the suite. */
+  /**
+   * Re-publish the answer Notice every 2s and wait for the
+   * workflow to reach a terminal state — defensive against the
+   * historical eviction race in lightdb's LockManager (fixed in
+   * 4.36.1) and the subscription-timing window where the very
+   * first publish lands before the AnswerTrigger's signal
+   * subscription is hot. 3-min cap accommodates worst-case live-
+   * LLM latency under 4-way fork contention; a hung resume still
+   * surfaces as a clear test failure rather than hanging the suite.
+   */
   private def republishUntilSettled(runId: Id[Workflow], answer: sigil.signal.WorkerAnswer): Task[Workflow] = {
     val deadline = System.currentTimeMillis() + 180_000L
     def loop(): Task[Workflow] =
@@ -910,21 +934,22 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
           Task.error(new RuntimeException(s"worker $runId did not settle within 3 min of answer"))
         case Some(_) =>
           TestWorkflowSigil.publish(answer).flatMap(_ =>
-            Task.sleep(2.seconds).flatMap(_ => loop())
-          )
+            Task.sleep(2.seconds).flatMap(_ => loop()))
       }
     loop()
   }
 
-  /** Poll until either:
-    *   - The workflow's stepResults contain one with `asked: true`
-    *     (LLM emitted AskParent: — return Some(questionId))
-    *   - The workflow finishes (LLM short-circuited and terminated
-    *     directly — return None)
-    *   - 3 min elapse (raise) — covers the worst-case live-LLM
-    *     first-token latency under 4-way fork contention. A hung
-    *     run still surfaces as a clear test failure rather than
-    *     hanging the suite. */
+  /**
+   * Poll until either:
+   *   - The workflow's stepResults contain one with `asked: true`
+   *     (LLM emitted AskParent: — return Some(questionId))
+   *   - The workflow finishes (LLM short-circuited and terminated
+   *     directly — return None)
+   *   - 3 min elapse (raise) — covers the worst-case live-LLM
+   *     first-token latency under 4-way fork contention. A hung
+   *     run still surfaces as a clear test failure rather than
+   *     hanging the suite.
+   */
   private def pollForQuestionOrTerminal(runId: Id[Workflow]): Task[Option[String]] = {
     val deadline = System.currentTimeMillis() + 180_000L
     def loop(): Task[Option[String]] =
@@ -938,8 +963,8 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
             } yield q
           }
           asked.headOption match {
-            case Some(qid)              => Task.pure(Some(qid))
-            case None if wf.finished    => Task.pure(None)
+            case Some(qid) => Task.pure(Some(qid))
+            case None if wf.finished => Task.pure(None)
             case None if System.currentTimeMillis() > deadline =>
               Task.error(new RuntimeException(s"workflow $runId neither asked nor finished within 3 min"))
             case None =>

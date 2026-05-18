@@ -40,7 +40,7 @@ final class SecretCaptureTransform(secretStore: SecretStore) extends InboundTran
       val id = Id[SecretRecord](sub.secretId)
       val storeWrite: Task[Unit] = sub.kind match {
         case SecretKind.Encrypted => secretStore.setEncrypted[String](id, sub.value)
-        case SecretKind.Hashed    => secretStore.setHashed[String](id, sub.value)
+        case SecretKind.Hashed => secretStore.setHashed[String](id, sub.value)
       }
       storeWrite.map { _ =>
         Message(

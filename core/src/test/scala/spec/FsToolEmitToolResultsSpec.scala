@@ -26,19 +26,19 @@ class FsToolEmitToolResultsSpec extends AnyWordSpec with Matchers {
   private val invokeId: Id[Event] = Id[Event]("inv-1")
 
   private def ctx(): TurnContext = TurnContext(
-    sigil               = TestSigil,
-    chain               = List(TestUser, TestAgent),
-    conversation        = Conversation(topics = TestTopicStack, participants = Nil, _id = convId),
-    turnInput           = TurnInput(conversationId = convId, frames = Vector.empty, participantProjections = Map.empty),
+    sigil = TestSigil,
+    chain = List(TestUser, TestAgent),
+    conversation = Conversation(topics = TestTopicStack, participants = Nil, _id = convId),
+    turnInput = TurnInput(conversationId = convId, frames = Vector.empty, participantProjections = Map.empty),
     currentToolInvokeId = Some(invokeId),
-    currentToolName     = Some(ToolName("git_diff"))
+    currentToolName = Some(ToolName("git_diff"))
   )
 
   "FsToolEmit" should {
 
     "emit a ToolResults event, not a Message" in {
       val out = sigil.tool.fs.FsToolEmit(obj("text" -> str("hello")), ctx())
-      out shouldBe a [ToolResults]
+      out shouldBe a[ToolResults]
     }
 
     "carry the originating ToolInvoke id in `origin`" in {
@@ -75,7 +75,7 @@ class FsToolEmitToolResultsSpec extends AnyWordSpec with Matchers {
 
     "mark outcome as Failure when payload carries an `error` key" in {
       val out = sigil.tool.fs.FsToolEmit(obj("error" -> str("non-fast-forward")), ctx())
-      out.outcome shouldBe a [ToolOutcome.Failure]
+      out.outcome shouldBe a[ToolOutcome.Failure]
       out.outcome.asInstanceOf[ToolOutcome.Failure].reason should include("non-fast-forward")
       out.summary.get should include("failed")
     }

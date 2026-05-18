@@ -23,32 +23,36 @@ import sigil.tool.{ToolExample, ToolName, TypedTool}
  * Pair with [[sigil.tool.util.SaveMemoryTool]] (write) and
  * [[RecallMemoryTool]] (search) for the full memory CRUD surface.
  */
-case object ForgetMemoryTool extends TypedTool[ForgetMemoryInput](
-  name = ToolName("forget_memory"),
-  description =
-    """Mark a memory as forgotten. Pass `memoryId` to soft-delete a single record (kept on disk
+case object ForgetMemoryTool
+  extends TypedTool[ForgetMemoryInput](
+    name = ToolName("forget_memory"),
+    description =
+      """Mark a memory as forgotten. Pass `memoryId` to soft-delete a single record (kept on disk
       |for lineage but hidden from recall). Pass `key` to hard-delete every version of a keyed
       |memory in the caller's default space. Use sparingly — most "I changed my mind" updates
       |are better expressed by saving a new memory under the same key (versioned upsert).""".stripMargin,
-  examples = List(
-    ToolExample("Reject a single auto-extracted memory",
-      ForgetMemoryInput(memoryId = Some(lightdb.id.Id("mem-12345")))),
-    ToolExample("Hard-delete every version of a keyed memory",
-      ForgetMemoryInput(key = Some("user.units")))
-  ),
-  keywords = Set("memory", "forget", "delete", "remove")
-) {
+    examples = List(
+      ToolExample(
+        "Reject a single auto-extracted memory",
+        ForgetMemoryInput(memoryId = Some(lightdb.id.Id("mem-12345")))),
+      ToolExample(
+        "Hard-delete every version of a keyed memory",
+        ForgetMemoryInput(key = Some("user.units")))
+    ),
+    keywords = Set("memory", "forget", "delete", "remove")
+  ) {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: ForgetMemoryInput, context: TurnContext): Stream[Event] = {
     val msgTask: Task[Message] = (input.memoryId, input.key) match {
       case (Some(_), Some(_)) =>
-        Task.pure(toMsg(context,
+        Task.pure(toMsg(
+          context,
           "[forget_memory] supply either memoryId OR key, not both."))
 
       case (Some(id), None) =>
         context.sigil.rejectMemory(id).map {
-          case None    => toMsg(context, s"[forget_memory] no memory with id ${id.value}.")
+          case None => toMsg(context, s"[forget_memory] no memory with id ${id.value}.")
           case Some(_) => toMsg(context, s"[forget_memory] rejected memory ${id.value}.")
         }
 

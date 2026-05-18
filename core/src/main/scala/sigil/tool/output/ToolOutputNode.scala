@@ -56,20 +56,30 @@ object ToolOutputNode extends RecordDocumentModel[ToolOutputNode] with JsonConve
 
   override def id(value: String = Unique()): Id[ToolOutputNode] = Id(value)
 
-  /** Conversation scope — primary filter for every read path. */
+  /**
+   * Conversation scope — primary filter for every read path.
+   */
   val conversationKey: I[String] = field.index("conversationKey", _.conversationId.value)
 
-  /** Per-call scope — pagination queries narrow by (conversation, call, reference). */
+  /**
+   * Per-call scope — pagination queries narrow by (conversation, call, reference).
+   */
   val callKey: I[String] = field.index("callKey", _.callId.value)
 
-  /** Parent-id scope — `next_page(referenceId)` reads rows where
-    * `referenceKey === referenceId`. Top-level rows carry the
-    * tool-call's id as their referenceKey. */
+  /**
+   * Parent-id scope — `next_page(referenceId)` reads rows where
+   * `referenceKey === referenceId`. Top-level rows carry the
+   * tool-call's id as their referenceKey.
+   */
   val referenceKey: I[String] = field.index("referenceKey", _.referenceId)
 
-  /** Sibling ordering — pagination reads sort by this ascending. */
+  /**
+   * Sibling ordering — pagination reads sort by this ascending.
+   */
   val ordinalKey: I[Int] = field.index("ordinalKey", _.ordinal)
 
-  /** Expiration index for the TTL sweeper. */
+  /**
+   * Expiration index for the TTL sweeper.
+   */
   val expiresAtKey: I[Long] = field.index("expiresAtKey", _.expiresAt.value)
 }

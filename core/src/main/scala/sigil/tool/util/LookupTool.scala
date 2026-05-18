@@ -32,10 +32,11 @@ import sigil.tool.model.{LookupInput, LookupOutput}
  * matched record's JSON for the caller to deserialize against
  * whichever shape matches `capabilityType`.
  */
-case object LookupTool extends TypedOutputTool[LookupInput, LookupOutput](
-  name = ToolName("lookup"),
-  description =
-    """Resolve a capability match (from `find_capability`) to its full record. Use this when
+case object LookupTool
+  extends TypedOutputTool[LookupInput, LookupOutput](
+    name = ToolName("lookup"),
+    description =
+      """Resolve a capability match (from `find_capability`) to its full record. Use this when
       |you need the details behind a memory's summary, the body of a referenced Information
       |record, or any other discovered capability with stored content.
       |
@@ -46,21 +47,26 @@ case object LookupTool extends TypedOutputTool[LookupInput, LookupOutput](
       |Tools and modes are not retrievable — call tools directly; switch modes via `change_mode`.
       |Returns `Found(capabilityType, name, payload)`, `NotFound(capabilityType, name)`, or
       |`NotRetrievable(capabilityType, name, hint)`.""".stripMargin,
-  keywords = Set("lookup", "fetch", "retrieve", "resolve", "details", "full", "expand")
-) with sigil.tool.ReadOnlyInternalTool {
+    keywords = Set("lookup", "fetch", "retrieve", "resolve", "details", "full", "expand")
+  )
+  with sigil.tool.ReadOnlyInternalTool {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LookupInput, context: TurnContext): Task[LookupOutput] = {
     val typeName = input.capabilityType.toString
     input.capabilityType match {
-      case CapabilityType.Memory      => resolveMemory(input.name, typeName, context)
+      case CapabilityType.Memory => resolveMemory(input.name, typeName, context)
       case CapabilityType.Information => resolveInformation(input.name, typeName, context)
-      case CapabilityType.Skill       => resolveSkill(input.name, typeName, context)
+      case CapabilityType.Skill => resolveSkill(input.name, typeName, context)
       case CapabilityType.Tool =>
-        Task.pure(LookupOutput.NotRetrievable(typeName, input.name,
+        Task.pure(LookupOutput.NotRetrievable(
+          typeName,
+          input.name,
           s"tools are not retrievable — call '${input.name}' directly."))
       case CapabilityType.Mode =>
-        Task.pure(LookupOutput.NotRetrievable(typeName, input.name,
+        Task.pure(LookupOutput.NotRetrievable(
+          typeName,
+          input.name,
           s"modes are not retrievable — call change_mode(\"${input.name}\") to enter it."))
     }
   }
@@ -87,12 +93,12 @@ case object LookupTool extends TypedOutputTool[LookupInput, LookupOutput](
   private def resolveInformation(name: String, typeName: String, context: TurnContext): Task[LookupOutput] =
     context.sigil.getInformation(Id[Information](name)).map {
       case Some(full) => LookupOutput.Found(typeName, name, summon[RW[Information]].read(full))
-      case None       => LookupOutput.NotFound(typeName, name)
+      case None => LookupOutput.NotFound(typeName, name)
     }
 
   private def resolveSkill(name: String, typeName: String, context: TurnContext): Task[LookupOutput] =
     context.sigil.withDB(_.skills.transaction(_.get(Id[Skill](name)))).map {
       case Some(skill) => LookupOutput.Found(typeName, name, summon[RW[Skill]].read(skill))
-      case None        => LookupOutput.NotFound(typeName, name)
+      case None => LookupOutput.NotFound(typeName, name)
     }
 }

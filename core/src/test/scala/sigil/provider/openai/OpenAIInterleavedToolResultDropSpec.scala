@@ -7,9 +7,7 @@ import rapid.AsyncTaskSpec
 import sigil.conversation.{ContextFrame, Conversation, TopicEntry, TurnInput}
 import sigil.db.Model
 import sigil.event.{Event, MessageVisibility}
-import sigil.provider.{
-  CallId, ConversationMode, ConversationRequest, GenerationSettings, Instructions
-}
+import sigil.provider.{CallId, ConversationMode, ConversationRequest, GenerationSettings, Instructions}
 import sigil.tool.ToolName
 import sigil.tool.core.CoreTools
 import spec.{TestAgent, TestSigil, TestUser}
@@ -58,8 +56,8 @@ class OpenAIInterleavedToolResultDropSpec extends AsyncWordSpec with AsyncTaskSp
 
     "include function_call_output for the prior respond call so OpenAI's prev_id state stays paired" in {
       val convId = Conversation.id(s"respond-pair-${rapid.Unique()}")
-      val topic  = TopicEntry(sigil.conversation.Topic.id("t"), label = "t", summary = "t")
-      val priorId    = "resp_prior_respond"
+      val topic = TopicEntry(sigil.conversation.Topic.id("t"), label = "t", summary = "t")
+      val priorId = "resp_prior_respond"
       // After Turn 1 (model emitted function_call(respond)), the framework's
       // frame list has: User, ToolCall(respond), Text("hi back"). With the
       // round-3 messageCount semantics (sentMessageCount only),
@@ -76,7 +74,8 @@ class OpenAIInterleavedToolResultDropSpec extends AsyncWordSpec with AsyncTaskSp
         ),
         ContextFrame.ToolCall(
           toolName = ToolName("respond"),
-          argsJson = """{"content":"hi back","topicLabel":"Greeting","topicSummary":"Hi","disposition":"Success","endsTurn":true,"keywords":[]}""",
+          argsJson =
+            """{"content":"hi back","topicLabel":"Greeting","topicSummary":"Hi","disposition":"Success","endsTurn":true,"keywords":[]}""",
           callId = Id[Event](respondCallId),
           participantId = TestAgent,
           sourceEventId = Id[Event]("invoke-respond-1"),
@@ -98,27 +97,29 @@ class OpenAIInterleavedToolResultDropSpec extends AsyncWordSpec with AsyncTaskSp
 
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-               _id = convId, topics = List(topic), participants = Nil
-             ))))
+          _id = convId,
+          topics = List(topic),
+          participants = Nil
+        ))))
         _ <- TestSigil.updateProjection(convId, TestAgent)(_.copy(
-               latestProviderResponseId           = Some(priorId),
-               latestProviderResponseMessageCount = Some(priorCount)
-             ))
+          latestProviderResponseId = Some(priorId),
+          latestProviderResponseMessageCount = Some(priorCount)
+        ))
         body <- {
           val req = ConversationRequest(
-            conversationId     = convId,
-            modelId            = modelId,
-            instructions       = Instructions(),
-            turnInput          = TurnInput(conversationId = convId, frames = frames),
-            currentMode        = ConversationMode,
-            currentTopic       = topic,
+            conversationId = convId,
+            modelId = modelId,
+            instructions = Instructions(),
+            turnInput = TurnInput(conversationId = convId, frames = frames),
+            currentMode = ConversationMode,
+            currentTopic = topic,
             generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-            tools              = CoreTools.all,
-            chain              = List(TestUser, TestAgent)
+            tools = CoreTools.all,
+            chain = List(TestUser, TestAgent)
           )
           provider.requestConverter(req).map(_.content match {
             case Some(c: spice.http.content.StringContent) => c.value
-            case _                                         => ""
+            case _ => ""
           })
         }
       } yield {
@@ -138,8 +139,8 @@ class OpenAIInterleavedToolResultDropSpec extends AsyncWordSpec with AsyncTaskSp
 
     "include function_call_output for an interleaved ToolResult even when later Assistant text exists" in {
       val convId = Conversation.id(s"interleaved-${rapid.Unique()}")
-      val topic  = TopicEntry(sigil.conversation.Topic.id("t"), label = "t", summary = "t")
-      val priorId    = "resp_prior_widge"
+      val topic = TopicEntry(sigil.conversation.Topic.id("t"), label = "t", summary = "t")
+      val priorId = "resp_prior_widge"
       val priorCount = 3 // sentMessageCount(1) + outputItemCount(2: function_call + message)
 
       // Frames in chronological order — mirrors what widge-server's
@@ -182,27 +183,29 @@ class OpenAIInterleavedToolResultDropSpec extends AsyncWordSpec with AsyncTaskSp
 
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-               _id = convId, topics = List(topic), participants = Nil
-             ))))
+          _id = convId,
+          topics = List(topic),
+          participants = Nil
+        ))))
         _ <- TestSigil.updateProjection(convId, TestAgent)(_.copy(
-               latestProviderResponseId           = Some(priorId),
-               latestProviderResponseMessageCount = Some(priorCount)
-             ))
+          latestProviderResponseId = Some(priorId),
+          latestProviderResponseMessageCount = Some(priorCount)
+        ))
         body <- {
           val req = ConversationRequest(
-            conversationId     = convId,
-            modelId            = modelId,
-            instructions       = Instructions(),
-            turnInput          = TurnInput(conversationId = convId, frames = frames),
-            currentMode        = ConversationMode,
-            currentTopic       = topic,
+            conversationId = convId,
+            modelId = modelId,
+            instructions = Instructions(),
+            turnInput = TurnInput(conversationId = convId, frames = frames),
+            currentMode = ConversationMode,
+            currentTopic = topic,
             generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-            tools              = CoreTools.all,
-            chain              = List(TestUser, TestAgent)
+            tools = CoreTools.all,
+            chain = List(TestUser, TestAgent)
           )
           provider.requestConverter(req).map(_.content match {
             case Some(c: spice.http.content.StringContent) => c.value
-            case _                                         => ""
+            case _ => ""
           })
         }
       } yield {

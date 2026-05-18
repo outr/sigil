@@ -21,7 +21,7 @@ import sigil.provider.llamacpp.LlamaCppProvider
  * the canonical content for at least one statement landed.
  */
 class LlamaCppInitializeMemoriesSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
-  override implicit protected val testTimeout: scala.concurrent.duration.FiniteDuration =
+  implicit override protected val testTimeout: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.DurationInt(5).minutes
 
   TestSigil.initFor(getClass.getSimpleName)
@@ -65,10 +65,10 @@ class LlamaCppInitializeMemoriesSpec extends AsyncWordSpec with AsyncTaskSpec wi
       )
 
       TestSigil.initializeMemories(
-        space      = MemoryTestSpace,
+        space = MemoryTestSpace,
         statements = statements,
-        modelId    = modelId,
-        chain      = List(TestUser, TestAgent)
+        modelId = modelId,
+        chain = List(TestUser, TestAgent)
       ).flatMap { persisted =>
         TestSigil.findMemories(Set(MemoryTestSpace)).map { stored =>
           withClue(

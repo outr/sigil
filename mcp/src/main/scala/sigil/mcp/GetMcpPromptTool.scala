@@ -11,19 +11,21 @@ import sigil.tool.model.ResponseContent
 
 case class GetMcpPromptInput(server: String,
                              prompt: String,
-                             arguments: Map[String, String] = Map.empty) extends ToolInput derives RW
+                             arguments: Map[String, String] = Map.empty)
+  extends ToolInput derives RW
 
 /**
  * Fetch a populated prompt template from a registered MCP server.
  * The result is the raw `GetPromptResult` shape (description +
  * messages array); apps decide how to splice it into their context.
  */
-final class GetMcpPromptTool(manager: McpManager) extends TypedTool[GetMcpPromptInput](
-  name = ToolName("get_mcp_prompt"),
-  description =
-    """Fetch a populated prompt template from a registered MCP server. Provide `server`, `prompt` (template name),
+final class GetMcpPromptTool(manager: McpManager)
+  extends TypedTool[GetMcpPromptInput](
+    name = ToolName("get_mcp_prompt"),
+    description =
+      """Fetch a populated prompt template from a registered MCP server. Provide `server`, `prompt` (template name),
       |and any `arguments` the template requires. Returns the server's GetPromptResult JSON.""".stripMargin
-) {
+  ) {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: GetMcpPromptInput, context: TurnContext): Stream[Event] =

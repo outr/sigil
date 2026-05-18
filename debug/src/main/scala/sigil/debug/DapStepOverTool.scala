@@ -12,20 +12,22 @@ case class DapStepOverInput(sessionId: String, threadId: Int) extends ToolInput 
  * Execute the next statement in the current frame, stepping over
  * any nested method calls. The classic "next" debugger command.
  */
-final class DapStepOverTool(val manager: DapManager) extends TypedTool[DapStepOverInput](
-  name = ToolName("dap_step_over"),
-  description =
-    """Step over the next statement in the current frame (don't enter nested calls).
+final class DapStepOverTool(val manager: DapManager)
+  extends TypedTool[DapStepOverInput](
+    name = ToolName("dap_step_over"),
+    description =
+      """Step over the next statement in the current frame (don't enter nested calls).
       |
       |`sessionId` selects the active session.
       |`threadId` is the thread to step.""".stripMargin,
-  examples = List(
-    ToolExample(
-      "step over the next line",
-      DapStepOverInput(sessionId = "demo-session", threadId = 1)
+    examples = List(
+      ToolExample(
+        "step over the next line",
+        DapStepOverInput(sessionId = "demo-session", threadId = 1)
+      )
     )
   )
-) with DapToolSupport {
+  with DapToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: DapStepOverInput, context: TurnContext): Stream[Event] =

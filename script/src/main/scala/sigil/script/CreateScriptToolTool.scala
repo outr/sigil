@@ -25,10 +25,11 @@ import sigil.tool.model.ResponseContent
  * with the standard one-turn decay — the natural "build → demo →
  * tweak" rhythm without sticky surface bloat.
  */
-case object CreateScriptToolTool extends TypedTool[CreateScriptToolInput](
-  name = ToolName("create_script_tool"),
-  description =
-    """Persist a new script-backed tool the agent (or any other agent in scope) can later invoke
+case object CreateScriptToolTool
+  extends TypedTool[CreateScriptToolInput](
+    name = ToolName("create_script_tool"),
+    description =
+      """Persist a new script-backed tool the agent (or any other agent in scope) can later invoke
       |through `find_capability`. The script body sees `args: fabric.Json` (matching the declared
       |`parameters` schema) and `context: TurnContext` in scope; its return value is stringified
       |and surfaced as the tool result.
@@ -38,43 +39,45 @@ case object CreateScriptToolTool extends TypedTool[CreateScriptToolInput](
       |optional hint asking the framework to pin the tool to a specific space — the active
       |Sigil's `scriptToolSpace` policy may honor, ignore, or validate the request per
       |app-level policy.""".stripMargin,
-  modes = Set(ScriptAuthoringMode.id),
-  examples = List(
-    ToolExample(
-      "Persist a small derived-value computer",
-      CreateScriptToolInput(
-        name = "compute_total",
-        description = "Sum a list of numbers; returns the total.",
-        code = "args(\"values\").asVector.map(_.asDouble).sum",
-        parameters = fabric.obj(
-          "type" -> fabric.str("object"),
-          "properties" -> fabric.obj(
-            "values" -> fabric.obj(
-              "type" -> fabric.str("array"),
-              "items" -> fabric.obj("type" -> fabric.str("number"))
-            )
-          ),
-          "required" -> fabric.arr(fabric.str("values"))
+    modes = Set(ScriptAuthoringMode.id),
+    examples = List(
+      ToolExample(
+        "Persist a small derived-value computer",
+        CreateScriptToolInput(
+          name = "compute_total",
+          description = "Sum a list of numbers; returns the total.",
+          code = "args(\"values\").asVector.map(_.asDouble).sum",
+          parameters = fabric.obj(
+            "type" -> fabric.str("object"),
+            "properties" -> fabric.obj(
+              "values" -> fabric.obj(
+                "type" -> fabric.str("array"),
+                "items" -> fabric.obj("type" -> fabric.str("number"))
+              )
+            ),
+            "required" -> fabric.arr(fabric.str("values"))
+          )
         )
       )
-    )
-  ),
-  keywords = Set("create", "tool", "script", "build", "author", "register", "new")
-) {
+    ),
+    keywords = Set("create", "tool", "script", "build", "author", "register", "new")
+  ) {
   override def paginate: Boolean = false
 
-  /** Append the active executor's advertised surface (Bug #54) so the
-    * LLM knows which library identifiers are pre-imported and which
-    * Scala-2 idioms to avoid. Without this the model writes
-    * `scala.util.parsing.json.JSON` and falls into a compile-error
-    * loop. */
+  /**
+   * Append the active executor's advertised surface (Bug #54) so the
+   * LLM knows which library identifiers are pre-imported and which
+   * Scala-2 idioms to avoid. Without this the model writes
+   * `scala.util.parsing.json.JSON` and falls into a compile-error
+   * loop.
+   */
   override def descriptionFor(mode: _root_.sigil.provider.Mode,
                               sigilInstance: _root_.sigil.Sigil): String =
     sigilInstance match {
       case s: ScriptSigil =>
         s.scriptExecutor.advertisedSurface match {
-          case Some(surface) => s"${description}\n\n$surface"
-          case None          => description
+          case Some(surface) => s"$description\n\n$surface"
+          case None => description
         }
       case _ => description
     }
@@ -85,13 +88,13 @@ case object CreateScriptToolTool extends TypedTool[CreateScriptToolInput](
       Stream.force(
         s.scriptToolSpace(context.chain, input.space).flatMap { resolvedSpace =>
           val tool = ScriptTool(
-            name        = ToolName(input.name),
+            name = ToolName(input.name),
             description = input.description,
-            code        = input.code,
-            parameters  = JsonSchemaToDefinition(input.parameters),
-            space       = resolvedSpace,
-            keywords    = input.keywords,
-            createdBy   = Some(context.caller)
+            code = input.code,
+            parameters = JsonSchemaToDefinition(input.parameters),
+            space = resolvedSpace,
+            keywords = input.keywords,
+            createdBy = Some(context.caller)
           )
           context.sigil.createTool(tool).flatMap { stored =>
             // Pin the just-created tool to this conversation as
@@ -100,59 +103,59 @@ case object CreateScriptToolTool extends TypedTool[CreateScriptToolInput](
             val overlayTask = context.sigil.addConversationToolOverlay(
               _root_.sigil.conversation.ConversationToolOverlay(
                 conversationId = context.conversation.id,
-                source         = s"create_script_tool:${stored.name.value}",
-                policy         = _root_.sigil.provider.ToolPolicy.Active(List(stored.name))
+                source = s"create_script_tool:${stored.name.value}",
+                policy = _root_.sigil.provider.ToolPolicy.Active(List(stored.name))
               )
             ).handleError { t =>
               Task(scribe.warn(s"create_script_tool: ConversationToolOverlay install failed: ${t.getMessage}"))
             }
             overlayTask.map { _ =>
-            // Bugs #68 / #69 — emit ONE Message(Tool) carrying the
-            // confirmation, the schema, and a literal invocation hint
-            // so the agent can call the tool back without an extra
-            // round-trip through `find_capability`. Previously this
-            // tool emitted [ack, ToolResults]: two MessageRole.Tool
-            // events, only the first paired with the call_id; the
-            // second became a `[system: Tool result (orphan): …]`
-            // frame the LLM read as ambient noise rather than as the
-            // useful schema dump it actually was.
-            val schemaJson = JsonFormatter.Default(DefinitionToSchema(stored.schema.input))
-            val text = new StringBuilder
-            text.append(s"Persisted tool '${stored.name.value}' under space '${resolvedSpace.value}'.\n\n")
-            text.append("To invoke on a subsequent turn, emit a tool_call with:\n")
-            text.append(s"  name: ${stored.name.value}\n")
-            text.append(s"  arguments matching this schema:\n")
-            text.append(schemaJson).append("\n\n")
-            text.append("The tool is pinned to this conversation — call it directly on your next turn;\n")
-            text.append("no `find_capability` round-trip needed. Mode is auto-popped back to\n")
-            text.append("`conversation` so the response flow continues normally.\n\n")
-            text.append("Authoring follow-ups (available in `script-authoring` mode):\n")
-            text.append("  - update_script_tool — modify code, description, or parameters\n")
-            text.append("  - delete_script_tool — remove the tool\n")
-            val ack = Message(
-              participantId  = context.caller,
-              conversationId = context.conversation.id,
-              topicId        = context.conversation.currentTopicId,
-              content        = Vector(ResponseContent.Text(text.toString)),
-              state          = EventState.Complete,
-              role           = MessageRole.Tool,
-              visibility     = MessageVisibility.Agents
-            )
-            // Auto-pop back to conversation mode after a successful
-            // create — the agent's intent in script-authoring was to
-            // build the tool, and the user typically wants to use it
-            // back in conversation. Emitted as MessageRole.Standard
-            // so it doesn't compete with `ack` for the tool-result
-            // pairing slot.
-            val modePop = ModeChange(
-              mode           = ConversationMode,
-              reason         = Some(s"auto-pop after create_script_tool '${stored.name.value}'"),
-              participantId  = context.caller,
-              conversationId = context.conversation.id,
-              topicId        = context.conversation.currentTopicId,
-              role           = MessageRole.Standard
-            )
-            Stream.emits[Event](List(ack, modePop))
+              // Bugs #68 / #69 — emit ONE Message(Tool) carrying the
+              // confirmation, the schema, and a literal invocation hint
+              // so the agent can call the tool back without an extra
+              // round-trip through `find_capability`. Previously this
+              // tool emitted [ack, ToolResults]: two MessageRole.Tool
+              // events, only the first paired with the call_id; the
+              // second became a `[system: Tool result (orphan): …]`
+              // frame the LLM read as ambient noise rather than as the
+              // useful schema dump it actually was.
+              val schemaJson = JsonFormatter.Default(DefinitionToSchema(stored.schema.input))
+              val text = new StringBuilder
+              text.append(s"Persisted tool '${stored.name.value}' under space '${resolvedSpace.value}'.\n\n")
+              text.append("To invoke on a subsequent turn, emit a tool_call with:\n")
+              text.append(s"  name: ${stored.name.value}\n")
+              text.append(s"  arguments matching this schema:\n")
+              text.append(schemaJson).append("\n\n")
+              text.append("The tool is pinned to this conversation — call it directly on your next turn;\n")
+              text.append("no `find_capability` round-trip needed. Mode is auto-popped back to\n")
+              text.append("`conversation` so the response flow continues normally.\n\n")
+              text.append("Authoring follow-ups (available in `script-authoring` mode):\n")
+              text.append("  - update_script_tool — modify code, description, or parameters\n")
+              text.append("  - delete_script_tool — remove the tool\n")
+              val ack = Message(
+                participantId = context.caller,
+                conversationId = context.conversation.id,
+                topicId = context.conversation.currentTopicId,
+                content = Vector(ResponseContent.Text(text.toString)),
+                state = EventState.Complete,
+                role = MessageRole.Tool,
+                visibility = MessageVisibility.Agents
+              )
+              // Auto-pop back to conversation mode after a successful
+              // create — the agent's intent in script-authoring was to
+              // build the tool, and the user typically wants to use it
+              // back in conversation. Emitted as MessageRole.Standard
+              // so it doesn't compete with `ack` for the tool-result
+              // pairing slot.
+              val modePop = ModeChange(
+                mode = ConversationMode,
+                reason = Some(s"auto-pop after create_script_tool '${stored.name.value}'"),
+                participantId = context.caller,
+                conversationId = context.conversation.id,
+                topicId = context.conversation.currentTopicId,
+                role = MessageRole.Standard
+              )
+              Stream.emits[Event](List(ack, modePop))
             }
           }
         }.handleError { e =>
@@ -168,13 +171,12 @@ case object CreateScriptToolTool extends TypedTool[CreateScriptToolInput](
 
   private def errorReply(context: TurnContext, text: String): Event =
     Message(
-      participantId  = context.caller,
+      participantId = context.caller,
       conversationId = context.conversation.id,
-      topicId        = context.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete,
-      role           = MessageRole.Tool,
-      visibility     = MessageVisibility.Agents
+      topicId = context.conversation.currentTopicId,
+      content = Vector(ResponseContent.Text(text)),
+      state = EventState.Complete,
+      role = MessageRole.Tool,
+      visibility = MessageVisibility.Agents
     )
 }
-

@@ -9,4 +9,5 @@ import sigil.tool.ToolInput
  * remote-tracking branches.
  */
 case class GitBranchInput(includeRemotes: Boolean = false,
-                          workingDir: Option[String] = None) extends ToolInput derives RW
+                          workingDir: Option[String] = None)
+  extends ToolInput derives RW

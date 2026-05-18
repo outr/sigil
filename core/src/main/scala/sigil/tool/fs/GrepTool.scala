@@ -19,25 +19,41 @@ import sigil.tool.{ToolExample, ToolName}
  * navigate via `tool_output_get`. The first page of files lands
  * inline; the rest paginate via [[sigil.tool.output.NextPageTool]].
  */
-final class GrepTool(context: FileSystemContext) extends PaginatedTool[GrepInput, GrepNode](
-  name = ToolName("grep"),
-  description0 =
-    """Search files under `path` for a regex pattern. An optional file-set glob restricts the
+final class GrepTool(context: FileSystemContext)
+  extends PaginatedTool[GrepInput, GrepNode](
+    name = ToolName("grep"),
+    description0 =
+      """Search files under `path` for a regex pattern. An optional file-set glob restricts the
       |search; `contextLines` adds surrounding-context lines to each match.
       |
       |Returns a paginated tree: the top-level page lists files (one node per file with
       |at least one match, with `matchCount`); children are the matching lines for that
       |file.""".stripMargin,
-  examples = List(
-    ToolExample("Find TODOs in Scala source", GrepInput(path = "src", pattern = "TODO", glob = Some("**/*.scala"))),
-    ToolExample("Find function definition with context", GrepInput(path = ".", pattern = "def myFunction", contextLines = 2))
-  ),
-  keywords = Set(
-    "grep", "search", "regex", "find", "match", "lines",
-    "lookup", "ripgrep", "rg", "code", "text", "files", "pattern",
-    "scan", "look", "occurrence", "string"
+    examples = List(
+      ToolExample("Find TODOs in Scala source", GrepInput(path = "src", pattern = "TODO", glob = Some("**/*.scala"))),
+      ToolExample("Find function definition with context", GrepInput(path = ".", pattern = "def myFunction", contextLines = 2))
+    ),
+    keywords = Set(
+      "grep",
+      "search",
+      "regex",
+      "find",
+      "match",
+      "lines",
+      "lookup",
+      "ripgrep",
+      "rg",
+      "code",
+      "text",
+      "files",
+      "pattern",
+      "scan",
+      "look",
+      "occurrence",
+      "string"
+    )
   )
-) with sigil.tool.ReadOnlyExternalTool {
+  with sigil.tool.ReadOnlyExternalTool {
   // Bug #86 — generic primitive: ranks below domain-specific tools
   // (LSP/BSP, typed inspectors) when both match a query, but stays
   // findable when nothing more specific applies.
@@ -55,15 +71,15 @@ final class GrepTool(context: FileSystemContext) extends PaginatedTool[GrepInput
             val children = Stream.fromIterator(Task.pure(
               fileMatches.iterator.map { m =>
                 Node.leaf[GrepNode](GrepNode.LineMatch(
-                  lineNumber    = m.lineNumber,
-                  content       = m.content,
+                  lineNumber = m.lineNumber,
+                  content = m.content,
                   contextBefore = m.contextBefore,
-                  contextAfter  = m.contextAfter
+                  contextAfter = m.contextAfter
                 ))
               }
             ))
             Node.parent[GrepNode](
-              payload  = GrepNode.FileMatch(filePath = filePath, matchCount = fileMatches.size),
+              payload = GrepNode.FileMatch(filePath = filePath, matchCount = fileMatches.size),
               children = children
             )
           }))

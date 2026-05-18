@@ -22,13 +22,14 @@ import scala.concurrent.duration.*
  * inject a deterministic [[RefactorWorkerDispatcher]] instead.
  */
 final class WorkflowRefactorWorkerDispatcher(fs: FileSystemContext,
-                                             ws: WorkflowSigil & sigil.Sigil) extends RefactorWorkerDispatcher {
+                                             ws: WorkflowSigil & sigil.Sigil)
+  extends RefactorWorkerDispatcher {
 
   override def dispatch(ctx: TurnContext,
                         modelId: String,
                         filePath: String,
                         matches: List[GrepMatch],
-                        instruction: String): Task[Either[String, List[MatchDecision]]] = {
+                        instruction: String): Task[Either[String, List[MatchDecision]]] =
     fs.readFile(filePath).map(c => Right(c): Either[String, String]).handleError { t =>
       Task.pure(Left(s"could not read $filePath: ${t.getClass.getSimpleName}: ${Option(t.getMessage).getOrElse("")}"))
     }.flatMap {
@@ -37,55 +38,56 @@ final class WorkflowRefactorWorkerDispatcher(fs: FileSystemContext,
       case Right(fileContent) =>
         val workerLabel = s"refactor worker: ${filePath.takeRight(64)}"
         val brief = WorkflowRefactorWorkerDispatcher.renderBrief(filePath, fileContent, matches, instruction)
-        val role  = Role(
-          name        = "refactor-worker",
+        val role = Role(
+          name = "refactor-worker",
           description =
             "You are a focused refactor worker. Read the file and the per-match instruction, decide " +
               "for each match whether to edit / skip / fail, then call `submit_refactor_decisions` EXACTLY " +
               "ONCE with the typed decisions list. After that call returns, call `complete_task(summary)` " +
               "to finish. Do not call any other tools.",
-          workType    = CodingWork
+          workType = CodingWork
         )
         val dispatchTask = for {
           workerConv <- ws.newConversation(
-            createdBy            = ctx.caller,
-            label                = workerLabel,
-            summary              = s"refactor: ${filePath.takeRight(80)}",
-            participants         = Nil,
+            createdBy = ctx.caller,
+            label = workerLabel,
+            summary = s"refactor: ${filePath.takeRight(80)}",
+            participants = Nil,
             parentConversationId = Some(ctx.conversation.id)
           )
           stepInput = AgentDecisionStepInput(
-            id            = "decision-0",
-            name          = Some(s"refactor decision: $filePath"),
-            role          = role,
-            brief         = brief,
-            modelId       = modelId,
-            toolNames     = List(SubmitRefactorDecisionsTool.name.value),
+            id = "decision-0",
+            name = Some(s"refactor decision: $filePath"),
+            role = role,
+            brief = brief,
+            modelId = modelId,
+            toolNames = List(SubmitRefactorDecisionsTool.name.value),
             maxIterations = 6
           )
           compiled = WorkflowStepInputCompiler.compile(List(stepInput))
           sourceId = LId[WorkflowParent](s"adhoc-refactor-${rapid.Unique()}")
           run <- ws.workflowManager.schedule(
-            name           = workerLabel,
-            steps          = compiled.steps,
-            sourceId       = sourceId,
+            name = workerLabel,
+            steps = compiled.steps,
+            sourceId = sourceId,
             conversationId = Some(workerConv._id.value)
           )
           settled <- waitForTerminal(ws, run._id, deadline = System.currentTimeMillis() + 10.minutes.toMillis)
           decisions <- extractDecisions(ws, workerConv._id, filePath, settled)
         } yield decisions
         dispatchTask.handleError { t =>
-          Task.pure(Left(s"worker dispatch failed: ${t.getClass.getSimpleName}: ${Option(t.getMessage).getOrElse("")}"): Either[String, List[MatchDecision]])
+          Task.pure(Left(s"worker dispatch failed: ${t.getClass.getSimpleName}: ${Option(t.getMessage).getOrElse("")}"): Either[
+            String,
+            List[MatchDecision]])
         }
     }
-  }
 
   private def waitForTerminal(ws: WorkflowSigil & sigil.Sigil,
                               runId: lightdb.id.Id[Workflow],
                               deadline: Long): Task[Workflow] = {
     def loop: Task[Workflow] =
       ws.workflowManager.collection.transaction(_.get(runId)).flatMap {
-        case None      => Task.error(new RuntimeException(s"workflow $runId disappeared"))
+        case None => Task.error(new RuntimeException(s"workflow $runId disappeared"))
         case Some(wf) if wf.finished => Task.pure(wf)
         case Some(_) if System.currentTimeMillis() > deadline =>
           Task.error(new RuntimeException(s"refactor worker $runId did not settle within deadline"))
@@ -105,14 +107,14 @@ final class WorkflowRefactorWorkerDispatcher(fs: FileSystemContext,
     ws.withDB(_.events.transaction(_.list)).map { all =>
       val submits = all.collect {
         case ti: ToolInvoke
-          if ti.conversationId == convId &&
-             ti.toolName == SubmitRefactorDecisionsTool.name &&
-             ti.input.isDefined =>
+            if ti.conversationId == convId &&
+              ti.toolName == SubmitRefactorDecisionsTool.name &&
+              ti.input.isDefined =>
           ti.input.get
       }
       submits.collectFirst { case s: SubmitRefactorDecisionsInput => s.decisions } match {
         case Some(decisions) => Right(decisions)
-        case None            =>
+        case None =>
           val seenTools = all.collect {
             case ti: ToolInvoke if ti.conversationId == convId => ti.toolName.value
           }.distinct
@@ -124,9 +126,11 @@ final class WorkflowRefactorWorkerDispatcher(fs: FileSystemContext,
 
 object WorkflowRefactorWorkerDispatcher {
 
-  /** Render the per-file brief the worker reads. Includes the file
-    * content, the matched lines (1-indexed), and the verbatim
-    * instruction. */
+  /**
+   * Render the per-file brief the worker reads. Includes the file
+   * content, the matched lines (1-indexed), and the verbatim
+   * instruction.
+   */
   private[refactor] def renderBrief(filePath: String,
                                     fileContent: String,
                                     matches: List[GrepMatch],

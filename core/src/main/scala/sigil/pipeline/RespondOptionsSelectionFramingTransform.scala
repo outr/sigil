@@ -44,27 +44,29 @@ object RespondOptionsSelectionFramingTransform extends InboundTransform {
 
   override def apply(signal: Signal, self: Sigil): Task[Signal] = signal match {
     case m: Message
-      if m.state == EventState.Complete
-      && m.role == MessageRole.Standard
-      && !m.participantId.isInstanceOf[AgentParticipantId]
-      && userText(m).exists(_.nonEmpty)
-      && !alreadyFramed(m) =>
-        recentOptionsMessage(self, m.conversationId, m).flatMap {
-          case Some((parentMsg, opts)) =>
-            val text = userText(m).get
-            matchedSelections(text, opts) match {
-              case selected if selected.size == tokenCount(text) && selected.nonEmpty =>
-                Task.pure(applySelection(m, parentMsg._id, opts, selected))
-              case _ => Task.pure(m)
-            }
-          case None => Task.pure(m)
-        }
+        if m.state == EventState.Complete
+          && m.role == MessageRole.Standard
+          && !m.participantId.isInstanceOf[AgentParticipantId]
+          && userText(m).exists(_.nonEmpty)
+          && !alreadyFramed(m) =>
+      recentOptionsMessage(self, m.conversationId, m).flatMap {
+        case Some((parentMsg, opts)) =>
+          val text = userText(m).get
+          matchedSelections(text, opts) match {
+            case selected if selected.size == tokenCount(text) && selected.nonEmpty =>
+              Task.pure(applySelection(m, parentMsg._id, opts, selected))
+            case _ => Task.pure(m)
+          }
+        case None => Task.pure(m)
+      }
     case other => Task.pure(other)
   }
 
-  /** Concatenated `Text` content of the user's message — the only
-    * shape selections arrive in. Other content kinds (Markdown,
-    * Code, …) imply a free-form reply that doesn't need framing. */
+  /**
+   * Concatenated `Text` content of the user's message — the only
+   * shape selections arrive in. Other content kinds (Markdown,
+   * Code, …) imply a free-form reply that doesn't need framing.
+   */
   private def userText(m: Message): Option[String] = {
     val txt = m.content.collect { case ResponseContent.Text(t) => t }.mkString("\n").trim
     if (txt.isEmpty) None else Some(txt)
@@ -73,10 +75,12 @@ object RespondOptionsSelectionFramingTransform extends InboundTransform {
   private def alreadyFramed(m: Message): Boolean =
     userText(m).exists(_.startsWith("I'd like to:"))
 
-  /** Walk persisted Messages newest-first; the first agent message
-    * carrying a `ResponseContent.Options` block is the prompt the
-    * user is replying to. Stops scanning at the first non-agent
-    * message to avoid mis-attributing across user turns. */
+  /**
+   * Walk persisted Messages newest-first; the first agent message
+   * carrying a `ResponseContent.Options` block is the prompt the
+   * user is replying to. Stops scanning at the first non-agent
+   * message to avoid mis-attributing across user turns.
+   */
   private def recentOptionsMessage(self: Sigil,
                                    conversationId: Id[Conversation],
                                    incoming: Message): Task[Option[(Message, ResponseContent.Options)]] =
@@ -111,11 +115,13 @@ object RespondOptionsSelectionFramingTransform extends InboundTransform {
   private def tokenCount(text: String): Int =
     text.split(",").iterator.map(_.trim).count(_.nonEmpty)
 
-  /** Match comma-separated tokens against the options' value /
-    * label (case-insensitive). Returns the matched options in
-    * input order; size equals `tokenCount(text)` only when every
-    * token matched, which is how the caller distinguishes a real
-    * selection from an unrelated free-form reply. */
+  /**
+   * Match comma-separated tokens against the options' value /
+   * label (case-insensitive). Returns the matched options in
+   * input order; size equals `tokenCount(text)` only when every
+   * token matched, which is how the caller distinguishes a real
+   * selection from an unrelated free-form reply.
+   */
   private def matchedSelections(text: String, opts: ResponseContent.Options): List[sigil.tool.model.SelectOption] = {
     val tokens = text.split(",").iterator.map(_.trim).filter(_.nonEmpty).toList
     tokens.flatMap { tok =>
@@ -124,14 +130,14 @@ object RespondOptionsSelectionFramingTransform extends InboundTransform {
   }
 
   private def applySelection(incoming: Message,
-                              parentId: Id[Event],
-                              opts: ResponseContent.Options,
-                              matched: List[sigil.tool.model.SelectOption]): Message = {
+                             parentId: Id[Event],
+                             opts: ResponseContent.Options,
+                             matched: List[sigil.tool.model.SelectOption]): Message = {
     val bullets = matched.map { opt =>
       val head = s"- ${opt.label} (value: ${opt.value})"
       opt.description.filter(_.nonEmpty) match {
         case Some(d) => s"$head\n  $d"
-        case None    => head
+        case None => head
       }
     }.mkString("\n")
     val framed =
@@ -141,11 +147,11 @@ object RespondOptionsSelectionFramingTransform extends InboundTransform {
     val nonText = incoming.content.filterNot(_.isInstanceOf[ResponseContent.Text])
     val structured = OptionSelection(
       parentOptionsEventId = parentId,
-      prompt               = opts.prompt,
-      selectedOptions      = matched.map(o => SelectedOption(value = o.value, label = o.label, description = o.description))
+      prompt = opts.prompt,
+      selectedOptions = matched.map(o => SelectedOption(value = o.value, label = o.label, description = o.description))
     )
     incoming.copy(
-      content         = ResponseContent.Text(framed) +: nonText,
+      content = ResponseContent.Text(framed) +: nonText,
       optionSelection = Some(structured)
     )
   }

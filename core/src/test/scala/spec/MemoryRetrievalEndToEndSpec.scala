@@ -6,7 +6,9 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.conversation.{ConversationView, ContextFrame, ContextMemory, Conversation, MemorySource, TurnInput}
-import sigil.conversation.compression.{NoOpBlockExtractor, NoOpContextCompressor, Percentage, StandardContextCurator, StandardContextOptimizer, StandardMemoryRetriever}
+import sigil.conversation.compression.{
+  NoOpBlockExtractor, NoOpContextCompressor, Percentage, StandardContextCurator, StandardContextOptimizer, StandardMemoryRetriever
+}
 import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
 import sigil.event.Event
 import sigil.provider.{ConversationRequest, GenerationSettings, Instructions, Mode, ConversationMode, ProviderEvent}
@@ -101,11 +103,11 @@ class MemoryRetrievalEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with 
         Conversation(_id = convId, topics = List(TestTopicEntry))
       ))).sync()
       TestSigil.publish(sigil.event.Message(
-        participantId  = TestUser,
+        participantId = TestUser,
         conversationId = convId,
-        topicId        = TestTopicEntry.id,
-        content        = Vector(sigil.tool.model.ResponseContent.Text(question)),
-        state          = sigil.signal.EventState.Complete
+        topicId = TestTopicEntry.id,
+        content = Vector(sigil.tool.model.ResponseContent.Text(question)),
+        state = sigil.signal.EventState.Complete
       )).sync()
 
       val curator = StandardContextCurator(

@@ -24,4 +24,5 @@ import sigil.tool.ToolInput
  */
 case class MoveMemoryInput(key: String,
                            newSpace: SpaceId,
-                           fromSpace: Option[SpaceId] = None) extends ToolInput derives RW
+                           fromSpace: Option[SpaceId] = None)
+  extends ToolInput derives RW

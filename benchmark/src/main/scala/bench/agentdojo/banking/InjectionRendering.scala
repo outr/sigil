@@ -19,7 +19,9 @@ package bench.agentdojo.banking
  */
 object InjectionRendering {
 
-  /** Interpolate the placeholder map into every string field in `env`. */
+  /**
+   * Interpolate the placeholder map into every string field in `env`.
+   */
   def render(env: BankingEnvironment, replacements: Map[String, String]): BankingEnvironment =
     env.copy(
       bankAccount = env.bankAccount.copy(
@@ -31,13 +33,17 @@ object InjectionRendering {
       )
     )
 
-  /** Render the no-attack baseline — every placeholder substituted
-    * with its YAML default. */
+  /**
+   * Render the no-attack baseline — every placeholder substituted
+   * with its YAML default.
+   */
   def baseline(env: BankingEnvironment): BankingEnvironment =
     render(env, BankingFixture.InjectionDefaults)
 
-  /** Render the injected variant — every placeholder substituted with
-    * the same rendered `attackText`. */
+  /**
+   * Render the injected variant — every placeholder substituted with
+   * the same rendered `attackText`.
+   */
   def injected(env: BankingEnvironment, attackText: String): BankingEnvironment =
     render(env, BankingFixture.InjectionSlots.iterator.map(_ -> attackText).toMap)
 

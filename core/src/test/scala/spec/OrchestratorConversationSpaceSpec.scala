@@ -39,19 +39,22 @@ import java.util.concurrent.atomic.AtomicReference
 class OrchestratorConversationSpaceSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Capture-tool — records the `ctx.conversation` it receives so
-    * the test can assert against it. Single-shot per spec; the
-    * captured reference is observed AFTER the orchestrator stream
-    * drains. */
+  /**
+   * Capture-tool — records the `ctx.conversation` it receives so
+   * the test can assert against it. Single-shot per spec; the
+   * captured reference is observed AFTER the orchestrator stream
+   * drains.
+   */
   private val captured: AtomicReference[Option[Conversation]] = new AtomicReference(None)
 
   case class CaptureInput() extends ToolInput derives RW
 
-  case object CaptureTool extends TypedTool[CaptureInput](
-    name = ToolName("capture"),
-    description = "test-only — captures the TurnContext's conversation"
-  ) {
-  override def paginate: Boolean = false
+  case object CaptureTool
+    extends TypedTool[CaptureInput](
+      name = ToolName("capture"),
+      description = "test-only — captures the TurnContext's conversation"
+    ) {
+    override def paginate: Boolean = false
 
     override protected def executeTyped(input: CaptureInput, ctx: TurnContext): Stream[Event] = {
       captured.set(Some(ctx.conversation))
@@ -61,8 +64,10 @@ class OrchestratorConversationSpaceSpec extends AsyncWordSpec with AsyncTaskSpec
   ToolInput.register(summon[RW[CaptureInput]])
   sigil.tool.Tool.register(fabric.rw.RW.static(CaptureTool))
 
-  /** Provider that synthesizes a single atomic `capture` tool call.
-    * Single content block, no streaming → atomic dispatch path. */
+  /**
+   * Provider that synthesizes a single atomic `capture` tool call.
+   * Single content block, no streaming → atomic dispatch path.
+   */
   private class CaptureCallProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -83,25 +88,25 @@ class OrchestratorConversationSpaceSpec extends AsyncWordSpec with AsyncTaskSpec
 
     "thread the caller's Conversation (with custom SpaceId) into ctx.conversation (bug #46)" in {
       val convId = Conversation.id(s"orch-space-${rapid.Unique()}")
-      val view   = ConversationView(conversationId = convId)
+      val view = ConversationView(conversationId = convId)
       // Use TestSpace — already registered in TestSigil. Confirms a
       // non-GlobalSpace value round-trips into the tool.
-      val conv   = Conversation(
+      val conv = Conversation(
         topics = TestTopicStack,
-        space  = TestSpace,
-        _id    = convId
+        space = TestSpace,
+        _id = convId
       )
       val request = ConversationRequest(
-        conversationId     = convId,
-        modelId            = Model.id("test", "model"),
-        instructions       = Instructions(),
-        turnInput          = TurnInput(view),
-        currentMode        = ConversationMode,
-        currentTopic       = TestTopicEntry,
-        previousTopics     = Nil,
+        conversationId = convId,
+        modelId = Model.id("test", "model"),
+        instructions = Instructions(),
+        turnInput = TurnInput(view),
+        currentMode = ConversationMode,
+        currentTopic = TestTopicEntry,
+        previousTopics = Nil,
         generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-        chain              = List(TestUser, TestAgent),
-        tools              = Vector(CaptureTool)
+        chain = List(TestUser, TestAgent),
+        tools = Vector(CaptureTool)
       )
       captured.set(None)
       for {

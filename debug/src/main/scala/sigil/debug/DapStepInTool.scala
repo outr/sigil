@@ -12,20 +12,22 @@ case class DapStepInInput(sessionId: String, threadId: Int) extends ToolInput de
  * Step into a nested method call at the current line. If there's no
  * call at the cursor, behaves like step-over.
  */
-final class DapStepInTool(val manager: DapManager) extends TypedTool[DapStepInInput](
-  name = ToolName("dap_step_in"),
-  description =
-    """Step into a nested method call at the current line.
+final class DapStepInTool(val manager: DapManager)
+  extends TypedTool[DapStepInInput](
+    name = ToolName("dap_step_in"),
+    description =
+      """Step into a nested method call at the current line.
       |
       |`sessionId` selects the active session.
       |`threadId` is the thread to step.""".stripMargin,
-  examples = List(
-    ToolExample(
-      "step into a method",
-      DapStepInInput(sessionId = "demo-session", threadId = 1)
+    examples = List(
+      ToolExample(
+        "step into a method",
+        DapStepInInput(sessionId = "demo-session", threadId = 1)
+      )
     )
   )
-) with DapToolSupport {
+  with DapToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: DapStepInInput, context: TurnContext): Stream[Event] =

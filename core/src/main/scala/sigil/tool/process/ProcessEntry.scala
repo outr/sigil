@@ -12,7 +12,7 @@ import java.nio.charset.StandardCharsets
  * subprocess. Owns the JVM `Process`, the per-stream ring buffers,
  * and the daemon threads that drain stdout / stderr.
  */
-private[process] final class ProcessEntry(val handle: ProcessHandle,
+final private[process] class ProcessEntry(val handle: ProcessHandle,
                                           val process: Process,
                                           val stdout: RingBuffer,
                                           val stderr: RingBuffer,
@@ -28,7 +28,8 @@ private[process] final class ProcessEntry(val handle: ProcessHandle,
   // open get the data plus the EOF cue immediately.
   stdinText.foreach { text =>
     val w = new OutputStreamWriter(process.getOutputStream, StandardCharsets.UTF_8)
-    try { w.write(text); w.flush() } finally w.close()
+    try { w.write(text); w.flush() }
+    finally w.close()
   }
 
   def status: ProcessStatus =
@@ -39,9 +40,9 @@ private[process] final class ProcessEntry(val handle: ProcessHandle,
 
   def terminate(graceMs: Long): Unit = {
     if (!process.isAlive) return
-    process.destroy()                                  // SIGTERM
+    process.destroy() // SIGTERM
     val exited = process.waitFor(graceMs, java.util.concurrent.TimeUnit.MILLISECONDS)
-    if (!exited) process.destroyForcibly()             // SIGKILL
+    if (!exited) process.destroyForcibly() // SIGKILL
   }
 
   def kill(): Unit = if (process.isAlive) process.destroyForcibly()
@@ -76,11 +77,11 @@ private[process] object ProcessEntry {
     pb.redirectErrorStream(false)
     val process = pb.start()
     val handle = ProcessHandle(
-      id             = handleId,
-      pid            = process.pid(),
-      startedAt      = Timestamp(),
+      id = handleId,
+      pid = process.pid(),
+      startedAt = Timestamp(),
       conversationId = conversationId,
-      command        = command
+      command = command
     )
     new ProcessEntry(handle, process, new RingBuffer(ringBytes), new RingBuffer(ringBytes), stdin)
   }

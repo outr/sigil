@@ -27,7 +27,7 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   // 5-min cap accommodates worst-case live-LLM latency under 4-way
   // fork contention; the framework's default 1-min routinely killed
   // healthy in-flight calls.
-  override implicit protected val testTimeout: scala.concurrent.duration.FiniteDuration =
+  implicit override protected val testTimeout: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.DurationInt(5).minutes
 
   TestSigil.initFor(getClass.getSimpleName)
@@ -36,15 +36,19 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
   protected def modelId: Id[Model]
 
-  /** Wire the spec's provider into TestSigil so `providerFor` returns it. */
+  /**
+   * Wire the spec's provider into TestSigil so `providerFor` returns it.
+   */
   TestSigil.setProvider(provider)
 
-  /** Tool names the test agent advertises. CoreTools' default roster
-    * plus the synthetic SendSlackMessageTool (so `find_capability` has
-    * an app-contributed catalog entry to surface), the opt-in
-    * `change_mode` tool (required by the change_mode self-loop test —
-    * `change_mode` is not in `CoreTools.all`), and the non-core
-    * SleepTool (required by the graceful/force stop tests). */
+  /**
+   * Tool names the test agent advertises. CoreTools' default roster
+   * plus the synthetic SendSlackMessageTool (so `find_capability` has
+   * an app-contributed catalog entry to surface), the opt-in
+   * `change_mode` tool (required by the change_mode self-loop test —
+   * `change_mode` is not in `CoreTools.all`), and the non-core
+   * SleepTool (required by the graceful/force stop tests).
+   */
   protected def toolNames: List[ToolName] =
     CoreTools.coreToolNames ++ List(
       ChangeModeTool.schema.name,
@@ -61,9 +65,11 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0))
     )
 
-  /** Poll-based wait for the agent to reach Idle (terminal AgentStateDelta).
-    * The broadcaster captures every signal; once we see an Idle/Complete
-    * delta for the AgentState lock id, we know the chain settled. */
+  /**
+   * Poll-based wait for the agent to reach Idle (terminal AgentStateDelta).
+   * The broadcaster captures every signal; once we see an Idle/Complete
+   * delta for the AgentState lock id, we know the chain settled.
+   */
   protected def awaitIdle(broadcaster: RecordingBroadcaster, timeoutMs: Long = 30000): Task[Unit] = {
     val deadline = System.currentTimeMillis() + timeoutMs
     def loop: Task[Unit] = Task.defer {
@@ -86,29 +92,37 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     recorder
   }
 
-  /** Upsert a `Conversation` carrying the test agent in its `participants`
-    * list. Specs use this before publishing the external Message so the
-    * dispatcher's fan-out finds the agent on the persisted record. */
+  /**
+   * Upsert a `Conversation` carrying the test agent in its `participants`
+   * list. Specs use this before publishing the external Message so the
+   * dispatcher's fan-out finds the agent on the persisted record.
+   */
   protected def upsertConversationWithAgent(convId: Id[Conversation]): Task[Unit] =
     TestSigil.withDB(_.conversations.transaction(_.upsert(
       Conversation(topics = TestTopicStack, _id = convId, participants = List(makeAgent()))
     ))).unit
 
-  /** Same as [[upsertConversationWithAgent]] but with a custom tool roster
-    * for the agent. Used by the discovery tests to stand up an agent whose
-    * default roster deliberately doesn't include the target tool, so the
-    * test exercises `find_capability` → `suggestedTools` → next-turn call. */
+  /**
+   * Same as [[upsertConversationWithAgent]] but with a custom tool roster
+   * for the agent. Used by the discovery tests to stand up an agent whose
+   * default roster deliberately doesn't include the target tool, so the
+   * test exercises `find_capability` → `suggestedTools` → next-turn call.
+   */
   protected def upsertConversationWithAgent(convId: Id[Conversation], tools: List[ToolName]): Task[Unit] =
     TestSigil.withDB(_.conversations.transaction(_.upsert(
-      Conversation(topics = TestTopicStack, _id = convId, participants = List(
-        DefaultAgentParticipant(
-          id = TestAgent,
-          modelId = modelId,
-          toolNames = tools,
-          instructions = Instructions(),
-          generationSettings = GenerationSettings(maxOutputTokens = Some(300), temperature = Some(0.0))
+      Conversation(
+        topics = TestTopicStack,
+        _id = convId,
+        participants = List(
+          DefaultAgentParticipant(
+            id = TestAgent,
+            modelId = modelId,
+            toolNames = tools,
+            instructions = Instructions(),
+            generationSettings = GenerationSettings(maxOutputTokens = Some(300), temperature = Some(0.0))
+          )
         )
-      ))
+      )
     ))).unit
 
   protected def upsertEmptyConversation(convId: Id[Conversation]): Task[Unit] =

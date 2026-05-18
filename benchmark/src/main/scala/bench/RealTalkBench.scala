@@ -108,12 +108,16 @@ object RealTalkBench {
             // context (the QA "What are Kate's hobbies?" needs to find
             // utterances where Kate herself spoke about hiking, not
             // Elise asking).
-            batch += ((diaId, s"$speaker: $text", Map(
-              "kind" -> "realtalk-utterance",
-              "chatId" -> file.getName,
-              "diaId" -> diaId,
-              "session" -> sk
-            )))
+            batch +=
+              ((
+                diaId,
+                s"$speaker: $text",
+                Map(
+                  "kind" -> "realtalk-utterance",
+                  "chatId" -> file.getName,
+                  "diaId" -> diaId,
+                  "session" -> sk
+                )))
           }
         }
       }
@@ -154,7 +158,7 @@ object RealTalkBench {
 
       val elapsed = (System.currentTimeMillis() - startTime) / 1000.0
       val pct = if (chatRun > 0) chatCorrect.toDouble / chatRun * 100 else 0.0
-      println(f"  ${file.getName}: $chatCorrect/$chatRun (${pct}%.1f%%) — running total $totalCorrect/$totalRun (${elapsed}%.0fs)")
+      println(f"  ${file.getName}: $chatCorrect/$chatRun ($pct%.1f%%) — running total $totalCorrect/$totalRun ($elapsed%.0fs)")
     }
 
     val elapsed = (System.currentTimeMillis() - startTime) / 1000.0
@@ -162,7 +166,7 @@ object RealTalkBench {
     println()
     println("=== Results ===")
     println(f"Recall@$k: $totalCorrect/$totalRun ($overall%.1f%%)")
-    println(f"Time: ${elapsed}%.0fs")
+    println(f"Time: $elapsed%.0fs")
     println()
     println("By category:")
     categoryBreakdown.toList.sortBy(_._1).foreach { case (cat, (c, t)) =>
@@ -186,7 +190,7 @@ object RealTalkBench {
       sb.append(s"\n## Failures (${failures.size})\n\n")
       failures.toList.foreach { case (chat, q, ans, cat, expected, topK) =>
         sb.append(s"### [$chat / category $cat] `$q`\n\n")
-        sb.append(s"- expected answer: ${ans}\n")
+        sb.append(s"- expected answer: $ans\n")
         sb.append(s"- evidence dia_ids: ${expected.toList.sorted.mkString(", ")}\n")
         sb.append(s"- top-$k retrieved: ${topK.mkString(", ")}\n\n")
       }

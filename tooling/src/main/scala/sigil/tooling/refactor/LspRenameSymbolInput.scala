@@ -26,4 +26,5 @@ case class LspRenameSymbolInput(languageId: String,
                                 symbolName: String,
                                 newName: String,
                                 fuzzy: Boolean = false,
-                                kindHint: Option[String] = None) extends ToolInput derives RW
+                                kindHint: Option[String] = None)
+  extends ToolInput derives RW

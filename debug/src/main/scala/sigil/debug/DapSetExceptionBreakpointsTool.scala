@@ -7,7 +7,8 @@ import sigil.event.Event
 import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
 
 case class DapSetExceptionBreakpointsInput(sessionId: String,
-                                           filters: List[String]) extends ToolInput derives RW
+                                           filters: List[String])
+  extends ToolInput derives RW
 
 /**
  * Configure exception filters — pause execution when an exception
@@ -18,21 +19,23 @@ case class DapSetExceptionBreakpointsInput(sessionId: String,
  * supports `"raised"`, `"uncaught"`, `"userUnhandled"`. Empty list
  * disables exception breakpoints entirely.
  */
-final class DapSetExceptionBreakpointsTool(val manager: DapManager) extends TypedTool[DapSetExceptionBreakpointsInput](
-  name = ToolName("dap_set_exception_breakpoints"),
-  description =
-    """Configure exception breakpoint filters in an active debug session.
+final class DapSetExceptionBreakpointsTool(val manager: DapManager)
+  extends TypedTool[DapSetExceptionBreakpointsInput](
+    name = ToolName("dap_set_exception_breakpoints"),
+    description =
+      """Configure exception breakpoint filters in an active debug session.
       |
       |`sessionId` selects the active session.
       |`filters` is a list of adapter-defined filter ids (e.g. "uncaught", "all", "raised").
       |Empty list disables exception breakpoints.""".stripMargin,
-  examples = List(
-    ToolExample(
-      "break on uncaught exceptions",
-      DapSetExceptionBreakpointsInput(sessionId = "demo-session", filters = List("uncaught"))
+    examples = List(
+      ToolExample(
+        "break on uncaught exceptions",
+        DapSetExceptionBreakpointsInput(sessionId = "demo-session", filters = List("uncaught"))
+      )
     )
   )
-) with DapToolSupport {
+  with DapToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: DapSetExceptionBreakpointsInput, context: TurnContext): Stream[Event] =

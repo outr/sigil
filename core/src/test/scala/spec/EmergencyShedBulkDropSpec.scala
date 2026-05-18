@@ -28,11 +28,13 @@ import java.util.concurrent.atomic.AtomicInteger
 class EmergencyShedBulkDropSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Provider stub whose `estimateRequest` returns the count of
-    * 'x' characters across all message contents — so a message
-    * containing "xxxxx" costs 5 tokens. Counts how many times
-    * estimateOf was called so the spec can prove the new bulk
-    * path makes a small, bounded number of calls. */
+  /**
+   * Provider stub whose `estimateRequest` returns the count of
+   * 'x' characters across all message contents — so a message
+   * containing "xxxxx" costs 5 tokens. Counts how many times
+   * estimateOf was called so the spec can prove the new bulk
+   * path makes a small, bounded number of calls.
+   */
   private class CountingProvider(model: Model) extends Provider {
     val estimateCalls: AtomicInteger = new AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.OpenAI
@@ -44,28 +46,36 @@ class EmergencyShedBulkDropSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     override protected def estimateRequest(call: ProviderCall): Int = {
       estimateCalls.incrementAndGet()
       val tokens = call.messages.foldLeft(0) { (acc, m) =>
-        acc + (m match {
-          case ProviderMessage.User(blocks)         =>
-            blocks.iterator.collect { case t: MessageContent.Text => t.text.count(_ == 'x') }.sum
-          case ProviderMessage.Assistant(c, _)      => c.count(_ == 'x')
-          case ProviderMessage.ToolResult(_, c)     => c.count(_ == 'x')
-          case ProviderMessage.System(c)            => c.count(_ == 'x')
-          case _                                    => 0
-        })
+        acc +
+          (m match {
+            case ProviderMessage.User(blocks) =>
+              blocks.iterator.collect { case t: MessageContent.Text => t.text.count(_ == 'x') }.sum
+            case ProviderMessage.Assistant(c, _) => c.count(_ == 'x')
+            case ProviderMessage.ToolResult(_, c) => c.count(_ == 'x')
+            case ProviderMessage.System(c) => c.count(_ == 'x')
+            case _ => 0
+          })
       }
       tokens
     }
 
-    /** Public estimate (since the trait's is `protected`). */
+    /**
+     * Public estimate (since the trait's is `protected`).
+     */
     def publicEstimate(call: ProviderCall): Int = estimateRequest(call)
 
-    /** Test-only — exposes the private `emergencyShed` via
-      * reflection so the spec can drive it directly + assert
-      * estimateOf call count. */
+    /**
+     * Test-only — exposes the private `emergencyShed` via
+     * reflection so the spec can drive it directly + assert
+     * estimateOf call count.
+     */
     def runShed(initial: ProviderCall, limit: Int): ProviderCall = {
       val mEmerg = classOf[Provider].getDeclaredMethod(
-        "emergencyShed", classOf[ProviderCall], classOf[Int],
-        classOf[_root_.sigil.tokenize.Tokenizer], classOf[Function1[?, ?]]
+        "emergencyShed",
+        classOf[ProviderCall],
+        classOf[Int],
+        classOf[_root_.sigil.tokenize.Tokenizer],
+        classOf[Function1[?, ?]]
       )
       mEmerg.setAccessible(true)
       val estimateFn: ProviderCall => Int = c => publicEstimate(c)
@@ -104,14 +114,14 @@ class EmergencyShedBulkDropSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       // 100 tokens — need to drop ~980 messages.
       val msgs = (1 to 1000).map(_ => ProviderMessage.User("xxxxx")).toVector
       val call = ProviderCall(
-        modelId            = testModel._id,
-        system             = "",
-        messages           = msgs,
-        tools              = Vector.empty,
-        builtInTools       = Set.empty,
-        toolChoice         = sigil.provider.ToolChoice.None,
+        modelId = testModel._id,
+        system = "",
+        messages = msgs,
+        tools = Vector.empty,
+        builtInTools = Set.empty,
+        toolChoice = sigil.provider.ToolChoice.None,
         generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-        currentMode        = ConversationMode
+        currentMode = ConversationMode
       )
       val provider = new CountingProvider(testModel)
       val before = provider.estimateCalls.get()
@@ -132,14 +142,14 @@ class EmergencyShedBulkDropSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
     "leave a fitting call alone (no-op short-circuit)" in {
       val call = ProviderCall(
-        modelId            = testModel._id,
-        system             = "",
-        messages           = Vector(ProviderMessage.User("xxxxx")),  // 5 tokens
-        tools              = Vector.empty,
-        builtInTools       = Set.empty,
-        toolChoice         = sigil.provider.ToolChoice.None,
+        modelId = testModel._id,
+        system = "",
+        messages = Vector(ProviderMessage.User("xxxxx")), // 5 tokens
+        tools = Vector.empty,
+        builtInTools = Set.empty,
+        toolChoice = sigil.provider.ToolChoice.None,
         generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-        currentMode        = ConversationMode
+        currentMode = ConversationMode
       )
       val provider = new CountingProvider(testModel)
       val shed = provider.runShed(call, limit = 100)

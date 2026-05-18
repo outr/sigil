@@ -39,7 +39,8 @@ class TokenEstimatorSpec extends AnyWordSpec with Matchers {
         fact = "x" * 400,
         label = "Test directive",
         summary = "y" * 40,
-        source = MemorySource.Explicit, pinned = true,
+        source = MemorySource.Explicit,
+        pinned = true,
         spaceId = GlobalSpace
       )
       // Summary is required by type but the renderer falls back to
@@ -49,7 +50,8 @@ class TokenEstimatorSpec extends AnyWordSpec with Matchers {
         fact = "x" * 400,
         label = "Test directive",
         summary = "",
-        source = MemorySource.Explicit, pinned = true,
+        source = MemorySource.Explicit,
+        pinned = true,
         spaceId = GlobalSpace
       )
       val withTokens = TokenEstimator.estimateMemories(Vector(withSummary), HeuristicTokenizer)
@@ -65,7 +67,7 @@ class TokenEstimatorSpec extends AnyWordSpec with Matchers {
       val s1 = ContextSummary(text = "abcd" * 10, conversationId = Id("conv"), tokenEstimate = 0)
       val s2 = ContextSummary(text = "efgh" * 10, conversationId = Id("conv"), tokenEstimate = 0)
       val total = TokenEstimator.estimateSummaries(Vector(s1, s2), HeuristicTokenizer)
-      total shouldBe 22  // (40 + 40) * 2 / 7 = 22
+      total shouldBe 22 // (40 + 40) * 2 / 7 = 22
     }
   }
 

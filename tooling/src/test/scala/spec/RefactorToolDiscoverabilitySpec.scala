@@ -18,12 +18,14 @@ import sigil.tooling.refactor.{LspRenameSymbolTool, RefactorSessionStore, Refact
  */
 class RefactorToolDiscoverabilitySpec extends AnyWordSpec with Matchers {
 
-  /** Catalog mirroring the relevant slice of a real Sigil's tool
-    * roster: the grep / glob primitives the agent reaches for first,
-    * plus the two refactor tools whose discoverability we're
-    * validating. We don't need every framework tool — the question
-    * is whether the refactor tools surface AT ALL against a
-    * grep-shape query. */
+  /**
+   * Catalog mirroring the relevant slice of a real Sigil's tool
+   * roster: the grep / glob primitives the agent reaches for first,
+   * plus the two refactor tools whose discoverability we're
+   * validating. We don't need every framework tool — the question
+   * is whether the refactor tools surface AT ALL against a
+   * grep-shape query.
+   */
   private val catalog: List[Tool] = {
     val fs = new LocalFileSystemContext(basePath = None)
     val lspManager = null.asInstanceOf[sigil.tooling.LspManager] // never invoked; we only inspect metadata
@@ -39,9 +41,9 @@ class RefactorToolDiscoverabilitySpec extends AnyWordSpec with Matchers {
 
   private def discover(query: String): List[Tool] =
     finder.apply(DiscoveryRequest(
-      keywords     = query,
-      chain        = Nil,
-      mode         = ConversationMode,
+      keywords = query,
+      chain = Nil,
+      mode = ConversationMode,
       callerSpaces = Set.empty
     )).sync()
 

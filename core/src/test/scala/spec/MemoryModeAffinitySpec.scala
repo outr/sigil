@@ -23,9 +23,9 @@ import sigil.provider.{ConversationMode, Mode}
 class MemoryModeAffinitySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  private val codingId: Id[Mode]       = TestCodingMode.id
+  private val codingId: Id[Mode] = TestCodingMode.id
   private val conversationId: Id[Mode] = ConversationMode.id
-  private val researchId: Id[Mode]     = WebResearchMode.id
+  private val researchId: Id[Mode] = WebResearchMode.id
 
   private def seedConversation(convId: Id[Conversation], mode: Mode): Task[Unit] =
     TestSigil.withDB(_.conversations.transaction(_.upsert(
@@ -69,70 +69,66 @@ class MemoryModeAffinitySpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
   private def retrieve(convId: Id[Conversation]): Task[MemoryRetrievalResult] =
     StandardMemoryRetriever().retrieve(
-      sigil          = TestSigil,
+      sigil = TestSigil,
       conversationId = convId,
-      frames         = Vector.empty[ContextFrame],
-      chain          = List[ParticipantId](TestUser, TestAgent)
+      frames = Vector.empty[ContextFrame],
+      chain = List[ParticipantId](TestUser, TestAgent)
     )
 
   "StandardMemoryRetriever modeAffinity gate (sigil bug #195)" should {
 
     "surface a universal pinned memory in every mode" in {
       val convId = Conversation.id(s"affinity-universal-${rapid.Unique()}")
-      val mem    = universalPinned(convId)
+      val mem = universalPinned(convId)
       for {
-        _          <- seedConversation(convId, TestCodingMode)
-        _          <- TestSigil.persistMemoryFor(mem, List(TestUser, TestAgent), convId)
-        coding     <- retrieve(convId)
-        _          <- seedConversation(convId, ConversationMode)
-        _          =  TestSigil.invalidateMemoryRetrievalCache(convId)
+        _ <- seedConversation(convId, TestCodingMode)
+        _ <- TestSigil.persistMemoryFor(mem, List(TestUser, TestAgent), convId)
+        coding <- retrieve(convId)
+        _ <- seedConversation(convId, ConversationMode)
+        _ = TestSigil.invalidateMemoryRetrievalCache(convId)
         conversation <- retrieve(convId)
       } yield {
-        coding.criticalMemories should contain (mem._id)
-        conversation.criticalMemories should contain (mem._id)
+        coding.criticalMemories should contain(mem._id)
+        conversation.criticalMemories should contain(mem._id)
       }
     }
 
     "surface a coding-only pinned memory in coding mode" in {
       val convId = Conversation.id(s"affinity-coding-${rapid.Unique()}")
-      val mem    = codingPinned(convId)
+      val mem = codingPinned(convId)
       for {
-        _      <- seedConversation(convId, TestCodingMode)
-        _      <- TestSigil.persistMemoryFor(mem, List(TestUser, TestAgent), convId)
+        _ <- seedConversation(convId, TestCodingMode)
+        _ <- TestSigil.persistMemoryFor(mem, List(TestUser, TestAgent), convId)
         result <- retrieve(convId)
-      } yield {
-        result.criticalMemories should contain (mem._id)
-      }
+      } yield result.criticalMemories should contain(mem._id)
     }
 
     "drop a coding-only pinned memory in conversation mode" in {
       val convId = Conversation.id(s"affinity-coding-dropped-${rapid.Unique()}")
-      val mem    = codingPinned(convId)
+      val mem = codingPinned(convId)
       for {
-        _      <- seedConversation(convId, ConversationMode)
-        _      <- TestSigil.persistMemoryFor(mem, List(TestUser, TestAgent), convId)
+        _ <- seedConversation(convId, ConversationMode)
+        _ <- TestSigil.persistMemoryFor(mem, List(TestUser, TestAgent), convId)
         result <- retrieve(convId)
-      } yield {
-        result.criticalMemories should not contain (mem._id)
-      }
+      } yield result.criticalMemories should not contain (mem._id)
     }
 
     "surface a multi-mode pinned memory in EACH listed mode" in {
       val convId = Conversation.id(s"affinity-multi-${rapid.Unique()}")
-      val mem    = multiModePinned(convId)
+      val mem = multiModePinned(convId)
       for {
-        _          <- seedConversation(convId, TestCodingMode)
-        _          <- TestSigil.persistMemoryFor(mem, List(TestUser, TestAgent), convId)
-        coding     <- retrieve(convId)
-        _          <- seedConversation(convId, WebResearchMode)
-        _          =  TestSigil.invalidateMemoryRetrievalCache(convId)
-        research   <- retrieve(convId)
-        _          <- seedConversation(convId, ConversationMode)
-        _          =  TestSigil.invalidateMemoryRetrievalCache(convId)
+        _ <- seedConversation(convId, TestCodingMode)
+        _ <- TestSigil.persistMemoryFor(mem, List(TestUser, TestAgent), convId)
+        coding <- retrieve(convId)
+        _ <- seedConversation(convId, WebResearchMode)
+        _ = TestSigil.invalidateMemoryRetrievalCache(convId)
+        research <- retrieve(convId)
+        _ <- seedConversation(convId, ConversationMode)
+        _ = TestSigil.invalidateMemoryRetrievalCache(convId)
         conversation <- retrieve(convId)
       } yield {
-        coding.criticalMemories should contain (mem._id)
-        research.criticalMemories should contain (mem._id)
+        coding.criticalMemories should contain(mem._id)
+        research.criticalMemories should contain(mem._id)
         conversation.criticalMemories should not contain (mem._id)
       }
     }
@@ -142,14 +138,12 @@ class MemoryModeAffinitySpec extends AsyncWordSpec with AsyncTaskSpec with Match
       // modeAffinity. The new retriever filter MUST treat that as
       // "universal" so existing memories don't suddenly drop out.
       val convId = Conversation.id(s"affinity-legacy-${rapid.Unique()}")
-      val mem    = universalPinned(convId).copy(modeAffinity = Set.empty)
+      val mem = universalPinned(convId).copy(modeAffinity = Set.empty)
       for {
-        _      <- seedConversation(convId, TestCodingMode)
-        _      <- TestSigil.persistMemoryFor(mem, List(TestUser, TestAgent), convId)
+        _ <- seedConversation(convId, TestCodingMode)
+        _ <- TestSigil.persistMemoryFor(mem, List(TestUser, TestAgent), convId)
         result <- retrieve(convId)
-      } yield {
-        result.criticalMemories should contain (mem._id)
-      }
+      } yield result.criticalMemories should contain(mem._id)
     }
   }
 

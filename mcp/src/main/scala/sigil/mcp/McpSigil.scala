@@ -36,52 +36,66 @@ import sigil.tool.Tool
 trait McpSigil extends Sigil {
   type DB <: SigilDB & McpCollections
 
-  /** Whether the runtime-management tools (add / list / remove /
-    * test / refresh / read-resource / list-prompts / get-prompt)
-    * are appended to `staticTools`. Default true. Apps that want a
-    * locked-down agent surface override to false. */
+  /**
+   * Whether the runtime-management tools (add / list / remove /
+   * test / refresh / read-resource / list-prompts / get-prompt)
+   * are appended to `staticTools`. Default true. Apps that want a
+   * locked-down agent surface override to false.
+   */
   def mcpManagementToolsEnabled: Boolean = true
 
-  /** Per-server sampling-handler resolver. Default: refuse unless
-    * `samplingModelId` is set, then delegate via [[providerFor]]. */
+  /**
+   * Per-server sampling-handler resolver. Default: refuse unless
+   * `samplingModelId` is set, then delegate via [[providerFor]].
+   */
   protected def samplingHandlerFor(config: McpServerConfig): SamplingHandler =
     config.samplingModelId match {
       case None => SamplingHandler.Refusing
       case Some(modelId) => new ProviderSamplingHandler(this, config, modelId.asInstanceOf[lightdb.id.Id[sigil.db.Model]])
     }
 
-  /** The single per-Sigil MCP manager. Lazy so it only spins up when
-    * MCP-touching code accesses it. */
+  /**
+   * The single per-Sigil MCP manager. Lazy so it only spins up when
+   * MCP-touching code accesses it.
+   */
   final lazy val mcpManager: McpManager =
     new McpManager(this.asInstanceOf[Sigil { type DB <: SigilDB & McpCollections }], samplingHandlerFor)
 
-  /** Tool finder that surfaces all MCP-server-side tools. Apps that
-    * want to chain it with other finders compose at the
-    * `findTools` override site. */
+  /**
+   * Tool finder that surfaces all MCP-server-side tools. Apps that
+   * want to chain it with other finders compose at the
+   * `findTools` override site.
+   */
   final lazy val mcpToolFinder: McpToolFinder = new McpToolFinder(mcpManager)
 
-  /** Hook into Sigil's static-tool list. Appends the runtime-
-    * management tools when [[mcpManagementToolsEnabled]] is true. */
+  /**
+   * Hook into Sigil's static-tool list. Appends the runtime-
+   * management tools when [[mcpManagementToolsEnabled]] is true.
+   */
   override def staticTools: List[Tool] = {
     val base = super.staticTools
     if (mcpManagementToolsEnabled) base ++ mcpManagementTools else base
   }
 
-  /** Register [[McpKind]] so [[McpTool]] records' `kind` field
-    * round-trips through fabric's polymorphic [[sigil.tool.ToolKind]]
-    * discriminator. */
+  /**
+   * Register [[McpKind]] so [[McpTool]] records' `kind` field
+   * round-trips through fabric's polymorphic [[sigil.tool.ToolKind]]
+   * discriminator.
+   */
   override protected def toolKindRegistrations: List[fabric.rw.RW[? <: sigil.tool.ToolKind]] =
     fabric.rw.RW.static[sigil.tool.ToolKind](McpKind) :: super.toolKindRegistrations
 
-  /** Auto-register [[sigil.tool.JsonInput]] so [[ToolInvoke]] events
-    * for MCP-server tool calls (whose `inputRW` is `RW[JsonInput]`)
-    * round-trip through fabric's polymorphic `RW[ToolInput]`
-    * discriminator. Mirrors [[sigil.script.ScriptSigil]]'s registration
-    * — the `McpToolFinder` does its own `toolInputRWs` advertisement
-    * for the discovery path, but the polytype dispatcher used during
-    * persistence is built once at init from `toolInputRegistrations`,
-    * so registering at the mixin level keeps both paths covered.
-    * Bug #53. */
+  /**
+   * Auto-register [[sigil.tool.JsonInput]] so [[ToolInvoke]] events
+   * for MCP-server tool calls (whose `inputRW` is `RW[JsonInput]`)
+   * round-trip through fabric's polymorphic `RW[ToolInput]`
+   * discriminator. Mirrors [[sigil.script.ScriptSigil]]'s registration
+   * — the `McpToolFinder` does its own `toolInputRWs` advertisement
+   * for the discovery path, but the polytype dispatcher used during
+   * persistence is built once at init from `toolInputRegistrations`,
+   * so registering at the mixin level keeps both paths covered.
+   * Bug #53.
+   */
   override def toolInputRegistrations: List[fabric.rw.RW[? <: sigil.tool.ToolInput]] =
     summon[fabric.rw.RW[sigil.tool.JsonInput]] :: super.toolInputRegistrations
 
@@ -96,9 +110,11 @@ trait McpSigil extends Sigil {
     new GetMcpPromptTool(mcpManager)
   )
 
-  /** Sigil init hook — subscribe to Stop events and cancel in-flight
-    * MCP calls for the targeted agent. The fiber lives for the
-    * Sigil's lifetime. */
+  /**
+   * Sigil init hook — subscribe to Stop events and cancel in-flight
+   * MCP calls for the targeted agent. The fiber lives for the
+   * Sigil's lifetime.
+   */
   protected def startMcpCancellationListener(): Task[Unit] = Task {
     import sigil.event.Stop
     signals
@@ -156,38 +172,38 @@ final class ProviderSamplingHandler(host: Sigil,
 
   override def handle(serverName: String, params: Json): Task[Json] = Task.defer {
     val systemPrompt = params.get("systemPrompt").map(_.asString).getOrElse("")
-    val userPrompt   = renderUserPrompt(params.get("messages").map(_.asVector.toList).getOrElse(Nil))
-    val temperature  = params.get("temperature").map(_.asDouble)
+    val userPrompt = renderUserPrompt(params.get("messages").map(_.asVector.toList).getOrElse(Nil))
+    val temperature = params.get("temperature").map(_.asDouble)
     val maxTokensOpt = params.get("maxTokens").map(_.asInt)
-    val settings     = GenerationSettings(temperature = temperature, maxOutputTokens = maxTokensOpt)
+    val settings = GenerationSettings(temperature = temperature, maxOutputTokens = maxTokensOpt)
 
     val request = OneShotRequest(
-      modelId            = modelId,
-      systemPrompt       = systemPrompt,
-      userPrompt         = userPrompt,
+      modelId = modelId,
+      systemPrompt = systemPrompt,
+      userPrompt = userPrompt,
       generationSettings = settings
     )
 
     host.providerFor(modelId, Nil).flatMap { provider =>
       val collected = new java.lang.StringBuilder()
-      val stopRef   = new java.util.concurrent.atomic.AtomicReference[StopReason](StopReason.Complete)
-      val errRef    = new java.util.concurrent.atomic.AtomicReference[Option[String]](None)
+      val stopRef = new java.util.concurrent.atomic.AtomicReference[StopReason](StopReason.Complete)
+      val errRef = new java.util.concurrent.atomic.AtomicReference[Option[String]](None)
 
       provider(request).evalMap {
-        case ProviderEvent.TextDelta(t)             => Task { collected.append(t); () }
-        case ProviderEvent.ContentBlockDelta(_, t)  => Task { collected.append(t); () }
-        case ProviderEvent.Done(reason)             => Task { stopRef.set(reason); () }
-        case ProviderEvent.Error(msg)               => Task { errRef.set(Some(msg)); () }
-        case _                                      => Task.unit
+        case ProviderEvent.TextDelta(t) => Task { collected.append(t); () }
+        case ProviderEvent.ContentBlockDelta(_, t) => Task { collected.append(t); () }
+        case ProviderEvent.Done(reason) => Task { stopRef.set(reason); () }
+        case ProviderEvent.Error(msg) => Task { errRef.set(Some(msg)); () }
+        case _ => Task.unit
       }.drain.map { _ =>
         errRef.get() match {
           case Some(msg) => throw new McpError(-1, s"Sampling failed: $msg")
           case None =>
             obj(
-              "model"      -> str(modelId.value),
+              "model" -> str(modelId.value),
               "stopReason" -> str(stopReasonString(stopRef.get())),
-              "role"       -> str("assistant"),
-              "content"    -> obj("type" -> str("text"), "text" -> str(collected.toString))
+              "role" -> str("assistant"),
+              "content" -> obj("type" -> str("text"), "text" -> str(collected.toString))
             )
         }
       }
@@ -206,10 +222,10 @@ final class ProviderSamplingHandler(host: Sigil,
     }.mkString("\n")
 
   private def stopReasonString(s: StopReason): String = s match {
-    case StopReason.Complete        => "endTurn"
-    case StopReason.ToolCall        => "toolUse"
-    case StopReason.MaxTokens       => "maxTokens"
+    case StopReason.Complete => "endTurn"
+    case StopReason.ToolCall => "toolUse"
+    case StopReason.MaxTokens => "maxTokens"
     case StopReason.ContentFiltered => "stopSequence"
-    case StopReason.Cancelled       => "endTurn"
+    case StopReason.Cancelled => "endTurn"
   }
 }

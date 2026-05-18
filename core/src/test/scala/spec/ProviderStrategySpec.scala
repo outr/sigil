@@ -29,9 +29,9 @@ class ProviderStrategySpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         apiKeySecretId = Some("openai-key-1")
       )
       for {
-        saved   <- TestSigil.saveProviderConfig(cfg)
-        loaded  <- TestSigil.getProviderConfig(saved._id, List(TestUser))
-        listed  <- TestSigil.listProviderConfigs(TestSpace, List(TestUser))
+        saved <- TestSigil.saveProviderConfig(cfg)
+        loaded <- TestSigil.getProviderConfig(saved._id, List(TestUser))
+        listed <- TestSigil.listProviderConfigs(TestSpace, List(TestUser))
       } yield {
         loaded shouldBe defined
         loaded.get.label shouldBe "OpenAI prod"
@@ -41,13 +41,15 @@ class ProviderStrategySpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     }
 
     "return None for fetch when chain isn't authorized" in {
-      val cfg = ProviderConfig(space = TestSpace, label = "Hidden",
-                               providerType = ProviderType.OpenAI)
+      val cfg = ProviderConfig(
+        space = TestSpace,
+        label = "Hidden",
+        providerType = ProviderType.OpenAI)
       for {
         saved <- TestSigil.saveProviderConfig(cfg)
-        _     <- Task { TestSigil.setAccessibleSpaces(_ => Task.pure(Set.empty)) }
-        miss  <- TestSigil.getProviderConfig(saved._id, List(TestUser))
-        _     <- Task { TestSigil.setAccessibleSpaces(_ => Task.pure(Set(GlobalSpace, TestSpace))) }
+        _ <- Task(TestSigil.setAccessibleSpaces(_ => Task.pure(Set.empty)))
+        miss <- TestSigil.getProviderConfig(saved._id, List(TestUser))
+        _ <- Task(TestSigil.setAccessibleSpaces(_ => Task.pure(Set(GlobalSpace, TestSpace))))
       } yield miss shouldBe None
     }
   }
@@ -60,12 +62,12 @@ class ProviderStrategySpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         defaultCandidates = List(ModelCandidate(Id[Model]("openai/gpt-5.4")))
       )
       for {
-        saved      <- TestSigil.saveProviderStrategy(rec)
-        listed     <- TestSigil.listProviderStrategies(TestSpace, List(TestUser))
-        _          <- TestSigil.assignProviderStrategy(TestSpace, saved._id, List(TestUser))
-        assigned   <- TestSigil.assignedProviderStrategy(TestSpace)
-        resolved   <- TestSigil.resolveProviderStrategy(TestSpace)
-        _          <- TestSigil.unassignProviderStrategy(TestSpace, List(TestUser))
+        saved <- TestSigil.saveProviderStrategy(rec)
+        listed <- TestSigil.listProviderStrategies(TestSpace, List(TestUser))
+        _ <- TestSigil.assignProviderStrategy(TestSpace, saved._id, List(TestUser))
+        assigned <- TestSigil.assignedProviderStrategy(TestSpace)
+        resolved <- TestSigil.resolveProviderStrategy(TestSpace)
+        _ <- TestSigil.unassignProviderStrategy(TestSpace, List(TestUser))
         afterUnset <- TestSigil.assignedProviderStrategy(TestSpace)
       } yield {
         listed.exists(_._id == saved._id) shouldBe true
@@ -78,15 +80,16 @@ class ProviderStrategySpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
     "delete cascades — orphaned space assignments are cleaned up" in {
       val rec = ProviderStrategyRecord(
-        space = TestSpace, label = "to-delete",
+        space = TestSpace,
+        label = "to-delete",
         defaultCandidates = List(ModelCandidate(Id[Model]("openai/gpt-5.4-mini")))
       )
       for {
-        saved          <- TestSigil.saveProviderStrategy(rec)
-        _              <- TestSigil.assignProviderStrategy(TestSpace, saved._id, List(TestUser))
-        _              <- TestSigil.deleteProviderStrategy(saved._id, List(TestUser))
-        afterDelete    <- TestSigil.assignedProviderStrategy(TestSpace)
-        listed         <- TestSigil.listProviderStrategies(TestSpace, List(TestUser))
+        saved <- TestSigil.saveProviderStrategy(rec)
+        _ <- TestSigil.assignProviderStrategy(TestSpace, saved._id, List(TestUser))
+        _ <- TestSigil.deleteProviderStrategy(saved._id, List(TestUser))
+        afterDelete <- TestSigil.assignedProviderStrategy(TestSpace)
+        listed <- TestSigil.listProviderStrategies(TestSpace, List(TestUser))
       } yield {
         afterDelete shouldBe None
         listed.exists(_._id == saved._id) shouldBe false
@@ -98,16 +101,16 @@ class ProviderStrategySpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "return per-work-type candidates with default fallback" in {
       val s = ProviderStrategy.routed(
         default = List(ModelCandidate(Id[Model]("default-model"))),
-        routes  = Map(
+        routes = Map(
           CodingWork -> List(ModelCandidate(Id[Model]("coding-model"))),
           ClassificationWork -> List(ModelCandidate(Id[Model]("cheap-model")))
         )
       )
       Task {
-        s.candidates(CodingWork).map(_.modelId.value)         shouldBe List("coding-model")
+        s.candidates(CodingWork).map(_.modelId.value) shouldBe List("coding-model")
         s.candidates(ClassificationWork).map(_.modelId.value) shouldBe List("cheap-model")
-        s.candidates(AnalysisWork).map(_.modelId.value)       shouldBe List("default-model")
-        s.candidates(SummarizationWork).map(_.modelId.value)  shouldBe List("default-model")
+        s.candidates(AnalysisWork).map(_.modelId.value) shouldBe List("default-model")
+        s.candidates(SummarizationWork).map(_.modelId.value) shouldBe List("default-model")
       }
     }
   }
@@ -119,7 +122,7 @@ class ProviderStrategySpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       sigil.SpaceId.register(fabric.rw.RW.static[SpaceId](SeedSpace))
       TestSigil.setAccessibleSpaces(_ => Task.pure(Set(GlobalSpace, TestSpace, SeedSpace)))
       for {
-        first  <- DefaultProviderStrategies.seed(TestSigil, SeedSpace)
+        first <- DefaultProviderStrategies.seed(TestSigil, SeedSpace)
         second <- DefaultProviderStrategies.seed(TestSigil, SeedSpace)
       } yield {
         first should have size 3

@@ -26,13 +26,17 @@ final class DapManager(sigil: Sigil { type DB <: SigilDB & DebugCollections }) {
   def configFor(languageId: String): Task[Option[DebugAdapterConfig]] =
     sigil.withDB(_.debugAdapters.transaction(_.get(DebugAdapterConfig.idFor(languageId))))
 
-  /** Get an existing session by id. Returns `None` if no session
-    * with that id is currently active. */
+  /**
+   * Get an existing session by id. Returns `None` if no session
+   * with that id is currently active.
+   */
   def get(sessionId: String): Option[DapSession] = Option(sessions.get(sessionId))
 
-  /** Spawn a new session for the given language under the given
-    * session id. Fails if a session with that id already exists —
-    * disconnect first. */
+  /**
+   * Spawn a new session for the given language under the given
+   * session id. Fails if a session with that id already exists —
+   * disconnect first.
+   */
   def spawn(languageId: String, sessionId: String): Task[DapSession] = Task.defer {
     Option(sessions.get(sessionId)) match {
       case Some(_) =>
@@ -53,11 +57,13 @@ final class DapManager(sigil: Sigil { type DB <: SigilDB & DebugCollections }) {
     }
   }
 
-  /** Tear down a session by id. Idempotent. */
+  /**
+   * Tear down a session by id. Idempotent.
+   */
   def disconnect(sessionId: String): Task[Unit] =
     Option(sessions.remove(sessionId)) match {
       case Some(s) => s.shutdown()
-      case None    => Task.unit
+      case None => Task.unit
     }
 
   def shutdownAll(): Task[Unit] = Task.defer {
@@ -66,8 +72,10 @@ final class DapManager(sigil: Sigil { type DB <: SigilDB & DebugCollections }) {
     Task.sequence(all.map(_.shutdown())).unit
   }
 
-  /** Sweep idle sessions whose inactivity exceeds the config's
-    * `idleTimeoutMs`. Called from a periodic fiber by [[DebugSigil]]. */
+  /**
+   * Sweep idle sessions whose inactivity exceeds the config's
+   * `idleTimeoutMs`. Called from a periodic fiber by [[DebugSigil]].
+   */
   def sweepIdle(): Task[Unit] = Task.defer {
     val now = System.currentTimeMillis()
     val expired = sessions.entrySet().asScala.filter { e =>
@@ -79,8 +87,10 @@ final class DapManager(sigil: Sigil { type DB <: SigilDB & DebugCollections }) {
     }).unit
   }
 
-  /** Snapshot of every active session's id and current state. Useful
-    * for `dap_list_sessions`. */
+  /**
+   * Snapshot of every active session's id and current state. Useful
+   * for `dap_list_sessions`.
+   */
   def listSessions(): List[(String, DapSession)] =
     sessions.entrySet().asScala.toList.map(e => e.getKey -> e.getValue)
 }

@@ -18,18 +18,23 @@ trait MemoryType {
 }
 
 object MemoryType extends PolyType[MemoryType]()(using scala.reflect.ClassTag(classOf[MemoryType])) {
-  case object Fact extends MemoryType       { override val value: String = "fact" }
-  case object Decision extends MemoryType   { override val value: String = "decision" }
+  case object Fact extends MemoryType { override val value: String = "fact" }
+  case object Decision extends MemoryType { override val value: String = "decision" }
   case object Preference extends MemoryType { override val value: String = "preference" }
   case object ActionItem extends MemoryType { override val value: String = "action_item" }
-  /** Agent-authored short observation — like a developer's notebook
-    * entry. Same retrieval surface as other memories (space-scoped,
-    * embedded for semantic search) but flagged so apps that want to
-    * surface notes separately in a UI can filter on the type. */
-  case object Note extends MemoryType       { override val value: String = "note" }
-  case object Other extends MemoryType      { override val value: String = "other" }
 
-  /** The built-in variants Sigil ships. Apps can register more. */
+  /**
+   * Agent-authored short observation — like a developer's notebook
+   * entry. Same retrieval surface as other memories (space-scoped,
+   * embedded for semantic search) but flagged so apps that want to
+   * surface notes separately in a UI can filter on the type.
+   */
+  case object Note extends MemoryType { override val value: String = "note" }
+  case object Other extends MemoryType { override val value: String = "other" }
+
+  /**
+   * The built-in variants Sigil ships. Apps can register more.
+   */
   val defaults: Set[MemoryType] = Set(Fact, Decision, Preference, ActionItem, Note, Other)
 
   // Register the built-ins with the poly RW so they round-trip without

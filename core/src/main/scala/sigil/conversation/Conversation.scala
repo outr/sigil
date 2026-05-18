@@ -84,22 +84,26 @@ case class Conversation(topics: List[TopicEntry],
                         parentConversationId: Option[Id[Conversation]] = None,
                         stagingFor: Option[Id[Conversation]] = None,
                         archived: Boolean = false,
-                        /** Conversation-level pinned model — when set, every LLM
-                          * dispatch in the conversation (agent turns AND framework
-                          * auxiliary calls — classifier, memory extractor, curate
-                          * compression) routes to this model, overriding mode-
-                          * driven strategy selection and space-level strategy
-                          * assignment. Cleared via the `unpin_model` tool. */
+                        /**
+                         * Conversation-level pinned model — when set, every LLM
+                         * dispatch in the conversation (agent turns AND framework
+                         * auxiliary calls — classifier, memory extractor, curate
+                         * compression) routes to this model, overriding mode-
+                         * driven strategy selection and space-level strategy
+                         * assignment. Cleared via the `unpin_model` tool.
+                         */
                         pinnedModelId: Option[lightdb.id.Id[sigil.db.Model]] = None,
-                        /** Conversation-level pinned complexity tier — when set,
-                          * every per-turn classification skips
-                          * [[sigil.provider.RoutedStrategy.inferComplexity]] and
-                          * uses this tier instead. Lets the user lock the
-                          * routing chain to a specific tier without naming a
-                          * model (cost ceiling, classifier override, diagnostic
-                          * forcing). Cleared via the `unpin_complexity` tool.
-                          * Pin wins over inference; inference wins over the
-                          * strategy's `Complexity.Medium` default. Bug #152. */
+                        /**
+                         * Conversation-level pinned complexity tier — when set,
+                         * every per-turn classification skips
+                         * [[sigil.provider.RoutedStrategy.inferComplexity]] and
+                         * uses this tier instead. Lets the user lock the
+                         * routing chain to a specific tier without naming a
+                         * model (cost ceiling, classifier override, diagnostic
+                         * forcing). Cleared via the `unpin_complexity` tool.
+                         * Pin wins over inference; inference wins over the
+                         * strategy's `Complexity.Medium` default. Bug #152.
+                         */
                         pinnedComplexity: Option[sigil.provider.Complexity] = None,
                         created: Timestamp = Timestamp(),
                         modified: Timestamp = Timestamp(),
@@ -140,12 +144,16 @@ object Conversation extends RecordDocumentModel[Conversation] with JsonConversio
 
   override def id(value: String = Unique()): Id[Conversation] = Id(value)
 
-  /** Index on `stagingFor` so the orphan-staging maintenance sweep
-    * can scan staging conversations cheaply, and apps can list
-    * "imports in progress for conversation X." */
+  /**
+   * Index on `stagingFor` so the orphan-staging maintenance sweep
+   * can scan staging conversations cheaply, and apps can list
+   * "imports in progress for conversation X."
+   */
   val stagingFor: I[Option[Id[Conversation]]] = field.index(_.stagingFor)
 
-  /** Index on `created` so the orphan-staging sweep can age-out
-    * abandoned imports without a full table scan. */
+  /**
+   * Index on `created` so the orphan-staging sweep can age-out
+   * abandoned imports without a full table scan.
+   */
   val createdAt: I[Long] = field.index("createdAt", _.created.value)
 }

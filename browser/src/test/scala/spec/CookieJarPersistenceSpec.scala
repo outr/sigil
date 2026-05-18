@@ -30,8 +30,11 @@ class CookieJarPersistenceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         BrowserCookie("example.com", "csrf", "xyz789", path = "/", httpOnly = true)
       )
       for {
-        _      <- TestBrowserSigil.saveCookies(jarId, GlobalSpace, cookies,
-                    metadata = Map("label" -> "example.com"))
+        _ <- TestBrowserSigil.saveCookies(
+          jarId,
+          GlobalSpace,
+          cookies,
+          metadata = Map("label" -> "example.com"))
         loaded <- TestBrowserSigil.loadCookies(jarId)
       } yield {
         loaded should have size 2
@@ -41,21 +44,24 @@ class CookieJarPersistenceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       }
     }
 
-    "return Nil for a missing jar id" in {
+    "return Nil for a missing jar id" in
       TestBrowserSigil.loadCookies(CookieJar.id("does-not-exist")).map { loaded =>
         loaded shouldBe empty
       }
-    }
 
     "overwrite the cookie list on a re-save" in {
       val jarId = CookieJar.id()
       for {
-        _       <- TestBrowserSigil.saveCookies(jarId, GlobalSpace,
-                     List(BrowserCookie("a.com", "k", "v1")))
-        first   <- TestBrowserSigil.loadCookies(jarId)
-        _       <- TestBrowserSigil.saveCookies(jarId, GlobalSpace,
-                     List(BrowserCookie("a.com", "k", "v2")))
-        second  <- TestBrowserSigil.loadCookies(jarId)
+        _ <- TestBrowserSigil.saveCookies(
+          jarId,
+          GlobalSpace,
+          List(BrowserCookie("a.com", "k", "v1")))
+        first <- TestBrowserSigil.loadCookies(jarId)
+        _ <- TestBrowserSigil.saveCookies(
+          jarId,
+          GlobalSpace,
+          List(BrowserCookie("a.com", "k", "v2")))
+        second <- TestBrowserSigil.loadCookies(jarId)
       } yield {
         first.map(_.value) shouldBe List("v1")
         second.map(_.value) shouldBe List("v2")
@@ -65,9 +71,11 @@ class CookieJarPersistenceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "persist the metadata + space on the record" in {
       val jarId = CookieJar.id()
       for {
-        _      <- TestBrowserSigil.saveCookies(jarId, GlobalSpace,
-                    List(BrowserCookie("x.com", "k", "v")),
-                    metadata = Map("user" -> "alice", "label" -> "x.com / alice"))
+        _ <- TestBrowserSigil.saveCookies(
+          jarId,
+          GlobalSpace,
+          List(BrowserCookie("x.com", "k", "v")),
+          metadata = Map("user" -> "alice", "label" -> "x.com / alice"))
         record <- TestBrowserSigil.withDB(_.cookieJars.transaction(_.get(jarId)))
       } yield {
         record shouldBe defined

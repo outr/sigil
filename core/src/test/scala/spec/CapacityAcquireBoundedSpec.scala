@@ -18,9 +18,11 @@ import scala.concurrent.duration.*
 class CapacityAcquireBoundedSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Provider with `maxConcurrent = 1` and a tight acquire timeout
-    * so a stuck holder fails fast in the test rather than padding
-    * the suite by 60 seconds. */
+  /**
+   * Provider with `maxConcurrent = 1` and a tight acquire timeout
+   * so a stuck holder fails fast in the test rather than padding
+   * the suite by 60 seconds.
+   */
   private class GatedProvider extends Provider {
     override val maxConcurrent: Int = 1
     override protected def capacityAcquireTimeout: FiniteDuration = 500.millis
@@ -30,8 +32,10 @@ class CapacityAcquireBoundedSpec extends AsyncWordSpec with AsyncTaskSpec with M
     override def httpRequestFor(input: ProviderCall): Task[spice.http.HttpRequest] =
       Task.error(new RuntimeException("not implemented"))
 
-    /** Test-only — expose `withCapacity` so the spec drives it
-      * directly. */
+    /**
+     * Test-only — expose `withCapacity` so the spec drives it
+     * directly.
+     */
     def public[A](task: Task[A]): Task[A] = withCapacity(task)
   }
 
@@ -54,7 +58,7 @@ class CapacityAcquireBoundedSpec extends AsyncWordSpec with AsyncTaskSpec with M
           elapsed should be < 2000L
           result match {
             case Right(_) => fail("expected CapacityAcquireTimeoutException, got success")
-            case Left(t)  =>
+            case Left(t) =>
               t shouldBe a[CapacityAcquireTimeoutException]
               t.getMessage should include("permit")
           }

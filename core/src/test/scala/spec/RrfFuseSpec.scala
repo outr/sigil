@@ -21,7 +21,7 @@ class RrfFuseSpec extends AnyWordSpec with Matchers {
     }
 
     "rank items appearing in both signals above items in only one" in {
-      val vector  = List("a", "b", "c")
+      val vector = List("a", "b", "c")
       val lexical = List("d", "a", "e")
       // 'a' appears in both → 1/(60+1) + 1/(60+2) = 0.01632... + 0.01613... = 0.03245
       // 'b' appears once at rank 2 → 1/62 = 0.01613

@@ -25,11 +25,14 @@ abstract class TypedTool[In <: ToolInput](
   override val space: SpaceId = GlobalSpace,
   override val keywords: Set[String] = Set.empty,
   override val createdBy: Option[ParticipantId] = None
-)(using ct: ClassTag[In], rwEv: RW[In]) extends Tool {
+)(using ct: ClassTag[In], rwEv: RW[In])
+  extends Tool {
 
   override val inputRW: RW[In] = rwEv
 
-  /** Implement this with the typed input — the base class casts safely. */
+  /**
+   * Implement this with the typed input — the base class casts safely.
+   */
   protected def executeTyped(input: In, context: TurnContext): rapid.Stream[Event]
 
   final override def execute(input: ToolInput, context: TurnContext): rapid.Stream[Event] =

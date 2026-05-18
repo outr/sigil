@@ -35,7 +35,8 @@ import sigil.conversation.ContextFrame
  */
 case class StandardContextOptimizer(dropWhitespaceFrames: Boolean = true,
                                     dedupConsecutiveText: Boolean = true,
-                                    stripStaleTools: Set[String] = Set.empty) extends ContextOptimizer {
+                                    stripStaleTools: Set[String] = Set.empty)
+  extends ContextOptimizer {
 
   override def optimize(frames: Vector[ContextFrame],
                         elideToolNames: Set[String] = Set.empty,
@@ -48,28 +49,30 @@ case class StandardContextOptimizer(dropWhitespaceFrames: Boolean = true,
     out
   }
 
-  /** Drop earlier ToolCall+ToolResult pairs for every tool name in
-    * `trim` according to the following two-tier rule:
-    *
-    *   - For pairs **before the current turn** (events older than the
-    *     most-recent Text frame from `currentTurnSource`): apply the
-    *     legacy bug-#44 rule — keep the LAST pair per tool name so
-    *     the agent has its one-turn-of-validity window after the
-    *     turn that produced it; drop everything earlier.
-    *   - For pairs **within the current turn** (events at or after
-    *     that boundary): KEEP ALL of them. Bug #73 — eliding within-
-    *     turn iterations of `find_capability` / `change_mode` etc.
-    *     was hiding the agent's own working memory: the model
-    *     called the tool, the framework deleted the call before the
-    *     next agent loop iteration, the model "saw no prior call"
-    *     and called the tool again, ad infinitum until
-    *     `maxAgentIterations` fired. Within-turn calls now stay
-    *     visible so the model can recognise it's already iterated.
-    *
-    * If `currentTurnSource` is `None` or no Text frame from that
-    * participant exists in the vector, the legacy "keep latest per
-    * name globally" rule applies (back-compat for callers without a
-    * turn-boundary notion). */
+  /**
+   * Drop earlier ToolCall+ToolResult pairs for every tool name in
+   * `trim` according to the following two-tier rule:
+   *
+   *   - For pairs **before the current turn** (events older than the
+   *     most-recent Text frame from `currentTurnSource`): apply the
+   *     legacy bug-#44 rule — keep the LAST pair per tool name so
+   *     the agent has its one-turn-of-validity window after the
+   *     turn that produced it; drop everything earlier.
+   *   - For pairs **within the current turn** (events at or after
+   *     that boundary): KEEP ALL of them. Bug #73 — eliding within-
+   *     turn iterations of `find_capability` / `change_mode` etc.
+   *     was hiding the agent's own working memory: the model
+   *     called the tool, the framework deleted the call before the
+   *     next agent loop iteration, the model "saw no prior call"
+   *     and called the tool again, ad infinitum until
+   *     `maxAgentIterations` fired. Within-turn calls now stay
+   *     visible so the model can recognise it's already iterated.
+   *
+   * If `currentTurnSource` is `None` or no Text frame from that
+   * participant exists in the vector, the legacy "keep latest per
+   * name globally" rule applies (back-compat for callers without a
+   * turn-boundary notion).
+   */
   private def collapseToolPairs(frames: Vector[ContextFrame],
                                 trim: Set[String],
                                 currentTurnSource: Option[sigil.participant.ParticipantId]): Vector[ContextFrame] = {
@@ -83,7 +86,7 @@ case class StandardContextOptimizer(dropWhitespaceFrames: Boolean = true,
       case Some(src) =>
         frames.lastIndexWhere {
           case t: ContextFrame.Text if t.participantId == src => true
-          case _                                              => false
+          case _ => false
         }
       case None => -1
     }
@@ -114,20 +117,20 @@ case class StandardContextOptimizer(dropWhitespaceFrames: Boolean = true,
 
     val dropCallIds = frames.iterator.collect {
       case tc: ContextFrame.ToolCall
-        if trim.contains(tc.toolName.value) && !keepCallIds.contains(tc.callId) => tc.callId
+          if trim.contains(tc.toolName.value) && !keepCallIds.contains(tc.callId) => tc.callId
     }.toSet
     if (dropCallIds.isEmpty) frames
     else frames.filterNot {
-      case tc: ContextFrame.ToolCall   => dropCallIds.contains(tc.callId)
+      case tc: ContextFrame.ToolCall => dropCallIds.contains(tc.callId)
       case tr: ContextFrame.ToolResult => dropCallIds.contains(tr.callId)
-      case _                            => false
+      case _ => false
     }
   }
 
   private def pruneWhitespace(frames: Vector[ContextFrame]): Vector[ContextFrame] =
     frames.filter {
       case ContextFrame.Text(content, _, _, _) => content.trim.nonEmpty
-      case _                                => true
+      case _ => true
     }
 
   private def dedupRun(frames: Vector[ContextFrame]): Vector[ContextFrame] = {

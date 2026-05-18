@@ -10,11 +10,14 @@ import sigil.tool.model.ResponseContent
 
 case class RemoveMcpServerInput(name: String) extends ToolInput derives RW
 
-/** Tear down an MCP server's persisted config and active connection. */
-final class RemoveMcpServerTool(manager: McpManager) extends TypedTool[RemoveMcpServerInput](
-  name = ToolName("remove_mcp_server"),
-  description = "Remove a registered MCP server and disconnect any active connection. The persisted config is deleted."
-) {
+/**
+ * Tear down an MCP server's persisted config and active connection.
+ */
+final class RemoveMcpServerTool(manager: McpManager)
+  extends TypedTool[RemoveMcpServerInput](
+    name = ToolName("remove_mcp_server"),
+    description = "Remove a registered MCP server and disconnect any active connection. The persisted config is deleted."
+  ) {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: RemoveMcpServerInput, context: TurnContext): Stream[Event] =

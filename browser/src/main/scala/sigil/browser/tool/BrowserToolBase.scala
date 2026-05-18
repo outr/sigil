@@ -21,10 +21,12 @@ import sigil.tool.model.ResponseContent
  */
 private[tool] object BrowserToolBase {
 
-  /** Resolve the [[BrowserController]] for the active conversation.
-    * Errors loudly when the surrounding `Sigil` doesn't mix in
-    * [[BrowserSigil]] — tells the app to add the trait rather than
-    * silently failing the tool. */
+  /**
+   * Resolve the [[BrowserController]] for the active conversation.
+   * Errors loudly when the surrounding `Sigil` doesn't mix in
+   * [[BrowserSigil]] — tells the app to add the trait rather than
+   * silently failing the tool.
+   */
   def resolveController(ctx: TurnContext): Task[BrowserController] =
     ctx.sigil match {
       case bs: BrowserSigil =>
@@ -34,16 +36,18 @@ private[tool] object BrowserToolBase {
           "Browser tools require BrowserSigil — mix `BrowserSigil` into your Sigil class."))
     }
 
-  /** Build a `Message(role = Tool)` carrying the tool's JSON
-    * payload as a single Text content block. Mirrors the
-    * `FsToolEmit` shape used by `sigil.tool.fs` so all tool
-    * results render uniformly. */
+  /**
+   * Build a `Message(role = Tool)` carrying the tool's JSON
+   * payload as a single Text content block. Mirrors the
+   * `FsToolEmit` shape used by `sigil.tool.fs` so all tool
+   * results render uniformly.
+   */
   def toolResult(payload: Json, ctx: TurnContext): Message = Message(
-    participantId  = ctx.caller,
+    participantId = ctx.caller,
     conversationId = ctx.conversation.id,
-    topicId        = ctx.conversation.currentTopicId,
-    content        = Vector(ResponseContent.Text(JsonFormatter.Compact(payload))),
-    state          = EventState.Complete,
-    role           = MessageRole.Tool
+    topicId = ctx.conversation.currentTopicId,
+    content = Vector(ResponseContent.Text(JsonFormatter.Compact(payload))),
+    state = EventState.Complete,
+    role = MessageRole.Tool
   )
 }

@@ -30,23 +30,30 @@ trait ErrorClassifier {
       override def classify(throwable: Throwable): ErrorClassification =
         self.classify(throwable) match {
           case ErrorClassification.Fallthrough => other.classify(throwable)
-          case decided                         => decided
+          case decided => decided
         }
     }
   }
 }
 
 enum ErrorClassification {
-  /** Same candidate, after `retryDelay`. The candidate's
-    * `retryCount` caps how many times this fires. */
+
+  /**
+   * Same candidate, after `retryDelay`. The candidate's
+   * `retryCount` caps how many times this fires.
+   */
   case Retry
 
-  /** Move to the next candidate in the chain. The current
-    * candidate enters its `cooldown` before being eligible
-    * again. */
+  /**
+   * Move to the next candidate in the chain. The current
+   * candidate enters its `cooldown` before being eligible
+   * again.
+   */
   case Fallthrough
 
-  /** Stop the strategy — surface the error to the caller. */
+  /**
+   * Stop the strategy — surface the error to the caller.
+   */
   case Fatal
 }
 

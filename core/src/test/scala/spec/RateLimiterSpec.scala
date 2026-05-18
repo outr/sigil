@@ -79,23 +79,23 @@ class RateLimiterSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       // Establish 100 as capacity, then drop to 30 (= 0.3, below softFloor 0.5
       // but above hardFloor 0.1).
       limiter.observe(remainingRequests = Some(100), remainingTokens = Some(100), resetSeconds = None, retryAfter = None)
-      limiter.observe(remainingRequests = Some(30),  remainingTokens = Some(30),  resetSeconds = None, retryAfter = None)
+      limiter.observe(remainingRequests = Some(30), remainingTokens = Some(30), resetSeconds = None, retryAfter = None)
       val before = System.nanoTime()
       limiter.acquire.map { _ =>
         val elapsedMs = (System.nanoTime() - before) / 1_000_000L
-        elapsedMs should be >= 700L  // softSleep - small slack
-        elapsedMs should be < 1600L  // < hardSleep — we didn't drop to the hard floor
+        elapsedMs should be >= 700L // softSleep - small slack
+        elapsedMs should be < 1600L // < hardSleep — we didn't drop to the hard floor
       }
     }
 
     "acquire sleep hardSleep when the bucket falls below the hard floor" in {
       val limiter = RateLimiter.default(cfg)
       limiter.observe(remainingRequests = Some(100), remainingTokens = Some(100), resetSeconds = None, retryAfter = None)
-      limiter.observe(remainingRequests = Some(5),   remainingTokens = Some(5),   resetSeconds = None, retryAfter = None)
+      limiter.observe(remainingRequests = Some(5), remainingTokens = Some(5), resetSeconds = None, retryAfter = None)
       val before = System.nanoTime()
       limiter.acquire.map { _ =>
         val elapsedMs = (System.nanoTime() - before) / 1_000_000L
-        elapsedMs should be >= 1500L  // hardSleep - small slack
+        elapsedMs should be >= 1500L // hardSleep - small slack
       }
     }
 
@@ -105,7 +105,7 @@ class RateLimiterSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val before = System.nanoTime()
       limiter.acquire.map { _ =>
         val elapsedMs = (System.nanoTime() - before) / 1_000_000L
-        elapsedMs should be >= 500L  // retry-after - small slack
+        elapsedMs should be >= 500L // retry-after - small slack
       }
     }
   }

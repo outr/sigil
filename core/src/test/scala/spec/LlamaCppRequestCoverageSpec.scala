@@ -81,7 +81,7 @@ class LlamaCppRequestCoverageSpec extends AbstractRequestCoverageSpec {
       val roles: Vector[String] = messages.flatMap(_.get("role").map(_.asString))
       withClue(s"roles: ${roles.mkString(",")}") {
         roles.count(_ == "system") shouldBe 1
-        roles.count(_ == "user")   shouldBe 1
+        roles.count(_ == "user") shouldBe 1
         roles.head shouldBe "system"
       }
     }

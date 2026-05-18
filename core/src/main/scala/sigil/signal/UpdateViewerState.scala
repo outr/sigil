@@ -12,4 +12,5 @@ import sigil.viewer.ViewerStatePayload.given
  * other tabs / devices converge on the new state without polling.
  */
 case class UpdateViewerState(scope: String,
-                             payload: ViewerStatePayload) extends Notice derives RW
+                             payload: ViewerStatePayload)
+  extends Notice derives RW

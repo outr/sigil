@@ -10,9 +10,9 @@ import lightdb.id.Id
  * name, description, input RW definition, and examples.
  */
 case class ToolSchema(id: Id[ToolSchema],
-                     name: ToolName,
-                     description: String,
-                     input: Definition,
-                     examples: List[ToolExample],
-                     output: Option[Definition] = None)
+                      name: ToolName,
+                      description: String,
+                      input: Definition,
+                      examples: List[ToolExample],
+                      output: Option[Definition] = None)
   derives RW

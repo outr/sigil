@@ -119,7 +119,8 @@ enum ResponseContent derives RW {
    *   - `placeholder` — hint shown when the field is empty.
    *   - `defaultValue` — pre-filled value the user can edit or clear.
    */
-  case TextInput(label: String, id: String,
+  case TextInput(label: String,
+                 id: String,
                  placeholder: Option[String] = None,
                  defaultValue: Option[String] = None)
 
@@ -225,12 +226,15 @@ enum ResponseContent derives RW {
 }
 
 object ResponseContent {
-  /** Explicit RW for the [[ResponseContent.Card]] case so tools that
+
+  /**
+   * Explicit RW for the [[ResponseContent.Card]] case so tools that
    * constrain their input to Cards specifically (e.g. `respond_card`)
    * can round-trip. Lives in the enum's companion so implicit search
    * for `RW[ResponseContent.Card]` finds it. The case is non-recursive
    * (`sections: List[Json]`), so this derivation completes without the
-   * cycle that `Vector[ResponseContent]` would introduce. */
+   * cycle that `Vector[ResponseContent]` would introduce.
+   */
   given cardRW: RW[ResponseContent.Card] = RW.gen
 }
 
@@ -243,19 +247,24 @@ object ResponseContent {
  * `Card.typedSections(card)`.
  */
 object Card {
-  /** Build a [[ResponseContent.Card]] from typed blocks. Each block
+
+  /**
+   * Build a [[ResponseContent.Card]] from typed blocks. Each block
    * round-trips through the enum's RW into a Json value so the wire
    * format matches what a `Vector[ResponseContent]`-typed field would
-   * have produced. */
+   * have produced.
+   */
   def apply(sections: Vector[ResponseContent],
             title: Option[String] = None,
             kind: Option[String] = None): ResponseContent.Card =
     ResponseContent.Card(sections.map(_.json).toList, title, kind)
 
-  /** Materialize the typed blocks back from a Card's raw section JSON.
+  /**
+   * Materialize the typed blocks back from a Card's raw section JSON.
    * Used by renderers (which need typed dispatch) and apps that want to
    * inspect a Card's contents structurally. Each Json value is read via
-   * the parent `ResponseContent` RW. */
+   * the parent `ResponseContent` RW.
+   */
   def typedSections(card: ResponseContent.Card): Vector[ResponseContent] =
     card.sections.iterator.map(j => j.as[ResponseContent]).toVector
 }

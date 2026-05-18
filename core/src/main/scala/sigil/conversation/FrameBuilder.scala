@@ -3,7 +3,10 @@ package sigil.conversation
 import fabric.io.JsonFormatter
 import fabric.rw.*
 import fabric.{Json, Obj}
-import sigil.event.{AgentState, CapabilityResults, Event, Message, ModeChange, MessageRole, Reasoning, Stop, TopicChange, TopicChangeKind, ToolInvoke, ToolResults}
+import sigil.event.{
+  AgentState, CapabilityResults, Event, Message, ModeChange, MessageRole, Reasoning, Stop, TopicChange, TopicChangeKind, ToolInvoke,
+  ToolResults
+}
 import sigil.signal.EventState
 import sigil.tool.ToolInput
 import sigil.tool.ToolInput.given
@@ -58,13 +61,13 @@ object FrameBuilder {
       val content = event match {
         case m: Message =>
           m.content.collect {
-            case ResponseContent.Text(t)            => t
-            case ResponseContent.Markdown(t)        => t
-            case ResponseContent.Heading(t)         => t
-            case ResponseContent.Code(c, lang)      => s"```${lang.getOrElse("")}\n$c\n```"
+            case ResponseContent.Text(t) => t
+            case ResponseContent.Markdown(t) => t
+            case ResponseContent.Heading(t) => t
+            case ResponseContent.Code(c, lang) => s"```${lang.getOrElse("")}\n$c\n```"
             case ResponseContent.ItemList(items, _) => items.mkString("\n")
-            case ResponseContent.Link(url, label)   => s"$label $url"
-            case other                              => other.toString
+            case ResponseContent.Link(url, label) => s"$label $url"
+            case other => other.toString
           }.mkString("\n")
         case tr: ToolResults if tr.typed.isDefined =>
           JsonFormatter.Compact(tr.typed.get)
@@ -103,10 +106,10 @@ object FrameBuilder {
               s"Surfacing as a synthetic agents-only frame so the conversation continues."
           )
           return Some(ContextFrame.Text(
-            content       = s"[framework: skipped malformed Tool-role event ${event._id.value} (no origin)]",
+            content = s"[framework: skipped malformed Tool-role event ${event._id.value} (no origin)]",
             participantId = event.participantId,
             sourceEventId = event._id,
-            visibility    = sigil.event.MessageVisibility.Agents
+            visibility = sigil.event.MessageVisibility.Agents
           ))
       }
     }
@@ -165,18 +168,18 @@ object FrameBuilder {
           visibility = r.visibility
         ))
 
-      case _: AgentState | _: Stop                       => None
+      case _: AgentState | _: Stop => None
       // Bug #61 — Reaction is UI signal, not curator-visible
       // context. Reactions persist as durable events but never
       // render into the prompt; agents that care query the event
       // log explicitly.
-      case _: sigil.event.Reaction                       => None
+      case _: sigil.event.Reaction => None
       // Bug #62 — same rationale: read receipts are UI signal,
       // not prompt context. The ReadState row is per-(conv,
       // participant) state for delivery indicators, never seen
       // by the curator.
-      case _: sigil.event.ReadState                      => None
-      case _: sigil.event.ControlPlaneEvent              => None
+      case _: sigil.event.ReadState => None
+      case _: sigil.event.ControlPlaneEvent => None
 
       case other =>
         throw new RuntimeException(
@@ -221,13 +224,13 @@ object FrameBuilder {
           // *something* — a doubly-formatted blob beats silently
           // empty content.
           m.content.collect {
-            case ResponseContent.Text(t)            => t
-            case ResponseContent.Markdown(t)        => t
-            case ResponseContent.Heading(t)         => t
-            case ResponseContent.Code(c, lang)      => s"```${lang.getOrElse("")}\n$c\n```"
+            case ResponseContent.Text(t) => t
+            case ResponseContent.Markdown(t) => t
+            case ResponseContent.Heading(t) => t
+            case ResponseContent.Code(c, lang) => s"```${lang.getOrElse("")}\n$c\n```"
             case ResponseContent.ItemList(items, _) => items.mkString("\n")
-            case ResponseContent.Link(url, label)   => s"$label $url"
-            case other                              => other.toString
+            case ResponseContent.Link(url, label) => s"$label $url"
+            case other => other.toString
           }.mkString("\n")
         case tr: ToolResults if tr.typed.isDefined =>
           // Typed-output tool (TypedOutputTool[I, O]) — fold the
@@ -285,7 +288,7 @@ object FrameBuilder {
           .map(i => JsonFormatter.Compact(stripPolyDiscriminator(summon[RW[ToolInput]].read(i))))
           .getOrElse("{}")
         existing :+ ContextFrame.ToolCall(
-          toolName = ti.toolName,   // already ToolName
+          toolName = ti.toolName, // already ToolName
           argsJson = argsJson,
           callId = ti._id,
           participantId = ti.participantId,

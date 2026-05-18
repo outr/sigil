@@ -22,20 +22,24 @@ import fabric.rw.*
  */
 enum SafetyPosture derives RW {
 
-  /** The framework's default. Tools flagged `requiresUserConsent`
-    * gate on a `ToolApproval` record; the agent prompts the user
-    * via `respond_options` (or similar) and records the verdict
-    * with `record_consent`. Right for production deployments where
-    * the agent's actions have user-visible consequences. */
+  /**
+   * The framework's default. Tools flagged `requiresUserConsent`
+   * gate on a `ToolApproval` record; the agent prompts the user
+   * via `respond_options` (or similar) and records the verdict
+   * with `record_consent`. Right for production deployments where
+   * the agent's actions have user-visible consequences.
+   */
   case Confirming
 
-  /** The user has pre-authorized the agent to act on their behalf.
-    * The orchestrator bypasses the consent gate entirely — tools
-    * flagged `requiresUserConsent` dispatch directly. The agent
-    * never calls `record_consent` because there's nothing to
-    * record; the user already consented by running the app in this
-    * posture. Right for benchmarks (AgentDojo, etc.) and
-    * single-user-local apps where the agent has full delegated
-    * authority. */
+  /**
+   * The user has pre-authorized the agent to act on their behalf.
+   * The orchestrator bypasses the consent gate entirely — tools
+   * flagged `requiresUserConsent` dispatch directly. The agent
+   * never calls `record_consent` because there's nothing to
+   * record; the user already consented by running the app in this
+   * posture. Right for benchmarks (AgentDojo, etc.) and
+   * single-user-local apps where the agent has full delegated
+   * authority.
+   */
   case Autonomous
 }

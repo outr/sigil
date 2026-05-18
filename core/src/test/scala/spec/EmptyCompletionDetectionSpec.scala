@@ -22,10 +22,10 @@ class EmptyCompletionDetectionSpec extends AnyWordSpec with Matchers {
 
   private val cfg = Config(
     providerNamespace = "test",
-    providerName      = "Test",
+    providerName = "Test",
     strictModeCapable = true,
-    honorsStrict      = true,
-    forcedCallShape   = ForcedCallShape.ToolChoice,
+    honorsStrict = true,
+    forcedCallShape = ForcedCallShape.ToolChoice,
     emptyBudgetBurnThrows = true
   )
 
@@ -33,7 +33,7 @@ class EmptyCompletionDetectionSpec extends AnyWordSpec with Matchers {
     val state = new StreamState(new ToolCallAccumulator(Vector.empty, providerKey = "test"))
     val out = Vector.newBuilder[ProviderEvent]
     try {
-      rawChunks.foreach { c => out ++= OpenAIChatCompletions.parseChunk(JsonParser(c), state, cfg) }
+      rawChunks.foreach(c => out ++= OpenAIChatCompletions.parseChunk(JsonParser(c), state, cfg))
       out ++= state.flushDone(cfg)
       Right(out.result())
     } catch {
@@ -54,7 +54,7 @@ class EmptyCompletionDetectionSpec extends AnyWordSpec with Matchers {
       result.isLeft shouldBe true
       val ex = result.swap.toOption.get
       ex.typ shouldBe "empty_completion"
-      ex.message_ should include ("146")
+      ex.message_ should include("146")
     }
 
     "NOT throw when the stream emits content (healthy)" in {
@@ -89,7 +89,8 @@ class EmptyCompletionDetectionSpec extends AnyWordSpec with Matchers {
       val out = Vector.newBuilder[ProviderEvent]
       out ++= OpenAIChatCompletions.parseChunk(
         JsonParser("""{"usage":{"prompt_tokens":100,"completion_tokens":50,"total_tokens":150}}"""),
-        state, cfgOff
+        state,
+        cfgOff
       )
       noException should be thrownBy state.flushDone(cfgOff)
     }

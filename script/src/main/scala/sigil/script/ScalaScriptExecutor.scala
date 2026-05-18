@@ -86,10 +86,12 @@ class ScalaScriptExecutor(classpathOverride: Option[String] = None) extends Scri
     e
   }
 
-  /** Default Scala 3 prelude — Fabric for JSON, Spice for HTTP, Rapid
-    * for async, plus stdlib bridges that LLM training data routinely
-    * picks the Scala 2 form for (`scala.collection.JavaConversions`).
-    * Apps that need a different surface override. */
+  /**
+   * Default Scala 3 prelude — Fabric for JSON, Spice for HTTP, Rapid
+   * for async, plus stdlib bridges that LLM training data routinely
+   * picks the Scala 2 form for (`scala.collection.JavaConversions`).
+   * Apps that need a different surface override.
+   */
   override def preludeImports: List[String] = List(
     "fabric.*",
     "fabric.io.{JsonParser, JsonFormatter}",
@@ -188,15 +190,17 @@ class ScalaScriptExecutor(classpathOverride: Option[String] = None) extends Scri
     }
   }
 
-  /** True if the captured REPL output contains a Scala 3 error
-    * diagnostic. Scala 3's `ConsoleReporter` formats errors as
-    * `-- [E<num>] <Category>: -----...` (with optional category like
-    * "Type Error", "Syntax Error"). Falls back to a looser check for
-    * `error:` lines so we catch any reporter format we don't
-    * specifically recognize. Warnings are intentionally NOT
-    * triggers — successful-but-noisy compiles still return their
-    * value. Bug #55. */
-  private def containsErrorDiagnostic(out: String): Boolean = {
+  /**
+   * True if the captured REPL output contains a Scala 3 error
+   * diagnostic. Scala 3's `ConsoleReporter` formats errors as
+   * `-- [E<num>] <Category>: -----...` (with optional category like
+   * "Type Error", "Syntax Error"). Falls back to a looser check for
+   * `error:` lines so we catch any reporter format we don't
+   * specifically recognize. Warnings are intentionally NOT
+   * triggers — successful-but-noisy compiles still return their
+   * value. Bug #55.
+   */
+  private def containsErrorDiagnostic(out: String): Boolean =
     if (out.isEmpty) false
     else {
       val errorMarker = "-- [E"
@@ -204,7 +208,6 @@ class ScalaScriptExecutor(classpathOverride: Option[String] = None) extends Scri
       val lines = out.linesIterator
       lines.exists(l => l.contains(errorMarker) || l.contains(errorLineMarker))
     }
-  }
 
   private def bindAll(bindings: Map[String, Any]): Unit =
     bindings.foreach { case (key, value) =>
@@ -227,17 +230,19 @@ class ScalaScriptExecutor(classpathOverride: Option[String] = None) extends Scri
 
 object ScalaScriptExecutor {
 
-  /** Best-effort: walk the context classloader chain, gather URLs
-    * from any `URLClassLoader` ancestors, and join their filesystem
-    * paths into a `File.pathSeparator`-separated classpath string
-    * suitable for [[ScalaScriptExecutor]]'s `classpathOverride`.
-    * Falls back to `java.class.path` when the loader chain has no
-    * `URLClassLoader` ancestors (sbt 1, fat-jar launches, jlink
-    * images) so callers always get a classpath under any test JVM
-    * shape.
-    *
-    * Returns `None` only when both the URL walk and `java.class.path`
-    * are empty (extremely unusual). */
+  /**
+   * Best-effort: walk the context classloader chain, gather URLs
+   * from any `URLClassLoader` ancestors, and join their filesystem
+   * paths into a `File.pathSeparator`-separated classpath string
+   * suitable for [[ScalaScriptExecutor]]'s `classpathOverride`.
+   * Falls back to `java.class.path` when the loader chain has no
+   * `URLClassLoader` ancestors (sbt 1, fat-jar launches, jlink
+   * images) so callers always get a classpath under any test JVM
+   * shape.
+   *
+   * Returns `None` only when both the URL walk and `java.class.path`
+   * are empty (extremely unusual).
+   */
   def detectClasspathFromContext(): Option[String] = {
     val loader = Thread.currentThread().getContextClassLoader
     val urls = collection.mutable.LinkedHashSet.empty[String]

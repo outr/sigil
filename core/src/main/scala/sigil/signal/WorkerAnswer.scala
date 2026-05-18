@@ -16,4 +16,5 @@ import fabric.rw.*
  */
 case class WorkerAnswer(taskId: String,
                         questionId: String,
-                        answer: String) extends Notice derives RW
+                        answer: String)
+  extends Notice derives RW

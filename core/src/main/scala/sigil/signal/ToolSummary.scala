@@ -28,17 +28,18 @@ case class ToolSummary(toolId: Id[Tool],
                        space: SpaceId,
                        createdBy: Option[String],
                        createdMs: Long,
-                       modifiedMs: Long) derives RW
+                       modifiedMs: Long)
+  derives RW
 
 object ToolSummary {
   def fromTool(t: Tool): ToolSummary = ToolSummary(
-    toolId      = t._id,
-    name        = t.name.value,
+    toolId = t._id,
+    name = t.name.value,
     description = t.description,
-    kind        = t.kind,
-    space       = t.space,
-    createdBy   = t.createdBy.map(_.value),
-    createdMs   = t.created.value,
-    modifiedMs  = t.modified.value
+    kind = t.kind,
+    space = t.space,
+    createdBy = t.createdBy.map(_.value),
+    createdMs = t.created.value,
+    modifiedMs = t.modified.value
   )
 }

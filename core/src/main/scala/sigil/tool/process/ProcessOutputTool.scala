@@ -25,9 +25,11 @@ final class ProcessOutputTool(registry: ProcessRegistry)
         |predates the buffer's earliest retained byte (the agent missed some output). Optional
         |`waitForLines` / `waitForPattern` block until a condition or `waitTimeoutMs` expires.""".stripMargin,
     examples = List(
-      ToolExample("First read on a new handle",                 ProcessOutputInput(handle = "p1")),
-      ToolExample("Delta read after the previous cursor",       ProcessOutputInput(handle = "p1", sinceCursor = 4096L)),
-      ToolExample("Block up to 5 s for the next 'compiled' line", ProcessOutputInput(handle = "p1", waitForPattern = Some("compiled"), waitTimeoutMs = 5000L))
+      ToolExample("First read on a new handle", ProcessOutputInput(handle = "p1")),
+      ToolExample("Delta read after the previous cursor", ProcessOutputInput(handle = "p1", sinceCursor = 4096L)),
+      ToolExample(
+        "Block up to 5 s for the next 'compiled' line",
+        ProcessOutputInput(handle = "p1", waitForPattern = Some("compiled"), waitTimeoutMs = 5000L))
     ),
     keywords = Set("process", "output", "stdout", "stderr", "tail", "watch", "stream")
   ) {
@@ -35,25 +37,25 @@ final class ProcessOutputTool(registry: ProcessRegistry)
 
   override protected def executeTyped(input: ProcessOutputInput, ctx: TurnContext): Stream[Event] = Stream.force(
     registry.output(
-      handle         = input.handle,
-      sinceCursor    = input.sinceCursor,
-      waitForLines   = input.waitForLines,
+      handle = input.handle,
+      sinceCursor = input.sinceCursor,
+      waitForLines = input.waitForLines,
       waitForPattern = input.waitForPattern,
-      waitTimeoutMs  = input.waitTimeoutMs
+      waitTimeoutMs = input.waitTimeoutMs
     ).map { result =>
       val statusStr = result.status match {
-        case ProcessStatus.Running   => "running"
+        case ProcessStatus.Running => "running"
         case ProcessStatus.Exited(_) => "exited"
       }
       val payload = obj(
-        "handle"      -> str(result.handle),
-        "stdout"      -> str(result.stdout),
-        "stderr"      -> str(result.stderr),
+        "handle" -> str(result.handle),
+        "stdout" -> str(result.stdout),
+        "stderr" -> str(result.stderr),
         "sinceCursor" -> num(result.sinceCursor),
-        "nextCursor"  -> num(result.nextCursor),
-        "status"      -> str(statusStr),
-        "exitCode"    -> result.exitCode.fold[Json](Null)(c => num(c)),
-        "dropped"     -> bool(result.dropped)
+        "nextCursor" -> num(result.nextCursor),
+        "status" -> str(statusStr),
+        "exitCode" -> result.exitCode.fold[Json](Null)(c => num(c)),
+        "dropped" -> bool(result.dropped)
       )
       Stream.emit[Event](FsToolEmit(payload, ctx))
     }

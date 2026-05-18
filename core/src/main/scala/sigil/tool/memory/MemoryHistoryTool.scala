@@ -11,27 +11,29 @@ import sigil.tool.{ToolExample, ToolName, TypedTool}
  * Opt-in tool: return the full version history of a keyed memory,
  * chronologically (oldest → newest).
  */
-case object MemoryHistoryTool extends TypedTool[MemoryHistoryInput](
-  name = ToolName("memory_history"),
-  description =
-    """Show the version history of a keyed memory — every past value for this key,
+case object MemoryHistoryTool
+  extends TypedTool[MemoryHistoryInput](
+    name = ToolName("memory_history"),
+    description =
+      """Show the version history of a keyed memory — every past value for this key,
       |with valid-from / valid-until timestamps. Use when you need to understand how
       |a fact has changed over time (e.g. "what did the user prefer before they changed their mind?").
       |
       |`key`     — the memory key whose history you want.
       |`spaceId` — optional; omit to use the caller's default scope.""".stripMargin,
-  examples = List(
-    ToolExample("History of the user's theme preference", MemoryHistoryInput(key = "user.ui.theme"))
-  ),
-  keywords = Set("memory", "history", "version")
-) {
+    examples = List(
+      ToolExample("History of the user's theme preference", MemoryHistoryInput(key = "user.ui.theme"))
+    ),
+    keywords = Set("memory", "history", "version")
+  ) {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: MemoryHistoryInput, context: TurnContext): Stream[Event] =
     Stream.force {
       resolveSpace(input, context).flatMap {
         case None =>
-          Task.pure(toMsg(context,
+          Task.pure(toMsg(
+            context,
             s"[memory_history] no memory space available for key ${input.key}."))
         case Some(space) =>
           context.sigil.memoryHistory(input.key, space).map { versions =>
@@ -43,7 +45,7 @@ case object MemoryHistoryTool extends TypedTool[MemoryHistoryInput](
   private def resolveSpace(input: MemoryHistoryInput, context: TurnContext) =
     input.spaceId match {
       case Some(s) => Task.pure(Some(s))
-      case None    => context.sigil.defaultMemorySpace(context.conversation.id)
+      case None => context.sigil.defaultMemorySpace(context.conversation.id)
     }
 
   private def render(key: String, versions: List[ContextMemory]): String =

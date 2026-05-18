@@ -9,10 +9,11 @@ import sigil.tool.{ToolName, TypedTool}
  * Internal-only tool used by [[sigil.conversation.compression.SummaryOnlyCompressor]]
  * to force the consulted model into a structured summary output.
  */
-case object SummarizationTool extends TypedTool[SummarizationInput](
-  name = ToolName("summarize_conversation"),
-  description =
-    """Emit the final summary of a conversation excerpt as structured output. The supplied
+case object SummarizationTool
+  extends TypedTool[SummarizationInput](
+    name = ToolName("summarize_conversation"),
+    description =
+      """Emit the final summary of a conversation excerpt as structured output. The supplied
       |`summary` will replace the excerpt in every subsequent turn — so it must stand on its own
       |without the original text.
       |
@@ -20,7 +21,7 @@ case object SummarizationTool extends TypedTool[SummarizationInput](
       |
       |`tokenEstimate` — your best estimate of `summary` length in tokens (~4 chars/token is fine).
       |The framework uses this to budget future turns.""".stripMargin
-) {
+  ) {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: SummarizationInput, context: TurnContext): Stream[Event] =

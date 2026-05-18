@@ -40,8 +40,10 @@ class OrchestratorSilentTurnSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
   private val modelId: Id[Model] = Model.id("test", "model")
 
-  /** Provider that's silent on the first call, then emits a respond
-    * on the second call (the forced-synthesis iteration). */
+  /**
+   * Provider that's silent on the first call, then emits a respond
+   * on the second call (the forced-synthesis iteration).
+   */
   private class SilentThenRespondProvider extends Provider {
     private val callCount = new atomic.AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -62,7 +64,8 @@ class OrchestratorSilentTurnSpec extends AsyncWordSpec with AsyncTaskSpec with M
           val callId = CallId("respond-forced")
           Stream.emits(List(
             ProviderEvent.ToolCallStart(callId, RespondTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(callId,
+            ProviderEvent.ToolCallComplete(
+              callId,
               RespondInput(topicLabel = "Test", topicSummary = "Forced reply", content = "Forced reply.", endsTurn = true)),
             ProviderEvent.Done(StopReason.Complete)
           ))
@@ -72,10 +75,10 @@ class OrchestratorSilentTurnSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
@@ -83,10 +86,10 @@ class OrchestratorSilentTurnSpec extends AsyncWordSpec with AsyncTaskSpec with M
     TestSigil.setProvider(Task.pure(provider))
     val convId = Conversation.id(s"silent-turn-loop-$suffix")
     val agent = makeAgent()
-    val conv  = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+    val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
 
     val recorded = new ConcurrentLinkedQueue[Signal]()
-    val running  = new atomic.AtomicBoolean(true)
+    val running = new atomic.AtomicBoolean(true)
     TestSigil.signals
       .takeWhile(_ => running.get())
       .evalMap(s => Task { recorded.add(s); () })
@@ -97,12 +100,12 @@ class OrchestratorSilentTurnSpec extends AsyncWordSpec with AsyncTaskSpec with M
       _ <- Task.sleep(100.millis)
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = TestTopicEntry.id,
-             content        = Vector(ResponseContent.Text("hi")),
-             state          = EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("hi")),
+        state = EventState.Complete
+      ))
       _ <- Task.sleep(1500.millis)
     } yield {
       running.set(false)
@@ -112,31 +115,30 @@ class OrchestratorSilentTurnSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
   "Sigil.runAgentLoop silent-turn recovery" should {
 
-    "force a respond-family iteration when the first call is silent" in {
+    "force a respond-family iteration when the first call is silent" in
       runScenario(new SilentThenRespondProvider, suffix = "force").map { signals =>
         // The forced iteration produces a real respond → a Standard-role
         // agent Message with the expected content.
         val agentReplies = signals.collect {
           case m: Message
-            if m.participantId == TestAgent &&
-              m.role == MessageRole.Standard &&
-              m.content.exists {
-                case ResponseContent.Text(t) => t.contains("Forced reply.")
-                case sigil.tool.model.ResponseContent.Markdown(t) => t.contains("Forced reply.")
-                case _ => false
-              } => m
+              if m.participantId == TestAgent &&
+                m.role == MessageRole.Standard &&
+                m.content.exists {
+                  case ResponseContent.Text(t) => t.contains("Forced reply.")
+                  case sigil.tool.model.ResponseContent.Markdown(t) => t.contains("Forced reply.")
+                  case _ => false
+                } => m
         }
         agentReplies should not be empty
         // No fake placeholder text leaks into the conversation.
         signals.collect {
           case m: Message
-            if m.content.exists {
-              case ResponseContent.Text(t) => t.contains("without a reply")
-              case _ => false
-            } => m
+              if m.content.exists {
+                case ResponseContent.Text(t) => t.contains("without a reply")
+                case _ => false
+              } => m
         } shouldBe empty
       }
-    }
   }
 
   "tear down" should {

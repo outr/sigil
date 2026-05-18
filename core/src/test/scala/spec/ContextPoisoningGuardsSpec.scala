@@ -42,11 +42,13 @@ class ContextPoisoningGuardsSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
   case class EchoInput(text: String) extends ToolInput derives RW
 
-  /** Tool that emits a Tool-role result Message whose content is the
-    * input text. Lets the test verify the duplicate inlines that
-    * exact text rather than a reference. */
-  private final class EchoTool(toolName: ToolName) extends Tool {
-  override def paginate: Boolean = false
+  /**
+   * Tool that emits a Tool-role result Message whose content is the
+   * input text. Lets the test verify the duplicate inlines that
+   * exact text rather than a reference.
+   */
+  final private class EchoTool(toolName: ToolName) extends Tool {
+    override def paginate: Boolean = false
     override def description: String = "Echo input"
     override def inputRW: RW[? <: ToolInput] = summon[RW[EchoInput]].asInstanceOf[RW[ToolInput]]
     override def space: SpaceId = GlobalSpace
@@ -54,20 +56,22 @@ class ContextPoisoningGuardsSpec extends AsyncWordSpec with AsyncTaskSpec with M
     override def execute(input: ToolInput, context: TurnContext): Stream[Event] = {
       val text = input.asInstanceOf[EchoInput].text
       Stream.emits(List(Message(
-        participantId  = context.caller,
+        participantId = context.caller,
         conversationId = context.conversation._id,
-        topicId        = context.conversation.currentTopicId,
-        role           = MessageRole.Tool,
-        content        = Vector(ResponseContent.Text(s"echoed: $text")),
-        state          = EventState.Complete,
-        visibility     = sigil.event.MessageVisibility.Agents
+        topicId = context.conversation.currentTopicId,
+        role = MessageRole.Tool,
+        content = Vector(ResponseContent.Text(s"echoed: $text")),
+        state = EventState.Complete,
+        visibility = sigil.event.MessageVisibility.Agents
       )))
     }
     override def _id: Id[Tool] = Id[Tool](name.value)
   }
 
-  /** Provider that emits TWO identical tool calls back-to-back so
-    * the dedup path fires for the second one. */
+  /**
+   * Provider that emits TWO identical tool calls back-to-back so
+   * the dedup path fires for the second one.
+   */
   private class TwoIdenticalCallsProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -95,19 +99,19 @@ class ContextPoisoningGuardsSpec extends AsyncWordSpec with AsyncTaskSpec with M
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       val echoTool = new EchoTool(ToolName("echo"))
       val request = ConversationRequest(
-        conversationId     = convId,
-        modelId            = modelId,
-        instructions       = Instructions(),
-        turnInput          = TurnInput(conversationId = convId),
-        currentMode        = ConversationMode,
-        currentTopic       = TestTopicEntry,
-        previousTopics     = Nil,
+        conversationId = convId,
+        modelId = modelId,
+        instructions = Instructions(),
+        turnInput = TurnInput(conversationId = convId),
+        currentMode = ConversationMode,
+        currentTopic = TestTopicEntry,
+        previousTopics = Nil,
         generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-        chain              = List(TestUser, TestAgent),
-        tools              = Vector(echoTool)
+        chain = List(TestUser, TestAgent),
+        tools = Vector(echoTool)
       )
       for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         signals <- Orchestrator.process(TestSigil, new TwoIdenticalCallsProvider, request, conv).toList
       } yield {
         val invokes = signals.collect { case t: ToolInvoke => t }
@@ -138,12 +142,12 @@ class ContextPoisoningGuardsSpec extends AsyncWordSpec with AsyncTaskSpec with M
       val convId = Conversation.id(s"dangling-${rapid.Unique()}")
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       val invoke = ToolInvoke(
-        toolName       = ToolName("some_tool"),
-        participantId  = TestAgent,
+        toolName = ToolName("some_tool"),
+        participantId = TestAgent,
         conversationId = convId,
-        topicId        = TestTopicEntry.id,
-        state          = EventState.Complete,
-        callId         = Some("call-orphan")
+        topicId = TestTopicEntry.id,
+        state = EventState.Complete,
+        callId = Some("call-orphan")
       )
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
@@ -172,7 +176,7 @@ class ContextPoisoningGuardsSpec extends AsyncWordSpec with AsyncTaskSpec with M
         // without telling the agent how to react.
         src should not include "The previous tool call did not return a result"
         src should not include "tool failed: no result emitted"
-        src should include ("\"(orphan)\"")
+        src should include("\"(orphan)\"")
       }
     }
   }

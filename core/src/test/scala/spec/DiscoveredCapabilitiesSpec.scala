@@ -18,29 +18,29 @@ import sigil.tool.discovery.{CapabilityMatch, CapabilityStatus, CapabilityType}
 class DiscoveredCapabilitiesSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  private val convId  = Conversation.id("disc-cap-spec")
+  private val convId = Conversation.id("disc-cap-spec")
   private val topicId = sigil.conversation.Topic.id("disc-cap-topic")
 
   private def fakeMatch(name: String): CapabilityMatch =
     CapabilityMatch(
-      name           = name,
-      description    = s"description for $name",
+      name = name,
+      description = s"description for $name",
       capabilityType = CapabilityType.Tool,
-      score          = 1.0,
-      status         = CapabilityStatus.Ready
+      score = 1.0,
+      status = CapabilityStatus.Ready
     )
 
   private def cap(results: List[String], query: String): CapabilityResults = {
     val originId = lightdb.id.Id[Event]("find-capability-stub")
     CapabilityResults(
-      matches        = results.map(fakeMatch),
-      participantId  = TestUser,
+      matches = results.map(fakeMatch),
+      participantId = TestUser,
       conversationId = convId,
-      topicId        = topicId,
-      query          = query,
-      state          = EventState.Complete,
-      role           = MessageRole.Tool,
-      origin         = Some(originId)
+      topicId = topicId,
+      query = query,
+      state = EventState.Complete,
+      role = MessageRole.Tool,
+      origin = Some(originId)
     )
   }
 
@@ -52,8 +52,9 @@ class DiscoveredCapabilitiesSpec extends AsyncWordSpec with AsyncTaskSpec with M
     "record discovered capabilities under the normalised query" in {
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-               _id = convId, topics = List(TopicEntry(topicId, "test", "test"))
-             ))))
+          _id = convId,
+          topics = List(TopicEntry(topicId, "test", "test"))
+        ))))
         _ <- TestSigil.publish(cap(List("read_file", "grep"), "view file source contents read"))
         proj <- TestSigil.projectionFor(TestUser, convId)
       } yield {
@@ -67,8 +68,9 @@ class DiscoveredCapabilitiesSpec extends AsyncWordSpec with AsyncTaskSpec with M
       val q = "list files directory glob"
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-               _id = convId, topics = List(TopicEntry(topicId, "test", "test"))
-             ))))
+          _id = convId,
+          topics = List(TopicEntry(topicId, "test", "test"))
+        ))))
         _ <- TestSigil.publish(cap(List("glob"), q))
         first <- TestSigil.projectionFor(TestUser, convId)
         _ <- Task.sleep(scala.concurrent.duration.FiniteDuration(5, "millis"))
@@ -90,19 +92,20 @@ class DiscoveredCapabilitiesSpec extends AsyncWordSpec with AsyncTaskSpec with M
       val emptyQueryConvId = Conversation.id(s"disc-cap-empty-${rapid.Unique()}")
       val originId = lightdb.id.Id[Event]("find-capability-stub-empty")
       val emptyQueryResults = CapabilityResults(
-        matches        = List(fakeMatch("respond")),
-        participantId  = TestUser,
+        matches = List(fakeMatch("respond")),
+        participantId = TestUser,
         conversationId = emptyQueryConvId,
-        topicId        = topicId,
-        query          = "",
-        state          = EventState.Complete,
-        role           = MessageRole.Tool,
-        origin         = Some(originId)
+        topicId = topicId,
+        query = "",
+        state = EventState.Complete,
+        role = MessageRole.Tool,
+        origin = Some(originId)
       )
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-               _id = emptyQueryConvId, topics = List(TopicEntry(topicId, "test", "test"))
-             ))))
+          _id = emptyQueryConvId,
+          topics = List(TopicEntry(topicId, "test", "test"))
+        ))))
         _ <- TestSigil.publish(emptyQueryResults)
         proj <- TestSigil.projectionFor(TestUser, emptyQueryConvId)
       } yield {

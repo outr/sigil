@@ -14,20 +14,22 @@ case class DapContinueInput(sessionId: String, threadId: Int) extends ToolInput 
  * next stop event. Use `dap_session_status` afterward to wait for
  * the next pause.
  */
-final class DapContinueTool(val manager: DapManager) extends TypedTool[DapContinueInput](
-  name = ToolName("dap_continue"),
-  description =
-    """Resume execution from a stopped state.
+final class DapContinueTool(val manager: DapManager)
+  extends TypedTool[DapContinueInput](
+    name = ToolName("dap_continue"),
+    description =
+      """Resume execution from a stopped state.
       |
       |`sessionId` selects the active session.
       |`threadId` is the thread to resume (from `dap_threads` or the latest stopped event).""".stripMargin,
-  examples = List(
-    ToolExample(
-      "resume from a breakpoint",
-      DapContinueInput(sessionId = "demo-session", threadId = 1)
+    examples = List(
+      ToolExample(
+        "resume from a breakpoint",
+        DapContinueInput(sessionId = "demo-session", threadId = 1)
+      )
     )
   )
-) with DapToolSupport {
+  with DapToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: DapContinueInput, context: TurnContext): Stream[Event] =

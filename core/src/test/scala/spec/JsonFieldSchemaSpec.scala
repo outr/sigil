@@ -31,12 +31,15 @@ import sigil.tool.core.CoreTools
  */
 class JsonFieldSchemaSpec extends AnyWordSpec with Matchers {
 
-  /** Test fixture mirroring the kind of tool input that triggered the
-    * bug downstream — `Option[Json]` for an opaque value the agent
-    * supplies, plus a non-optional `Json` field for completeness. */
+  /**
+   * Test fixture mirroring the kind of tool input that triggered the
+   * bug downstream — `Option[Json]` for an opaque value the agent
+   * supplies, plus a non-optional `Json` field for completeness.
+   */
   case class JsonFieldInput(name: String,
                             defaultValue: Option[Json] = None,
-                            metadata: Json = obj()) extends ToolInput derives RW
+                            metadata: Json = obj())
+    extends ToolInput derives RW
 
   private val schema: Json = DefinitionToSchema(summon[RW[JsonFieldInput]].definition)
 
@@ -61,36 +64,45 @@ class JsonFieldSchemaSpec extends AnyWordSpec with Matchers {
     }
   }
 
-  /** Tools with no `Json` fields — should keep strict mode. */
+  /**
+   * Tools with no `Json` fields — should keep strict mode.
+   */
   case class TypedOnlyInput(name: String,
                             count: Int = 0,
-                            enabled: Boolean = true) extends ToolInput derives RW
+                            enabled: Boolean = true)
+    extends ToolInput derives RW
 
-  private object TypedOnlyTool extends TypedTool[TypedOnlyInput](
-    name = ToolName("typed_only_test_tool"),
-    description = "All-typed input — should ship with strict: true."
-  ) {
-  override def paginate: Boolean = false
+  private object TypedOnlyTool
+    extends TypedTool[TypedOnlyInput](
+      name = ToolName("typed_only_test_tool"),
+      description = "All-typed input — should ship with strict: true."
+    ) {
+    override def paginate: Boolean = false
 
     override protected def executeTyped(input: TypedOnlyInput, context: sigil.TurnContext): rapid.Stream[sigil.event.Event] =
       rapid.Stream.empty
   }
 
-  /** Tool with an `Option[Json]` field — should drop to strict: false. */
-  private object JsonFieldTool extends TypedTool[JsonFieldInput](
-    name = ToolName("json_field_test_tool"),
-    description = "Has Option[Json] — should ship with strict: false."
-  ) {
-  override def paginate: Boolean = false
+  /**
+   * Tool with an `Option[Json]` field — should drop to strict: false.
+   */
+  private object JsonFieldTool
+    extends TypedTool[JsonFieldInput](
+      name = ToolName("json_field_test_tool"),
+      description = "Has Option[Json] — should ship with strict: false."
+    ) {
+    override def paginate: Boolean = false
     override protected def executeTyped(input: JsonFieldInput, context: sigil.TurnContext): rapid.Stream[sigil.event.Event] =
       rapid.Stream.empty
   }
 
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Build the OpenAI request body with `tools = [tool]` and read back
-    * the rendered tool's `strict` flag. Lets us assert the
-    * `containsJson` gate is wired into the provider's render path. */
+  /**
+   * Build the OpenAI request body with `tools = [tool]` and read back
+   * the rendered tool's `strict` flag. Lets us assert the
+   * `containsJson` gate is wired into the provider's render path.
+   */
   private def strictFlagFor(tool: Tool): Boolean = {
     val provider = OpenAIProvider(apiKey = "sk-test", sigilRef = TestSigil)
     val req: ProviderRequest = ConversationRequest(

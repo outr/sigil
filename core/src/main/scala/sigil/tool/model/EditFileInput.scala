@@ -19,4 +19,5 @@ case class EditFileInput(filePath: String,
                          oldString: String,
                          newString: String,
                          replaceAll: Boolean = false,
-                         expectedHash: Option[String] = None) extends ToolInput derives RW
+                         expectedHash: Option[String] = None)
+  extends ToolInput derives RW

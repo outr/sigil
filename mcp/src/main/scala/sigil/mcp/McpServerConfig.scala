@@ -66,6 +66,8 @@ object McpServerConfig extends RecordDocumentModel[McpServerConfig] with JsonCon
 
   override def id(value: String = rapid.Unique()): Id[McpServerConfig] = Id(value)
 
-  /** Stable id derived from server name — one record per name. */
+  /**
+   * Stable id derived from server name — one record per name.
+   */
   def idFor(name: String): Id[McpServerConfig] = Id(name)
 }

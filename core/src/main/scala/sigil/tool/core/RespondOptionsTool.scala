@@ -16,10 +16,11 @@ import sigil.tool.model.{RespondOptionsInput, ResponseContent, SelectOption}
  * or by replying in natural language — both flow back through the
  * normal Message channel.
  */
-case object RespondOptionsTool extends TypedTool[RespondOptionsInput](
-  name = ToolName("respond_options"),
-  description =
-    """Ask the user to pick from a closed set of options. Options render as clickable controls
+case object RespondOptionsTool
+  extends TypedTool[RespondOptionsInput](
+    name = ToolName("respond_options"),
+    description =
+      """Ask the user to pick from a closed set of options. Options render as clickable controls
       |(buttons / radio / checkboxes); markdown bullets in `respond.content` do not.
       |
       |**Use ONLY** when your reply is a question whose answer must come from a fixed set you supply:
@@ -38,29 +39,30 @@ case object RespondOptionsTool extends TypedTool[RespondOptionsInput](
       |
       |An option with `exclusive = true` (multi-select only) cannot be combined with others (e.g. a
       |"None of these" escape hatch).""".stripMargin,
-  examples = List(
-    ToolExample(
-      "single-select — forced choice between mutually-exclusive options",
-      RespondOptionsInput(
-        prompt        = "Should I commit this change?",
-        options       = List(SelectOption("Yes", "yes"), SelectOption("No", "no")),
-        allowMultiple = false
-      )
-    ),
-    ToolExample(
-      "multi-select — independent choices the user can pick in any combination",
-      RespondOptionsInput(
-        prompt        = "Which integrations should I enable?",
-        options       = List(
-          SelectOption("Slack", "slack"),
-          SelectOption("Email", "email"),
-          SelectOption("Discord", "discord")
-        ),
-        allowMultiple = true
+    examples = List(
+      ToolExample(
+        "single-select — forced choice between mutually-exclusive options",
+        RespondOptionsInput(
+          prompt = "Should I commit this change?",
+          options = List(SelectOption("Yes", "yes"), SelectOption("No", "no")),
+          allowMultiple = false
+        )
+      ),
+      ToolExample(
+        "multi-select — independent choices the user can pick in any combination",
+        RespondOptionsInput(
+          prompt = "Which integrations should I enable?",
+          options = List(
+            SelectOption("Slack", "slack"),
+            SelectOption("Email", "email"),
+            SelectOption("Discord", "discord")
+          ),
+          allowMultiple = true
+        )
       )
     )
   )
-) with RespondFamilyTool {
+  with RespondFamilyTool {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: RespondOptionsInput, context: TurnContext): rapid.Stream[Event] = {

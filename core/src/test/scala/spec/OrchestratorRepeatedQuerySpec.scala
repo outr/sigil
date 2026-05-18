@@ -38,12 +38,14 @@ class OrchestratorRepeatedQuerySpec extends AsyncWordSpec with AsyncTaskSpec wit
 
   private val modelId: Id[Model] = Model.id("test", "repeated-query-spec")
 
-  /** Provider that scripts a sequence of `find_capability` /
-    * `respond` calls. Each call increments an internal counter; the
-    * `scripts` factory determines what to emit for call N. After the
-    * scripted sequence ends, any additional call emits a terminal
-    * `respond` to keep the agent loop from runaway. */
-  private final class ScriptedProvider(scripts: PartialFunction[Int, List[ProviderEvent]]) extends Provider {
+  /**
+   * Provider that scripts a sequence of `find_capability` /
+   * `respond` calls. Each call increments an internal counter; the
+   * `scripts` factory determines what to emit for call N. After the
+   * scripted sequence ends, any additional call emits a terminal
+   * `respond` to keep the agent loop from runaway.
+   */
+  final private class ScriptedProvider(scripts: PartialFunction[Int, List[ProviderEvent]]) extends Provider {
     private val callIndex = new java.util.concurrent.atomic.AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -70,40 +72,43 @@ class OrchestratorRepeatedQuerySpec extends AsyncWordSpec with AsyncTaskSpec wit
     val cid = CallId(s"respond-$callIdx")
     List(
       ProviderEvent.ToolCallStart(cid, RespondTool.schema.name.value),
-      ProviderEvent.ToolCallComplete(cid, RespondInput(
-        topicLabel   = "Done",
-        topicSummary = "Repeated-query spec terminator.",
-        content      = "Stopping after the framework's intercept guidance.",
-        endsTurn     = true
-      )),
+      ProviderEvent.ToolCallComplete(
+        cid,
+        RespondInput(
+          topicLabel = "Done",
+          topicSummary = "Repeated-query spec terminator.",
+          content = "Stopping after the framework's intercept guidance.",
+          endsTurn = true
+        )
+      ),
       ProviderEvent.Done(StopReason.Complete)
     )
   }
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
   private def runScenario(provider: Provider, convPrefix: String): Task[(Id[Conversation], List[Event])] = {
     TestSigil.setProvider(Task.pure(provider))
     val convId = Conversation.id(s"$convPrefix-${rapid.Unique()}")
-    val agent  = makeAgent()
-    val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+    val agent = makeAgent()
+    val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
     for {
-      _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-      _   <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("Switch to medium complexity")),
-               state          = EventState.Complete
-             ))
-      _   <- Task.sleep(4.seconds)
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.publish(Message(
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("Switch to medium complexity")),
+        state = EventState.Complete
+      ))
+      _ <- Task.sleep(4.seconds)
       evs <- TestSigil.withDB(_.events.transaction(_.list))
     } yield (convId, evs.filter(_.conversationId == convId).sortBy(_.timestamp.value))
   }
@@ -125,11 +130,10 @@ class OrchestratorRepeatedQuerySpec extends AsyncWordSpec with AsyncTaskSpec wit
 
         val failures = evs.collect {
           case m: Message
-            if m.role == MessageRole.Tool && m.isFailure &&
-               m.failureReason.exists(r =>
-                 r.toLowerCase.contains("find_capability") &&
-                 r.toLowerCase.contains("different keywords")
-               ) => m
+              if m.role == MessageRole.Tool && m.isFailure &&
+                m.failureReason.exists(r =>
+                  r.toLowerCase.contains("find_capability") &&
+                    r.toLowerCase.contains("different keywords")) => m
         }
         failures should not be empty
         failures.head.origin shouldBe Some(intercepts.head._id)

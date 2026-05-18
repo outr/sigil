@@ -38,16 +38,17 @@ class MultimodalOneShotRequestSpec extends AnyWordSpec with Matchers {
 
   // Tiny base64 so the URL stays a unique substring marker but the
   // bytes are valid for `data:`-URL parsers.
-  private val pngDataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII="
+  private val pngDataUrl =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII="
 
   "OneShotRequest.userContent" should {
 
     "carry an image alongside text into the OpenAI Responses payload" in {
       val req = OneShotRequest(
-        modelId      = modelId,
+        modelId = modelId,
         systemPrompt = "You describe images.",
-        userPrompt   = "",
-        userContent  = Vector(
+        userPrompt = "",
+        userContent = Vector(
           ResponseContent.Text("What's in this image?"),
           ResponseContent.Image(url = URL.get(pngDataUrl, tldValidation = TLDValidation.Off).toOption.get)
         )
@@ -65,9 +66,9 @@ class MultimodalOneShotRequestSpec extends AnyWordSpec with Matchers {
 
     "fall back to userPrompt when userContent is empty (text-only legacy path)" in {
       val req = OneShotRequest(
-        modelId      = modelId,
+        modelId = modelId,
         systemPrompt = "Concise.",
-        userPrompt   = "What is two plus two?"
+        userPrompt = "What is two plus two?"
       )
       val body = bodyOf(req)
       body should include("What is two plus two?")
@@ -77,10 +78,10 @@ class MultimodalOneShotRequestSpec extends AnyWordSpec with Matchers {
 
     "render structured ResponseContent (Code / Markdown) as text content blocks" in {
       val req = OneShotRequest(
-        modelId      = modelId,
+        modelId = modelId,
         systemPrompt = "Echo my code.",
-        userPrompt   = "",
-        userContent  = Vector(
+        userPrompt = "",
+        userContent = Vector(
           ResponseContent.Code("println(42)", Some("scala")),
           ResponseContent.Markdown("Some _emphasized_ text.")
         )

@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicLong
 class ProcessRegistry(val ringBytes: Int = 1024 * 1024,
                       val terminateGraceMs: Long = 5000L) {
 
-  private val entries  = new ConcurrentHashMap[String, ProcessEntry]()
+  private val entries = new ConcurrentHashMap[String, ProcessEntry]()
   private val sequence = new AtomicLong(0L)
   // Belt-and-suspenders: any process the user forgot to terminate
   // gets SIGTERM (then SIGKILL) on JVM exit. Apps that drive their
@@ -36,14 +36,17 @@ class ProcessRegistry(val ringBytes: Int = 1024 * 1024,
   // tears down its child ClassLoader before this hook fires, which
   // can throw NoClassDefFoundError on the inner method dispatch.
   // Swallowing keeps the JVM exit clean.
-  private val shutdownHook = new Thread(() => {
-    try terminateAll()
-    catch { case _: Throwable => () }
-  }, "sigil-process-registry-shutdown")
+  private val shutdownHook = new Thread(
+    () =>
+      try terminateAll()
+      catch { case _: Throwable => () },
+    "sigil-process-registry-shutdown")
   Runtime.getRuntime.addShutdownHook(shutdownHook)
 
-  /** Spawn a fresh subprocess. Caller-facing handle id is short
-    * (`p1`, `p2`, …) so agents can name them in subsequent calls. */
+  /**
+   * Spawn a fresh subprocess. Caller-facing handle id is short
+   * (`p1`, `p2`, …) so agents can name them in subsequent calls.
+   */
   def spawn(command: String,
             workingDir: Option[String] = None,
             env: Map[String, String] = Map.empty,
@@ -55,9 +58,11 @@ class ProcessRegistry(val ringBytes: Int = 1024 * 1024,
     entry.handle
   }
 
-  /** Read accumulated output since `sinceCursor`. When `waitForLines`
-    * or `waitForPattern` is set, the call polls (50 ms) until the
-    * predicate is satisfied or `waitTimeoutMs` elapses. */
+  /**
+   * Read accumulated output since `sinceCursor`. When `waitForLines`
+   * or `waitForPattern` is set, the call polls (50 ms) until the
+   * predicate is satisfied or `waitTimeoutMs` elapses.
+   */
   def output(handle: String,
              sinceCursor: Long = 0L,
              waitForLines: Option[Int] = None,
@@ -66,18 +71,18 @@ class ProcessRegistry(val ringBytes: Int = 1024 * 1024,
     val entry = entries.get(handle)
     if (entry == null) throw new NoSuchElementException(s"No process handle: $handle")
     val deadline = System.currentTimeMillis() + waitTimeoutMs
-    val regex    = waitForPattern.map(_.r)
+    val regex = waitForPattern.map(_.r)
 
     @scala.annotation.tailrec
     def loop(): ProcessOutput = {
       val (out, outCursor, outDropped) = entry.stdout.readSince(sinceCursor)
       val (err, errCursor, errDropped) = entry.stderr.readSince(sinceCursor)
-      val status                       = entry.status
-      val combinedNext                 = math.max(outCursor, errCursor)
+      val status = entry.status
+      val combinedNext = math.max(outCursor, errCursor)
       val haveLines = waitForLines.exists(n => out.count(_ == '\n') + err.count(_ == '\n') >= n)
-      val havePat   = regex.exists(r => r.findFirstIn(out).isDefined || r.findFirstIn(err).isDefined)
-      val noWait    = waitForLines.isEmpty && waitForPattern.isEmpty
-      val ready     = noWait || haveLines || havePat || status != ProcessStatus.Running
+      val havePat = regex.exists(r => r.findFirstIn(out).isDefined || r.findFirstIn(err).isDefined)
+      val noWait = waitForLines.isEmpty && waitForPattern.isEmpty
+      val ready = noWait || haveLines || havePat || status != ProcessStatus.Running
       if (ready || System.currentTimeMillis() >= deadline)
         ProcessOutput(handle, out, err, sinceCursor, combinedNext, status, entry.exitCode, outDropped || errDropped)
       else {
@@ -88,25 +93,29 @@ class ProcessRegistry(val ringBytes: Int = 1024 * 1024,
     loop()
   }
 
-  /** Send a signal. `signal` accepts `terminate` (default — SIGTERM
-    * with grace then SIGKILL), `interrupt` (SIGINT — best-effort via
-    * `Process.destroy`), and `kill` (SIGKILL immediately). */
+  /**
+   * Send a signal. `signal` accepts `terminate` (default — SIGTERM
+   * with grace then SIGKILL), `interrupt` (SIGINT — best-effort via
+   * `Process.destroy`), and `kill` (SIGKILL immediately).
+   */
   def signal(handle: String, signal: String): Task[Boolean] = Task {
     val entry = entries.get(handle)
     if (entry == null) false
     else {
       signal match {
-        case "terminate" | "term"           => entry.terminate(terminateGraceMs); true
-        case "interrupt" | "int"            => entry.terminate(terminateGraceMs); true
-        case "kill"                         => entry.kill(); true
-        case other                          => throw new IllegalArgumentException(s"Unsupported signal: $other")
+        case "terminate" | "term" => entry.terminate(terminateGraceMs); true
+        case "interrupt" | "int" => entry.terminate(terminateGraceMs); true
+        case "kill" => entry.kill(); true
+        case other => throw new IllegalArgumentException(s"Unsupported signal: $other")
       }
     }
   }
 
-  /** List handles. `filterByConversation = Some(convId)` restricts to
-    * the spawning conversation; `None` returns every entry across
-    * conversations. */
+  /**
+   * List handles. `filterByConversation = Some(convId)` restricts to
+   * the spawning conversation; `None` returns every entry across
+   * conversations.
+   */
   def list(filterByConversation: Option[Id[Conversation]] = None): Task[List[ProcessHandle]] = Task {
     import scala.jdk.CollectionConverters.*
     entries.values().iterator().asScala.toList
@@ -114,13 +123,17 @@ class ProcessRegistry(val ringBytes: Int = 1024 * 1024,
       .map(_.handle)
   }
 
-  /** Diagnostic — current handle count. */
+  /**
+   * Diagnostic — current handle count.
+   */
   def size: Int = entries.size()
 
-  /** Best-effort: SIGTERM every live entry, then SIGKILL any that
-    * don't exit within `terminateGraceMs`. Idempotent. Apps that
-    * call this explicitly before JVM exit get clean teardown
-    * ordering; the JVM shutdown hook covers crash-exits. */
+  /**
+   * Best-effort: SIGTERM every live entry, then SIGKILL any that
+   * don't exit within `terminateGraceMs`. Idempotent. Apps that
+   * call this explicitly before JVM exit get clean teardown
+   * ordering; the JVM shutdown hook covers crash-exits.
+   */
   def terminateAll(): Unit = {
     val snapshot = {
       import scala.jdk.CollectionConverters.*

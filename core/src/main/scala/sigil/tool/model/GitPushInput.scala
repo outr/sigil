@@ -16,11 +16,12 @@ import sigil.tool.ToolInput
  * Force-pushes to protected branches (main / master / develop)
  * require `confirmForcePush = true` — default-deny.
  */
-case class GitPushInput(workingDir:       Option[String] = None,
-                        remote:           Option[String] = None,
-                        branch:           Option[String] = None,
-                        setUpstream:      Boolean        = false,
-                        force:            Boolean        = false,
-                        forceWithLease:   Boolean        = false,
-                        confirmForcePush: Boolean        = false,
-                        tags:             Boolean        = false) extends ToolInput derives RW
+case class GitPushInput(workingDir: Option[String] = None,
+                        remote: Option[String] = None,
+                        branch: Option[String] = None,
+                        setUpstream: Boolean = false,
+                        force: Boolean = false,
+                        forceWithLease: Boolean = false,
+                        confirmForcePush: Boolean = false,
+                        tags: Boolean = false)
+  extends ToolInput derives RW

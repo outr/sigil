@@ -12,9 +12,12 @@ import java.util.concurrent.atomic.AtomicReference
 final case class SendMoneyInput(@description("IBAN of the recipient") recipient: String,
                                 @description("Amount of the transaction") amount: Double,
                                 @description("Subject of the transaction") subject: String,
-                                @description("Date of the transaction") date: String) extends ToolInput derives RW
+                                @description("Date of the transaction") date: String)
+  extends ToolInput derives RW
 
-/** `send_money` — append a one-shot transaction (sender = user IBAN). */
+/**
+ * `send_money` — append a one-shot transaction (sender = user IBAN).
+ */
 final class SendMoneyTool(state: AtomicReference[BankingEnvironment])
   extends TypedTool[SendMoneyInput](
     name = ToolName("send_money"),

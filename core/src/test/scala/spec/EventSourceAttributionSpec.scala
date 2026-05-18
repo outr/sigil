@@ -9,7 +9,7 @@ import rapid.AsyncTaskSpec
 import sigil.conversation.Conversation
 import sigil.event.{Event, Message, ToolInvoke}
 import sigil.signal.EventState
-import sigil.tool.{ToolName}
+import sigil.tool.ToolName
 import sigil.tool.model.ResponseContent
 
 /**
@@ -77,7 +77,7 @@ class EventSourceAttributionSpec extends AsyncWordSpec with AsyncTaskSpec with M
         )
       }
       for {
-        _    <- TestSigil.publishHistorical(events, convId)
+        _ <- TestSigil.publishHistorical(events, convId)
         rows <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         val mine = rows.collect { case m: Message if m.conversationId == convId => m }
@@ -96,7 +96,7 @@ class EventSourceAttributionSpec extends AsyncWordSpec with AsyncTaskSpec with M
         state = EventState.Complete
       )
       for {
-        _    <- TestSigil.publish(msg)
+        _ <- TestSigil.publish(msg)
         rows <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         val mine = rows.collect { case m: Message if m.conversationId == convId => m }

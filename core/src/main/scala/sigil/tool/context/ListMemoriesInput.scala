@@ -31,4 +31,5 @@ case class ListMemoriesInput(spaces: Set[SpaceId] = Set.empty,
                              query: Option[String] = None,
                              pinned: Option[Boolean] = None,
                              offset: Int = 0,
-                             limit: Int = 25) extends ToolInput derives RW
+                             limit: Int = 25)
+  extends ToolInput derives RW

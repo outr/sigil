@@ -5,9 +5,7 @@ import fabric.rw.*
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
-import sigil.signal.{
-  DeleteViewerState, RequestViewerState, Signal, UpdateViewerState, ViewerStateSnapshot
-}
+import sigil.signal.{DeleteViewerState, RequestViewerState, Signal, UpdateViewerState, ViewerStateSnapshot}
 import sigil.viewer.ViewerStatePayload
 
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -31,7 +29,9 @@ class ViewerStateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   // shape `viewerStatePayloadRegistrations` expects per #36's fix.
   ViewerStatePayload.register(summon[RW[TestViewerState]])
 
-  /** Subscribe `viewer` to its signal stream, capture into a queue. */
+  /**
+   * Subscribe `viewer` to its signal stream, capture into a queue.
+   */
   private def subscribe(viewer: sigil.participant.ParticipantId): (ConcurrentLinkedQueue[Signal], () => Unit) = {
     val recorded = new ConcurrentLinkedQueue[Signal]()
     @volatile var running = true
@@ -61,14 +61,16 @@ class ViewerStateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val polyDef = summon[RW[ViewerStatePayload]].definition
       val poly = polyDef.defType match {
         case p: DefType.Poly => p
-        case other           => fail(s"Expected Poly; saw $other")
+        case other => fail(s"Expected Poly; saw $other")
       }
-      val testEntry = poly.values.getOrElse("TestViewerState", fail(
-        s"Expected `TestViewerState` registered in the polymorphic Definition; saw ${poly.values.keySet}"
-      ))
+      val testEntry = poly.values.getOrElse(
+        "TestViewerState",
+        fail(
+          s"Expected `TestViewerState` registered in the polymorphic Definition; saw ${poly.values.keySet}"
+        ))
       val obj = testEntry.defType match {
         case o: DefType.Obj => o
-        case other          => fail(s"Expected Obj; saw $other")
+        case other => fail(s"Expected Obj; saw $other")
       }
       obj.map.keySet should contain allOf ("activeTab", "panelOpen")
     }
@@ -156,7 +158,8 @@ class ViewerStateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   }
 }
 
-/** Test-only payload — registered with the poly RW at spec init so
-  * fabric can round-trip it through the wire shape. */
-case class TestViewerState(activeTab: String, panelOpen: Boolean)
-  extends ViewerStatePayload derives RW
+/**
+ * Test-only payload — registered with the poly RW at spec init so
+ * fabric can round-trip it through the wire shape.
+ */
+case class TestViewerState(activeTab: String, panelOpen: Boolean) extends ViewerStatePayload derives RW

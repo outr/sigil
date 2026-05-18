@@ -29,19 +29,22 @@ import scala.concurrent.duration.*
 case class DigitalOceanProvider(apiKey: String,
                                 sigilRef: Sigil,
                                 baseUrl: URL = url"https://inference.do-ai.run",
-                                /** Per-read idle timeout for the SSE stream. Fires
-                                  * only when no bytes arrive for the duration —
-                                  * slow-but-working streams keep going. */
-                                tokenIdleTimeout: FiniteDuration = 120.seconds) extends Provider {
+                                /**
+                                 * Per-read idle timeout for the SSE stream. Fires
+                                 * only when no bytes arrive for the duration —
+                                 * slow-but-working streams keep going.
+                                 */
+                                tokenIdleTimeout: FiniteDuration = 120.seconds)
+  extends Provider {
   override def `type`: ProviderType = ProviderType.DigitalOcean
   override val providerKey: String = DigitalOcean.Provider
   override protected def sigil: Sigil = sigilRef
 
   private val wireConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
     providerNamespace = DigitalOcean.Provider,
-    providerName      = "DigitalOcean",
+    providerName = "DigitalOcean",
     strictModeCapable = true,
-    multimodalPolicy  = OpenAIChatCompletions.MultimodalPolicy.OpenAIArrayForm,
+    multimodalPolicy = OpenAIChatCompletions.MultimodalPolicy.OpenAIArrayForm,
     // Sigil bug #161 — DO's kimi-k2.5 deployment intermittently emits
     // either degenerate `" The!!!!"` reasoning_content or null-padded
     // content tokens until `max_tokens` cap, with no usable content or
@@ -50,7 +53,7 @@ case class DigitalOceanProvider(apiKey: String,
     // let [[ProviderStrategy.errorClassifier]] (default classifier maps
     // this to `Fallthrough`) route to the next candidate.
     emptyBudgetBurnThrows = true,
-    preprocess        = { call =>
+    preprocess = { call =>
       val modelName = DigitalOcean.stripProviderPrefix(call.modelId.value)
       val systemContent = applyKimiReasoningDirective(call.system, modelName, call.generationSettings.reasoningMode)
       OpenAIChatCompletions.Preprocessed(systemContent, call.messages)
@@ -66,24 +69,27 @@ case class DigitalOceanProvider(apiKey: String,
   override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
     OpenAIChatCompletions.buildHttpRequest(input, sigilRef, baseUrl, bearerAuth, wireConfig)
 
-  /** Inject kimi's `/think` / `/no_think` system-prompt directive
-    * when [[ReasoningMode]] forces a non-default mode. kimi-k2.5
-    * defaults to thinking-on for non-trivial system prompts; kimi-
-    * k2.6 is thinking-by-default unconditionally. Apps wanting the
-    * fast non-thinking path on either model set
-    * `GenerationSettings(reasoningMode = ReasoningMode.Off)` and
-    * the provider stamps `/no_think` here. Sigil bug #155. */
+  /**
+   * Inject kimi's `/think` / `/no_think` system-prompt directive
+   * when [[ReasoningMode]] forces a non-default mode. kimi-k2.5
+   * defaults to thinking-on for non-trivial system prompts; kimi-
+   * k2.6 is thinking-by-default unconditionally. Apps wanting the
+   * fast non-thinking path on either model set
+   * `GenerationSettings(reasoningMode = ReasoningMode.Off)` and
+   * the provider stamps `/no_think` here. Sigil bug #155.
+   */
   private def applyKimiReasoningDirective(systemPrompt: String,
                                           modelName: String,
                                           mode: ReasoningMode): String = {
     val isKimi = modelName.toLowerCase.startsWith("kimi-")
-    val directive: Option[String] = if (!isKimi) None else mode match {
-      case ReasoningMode.Off  => Some("/no_think")
-      case ReasoningMode.On   => Some("/think")
+    val directive: Option[String] = if (!isKimi) None
+    else mode match {
+      case ReasoningMode.Off => Some("/no_think")
+      case ReasoningMode.On => Some("/think")
       case ReasoningMode.Auto => None
     }
     directive match {
-      case None      => systemPrompt
+      case None => systemPrompt
       case Some(dir) =>
         if (systemPrompt.isEmpty) dir
         else s"$systemPrompt\n\n$dir"

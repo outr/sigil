@@ -20,4 +20,5 @@ import sigil.viewer.ViewerStatePayload.given
  * land via the Dart codegen's per-subtype classes.
  */
 case class ViewerStateSnapshot(scope: String,
-                               payload: Option[ViewerStatePayload]) extends Notice derives RW
+                               payload: Option[ViewerStatePayload])
+  extends Notice derives RW

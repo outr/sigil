@@ -14,4 +14,5 @@ import lightdb.spatial.Point
  */
 case class Place(point: Point,
                  address: Option[String] = None,
-                 name: Option[String] = None) derives RW
+                 name: Option[String] = None)
+  derives RW

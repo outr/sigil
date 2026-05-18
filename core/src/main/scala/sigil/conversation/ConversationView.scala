@@ -32,9 +32,12 @@ case class ConversationView(conversationId: Id[Conversation],
 }
 
 object ConversationView {
-  /** Stable id derivation kept for test fixtures that previously
-    * looked up the persisted view by id. The framework no longer
-    * persists views; callers that need a deterministic key for
-    * arbitrary use can still derive one. */
+
+  /**
+   * Stable id derivation kept for test fixtures that previously
+   * looked up the persisted view by id. The framework no longer
+   * persists views; callers that need a deterministic key for
+   * arbitrary use can still derive one.
+   */
   def idFor(conversationId: Id[Conversation]): Id[ConversationView] = Id(conversationId.value)
 }

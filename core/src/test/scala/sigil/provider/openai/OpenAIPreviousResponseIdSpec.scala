@@ -109,20 +109,22 @@ class OpenAIPreviousResponseIdSpec extends AsyncWordSpec with AsyncTaskSpec with
 
     "carry previous_response_id and trim rendered messages when a prior id is cached" in {
       val convId = Conversation.id(s"prev-id-${rapid.Unique()}")
-      val topic  = TopicEntry(sigil.conversation.Topic.id("t"), label = "t", summary = "t")
+      val topic = TopicEntry(sigil.conversation.Topic.id("t"), label = "t", summary = "t")
       // Seed the agent's projection with a cached response id +
       // message count. The translate pass reads it back via
       // `Sigil.projectionFor` and populates the ProviderCall.
-      val priorId    = "resp_prior_xyz"
+      val priorId = "resp_prior_xyz"
       val priorCount = 1
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-               _id = convId, topics = List(topic), participants = Nil
-             ))))
+          _id = convId,
+          topics = List(topic),
+          participants = Nil
+        ))))
         _ <- TestSigil.updateProjection(convId, TestAgent)(_.copy(
-               latestProviderResponseId           = Some(priorId),
-               latestProviderResponseMessageCount = Some(priorCount)
-             ))
+          latestProviderResponseId = Some(priorId),
+          latestProviderResponseMessageCount = Some(priorCount)
+        ))
         body <- {
           // Two Text frames render to two User-role messages. With
           // priorCount = 1 the first one is server-side (dropped) and
@@ -132,19 +134,19 @@ class OpenAIPreviousResponseIdSpec extends AsyncWordSpec with AsyncTaskSpec with
             ContextFrame.Text("new user follow-up", TestUser, Id[Event]("e3"), MessageVisibility.All)
           )
           val req = ConversationRequest(
-            conversationId     = convId,
-            modelId            = modelId,
-            instructions       = Instructions(),
-            turnInput          = TurnInput(conversationId = convId, frames = frames),
-            currentMode        = ConversationMode,
-            currentTopic       = topic,
+            conversationId = convId,
+            modelId = modelId,
+            instructions = Instructions(),
+            turnInput = TurnInput(conversationId = convId, frames = frames),
+            currentMode = ConversationMode,
+            currentTopic = topic,
             generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-            tools              = CoreTools.all,
-            chain              = List(TestUser, TestAgent)
+            tools = CoreTools.all,
+            chain = List(TestUser, TestAgent)
           )
           provider.requestConverter(req).map(_.content match {
             case Some(c: spice.http.content.StringContent) => c.value
-            case _                                         => ""
+            case _ => ""
           })
         }
       } yield {
@@ -160,11 +162,13 @@ class OpenAIPreviousResponseIdSpec extends AsyncWordSpec with AsyncTaskSpec with
 
     "omit previous_response_id and ship the full transcript when no prior id is cached" in {
       val convId = Conversation.id(s"no-prev-${rapid.Unique()}")
-      val topic  = TopicEntry(sigil.conversation.Topic.id("t"), label = "t", summary = "t")
+      val topic = TopicEntry(sigil.conversation.Topic.id("t"), label = "t", summary = "t")
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-               _id = convId, topics = List(topic), participants = Nil
-             ))))
+          _id = convId,
+          topics = List(topic),
+          participants = Nil
+        ))))
         // Explicit projection clear so no stale state leaks from a
         // prior spec invocation against the same TestSigil.
         _ <- TestSigil.clearProviderResponseState(convId, TestAgent)
@@ -173,19 +177,19 @@ class OpenAIPreviousResponseIdSpec extends AsyncWordSpec with AsyncTaskSpec with
             ContextFrame.Text("only message so far", TestUser, Id[Event]("e1"), MessageVisibility.All)
           )
           val req = ConversationRequest(
-            conversationId     = convId,
-            modelId            = modelId,
-            instructions       = Instructions(),
-            turnInput          = TurnInput(conversationId = convId, frames = frames),
-            currentMode        = ConversationMode,
-            currentTopic       = topic,
+            conversationId = convId,
+            modelId = modelId,
+            instructions = Instructions(),
+            turnInput = TurnInput(conversationId = convId, frames = frames),
+            currentMode = ConversationMode,
+            currentTopic = topic,
             generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-            tools              = CoreTools.all,
-            chain              = List(TestUser, TestAgent)
+            tools = CoreTools.all,
+            chain = List(TestUser, TestAgent)
           )
           provider.requestConverter(req).map(_.content match {
             case Some(c: spice.http.content.StringContent) => c.value
-            case _                                         => ""
+            case _ => ""
           })
         }
       } yield {

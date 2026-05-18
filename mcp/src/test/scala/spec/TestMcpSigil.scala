@@ -24,14 +24,13 @@ import java.nio.file.Path
 class TestMcpDB(directory: Option[Path],
                 storeManager: CollectionManager,
                 upgrades: List[DatabaseUpgrade] = Nil)
-  extends SigilDB(directory, storeManager, upgrades)
-    with McpCollections
+  extends SigilDB(directory, storeManager, upgrades) with McpCollections
 
 object TestMcpSigil extends Sigil with McpSigil {
   override type DB = TestMcpDB
   override protected def buildDB(directory: Option[Path],
-                                  storeManager: CollectionManager,
-                                  upgrades: List[DatabaseUpgrade]): TestMcpDB =
+                                 storeManager: CollectionManager,
+                                 upgrades: List[DatabaseUpgrade]): TestMcpDB =
     new TestMcpDB(directory, storeManager, upgrades)
 
   override def testMode: Boolean = true
@@ -72,7 +71,7 @@ object TestMcpSigil extends Sigil with McpSigil {
     ()
   }
 
-  private def deleteRecursive(path: java.nio.file.Path): Unit = {
+  private def deleteRecursive(path: java.nio.file.Path): Unit =
     if (java.nio.file.Files.exists(path)) {
       val s = java.nio.file.Files.walk(path)
       try {
@@ -80,5 +79,4 @@ object TestMcpSigil extends Sigil with McpSigil {
         s.iterator().asScala.toList.reverse.foreach(p => java.nio.file.Files.deleteIfExists(p))
       } finally s.close()
     }
-  }
 }

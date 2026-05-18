@@ -30,10 +30,13 @@ object ApplyWorkspaceEdit {
 
   final case class ApplyResult(filesAttempted: Int,
                                filesWritten: Int,
-                               results: List[FileResult]) derives RW
+                               results: List[FileResult])
+    derives RW
 
-  /** Commit `edits` atomically. The returned task never throws —
-    * every error is captured in the per-file `FileResult`. */
+  /**
+   * Commit `edits` atomically. The returned task never throws —
+   * every error is captured in the per-file `FileResult`.
+   */
   def apply(fs: FileSystemContext, edits: List[FileEdit]): Task[ApplyResult] =
     if (edits.isEmpty) Task.pure(ApplyResult(filesAttempted = 0, filesWritten = 0, results = Nil))
     else applyNonEmpty(fs, edits)
@@ -57,8 +60,8 @@ object ApplyWorkspaceEdit {
         }
         Task.pure(ApplyResult(
           filesAttempted = edits.size,
-          filesWritten   = 0,
-          results        = failures.map(f => f: FileResult) ++ okPathsAsSkipped
+          filesWritten = 0,
+          results = failures.map(f => f: FileResult) ++ okPathsAsSkipped
         ))
       } else {
         val snapshots: Map[String, String] = ok.map { case (e, s) => e.filePath -> s }.toMap
@@ -73,7 +76,7 @@ object ApplyWorkspaceEdit {
                 .handleError(t => Task.pure(Left((e.filePath, t, written))))
                 .flatMap {
                   case Right(updated) => writeAll(tail, updated)
-                  case Left(err)      => Task.pure(Left(err))
+                  case Left(err) => Task.pure(Left(err))
                 }
           }
 
@@ -81,8 +84,8 @@ object ApplyWorkspaceEdit {
           case Right(written) =>
             Task.pure(ApplyResult(
               filesAttempted = edits.size,
-              filesWritten   = written.size,
-              results        = written.map(p => FileResult.Applied(p))
+              filesWritten = written.size,
+              results = written.map(p => FileResult.Applied(p))
             ))
           case Left((failedPath, t, written)) =>
             // Rollback every written file from snapshot. Best-effort.

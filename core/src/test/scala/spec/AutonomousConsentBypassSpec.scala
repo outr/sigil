@@ -31,22 +31,23 @@ class AutonomousConsentBypassSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   private val ranCount = new java.util.concurrent.atomic.AtomicInteger(0)
 
-  case object ConsentGatedTool extends TypedTool[BypassInput](
-    name        = ToolName("bypass_demo_tool"),
-    description = "A consent-gated demo tool used by the bypass spec."
-  ) {
-  override def paginate: Boolean = false
+  case object ConsentGatedTool
+    extends TypedTool[BypassInput](
+      name = ToolName("bypass_demo_tool"),
+      description = "A consent-gated demo tool used by the bypass spec."
+    ) {
+    override def paginate: Boolean = false
 
     override def requiresUserConsent: Boolean = true
     override protected def executeTyped(input: BypassInput, ctx: TurnContext): Stream[Event] = {
       ranCount.incrementAndGet()
       Stream.emit[Event](Message(
-        participantId  = ctx.caller,
+        participantId = ctx.caller,
         conversationId = ctx.conversation.id,
-        topicId        = ctx.conversation.currentTopicId,
-        content        = Vector(ResponseContent.Text(s"executed with ${input.payload}")),
-        role           = MessageRole.Tool,
-        state          = EventState.Complete
+        topicId = ctx.conversation.currentTopicId,
+        content = Vector(ResponseContent.Text(s"executed with ${input.payload}")),
+        role = MessageRole.Tool,
+        state = EventState.Complete
       ))
     }
   }
@@ -55,16 +56,16 @@ class AutonomousConsentBypassSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   private def newConvWithAgent(suffix: String, instructions: Instructions): Task[Conversation] = {
     val convId = Conversation.id(s"bypass-$suffix-${rapid.Unique()}")
-    val topic  = TopicEntry(
-      id      = sigil.conversation.Topic.id(s"topic-$convId"),
-      label   = "test",
+    val topic = TopicEntry(
+      id = sigil.conversation.Topic.id(s"topic-$convId"),
+      label = "test",
       summary = "test"
     )
     val agent = DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = sigil.db.Model.id("test", "bypass"),
-      toolNames          = List(ConsentGatedTool.schema.name),
-      instructions       = instructions,
+      id = TestAgent,
+      modelId = sigil.db.Model.id("test", "bypass"),
+      toolNames = List(ConsentGatedTool.schema.name),
+      instructions = instructions,
       generationSettings = GenerationSettings()
     )
     val conv = Conversation(_id = convId, topics = List(topic), participants = List(agent))
@@ -73,10 +74,10 @@ class AutonomousConsentBypassSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   private def turnContextFor(conv: Conversation): TurnContext =
     TurnContext(
-      sigil        = TestSigil,
-      chain        = List(TestUser, TestAgent),
+      sigil = TestSigil,
+      chain = List(TestUser, TestAgent),
       conversation = conv,
-      turnInput    = TurnInput(conversationId = conv._id)
+      turnInput = TurnInput(conversationId = conv._id)
     )
 
   private def dispatch(input: BypassInput, ctx: TurnContext): Task[List[Signal]] = {
@@ -90,8 +91,8 @@ class AutonomousConsentBypassSpec extends AsyncWordSpec with AsyncTaskSpec with 
       ranCount.set(0)
       for {
         conv <- newConvWithAgent("autonomous", Instructions.autonomous())
-        ctx   = turnContextFor(conv)
-        evs  <- dispatch(BypassInput("auth-ok"), ctx)
+        ctx = turnContextFor(conv)
+        evs <- dispatch(BypassInput("auth-ok"), ctx)
       } yield {
         ranCount.get() shouldBe 1
         // No Failure with "requires user consent" surfaces — the
@@ -114,8 +115,8 @@ class AutonomousConsentBypassSpec extends AsyncWordSpec with AsyncTaskSpec with 
       ranCount.set(0)
       for {
         conv <- newConvWithAgent("confirming", Instructions())
-        ctx   = turnContextFor(conv)
-        evs  <- dispatch(BypassInput("blocked"), ctx)
+        ctx = turnContextFor(conv)
+        evs <- dispatch(BypassInput("blocked"), ctx)
       } yield {
         // Default posture → gate fires → tool does NOT run.
         ranCount.get() shouldBe 0
@@ -132,8 +133,8 @@ class AutonomousConsentBypassSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val hand = Instructions().withPosture(SafetyPosture.Autonomous)
       for {
         conv <- newConvWithAgent("withposture", hand)
-        ctx   = turnContextFor(conv)
-        evs  <- dispatch(BypassInput("hand-built"), ctx)
+        ctx = turnContextFor(conv)
+        evs <- dispatch(BypassInput("hand-built"), ctx)
       } yield {
         ranCount.get() shouldBe 1
         val ranMessages = evs.collect {

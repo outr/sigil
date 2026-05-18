@@ -10,7 +10,8 @@ import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
 import sigil.workflow.WorkflowTemplate
 
 case class UnregisterTriggerInput(workflowId: String,
-                                  index: Int) extends ToolInput derives RW
+                                  index: Int)
+  extends ToolInput derives RW
 
 /**
  * Remove a trigger from a workflow template by its 0-based index
@@ -23,21 +24,23 @@ case class UnregisterTriggerInput(workflowId: String,
  * values, not records). Apps that want id-based addressing wrap
  * triggers in a record with `Id[…]` before persisting.
  */
-final class UnregisterTriggerTool extends TypedTool[UnregisterTriggerInput](
-  name = ToolName("unregister_trigger"),
-  description =
-    """Remove a trigger from a workflow template by its 0-based index.
+final class UnregisterTriggerTool
+  extends TypedTool[UnregisterTriggerInput](
+    name = ToolName("unregister_trigger"),
+    description =
+      """Remove a trigger from a workflow template by its 0-based index.
       |
       |`workflowId` is the template id; `index` is the position in the template's
       |`triggers` list. Out-of-bounds indices are a clear error.""".stripMargin,
-  examples = List(
-    ToolExample("remove the first trigger", UnregisterTriggerInput(workflowId = "wf-abc", index = 0))
-  ),
-  keywords = Set("workflow", "trigger", "remove", "unregister")
-) with WorkflowToolSupport {
+    examples = List(
+      ToolExample("remove the first trigger", UnregisterTriggerInput(workflowId = "wf-abc", index = 0))
+    ),
+    keywords = Set("workflow", "trigger", "remove", "unregister")
+  )
+  with WorkflowToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: UnregisterTriggerInput, ctx: TurnContext): Stream[Event] = {
+  override protected def executeTyped(input: UnregisterTriggerInput, ctx: TurnContext): Stream[Event] =
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)
       case Right(host) =>
@@ -64,5 +67,4 @@ final class UnregisterTriggerTool extends TypedTool[UnregisterTriggerInput](
         }
         Stream.force(task.map(text => reply(ctx, text)))
     }
-  }
 }

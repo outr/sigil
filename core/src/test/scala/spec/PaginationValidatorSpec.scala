@@ -19,19 +19,21 @@ class PaginationValidatorSpec extends AnyWordSpec with Matchers {
   // ---- single-shot input (no pagination fields) ----
   case class PlainInput(query: String) extends ToolInput derives RW
 
-  case object PlainSingleShotTool extends TypedTool[PlainInput](
-    name = ToolName("plain_single_shot"),
-    description = "A single-shot tool with no pagination fields."
-  ) {
+  case object PlainSingleShotTool
+    extends TypedTool[PlainInput](
+      name = ToolName("plain_single_shot"),
+      description = "A single-shot tool with no pagination fields."
+    ) {
     override def paginate: Boolean = false
     override protected def executeTyped(input: PlainInput, context: TurnContext): Stream[Event] =
       Stream.empty
   }
 
-  case object PlainButClaimsPaginatedTool extends TypedTool[PlainInput](
-    name = ToolName("plain_claims_paginated"),
-    description = "Claims paginate=true but exposes no pagination field — invalid."
-  ) {
+  case object PlainButClaimsPaginatedTool
+    extends TypedTool[PlainInput](
+      name = ToolName("plain_claims_paginated"),
+      description = "Claims paginate=true but exposes no pagination field — invalid."
+    ) {
     override def paginate: Boolean = true
     override protected def executeTyped(input: PlainInput, context: TurnContext): Stream[Event] =
       Stream.empty
@@ -40,10 +42,11 @@ class PaginationValidatorSpec extends AnyWordSpec with Matchers {
   // ---- paginated input ----
   case class PagedInput(query: String, offset: Option[Int] = None, limit: Option[Int] = None) extends ToolInput derives RW
 
-  case object PagedTool extends TypedTool[PagedInput](
-    name = ToolName("paged_tool"),
-    description = "Exposes offset / limit; valid paginate=true."
-  ) {
+  case object PagedTool
+    extends TypedTool[PagedInput](
+      name = ToolName("paged_tool"),
+      description = "Exposes offset / limit; valid paginate=true."
+    ) {
     override def paginate: Boolean = true
     override protected def executeTyped(input: PagedInput, context: TurnContext): Stream[Event] =
       Stream.empty
@@ -51,10 +54,11 @@ class PaginationValidatorSpec extends AnyWordSpec with Matchers {
 
   case class CursorInput(cursor: Option[String] = None) extends ToolInput derives RW
 
-  case object CursorTool extends TypedTool[CursorInput](
-    name = ToolName("cursor_tool"),
-    description = "Uses a single cursor field; valid paginate=true."
-  ) {
+  case object CursorTool
+    extends TypedTool[CursorInput](
+      name = ToolName("cursor_tool"),
+      description = "Uses a single cursor field; valid paginate=true."
+    ) {
     override def paginate: Boolean = true
     override protected def executeTyped(input: CursorInput, context: TurnContext): Stream[Event] =
       Stream.empty

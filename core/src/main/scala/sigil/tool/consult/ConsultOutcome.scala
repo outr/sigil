@@ -19,34 +19,45 @@ sealed trait ConsultOutcome[+I]
 
 object ConsultOutcome {
 
-  /** Model emitted the expected tool call and the payload parsed
-    * cleanly into `I`. */
+  /**
+   * Model emitted the expected tool call and the payload parsed
+   * cleanly into `I`.
+   */
   case class Parsed[I](value: I) extends ConsultOutcome[I]
 
-  /** Stream completed with `finish_reason: stop` / `Complete` and
-    * no matching tool_call. The model decided not to call the tool
-    * (or called a different one) — a legitimate "no opinion" answer
-    * that the caller should treat as "use the default." */
+  /**
+   * Stream completed with `finish_reason: stop` / `Complete` and
+   * no matching tool_call. The model decided not to call the tool
+   * (or called a different one) — a legitimate "no opinion" answer
+   * that the caller should treat as "use the default."
+   */
   case object NoOpinion extends ConsultOutcome[Nothing]
 
-  /** Stream closed with `finish_reason: length` (i.e.
-    * [[StopReason.MaxTokens]]) and no matching tool_call. The model
-    * ran out of output budget before forming the structured answer.
-    * Token counts (when surfaced by the provider's `usage` block)
-    * let the caller decide whether to retry with a larger cap or
-    * fall back. */
+  /**
+   * Stream closed with `finish_reason: length` (i.e.
+   * [[StopReason.MaxTokens]]) and no matching tool_call. The model
+   * ran out of output budget before forming the structured answer.
+   * Token counts (when surfaced by the provider's `usage` block)
+   * let the caller decide whether to retry with a larger cap or
+   * fall back.
+   */
   case class Truncated(promptTokens: Option[Int],
                        completionTokens: Option[Int],
-                       totalTokens: Option[Int]) extends ConsultOutcome[Nothing]
+                       totalTokens: Option[Int])
+    extends ConsultOutcome[Nothing]
 
-  /** Stream errored, parse failed, or the wire layer threw. */
+  /**
+   * Stream errored, parse failed, or the wire layer threw.
+   */
   case class Failed(cause: Throwable) extends ConsultOutcome[Nothing]
 
-  /** Build a `Truncated` from a possibly-missing [[TokenUsage]]. */
+  /**
+   * Build a `Truncated` from a possibly-missing [[TokenUsage]].
+   */
   def truncated(usage: Option[TokenUsage]): Truncated =
     Truncated(
-      promptTokens     = usage.map(_.promptTokens),
+      promptTokens = usage.map(_.promptTokens),
       completionTokens = usage.map(_.completionTokens),
-      totalTokens      = usage.map(_.totalTokens)
+      totalTokens = usage.map(_.totalTokens)
     )
 }

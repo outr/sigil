@@ -14,10 +14,11 @@ import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
  *
  * Emits a typed [[SearchConversationOutput]] (`query`, `hits: List[SearchConversationHit]`, `count`).
  */
-case object SearchConversationTool extends TypedOutputTool[SearchConversationInput, SearchConversationOutput](
-  name = ToolName("search_conversation"),
-  description =
-    """Search the persistent log of the current conversation for earlier events that match a query.
+case object SearchConversationTool
+  extends TypedOutputTool[SearchConversationInput, SearchConversationOutput](
+    name = ToolName("search_conversation"),
+    description =
+      """Search the persistent log of the current conversation for earlier events that match a query.
       |
       |Use this when:
       |  - you need a detail from earlier in the conversation that is no longer visible in the rolling context
@@ -35,14 +36,15 @@ case object SearchConversationTool extends TypedOutputTool[SearchConversationInp
       |`limit` — max results (default 10).
       |
       |Returns `{query, hits: [{eventId, timestamp, participantId, topicId, eventType, snippet}], count}`.""".stripMargin,
-  examples = List(
-    ToolExample(
-      "Find earlier exchanges mentioning the Qdrant deployment",
-      SearchConversationInput(query = "Qdrant deployment")
-    )
-  ),
-  keywords = Set("search", "conversation", "history", "find", "recall")
-) with sigil.tool.ReadOnlyInternalTool {
+    examples = List(
+      ToolExample(
+        "Find earlier exchanges mentioning the Qdrant deployment",
+        SearchConversationInput(query = "Qdrant deployment")
+      )
+    ),
+    keywords = Set("search", "conversation", "history", "find", "recall")
+  )
+  with sigil.tool.ReadOnlyInternalTool {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: SearchConversationInput, context: TurnContext): Task[SearchConversationOutput] =
@@ -56,7 +58,7 @@ case object SearchConversationTool extends TypedOutputTool[SearchConversationInp
       .map { events =>
         SearchConversationOutput(
           query = input.query,
-          hits  = events.map(toHit),
+          hits = events.map(toHit),
           count = events.size
         )
       }
@@ -66,15 +68,15 @@ case object SearchConversationTool extends TypedOutputTool[SearchConversationInp
       case m: Message =>
         m.content.collect { case ResponseContent.Text(t) => t }.mkString(" ").take(280)
       case tc: TopicChange => s"[topic change] ${tc.newLabel}"
-      case other           => other.getClass.getSimpleName
+      case other => other.getClass.getSimpleName
     }
     SearchConversationHit(
-      eventId       = e._id.value,
-      timestamp     = e.timestamp.value,
+      eventId = e._id.value,
+      timestamp = e.timestamp.value,
       participantId = e.participantId.value,
-      topicId       = e.topicId.value,
-      eventType     = e.getClass.getSimpleName,
-      snippet       = snippet
+      topicId = e.topicId.value,
+      eventType = e.getClass.getSimpleName,
+      snippet = snippet
     )
   }
 }
