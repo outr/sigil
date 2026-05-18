@@ -254,6 +254,25 @@ trait Tool extends RecordDocument[Tool] {
     * is not (purely intra-conversation). Default `false`. */
   def openWorld: Boolean = false
 
+  /** Tools whose names the framework should append to the calling
+    * conversation's per-participant `suggestedTools` overlay when
+    * this tool runs. The overlay decays after one turn (the standard
+    * `suggestedTools` lifecycle) — the suggestion surfaces under the
+    * "Suggested tools" prompt section on the next agent turn, then
+    * fades unless the agent reaches for it.
+    *
+    * The mechanism complements `find_capability`: a `grep` call
+    * doesn't merely discover matches, it suggests that
+    * `dispatch_workers` is the natural next move for "do something
+    * with each match"; an `lsp_find_references` call suggests the
+    * same after a usage search. The agent reads the suggestion in
+    * the system prompt and can either pick it up or ignore it.
+    *
+    * Default empty — most tools don't lead naturally to a specific
+    * follow-up. Generic primitives (`grep`, `glob`, `bash`) that
+    * frequently lead into a per-result loop opt in. */
+  def suggestedNextTools: List[ToolName] = Nil
+
   /** The description the LLM sees on the wire, given runtime context.
     * Default returns [[descriptionFor]] with a destructive prefix
     * baked in when [[destructive]] is `true` — so the LLM reads

@@ -1,13 +1,15 @@
-package sigil.tooling.refactor
+package sigil.tooling
 
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.fs.FileSystemContext
 
 /**
- * Framework-internal primitive — NOT a `Tool`. Used by
- * [[RefactorWithInstructionTool]] and [[LspRenameSymbolTool]] to
- * commit a multi-file edit set atomically.
+ * Framework-internal primitive — NOT a `Tool`. General-purpose
+ * atomic multi-file edit commit. Used today by the LSP rename tool
+ * for its workspace-edit application; available to any future tool
+ * that needs preflight-then-write-then-rollback semantics across a
+ * file set.
  *
  * **Atomicity guarantee.** The applier pre-flights every target
  * file (path readable) and snapshots their current contents BEFORE

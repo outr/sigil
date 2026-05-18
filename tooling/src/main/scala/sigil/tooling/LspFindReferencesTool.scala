@@ -48,6 +48,12 @@ final class LspFindReferencesTool(val manager: LspManager) extends TypedOutputTo
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
   override def paginate: Boolean = false
 
+  // Bug #230 — usage lists are the canonical input to
+  // `dispatch_workers` (one item per reference site → per-callsite
+  // LLM-or-script pipeline). Surface the next tool so the agent
+  // sees the natural follow-up.
+  override def suggestedNextTools: List[ToolName] = List(ToolName("dispatch_workers"))
+
   override protected def executeTyped(input: LspFindReferencesInput, context: TurnContext): Task[LspFindReferencesOutput] =
     withOpenDocumentTyped[LspFindReferencesOutput](
       input.languageId, input.filePath, context,

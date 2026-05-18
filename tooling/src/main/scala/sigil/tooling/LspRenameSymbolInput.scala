@@ -1,4 +1,4 @@
-package sigil.tooling.refactor
+package sigil.tooling
 
 import fabric.rw.*
 import sigil.tool.ToolInput

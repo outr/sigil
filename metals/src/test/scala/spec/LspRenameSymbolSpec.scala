@@ -6,8 +6,10 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, TopicEntry, TurnInput}
 import sigil.participant.ParticipantId
-import sigil.tooling.refactor.{LspRenameSymbolInput, LspRenameSymbolOutput, LspRenameSymbolTool}
-import sigil.tooling.{LspManager, LspSession, PermissiveWorkspaceEditApplier, SymbolHit}
+import sigil.tooling.{
+  LspManager, LspRenameSymbolInput, LspRenameSymbolOutput, LspRenameSymbolTool,
+  LspSession, PermissiveWorkspaceEditApplier, SymbolHit
+}
 
 import java.nio.file.{Files, Path, StandardOpenOption}
 import scala.concurrent.duration.*

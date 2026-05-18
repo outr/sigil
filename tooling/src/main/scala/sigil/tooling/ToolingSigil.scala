@@ -5,7 +5,7 @@ import sigil.Sigil
 import sigil.db.SigilDB
 import sigil.tool.Tool
 import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext}
-import sigil.tooling.refactor.{LspRenameSymbolTool, RefactorApplyTool, RefactorCancelTool, RefactorSessionStore, RefactorWithInstructionTool}
+import sigil.tooling.dispatch.{DispatchWorkersTool, WorkerItemSourceAdapter}
 
 import scala.concurrent.duration.*
 
@@ -47,17 +47,10 @@ trait ToolingSigil extends Sigil {
     new BspManager(this.asInstanceOf[Sigil { type DB <: SigilDB & ToolingCollections }])
 
   /** Filesystem context for tools the mixin wires that touch disk
-    * (currently `refactor_with_instruction`). Defaults to a sandbox-
-    * less local filesystem; apps with a workspace root override to
-    * scope the agent's reach. */
+    * (currently `dispatch_workers`'s `FromFile` adapter). Defaults to
+    * a sandbox-less local filesystem; apps with a workspace root
+    * override to scope the agent's reach. */
   def fileSystemContext: FileSystemContext = new LocalFileSystemContext(basePath = None)
-
-  /** Per-Sigil in-memory store of prepared refactor sessions
-    * (see [[RefactorSessionStore]]). Shared by the three refactor
-    * tools so prepare → apply / cancel resolve consistently. Apps
-    * that want a different TTL or a persistent backing override
-    * this. */
-  lazy val refactorSessionStore: RefactorSessionStore = new RefactorSessionStore()
 
   override def staticTools: List[Tool] = {
     val base = super.staticTools
@@ -65,7 +58,7 @@ trait ToolingSigil extends Sigil {
   }
 
   protected def toolingTools: List[Tool] =
-    lspTools ++ bspTools ++ refactorTools
+    lspTools ++ bspTools ++ dispatchTools
 
   /** Every LSP-side tool the framework ships. Apps that want a
     * subset override this and pick. */
@@ -119,17 +112,13 @@ trait ToolingSigil extends Sigil {
     new BspScalaMainClassesTool(bspManager)
   )
 
-  /** Every refactor-shaped tool the framework ships. Touches disk
-    * via [[fileSystemContext]] (override in app for workspace
-    * sandboxing) and — for the worker-driven case — the host's
-    * workflow runtime via `WorkflowSigil`. Apps mixing this trait
-    * without `WorkflowSigil` see `refactor_with_instruction`
-    * surface a structured "workflow runtime not active" error
-    * rather than crashing. */
-  protected def refactorTools: List[Tool] = List(
-    new RefactorWithInstructionTool(fileSystemContext, refactorSessionStore),
-    new RefactorApplyTool(fileSystemContext, refactorSessionStore),
-    new RefactorCancelTool(refactorSessionStore)
+  /** Every dispatch-shaped tool the framework ships. The generic
+    * [[DispatchWorkersTool]] subsumes the prior three-tool refactor
+    * session — per-item LLM-or-script pipelines compose naturally
+    * with `grep`, LSP queries, inline lists, files, and conversation
+    * extracts. */
+  protected def dispatchTools: List[Tool] = List(
+    new DispatchWorkersTool()
   )
 
   /** Periodic idle sweep — runs forever on a daemon fiber. */
@@ -146,4 +135,11 @@ trait ToolingSigil extends Sigil {
   }
 
   startToolingIdleSweep().sync()
+
+  // Bug #230 — register the framework-shipped WorkerItemSource
+  // adapters for grep / lsp_find_references / lsp_workspace_symbols
+  // so DispatchWorkersTool's FromCall variant projects their persisted
+  // outputs into worker items without app-side wiring. Apps add their
+  // own adapters via `WorkerItemSourceAdapter.register`.
+  WorkerItemSourceAdapter.registerShipped()
 }

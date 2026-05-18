@@ -38,6 +38,11 @@ final class LspWorkspaceSymbolsTool(val manager: LspManager) extends PaginatedTo
   )
 ) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
 
+  // Bug #230 — symbol lists are the canonical input to
+  // `dispatch_workers` (per-symbol LLM-or-script pipeline). Surface
+  // the next tool so the agent sees the natural follow-up.
+  override def suggestedNextTools: List[ToolName] = List(ToolName("dispatch_workers"))
+
   override protected def executeStream(input: LspWorkspaceSymbolsInput, context: TurnContext): Stream[Node[LspWorkspaceSymbol]] =
     Stream.force(
       withSessionTyped[Stream[Node[LspWorkspaceSymbol]]](

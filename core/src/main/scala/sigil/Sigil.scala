@@ -3095,8 +3095,21 @@ trait Sigil {
   private final def applyParticipantProjectionFor(event: Event): Task[Unit] =
     event match {
       case ti: ToolInvoke =>
+        // Bug #230 — when the tool author declared
+        // [[sigil.tool.Tool.suggestedNextTools]], append those
+        // tool-names to the per-participant `suggestedTools` overlay
+        // so the next turn's "Suggested tools" prompt section advertises
+        // them. Additive merge — never clobbers prior find_capability
+        // discoveries or pagination navigators; the overlay still
+        // single-turn-decays at agent-loop release.
+        val nextTools: List[sigil.tool.ToolName] =
+          staticTools.find(_.name == ti.toolName).map(_.suggestedNextTools).getOrElse(Nil)
         updateProjection(ti.conversationId, ti.participantId) { proj =>
-          proj.copy(recentTools = ti.toolName :: proj.recentTools.filterNot(_ == ti.toolName))
+          val recent = ti.toolName :: proj.recentTools.filterNot(_ == ti.toolName)
+          val suggested =
+            if (nextTools.isEmpty) proj.suggestedTools
+            else (proj.suggestedTools ++ nextTools).distinct
+          proj.copy(recentTools = recent, suggestedTools = suggested)
         }
       case tr: ToolResults =>
         // Sigil bug #169 — replace the overlay only when the tool result
