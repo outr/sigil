@@ -157,9 +157,22 @@ case class OpenRouterProvider(apiKey: String,
     // request. The default (`OpenRouterProviderRouting.noChineseHosting`)
     // populates `ignore` with the curated set of mainland-China-
     // hosted slugs so traffic NEVER routes to those endpoints.
-    // Empty routing (no constraints) suppresses the field entirely.
-    extraBody         = _ => {
-      val routingJson = providerRouting.toJson
+    // On a transient-retry attempt, the framework threads the prior
+    // failure's named upstream into `ProviderCall.retryContext`; we
+    // merge it into the `ignore` deny-list so the retry routes around
+    // the sick upstream entirely. Empty routing (no constraints AND no
+    // retry exclusions) suppresses the field entirely.
+    extraBody         = call => {
+      val retryIgnore: List[String] = call.retryContext
+        .flatMap(_.lastErrorUpstreamProvider)
+        .toList
+      val effectiveRouting =
+        if (retryIgnore.isEmpty) providerRouting
+        else {
+          val merged = (providerRouting.ignore.getOrElse(Nil) ++ retryIgnore).distinct
+          providerRouting.copy(ignore = Some(merged))
+        }
+      val routingJson = effectiveRouting.toJson
       val isEmpty = routingJson match {
         case o: Obj => o.value.isEmpty
         case _      => true

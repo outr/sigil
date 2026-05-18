@@ -265,7 +265,11 @@ object OpenAIChatCompletions {
         case _                         => None
       }
     }
-    val state = new StreamState(new ToolCallAccumulator(input.tools, providerKey = config.providerName), rfMode)
+    val state = new StreamState(
+      acc                       = new ToolCallAccumulator(input.tools, providerKey = config.providerName),
+      responseFormatMode        = rfMode,
+      streamingSilenceTimeoutMs = sigil.streamingSilenceTimeoutMs
+    )
     Stream.force(
       for {
         raw         <- buildHttpRequest(input, sigil, baseUrl, auth, config)
@@ -556,7 +560,13 @@ object OpenAIChatCompletions {
   /** Parse a single SSE line into [[ProviderEvent]]s. Public so per-
     * provider specs can drive the chunk-level paths (notably inline-error
     * detection) without spinning up a stub HTTP server. */
-  def parseLine(line: String, state: StreamState, config: Config): Vector[ProviderEvent] =
+  def parseLine(line: String, state: StreamState, config: Config): Vector[ProviderEvent] = {
+    // Lazy keepalive-silence check fires on every incoming line —
+    // raises a typed exception when the wire has carried only
+    // comments / blanks / non-meaningful data chunks past the
+    // configured budget. Event-driven (no timer thread); the next
+    // chunk after the threshold trips the throw.
+    state.checkStreamingSilence(config)
     SSELineParser.parse(line) match {
       case SSELine.Data(json) => parseChunk(json, state, config)
       case SSELine.Done       => state.flushDone(config)
@@ -564,6 +574,7 @@ object OpenAIChatCompletions {
         Vector(ProviderEvent.Error(s"parse: $reason"))
       case SSELine.Blank | SSELine.Comment | _: SSELine.Other => Vector.empty
     }
+  }
 
   /** Parse a single decoded SSE chunk's JSON payload into
     * [[ProviderEvent]]s. Public for the same reason as [[parseLine]]. */
@@ -578,7 +589,15 @@ object OpenAIChatCompletions {
           val code = err.get("code").map(_.asInt).getOrElse(0)
           val msg  = err.get("message").map(_.asString).getOrElse("(no message)")
           val typ  = err.get("type").map(_.asString).getOrElse("error")
-          throw new ProviderStreamException(config.providerNamespace, code, typ, msg)
+          val metadata = parseErrorMetadata(err)
+          throw new ProviderStreamException(
+            providerKey   = config.providerNamespace,
+            code          = code,
+            typ           = typ,
+            message_      = msg,
+            status        = if (code > 0) Some(code) else None,
+            errorMetadata = Some(metadata)
+          )
         }
       }
     }
@@ -766,7 +785,34 @@ object OpenAIChatCompletions {
       }
     }
 
-    events.result()
+    val result = events.result()
+    if (result.exists {
+      case _: ProviderEvent.Usage | _: ProviderEvent.Done | _: ProviderEvent.Error => false
+      case _                                                                       => true
+    }) state.markMeaningfulProgress()
+    result
+  }
+
+  /** Parse the typed error metadata off an OpenAI-compatible
+    * `error` object. OpenRouter populates
+    * `error.metadata.error_type` (`"provider_unavailable"`,
+    * `"rate_limited"`, …) and one of `provider_name` /
+    * `raw_provider_name` carrying the human-readable upstream
+    * (`"Chutes"`, `"Novita"`, …). Wire decoders for non-OpenRouter
+    * gateways that adopt the same envelope get parsed for free;
+    * gateways that ship plain `{code, message, type}` produce an
+    * empty metadata record. */
+  private def parseErrorMetadata(err: Json): ProviderErrorMetadata = {
+    val metaOpt = err.get("metadata").filter(!_.isNull)
+    val errorType: Option[String] =
+      metaOpt.flatMap(_.get("error_type")).flatMap(j => if (j.isNull) None else Some(j.asString))
+        .orElse(err.get("type").flatMap(j => if (j.isNull) None else Some(j.asString)).filter(_ != "error"))
+    val upstreamProvider: Option[String] = metaOpt.flatMap { meta =>
+      meta.get("provider_name").flatMap(j => if (j.isNull) None else Some(j.asString))
+        .orElse(meta.get("raw_provider_name").flatMap(j => if (j.isNull) None else Some(j.asString)))
+        .orElse(meta.get("upstream_provider").flatMap(j => if (j.isNull) None else Some(j.asString)))
+    }
+    ProviderErrorMetadata(errorType = errorType, upstreamProvider = upstreamProvider)
   }
 
   private def parseUsage(json: Json): TokenUsage =
@@ -789,7 +835,16 @@ object OpenAIChatCompletions {
     * into ToolCallStart/Complete events. */
   final class StreamState(val acc: ToolCallAccumulator,
                           val responseFormatMode: Option[ResponseFormatMode] = None,
-                          val nowNanos: () => Long = () => System.nanoTime()) {
+                          val nowNanos: () => Long = () => System.nanoTime(),
+                          /** Wall-clock budget (ms) since the last meaningful
+                            * chunk before the wire layer raises a typed
+                            * [[ProviderStreamException]] with
+                            * `errorType = upstream_silent`. A "meaningful chunk"
+                            * is any chunk that emits a text / tool-call /
+                            * reasoning / image / response-state event; pure
+                            * session-start chunks and SSE comment keepalives
+                            * count as silence. `0` disables the check. */
+                          val streamingSilenceTimeoutMs: Long = 0L) {
     var pendingDone: Option[StopReason] = None
     val responseFormatBuf: StringBuilder = new StringBuilder
 
@@ -832,6 +887,49 @@ object OpenAIChatCompletions {
       * has fired yet (the first eligible delta triggers an
       * emission so the ticker shows movement promptly). */
     var lastEstimateNanos: Long = 0L
+
+    /** Wall-clock timestamp (System.nanoTime) anchor for the
+      * keepalive-silence check. Set on the first line of the stream
+      * (data or comment) and bumped every time [[parseChunk]] emits
+      * a meaningful event. The next line that arrives compares
+      * elapsed-since-anchor to [[streamingSilenceTimeoutMs]] — over
+      * the budget raises [[ProviderStreamException]] with
+      * `errorType = upstream_silent`. `-1L` means "no chunks seen
+      * yet". */
+    var lastMeaningfulNanos: Long = -1L
+
+    /** Called by [[parseChunk]] when a chunk produced at least one
+      * meaningful event (text / tool / reasoning / image /
+      * response-state). Resets the silence anchor. */
+    def markMeaningfulProgress(): Unit = {
+      lastMeaningfulNanos = nowNanos()
+    }
+
+    /** Called by [[parseLine]] at the top of every SSE line. Raises a
+      * typed silence exception when the budget has elapsed since the
+      * last meaningful chunk. The first call merely arms the anchor.
+      * Comment-only keepalives advance through this check; the next
+      * keepalive after the threshold fires the throw. */
+    def checkStreamingSilence(config: Config): Unit = {
+      if (streamingSilenceTimeoutMs <= 0L) return
+      val now = nowNanos()
+      if (lastMeaningfulNanos < 0L) {
+        lastMeaningfulNanos = now
+        return
+      }
+      val elapsedMs = (now - lastMeaningfulNanos) / 1000000L
+      if (elapsedMs > streamingSilenceTimeoutMs) {
+        throw new ProviderStreamException(
+          providerKey   = config.providerNamespace,
+          code          = 0,
+          typ           = "upstream_silent",
+          message_      = s"${config.providerName} emitted only keepalive chunks for ${elapsedMs}ms " +
+            s"(threshold ${streamingSilenceTimeoutMs}ms) — upstream is unresponsive.",
+          status        = None,
+          errorMetadata = Some(ProviderErrorMetadata(errorType = Some("upstream_silent")))
+        )
+      }
+    }
 
     def flushDone(config: Config): Vector[ProviderEvent] = pendingDone match {
       case Some(sr) =>

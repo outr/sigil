@@ -240,7 +240,11 @@ case class GoogleProvider(apiKey: String,
         val code = err.get("code").map(_.asInt).getOrElse(0)
         val msg  = err.get("message").map(_.asString).getOrElse("(no message)")
         val typ  = err.get("status").map(_.asString).getOrElse("error")
-        throw new ProviderStreamException(Google.Provider, code, typ, msg)
+        val metadata = ProviderErrorMetadata(errorType = Some(typ))
+        throw new ProviderStreamException(
+          providerKey = Google.Provider, code = code, typ = typ, message_ = msg,
+          status = if (code > 0) Some(code) else None, errorMetadata = Some(metadata)
+        )
       }
     }
     val events = Vector.newBuilder[ProviderEvent]
