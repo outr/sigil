@@ -91,7 +91,8 @@ class LocalFileSystemContext(basePath: Option[Path] = None) extends FileSystemCo
                            pattern: String,
                            glob: Option[String],
                            maxMatches: Int,
-                           contextLines: Int): Task[List[GrepMatch]] = Task {
+                           contextLines: Int,
+                           includeIgnored: Boolean): Task[List[GrepMatch]] = Task {
     val base        = resolvePath(basePath)
     val regex       = Pattern.compile(pattern)
     val globMatcher = glob.map(g => FileSystems.getDefault.getPathMatcher(s"glob:$g"))
@@ -99,7 +100,7 @@ class LocalFileSystemContext(basePath: Option[Path] = None) extends FileSystemCo
     val stream      = Files.walk(base)
     try {
       stream.iterator().asScala
-        .filter(p => !isInExcludedDir(base, p))
+        .filter(p => includeIgnored || !isInExcludedDir(base, p))
         .filter(Files.isRegularFile(_))
         .filter(p => globMatcher.forall(m => m.matches(p.getFileName) || m.matches(base.relativize(p))))
         .takeWhile(_ => results.size < maxMatches)
@@ -219,19 +220,14 @@ class LocalFileSystemContext(basePath: Option[Path] = None) extends FileSystemCo
 
   /** Skip directories that almost always contain binary cache
     * artifacts (compiled bytecode, build-server indexes, package
-    * manager state, version-control metadata). Apps that legitimately
-    * need to grep these subclass and override [[searchFiles]]. */
-  private val excludedDirNames: Set[String] = Set(
-    ".git", ".metals", ".bloop", ".idea", ".vscode",
-    "target", "node_modules", "dist", "build", "out",
-    ".venv", "venv", "__pycache__", ".gradle", ".mvn"
-  )
-
+    * manager state, version-control metadata). The canonical segment
+    * list lives on [[GrepTool.DefaultExcludedSegments]]; this method
+    * defers to it so the walk doesn't even open generated content.
+    * Callers pass [[searchFiles]]'s `includeIgnored = true` (set
+    * via [[sigil.tool.model.GrepInput.includeIgnored]] at the tool
+    * layer) to bypass this filter and walk every reachable file. */
   private def isInExcludedDir(base: Path, path: Path): Boolean =
-    scala.util.Try(base.relativize(path)).toOption.exists { rel =>
-      import scala.jdk.CollectionConverters.*
-      rel.iterator().asScala.exists(seg => excludedDirNames.contains(seg.toString))
-    }
+    scala.util.Try(base.relativize(path)).toOption.exists(GrepTool.isExcluded)
 
   /** Read a file's lines via a UTF-8 decoder configured to REPLACE
     * malformed sequences with U+FFFD instead of throwing. Survives

@@ -44,12 +44,18 @@ trait FileSystemContext {
 
   /** Search files for a regex pattern. `glob` optionally restricts
     * the file set; `contextLines` controls before/after lines per
-    * match. */
+    * match.
+    *
+    * `includeIgnored` opts back into well-known noise directories
+    * (build outputs, IDE state, VCS metadata, package-manager caches,
+    * `.claude/` worktrees) that are skipped by default. The canonical
+    * segment list lives on [[GrepTool.DefaultExcludedSegments]]. */
   def searchFiles(basePath: String,
                   pattern: String,
                   glob: Option[String] = None,
                   maxMatches: Int = 500,
-                  contextLines: Int = 0): Task[List[GrepMatch]]
+                  contextLines: Int = 0,
+                  includeIgnored: Boolean = false): Task[List[GrepMatch]]
 
   /** Delete a single file. Returns true if the file existed and was
     * deleted; false if it did not exist. */
