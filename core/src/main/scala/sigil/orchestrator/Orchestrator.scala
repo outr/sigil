@@ -7,8 +7,8 @@ import sigil.Sigil
 import sigil.conversation.{ContextFrame, Conversation, Topic, TopicShiftResult}
 import sigil.event.{Event, Message, MessageDisposition, MessageRole, MessageVisibility, Reasoning, TopicChange, TopicChangeKind, ToolInvoke}
 import sigil.participant.ParticipantId
-import sigil.provider.{CallId, ConversationRequest, Provider, ProviderEvent, StopReason}
-import sigil.signal.{MessageContentDelta, ContentKind, EventState, ImageDelta, MessageDelta, Signal, StateDelta, ToolDelta}
+import sigil.provider.{CallId, ConversationRequest, Provider, ProviderEvent, StopReason, XmlToolCallSanitizer}
+import sigil.signal.{MessageContentDelta, ContentKind, EventState, ImageDelta, MessageDelta, Signal, StateDelta, ToolDelta, XmlToolCallLeak}
 import sigil.tool.core.{CoreTools, FindCapabilityInput}
 import sigil.tool.model.{MarkdownContentParser, RespondInput, ResponseContent}
 import sigil.tool.ToolName
@@ -470,7 +470,16 @@ object Orchestrator {
             val closeBlock = closeCurrentBlock(state, convId)
             (Some(active.toolName), input) match {
               case (Some("respond"), r: RespondInput) =>
-                val parsed = MarkdownContentParser.parse(r.content)
+                val sanitized = XmlToolCallSanitizer.sanitize(r.content)
+                if (sanitized.leakedSpans.nonEmpty) {
+                  sigil.publish(XmlToolCallLeak(
+                    conversationId     = convId,
+                    modelId            = Some(request.modelId),
+                    leakedSpanCount    = sanitized.leakedSpans.size,
+                    firstLeakedExcerpt = sanitized.leakedSpans.head.take(200)
+                  )).handleError(_ => rapid.Task.unit).startUnit()
+                }
+                val parsed = MarkdownContentParser.parse(sanitized.content)
                 val settle = MessageDelta(
                   target = msgId,
                   conversationId = convId,
