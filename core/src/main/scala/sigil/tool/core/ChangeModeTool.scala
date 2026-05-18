@@ -25,11 +25,16 @@ import sigil.tool.model.ChangeModeInput
 case object ChangeModeTool extends TypedTool[ChangeModeInput](
   name = ToolName("change_mode"),
   description =
-    """Switch operating mode. Call BEFORE find_capability ONLY when the user
-      |is starting a sustained session in a listed mode's domain (multi-turn
-      |work). For single-action requests (one binding, one lookup, one file
-      |edit), stay in the current mode and use find_capability to surface the
-      |tool — most actions don't need a mode switch.
+    """Switch to a mode whose domain matches the user's current task. Each
+      |listed mode below describes the work it handles (writing code, web
+      |research, etc.); when the user's request lands in that domain — even
+      |a one-shot ask like "write a function" or "look this up on the web"
+      |— switch to that mode FIRST. The mode loads tools, instructions, and
+      |behavior tuned for that work; staying in a non-matching mode forces
+      |find_capability discovery on every operation.
+      |
+      |Skip the switch only when no listed mode's domain fits — then use
+      |find_capability directly.
       |
       |`mode` is the target's stable name from the available-modes list below.
       |After change_mode succeeds, the new mode's tools are directly callable
