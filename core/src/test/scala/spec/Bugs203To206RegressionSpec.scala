@@ -78,11 +78,11 @@ class Bugs203To206RegressionSpec extends AsyncWordSpec with AsyncTaskSpec with M
       desc should include("Stay here")
     }
 
-    "ChangeModeTool description now narrows to sustained-session entries" in {
+    "ChangeModeTool description leads with domain-match as the switch trigger" in {
       val desc = sigil.tool.core.ChangeModeTool.description
-      desc should include("ONLY when the user")
-      desc should include("sustained session")
-      desc should include("single-action requests")
+      desc should include("domain matches the user's current task")
+      desc should include("one-shot ask")
+      desc should include("find_capability discovery on every operation")
     }
 
     "DefaultToolsGuidance now contains a STEP 0 audit-current-mode block" in {
