@@ -1,0 +1,5 @@
+{"requestHash":"8624bdcd68148b6593e50334f9d6245d42974f4b89a1e7d2ed9614ea4de03195","recordedAt":1779146754958}
+{"callId":"b3a2334c9","toolName":"summarize_conversation","type":"ToolCallStart"}
+{"callId":"b3a2334c9","input":{"summary":"Alice introduced herself and specified a preference for dark-mode interfaces in all applications. She also defined the deployment target as staging.us-east-1 for any infrastructure-related tasks. The agent acknowledged and confirmed both the UI preference and the deployment endpoint.","tokenEstimate":60,"type":"SummarizationInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":838,"completionTokens":90,"totalTokens":928,"isEstimated":false},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

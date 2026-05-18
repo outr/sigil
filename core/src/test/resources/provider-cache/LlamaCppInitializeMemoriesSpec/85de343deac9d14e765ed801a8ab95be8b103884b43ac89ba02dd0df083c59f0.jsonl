@@ -1,0 +1,5 @@
+{"requestHash":"85de343deac9d14e765ed801a8ab95be8b103884b43ac89ba02dd0df083c59f0","recordedAt":1779146813492}
+{"callId":"93afec8a5","toolName":"extract_memories","type":"ToolCallStart"}
+{"callId":"93afec8a5","input":{"memories":[{"content":"User's first name is Matt.","label":"First name","key":"user.first_name","tags":["identity","name"]},{"content":"User's last name is Hicks.","label":"Last name","key":"user.last_name","tags":["identity","name"]},{"content":"User's email address is matt@outr.com.","label":"Email address","key":"user.email","tags":["identity","contact"]},{"content":"User is 46 years old.","label":"Age","key":"user.age","tags":["identity","demographic"]}],"type":"ExtractMemoriesInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":1062,"completionTokens":173,"totalTokens":1235,"isEstimated":false},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

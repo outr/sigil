@@ -55,7 +55,7 @@ class LlamaCppInitializeMemoriesSpec extends AsyncWordSpec with AsyncTaskSpec wi
   "Sigil.initializeMemories (llama.cpp)" should {
     "convert declarative statements into pinned, approved memories under the target space" in {
       TestSigil.reset()
-      TestSigil.setProvider(Task.pure(LlamaCppProvider(TestSigil.llamaCppHost, Nil, TestSigil)))
+      TestSigil.setProvider(CachedProviderFixtures.wrap(this, Task(LlamaCppProvider(TestSigil.llamaCppHost, Nil, TestSigil))))
 
       val statements = List(
         "My first name is Matt",
