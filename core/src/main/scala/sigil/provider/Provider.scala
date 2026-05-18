@@ -898,15 +898,16 @@ trait Provider {
     }
 
     // Tools the agent has already discovered via `find_capability`
-    // earlier in this conversation. Surfaces the per-query history
-    // so the agent invokes a known tool directly instead of
-    // re-running discovery. Cap keeps the prompt bounded.
-    val discovered = chain
-      .flatMap(id => turn.projectionFor(id).discoveredCapabilities.toList)
+    // earlier in this agent loop. Source is the per-loop cache on
+    // [[sigil.TurnContext]] (Bug #226) — empty on a fresh user turn,
+    // populated as the agent issues find_capability calls during the
+    // iteration loop, discarded when the loop ends. Cap keeps the
+    // prompt bounded inside one loop.
+    val discovered = c.discoveredCapabilities.toList
       .sortBy(-_._2.lastSeen.value)
       .take(sigil.discoveredCapabilitiesPromptCap)
     if (discovered.nonEmpty) {
-      sb.append("\n== Capabilities you've already discovered (this conversation) ==\n")
+      sb.append("\n== Capabilities you've already discovered (this turn) ==\n")
       discovered.foreach { case (query, dc) =>
         val matches = dc.matches.map(_.value)
         if (matches.nonEmpty) {
@@ -915,7 +916,7 @@ trait Provider {
       }
       sb.append(
         "If your current task needs one of these tools, invoke it directly. " +
-          "Do NOT re-search via `find_capability` for tools you've already discovered this conversation.\n"
+          "Do NOT re-search via `find_capability` for tools you've already discovered this turn.\n"
       )
     }
 

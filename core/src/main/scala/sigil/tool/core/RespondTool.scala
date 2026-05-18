@@ -74,6 +74,15 @@ case object RespondTool extends TypedTool[RespondInput](
 
 
   override protected def executeTyped(input: RespondInput, context: TurnContext): rapid.Stream[Event] = {
+    // Sigil bug #226 — `endsTurn = true` is the explicit "this agent
+    // loop is done" signal. Drop the per-loop `find_capability` cache
+    // here so the trace is visible at the call site; the natural
+    // end-of-loop release also drops it implicitly (the
+    // AtomicReference goes out of scope), so this clear is the
+    // traceable in-loop signal rather than a load-bearing one. Status
+    // pulses (`endsTurn = false`) leave the cache intact — the agent
+    // is still mid-loop.
+    if (input.endsTurn) context.clearDiscoveredCapabilities()
     val sanitized = XmlToolCallSanitizer.sanitize(input.content)
     if (sanitized.leakedSpans.nonEmpty) {
       context.sigil.publish(XmlToolCallLeak(

@@ -1819,7 +1819,8 @@ trait Sigil {
         chain = effectiveChain,
         roles = rolesResolved,
         isGreeting = context.isGreeting,
-        forceResponseSynthesis = context.forceResponseSynthesis
+        forceResponseSynthesis = context.forceResponseSynthesis,
+        discoveredCapabilities = context.discoveredCapabilities
       )
 
       val typingEmitted = new java.util.concurrent.atomic.AtomicBoolean(false)
@@ -3044,23 +3045,18 @@ trait Sigil {
           proj.copy(suggestedTools = (base ++ paginationNav).distinct)
         }
       case cr: CapabilityResults =>
+        // Sigil bug #226 — the per-loop `find_capability` cache is no
+        // longer persisted; `FindCapabilityTool.executeTyped` records
+        // matches directly onto `TurnContext.discoveredCapabilities`
+        // so the cache dies with the agent loop instead of polluting
+        // every subsequent turn. The projection update here keeps the
+        // `suggestedTools` overlay only — that's a single-turn decay
+        // surface that drives the "Suggested tools" prompt section.
         updateProjection(cr.conversationId, cr.participantId) { proj =>
           val toolNames = cr.matches.collect {
             case m if m.capabilityType == sigil.tool.discovery.CapabilityType.Tool => sigil.tool.ToolName(m.name)
           }
-          val now = Timestamp()
-          val updatedDiscovered =
-            if (cr.query.isEmpty) proj.discoveredCapabilities
-            else proj.discoveredCapabilities.updatedWith(cr.query) {
-              case Some(existing) => Some(existing.copy(matches = toolNames, lastSeen = now))
-              case None           => Some(_root_.sigil.conversation.DiscoveredCapability(
-                matches = toolNames, firstSeen = now, lastSeen = now
-              ))
-            }
-          proj.copy(
-            suggestedTools         = toolNames,
-            discoveredCapabilities = updatedDiscovered
-          )
+          proj.copy(suggestedTools = toolNames)
         }
       case _ => Task.unit
     }
@@ -5065,10 +5061,10 @@ trait Sigil {
   protected def consecutiveNoProgressLimit: Int = 2
 
   /** Cap on `discoveredCapabilities` entries surfaced in the
-    * agent's prompt — keeps the prompt bounded even on long-running
-    * conversations that have searched many queries. The cap is
-    * over the *map* (one entry per distinct query); each entry's
-    * matches list is already bounded by `find_capability`'s
+    * agent's prompt — keeps the prompt bounded even within a long
+    * agent loop that issues many distinct `find_capability` queries.
+    * The cap is over the *map* (one entry per distinct query); each
+    * entry's matches list is already bounded by `find_capability`'s
     * page size. Apps override to tune the prompt budget. */
   def discoveredCapabilitiesPromptCap: Int = 25
 
@@ -5103,7 +5099,14 @@ trait Sigil {
       // its own Failure Message — surfacing N identical failure
       // bubbles in the chat for one failure. CAS-gated like
       // `turnExtractorFired`.
-      failurePublished = new java.util.concurrent.atomic.AtomicBoolean(false)
+      failurePublished = new java.util.concurrent.atomic.AtomicBoolean(false),
+      // Sigil bug #226 — per-loop `find_capability` cache. Shared
+      // across every iteration of THIS loop so the agent doesn't
+      // re-discover within the same task; a fresh AtomicReference
+      // per `runAgent` call means the next user turn starts with an
+      // empty cache, preventing prompt pollution from prior turns'
+      // discoveries.
+      discoveredCapabilitiesRef = new AtomicReference(Map.empty)
     )
 
   /**
@@ -5153,7 +5156,17 @@ trait Sigil {
                                    * the actual cause (cap-hit vs no-tool-call
                                    * vs stall) instead of misattributing every
                                    * forced-synthesis failure as cap exhaustion. */
-                                 forcedReason: Option[ForcedSynthesisReason] = None): Task[Unit] = Task.defer {
+                                 forcedReason: Option[ForcedSynthesisReason] = None,
+                                 /** Sigil bug #226 — the per-agent-loop
+                                   * `find_capability` cache. Shared across
+                                   * every iteration of THIS loop so the agent
+                                   * doesn't re-discover within the same task;
+                                   * cleared at loop release by virtue of the
+                                   * reference going out of scope, so a new
+                                   * `runAgent` call starts with a fresh empty
+                                   * map. */
+                                 discoveredCapabilitiesRef: AtomicReference[Map[String, sigil.conversation.DiscoveredCapability]]
+                                   ): Task[Unit] = Task.defer {
     // Bug #149 — release the agent's claim AND fire the per-turn
     // memory extractor exactly once. The CAS-guard guarantees a
     // single extraction across every terminal exit path of the
@@ -5212,7 +5225,7 @@ trait Sigil {
         // suggestion-emitting tool result replaces the list.
         {
           scribe.info(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext start")
-          buildContext(agent, conv, sinceTimestamp = sinceTimestamp, claimedId = claimed._id, isGreeting = greeting && iteration == 1).flatMap {
+          buildContext(agent, conv, sinceTimestamp = sinceTimestamp, claimedId = claimed._id, isGreeting = greeting && iteration == 1, discoveredCapabilitiesRef = discoveredCapabilitiesRef).flatMap {
             case (rawCtx, triggers) =>
               // Sigil bug #125 — propagate the cap-hit soft-stop flag
               // through the TurnContext so runAgentTurn → ConversationRequest →
@@ -5269,11 +5282,22 @@ trait Sigil {
                       // unparseable input) leaves the flag false and
                       // the loop falls through to its normal end-of-
                       // turn check.
+                      //
+                      // Bug #226 — also drop the per-loop
+                      // `find_capability` cache on respond(endsTurn =
+                      // true). Covers the streaming-respond path
+                      // (orchestrator settles the in-flight Message via
+                      // `MessageDelta` and never calls
+                      // `RespondTool.executeTyped`); the atomic-respond
+                      // path's clear in `executeTyped` is idempotent
+                      // with this one.
                       val toolName = activeUserVisibleInvokes.get(td.target)
                       if (toolName == "respond") {
                         td.input match {
                           case Some(r: sigil.tool.model.RespondInput) if !r.endsTurn =>
                             agentRequestedContinue.set(true)
+                          case Some(r: sigil.tool.model.RespondInput) if r.endsTurn =>
+                            discoveredCapabilitiesRef.set(Map.empty)
                           case _ => ()
                         }
                       }
@@ -5392,24 +5416,26 @@ trait Sigil {
                       .flatMap(_ => publish(taggedDirective))
                       .flatMap { _ =>
                         runAgentLoop(
-                          agent                  = agent,
-                          convId                 = convId,
-                          claimed                = claimed,
-                          iteration              = nextIteration,
-                          sinceTimestamp         = thisIterationStart,
-                          greeting               = false,
-                          userVisibleSeen        = userVisibleSeen,
-                          turnExtractorFired     = turnExtractorFired,
-                          failurePublished       = failurePublished,
-                          forceResponseSynthesis = true,
-                          forcedReason           = Some(ForcedSynthesisReason.StallIntervention)
+                          agent                     = agent,
+                          convId                    = convId,
+                          claimed                   = claimed,
+                          iteration                 = nextIteration,
+                          sinceTimestamp            = thisIterationStart,
+                          greeting                  = false,
+                          userVisibleSeen           = userVisibleSeen,
+                          turnExtractorFired        = turnExtractorFired,
+                          failurePublished          = failurePublished,
+                          forceResponseSynthesis    = true,
+                          forcedReason              = Some(ForcedSynthesisReason.StallIntervention),
+                          discoveredCapabilitiesRef = discoveredCapabilitiesRef
                         )
                       }
                   case None =>
                     runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart,
                       userVisibleSeen = userVisibleSeen,
                       turnExtractorFired = turnExtractorFired,
-                      failurePublished = failurePublished)
+                      failurePublished = failurePublished,
+                      discoveredCapabilitiesRef = discoveredCapabilitiesRef)
                 }
               }
             case true if !forceResponseSynthesis =>
@@ -5459,17 +5485,18 @@ trait Sigil {
                 // the elevated tier. No-op when the flag is off.
                 escalateForCapHit(convId).flatMap(_ =>
                   runAgentLoop(
-                    agent                  = agent,
-                    convId                 = convId,
-                    claimed                = claimed,
-                    iteration              = iteration + 1,
-                    sinceTimestamp         = thisIterationStart,
-                    greeting               = false,
-                    userVisibleSeen        = userVisibleSeen,
-                    turnExtractorFired     = turnExtractorFired,
-                    failurePublished       = failurePublished,
-                    forceResponseSynthesis = true,
-                    forcedReason           = Some(ForcedSynthesisReason.CapHit)
+                    agent                     = agent,
+                    convId                    = convId,
+                    claimed                   = claimed,
+                    iteration                 = iteration + 1,
+                    sinceTimestamp            = thisIterationStart,
+                    greeting                  = false,
+                    userVisibleSeen           = userVisibleSeen,
+                    turnExtractorFired        = turnExtractorFired,
+                    failurePublished          = failurePublished,
+                    forceResponseSynthesis    = true,
+                    forcedReason              = Some(ForcedSynthesisReason.CapHit),
+                    discoveredCapabilitiesRef = discoveredCapabilitiesRef
                   )
                 )
               }
@@ -5502,17 +5529,18 @@ trait Sigil {
                     agent, conv, iteration, maxAgentIterations, forcedReason)))
               else
                 runAgentLoop(
-                  agent                  = agent,
-                  convId                 = convId,
-                  claimed                = claimed,
-                  iteration              = iteration + 1,
-                  sinceTimestamp         = thisIterationStart,
-                  greeting               = false,
-                  userVisibleSeen        = userVisibleSeen,
-                  turnExtractorFired     = turnExtractorFired,
-                  failurePublished       = failurePublished,
-                  forceResponseSynthesis = true,
-                  forcedReason           = Some(ForcedSynthesisReason.NoToolCall)
+                  agent                     = agent,
+                  convId                    = convId,
+                  claimed                   = claimed,
+                  iteration                 = iteration + 1,
+                  sinceTimestamp            = thisIterationStart,
+                  greeting                  = false,
+                  userVisibleSeen           = userVisibleSeen,
+                  turnExtractorFired        = turnExtractorFired,
+                  failurePublished          = failurePublished,
+                  forceResponseSynthesis    = true,
+                  forcedReason              = Some(ForcedSynthesisReason.NoToolCall),
+                  discoveredCapabilitiesRef = discoveredCapabilitiesRef
                 )
             }
           }
@@ -5988,7 +6016,9 @@ trait Sigil {
                                  conv: Conversation,
                                  sinceTimestamp: Timestamp,
                                  claimedId: Id[Event],
-                                 isGreeting: Boolean = false): Task[(TurnContext, Stream[Event])] =
+                                 isGreeting: Boolean = false,
+                                 discoveredCapabilitiesRef: AtomicReference[Map[String, sigil.conversation.DiscoveredCapability]] =
+                                   new AtomicReference(Map.empty)): Task[(TurnContext, Stream[Event])] =
     for {
       triggerEvents <- withDB(_.events.transaction(_.list)).map { all =>
         all.view
@@ -6018,7 +6048,8 @@ trait Sigil {
         turnInput = input,
         currentAgentStateId = Some(claimedId),
         routedModelId = Some(routedModelId),
-        isGreeting = isGreeting
+        isGreeting = isGreeting,
+        discoveredCapabilitiesRef = discoveredCapabilitiesRef
       )
       (ctx, triggers)
     }
