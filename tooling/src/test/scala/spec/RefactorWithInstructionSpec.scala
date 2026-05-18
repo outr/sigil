@@ -13,6 +13,7 @@ import sigil.db.{Model, SigilDB}
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
 import sigil.information.Information
 import sigil.participant.{AgentParticipantId, Participant, ParticipantId}
+import sigil.provider.Complexity
 import sigil.provider.llamacpp.LlamaCppProvider
 import sigil.provider.Provider
 import sigil.signal.Signal
@@ -116,9 +117,12 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
   private def prepare(fs: FileSystemContext,
                       store: RefactorSessionStore,
                       input: RefactorWithInstructionInput,
-                      ctx: TurnContext): Task[RefactorWithInstructionOutput] = {
+                      ctx: TurnContext): Task[RefactorWithInstructionOutput.Dispatched] = {
     val tool = new RefactorWithInstructionTool(fs, store)
-    tool.invoke(input, ctx)
+    tool.invoke(input, ctx).map {
+      case d: RefactorWithInstructionOutput.Dispatched => d
+      case other => fail(s"expected Dispatched output (confirmed=true), got $other")
+    }
   }
 
   private def apply(fs: FileSystemContext,
@@ -164,9 +168,11 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
               |    startChar: 0,
               |    endChar: 14
               |  } ]""".stripMargin,
+          complexity    = Complexity.Low,
           workerModelId = Some(modelId.value),
           maxParallel   = 1,
-          maxWorkers    = 5
+          maxFiles      = 5,
+          confirmed     = true
         )
         for {
           prepared <- prepare(fs, store, input, ctx)
@@ -223,9 +229,11 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
               |    startChar: 0,
               |    endChar: 14
               |  } ]""".stripMargin,
+          complexity    = Complexity.Low,
           workerModelId = Some(modelId.value),
           maxParallel   = 1,
-          maxWorkers    = 5
+          maxFiles      = 5,
+          confirmed     = true
         )
         for {
           prepared  <- prepare(fs, store, input, ctx)
@@ -272,9 +280,11 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
               |    { matchedLine: 2, action: "Edited",  reason: "first marker should go",       oldText: "// TODO:remove", newText: "", startChar: 0, endChar: 14 },
               |    { matchedLine: 4, action: "Skipped", reason: "second marker should remain",  oldText: "// TODO:remove" }
               |  ]""".stripMargin,
+          complexity    = Complexity.Low,
           workerModelId = Some(modelId.value),
           maxParallel   = 1,
-          maxWorkers    = 5
+          maxFiles      = 5,
+          confirmed     = true
         )
         for {
           prepared <- prepare(fs, store, input, ctx)
@@ -344,9 +354,11 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
               |    startChar: 0,
               |    endChar: 14
               |  } ]""".stripMargin,
+          complexity    = Complexity.Low,
           workerModelId = Some(modelId.value),
           maxParallel   = 1,
-          maxWorkers    = 5
+          maxFiles      = 5,
+          confirmed     = true
         )
         for {
           prepared <- prepare(fs, store, input, ctx)
