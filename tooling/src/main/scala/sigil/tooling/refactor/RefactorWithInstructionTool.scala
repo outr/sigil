@@ -69,14 +69,19 @@ final class RefactorWithInstructionTool(fs: FileSystemContext,
         |Inputs:
         |  - `path`         — filesystem root for the search.
         |  - file-set glob  — optional path-glob filter on candidate files.
-        |  - `findPattern`  — regex; files with at least one match get a worker.
+        |  - `findPattern`  — regex; every file with at least one match gets its own paid LLM
+        |                     worker call. Make this AS NARROW AS POSSIBLE — if you can encode
+        |                     the filter in the regex (e.g. anchor to comment syntax like
+        |                     `^[ \\t]*(//|/\\*|\\*).*pattern`), do it there, not in the
+        |                     `instruction`. The worker is paid compute, not free filtering.
+        |                     A pattern that matches 1500 files costs 1500 worker calls.
         |  - `instruction`  — what every worker should do at each match. Write it as a self-
         |                     contained directive — every worker sees ONLY this string plus
         |                     its file's matches. Be explicit about preserve-vs-edit if the
         |                     pattern could overmatch (e.g. "Remove // Bug NNN markers. Preserve
         |                     // Don't fix: warnings unchanged.").
-        |  - `workerModelId`— optional explicit model id for the workers; default routes to the
-        |                     cheapest available at `Low` complexity for coding work.
+        |  - `workerModelId`— optional explicit model id for the workers; when unset, inherits
+        |                     the caller's currently-routed model.
         |  - `maxParallel`  — concurrency cap (default 5).
         |  - `maxWorkers`   — hard cost cap (default 1000) — refuses to spawn more.
         |
@@ -153,7 +158,10 @@ final class RefactorWithInstructionTool(fs: FileSystemContext,
       if (totalWorkers > input.maxWorkers) {
         Task.pure(emptyOutputWithAbort(
           ctx,
-          s"found $totalWorkers files with matches; refusing to spawn more than maxWorkers=${input.maxWorkers}"
+          s"found $totalWorkers files with matches; refusing to spawn more than ${input.maxWorkers} worker calls. " +
+            s"Most likely fix: tighten `findPattern` — every file match = one paid LLM worker call, " +
+            s"so a pattern matching $totalWorkers files costs $totalWorkers calls. " +
+            s"If the pattern is correct and you really want $totalWorkers worker calls, raise the cap explicitly."
         ))
       } else if (byFile.isEmpty) {
         // No candidates — still register an empty session so the

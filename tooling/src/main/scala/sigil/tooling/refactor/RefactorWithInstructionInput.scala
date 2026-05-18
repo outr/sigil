@@ -25,9 +25,8 @@ import sigil.tool.ToolInput
  * @param instruction  natural-language description of the change to
  *                     apply at each match. Workers read this verbatim.
  * @param workerModelId optional explicit model id to drive each
- *                     worker. When unset, the framework's routing
- *                     picks the cheapest available candidate at
- *                     `Low` complexity for `CodingWork`.
+ *                     worker. When unset, inherits the caller's
+ *                     currently-routed model.
  * @param maxParallel  cap on simultaneous worker invocations.
  *                     Higher values shorten total wall time at the
  *                     cost of more concurrent LLM round-trips.
