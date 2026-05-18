@@ -88,7 +88,8 @@ object CoreSignals {
     summon[RW[FrameworkWorkflowNotice]],
     summon[RW[XmlToolCallLeak]],
     summon[RW[ServiceStatusSignal]],
-    summon[RW[ServiceLogSignal]]
+    summon[RW[ServiceLogSignal]],
+    summon[RW[ThinkingChunk]]
   )
 
   val all: List[RW[? <: Signal]] = events ++ deltas ++ notices

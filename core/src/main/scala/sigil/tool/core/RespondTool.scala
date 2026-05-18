@@ -98,14 +98,32 @@ case object RespondTool extends TypedTool[RespondInput](
       case ResponseDisposition.Success => MessageDisposition.Success
       case ResponseDisposition.Failure => MessageDisposition.Failure()
     }
-    val message = Message(
-      participantId  = context.caller,
-      conversationId = context.conversation.id,
-      topicId        = context.conversation.currentTopicId,
-      content        = blocks,
-      disposition    = disposition,
-      modelId        = context.modelId
-    )
+    // Adopt the orchestrator's `currentMessageId` (when set — usually
+    // when a prior `ThinkingDelta` reserved a placeholder id) so the
+    // settled Message's `_id` matches every `ThinkingChunk.target`
+    // emitted during the reasoning phase. Consumers fuse a live
+    // thinking-tail UI with the final message bubble via this id.
+    val message = context.currentMessageId match {
+      case Some(id) =>
+        Message(
+          participantId  = context.caller,
+          conversationId = context.conversation.id,
+          topicId        = context.conversation.currentTopicId,
+          content        = blocks,
+          disposition    = disposition,
+          modelId        = context.modelId,
+          _id            = id
+        )
+      case None =>
+        Message(
+          participantId  = context.caller,
+          conversationId = context.conversation.id,
+          topicId        = context.conversation.currentTopicId,
+          content        = blocks,
+          disposition    = disposition,
+          modelId        = context.modelId
+        )
+    }
     // Topic resolution + keyword update fire here so the atomic-respond
     // path (every provider whose `respond` materialises as a function
     // call: llama.cpp grammar-constrained, OpenAI strict-mode,

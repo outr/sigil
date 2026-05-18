@@ -8,7 +8,7 @@ import sigil.conversation.{ContextFrame, Conversation, Topic, TopicShiftResult}
 import sigil.event.{Event, Message, MessageDisposition, MessageRole, MessageVisibility, Reasoning, TopicChange, TopicChangeKind, ToolInvoke}
 import sigil.participant.ParticipantId
 import sigil.provider.{CallId, ConversationRequest, Provider, ProviderEvent, StopReason, XmlToolCallSanitizer}
-import sigil.signal.{MessageContentDelta, ContentKind, EventState, ImageDelta, MessageDelta, Signal, StateDelta, ToolDelta, XmlToolCallLeak}
+import sigil.signal.{MessageContentDelta, ContentKind, EventState, ImageDelta, MessageDelta, Signal, StateDelta, ThinkingChunk, ToolDelta, XmlToolCallLeak}
 import sigil.tool.core.{CoreTools, FindCapabilityInput}
 import sigil.tool.model.{MarkdownContentParser, RespondInput, ResponseContent}
 import sigil.tool.ToolName
@@ -211,6 +211,16 @@ object Orchestrator {
     def activeToolName: Option[String] = activeCalls.lastOption.map(_._2.toolName)
     def activeToolInvokeId: Option[lightdb.id.Id[Event]] = activeCalls.lastOption.map(_._2.invokeId)
     var activeMessageId: Option[lightdb.id.Id[Event]] = None
+    /** Tracks whether the in-flight [[activeMessageId]] has actually
+      * been emitted as a `Message` event yet. `ThinkingDelta` reserves
+      * the id ahead of any user-visible content so [[ThinkingChunk]]
+      * `target` matches the eventual settled Message, but the Message
+      * itself is only "born" once `ContentBlockDelta` lands real
+      * content. Downstream branches that distinguish streaming-Message
+      * from atomic-tool dispatch (`toolCallCompleteInner`,
+      * `settleOrphanMessage`, the `Usage` fallback) read THIS flag,
+      * not `activeMessageId.isDefined`. */
+    var activeMessageCreated: Boolean = false
 
     /** Bug #55 — id of the most recently emitted user-visible Message
       * for this turn (`role != MessageRole.Tool`). Used as the fallback
@@ -321,7 +331,17 @@ object Orchestrator {
         // preserving the corruption-resistance invariant.
         val invokeId = Event.id()
         state.activeCalls(callId) = ActiveCall(toolName, invokeId)
-        state.activeMessageId = None
+        // Preserve a thinking-reserved `activeMessageId` so the atomic
+        // tool can adopt it via `TurnContext.currentMessageId`,
+        // ensuring `ThinkingChunk.target` matches the eventual settled
+        // Message id even on tool-call-only respond paths. A streaming
+        // Message that was already born (`activeMessageCreated`) DOES
+        // get cleared — the tool call boundary opens a new tool
+        // dispatch and the prior streaming Message is settled elsewhere.
+        if (state.activeMessageCreated) {
+          state.activeMessageId = None
+          state.activeMessageCreated = false
+        }
         state.currentKind = None
         state.currentArg = None
         state.sawAnyToolCall = true
@@ -338,23 +358,33 @@ object Orchestrator {
         val kind = state.currentKind.getOrElse(ContentKind.Text)
         state.currentBuffer.append(text)
         state.turnBuffer.append(text)
-        val (createMessageSignal, msgId) = state.activeMessageId match {
-          case Some(id) => (None, id)
-          case None =>
+        // Emit the Message on the first content delta — `activeMessageId`
+        // may already be set by a prior `ThinkingDelta` (which reserves
+        // the id so `ThinkingChunk.target` matches the settled Message
+        // without "birthing" the Message), so the flag — not id presence
+        // — gates Message creation.
+        val (createMessageSignal, msgId) = if (state.activeMessageCreated) {
+          (None, state.activeMessageId.getOrElse {
             val id = Event.id()
             state.activeMessageId = Some(id)
-            state.lastUserVisibleMessageId = Some(id)
-            val msg = Message(
-              participantId = caller,
-              conversationId = convId,
-              topicId = topicId,
-              content = Vector.empty,
-              modelId = Some(request.modelId),
-              modelDisplayName = modelDisplayName,
-              _id = id,
-              state = EventState.Active
-            )
-            (Some(msg), id)
+            id
+          })
+        } else {
+          val id = state.activeMessageId.getOrElse(Event.id())
+          state.activeMessageId = Some(id)
+          state.activeMessageCreated = true
+          state.lastUserVisibleMessageId = Some(id)
+          val msg = Message(
+            participantId = caller,
+            conversationId = convId,
+            topicId = topicId,
+            content = Vector.empty,
+            modelId = Some(request.modelId),
+            modelDisplayName = modelDisplayName,
+            _id = id,
+            state = EventState.Active
+          )
+          (Some(msg), id)
         }
         val delta = MessageDelta(
           target = msgId,
@@ -463,7 +493,7 @@ object Orchestrator {
         // atomic branches (refusal challenge, repeated-query intercept)
         // return from THIS def rather than from `translate`. That
         // preserves the synthesis-prepend at the bottom of this case.
-        def toolCallCompleteInner(): Stream[Signal] = state.activeMessageId match {
+        def toolCallCompleteInner(): Stream[Signal] = (if (state.activeMessageCreated) state.activeMessageId else None) match {
           case Some(msgId) =>
             // Streaming path — respond's content streamed live as
             // ContentBlockDeltas. Close the open block, parse the
@@ -680,7 +710,14 @@ object Orchestrator {
                       // grammar-constrained respond invocations) carried
                       // `modelId = None` because no streaming
                       // ContentBlockDelta path fired to attach it.
-                      modelId             = Some(request.modelId)
+                      modelId             = Some(request.modelId),
+                      // Thread the thinking-reserved Message id (if a
+                      // prior `ThinkingDelta` allocated one) so atomic
+                      // content tools can adopt it as `Message._id`,
+                      // making `ThinkingChunk.target` match the eventual
+                      // settled Message even on tool-call-only respond
+                      // paths.
+                      currentMessageId    = if (state.activeMessageCreated) None else state.activeMessageId
                     ), invokeId)).handleError { err =>
                       scribe.error(s"Atomic tool '$toolName' threw during execution", err)
                       Task.pure(Stream.emit[Signal](Message(
@@ -937,7 +974,12 @@ object Orchestrator {
         // the agent's user-visible Message inside the tool's
         // `executeTyped`, so the streaming-text path never fires; this
         // fallback lets per-turn token usage land on that Message.
-        state.activeMessageId.orElse(state.lastUserVisibleMessageId) match {
+        // Use `activeMessageId` only when a Message has actually been
+        // emitted (`activeMessageCreated`); otherwise the id may be
+        // a thinking-reserved placeholder for which no Message exists
+        // yet, and the usage would land nowhere.
+        val streamingTarget = if (state.activeMessageCreated) state.activeMessageId else None
+        streamingTarget.orElse(state.lastUserVisibleMessageId) match {
           case Some(msgId) =>
             Stream.emits(List(MessageDelta(target = msgId, conversationId = convId, usage = Some(usage))))
           case None if state.sawAnyToolCall =>
@@ -971,7 +1013,27 @@ object Orchestrator {
         // the diagnostic is post-stream.
         state.plainTextBuffer.append(text)
         Stream.empty
-      case ProviderEvent.ThinkingDelta(_)                 => Stream.empty
+      case ProviderEvent.ThinkingDelta(text) =>
+        // Forward reasoning text to consumers as a transient
+        // `ThinkingChunk` Notice so live UIs can render a tail of the
+        // agent's pre-content thinking. Lazily allocates the
+        // placeholder `activeMessageId` on first chunk and reuses it
+        // across subsequent chunks (and across the eventual user-
+        // visible Message creation in `ContentBlockDelta`); the
+        // ThinkingChunk's `target` therefore matches the id the
+        // settled Message will carry, letting consumers fuse the
+        // thinking-tail UI with the final message bubble.
+        // Crucially, no `Message.create` fires here — the Message
+        // isn't "born" until the first user-visible content delta
+        // lands; reasoning alone never materializes a Message.
+        val msgId = state.activeMessageId match {
+          case Some(id) => id
+          case None =>
+            val id = Event.id()
+            state.activeMessageId = Some(id)
+            id
+        }
+        Stream.emit(ThinkingChunk(target = msgId, conversationId = convId, delta = text))
       case ProviderEvent.ServerToolStart(_, _, _)         => Stream.empty
       case ProviderEvent.ServerToolComplete(_, _)         => Stream.empty
 
@@ -1346,10 +1408,16 @@ object Orchestrator {
   private def settleOrphanMessage(state: State,
                                   convId: lightdb.id.Id[Conversation],
                                   error: Option[String] = None): List[Signal] =
-    state.activeMessageId match {
-      case None => Nil
+    // Only settle when a Message was actually emitted — a thinking-
+    // reserved id without `activeMessageCreated` points at no event.
+    state.activeMessageId.filter(_ => state.activeMessageCreated) match {
+      case None =>
+        state.activeMessageId = None
+        state.activeMessageCreated = false
+        Nil
       case Some(msgId) =>
         state.activeMessageId = None
+        state.activeMessageCreated = false
         val reason = error.getOrElse("Tool call failed before settling")
         val delta: Signal = MessageDelta(
           target             = msgId,
