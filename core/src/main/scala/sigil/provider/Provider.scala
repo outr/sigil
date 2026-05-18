@@ -1,11 +1,13 @@
 package sigil.provider
 
+import lightdb.id.Id
 import rapid.{Stream, Task}
 import sigil.Sigil
 import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary, TurnInput}
 import sigil.db.Model
 import sigil.diagnostics.RequestProfiler
 import sigil.participant.ParticipantId
+import sigil.service.{Service, ServiceKind, ServiceState}
 import sigil.signal.WireRequestProfile
 import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
 import sigil.tool.Tool
@@ -32,7 +34,7 @@ import spice.http.HttpRequest
  * `call` implementation, not duplicating ~500 lines of conversation-
  * aware machinery.
  */
-trait Provider {
+trait Provider extends Service {
   def `type`: ProviderType
 
   /** This provider's namespace key — matches the prefix on
@@ -41,6 +43,42 @@ trait Provider {
     * Override only when a provider's models live under a different
     * namespace. */
   def providerKey: String = `type`.toString.toLowerCase
+
+  // --- Service implementation ---
+
+  /** Stable [[sigil.service.Service.id]] derived from [[providerKey]].
+    * Apps that run multiple providers of the same `type` (e.g. two
+    * OpenAI keys) override to disambiguate (`provider.openai.dev` vs
+    * `provider.openai.prod`); the default keys per `type`. */
+  override def id: Id[Service] = Id[Service](s"provider.$providerKey")
+
+  /** Display name for the chip — the provider's `type` enum case. */
+  override def name: String = `type`.toString
+
+  /** Providers serve models — they're [[ServiceKind.ModelServer]]
+    * unless overridden. */
+  override def kind: ServiceKind = ServiceKind.ModelServer
+
+  /** Derive a current health snapshot from observable signals:
+    *
+    *   - [[ServiceState.Degraded]] when the rate limiter advertises
+    *     a measurable rate-limit pressure (apps that feed the
+    *     limiter from response headers).
+    *   - [[ServiceState.Degraded]] when [[capacityGate]] has zero
+    *     permits available (every slot is in flight; new requests
+    *     will queue).
+    *   - [[ServiceState.Up]] otherwise.
+    *
+    * Providers with stronger telemetry (auth failure flag, recent
+    * 5xx rate, last-error timestamp) override and compute richer
+    * state. The default never enters [[ServiceState.Down]] /
+    * [[ServiceState.Error]] — those require explicit knowledge the
+    * trait can't infer. */
+  override def currentState: ServiceState = {
+    val capacityExhausted = capacityGate.availablePermits() <= 0
+    if (capacityExhausted) ServiceState.Degraded("capacity-exhausted")
+    else ServiceState.Up
+  }
 
   /** DB / configuration access for the shared translation pass. Wired
     * by each provider implementation (typically as a constructor arg). */
