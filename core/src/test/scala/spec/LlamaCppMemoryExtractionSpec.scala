@@ -65,7 +65,7 @@ class LlamaCppMemoryExtractionSpec extends AsyncWordSpec with AsyncTaskSpec with
   "MemoryContextCompressor (llama.cpp)" should {
     "extract durable facts into the memory space and make them retrievable via searchMemories" in {
       TestSigil.reset()
-      TestSigil.setProvider(Task.pure(LlamaCppProvider(TestSigil.llamaCppHost, Nil, TestSigil)))
+      TestSigil.setProvider(CachedProviderFixtures.wrap(this, Task(LlamaCppProvider(TestSigil.llamaCppHost, Nil, TestSigil))))
       TestSigil.setCompressionSpace(Some(MemoryTestSpace))
       TestSigil.setEmbeddingProvider(TestHashEmbeddingProvider)
       TestSigil.setVectorIndex(new InMemoryVectorIndex)

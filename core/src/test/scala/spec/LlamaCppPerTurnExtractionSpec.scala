@@ -55,7 +55,7 @@ class LlamaCppPerTurnExtractionSpec extends AsyncWordSpec with AsyncTaskSpec wit
   "StandardMemoryExtractor (llama.cpp)" should {
     "persist a keyed memory from a high-signal user turn against a real LLM" in {
       TestSigil.reset()
-      TestSigil.setProvider(Task.pure(LlamaCppProvider(TestSigil.llamaCppHost, Nil, TestSigil)))
+      TestSigil.setProvider(CachedProviderFixtures.wrap(this, Task(LlamaCppProvider(TestSigil.llamaCppHost, Nil, TestSigil))))
       TestSigil.setEmbeddingProvider(TestHashEmbeddingProvider)
       TestSigil.setVectorIndex(new InMemoryVectorIndex)
 

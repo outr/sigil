@@ -81,7 +81,7 @@ class LlamaCppClassifyMemorySpec extends AsyncWordSpec with AsyncTaskSpec with M
 
   private def reseed(): Unit = {
     TestSigil.reset()
-    TestSigil.setProvider(Task.pure(LlamaCppProvider(TestSigil.llamaCppHost, Nil, TestSigil)))
+    TestSigil.setProvider(CachedProviderFixtures.wrap(this, Task(LlamaCppProvider(TestSigil.llamaCppHost, Nil, TestSigil))))
     TestSigil.setMemoryClassifierModel(Some(modelId))
     TestSigil.setAccessibleSpaces(_ => Task.pure(Set(MemoryTestSpace)))
     TestSigil.withDB(_.memories.transaction { tx =>

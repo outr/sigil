@@ -109,7 +109,7 @@ class LlamaCppMemoryKeywordRetrievalSpec extends AsyncWordSpec with AsyncTaskSpe
 
   private def reseedTestSigil(): Unit = {
     TestSigil.reset()
-    TestSigil.setProvider(Task.pure(LlamaCppProvider(TestSigil.llamaCppHost, Nil, TestSigil)))
+    TestSigil.setProvider(CachedProviderFixtures.wrap(this, Task(LlamaCppProvider(TestSigil.llamaCppHost, Nil, TestSigil))))
     TestSigil.setEmbeddingProvider(TestHashEmbeddingProvider)
     TestSigil.setVectorIndex(new InMemoryVectorIndex)
     TestSigil.setMemoryClassifierModel(Some(modelId))
