@@ -58,8 +58,16 @@ object RequestProfiler {
       if (text.nonEmpty) sections(section) = sections.getOrElse(section, 0) + tokenizer.count(text)
 
     // 1. Tool framing prefix
-    if (request.tools.nonEmpty) add(ProfileSection.ToolFramingPrefix,
-      "You communicate exclusively through tool calls. Plain text output is never delivered to the user — always pick a tool.\n\n")
+    if (request.tools.nonEmpty) {
+      add(ProfileSection.ToolFramingPrefix,
+        "You communicate exclusively through tool calls. Plain text output is never delivered to the user — always pick a tool.\n\n")
+      add(ProfileSection.ToolFramingPrefix,
+        "Tool calls go through the JSON `tool_calls` protocol the API negotiates with you. " +
+          "Never emit `<tool_call>`, `<function=…>`, or similar XML/tag syntax inside `content` or any " +
+          "other string field — those will NOT be parsed as tool calls; they will leak to the user as " +
+          "text. If you want to make a follow-up tool call after responding, set `respond.endsTurn = false` " +
+          "and issue the next call on the next iteration.\n\n")
+    }
 
     // 2. Mode + topic block
     val modeText = new StringBuilder

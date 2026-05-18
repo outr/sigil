@@ -3,7 +3,8 @@ package sigil.tool.core
 import sigil.TurnContext
 import sigil.conversation.ContextFrame
 import sigil.event.{Event, Message, MessageDisposition}
-import sigil.signal.EventState
+import sigil.provider.XmlToolCallSanitizer
+import sigil.signal.{EventState, XmlToolCallLeak}
 import sigil.tool.{ToolExample, ToolName, TypedTool}
 import sigil.tool.model.{MarkdownContentParser, RespondInput, ResponseContent, ResponseDisposition}
 
@@ -73,7 +74,16 @@ case object RespondTool extends TypedTool[RespondInput](
 
 
   override protected def executeTyped(input: RespondInput, context: TurnContext): rapid.Stream[Event] = {
-    val blocks = MarkdownContentParser.parse(input.content)
+    val sanitized = XmlToolCallSanitizer.sanitize(input.content)
+    if (sanitized.leakedSpans.nonEmpty) {
+      context.sigil.publish(XmlToolCallLeak(
+        conversationId     = context.conversation.id,
+        modelId            = context.modelId,
+        leakedSpanCount    = sanitized.leakedSpans.size,
+        firstLeakedExcerpt = sanitized.leakedSpans.head.take(200)
+      )).handleError(_ => rapid.Task.unit).startUnit()
+    }
+    val blocks = MarkdownContentParser.parse(sanitized.content)
     val disposition = input.disposition match {
       case ResponseDisposition.Success => MessageDisposition.Success
       case ResponseDisposition.Failure => MessageDisposition.Failure()
