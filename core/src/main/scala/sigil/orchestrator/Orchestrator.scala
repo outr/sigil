@@ -364,12 +364,18 @@ object Orchestrator {
         Stream.emits(createMessageSignal.toList ::: List(delta))
 
       case ProviderEvent.ToolCallComplete(callId, input) if state.completedCallIds.contains(callId) =>
-        scribe.warn(
-          s"Duplicate ToolCallComplete(callId=${callId.value}) — provider emitted this completion " +
-            "chunk twice in the same stream. Ignoring the second one; the first dispatched and " +
-            "settled normally. (Without this guard the orphan-synth path would emit a phantom " +
-            "Active ToolInvoke with no paired result and the wire would carry the corresponding " +
-            "dangling tool_call.)"
+        // Safety net for unknown future provider variance. The known
+        // split-finish case (OpenRouter+Chutes+Kimi per #228) is now
+        // suppressed at the wire-decoder layer where the context is
+        // rich enough to recognise the usage-followup shape, so a
+        // duplicate reaching the orchestrator today indicates either
+        // a real Sigil bug or a new provider quirk worth surfacing —
+        // but at debug level, not warn, so an operator investigating
+        // can opt in via `scribe.Level.Debug` without normal runs
+        // logging noise on every OpenRouter+Kimi tool call.
+        scribe.debug(
+          s"Duplicate ToolCallComplete(callId=${callId.value}) reached the orchestrator. " +
+            "Ignoring the second one; the first dispatched and settled normally."
         )
         Stream.empty
 
