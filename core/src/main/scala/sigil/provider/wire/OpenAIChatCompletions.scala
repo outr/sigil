@@ -691,20 +691,32 @@ object OpenAIChatCompletions {
             scribe.warn(s"Unmapped finish_reason from ${config.providerName}: '$other' — treating as Complete")
             StopReason.Complete
         }
-        if (sr == StopReason.ToolCall) events ++= state.acc.complete()
-        // Sigil bug #173 — response_format substitution: the model
-        // finished with `stop` (not `tool_calls`) because we asked
-        // for structured content. Synthesize the tool-call events
-        // from the buffered content so the orchestrator processes
-        // it identically to a native tool call.
-        else if (sr == StopReason.Complete) {
-          state.responseFormatMode match {
-            case Some(mode) =>
-              events ++= synthesizeToolCallFromContent(state, mode, config)
-            case None => ()
+        // Some OpenAI-compat backends (observed: OpenRouter proxying
+        // Kimi K2.5/K2.6 via Chutes) split end-of-stream across two
+        // chunks — the first carries `finish_reason` alone; the second
+        // re-announces `finish_reason` AND attaches `usage` as a
+        // followup. Treat the second arrival as a usage-only
+        // followup: don't re-emit a completion (the orchestrator's
+        // dedupe would catch the duplicate but we'd rather not emit
+        // it in the first place). The `usage` block in this chunk
+        // still flows through — the `json.get("usage")` handler
+        // below runs unconditionally.
+        if (state.pendingDone.isEmpty) {
+          if (sr == StopReason.ToolCall) events ++= state.acc.complete()
+          // Sigil bug #173 — response_format substitution: the model
+          // finished with `stop` (not `tool_calls`) because we asked
+          // for structured content. Synthesize the tool-call events
+          // from the buffered content so the orchestrator processes
+          // it identically to a native tool call.
+          else if (sr == StopReason.Complete) {
+            state.responseFormatMode match {
+              case Some(mode) =>
+                events ++= synthesizeToolCallFromContent(state, mode, config)
+              case None => ()
+            }
           }
+          state.pendingDone = Some(sr)
         }
-        state.pendingDone = Some(sr)
       }
     }
 
