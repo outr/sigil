@@ -31,4 +31,5 @@ case class ApprovalStepInput(id: String,
                              options: List[String] = List("approve", "reject"),
                              output: Option[String] = None,
                              timeoutMs: Option[Long] = None,
-                             timeoutAction: TimeoutAction = TimeoutAction.Fail) extends WorkflowStepInput derives RW
+                             timeoutAction: TimeoutAction = TimeoutAction.Fail)
+  extends WorkflowStepInput derives RW

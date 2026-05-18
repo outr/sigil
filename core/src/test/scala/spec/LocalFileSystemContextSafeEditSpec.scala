@@ -28,7 +28,7 @@ class LocalFileSystemContextSafeEditSpec extends AsyncWordSpec with AsyncTaskSpe
     "round-trip readContents returning the SHA-256 hash of the bytes" in {
       val ctx = new LocalFileSystemContext(Some(tmpRoot))
       for {
-        _    <- ctx.writeFile("rt.txt", "hello")
+        _ <- ctx.writeFile("rt.txt", "hello")
         snap <- ctx.readContents("rt.txt")
       } yield {
         snap shouldBe defined
@@ -40,17 +40,16 @@ class LocalFileSystemContextSafeEditSpec extends AsyncWordSpec with AsyncTaskSpe
     "use a separate lock per canonical path" in {
       val ctx = new LocalFileSystemContext(Some(tmpRoot))
       for {
-        _    <- ctx.writeFile("indep/a.txt", "1")
-        _    <- ctx.writeFile("indep/b.txt", "1")
-        sa   <- ctx.readContents("indep/a.txt")
-        sb   <- ctx.readContents("indep/b.txt")
-        _    <- ctx.writeIfMatch("indep/a.txt", "2", sa.get.version)
-        _    <- ctx.writeIfMatch("indep/b.txt", "2", sb.get.version)
-      } yield {
+        _ <- ctx.writeFile("indep/a.txt", "1")
+        _ <- ctx.writeFile("indep/b.txt", "1")
+        sa <- ctx.readContents("indep/a.txt")
+        sb <- ctx.readContents("indep/b.txt")
+        _ <- ctx.writeIfMatch("indep/a.txt", "2", sa.get.version)
+        _ <- ctx.writeIfMatch("indep/b.txt", "2", sb.get.version)
+      } yield
         // Two distinct canonical paths → two distinct lock entries.
         // A shared-lock bug would collapse this to 1.
         ctx.lockCount shouldBe 2
-      }
     }
 
     "release the lock when the locked region throws, allowing subsequent CAS to succeed" in {
@@ -63,14 +62,14 @@ class LocalFileSystemContextSafeEditSpec extends AsyncWordSpec with AsyncTaskSpe
       val initialHash = FileVersion.hashOf("v1".getBytes(StandardCharsets.UTF_8))
       val staleVersion = FileVersion(initialHash, Timestamp())
       for {
-        _      <- flaky.writeFile("ex/path.txt", "v1")
-        first  <- flaky.writeIfMatch("ex/path.txt", "v2", staleVersion).attempt
-        snap   <- flaky.readContents("ex/path.txt")
+        _ <- flaky.writeFile("ex/path.txt", "v1")
+        first <- flaky.writeIfMatch("ex/path.txt", "v2", staleVersion).attempt
+        snap <- flaky.readContents("ex/path.txt")
         result <- flaky.writeIfMatch("ex/path.txt", "v2", snap.get.version)
       } yield {
         first.isFailure shouldBe true
         first.failed.get.getMessage should include("boom")
-        result shouldBe a [WriteResult.Written]
+        result shouldBe a[WriteResult.Written]
       }
     }
 
@@ -102,7 +101,7 @@ class LocalFileSystemContextSafeEditSpec extends AsyncWordSpec with AsyncTaskSpe
           import scala.jdk.CollectionConverters.*
           val all = results.iterator().asScala.toList
           val winners = all.collect { case w: WriteResult.Written => w }
-          val stales  = all.collect { case s: WriteResult.Stale   => s }
+          val stales = all.collect { case s: WriteResult.Stale => s }
           winners.size shouldBe 1
           stales.size shouldBe (concurrency - 1)
           val winnerHash = winners.head.version.hash

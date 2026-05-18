@@ -63,8 +63,10 @@ final class ConversationHarness(sigil: Sigil,
                                 viewer: ParticipantId,
                                 conversationFactory: Id[Conversation] => Conversation) {
 
-  /** The DurableSocket server. Public so apps can poke at sessions /
-    * channels for advanced scenarios (custom resume flows, etc.). */
+  /**
+   * The DurableSocket server. Public so apps can poke at sessions /
+   * channels for advanced scenarios (custom resume flows, etc.).
+   */
   lazy val durableServer: DurableSocketServer[Id[Conversation], Signal, String] =
     new DurableSocketServer[Id[Conversation], Signal, String](
       config = DurableSocketConfig(ackBatchDelay = 50.millis, reconnectStrategy = ReconnectStrategy.none),
@@ -73,8 +75,10 @@ final class ConversationHarness(sigil: Sigil,
       resolveChannel = (_, info) => Task.pure(Conversation.id(info))
     )
 
-  /** The HTTP server. Bound to an ephemeral port; read [[serverPort]]
-    * after `start()` to learn which one. */
+  /**
+   * The HTTP server. Bound to an ephemeral port; read [[serverPort]]
+   * after `start()` to learn which one.
+   */
   lazy val httpServer: MutableHttpServer = {
     val s = new MutableHttpServer
     s.config.clearListeners().addListeners(HttpServerListener(port = None))
@@ -94,33 +98,43 @@ final class ConversationHarness(sigil: Sigil,
 
   def serverPort: Int = httpServer.config.listeners().head.port.getOrElse(0)
 
-  /** Boot the HTTP server (idempotent — repeat calls are no-ops). Call
-    * once per spec, e.g. in `beforeAll`. */
+  /**
+   * Boot the HTTP server (idempotent — repeat calls are no-ops). Call
+   * once per spec, e.g. in `beforeAll`.
+   */
   def start(): Task[Unit] = Task { httpServer; () }
 
-  /** Stop the HTTP server. Failures are swallowed (best-effort
-    * cleanup). Call once per spec, e.g. in `afterAll`. */
+  /**
+   * Stop the HTTP server. Failures are swallowed (best-effort
+   * cleanup). Call once per spec, e.g. in `afterAll`.
+   */
   def stop(): Task[Unit] = Task {
-    try httpServer.stop().sync() catch { case _: Throwable => () }
+    try httpServer.stop().sync()
+    catch { case _: Throwable => () }
   }
 
-  /** Open a [[ConversationSession]], run `f`, and guarantee the wire
-    * client closes whether `f` succeeds or fails. Use in place of
-    * paired open/close calls. */
+  /**
+   * Open a [[ConversationSession]], run `f`, and guarantee the wire
+   * client closes whether `f` succeeds or fails. Use in place of
+   * paired open/close calls.
+   */
   def withClient[A](suffix: String)(f: ConversationSession => Task[A]): Task[A] =
     newSession(suffix).flatMap { s =>
       f(s).attempt.flatMap { result =>
-        Task { s.client.close() }.attempt.flatMap(_ => result match {
-          case scala.util.Success(a) => Task.pure(a)
-          case scala.util.Failure(t) => Task.error(t)
-        })
+        Task(s.client.close()).attempt.flatMap(_ =>
+          result match {
+            case scala.util.Success(a) => Task.pure(a)
+            case scala.util.Failure(t) => Task.error(t)
+          })
       }
     }
 
-  /** Open a fresh session without resource management. Prefer
-    * [[withClient]] unless you specifically want to drive the client
-    * lifecycle yourself (e.g. testing reconnect / replay flows that
-    * need to close-then-reopen the wire). */
+  /**
+   * Open a fresh session without resource management. Prefer
+   * [[withClient]] unless you specifically want to drive the client
+   * lifecycle yourself (e.g. testing reconnect / replay flows that
+   * need to close-then-reopen the wire).
+   */
   def newSession(suffix: String): Task[ConversationSession] = {
     val convId = Conversation.id(s"conv-$suffix-${rapid.Unique()}")
     val convo = conversationFactory(convId)
@@ -148,7 +162,7 @@ final class ConversationHarness(sigil: Sigil,
         // inspect settled state via `received`, which only collects
         // Events; Deltas / Notices stream past unobserved here.
         case (_, e: Event) => received.add(e)
-        case _             => ()
+        case _ => ()
       }
       _ <- client.connect()
       _ <- awaitSessionReady(clientId)

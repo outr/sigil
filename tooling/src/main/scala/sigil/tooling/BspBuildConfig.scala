@@ -47,6 +47,8 @@ object BspBuildConfig extends RecordDocumentModel[BspBuildConfig] with JsonConve
 
   override def id(value: String = rapid.Unique()): Id[BspBuildConfig] = Id(value)
 
-  /** Stable id derived from project root — one record per root. */
+  /**
+   * Stable id derived from project root — one record per root.
+   */
   def idFor(projectRoot: String): Id[BspBuildConfig] = Id(projectRoot)
 }

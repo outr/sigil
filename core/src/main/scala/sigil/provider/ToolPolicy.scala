@@ -19,49 +19,66 @@ import sigil.tool.ToolName
  * from the roster so every reply path goes through `find_capability`.
  */
 enum ToolPolicy derives RW {
-  /** Contributor has no opinion on tools. Baseline participant roster
-    * and full discovery catalog apply unchanged. */
+
+  /**
+   * Contributor has no opinion on tools. Baseline participant roster
+   * and full discovery catalog apply unchanged.
+   */
   case Standard
 
-  /** No tools beyond framework essentials — `find_capability` is also
-    * suppressed. Agent is locked to its training for this contributor. */
+  /**
+   * No tools beyond framework essentials — `find_capability` is also
+   * suppressed. Agent is locked to its training for this contributor.
+   */
   case None
 
-  /** Roster = `find_capability` + `stop` + the agent's baseline tools
-    * (and any `Active` extras from other contributors). The respond
-    * family (`respond`, `respond_options`, `respond_field`,
-    * `respond_failure`) and `no_response` are stripped, forcing every
-    * reply to flow through `find_capability` first.
-    *
-    * Right for small / quantised models that lock onto the `respond`
-    * tool when it sits in the immediate roster. Adds one round-trip
-    * per chat turn; large models don't need it. */
+  /**
+   * Roster = `find_capability` + `stop` + the agent's baseline tools
+   * (and any `Active` extras from other contributors). The respond
+   * family (`respond`, `respond_options`, `respond_field`,
+   * `respond_failure`) and `no_response` are stripped, forcing every
+   * reply to flow through `find_capability` first.
+   *
+   * Right for small / quantised models that lock onto the `respond`
+   * tool when it sits in the immediate roster. Adds one round-trip
+   * per chat turn; large models don't need it.
+   */
   case PureDiscovery
 
-  /** `names` are added to the roster while this contributor is active. */
+  /**
+   * `names` are added to the roster while this contributor is active.
+   */
   case Active(names: List[ToolName])
 
-  /** `names` are only visible to `find_capability` while this contributor
-    * is active — hidden from the discovery catalog of other contributors.
-    * Not added to the immediate roster; agent must discover explicitly. */
+  /**
+   * `names` are only visible to `find_capability` while this contributor
+   * is active — hidden from the discovery catalog of other contributors.
+   * Not added to the immediate roster; agent must discover explicitly.
+   */
   case Discoverable(names: List[ToolName])
 
-  /** Roster = framework essentials ∪ `names`. Baseline participant tools
-    * are suppressed; discovery is restricted to `names`. */
+  /**
+   * Roster = framework essentials ∪ `names`. Baseline participant tools
+   * are suppressed; discovery is restricted to `names`.
+   */
   case Exclusive(names: List[ToolName])
 
-  /** Baseline roster unchanged; `find_capability` discovery scope restricted
-    * to `names`. Useful for "keep your normal tools, but only find
-    * contributor-relevant new ones." */
+  /**
+   * Baseline roster unchanged; `find_capability` discovery scope restricted
+   * to `names`. Useful for "keep your normal tools, but only find
+   * contributor-relevant new ones."
+   */
   case Scoped(names: List[ToolName])
 
-  /** The tools listed on this policy. `Standard`, `None`, and `PureDiscovery`
-    * have none. */
+  /**
+   * The tools listed on this policy. `Standard`, `None`, and `PureDiscovery`
+   * have none.
+   */
   def listed: List[ToolName] = this match {
     case Standard | None | PureDiscovery => Nil
-    case Active(n)                       => n
-    case Discoverable(n)                 => n
-    case Exclusive(n)                    => n
-    case Scoped(n)                       => n
+    case Active(n) => n
+    case Discoverable(n) => n
+    case Exclusive(n) => n
+    case Scoped(n) => n
   }
 }

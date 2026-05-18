@@ -27,4 +27,5 @@ import sigil.participant.ParticipantId
  */
 case class ConversationCleared(conversationId: Id[Conversation],
                                clearedAt: Timestamp,
-                               clearedBy: ParticipantId) extends Notice derives RW
+                               clearedBy: ParticipantId)
+  extends Notice derives RW

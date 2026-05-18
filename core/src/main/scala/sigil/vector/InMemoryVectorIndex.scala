@@ -31,7 +31,7 @@ class InMemoryVectorIndex extends VectorIndex {
       .filter(p => filter.forall { case (k, v) => p.payload.get(k).contains(v) })
       .map { p =>
         val sim = if (qNorm == 0.0 || norm(p.vector) == 0.0) 0.0
-                  else cosine(vector, p.vector, qNorm, norm(p.vector))
+        else cosine(vector, p.vector, qNorm, norm(p.vector))
         VectorSearchResult(p.id, sim, p.payload)
       }
       .toList
@@ -45,8 +45,10 @@ class InMemoryVectorIndex extends VectorIndex {
 
   override def ensureCollection(dimensions: Int): Task[Unit] = Task.unit
 
-  /** Drop every stored point. Useful for tests and benchmark harness
-    * resets (between per-iteration fixtures). */
+  /**
+   * Drop every stored point. Useful for tests and benchmark harness
+   * resets (between per-iteration fixtures).
+   */
   def clear(): Unit = points.clear()
 
   private def norm(v: Vector[Double]): Double = math.sqrt(v.foldLeft(0.0)((acc, x) => acc + x * x))

@@ -43,7 +43,9 @@ import sigil.tool.ToolName
 trait AgentParticipant extends Participant {
   override def id: AgentParticipantId
 
-  /** The model this agent uses for provider round-trips. */
+  /**
+   * The model this agent uses for provider round-trips.
+   */
   def modelId: Id[Model]
 
   /**
@@ -58,10 +60,14 @@ trait AgentParticipant extends Participant {
    */
   def toolNames: List[ToolName] = Nil
 
-  /** System / developer instructions prepended to every turn. */
+  /**
+   * System / developer instructions prepended to every turn.
+   */
   def instructions: Instructions = Instructions()
 
-  /** Sampling + limits for provider requests. */
+  /**
+   * Sampling + limits for provider requests.
+   */
   def generationSettings: GenerationSettings = GenerationSettings()
 
   /**
@@ -92,7 +98,8 @@ trait AgentParticipant extends Participant {
    * specialized agent surfaces — a coding assistant, a classifier,
    * a summarization agent — set the agent's work type to match.
    * Strategy resolution is `Mode.strategyId.orElse(space-assigned)`,
-   * so a mode override beats a space-level default. */
+   * so a mode override beats a space-level default.
+   */
   def workType: WorkType = ConversationWork
 
   /**

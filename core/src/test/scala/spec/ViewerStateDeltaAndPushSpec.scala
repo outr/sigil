@@ -38,7 +38,8 @@ class ViewerStateDeltaAndPushSpec extends AsyncWordSpec with AsyncTaskSpec with 
   // the same field to a new Some(_) and asserts the merged record.
   case class DeltaTestState(activeTab: Option[String] = None,
                             panelOpen: Option[Boolean] = None,
-                            theme: Option[String] = None) extends ViewerStatePayload derives RW
+                            theme: Option[String] = None)
+    extends ViewerStatePayload derives RW
 
   ViewerStatePayload.register(summon[RW[DeltaTestState]])
 
@@ -88,7 +89,7 @@ class ViewerStateDeltaAndPushSpec extends AsyncWordSpec with AsyncTaskSpec with 
     "deep-merge the patch into the persisted payload (untouched fields preserved)" in {
       val (recorded, stop) = subscribe(TestUser)
       val initial = DeltaTestState(activeTab = Some("chat"), panelOpen = Some(true), theme = Some("light"))
-      val patch   = DeltaTestState(theme = Some("dark"))  // only theme changes
+      val patch = DeltaTestState(theme = Some("dark")) // only theme changes
       for {
         _ <- Task.sleep(80.millis)
         _ <- TestSigil.handleNotice(UpdateViewerState("delta-merge", initial), TestUser)
@@ -135,7 +136,7 @@ class ViewerStateDeltaAndPushSpec extends AsyncWordSpec with AsyncTaskSpec with 
         // assert only on the snapshots the push generates.
         _ = {
           import scala.jdk.CollectionConverters.*
-          recorded.iterator().asScala.toList  // materialize
+          recorded.iterator().asScala.toList // materialize
           recorded.clear()
         }
         _ <- TestSigil.publishViewerStatesTo(TestUser)

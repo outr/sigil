@@ -35,24 +35,26 @@ class ReadStateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   private def upsertConv(): Task[Conversation] = {
     val convId = Conversation.id(s"read-${rapid.Unique()}")
-    val topic  = TopicEntry(id = Topic.id(s"topic-$convId"), label = "test", summary = "test")
-    val conv   = Conversation(_id = convId, topics = List(topic))
+    val topic = TopicEntry(id = Topic.id(s"topic-$convId"), label = "test", summary = "test")
+    val conv = Conversation(_id = convId, topics = List(topic))
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
   }
 
-  /** Capture every signal emitted while `body` runs. */
+  /**
+   * Capture every signal emitted while `body` runs.
+   */
   private def captureSignals[A](body: Task[A]): Task[(A, List[Signal])] = {
     val recorded = new ConcurrentLinkedQueue[Signal]()
-    val running  = new atomic.AtomicBoolean(true)
+    val running = new atomic.AtomicBoolean(true)
     TestSigil.signals
       .takeWhile(_ => running.get())
       .evalMap(s => Task { recorded.add(s); () })
       .drain
       .startUnit()
     for {
-      _      <- Task.sleep(50.millis)
+      _ <- Task.sleep(50.millis)
       result <- body
-      _      <- Task.sleep(150.millis)
+      _ <- Task.sleep(150.millis)
     } yield {
       running.set(false)
       (result, recorded.iterator().asScala.toList)
@@ -64,7 +66,7 @@ class ReadStateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "insert a ReadState event on first call, with deterministic id" in {
       for {
         conv <- upsertConv()
-        ts    = Timestamp()
+        ts = Timestamp()
         captured <- captureSignals(TestSigil.markRead(conv._id, TestUser, ts))
         (_, signals) = captured
         listed <- TestSigil.withDB(_.events.transaction(_.list))
@@ -81,7 +83,7 @@ class ReadStateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "emit a ReadStateDelta on second + subsequent advances (no new event row)" in {
       for {
         conv <- upsertConv()
-        first  = Timestamp()
+        first = Timestamp()
         _ <- TestSigil.markRead(conv._id, TestUser, first)
         second = Timestamp()
         captured <- captureSignals(TestSigil.markRead(conv._id, TestUser, second))
@@ -112,26 +114,24 @@ class ReadStateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         conv <- upsertConv()
         // Publish a message; its `timestamp` is what we want
         // markRead-by-id to resolve to.
-        msg  = Message(
-                 participantId  = TestUser,
-                 conversationId = conv._id,
-                 topicId        = conv.currentTopicId,
-                 content        = Vector(ResponseContent.Text("hi")),
-                 state          = EventState.Complete
-               )
-        _    <- TestSigil.publish(msg)
-        _    <- TestSigil.markRead(conv._id, TestUser, msg._id)
-        st   <- TestSigil.readStateFor(conv._id, TestUser)
-      } yield {
-        st.map(_.lastReadAt) shouldBe Some(msg.timestamp)
-      }
+        msg = Message(
+          participantId = TestUser,
+          conversationId = conv._id,
+          topicId = conv.currentTopicId,
+          content = Vector(ResponseContent.Text("hi")),
+          state = EventState.Complete
+        )
+        _ <- TestSigil.publish(msg)
+        _ <- TestSigil.markRead(conv._id, TestUser, msg._id)
+        st <- TestSigil.readStateFor(conv._id, TestUser)
+      } yield st.map(_.lastReadAt) shouldBe Some(msg.timestamp)
     }
 
     "no-op when the eventId-overload references a non-existent event" in {
       for {
         conv <- upsertConv()
-        _    <- TestSigil.markRead(conv._id, TestUser, Event.id())  // bogus id
-        st   <- TestSigil.readStateFor(conv._id, TestUser)
+        _ <- TestSigil.markRead(conv._id, TestUser, Event.id()) // bogus id
+        st <- TestSigil.readStateFor(conv._id, TestUser)
       } yield st shouldBe None
     }
   }
@@ -141,8 +141,8 @@ class ReadStateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       for {
         conv <- upsertConv()
         before <- TestSigil.readStateFor(conv._id, TestUser)
-        _      <- TestSigil.markRead(conv._id, TestUser, Timestamp())
-        after  <- TestSigil.readStateFor(conv._id, TestUser)
+        _ <- TestSigil.markRead(conv._id, TestUser, Timestamp())
+        after <- TestSigil.readStateFor(conv._id, TestUser)
       } yield {
         before shouldBe None
         after.map(_.participantId) shouldBe Some(TestUser)
@@ -153,16 +153,16 @@ class ReadStateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   "TriggerFilter (bug #62)" should {
     "leave ReadState events as non-triggers" in Task {
       val agent: AgentParticipant = DefaultAgentParticipant(
-        id      = TestAgent,
+        id = TestAgent,
         modelId = sigil.db.Model.id("test", "model")
       )
       val convId = Conversation.id("read-trigger-test")
       val topicId = Topic.id("read-trigger-topic")
       val rs = ReadState(
-        participantId  = TestUser,
+        participantId = TestUser,
         conversationId = convId,
-        topicId        = topicId,
-        lastReadAt     = Timestamp()
+        topicId = topicId,
+        lastReadAt = Timestamp()
       )
       TriggerFilter.isTriggerFor(agent, rs) shouldBe false
     }

@@ -32,7 +32,8 @@ final class S3StorageProvider(endpoint: String,
                               region: String,
                               accessKey: String,
                               secretKey: String,
-                              bucket: String) extends StorageProvider {
+                              bucket: String)
+  extends StorageProvider {
 
   private lazy val client: S3Client = S3Client.builder()
     .endpointOverride(URI.create(endpoint))
@@ -128,10 +129,12 @@ final class S3StorageProvider(endpoint: String,
     }
   }
 
-  /** S3 ETags are returned as quoted strings (`"abcdef..."`). Strip
-    * the quotes so the value compares cleanly with subsequent
-    * `If-Match` round-trips and with caller-supplied [[FileVersion]]
-    * hashes from prior reads. */
+  /**
+   * S3 ETags are returned as quoted strings (`"abcdef..."`). Strip
+   * the quotes so the value compares cleanly with subsequent
+   * `If-Match` round-trips and with caller-supplied [[FileVersion]]
+   * hashes from prior reads.
+   */
   private def stripEtag(etag: String): String =
     if (etag == null) "" else etag.stripPrefix("\"").stripSuffix("\"")
 }

@@ -32,24 +32,25 @@ import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
 class BlockExtractorBatchAndProgressSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Minimal Information subtype for the spec. */
+  /**
+   * Minimal Information subtype for the spec.
+   */
   case class BlockInfo(id: Id[Information], content: String) extends Information derives RW
 
-  private val longText: String = "A" * 3000  // exceeds default 2000-char threshold
+  private val longText: String = "A" * 3000 // exceeds default 2000-char threshold
 
-  private def buildFrames(count: Int): Vector[ContextFrame] =
-    (0 until count).toVector.map { i =>
-      ContextFrame.Text(
-        content        = s"$longText (frame $i)",
-        participantId  = TestUser,
-        sourceEventId  = Id[Event](s"e-$i"),
-        visibility     = MessageVisibility.All
-      )
-    }
+  private def buildFrames(count: Int): Vector[ContextFrame] = (0 until count).toVector.map { i =>
+    ContextFrame.Text(
+      content = s"$longText (frame $i)",
+      participantId = TestUser,
+      sourceEventId = Id[Event](s"e-$i"),
+      visibility = MessageVisibility.All
+    )
+  }
 
   private val extractor = StandardBlockExtractor(
     toInformation = (content, id) => BlockInfo(id, content),
-    minChars      = 2000,
+    minChars = 2000,
     progressEvery = 4
   )
 
@@ -104,7 +105,7 @@ class BlockExtractorBatchAndProgressSpec extends AsyncWordSpec with AsyncTaskSpe
       val pulses = new AtomicInteger(0)
       val cb: BlockExtractor.ProgressCallback = (_, _) => Task { pulses.incrementAndGet(); () }
       extractor.extract(TestSigil, buildFrames(8), cb).map { _ =>
-        pulses.get() shouldBe 2  // 4 and 8, no trailing
+        pulses.get() shouldBe 2 // 4 and 8, no trailing
       }
     }
 
@@ -114,10 +115,10 @@ class BlockExtractorBatchAndProgressSpec extends AsyncWordSpec with AsyncTaskSpe
       TestSigil.onPutInformations(_ => batches.incrementAndGet())
 
       val short = ContextFrame.Text(
-        content        = "short",
-        participantId  = TestUser,
-        sourceEventId  = Id[Event]("e-short"),
-        visibility     = MessageVisibility.All
+        content = "short",
+        participantId = TestUser,
+        sourceEventId = Id[Event]("e-short"),
+        visibility = MessageVisibility.All
       )
       extractor.extract(TestSigil, Vector(short)).map { result =>
         result.frames shouldBe Vector(short)

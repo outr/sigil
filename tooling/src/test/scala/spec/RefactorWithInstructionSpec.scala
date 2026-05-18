@@ -53,7 +53,7 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
   TestRefactorSigil.initFor(getClass.getSimpleName)
   TestRefactorSigil.setProvider(LlamaCppProvider(TestRefactorSigil, TestSigil.llamaCppHost).singleton)
 
-  override implicit val testTimeout: FiniteDuration = 12.minutes
+  implicit override val testTimeout: FiniteDuration = 12.minutes
 
   override def run(testName: Option[String], args: Args): Status =
     LiveProbe.requireSlowEnabled(this).getOrElse(super.run(testName, args))
@@ -62,7 +62,7 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   private def isReachable: Boolean =
     scala.util.Try {
-      val url  = java.net.URI.create(TestSigil.llamaCppHost.toString).toURL
+      val url = java.net.URI.create(TestSigil.llamaCppHost.toString).toURL
       val conn = url.openConnection().asInstanceOf[java.net.HttpURLConnection]
       conn.setConnectTimeout(2000)
       conn.setReadTimeout(2000)
@@ -76,41 +76,47 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
     val convId = Conversation.id(s"refactor-spec-${rapid.Unique()}")
     val conv = Conversation(
       topics = List(TopicEntry(RefactorTestTopic.id, RefactorTestTopic.label, RefactorTestTopic.summary)),
-      _id    = convId
+      _id = convId
     )
     TestRefactorSigil.withDB(_.conversations.transaction(_.upsert(conv))).sync()
     TurnContext(
-      sigil        = TestRefactorSigil,
-      chain        = List(RefactorTestUser),
+      sigil = TestRefactorSigil,
+      chain = List(RefactorTestUser),
       conversation = conv,
-      turnInput    = TurnInput(ConversationView(conversationId = convId))
+      turnInput = TurnInput(ConversationView(conversationId = convId))
     )
   }
 
-  /** Materialise a workspace populated with `files`, each entry a
-    * (relative path, content) pair. Returns the workspace root. */
+  /**
+   * Materialise a workspace populated with `files`, each entry a
+   * (relative path, content) pair. Returns the workspace root.
+   */
   private def materialize(files: List[(String, String)]): Path = {
     val root = Files.createTempDirectory(s"refactor-spec-${rapid.Unique()}-").toAbsolutePath.normalize
     files.foreach { case (rel, content) =>
       val target = root.resolve(rel)
       Files.createDirectories(target.getParent)
-      Files.writeString(target, content,
-        StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+      Files.writeString(
+        target,
+        content,
+        StandardOpenOption.CREATE,
+        StandardOpenOption.TRUNCATE_EXISTING)
     }
     root
   }
 
-  private def cleanup(root: Path): Unit = {
+  private def cleanup(root: Path): Unit =
     if (Files.exists(root)) {
       import scala.jdk.CollectionConverters.*
       val s = Files.walk(root)
       try s.iterator().asScala.toList.reverse.foreach(p => Files.deleteIfExists(p))
       finally s.close()
     }
-  }
 
-  /** Fresh per-test session store so prior tests can't leak prepared
-    * sessions into a later one. */
+  /**
+   * Fresh per-test session store so prior tests can't leak prepared
+   * sessions into a later one.
+   */
   private def newStore(): RefactorSessionStore = new RefactorSessionStore()
 
   private def prepare(fs: FileSystemContext,
@@ -149,8 +155,8 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
         val fs = new LocalFileSystemContext(basePath = Some(workspace))
         val ctx = turnContext(workspace)
         val input = RefactorWithInstructionInput(
-          path        = workspace.toString,
-          glob        = None,
+          path = workspace.toString,
+          glob = None,
           findPattern = "// TODO:remove",
           instruction =
             """Call `submit_refactor_decisions` ONCE with this exact payload, then call `complete_task`:
@@ -165,13 +171,13 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
               |    endChar: 14
               |  } ]""".stripMargin,
           workerModelId = Some(modelId.value),
-          maxParallel   = 1,
-          maxWorkers    = 5
+          maxParallel = 1,
+          maxWorkers = 5
         )
         for {
           prepared <- prepare(fs, store, input, ctx)
-          applied  <- apply(fs, store, prepared.sessionId, ctx)
-        } yield {
+          applied <- apply(fs, store, prepared.sessionId, ctx)
+        } yield
           try {
             // Architectural assertions — the framework dispatched a
             // worker, the worker settled, the framework produced a
@@ -192,7 +198,6 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
               applied.filesModified shouldBe 0
             }
           } finally cleanup(workspace)
-        }
       }
 
       // Prepare-then-cancel: previously covered with `dryRun=true`.
@@ -208,8 +213,8 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
         val fs = new LocalFileSystemContext(basePath = Some(workspace))
         val ctx = turnContext(workspace)
         val input = RefactorWithInstructionInput(
-          path        = workspace.toString,
-          glob        = None,
+          path = workspace.toString,
+          glob = None,
           findPattern = "// TODO:remove",
           instruction =
             """Call `submit_refactor_decisions` ONCE with this exact payload, then call `complete_task`:
@@ -224,14 +229,14 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
               |    endChar: 14
               |  } ]""".stripMargin,
           workerModelId = Some(modelId.value),
-          maxParallel   = 1,
-          maxWorkers    = 5
+          maxParallel = 1,
+          maxWorkers = 5
         )
         for {
-          prepared  <- prepare(fs, store, input, ctx)
+          prepared <- prepare(fs, store, input, ctx)
           cancelled <- new RefactorCancelTool(store).invoke(RefactorCancelInput(prepared.sessionId), ctx)
           afterApply <- apply(fs, store, prepared.sessionId, ctx)
-        } yield {
+        } yield
           try {
             prepared.abortReason shouldBe None
             // File untouched by prepare.
@@ -242,7 +247,6 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
             // File still untouched.
             Files.readString(workspace.resolve("single.txt")) shouldBe original
           } finally cleanup(workspace)
-        }
       }
 
       // Per-match judgment: file has two matches; the worker is told
@@ -262,8 +266,8 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
         val fs = new LocalFileSystemContext(basePath = Some(workspace))
         val ctx = turnContext(workspace)
         val input = RefactorWithInstructionInput(
-          path        = workspace.toString,
-          glob        = None,
+          path = workspace.toString,
+          glob = None,
           findPattern = "// TODO:remove",
           instruction =
             """Call `submit_refactor_decisions` ONCE with EXACTLY these two decisions, then call `complete_task`:
@@ -273,13 +277,13 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
               |    { matchedLine: 4, action: "Skipped", reason: "second marker should remain",  oldText: "// TODO:remove" }
               |  ]""".stripMargin,
           workerModelId = Some(modelId.value),
-          maxParallel   = 1,
-          maxWorkers    = 5
+          maxParallel = 1,
+          maxWorkers = 5
         )
         for {
           prepared <- prepare(fs, store, input, ctx)
-          applied  <- apply(fs, store, prepared.sessionId, ctx)
-        } yield {
+          applied <- apply(fs, store, prepared.sessionId, ctx)
+        } yield
           try {
             prepared.abortReason shouldBe None
             val body = Files.readString(workspace.resolve("mixed.txt"))
@@ -289,7 +293,6 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
               body should not include "// TODO:remove this-one-goes"
             } else succeed
           } finally cleanup(workspace)
-        }
       }
 
       // Worker failure isolation: two files; the synthetic
@@ -318,19 +321,25 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
             realFs.deleteFile(filePath)
           override def listFiles(basePath: String, pattern: String, maxResults: Int): Task[List[String]] =
             realFs.listFiles(basePath, pattern, maxResults)
-          override def searchFiles(basePath: String, pattern: String, glob: Option[String], maxMatches: Int, contextLines: Int): Task[List[GrepMatch]] =
+          override def searchFiles(basePath: String,
+                                   pattern: String,
+                                   glob: Option[String],
+                                   maxMatches: Int,
+                                   contextLines: Int): Task[List[GrepMatch]] =
             realFs.searchFiles(basePath, pattern, glob, maxMatches, contextLines)
           override def executeCommand(command: String, workingDir: Option[String], timeoutMs: Long): Task[sigil.tool.fs.CommandResult] =
             realFs.executeCommand(command, workingDir, timeoutMs)
           override def readContents(filePath: String): Task[Option[sigil.storage.StorageContents]] =
             realFs.readContents(filePath)
-          override def writeIfMatch(filePath: String, content: String, expected: sigil.storage.FileVersion): Task[sigil.storage.WriteResult] =
+          override def writeIfMatch(filePath: String,
+                                    content: String,
+                                    expected: sigil.storage.FileVersion): Task[sigil.storage.WriteResult] =
             realFs.writeIfMatch(filePath, content, expected)
         }
         val ctx = turnContext(workspace)
         val input = RefactorWithInstructionInput(
-          path        = workspace.toString,
-          glob        = None,
+          path = workspace.toString,
+          glob = None,
           findPattern = "// TODO:remove",
           instruction =
             """Call `submit_refactor_decisions` ONCE with this exact payload for the file you were given,
@@ -345,13 +354,13 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
               |    endChar: 14
               |  } ]""".stripMargin,
           workerModelId = Some(modelId.value),
-          maxParallel   = 1,
-          maxWorkers    = 5
+          maxParallel = 1,
+          maxWorkers = 5
         )
         for {
           prepared <- prepare(fs, store, input, ctx)
-          _        <- apply(fs, store, prepared.sessionId, ctx)
-        } yield {
+          _ <- apply(fs, store, prepared.sessionId, ctx)
+        } yield
           try {
             prepared.page0Diffs.size shouldBe 2
             val bReport = prepared.page0Diffs.find(_.path.endsWith("b.txt"))
@@ -360,7 +369,6 @@ class RefactorWithInstructionSpec extends AsyncWordSpec with AsyncTaskSpec with 
             bReport.flatMap(_.workerError).get should include("b.txt")
             Files.readString(workspace.resolve("b.txt")) should include("// TODO:remove this-file-throws")
           } finally cleanup(workspace)
-        }
       }
     }
   }
@@ -383,17 +391,18 @@ object RefactorTestTopic {
 class TestRefactorDB(directory: Option[Path],
                      storeManager: CollectionManager,
                      upgrades: List[DatabaseUpgrade] = Nil)
-  extends SigilDB(directory, storeManager, upgrades)
-  with WorkflowCollections
+  extends SigilDB(directory, storeManager, upgrades) with WorkflowCollections
 
-/** Minimal `Sigil` mixing `WorkflowSigil` for the refactor spec —
-  * registers the worker-facing [[SubmitRefactorDecisionsTool]] in
-  * staticTools so `AgentDecisionStep.resolveTools` can locate it. */
+/**
+ * Minimal `Sigil` mixing `WorkflowSigil` for the refactor spec —
+ * registers the worker-facing [[SubmitRefactorDecisionsTool]] in
+ * staticTools so `AgentDecisionStep.resolveTools` can locate it.
+ */
 object TestRefactorSigil extends Sigil with WorkflowSigil {
   override type DB = TestRefactorDB
   override protected def buildDB(directory: Option[Path],
-                                  storeManager: CollectionManager,
-                                  upgrades: List[DatabaseUpgrade]): TestRefactorDB =
+                                 storeManager: CollectionManager,
+                                 upgrades: List[DatabaseUpgrade]): TestRefactorDB =
     new TestRefactorDB(directory, storeManager, upgrades)
 
   override def testMode: Boolean = true
@@ -406,9 +415,8 @@ object TestRefactorSigil extends Sigil with WorkflowSigil {
   override def staticTools: List[sigil.tool.Tool] =
     super.staticTools :+ SubmitRefactorDecisionsTool
 
-  private val providerRef = new java.util.concurrent.atomic.AtomicReference[() => Task[Provider]](
-    () => Task.error(new RuntimeException("TestRefactorSigil — no provider configured"))
-  )
+  private val providerRef = new java.util.concurrent.atomic.AtomicReference[() => Task[Provider]](() =>
+    Task.error(new RuntimeException("TestRefactorSigil — no provider configured")))
   def setProvider(p: => Task[Provider]): Unit = providerRef.set(() => p)
 
   override def providerFor(modelId: lightdb.id.Id[Model], chain: List[ParticipantId]): Task[Provider] =
@@ -439,7 +447,7 @@ object TestRefactorSigil extends Sigil with WorkflowSigil {
     ()
   }
 
-  private def deleteRecursive(path: Path): Unit = {
+  private def deleteRecursive(path: Path): Unit =
     if (Files.exists(path)) {
       val s = Files.walk(path)
       try {
@@ -447,5 +455,4 @@ object TestRefactorSigil extends Sigil with WorkflowSigil {
         s.iterator().asScala.toList.reverse.foreach(p => Files.deleteIfExists(p))
       } finally s.close()
     }
-  }
 }

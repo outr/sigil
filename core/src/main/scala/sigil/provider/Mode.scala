@@ -23,66 +23,85 @@ import sigil.conversation.ActiveSkillSlot
  * historical records and any clients that pinned to the old wire value.
  */
 trait Mode {
-  /** Stable discriminator — persisted in `ModeChange` events AND used
-    * as the wire-level `name` discriminator in the polymorphic
-    * [[Mode]] RW (replaces the Scala class name). Must be unique across
-    * every registered mode in a Sigil instance; duplicates resolve
-    * last-write-wins per the underlying [[fabric.rw.PolyType.register]]
-    * append-only registry. */
+
+  /**
+   * Stable discriminator — persisted in `ModeChange` events AND used
+   * as the wire-level `name` discriminator in the polymorphic
+   * [[Mode]] RW (replaces the Scala class name). Must be unique across
+   * every registered mode in a Sigil instance; duplicates resolve
+   * last-write-wins per the underlying [[fabric.rw.PolyType.register]]
+   * append-only registry.
+   */
   def name: String
 
-  /** One-line human-readable description; rendered into the system
-    * prompt and into the `change_mode` tool's schema. */
+  /**
+   * One-line human-readable description; rendered into the system
+   * prompt and into the `change_mode` tool's schema.
+   */
   def description: String
 
-  /** Curated keyword set boosting this mode's score in
-    * [[sigil.Sigil.findModes]]. Pure metadata for discovery — never
-    * shown to the user, never persisted on conversation events. Useful
-    * when the mode's `name`/`description` doesn't include the natural
-    * search terms (e.g. `WebResearchMode` should match "browse",
-    * "google", "lookup"; a coding mode should match "function",
-    * "refactor", "debug"). */
+  /**
+   * Curated keyword set boosting this mode's score in
+   * [[sigil.Sigil.findModes]]. Pure metadata for discovery — never
+   * shown to the user, never persisted on conversation events. Useful
+   * when the mode's `name`/`description` doesn't include the natural
+   * search terms (e.g. `WebResearchMode` should match "browse",
+   * "google", "lookup"; a coding mode should match "function",
+   * "refactor", "debug").
+   */
   def keywords: Set[String] = Set.empty
 
-  /** Skill slot activated when this mode becomes current. `None`
-    * means no mode-driven instructions; the agent uses whatever skills
-    * come from other sources (discovery, user overrides). */
+  /**
+   * Skill slot activated when this mode becomes current. `None`
+   * means no mode-driven instructions; the agent uses whatever skills
+   * come from other sources (discovery, user overrides).
+   */
   def skill: Option[ActiveSkillSlot] = None
 
-  /** Tool availability policy for this mode — see [[ToolPolicy]]. */
+  /**
+   * Tool availability policy for this mode — see [[ToolPolicy]].
+   */
   def tools: ToolPolicy = ToolPolicy.Standard
 
-  /** Provider-managed tools active in this mode — see [[BuiltInTool]].
-    * Apps that want a "web research" mode flip on `BuiltInTool.WebSearch`;
-    * a "creative" mode might enable `ImageGeneration`. The orchestrator
-    * unions this set with `AgentParticipant.builtInTools` and passes the
-    * result through `ConversationRequest.builtInTools`, so models with
-    * native server-side support (Anthropic web search, OpenAI Responses
-    * web search, Google Gemini grounding) exercise it directly. Models
-    * without support silently drop the opt-in. Default empty. */
+  /**
+   * Provider-managed tools active in this mode — see [[BuiltInTool]].
+   * Apps that want a "web research" mode flip on `BuiltInTool.WebSearch`;
+   * a "creative" mode might enable `ImageGeneration`. The orchestrator
+   * unions this set with `AgentParticipant.builtInTools` and passes the
+   * result through `ConversationRequest.builtInTools`, so models with
+   * native server-side support (Anthropic web search, OpenAI Responses
+   * web search, Google Gemini grounding) exercise it directly. Models
+   * without support silently drop the opt-in. Default empty.
+   */
   def builtInTools: Set[BuiltInTool] = Set.empty
 
-  /** Optional [[ProviderStrategyRecord]] pinned to this mode —
-    * when the conversation enters this mode, agent dispatch loads
-    * + materializes that strategy regardless of the conversation's
-    * space-level assignment. `None` means "use whatever strategy
-    * the conversation's space resolves to" (typical case).
-    *
-    * Apps configure mode-pinned strategies for situations where
-    * the work shape itself dictates the model — e.g. a coding mode
-    * that always wants Claude, regardless of who's logged in. */
+  /**
+   * Optional [[ProviderStrategyRecord]] pinned to this mode —
+   * when the conversation enters this mode, agent dispatch loads
+   * + materializes that strategy regardless of the conversation's
+   * space-level assignment. `None` means "use whatever strategy
+   * the conversation's space resolves to" (typical case).
+   *
+   * Apps configure mode-pinned strategies for situations where
+   * the work shape itself dictates the model — e.g. a coding mode
+   * that always wants Claude, regardless of who's logged in.
+   */
   def strategyId: Option[Id[ProviderStrategyRecord]] = None
 
-  /** Override the agent's [[WorkType]] while this mode is current.
-    * `None` (default) keeps the agent's declared workType. Modes
-    * that intrinsically dictate the work shape declare it here so
-    * provider routing follows naturally — e.g. `ScriptAuthoringMode`
-    * pins `Some(CodingWork)` so the cheap-fast conversational chain
-    * doesn't run when the agent is authoring runtime tools. */
+  /**
+   * Override the agent's [[WorkType]] while this mode is current.
+   * `None` (default) keeps the agent's declared workType. Modes
+   * that intrinsically dictate the work shape declare it here so
+   * provider routing follows naturally — e.g. `ScriptAuthoringMode`
+   * pins `Some(CodingWork)` so the cheap-fast conversational chain
+   * doesn't run when the agent is authoring runtime tools.
+   */
   def workType: Option[WorkType] = None
 
-  /** Stable `Id[Mode]` derived from [[name]]. Used by `Tool.modes`
-    * to declare mode affinity in a persistable, query-friendly shape. */
+  /**
+   * Stable `Id[Mode]` derived from [[name]]. Used by `Tool.modes`
+   * to declare mode affinity in a persistable, query-friendly shape.
+   */
   final lazy val id: Id[Mode] = Id(name)
 }
 
@@ -106,20 +125,26 @@ trait Mode {
  */
 object Mode extends PolyType[Mode]()(using scala.reflect.ClassTag(classOf[Mode])) {
 
-  /** Wire field name carrying the polymorphic discriminator. */
+  /**
+   * Wire field name carrying the polymorphic discriminator.
+   */
   private val DiscriminatorField: String = "name"
 
-  /** Name -> instance registry, in registration order. Each
-    * [[register]] call extracts the singleton from each `RW.static`
-    * and appends to this map (last-write-wins on duplicate names). */
+  /**
+   * Name -> instance registry, in registration order. Each
+   * [[register]] call extracts the singleton from each `RW.static`
+   * and appends to this map (last-write-wins on duplicate names).
+   */
   @volatile private var instancesByName: Map[String, Mode] = Map.empty
 
-  /** Register additional [[Mode]] subtypes. Each `RW` must be built
-    * via [[fabric.rw.RW.static]] over a singleton `Mode` value —
-    * non-static RWs (e.g. case-class derivations) raise at registration
-    * time because we can't extract a canonical name-bearing instance
-    * from them. Concrete `Mode` shapes ship in framework + apps as
-    * `case object`s, so this constraint is non-binding in practice. */
+  /**
+   * Register additional [[Mode]] subtypes. Each `RW` must be built
+   * via [[fabric.rw.RW.static]] over a singleton `Mode` value —
+   * non-static RWs (e.g. case-class derivations) raise at registration
+   * time because we can't extract a canonical name-bearing instance
+   * from them. Concrete `Mode` shapes ship in framework + apps as
+   * `case object`s, so this constraint is non-binding in practice.
+   */
   override def register(types: RW[? <: Mode]*): Unit = synchronized {
     val updates: Seq[(String, Mode)] = types.map { rw =>
       val instance =
@@ -137,17 +162,21 @@ object Mode extends PolyType[Mode]()(using scala.reflect.ClassTag(classOf[Mode])
     updates.foreach { case (name, m) => instancesByName = instancesByName.updated(name, m) }
   }
 
-  /** Live snapshot of every registered mode keyed by [[Mode.name]].
-    * Returned defensive copy. */
+  /**
+   * Live snapshot of every registered mode keyed by [[Mode.name]].
+   * Returned defensive copy.
+   */
   def registered: Map[String, Mode] = instancesByName
 
-  /** Custom polymorphic RW. Serialization writes a single
-    * `{"name": "<mode.name>"}` payload (mode singletons carry no other
-    * fields). Deserialization looks the discriminator up in the
-    * name-indexed registry. The schema [[Definition]] mirrors the
-    * registry as `DefType.Poly` keyed by name so codegen consumers
-    * (the Dart generator) emit dispatchers keyed by the wire
-    * discriminator. */
+  /**
+   * Custom polymorphic RW. Serialization writes a single
+   * `{"name": "<mode.name>"}` payload (mode singletons carry no other
+   * fields). Deserialization looks the discriminator up in the
+   * name-indexed registry. The schema [[Definition]] mirrors the
+   * registry as `DefType.Poly` keyed by name so codegen consumers
+   * (the Dart generator) emit dispatchers keyed by the wire
+   * discriminator.
+   */
   implicit override val rw: RW[Mode] = new RW[Mode] {
     override def read(t: Mode): Json = obj(DiscriminatorField -> str(t.name))
 

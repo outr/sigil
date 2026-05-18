@@ -19,4 +19,5 @@ case class SaveStoredFile(title: String,
                           contentType: String,
                           base64Data: String,
                           language: Option[String] = None,
-                          conversationId: Option[Id[Conversation]] = None) extends Notice derives RW
+                          conversationId: Option[Id[Conversation]] = None)
+  extends Notice derives RW

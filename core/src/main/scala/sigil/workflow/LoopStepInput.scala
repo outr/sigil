@@ -19,4 +19,5 @@ case class LoopStepInput(id: String,
                          body: List[WorkflowStepInput],
                          name: Option[String] = None,
                          itemVariable: String = "item",
-                         output: Option[String] = None) extends WorkflowStepInput derives RW
+                         output: Option[String] = None)
+  extends WorkflowStepInput derives RW

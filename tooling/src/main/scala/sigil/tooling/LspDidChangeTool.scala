@@ -8,7 +8,8 @@ import sigil.tooling.types.LspDidChangeResult
 
 case class LspDidChangeInput(languageId: String,
                              filePath: String,
-                             text: String) extends ToolInput derives RW
+                             text: String)
+  extends ToolInput derives RW
 
 /**
  * Send a full-document content update to the language server.
@@ -21,10 +22,11 @@ case class LspDidChangeInput(languageId: String,
  * `workspace/didChangeWatchedFiles` notification is the typical
  * fan-out path. This tool exists for explicit "refresh now" flows.
  */
-final class LspDidChangeTool(val manager: LspManager) extends TypedOutputTool[LspDidChangeInput, LspDidChangeResult](
-  name = ToolName("lsp_did_change"),
-  description =
-    """Update the language server's in-memory copy of a document by passing the file's
+final class LspDidChangeTool(val manager: LspManager)
+  extends TypedOutputTool[LspDidChangeInput, LspDidChangeResult](
+    name = ToolName("lsp_did_change"),
+    description =
+      """Update the language server's in-memory copy of a document by passing the file's
       |complete new contents. The server's diagnostic and completion computations operate
       |against this in-memory copy until the next change is sent or the document is
       |closed. Use after any external mutation of the document whose effects the LSP
@@ -34,19 +36,20 @@ final class LspDidChangeTool(val manager: LspManager) extends TypedOutputTool[Ls
       |`languageId` selects the persisted LspServerConfig. `filePath` is the absolute
       |path; the server's open-document state for the URI is refreshed with `text` and
       |the document version is bumped.""".stripMargin,
-  keywords = Set("lsp", "did change", "edit", "change", "modify", "document update", "notify edit"),
-  examples = List(
-    ToolExample(
-      "refresh after editing a Scala file",
-      LspDidChangeInput(languageId = "scala", filePath = "/abs/path/Foo.scala", text = "object Foo")
+    keywords = Set("lsp", "did change", "edit", "change", "modify", "document update", "notify edit"),
+    examples = List(
+      ToolExample(
+        "refresh after editing a Scala file",
+        LspDidChangeInput(languageId = "scala", filePath = "/abs/path/Foo.scala", text = "object Foo")
+      )
     )
   )
-) with sigil.tool.DestructiveExternalTool with LspToolSupport {
+  with sigil.tool.DestructiveExternalTool
+  with LspToolSupport {
   override def paginate: Boolean = false
 
-
   override protected def executeTypedResult(input: LspDidChangeInput,
-                                            context: TurnContext): Task[ToolResult[LspDidChangeResult]] = {
+                                            context: TurnContext): Task[ToolResult[LspDidChangeResult]] =
     // Bug #131 — Sage's wire log showed the agent calling lsp_did_change
     // with 17-character `text` values ("AdminUsersService") trying to
     // QUERY the file. Each call silently overwrote the LSP's in-memory
@@ -71,7 +74,9 @@ final class LspDidChangeTool(val manager: LspManager) extends TypedOutputTool[Ls
       ))
     } else {
       withSessionTyped[LspDidChangeResult](
-        input.languageId, input.filePath, context,
+        input.languageId,
+        input.filePath,
+        context,
         onError = msg => throw new RuntimeException(msg)
       ) { (session, uri, _) =>
         session.didChangeFull(uri, input.text).map(_ => LspDidChangeResult(uri))
@@ -79,19 +84,21 @@ final class LspDidChangeTool(val manager: LspManager) extends TypedOutputTool[Ls
         .handleError { err =>
           Task.pure(ToolResult.failure(
             message = Option(err.getMessage).getOrElse(err.getClass.getSimpleName),
-            args    = Some(s"filePath=${input.filePath}, languageId=${input.languageId}")
+            args = Some(s"filePath=${input.filePath}, languageId=${input.languageId}")
           ))
         }
     }
-  }
 }
 
 object LspDidChangeTool {
-  /** Minimum `text` payload length before lsp_did_change accepts it as a
-    * plausible full-document update. Below this, the tool refuses with
-    * a Failure pointing at read_file — the bug #131 wire-log scenario
-    * (agent passing 17-char query strings as `text`) trips here. Apps
-    * with legitimately tiny source files (single-line scripts) can
-    * override the tool to lower the bar. */
+
+  /**
+   * Minimum `text` payload length before lsp_did_change accepts it as a
+   * plausible full-document update. Below this, the tool refuses with
+   * a Failure pointing at read_file — the bug #131 wire-log scenario
+   * (agent passing 17-char query strings as `text`) trips here. Apps
+   * with legitimately tiny source files (single-line scripts) can
+   * override the tool to lower the bar.
+   */
   val MinPlausibleDocumentLength: Int = 30
 }

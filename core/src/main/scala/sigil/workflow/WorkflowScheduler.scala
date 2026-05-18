@@ -25,9 +25,11 @@ import strider.step.Step
  */
 object WorkflowScheduler {
 
-  /** Schedule a workflow from a persisted template. Returns the
-    * inserted `strider.Workflow` row carrying all Sigil-side
-    * metadata. */
+  /**
+   * Schedule a workflow from a persisted template. Returns the
+   * inserted `strider.Workflow` row carrying all Sigil-side
+   * metadata.
+   */
   def scheduleTemplate(host: Sigil { type DB <: sigil.db.SigilDB & WorkflowCollections } & WorkflowSigil,
                        workflowDb: SigilWorkflowDB,
                        template: WorkflowTemplate,

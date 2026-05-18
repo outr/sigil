@@ -11,7 +11,8 @@ import java.nio.file.{Files, Path}
 class EditAtRangeToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  private def withTempDir(f: (sigil.tool.fs.FileSystemContext, Path) => Task[org.scalatest.compatible.Assertion]): Task[org.scalatest.compatible.Assertion] = {
+  private def withTempDir(f: (sigil.tool.fs.FileSystemContext, Path) => Task[org.scalatest.compatible.Assertion])
+    : Task[org.scalatest.compatible.Assertion] = {
     val tmp = Files.createTempDirectory("edit-at-range-")
     val ctx = LocalFileSystemContext(basePath = Some(tmp))
     f(ctx, tmp)
@@ -19,10 +20,10 @@ class EditAtRangeToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
 
   private def turnContext() =
     sigil.TurnContext(
-      sigil        = TestSigil,
-      chain        = List(TestUser),
+      sigil = TestSigil,
+      chain = List(TestUser),
       conversation = sigil.conversation.Conversation(topics = TestTopicStack),
-      turnInput    = sigil.conversation.TurnInput(conversationId = sigil.conversation.Conversation.id("editrange"))
+      turnInput = sigil.conversation.TurnInput(conversationId = sigil.conversation.Conversation.id("editrange"))
     )
 
   private def edit(ctx: sigil.tool.fs.FileSystemContext, in: EditAtRangeInput) =
@@ -35,7 +36,7 @@ class EditAtRangeToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       val in = EditAtRangeInput("f", 1, 0, 1, 4, "BEETA")
       EditAtRangeTool.applyRange(content, in) match {
         case Right(next) => Task.pure(next shouldBe "alpha\nBEETA\ngamma\n")
-        case Left(err)   => Task.pure(fail(err))
+        case Left(err) => Task.pure(fail(err))
       }
     }
 
@@ -44,7 +45,7 @@ class EditAtRangeToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       val in = EditAtRangeInput("f", 1, 0, 1, 0, "PREFIX-")
       EditAtRangeTool.applyRange(content, in) match {
         case Right(next) => Task.pure(next shouldBe "alpha\nPREFIX-beta\n")
-        case Left(err)   => Task.pure(fail(err))
+        case Left(err) => Task.pure(fail(err))
       }
     }
 
@@ -53,14 +54,14 @@ class EditAtRangeToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       val in = EditAtRangeInput("f", 1, 0, 3, 0, "")
       EditAtRangeTool.applyRange(content, in) match {
         case Right(next) => Task.pure(next shouldBe "alpha\ndelta\n")
-        case Left(err)   => Task.pure(fail(err))
+        case Left(err) => Task.pure(fail(err))
       }
     }
 
     "reject end position preceding start" in {
       val in = EditAtRangeInput("f", 2, 5, 1, 0, "x")
       EditAtRangeTool.applyRange("alpha\nbeta\ngamma\n", in) match {
-        case Left(msg)   => Task.pure(msg should include ("precedes start"))
+        case Left(msg) => Task.pure(msg should include("precedes start"))
         case Right(next) => Task.pure(fail(s"expected Left; got $next"))
       }
     }
@@ -68,7 +69,7 @@ class EditAtRangeToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     "reject out-of-bounds line index" in {
       val in = EditAtRangeInput("f", 99, 0, 99, 0, "x")
       EditAtRangeTool.applyRange("alpha\nbeta\n", in) match {
-        case Left(msg)   => Task.pure(msg should include ("past EOF"))
+        case Left(msg) => Task.pure(msg should include("past EOF"))
         case Right(next) => Task.pure(fail(s"expected Left; got $next"))
       }
     }
@@ -76,7 +77,7 @@ class EditAtRangeToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     "reject character index past line length" in {
       val in = EditAtRangeInput("f", 0, 100, 0, 100, "x")
       EditAtRangeTool.applyRange("short\n", in) match {
-        case Left(msg)   => Task.pure(msg should include ("exceeds line"))
+        case Left(msg) => Task.pure(msg should include("exceeds line"))
         case Right(next) => Task.pure(fail(s"expected Left; got $next"))
       }
     }
@@ -87,9 +88,9 @@ class EditAtRangeToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     "commit a position-based replace and persist the new content on disk" in withTempDir { (ctx, _) =>
       val tc = turnContext()
       for {
-        _      <- new WriteFileTool(ctx).execute(WriteFileInput("a.txt", "hello\nworld\n"), tc).toList
+        _ <- new WriteFileTool(ctx).execute(WriteFileInput("a.txt", "hello\nworld\n"), tc).toList
         events <- edit(ctx, EditAtRangeInput("a.txt", 0, 0, 0, 5, "HELLO"))
-        re     <- new ReadFileTool(ctx).execute(ReadFileInput("a.txt"), tc).toList
+        re <- new ReadFileTool(ctx).execute(ReadFileInput("a.txt"), tc).toList
       } yield {
         val results = events.collect { case tr: sigil.event.ToolResults => tr }
         results should not be empty
@@ -102,18 +103,18 @@ class EditAtRangeToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     "surface a typed Failure when the range is out of bounds (file unchanged)" in withTempDir { (ctx, _) =>
       val tc = turnContext()
       for {
-        _      <- new WriteFileTool(ctx).execute(WriteFileInput("oob.txt", "short\n"), tc).toList
+        _ <- new WriteFileTool(ctx).execute(WriteFileInput("oob.txt", "short\n"), tc).toList
         events <- edit(ctx, EditAtRangeInput("oob.txt", 0, 100, 0, 100, "x"))
-        re     <- new ReadFileTool(ctx).execute(ReadFileInput("oob.txt"), tc).toList
+        re <- new ReadFileTool(ctx).execute(ReadFileInput("oob.txt"), tc).toList
       } yield {
         val failureMsg = events.collectFirst {
           case m: sigil.event.Message
-            if m.role == sigil.event.MessageRole.Tool &&
-              m.disposition.isInstanceOf[sigil.event.MessageDisposition.Failure] => m
+              if m.role == sigil.event.MessageRole.Tool &&
+                m.disposition.isInstanceOf[sigil.event.MessageDisposition.Failure] => m
         }
         failureMsg should not be empty
         val text = failureMsg.get.content.collect { case ResponseContent.Text(t) => t }.mkString
-        text should include ("exceeds line")
+        text should include("exceeds line")
         // File on disk is unchanged.
         re.collectFirst { case tr: sigil.event.ToolResults => tr.typed }.flatten
           .map(j => summon[fabric.rw.RW[ReadFileOutput]].write(j).content) shouldBe Some("short\n")

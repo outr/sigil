@@ -30,7 +30,7 @@ class MalformedToolArgsDetectionSpec extends AnyWordSpec with Matchers {
   case class RespondLike(topicLabel: String, content: String) extends ToolInput derives RW
 
   private object RespondTool extends Tool {
-  override def paginate: Boolean = false
+    override def paginate: Boolean = false
     override val name: ToolName = ToolName("respond")
     override def description: String = "Object-rooted respond schema."
     override def inputRW: RW[? <: ToolInput] = summon[RW[RespondLike]].asInstanceOf[RW[ToolInput]]
@@ -55,7 +55,7 @@ class MalformedToolArgsDetectionSpec extends AnyWordSpec with Matchers {
       ex.providerKey shouldBe "deepinfra"
       ex.code shouldBe 200
       ex.typ shouldBe "malformed_tool_args"
-      ex.getMessage should (include ("JSON array") and include ("respond"))
+      ex.getMessage should (include("JSON array") and include("respond"))
     }
 
     "carry the provider key so error attribution survives the throw" in {
@@ -70,12 +70,12 @@ class MalformedToolArgsDetectionSpec extends AnyWordSpec with Matchers {
       // fields, type mismatch) — should NOT be classified as degenerate.
       // Falls to the existing structured-diagnostic path.
       val acc = new ToolCallAccumulator(Vector(RespondTool), providerKey = "deepinfra")
-      feed(acc, """{"topicLabel":42,"content":[]}""")  // wrong field types
+      feed(acc, """{"topicLabel":42,"content":[]}""") // wrong field types
       val events = acc.complete()
       // No exception thrown; classified as a regular parse failure.
       val errs = events.collect { case e: ProviderEvent.Error => e.message }
       errs should not be empty
-      errs.head should include ("Failed to parse args")
+      errs.head should include("Failed to parse args")
     }
 
     "fall through to the generic Error path for invalid JSON (not even a parseable array)" in {
@@ -91,7 +91,7 @@ class MalformedToolArgsDetectionSpec extends AnyWordSpec with Matchers {
       feed(acc, """{"topicLabel":"A","content":"hello"}""")
       val events = acc.complete()
       events.collectFirst { case _: ProviderEvent.ToolCallComplete => true }.isDefined shouldBe true
-      events.collectFirst { case _: ProviderEvent.Error           => true }.isDefined shouldBe false
+      events.collectFirst { case _: ProviderEvent.Error => true }.isDefined shouldBe false
     }
   }
 }

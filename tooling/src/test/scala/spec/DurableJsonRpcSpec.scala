@@ -42,13 +42,13 @@ class DurableJsonRpcSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       val activity = new AtomicLong(System.currentTimeMillis())
       val attempts = new AtomicLong(0)
       val task = DurableJsonRpc.issueDurable[String](
-        operation     = "test/fast",
+        operation = "test/fast",
         silenceWindow = silence,
-        pollInterval  = 25.millis
-      )(activitySource = () => activity.get())({ () =>
+        pollInterval = 25.millis
+      )(activitySource = () => activity.get()) { () =>
         attempts.incrementAndGet()
         CompletableFuture.completedFuture("ok")
-      })
+      }
       task.map { result =>
         result shouldBe "ok"
         attempts.get() shouldBe 1
@@ -63,14 +63,14 @@ class DurableJsonRpcSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       val activity = new AtomicLong(System.currentTimeMillis())
       val attempts = new AtomicLong(0)
       val task = DurableJsonRpc.issueDurable[String](
-        operation     = "buildTarget/dependencyModules",
+        operation = "buildTarget/dependencyModules",
         silenceWindow = silence,
-        pollInterval  = 25.millis
-      )(activitySource = () => activity.get())({ () =>
+        pollInterval = 25.millis
+      )(activitySource = () => activity.get()) { () =>
         val n = attempts.incrementAndGet()
-        if (n == 1L) new CompletableFuture[String]()  // never completes
+        if (n == 1L) new CompletableFuture[String]() // never completes
         else CompletableFuture.completedFuture("recovered-result")
-      })
+      }
       task.map { result =>
         result shouldBe "recovered-result"
         attempts.get() shouldBe 2
@@ -81,24 +81,24 @@ class DurableJsonRpcSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       val activity = new AtomicLong(System.currentTimeMillis())
       val attempts = new AtomicLong(0)
       val task = DurableJsonRpc.issueDurable[String](
-        operation     = "buildTarget/dependencyModules",
+        operation = "buildTarget/dependencyModules",
         silenceWindow = silence,
-        maxAttempts   = 2,
-        pollInterval  = 25.millis
-      )(activitySource = () => activity.get())({ () =>
+        maxAttempts = 2,
+        pollInterval = 25.millis
+      )(activitySource = () => activity.get()) { () =>
         attempts.incrementAndGet()
-        new CompletableFuture[String]()  // always silent
-      })
+        new CompletableFuture[String]() // always silent
+      }
       task.handleError {
         case e: JsonRpcTransportException => Task.pure(Right(e))
-        case other                        => Task.pure(Left(other))
+        case other => Task.pure(Left(other))
       }.map {
         case Right(e) =>
           attempts.get() shouldBe 2
-          e.operation     shouldBe "buildTarget/dependencyModules"
-          e.attempts      shouldBe 2
+          e.operation shouldBe "buildTarget/dependencyModules"
+          e.attempts shouldBe 2
           e.silenceWindow shouldBe silence
-          e.getMessage    should include ("no response")
+          e.getMessage should include("no response")
         case Left(other) =>
           fail(s"expected JsonRpcTransportException, got: $other")
       }
@@ -112,8 +112,8 @@ class DurableJsonRpcSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       // while activity is flowing.
       val activity = new AtomicLong(System.currentTimeMillis())
       val attempts = new AtomicLong(0)
-      val done     = new AtomicBoolean(false)
-      val future   = new CompletableFuture[String]()
+      val done = new AtomicBoolean(false)
+      val future = new CompletableFuture[String]()
       // Activity ticker running in the background.
       val ticker = Task.defer {
         def loop: Task[Unit] = Task.sleep(50.millis).flatMap { _ =>
@@ -133,17 +133,17 @@ class DurableJsonRpcSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       }.startUnit()
 
       val task = DurableJsonRpc.issueDurable[String](
-        operation     = "buildTarget/compile",
+        operation = "buildTarget/compile",
         silenceWindow = silence,
-        pollInterval  = 25.millis
-      )(activitySource = () => activity.get())({ () =>
+        pollInterval = 25.millis
+      )(activitySource = () => activity.get()) { () =>
         attempts.incrementAndGet()
         future
-      })
+      }
       task.map { result =>
         done.set(true)
         result shouldBe "long-but-progressing"
-        attempts.get() shouldBe 1   // no retry triggered — activity kept the clock fresh
+        attempts.get() shouldBe 1 // no retry triggered — activity kept the clock fresh
       }
     }
 
@@ -151,19 +151,19 @@ class DurableJsonRpcSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       val activity = new AtomicLong(System.currentTimeMillis())
       val attempts = new AtomicLong(0)
       val task = DurableJsonRpc.issueDurable[String](
-        operation     = "buildTarget/compile",
+        operation = "buildTarget/compile",
         silenceWindow = silence,
-        pollInterval  = 25.millis
-      )(activitySource = () => activity.get())({ () =>
+        pollInterval = 25.millis
+      )(activitySource = () => activity.get()) { () =>
         attempts.incrementAndGet()
         val f = new CompletableFuture[String]()
         f.completeExceptionally(new RuntimeException("real server error"))
         f
-      })
+      }
       task.handleError(e => Task.pure(Left(e))).map {
         case Left(e: RuntimeException) =>
           e.getMessage shouldBe "real server error"
-          attempts.get() shouldBe 1   // no retry — error wasn't silence
+          attempts.get() shouldBe 1 // no retry — error wasn't silence
         case other =>
           fail(s"expected RuntimeException, got: $other")
       }

@@ -22,42 +22,62 @@ import rapid.Task
  */
 trait McpClient {
 
-  /** The server this client connects to. */
+  /**
+   * The server this client connects to.
+   */
   def config: McpServerConfig
 
-  /** Run the initialize handshake and start the reader fiber. */
+  /**
+   * Run the initialize handshake and start the reader fiber.
+   */
   def start(): Task[Unit]
 
-  /** Tear the connection down. */
+  /**
+   * Tear the connection down.
+   */
   def close(): Task[Unit]
 
-  /** List tools advertised by the server. */
+  /**
+   * List tools advertised by the server.
+   */
   def listTools(): Task[List[McpToolDefinition]]
 
-  /** Call a tool. The server's response (the `CallToolResult` shape:
-    * `{ content: [...], isError: bool }`) is returned as raw JSON;
-    * [[McpTool.execute]] translates it to Sigil events.
-    *
-    * `onWireId` (when supplied) fires once with the wire-level
-    * request id so the caller can register the in-flight call for
-    * cancellation tracking. The id is passed to [[cancelRequest]]
-    * to send `notifications/cancelled` for that specific call. */
+  /**
+   * Call a tool. The server's response (the `CallToolResult` shape:
+   * `{ content: [...], isError: bool }`) is returned as raw JSON;
+   * [[McpTool.execute]] translates it to Sigil events.
+   *
+   * `onWireId` (when supplied) fires once with the wire-level
+   * request id so the caller can register the in-flight call for
+   * cancellation tracking. The id is passed to [[cancelRequest]]
+   * to send `notifications/cancelled` for that specific call.
+   */
   def callTool(name: String, arguments: Json, onWireId: Long => Unit = _ => ()): Task[Json]
 
-  /** List resources advertised by the server. */
+  /**
+   * List resources advertised by the server.
+   */
   def listResources(): Task[List[McpResource]]
 
-  /** Read the contents of a resource by URI. Returns the
-    * `ReadResourceResult` shape — `{ contents: [...] }`. */
+  /**
+   * Read the contents of a resource by URI. Returns the
+   * `ReadResourceResult` shape — `{ contents: [...] }`.
+   */
   def readResource(uri: String): Task[Json]
 
-  /** List prompt templates advertised by the server. */
+  /**
+   * List prompt templates advertised by the server.
+   */
   def listPrompts(): Task[List[McpPrompt]]
 
-  /** Fetch a prompt by name with the given arguments. Returns the
-    * `GetPromptResult` shape — `{ description, messages: [...] }`. */
+  /**
+   * Fetch a prompt by name with the given arguments. Returns the
+   * `GetPromptResult` shape — `{ description, messages: [...] }`.
+   */
   def getPrompt(name: String, arguments: Map[String, String] = Map.empty): Task[Json]
 
-  /** Send `notifications/cancelled` for the given outgoing request id. */
+  /**
+   * Send `notifications/cancelled` for the given outgoing request id.
+   */
   def cancelRequest(requestId: Long, reason: Option[String] = None): Task[Unit]
 }

@@ -31,15 +31,18 @@ object DynamicToolInput {
  */
 case class DynamicTool(toolName: String,
                        toolDescription: String,
-                       paramsDefinition: Definition) extends TypedTool[DynamicToolInput](
-  name = ToolName(toolName),
-  description = toolDescription
-) {
+                       paramsDefinition: Definition)
+  extends TypedTool[DynamicToolInput](
+    name = ToolName(toolName),
+    description = toolDescription
+  ) {
   override def paginate: Boolean = false
 
-  /** Override the schema's input definition with the hand-built one
-    * (the LLM sees the bench-supplied schema; the parser returns raw
-    * JSON via DynamicToolInput.rw regardless). */
+  /**
+   * Override the schema's input definition with the hand-built one
+   * (the LLM sees the bench-supplied schema; the parser returns raw
+   * JSON via DynamicToolInput.rw regardless).
+   */
   override def inputDefinition: Definition = paramsDefinition
 
   override protected def executeTyped(input: DynamicToolInput, context: TurnContext): Stream[Event] = Stream.empty

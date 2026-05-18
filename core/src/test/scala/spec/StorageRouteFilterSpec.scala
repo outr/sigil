@@ -48,7 +48,7 @@ class StorageRouteFilterSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     "serve bytes for an authorized file by id" in {
       val payload = "route-payload".getBytes("UTF-8")
       for {
-        stored   <- TestSigil.storeBytes(GlobalSpace, payload, "text/plain")
+        stored <- TestSigil.storeBytes(GlobalSpace, payload, "text/plain")
         exchange <- get(s"/storage/${stored._id.value}")
       } yield {
         exchange.response.status shouldBe HttpStatus.OK
@@ -61,34 +61,29 @@ class StorageRouteFilterSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     "return 404 for a missing file id" in {
       for {
         exchange <- get("/storage/this-id-does-not-exist")
-      } yield {
-        exchange.response.status shouldBe HttpStatus.NotFound
-      }
+      } yield exchange.response.status shouldBe HttpStatus.NotFound
     }
 
     "return 404 when the caller is not authorized for the file's space" in {
       val payload = "guarded".getBytes("UTF-8")
       for {
-        stored   <- TestSigil.storeBytes(TestSpace, payload, "text/plain")
+        stored <- TestSigil.storeBytes(TestSpace, payload, "text/plain")
         // Strip auth: OpenAuth callers see no spaces.
-        _        <- Task { TestSigil.setAccessibleSpaces(_ => Task.pure(Set.empty)) }
+        _ <- Task(TestSigil.setAccessibleSpaces(_ => Task.pure(Set.empty)))
         exchange <- get(s"/storage/${stored._id.value}")
         // Re-grant for any subsequent tests in this suite.
-        _        <- Task { TestSigil.setAccessibleSpaces(_ => Task.pure(Set(GlobalSpace, TestSpace))) }
-      } yield {
-        exchange.response.status shouldBe HttpStatus.NotFound
-      }
+        _ <- Task(TestSigil.setAccessibleSpaces(_ => Task.pure(Set(GlobalSpace, TestSpace))))
+      } yield exchange.response.status shouldBe HttpStatus.NotFound
     }
 
     "fall through (404 / no content from this filter) for non-/storage paths" in {
       for {
         exchange <- get("/somewhere-else")
-      } yield {
+      } yield
         // The framework's default NotFound handler fires when no handler
         // claims the request. The storage route returns the exchange
         // untouched for non-/storage paths.
         exchange.response.status shouldBe HttpStatus.NotFound
-      }
     }
   }
 

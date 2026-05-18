@@ -23,10 +23,11 @@ import scala.reflect.ClassTag
  *    `Option[I]` directly, no events emitted. Used by framework
  *    machinery that needs structured sub-decisions.
  */
-case object ConsultTool extends TypedTool[ConsultInput](
-  name = ToolName("consult"),
-  description =
-    """Consult another model — or yourself with no conversation history — for a focused sub-question.
+case object ConsultTool
+  extends TypedTool[ConsultInput](
+    name = ToolName("consult"),
+    description =
+      """Consult another model — or yourself with no conversation history — for a focused sub-question.
       |
       |Use this when:
       |  - the current model isn't strong enough for a hard sub-task and a stronger model should answer
@@ -43,17 +44,17 @@ case object ConsultTool extends TypedTool[ConsultInput](
       |`systemPrompt` — set the consulted model's role / context for this question. One paragraph max.
       |
       |`userPrompt` — the actual question or task. Be specific; the consulted model has no other context.""".stripMargin,
-  examples = List(
-    ToolExample(
-      "Ask a stronger model for a focused legal interpretation",
-      ConsultInput(
-        modelId = Id("anthropic/claude-opus-4-7"),
-        systemPrompt = "You are a careful legal reasoner. Quote relevant clauses verbatim.",
-        userPrompt = "Given this contract clause, does it permit unilateral termination? <clause text>"
+    examples = List(
+      ToolExample(
+        "Ask a stronger model for a focused legal interpretation",
+        ConsultInput(
+          modelId = Id("anthropic/claude-opus-4-7"),
+          systemPrompt = "You are a careful legal reasoner. Quote relevant clauses verbatim.",
+          userPrompt = "Given this contract clause, does it permit unilateral termination? <clause text>"
+        )
       )
     )
-  )
-) {
+  ) {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: ConsultInput, context: TurnContext): Stream[Event] = Stream.force {
@@ -106,7 +107,7 @@ case object ConsultTool extends TypedTool[ConsultInput](
                                          GenerationSettings.classifierDefault): Task[Option[I]] =
     invokeRich[I](sigil, modelId, chain, systemPrompt, userPrompt, tool, generationSettings).map {
       case ConsultOutcome.Parsed(v) => Some(v)
-      case _                        => None
+      case _ => None
     }
 
   /**
@@ -164,10 +165,10 @@ case object ConsultTool extends TypedTool[ConsultInput](
           case Some(v) => ConsultOutcome.Parsed(v)
           case None =>
             val usage = events.collectFirst { case ProviderEvent.Usage(u) => u }
-            val stop  = events.collectFirst { case ProviderEvent.Done(reason) => reason }
+            val stop = events.collectFirst { case ProviderEvent.Done(reason) => reason }
             stop match {
               case Some(StopReason.MaxTokens) => ConsultOutcome.truncated(usage)
-              case _                          => ConsultOutcome.NoOpinion
+              case _ => ConsultOutcome.NoOpinion
             }
         }
       }
@@ -180,8 +181,8 @@ case object ConsultTool extends TypedTool[ConsultInput](
     val sb = new StringBuilder
     events.foreach {
       case ProviderEvent.ContentBlockDelta(_, t) => sb.append(t)
-      case ProviderEvent.TextDelta(t)            => sb.append(t)
-      case _                                     => ()
+      case ProviderEvent.TextDelta(t) => sb.append(t)
+      case _ => ()
     }
     sb.toString
   }

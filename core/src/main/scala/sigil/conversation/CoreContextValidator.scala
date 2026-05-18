@@ -22,11 +22,13 @@ import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
  */
 object CoreContextValidator {
 
-  /** Token allowance reserved for the static system-prompt sections
-    * (Instructions block, ModeBlock, Topic block, framework framing
-    * prefix). Approximate; the actual rendered overhead varies by
-    * model + topic length. Phase 0 measurements: ~420 tokens
-    * baseline across scenarios. We use 500 to leave headroom. */
+  /**
+   * Token allowance reserved for the static system-prompt sections
+   * (Instructions block, ModeBlock, Topic block, framework framing
+   * prefix). Approximate; the actual rendered overhead varies by
+   * model + topic length. Phase 0 measurements: ~420 tokens
+   * baseline across scenarios. We use 500 to leave headroom.
+   */
   val SystemPromptOverheadTokens: Int = 500
 
   case class CoreContextEstimate(criticalTokens: Int,
@@ -35,10 +37,12 @@ object CoreContextValidator {
     def total: Int = criticalTokens + systemOverheadTokens
   }
 
-  /** Estimate the current core-context cost for a given space set.
-    * Critical memories are looked up via `Sigil.findCriticalMemories`
-    * scoped to the supplied spaces. Token count uses `summary || fact`
-    * to mirror the renderer's policy. */
+  /**
+   * Estimate the current core-context cost for a given space set.
+   * Critical memories are looked up via `Sigil.findCriticalMemories`
+   * scoped to the supplied spaces. Token count uses `summary || fact`
+   * to mirror the renderer's policy.
+   */
   def estimate(sigil: Sigil,
                spaces: Set[SpaceId],
                tokenizer: Tokenizer = HeuristicTokenizer): Task[CoreContextEstimate] =
@@ -55,8 +59,10 @@ object CoreContextValidator {
       )
     }
 
-  /** What would the core-context total be if `proposed` were added (or
-    * replaced an existing record at the same key)? */
+  /**
+   * What would the core-context total be if `proposed` were added (or
+   * replaced an existing record at the same key)?
+   */
   def projectedTotal(current: CoreContextEstimate,
                      proposed: ContextMemory,
                      tokenizer: Tokenizer = HeuristicTokenizer): Int = {
@@ -67,26 +73,32 @@ object CoreContextValidator {
     current.total - replacingExisting + proposedTokens
   }
 
-  /** Per-model token cap for the core-context section. */
+  /**
+   * Per-model token cap for the core-context section.
+   */
   def limitFor(model: Model, share: Double): Int =
     math.max(0, (model.contextLength.toDouble * share).toInt)
 
-  /** Chooses the smallest contextLength among registered models — used
-    * when validating a `persistMemory` call without a conversation
-    * context (no specific model in scope). The cap holds for every
-    * model the app might use. */
+  /**
+   * Chooses the smallest contextLength among registered models — used
+   * when validating a `persistMemory` call without a conversation
+   * context (no specific model in scope). The cap holds for every
+   * model the app might use.
+   */
   def smallestModelContext(sigil: Sigil): Option[Model] = {
     val models = sigil.cache.find().filter(_.contextLength > 0)
     if (models.isEmpty) None else Some(models.minBy(_.contextLength))
   }
 
-  /** Chooses the largest contextLength among registered models. Used by
-    * boot-time validators that gate against the AGENT's configured
-    * ceiling rather than a cost-tiered fallback model. Complexity-routed
-    * setups put a small local model in the registry exactly because it
-    * handles only `Complexity.Low` turns; the modes whose skills sit on
-    * the system prompt always route to a frontier model with plenty of
-    * headroom for their bundled content. */
+  /**
+   * Chooses the largest contextLength among registered models. Used by
+   * boot-time validators that gate against the AGENT's configured
+   * ceiling rather than a cost-tiered fallback model. Complexity-routed
+   * setups put a small local model in the registry exactly because it
+   * handles only `Complexity.Low` turns; the modes whose skills sit on
+   * the system prompt always route to a frontier model with plenty of
+   * headroom for their bundled content.
+   */
   def largestModelContext(sigil: Sigil): Option[Model] = {
     val models = sigil.cache.find().filter(_.contextLength > 0)
     if (models.isEmpty) None else Some(models.maxBy(_.contextLength))

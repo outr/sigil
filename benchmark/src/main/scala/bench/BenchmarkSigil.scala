@@ -33,12 +33,13 @@ import spice.net.{TLDValidation, URL, url}
  */
 case class BenchmarkSigil(override val embeddingProvider: EmbeddingProvider,
                           override val vectorIndex: VectorIndex,
-                          providerFactory: Id[Model] => Task[Provider]) extends Sigil {
+                          providerFactory: Id[Model] => Task[Provider])
+  extends Sigil {
 
   override type DB = sigil.db.DefaultSigilDB
   override protected def buildDB(directory: Option[java.nio.file.Path],
-                                  storeManager: lightdb.store.CollectionManager,
-                                  appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
+                                 storeManager: lightdb.store.CollectionManager,
+                                 appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
     new sigil.db.DefaultSigilDB(directory, storeManager, appUpgrades)
 
   override protected def signalRegistrations: List[RW[? <: Signal]] = Nil
@@ -67,9 +68,11 @@ case class BenchmarkSigil(override val embeddingProvider: EmbeddingProvider,
 
 object BenchmarkSigil {
 
-  /** Construct a BenchmarkSigil with an OpenAI-backed provider. Used
-    * by the rerank path — ConsultTool.invoke routes through
-    * `providerFor`, which lands an OpenAIProvider for any model id. */
+  /**
+   * Construct a BenchmarkSigil with an OpenAI-backed provider. Used
+   * by the rerank path — ConsultTool.invoke routes through
+   * `providerFor`, which lands an OpenAIProvider for any model id.
+   */
   def withOpenAI(embeddingProvider: EmbeddingProvider,
                  vectorIndex: VectorIndex,
                  openaiApiKey: String,
@@ -79,11 +82,12 @@ object BenchmarkSigil {
     lazy val self: BenchmarkSigil = BenchmarkSigil(
       embeddingProvider = embeddingProvider,
       vectorIndex = vectorIndex,
-      providerFactory = _ => Task.pure(OpenAIProvider(
-        apiKey = openaiApiKey,
-        sigilRef = self,
-        baseUrl = openaiBaseUrl
-      ))
+      providerFactory = _ =>
+        Task.pure(OpenAIProvider(
+          apiKey = openaiApiKey,
+          sigilRef = self,
+          baseUrl = openaiBaseUrl
+        ))
     )
     self
   }
@@ -144,7 +148,8 @@ object BenchmarkSigil {
               sigilRef = self
             ))
           case other =>
-            Task.error(new IllegalArgumentException(s"Unknown model provider prefix '$other' in model id '$idStr' (expected openai/..., anthropic/..., or llamacpp/...)"))
+            Task.error(new IllegalArgumentException(
+              s"Unknown model provider prefix '$other' in model id '$idStr' (expected openai/..., anthropic/..., or llamacpp/...)"))
         }
       }
     )

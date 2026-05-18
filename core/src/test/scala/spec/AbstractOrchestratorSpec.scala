@@ -27,7 +27,7 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   // 5-min cap accommodates worst-case live-LLM latency under 4-way
   // fork contention; the framework's default 1-min routinely killed
   // healthy in-flight calls.
-  override implicit protected val testTimeout: scala.concurrent.duration.FiniteDuration =
+  implicit override protected val testTimeout: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.DurationInt(5).minutes
 
   TestSigil.initFor(getClass.getSimpleName)
@@ -36,14 +36,18 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   protected def modelId: Id[Model]
 
-  /** Wire the spec's provider into TestSigil so `providerFor` returns it. */
+  /**
+   * Wire the spec's provider into TestSigil so `providerFor` returns it.
+   */
   TestSigil.setProvider(provider)
 
-  /** Tool names the test agent advertises. CoreTools' default roster
-    * plus the opt-in `change_mode` tool (orchestrator tests exercise it
-    * directly), the synthetic SendSlackMessageTool, and the non-core
-    * SleepTool so orchestrator tests exercising sleep-timing have it
-    * available. */
+  /**
+   * Tool names the test agent advertises. CoreTools' default roster
+   * plus the opt-in `change_mode` tool (orchestrator tests exercise it
+   * directly), the synthetic SendSlackMessageTool, and the non-core
+   * SleepTool so orchestrator tests exercising sleep-timing have it
+   * available.
+   */
   protected def toolNames: List[sigil.tool.ToolName] =
     CoreTools.coreToolNames ++ List(
       sigil.tool.core.ChangeModeTool.schema.name,
@@ -60,9 +64,11 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       generationSettings = GenerationSettings(maxOutputTokens = Some(500), temperature = Some(0.0))
     )
 
-  /** A synthesized AgentState id used when we want defaultProcess to emit
-    * the Typing transition during streaming responses. The real dispatcher
-    * supplies this via `TurnContext.currentAgentStateId`. */
+  /**
+   * A synthesized AgentState id used when we want defaultProcess to emit
+   * the Typing transition during streaming responses. The real dispatcher
+   * supplies this via `TurnContext.currentAgentStateId`.
+   */
   private val testAgentStateId: Id[Event] = Id("test-agentstate")
 
   /**
@@ -181,7 +187,7 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   }
 
   getClass.getSimpleName should {
-    "emit ToolInvoke + Message + Typing transition for a streaming respond call" in {
+    "emit ToolInvoke + Message + Typing transition for a streaming respond call" in
       orchestrate("What is 2+2? Respond with just the number.").map { signals =>
         val toolInvokes = signals.collect { case t: ToolInvoke => t }
         toolInvokes should not be empty
@@ -233,7 +239,6 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
           case _ => false
         } shouldBe true
       }
-    }
 
     "persist Events and apply Deltas to the events store via SigilDB.apply" in {
       val conversationId = Conversation.id("test-persistence-conversation")
@@ -279,15 +284,15 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         // MarkdownContentParser produces Markdown blocks for plain prose
         // ("4" is plain text, no fence/heading), Code for fenced blocks, etc.
         val text = messages.head.content.collect {
-          case t: ResponseContent.Text     => t.text
+          case t: ResponseContent.Text => t.text
           case m: ResponseContent.Markdown => m.text
-          case c: ResponseContent.Code     => c.code
+          case c: ResponseContent.Code => c.code
         }.mkString
         text should include("4")
       }
     }
 
-    "emit ToolInvoke + ModeChange for an atomic change_mode call" in {
+    "emit ToolInvoke + ModeChange for an atomic change_mode call" in
       // Bug #203 — the mode descriptions now spell out "Enter when
       // [...sustained session...]" and "Don't enter for [...single-
       // turn actions...]", so a one-off "write a function" prompt no
@@ -295,8 +300,8 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       // request that matches CodingMode's "Enter when" clause.
       orchestrate(
         "I'm starting a multi-step coding session on a Scala project — " +
-        "I want to iterate with you on a small library together over the next several turns. " +
-        "Switch into the right operating mode now so we can iterate."
+          "I want to iterate with you on a small library together over the next several turns. " +
+          "Switch into the right operating mode now so we can iterate."
       ).map { signals =>
         val toolInvokes = signals.collect { case t: ToolInvoke => t }
         toolInvokes should not be empty
@@ -338,7 +343,6 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         val agentStateDeltas = signals.collect { case d: AgentStateDelta => d }
         agentStateDeltas.exists(_.activity.contains(AgentActivity.Typing)) shouldBe false
       }
-    }
 
     // Live-LLM coverage of the topic-trigger path. The system prompt shows
     // `Current topic: "New Conversation"` (the bootstrap label). The LLM
@@ -402,7 +406,7 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     // All three are defensible judgments — the probe data showed this is
     // a subjective edge. What we assert: IF a TopicChange fires, it's
     // structurally sound and its label reflects the narrowed subject.
-    "handle an iterative-refinement message coherently (NoChange or Rename, both defensible)" in {
+    "handle an iterative-refinement message coherently (NoChange or Rename, both defensible)" in
       orchestrateAfterSeed(
         seedLabel = "Python Programming",
         userMessage =
@@ -434,12 +438,11 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         }
         topicChanges.size should be <= 1
       }
-    }
 
     // Hard-switch path: user explicitly changes subject. Probe results
     // show Qwen picks `Change`, which the orchestrator maps to a
     // `Switch` — fresh Topic with the new label.
-    "fire a TopicChange(Switch) when the LLM detects an abrupt subject change" in {
+    "fire a TopicChange(Switch) when the LLM detects an abrupt subject change" in
       orchestrateAfterSeed(
         seedLabel = "Roman Empire History",
         userMessage =
@@ -485,6 +488,5 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         switchKind.previousTopicId shouldBe seeded._id
         tc.topicId should not be seeded._id
       }
-    }
   }
 }

@@ -13,9 +13,12 @@ final case class ScheduleTransactionInput(@description("IBAN of the recipient") 
                                           @description("Amount of the transaction") amount: Double,
                                           @description("Subject of the transaction") subject: String,
                                           @description("Next date of the transaction") date: String,
-                                          @description("Is the transaction recurring") recurring: Boolean) extends ToolInput derives RW
+                                          @description("Is the transaction recurring") recurring: Boolean)
+  extends ToolInput derives RW
 
-/** `schedule_transaction` — append a scheduled transaction. */
+/**
+ * `schedule_transaction` — append a scheduled transaction.
+ */
 final class ScheduleTransactionTool(state: AtomicReference[BankingEnvironment])
   extends TypedTool[ScheduleTransactionInput](
     name = ToolName("schedule_transaction"),

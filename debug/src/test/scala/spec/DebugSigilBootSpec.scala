@@ -14,10 +14,12 @@ import sigil.debug.{DebugCollections, DebugSigil}
  */
 class DebugSigilBootSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
-  /** Concrete DB carrying both core SigilDB collections and DebugCollections. */
+  /**
+   * Concrete DB carrying both core SigilDB collections and DebugCollections.
+   */
   private class DebugSigilTestDB(directory: Option[java.nio.file.Path],
-                                  storeManager: lightdb.store.CollectionManager,
-                                  appUpgrades: List[lightdb.upgrade.DatabaseUpgrade] = Nil)
+                                 storeManager: lightdb.store.CollectionManager,
+                                 appUpgrades: List[lightdb.upgrade.DatabaseUpgrade] = Nil)
     extends SigilDB(directory, storeManager, appUpgrades) with DebugCollections
 
   private def freshSigil(): DebugSigil = {
@@ -29,7 +31,7 @@ class DebugSigilBootSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
                                      appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
         new DebugSigilTestDB(directory, storeManager, appUpgrades)
       override def providerFor(modelId: lightdb.id.Id[sigil.db.Model],
-                                chain: List[sigil.participant.ParticipantId]): rapid.Task[sigil.provider.Provider] =
+                               chain: List[sigil.participant.ParticipantId]): rapid.Task[sigil.provider.Provider] =
         rapid.Task.error(new RuntimeException("provider unused"))
     }
   }

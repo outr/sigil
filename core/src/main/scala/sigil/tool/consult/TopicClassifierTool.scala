@@ -9,19 +9,22 @@ import sigil.tool.{ToolName, TypedTool}
  * the conversation's current prior-topic labels so the grammar-enforced
  * enum constrains the LLM to a valid choice.
  */
-class TopicClassifierTool(priorLabels: List[String]) extends TypedTool[TopicClassifierInput](
-  name = ToolName("classify_topic_shift"),
-  description =
-    """Classify the proposed topic relative to the current and prior topics. Pick exactly one:
+class TopicClassifierTool(priorLabels: List[String])
+  extends TypedTool[TopicClassifierInput](
+    name = ToolName("classify_topic_shift"),
+    description =
+      """Classify the proposed topic relative to the current and prior topics. Pick exactly one:
       |  - "NoChange" — same subject as the Current topic; nothing to relabel.
       |  - "Refine"   — same subject as Current, but a sharper / more specific label.
       |  - <prior label> — same subject as one of the prior topics; the user is returning.
       |  - "New"      — a subject genuinely different from Current and all priors.""".stripMargin
-) {
+  ) {
   override def paginate: Boolean = false
 
-  /** Override the schema's input definition with one whose `kind` field
-    * has a dynamic enum populated from the per-call prior labels. */
+  /**
+   * Override the schema's input definition with one whose `kind` field
+   * has a dynamic enum populated from the per-call prior labels.
+   */
   override def inputDefinition: Definition = {
     val enumKeys: List[String] = "NoChange" :: "Refine" :: "New" :: priorLabels
     val polyValues: Map[String, Definition] =

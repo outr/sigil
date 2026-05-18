@@ -20,11 +20,13 @@ import sigil.tooling.{ToolingCollections, ToolingSigil}
  */
 class ToolingSigilBootSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
-  /** Concrete DB carrying both core SigilDB collections and ToolingCollections —
-    * the shape apps use when they mix in ToolingSigil. */
+  /**
+   * Concrete DB carrying both core SigilDB collections and ToolingCollections —
+   * the shape apps use when they mix in ToolingSigil.
+   */
   private class ToolingSigilTestDB(directory: Option[java.nio.file.Path],
-                                    storeManager: lightdb.store.CollectionManager,
-                                    appUpgrades: List[lightdb.upgrade.DatabaseUpgrade] = Nil)
+                                   storeManager: lightdb.store.CollectionManager,
+                                   appUpgrades: List[lightdb.upgrade.DatabaseUpgrade] = Nil)
     extends SigilDB(directory, storeManager, appUpgrades) with ToolingCollections
 
   private def freshSigil(): ToolingSigil = {
@@ -36,7 +38,7 @@ class ToolingSigilBootSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
                                      appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
         new ToolingSigilTestDB(directory, storeManager, appUpgrades)
       override def providerFor(modelId: lightdb.id.Id[sigil.db.Model],
-                                chain: List[sigil.participant.ParticipantId]): rapid.Task[sigil.provider.Provider] =
+                               chain: List[sigil.participant.ParticipantId]): rapid.Task[sigil.provider.Provider] =
         rapid.Task.error(new RuntimeException("provider unused"))
     }
   }

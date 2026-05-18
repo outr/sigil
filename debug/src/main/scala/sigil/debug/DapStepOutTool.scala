@@ -13,20 +13,22 @@ case class DapStepOutInput(sessionId: String, threadId: Int) extends ToolInput d
  * agent uses this to back out of a method when the rest of its
  * execution isn't relevant.
  */
-final class DapStepOutTool(val manager: DapManager) extends TypedTool[DapStepOutInput](
-  name = ToolName("dap_step_out"),
-  description =
-    """Run to the end of the current frame and stop in the caller.
+final class DapStepOutTool(val manager: DapManager)
+  extends TypedTool[DapStepOutInput](
+    name = ToolName("dap_step_out"),
+    description =
+      """Run to the end of the current frame and stop in the caller.
       |
       |`sessionId` selects the active session.
       |`threadId` is the thread to step.""".stripMargin,
-  examples = List(
-    ToolExample(
-      "step out of the current method",
-      DapStepOutInput(sessionId = "demo-session", threadId = 1)
+    examples = List(
+      ToolExample(
+        "step out of the current method",
+        DapStepOutInput(sessionId = "demo-session", threadId = 1)
+      )
     )
   )
-) with DapToolSupport {
+  with DapToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: DapStepOutInput, context: TurnContext): Stream[Event] =

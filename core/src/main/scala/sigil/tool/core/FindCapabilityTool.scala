@@ -13,10 +13,11 @@ import sigil.tool.{DiscoveryRequest, ToolExample, ToolName, TypedTool}
  * (`change_mode("…")` for a Mode, the tool name for a Tool) on its
  * next turn. Bug #66.
  */
-case object FindCapabilityTool extends TypedTool[FindCapabilityInput](
-  name = ToolName("find_capability"),
-  description =
-    """Search the capability catalog for a tool, mode, or skill that fits the user's task.
+case object FindCapabilityTool
+  extends TypedTool[FindCapabilityInput](
+    name = ToolName("find_capability"),
+    description =
+      """Search the capability catalog for a tool, mode, or skill that fits the user's task.
       |Call when no listed mode obviously matches (otherwise switch to a matching mode
       |first — modes are pre-curated and more precise than a free-form search).
       |
@@ -33,12 +34,12 @@ case object FindCapabilityTool extends TypedTool[FindCapabilityInput](
       |`keywords` — space-separated lowercase terms describing the action SHAPE (verb +
       |category), not project content. See the system prompt's "Discovery-query patterns"
       |section for template queries by intent.""".stripMargin,
-  examples = List(
-    ToolExample("Send a message",          FindCapabilityInput("send slack channel message")),
-    ToolExample("Pause / wait / sleep",    FindCapabilityInput("sleep wait delay pause")),
-    ToolExample("Look up by concept",      FindCapabilityInput("billing invoice payment charge"))
-  )
-) {
+    examples = List(
+      ToolExample("Send a message", FindCapabilityInput("send slack channel message")),
+      ToolExample("Pause / wait / sleep", FindCapabilityInput("sleep wait delay pause")),
+      ToolExample("Look up by concept", FindCapabilityInput("billing invoice payment charge"))
+    )
+  ) {
   override def paginate: Boolean = false
 
   // The discovery results are delivered into the caller's
@@ -62,20 +63,22 @@ case object FindCapabilityTool extends TypedTool[FindCapabilityInput](
         )
         context.sigil.findCapabilities(request).map { matches =>
           val results = CapabilityResults(
-            matches        = matches,
-            participantId  = context.caller,
+            matches = matches,
+            participantId = context.caller,
             conversationId = context.conversation.id,
-            topicId        = context.conversation.currentTopicId,
-            query          = request.keywords
+            topicId = context.conversation.currentTopicId,
+            query = request.keywords
           )
           rapid.Stream.emits(List(results))
         }
       }
     )
 
-  /** Normalise a keywords string into the lowercase, space-separated
-    * form `findTools` expects: drop punctuation, split snake_case /
-    * camelCase / kebab-case, collapse runs to single spaces. */
+  /**
+   * Normalise a keywords string into the lowercase, space-separated
+   * form `findTools` expects: drop punctuation, split snake_case /
+   * camelCase / kebab-case, collapse runs to single spaces.
+   */
   private[core] def normaliseKeywords(raw: String): String = {
     // Insert a space at every camelCase boundary BEFORE lowercasing,
     // so `getRandomDogImage` → `get Random Dog Image` → `get random dog image`.

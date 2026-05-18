@@ -12,20 +12,22 @@ case class DapPauseInput(sessionId: String, threadId: Int) extends ToolInput der
  * Pause a running thread. Useful when the program has entered a
  * loop or stuck state and the agent wants to inspect why.
  */
-final class DapPauseTool(val manager: DapManager) extends TypedTool[DapPauseInput](
-  name = ToolName("dap_pause"),
-  description =
-    """Pause a running thread.
+final class DapPauseTool(val manager: DapManager)
+  extends TypedTool[DapPauseInput](
+    name = ToolName("dap_pause"),
+    description =
+      """Pause a running thread.
       |
       |`sessionId` selects the active session.
       |`threadId` is the thread to pause.""".stripMargin,
-  examples = List(
-    ToolExample(
-      "pause a thread",
-      DapPauseInput(sessionId = "demo-session", threadId = 1)
+    examples = List(
+      ToolExample(
+        "pause a thread",
+        DapPauseInput(sessionId = "demo-session", threadId = 1)
+      )
     )
   )
-) with DapToolSupport {
+  with DapToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: DapPauseInput, context: TurnContext): Stream[Event] =

@@ -32,9 +32,11 @@ class AgentInitiatedTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
   private val modelId: Id[Model] = Model.id("test", "agent-initiated")
 
-  /** Capture the `ProviderCall.messages` passed in on the provider's
-    * `call` so the spec can assert the wire-bound messages directly. */
-  private final class CaptureProvider extends Provider {
+  /**
+   * Capture the `ProviderCall.messages` passed in on the provider's
+   * `call` so the spec can assert the wire-bound messages directly.
+   */
+  final private class CaptureProvider extends Provider {
     @volatile var captured: Option[Vector[ProviderMessage]] = None
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -48,8 +50,10 @@ class AgentInitiatedTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         ProviderEvent.ToolCallComplete(
           CallId("c-1"),
           _root_.sigil.tool.model.RespondInput(
-            topicLabel = "Greet", topicSummary = "agent-initiated test",
-            content = "hi", endsTurn = true
+            topicLabel = "Greet",
+            topicSummary = "agent-initiated test",
+            content = "hi",
+            endsTurn = true
           )
         ),
         ProviderEvent.Done(StopReason.Complete)
@@ -59,12 +63,12 @@ class AgentInitiatedTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
   private def makeAgent(greetsOnJoin: Boolean): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      greetsOnJoin       = greetsOnJoin
+      greetsOnJoin = greetsOnJoin
     )
 
   "Agent-initiated turn (greeting)" should {
@@ -73,8 +77,8 @@ class AgentInitiatedTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val provider = new CaptureProvider
       TestSigil.setProvider(Task.pure(provider))
       val convId = Conversation.id(s"greet-${rapid.Unique()}")
-      val agent  = makeAgent(greetsOnJoin = true)
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent(greetsOnJoin = true)
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- TestSigil.fireGreeting(agent, conv)
@@ -84,7 +88,7 @@ class AgentInitiatedTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         val msgs = provider.captured.get
         msgs should not be empty
         // The synthesised message has user role + non-empty text.
-        msgs.head shouldBe a [ProviderMessage.User]
+        msgs.head shouldBe a[ProviderMessage.User]
         val text = msgs.head.asInstanceOf[ProviderMessage.User].content.collect {
           case _root_.sigil.provider.MessageContent.Text(t) => t
         }.mkString
@@ -98,7 +102,9 @@ class AgentInitiatedTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   }
 }
 
-/** Synchronous coverage for the `OneShotRequest` constructor guard. */
+/**
+ * Synchronous coverage for the `OneShotRequest` constructor guard.
+ */
 class OneShotRequestGuardSpec extends AnyWordSpec with Matchers {
 
   "OneShotRequest" should {

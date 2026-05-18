@@ -25,7 +25,7 @@ class LocalFileStorageProviderSpec extends AsyncWordSpec with AsyncTaskSpec with
       val bytes = "hello, world".getBytes("UTF-8")
       for {
         path <- provider.upload("space-a/file-1", bytes, "text/plain")
-        out  <- provider.download(path)
+        out <- provider.download(path)
       } yield {
         path shouldBe "space-a/file-1"
         out shouldBe defined
@@ -37,10 +37,10 @@ class LocalFileStorageProviderSpec extends AsyncWordSpec with AsyncTaskSpec with
       val bytes = "x".getBytes("UTF-8")
       for {
         before <- provider.exists("space-b/exists-test")
-        _      <- provider.upload("space-b/exists-test", bytes, "text/plain")
+        _ <- provider.upload("space-b/exists-test", bytes, "text/plain")
         during <- provider.exists("space-b/exists-test")
-        _      <- provider.delete("space-b/exists-test")
-        after  <- provider.exists("space-b/exists-test")
+        _ <- provider.delete("space-b/exists-test")
+        after <- provider.exists("space-b/exists-test")
       } yield {
         before shouldBe false
         during shouldBe true
@@ -48,17 +48,14 @@ class LocalFileStorageProviderSpec extends AsyncWordSpec with AsyncTaskSpec with
       }
     }
 
-    "return None for download of a missing path" in {
+    "return None for download of a missing path" in
       provider.download("nope/missing").map(_ shouldBe None)
-    }
 
     "create nested directories on upload" in {
       val bytes = "deep".getBytes("UTF-8")
       for {
         _ <- provider.upload("a/b/c/d/leaf.txt", bytes, "text/plain")
-      } yield {
-        Files.exists(tmpRoot.resolve("a/b/c/d/leaf.txt")) shouldBe true
-      }
+      } yield Files.exists(tmpRoot.resolve("a/b/c/d/leaf.txt")) shouldBe true
     }
   }
 
@@ -66,7 +63,7 @@ class LocalFileStorageProviderSpec extends AsyncWordSpec with AsyncTaskSpec with
     "round-trip read returning the SHA-256 hash" in {
       val bytes = "version-1".getBytes("UTF-8")
       for {
-        _       <- provider.upload("safe/round-trip", bytes, "text/plain")
+        _ <- provider.upload("safe/round-trip", bytes, "text/plain")
         contents <- provider.read("safe/round-trip")
       } yield {
         contents shouldBe defined
@@ -79,12 +76,12 @@ class LocalFileStorageProviderSpec extends AsyncWordSpec with AsyncTaskSpec with
       val initial = "v1".getBytes("UTF-8")
       val updated = "v2".getBytes("UTF-8")
       for {
-        _        <- provider.upload("safe/match-success", initial, "text/plain")
+        _ <- provider.upload("safe/match-success", initial, "text/plain")
         snapshot <- provider.read("safe/match-success")
-        result   <- provider.writeIfMatch("safe/match-success", updated, "text/plain", snapshot.get.version)
-        out      <- provider.download("safe/match-success")
+        result <- provider.writeIfMatch("safe/match-success", updated, "text/plain", snapshot.get.version)
+        out <- provider.download("safe/match-success")
       } yield {
-        result shouldBe a [WriteResult.Written]
+        result shouldBe a[WriteResult.Written]
         result.asInstanceOf[WriteResult.Written].version.hash shouldBe FileVersion.hashOf(updated)
         new String(out.get, "UTF-8") shouldBe "v2"
       }
@@ -93,14 +90,14 @@ class LocalFileStorageProviderSpec extends AsyncWordSpec with AsyncTaskSpec with
     "writeIfMatch with a stale hash returns Stale carrying current contents" in {
       val initial = "v1".getBytes("UTF-8")
       val updated = "v2".getBytes("UTF-8")
-      val poison  = "v3".getBytes("UTF-8")
+      val poison = "v3".getBytes("UTF-8")
       val staleVersion = FileVersion(FileVersion.hashOf(initial), Timestamp())
       for {
-        _      <- provider.upload("safe/stale", updated, "text/plain")  // start with v2
+        _ <- provider.upload("safe/stale", updated, "text/plain") // start with v2
         result <- provider.writeIfMatch("safe/stale", poison, "text/plain", staleVersion)
-        out    <- provider.download("safe/stale")
+        out <- provider.download("safe/stale")
       } yield {
-        result shouldBe a [WriteResult.Stale]
+        result shouldBe a[WriteResult.Stale]
         val stale = result.asInstanceOf[WriteResult.Stale]
         stale.current.version.hash shouldBe FileVersion.hashOf(updated)
         new String(stale.current.bytes, "UTF-8") shouldBe "v2"
@@ -125,12 +122,11 @@ class LocalFileStorageProviderSpec extends AsyncWordSpec with AsyncTaskSpec with
         snapB <- isolated.read("safe/independence/b")
         _ <- isolated.writeIfMatch("safe/independence/a", "2".getBytes("UTF-8"), "text/plain", snapA.get.version)
         _ <- isolated.writeIfMatch("safe/independence/b", "2".getBytes("UTF-8"), "text/plain", snapB.get.version)
-      } yield {
+      } yield
         // Two distinct path keys → two distinct lock entries. If
         // the implementation accidentally normalized to a shared
         // key, this would be 1.
         isolated.lockCount shouldBe 2
-      }
     }
 
     "release the lock when the locked region throws, allowing subsequent CAS to proceed" in {
@@ -140,34 +136,38 @@ class LocalFileStorageProviderSpec extends AsyncWordSpec with AsyncTaskSpec with
       // subsequent CAS that picks up the same path lock would
       // deadlock if the lock weren't released.
       val flaky = new LocalFileStorageProvider(tmpRoot) {
-        override protected def versionOf(target: Path, bytes: Array[Byte]): FileVersion = {
+        override protected def versionOf(target: Path, bytes: Array[Byte]): FileVersion =
           if (attempts.incrementAndGet() == 1) throw new RuntimeException("boom — simulated mid-lock failure")
           else super.versionOf(target, bytes)
-        }
       }
       val initial = "v1".getBytes("UTF-8")
       val followUp = "v2".getBytes("UTF-8")
       for {
-        _      <- flaky.upload("safe/exception/path", initial, "text/plain")
+        _ <- flaky.upload("safe/exception/path", initial, "text/plain")
         // First call: enters lock, versionOf throws, exception
         // propagates through Task. Caller sees the exception; the
         // lock must have been released on the way out.
-        first  <- flaky.writeIfMatch(
-                    "safe/exception/path", followUp, "text/plain",
-                    FileVersion(FileVersion.hashOf(initial), Timestamp())
-                  ).attempt
+        first <- flaky.writeIfMatch(
+          "safe/exception/path",
+          followUp,
+          "text/plain",
+          FileVersion(FileVersion.hashOf(initial), Timestamp())
+        ).attempt
         // Second call: the test would hang here if the lock leaked
         // (no thread released it on the throw path). We bound it
         // by giving the test a finite scalatest timeout via the
         // suite's default.
-        snap   <- flaky.read("safe/exception/path")
+        snap <- flaky.read("safe/exception/path")
         result <- flaky.writeIfMatch(
-                    "safe/exception/path", followUp, "text/plain", snap.get.version
-                  )
+          "safe/exception/path",
+          followUp,
+          "text/plain",
+          snap.get.version
+        )
       } yield {
         first.isFailure shouldBe true
         first.failed.get.getMessage should include("boom")
-        result shouldBe a [WriteResult.Written]
+        result shouldBe a[WriteResult.Written]
       }
     }
 
@@ -205,7 +205,7 @@ class LocalFileStorageProviderSpec extends AsyncWordSpec with AsyncTaskSpec with
           import scala.jdk.CollectionConverters.*
           val all = results.iterator().asScala.toList
           val winners = all.collect { case w: WriteResult.Written => w }
-          val stales  = all.collect { case s: WriteResult.Stale => s }
+          val stales = all.collect { case s: WriteResult.Stale => s }
           winners.size shouldBe 1
           stales.size shouldBe (concurrency - 1)
           // Every Stale carries the SAME current snapshot — namely

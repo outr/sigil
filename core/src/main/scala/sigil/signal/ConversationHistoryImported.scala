@@ -17,4 +17,5 @@ import sigil.conversation.Conversation
  * the conversation ignore the notice.
  */
 case class ConversationHistoryImported(conversationId: Id[Conversation],
-                                       addedCount: Int) extends Notice derives RW
+                                       addedCount: Int)
+  extends Notice derives RW

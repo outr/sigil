@@ -74,25 +74,46 @@ final class RefactorWithInstructionTool(fs: FileSystemContext,
         |memory for 30 minutes by default; an unconsumed session past that window is treated as
         |cancelled.""".stripMargin,
     keywords = Set(
-      "refactor", "rewrite", "modify", "multi-file", "across files", "worker",
-      "judgment", "per-match", "regex", "code change", "edit", "transform",
-      "find", "replace", "find and replace", "search and replace",
-      "search and edit", "find and edit", "bulk edit", "bulk replace",
-      "rewrite across files", "remove", "delete pattern", "substitute",
-      "search", "match"
+      "refactor",
+      "rewrite",
+      "modify",
+      "multi-file",
+      "across files",
+      "worker",
+      "judgment",
+      "per-match",
+      "regex",
+      "code change",
+      "edit",
+      "transform",
+      "find",
+      "replace",
+      "find and replace",
+      "search and replace",
+      "search and edit",
+      "find and edit",
+      "bulk edit",
+      "bulk replace",
+      "rewrite across files",
+      "remove",
+      "delete pattern",
+      "substitute",
+      "search",
+      "match"
     ),
     examples = List(
       ToolExample(
         "Prepare a refactor that removes bug-number comment markers from Scala files",
         RefactorWithInstructionInput(
-          path        = "src/main/scala",
-          glob        = Some("**/*.scala"),
+          path = "src/main/scala",
+          glob = Some("**/*.scala"),
           findPattern = "// Bug #\\d+",
           instruction = "Remove the matched `// Bug #NNN` comment fragment. Preserve any surrounding text on the line."
         )
       )
     )
-  ) with sigil.tool.DestructiveExternalTool {
+  )
+  with sigil.tool.DestructiveExternalTool {
 
   override def paginate: Boolean = false
 
@@ -101,7 +122,7 @@ final class RefactorWithInstructionTool(fs: FileSystemContext,
     val dispatcherOpt: Option[RefactorWorkerDispatcher] =
       workerDispatcher.orElse(ctx.sigil match {
         case ws: WorkflowSigil => Some(new WorkflowRefactorWorkerDispatcher(fs, ws))
-        case _                 => None
+        case _ => None
       })
     dispatcherOpt match {
       case None =>
@@ -117,17 +138,17 @@ final class RefactorWithInstructionTool(fs: FileSystemContext,
   private def emptyOutputWithAbort(ctx: TurnContext, reason: String): RefactorWithInstructionOutput = {
     val callId = ctx.currentToolInvokeId.getOrElse(Event.id())
     RefactorWithInstructionOutput(
-      sessionId      = callId.value,
-      totalDiffs     = 0,
-      filesAffected  = 0,
-      page0Diffs     = Nil,
-      hasMore        = false,
-      nodeIds        = Nil,
-      callId         = callId,
-      referenceId    = callId.value,
-      pageSize       = firstPageSize,
+      sessionId = callId.value,
+      totalDiffs = 0,
+      filesAffected = 0,
+      page0Diffs = Nil,
+      hasMore = false,
+      nodeIds = Nil,
+      callId = callId,
+      referenceId = callId.value,
+      pageSize = firstPageSize,
       perFileSummary = Map.empty,
-      abortReason    = Some(reason)
+      abortReason = Some(reason)
     )
   }
 
@@ -152,21 +173,21 @@ final class RefactorWithInstructionTool(fs: FileSystemContext,
         // apply against the returned id finds something to act on.
         val callId = ctx.currentToolInvokeId.getOrElse(Event.id())
         sessionStore.create(RefactorSession(
-          sessionId       = callId.value,
-          edits           = Nil,
-          perFile         = Nil,
+          sessionId = callId.value,
+          edits = Nil,
+          perFile = Nil,
           createdAtMillis = System.currentTimeMillis()
         ))
         Task.pure(RefactorWithInstructionOutput(
-          sessionId      = callId.value,
-          totalDiffs     = 0,
-          filesAffected  = 0,
-          page0Diffs     = Nil,
-          hasMore        = false,
-          nodeIds        = Nil,
-          callId         = callId,
-          referenceId    = callId.value,
-          pageSize       = firstPageSize,
+          sessionId = callId.value,
+          totalDiffs = 0,
+          filesAffected = 0,
+          page0Diffs = Nil,
+          hasMore = false,
+          nodeIds = Nil,
+          callId = callId,
+          referenceId = callId.value,
+          pageSize = firstPageSize,
           perFileSummary = Map.empty
         ))
       } else {
@@ -184,7 +205,7 @@ final class RefactorWithInstructionTool(fs: FileSystemContext,
     val workerTasks: List[Task[(String, List[GrepMatch], Either[String, List[MatchDecision]])]] =
       byFile.map { case (filePath, matches) =>
         dispatcher.dispatch(ctx, modelId, filePath, matches, input.instruction)
-          .map { result => (filePath, matches, result) }
+          .map(result => (filePath, matches, result))
       }
 
     Task.parSequenceBounded(workerTasks, parallelism = input.maxParallel).flatMap { workerResults =>
@@ -201,35 +222,35 @@ final class RefactorWithInstructionTool(fs: FileSystemContext,
       }
       Task.sequence(builderTasks).flatMap { perFileBuilders =>
         val perFileReports = perFileBuilders.map(_._1)
-        val edits          = perFileBuilders.flatMap(_._2)
+        val edits = perFileBuilders.flatMap(_._2)
         // Only count files that produced a real change; "no-op" edits
         // (an empty newContent placeholder when buildEdit had no
         // `Edited` decisions) still surface in the report but don't
         // count as affected.
-        val filesAffected  = edits.count(_.newContent.nonEmpty)
+        val filesAffected = edits.count(_.newContent.nonEmpty)
 
-        val callId  = ctx.currentToolInvokeId.getOrElse(Event.id())
-        val sessId  = callId.value
+        val callId = ctx.currentToolInvokeId.getOrElse(Event.id())
+        val sessId = callId.value
 
         sessionStore.create(RefactorSession(
-          sessionId       = sessId,
-          edits           = edits,
-          perFile         = perFileReports,
+          sessionId = sessId,
+          edits = edits,
+          perFile = perFileReports,
           createdAtMillis = System.currentTimeMillis()
         ))
 
         drainDiffsToToolOutputs(ctx, callId, perFileReports).map { drainedNodeIds =>
           val page0 = perFileReports.take(firstPageSize)
           RefactorWithInstructionOutput(
-            sessionId      = sessId,
-            totalDiffs     = perFileReports.size,
-            filesAffected  = filesAffected,
-            page0Diffs     = page0,
-            hasMore        = perFileReports.size > firstPageSize,
-            nodeIds        = drainedNodeIds.take(firstPageSize),
-            callId         = callId,
-            referenceId    = sessId,
-            pageSize       = firstPageSize,
+            sessionId = sessId,
+            totalDiffs = perFileReports.size,
+            filesAffected = filesAffected,
+            page0Diffs = page0,
+            hasMore = perFileReports.size > firstPageSize,
+            nodeIds = drainedNodeIds.take(firstPageSize),
+            callId = callId,
+            referenceId = sessId,
+            pageSize = firstPageSize,
             perFileSummary = perFileReports.map(r => r.path -> r.workerDecisions.size).toMap
           )
         }
@@ -237,27 +258,29 @@ final class RefactorWithInstructionTool(fs: FileSystemContext,
     }
   }
 
-  /** Drain one [[ToolOutputNode]] per per-file report into
-    * `db.toolOutputs` so `next_page(referenceId = sessionId)`
-    * walks subsequent pages of diffs. The session id IS the
-    * `callId` and IS the top-level `referenceId`. */
+  /**
+   * Drain one [[ToolOutputNode]] per per-file report into
+   * `db.toolOutputs` so `next_page(referenceId = sessionId)`
+   * walks subsequent pages of diffs. The session id IS the
+   * `callId` and IS the top-level `referenceId`.
+   */
   private def drainDiffsToToolOutputs(ctx: TurnContext,
                                       callId: Id[Event],
                                       reports: List[FileRefactorReport]): Task[List[String]] = {
-    val convId    = ctx.conversation.id
-    val now       = System.currentTimeMillis()
+    val convId = ctx.conversation.id
+    val now = System.currentTimeMillis()
     val expiresAt = Timestamp(now + rowTtl.toMillis)
 
     def drainOne(report: FileRefactorReport, ordinal: Int): Task[String] = {
       val row = ToolOutputNode(
         conversationId = convId,
-        callId         = callId,
-        referenceId    = callId.value,
-        level          = 0,
-        ordinal        = ordinal,
-        hasChildren    = false,
-        payload        = summon[RW[FileRefactorReport]].read(report),
-        expiresAt      = expiresAt
+        callId = callId,
+        referenceId = callId.value,
+        level = 0,
+        ordinal = ordinal,
+        hasChildren = false,
+        payload = summon[RW[FileRefactorReport]].read(report),
+        expiresAt = expiresAt
       )
       ctx.sigil.withDB(_.toolOutputs.transaction(_.upsert(row))).map(_ => row._id.value)
     }
@@ -265,12 +288,14 @@ final class RefactorWithInstructionTool(fs: FileSystemContext,
     Task.sequence(reports.zipWithIndex.map { case (r, i) => drainOne(r, i) })
   }
 
-  /** Apply the worker's `Edited` decisions to the file's content
-    * AND verify each `oldText` matches the current text at the
-    * edit span. Mismatch → return error. Returns `(edit, diff)`.
-    * Reads via the configured [[FileSystemContext]] so sandbox /
-    * relative-path resolution stays consistent with the rest of
-    * the pipeline. */
+  /**
+   * Apply the worker's `Edited` decisions to the file's content
+   * AND verify each `oldText` matches the current text at the
+   * edit span. Mismatch → return error. Returns `(edit, diff)`.
+   * Reads via the configured [[FileSystemContext]] so sandbox /
+   * relative-path resolution stays consistent with the rest of
+   * the pipeline.
+   */
   private def buildEdit(filePath: String,
                         matches: List[GrepMatch],
                         decisions: List[MatchDecision]): Task[Either[String, (ApplyWorkspaceEdit.FileEdit, String)]] = {
@@ -294,15 +319,16 @@ final class RefactorWithInstructionTool(fs: FileSystemContext,
             if (li < 0 || li >= lines.size) {
               mismatches += s"line ${d.matchedLine} out of range"
             } else {
-              val line   = lines(li)
-              val start  = d.startChar.get
-              val end    = d.endChar.get
+              val line = lines(li)
+              val start = d.startChar.get
+              val end = d.endChar.get
               if (start < 0 || end > line.length || start > end) {
                 mismatches += s"line ${d.matchedLine}: range [$start, $end) out of bounds"
               } else {
                 val actual = line.substring(start, end)
                 if (actual != d.oldText) {
-                  mismatches += s"line ${d.matchedLine}: oldText mismatch (worker said '${d.oldText.take(40)}'; file has '${actual.take(40)}')"
+                  mismatches +=
+                    s"line ${d.matchedLine}: oldText mismatch (worker said '${d.oldText.take(40)}'; file has '${actual.take(40)}')"
                 } else {
                   lines(li) = line.substring(0, start) + d.newText.getOrElse("") + line.substring(end)
                 }
@@ -322,9 +348,11 @@ final class RefactorWithInstructionTool(fs: FileSystemContext,
 
 object RefactorWithInstructionTool {
 
-  /** Plain unified-diff renderer (no LCS — just per-line emit if
-    * lines differ). Sufficient for the report's `appliedDiff` field
-    * which is forensic / human-readable. */
+  /**
+   * Plain unified-diff renderer (no LCS — just per-line emit if
+   * lines differ). Sufficient for the report's `appliedDiff` field
+   * which is forensic / human-readable.
+   */
   private[refactor] def unifiedDiff(filePath: String, before: String, after: String): String = {
     if (before == after) return "(no change)"
     val sb = new StringBuilder

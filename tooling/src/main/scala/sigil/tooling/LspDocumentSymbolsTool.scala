@@ -11,7 +11,8 @@ import sigil.tooling.types.{LspDocumentSymbolEntry, LspDocumentSymbolsResult, Ls
 import scala.jdk.CollectionConverters.*
 
 case class LspDocumentSymbolsInput(languageId: String,
-                                   filePath: String) extends ToolInput derives RW
+                                   filePath: String)
+  extends ToolInput derives RW
 
 /**
  * Outline the symbols in a single file — classes, traits, methods,
@@ -25,32 +26,53 @@ case class LspDocumentSymbolsInput(languageId: String,
  * Output flattens hierarchy into a depth-indexed list so consumers
  * walk one stream and re-render indentation from `depth`.
  */
-final class LspDocumentSymbolsTool(val manager: LspManager) extends TypedOutputTool[LspDocumentSymbolsInput, LspDocumentSymbolsResult](
-  name = ToolName("lsp_document_symbols"),
-  description =
-    """List the symbols (classes / methods / fields / etc.) defined in a file.
+final class LspDocumentSymbolsTool(val manager: LspManager)
+  extends TypedOutputTool[LspDocumentSymbolsInput, LspDocumentSymbolsResult](
+    name = ToolName("lsp_document_symbols"),
+    description =
+      """List the symbols (classes / methods / fields / etc.) defined in a file.
       |
       |`languageId` + `filePath` identify the document.
       |Returns `{filePath, entries: [{kind, name, position, depth}]}` — `depth = 0` is top-level.""".stripMargin,
-  keywords = Set(
-    "lsp", "document", "symbols", "symbol", "outline", "structure",
-    "what's in this file", "classes", "methods", "members",
-    "examine", "inspect", "analyze", "review", "explore",
-    "code", "semantic", "scala", "language", "navigate"
-  ),
-  examples = List(
-    ToolExample(
-      "outline a Scala file",
-      LspDocumentSymbolsInput(languageId = "scala", filePath = "/abs/path/Foo.scala")
+    keywords = Set(
+      "lsp",
+      "document",
+      "symbols",
+      "symbol",
+      "outline",
+      "structure",
+      "what's in this file",
+      "classes",
+      "methods",
+      "members",
+      "examine",
+      "inspect",
+      "analyze",
+      "review",
+      "explore",
+      "code",
+      "semantic",
+      "scala",
+      "language",
+      "navigate"
+    ),
+    examples = List(
+      ToolExample(
+        "outline a Scala file",
+        LspDocumentSymbolsInput(languageId = "scala", filePath = "/abs/path/Foo.scala")
+      )
     )
   )
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  with sigil.tool.ReadOnlyExternalTool
+  with LspToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspDocumentSymbolsInput,
                                       context: TurnContext): Task[LspDocumentSymbolsResult] =
     withOpenDocumentTyped[LspDocumentSymbolsResult](
-      input.languageId, input.filePath, context,
+      input.languageId,
+      input.filePath,
+      context,
       onError = msg => throw new RuntimeException(msg)
     ) { (session, uri) =>
       session.documentSymbols(uri).map { symbols =>
@@ -67,19 +89,19 @@ final class LspDocumentSymbolsTool(val manager: LspManager) extends TypedOutputT
     val pos = Option(si.getLocation).flatMap(l => Option(l.getRange).map(_.getStart))
       .map(LspPosition.fromLsp4j).getOrElse(LspPosition(0, 0))
     List(LspDocumentSymbolEntry(
-      kind     = Option(si.getKind).map(_.toString.toLowerCase).getOrElse("unknown"),
-      name     = si.getName,
+      kind = Option(si.getKind).map(_.toString.toLowerCase).getOrElse("unknown"),
+      name = si.getName,
       position = pos,
-      depth    = depth
+      depth = depth
     ))
   }
 
   private def flattenDoc(ds: DocumentSymbol, depth: Int): List[LspDocumentSymbolEntry] = {
     val head = LspDocumentSymbolEntry(
-      kind     = Option(ds.getKind).map(_.toString.toLowerCase).getOrElse("unknown"),
-      name     = ds.getName,
+      kind = Option(ds.getKind).map(_.toString.toLowerCase).getOrElse("unknown"),
+      name = ds.getName,
       position = LspPosition.fromLsp4j(ds.getRange.getStart),
-      depth    = depth
+      depth = depth
     )
     val tail = Option(ds.getChildren).map(_.asScala.toList).getOrElse(Nil)
       .flatMap(flattenDoc(_, depth + 1))

@@ -34,15 +34,17 @@ import sigil.script.{ScalaScriptExecutor, ScriptAuthoringMode, ScriptCompileExce
  */
 class ScriptAuthoringCookbookSpec extends AnyWordSpec with Matchers {
 
-  /** Pull every fenced code block (` ```...``` `) out of the skill
-    * content. The cookbook uses unmarked fences in the form
-    * ```
-    * ```
-    * code…
-    * ```
-    * ``` — three-backtick on its own line opens, three-backtick on
-    * its own line closes. Returns the inner code (lines between the
-    * fences, joined). */
+  /**
+   * Pull every fenced code block (` ```...``` `) out of the skill
+   * content. The cookbook uses unmarked fences in the form
+   * ```
+   * ```
+   * code…
+   * ```
+   * ``` — three-backtick on its own line opens, three-backtick on
+   * its own line closes. Returns the inner code (lines between the
+   * fences, joined).
+   */
   private def extractFencedSnippets(content: String): List[String] = {
     val out = scala.collection.mutable.ListBuffer.empty[String]
     val acc = scala.collection.mutable.ListBuffer.empty[String]

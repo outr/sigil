@@ -50,9 +50,13 @@ object ProviderConfig extends RecordDocumentModel[ProviderConfig] with JsonConve
 
   override def id(value: String = Unique()): Id[ProviderConfig] = Id(value)
 
-  /** Tenant-key index — string form of `SpaceId.value`. */
+  /**
+   * Tenant-key index — string form of `SpaceId.value`.
+   */
   val spaceKey: I[String] = field.index("spaceKey", _.space.value)
 
-  /** Provider-type index — for "list every OpenAI config in this space". */
+  /**
+   * Provider-type index — for "list every OpenAI config in this space".
+   */
   val providerTypeKey: I[String] = field.index("providerTypeKey", _.providerType.toString)
 }

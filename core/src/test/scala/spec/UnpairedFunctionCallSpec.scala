@@ -68,11 +68,21 @@ class UnpairedFunctionCallSpec extends AnyWordSpec with Matchers {
     "still clear the in-band paired call before falling back on the unpaired one" in {
       // callA paired (has matching ToolResult), callB unpaired.
       val frames = Vector[ContextFrame](
-        ContextFrame.ToolCall(nonAtomicName, """{"q":"a"}""", callA, agent,
+        ContextFrame.ToolCall(
+          nonAtomicName,
+          """{"q":"a"}""",
+          callA,
+          agent,
           sourceEventId = Id[Event]("frame-A")),
-        ContextFrame.ToolResult(callA, "real-result-A",
+        ContextFrame.ToolResult(
+          callA,
+          "real-result-A",
           sourceEventId = Id[Event]("result-A")),
-        ContextFrame.ToolCall(nonAtomicName, """{"q":"b"}""", callB, agent,
+        ContextFrame.ToolCall(
+          nonAtomicName,
+          """{"q":"b"}""",
+          callB,
+          agent,
           sourceEventId = Id[Event]("frame-B"))
       )
       val messages = TestProvider.render(frames, agent)
@@ -80,7 +90,7 @@ class UnpairedFunctionCallSpec extends AnyWordSpec with Matchers {
         case t: ProviderMessage.ToolResult => t.toolCallId -> t.content
       }.toMap
       resultsByCall(callA.value) shouldBe "real-result-A"
-      resultsByCall.keySet should contain (callB.value)
+      resultsByCall.keySet should contain(callB.value)
       // callB's content is the framework's brief non-directive marker
       // (sigil bug #190 — the prior "tool failed: no result emitted"
       // text was itself a prose directive that poisoned reasoning).
@@ -93,7 +103,9 @@ class UnpairedFunctionCallSpec extends AnyWordSpec with Matchers {
       // simply removes it from the empty pending set — same effect,
       // but verifies we don't crash on the unknown id.
       val frames = Vector[ContextFrame](
-        ContextFrame.ToolResult(callC, "orphan-result",
+        ContextFrame.ToolResult(
+          callC,
+          "orphan-result",
           sourceEventId = Id[Event]("result-C"))
       )
       noException should be thrownBy TestProvider.render(frames, agent)
@@ -101,11 +113,23 @@ class UnpairedFunctionCallSpec extends AnyWordSpec with Matchers {
 
     "produce three fallbacks when three non-atomic calls arrive unpaired" in {
       val frames = Vector[ContextFrame](
-        ContextFrame.ToolCall(nonAtomicName, "{}", callA, agent,
+        ContextFrame.ToolCall(
+          nonAtomicName,
+          "{}",
+          callA,
+          agent,
           sourceEventId = Id[Event]("f1")),
-        ContextFrame.ToolCall(nonAtomicName, "{}", callB, agent,
+        ContextFrame.ToolCall(
+          nonAtomicName,
+          "{}",
+          callB,
+          agent,
           sourceEventId = Id[Event]("f2")),
-        ContextFrame.ToolCall(nonAtomicName, "{}", callC, agent,
+        ContextFrame.ToolCall(
+          nonAtomicName,
+          "{}",
+          callC,
+          agent,
           sourceEventId = Id[Event]("f3"))
       )
       val messages = TestProvider.render(frames, agent)

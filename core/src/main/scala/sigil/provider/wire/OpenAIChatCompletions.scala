@@ -32,191 +32,240 @@ import scala.concurrent.duration.*
  */
 object OpenAIChatCompletions {
 
-  /** How a provider forwards [[GenerationSettings.effort]] (if set) to the wire. */
+  /**
+   * How a provider forwards [[GenerationSettings.effort]] (if set) to the wire.
+   */
   enum ReasoningPolicy {
 
-    /** Don't forward effort at the wire. */
+    /**
+     * Don't forward effort at the wire.
+     */
     case None
 
-    /** Emit top-level `reasoning_effort: low|medium|high`. DeepSeek. */
+    /**
+     * Emit top-level `reasoning_effort: low|medium|high`. DeepSeek.
+     */
     case ReasoningEffortField
 
-    /** Emit `chat_template_kwargs: {enable_thinking: true}` whenever
-      * `effort` is set; otherwise `false`. llama.cpp / Qwen3. */
+    /**
+     * Emit `chat_template_kwargs: {enable_thinking: true}` whenever
+     * `effort` is set; otherwise `false`. llama.cpp / Qwen3.
+     */
     case ChatTemplateEnableThinking
   }
 
-  /** How a provider renders multimodal [[MessageContent]] on the wire. */
+  /**
+   * How a provider renders multimodal [[MessageContent]] on the wire.
+   */
   enum MultimodalPolicy {
 
-    /** Collapse all content blocks to text; drop images with a WARN.
-      * Used by text-only chat-completions backends (DeepSeek, llama.cpp). */
+    /**
+     * Collapse all content blocks to text; drop images with a WARN.
+     * Used by text-only chat-completions backends (DeepSeek, llama.cpp).
+     */
     case TextOnlyWithWarning
 
-    /** Emit OpenAI's content-array shape when images are present:
-      * `[{type: "text", text: ...}, {type: "image_url", image_url: {url: ...}}]`.
-      * Pure-text messages stay on the simpler string form. */
+    /**
+     * Emit OpenAI's content-array shape when images are present:
+     * `[{type: "text", text: ...}, {type: "image_url", image_url: {url: ...}}]`.
+     * Pure-text messages stay on the simpler string form.
+     */
     case OpenAIArrayForm
   }
 
-  /** Per-provider configuration. Default values match the bare OpenAI
-    * chat-completions wire; concrete providers override only what
-    * differs. */
+  /**
+   * Per-provider configuration. Default values match the bare OpenAI
+   * chat-completions wire; concrete providers override only what
+   * differs.
+   */
   case class Config(
-
-    /** Namespace prefix on `Model.canonicalSlug` and `Model._id`
-      * (e.g. `"deepseek"`). Stripped before sending to the wire. */
+    /**
+     * Namespace prefix on `Model.canonicalSlug` and `Model._id`
+     * (e.g. `"deepseek"`). Stripped before sending to the wire.
+     */
     providerNamespace: String,
 
-    /** Provider name used in error messages and warnings. */
+    /**
+     * Provider name used in error messages and warnings.
+     */
     providerName: String,
 
-    /** Endpoint path. Defaults to `/v1/chat/completions`. */
+    /**
+     * Endpoint path. Defaults to `/v1/chat/completions`.
+     */
     path: String = "/v1/chat/completions",
 
-    /** Backend supports OpenAI-style `strict: true` on tool functions —
-      * the wire flag that engages grammar-constrained decoding. When
-      * true, [[renderTools]] dispatches per-tool: tools whose schema
-      * is strict-compatible (no `DefType.Json` anywhere in the tree —
-      * bug #64) ship with `strict: true` and [[StrictSchema.forOpenAIStrict]]
-      * applied to their parameters. Tools that can't be strict (Json
-      * fields are incompatible with strict mode's closed-object
-      * requirement) fall through to [[nonStrictSchemaTransform]] and
-      * omit the `strict` flag.
-      *
-      * Engaged for OpenAI-compatible backends that honour strict
-      * mode (DeepSeek, DeepInfra, DigitalOcean, …); off for llama.cpp
-      * (its GBNF translator handles the full schema and doesn't need
-      * the strict flag). OpenAI's own strict-mode path lives on the
-      * Responses wire, not this one. */
+    /**
+     * Backend supports OpenAI-style `strict: true` on tool functions —
+     * the wire flag that engages grammar-constrained decoding. When
+     * true, [[renderTools]] dispatches per-tool: tools whose schema
+     * is strict-compatible (no `DefType.Json` anywhere in the tree —
+     * bug #64) ship with `strict: true` and [[StrictSchema.forOpenAIStrict]]
+     * applied to their parameters. Tools that can't be strict (Json
+     * fields are incompatible with strict mode's closed-object
+     * requirement) fall through to [[nonStrictSchemaTransform]] and
+     * omit the `strict` flag.
+     *
+     * Engaged for OpenAI-compatible backends that honour strict
+     * mode (DeepSeek, DeepInfra, DigitalOcean, …); off for llama.cpp
+     * (its GBNF translator handles the full schema and doesn't need
+     * the strict flag). OpenAI's own strict-mode path lives on the
+     * Responses wire, not this one.
+     */
     strictModeCapable: Boolean = false,
 
-    /** Schema transform applied to each tool's JSON schema when strict
-      * mode is NOT engaged (either [[strictModeCapable]] is false OR
-      * the tool's input schema contains a `DefType.Json` and can't be
-      * strict). Default [[StrictSchema.stripUnsupportedKeys]] drops
-      * `pattern` / `format` / numeric bounds that some validators
-      * reject. Pass [[identity]] for backends that handle the full
-      * schema (llama.cpp's GBNF translation). */
+    /**
+     * Schema transform applied to each tool's JSON schema when strict
+     * mode is NOT engaged (either [[strictModeCapable]] is false OR
+     * the tool's input schema contains a `DefType.Json` and can't be
+     * strict). Default [[StrictSchema.stripUnsupportedKeys]] drops
+     * `pattern` / `format` / numeric bounds that some validators
+     * reject. Pass [[identity]] for backends that handle the full
+     * schema (llama.cpp's GBNF translation).
+     */
     nonStrictSchemaTransform: Json => Json = StrictSchema.stripUnsupportedKeys,
 
-    /** Forwarding policy for `GenerationSettings.effort`. */
+    /**
+     * Forwarding policy for `GenerationSettings.effort`.
+     */
     reasoningPolicy: ReasoningPolicy = ReasoningPolicy.None,
 
-    /** Multimodal rendering policy. */
+    /**
+     * Multimodal rendering policy.
+     */
     multimodalPolicy: MultimodalPolicy = MultimodalPolicy.TextOnlyWithWarning,
 
-    /** Override the (systemPrompt, messages) pair pre-render. The
-      * default returns the call's own system prompt and messages
-      * unchanged. Use this for provider-specific reshaping —
-      * llama.cpp's mid-array system folding + placeholder-user
-      * injection, DigitalOcean's kimi `/think` directive. */
+    /**
+     * Override the (systemPrompt, messages) pair pre-render. The
+     * default returns the call's own system prompt and messages
+     * unchanged. Use this for provider-specific reshaping —
+     * llama.cpp's mid-array system folding + placeholder-user
+     * injection, DigitalOcean's kimi `/think` directive.
+     */
     preprocess: ProviderCall => Preprocessed = call => Preprocessed(call.system, call.messages),
 
-    /** Normalise tool-call ids received from the wire before they
-      * become [[CallId]]s. Default identity. llama.cpp uses this to
-      * coerce non-conforming ids (e.g. Mistral NeMo's long form) into
-      * the 9-char alphanumeric the chat template expects on later
-      * turns. */
+    /**
+     * Normalise tool-call ids received from the wire before they
+     * become [[CallId]]s. Default identity. llama.cpp uses this to
+     * coerce non-conforming ids (e.g. Mistral NeMo's long form) into
+     * the 9-char alphanumeric the chat template expects on later
+     * turns.
+     */
     toolCallIdNormalizer: String => String = identity,
 
-    /** When `true`, an inline `data: {"error": {...}}` event in the SSE
-      * stream raises [[ProviderStreamException]] instead of being
-      * silently ignored. Surfaces backend-side mid-stream failures
-      * (HTTP 200 + JSON error envelope) as user-visible failures via
-      * the agent loop's failure-surface path.
-      *
-      * Sigil bug #193 — default flipped from `false` to `true`. Every
-      * OpenAI-compat upstream gateway observed in practice (OpenRouter,
-      * DeepInfra, DigitalOcean, llama.cpp) emits these chunks on
-      * provider-side timeouts / 502s; silently dropping them masked
-      * the real failure mode behind the model-degenerated empty-
-      * completion placeholder. Apps that want the old silent-drop
-      * behaviour pass `inlineErrorThrows = false` explicitly. */
+    /**
+     * When `true`, an inline `data: {"error": {...}}` event in the SSE
+     * stream raises [[ProviderStreamException]] instead of being
+     * silently ignored. Surfaces backend-side mid-stream failures
+     * (HTTP 200 + JSON error envelope) as user-visible failures via
+     * the agent loop's failure-surface path.
+     *
+     * Sigil bug #193 — default flipped from `false` to `true`. Every
+     * OpenAI-compat upstream gateway observed in practice (OpenRouter,
+     * DeepInfra, DigitalOcean, llama.cpp) emits these chunks on
+     * provider-side timeouts / 502s; silently dropping them masked
+     * the real failure mode behind the model-degenerated empty-
+     * completion placeholder. Apps that want the old silent-drop
+     * behaviour pass `inlineErrorThrows = false` explicitly.
+     */
     inlineErrorThrows: Boolean = true,
 
-    /** When `true`, a stream that closes with `finish_reason: length`
-      * having emitted zero content text AND zero tool calls raises
-      * [[ProviderStreamException]] instead of producing a silent
-      * `Done(MaxTokens)`. Surfaces deployment-level degeneration —
-      * e.g. DigitalOcean's `kimi-k2.5` will sometimes burn the entire
-      * `max_tokens` budget emitting `reasoning_content: " The!!!!"`
-      * garbage or `content: null` padding with no usable output. The
-      * agent can't recover from this (there's nothing to react to),
-      * so the framework raises so [[ProviderStrategy.errorClassifier]]
-      * can fall through to the next candidate. Reasoning-only output
-      * still counts as no useful output. Sigil bug #161. */
+    /**
+     * When `true`, a stream that closes with `finish_reason: length`
+     * having emitted zero content text AND zero tool calls raises
+     * [[ProviderStreamException]] instead of producing a silent
+     * `Done(MaxTokens)`. Surfaces deployment-level degeneration —
+     * e.g. DigitalOcean's `kimi-k2.5` will sometimes burn the entire
+     * `max_tokens` budget emitting `reasoning_content: " The!!!!"`
+     * garbage or `content: null` padding with no usable output. The
+     * agent can't recover from this (there's nothing to react to),
+     * so the framework raises so [[ProviderStrategy.errorClassifier]]
+     * can fall through to the next candidate. Reasoning-only output
+     * still counts as no useful output. Sigil bug #161.
+     */
     emptyBudgetBurnThrows: Boolean = false,
 
-    /** When `false`, the per-function `"strict": true` flag is OMITTED
-      * from the wire — strict-mode schema reshaping via
-      * [[strictModeCapable]] still happens (so we ship a closed-object
-      * schema that's safe for the validator regardless), but we don't
-      * SEND the flag that asks the backend to grammar-constrain.
-      *
-      * Set `false` for providers that accept the flag silently but
-      * don't actually enforce it (DeepInfra honors neither `strict`
-      * nor `tool_choice: "required"` per their docs — verified
-      * against captured wire logs where Kimi-K2.5 emitted JSON
-      * arrays despite `strict: true` on every function). Distinct
-      * from [[strictModeCapable]] which is Sigil-side ("should we
-      * reshape the schema?"); this is provider-side ("should we
-      * send the flag?"). For honest providers both stay `true`.
-      *
-      * Sigil bug #173. */
+    /**
+     * When `false`, the per-function `"strict": true` flag is OMITTED
+     * from the wire — strict-mode schema reshaping via
+     * [[strictModeCapable]] still happens (so we ship a closed-object
+     * schema that's safe for the validator regardless), but we don't
+     * SEND the flag that asks the backend to grammar-constrain.
+     *
+     * Set `false` for providers that accept the flag silently but
+     * don't actually enforce it (DeepInfra honors neither `strict`
+     * nor `tool_choice: "required"` per their docs — verified
+     * against captured wire logs where Kimi-K2.5 emitted JSON
+     * arrays despite `strict: true` on every function). Distinct
+     * from [[strictModeCapable]] which is Sigil-side ("should we
+     * reshape the schema?"); this is provider-side ("should we
+     * send the flag?"). For honest providers both stay `true`.
+     *
+     * Sigil bug #173.
+     */
     honorsStrict: Boolean = true,
 
-    /** Shape Sigil uses to express forced-call semantics on the
-      * wire. `ToolChoice` ships the OpenAI-canonical `tool_choice`
-      * field; `ResponseFormatJsonSchema` substitutes a
-      * `response_format: json_schema` constraint over a synthesized
-      * meta-schema and parses the assistant's content as a synthetic
-      * tool call.
-      *
-      * Use `ResponseFormatJsonSchema` for providers whose documented
-      * `tool_choice` vocabulary doesn't include `"required"` /
-      * function-form (DeepInfra). The forced-call contract is Sigil's
-      * structure-first invariant: every turn with tools demands the
-      * model produce a tool call. When the backend won't honor
-      * `tool_choice: "required"` natively, response_format is the
-      * documented substitute.
-      *
-      * Sigil bug #173. */
+    /**
+     * Shape Sigil uses to express forced-call semantics on the
+     * wire. `ToolChoice` ships the OpenAI-canonical `tool_choice`
+     * field; `ResponseFormatJsonSchema` substitutes a
+     * `response_format: json_schema` constraint over a synthesized
+     * meta-schema and parses the assistant's content as a synthetic
+     * tool call.
+     *
+     * Use `ResponseFormatJsonSchema` for providers whose documented
+     * `tool_choice` vocabulary doesn't include `"required"` /
+     * function-form (DeepInfra). The forced-call contract is Sigil's
+     * structure-first invariant: every turn with tools demands the
+     * model produce a tool call. When the backend won't honor
+     * `tool_choice: "required"` natively, response_format is the
+     * documented substitute.
+     *
+     * Sigil bug #173.
+     */
     forcedCallShape: ForcedCallShape = ForcedCallShape.ToolChoice,
 
-    /** Per-provider extra top-level wire fields appended to every
-      * request body. Receives the resolved `ProviderCall` so the
-      * fields can be call-shaped (e.g. derive from the model id or
-      * tool roster); returns key/value pairs merged at the root of
-      * the JSON body alongside `model` / `messages` / `tools`.
-      *
-      * Used by OpenRouter to inject the `provider` routing block
-      * (ignore-list of Chinese-hosted slugs, sort policy, fallbacks).
-      * Default `_ => Vector.empty` is a no-op for every other
-      * chat-completions backend. */
+    /**
+     * Per-provider extra top-level wire fields appended to every
+     * request body. Receives the resolved `ProviderCall` so the
+     * fields can be call-shaped (e.g. derive from the model id or
+     * tool roster); returns key/value pairs merged at the root of
+     * the JSON body alongside `model` / `messages` / `tools`.
+     *
+     * Used by OpenRouter to inject the `provider` routing block
+     * (ignore-list of Chinese-hosted slugs, sort policy, fallbacks).
+     * Default `_ => Vector.empty` is a no-op for every other
+     * chat-completions backend.
+     */
     extraBody: ProviderCall => Vector[(String, Json)] = _ => Vector.empty
   )
 
-  /** How Sigil expresses forced-call semantics on a chat-completions
-    * wire. Default uses the OpenAI-canonical `tool_choice` field;
-    * `ResponseFormatJsonSchema` substitutes a `response_format`
-    * json_schema constraint over a synthesized meta-schema (and
-    * stream-side parses the assistant content as a synthetic tool
-    * call). Sigil bug #173. */
+  /**
+   * How Sigil expresses forced-call semantics on a chat-completions
+   * wire. Default uses the OpenAI-canonical `tool_choice` field;
+   * `ResponseFormatJsonSchema` substitutes a `response_format`
+   * json_schema constraint over a synthesized meta-schema (and
+   * stream-side parses the assistant content as a synthetic tool
+   * call). Sigil bug #173.
+   */
   enum ForcedCallShape {
     case ToolChoice
     case ResponseFormatJsonSchema
   }
 
-  /** Output of [[Config.preprocess]] — the system content + messages to
-    * render. Either field may differ from `ProviderCall.system` /
-    * `ProviderCall.messages`. */
+  /**
+   * Output of [[Config.preprocess]] — the system content + messages to
+   * render. Either field may differ from `ProviderCall.system` /
+   * `ProviderCall.messages`.
+   */
   case class Preprocessed(systemPrompt: String, messages: Vector[ProviderMessage])
 
   // ---- entry points ----
 
-  /** Build the wire `POST` for a call. Used by `Provider.httpRequestFor`
-    * (inspect-without-send paths). Auth is applied by `auth`. */
+  /**
+   * Build the wire `POST` for a call. Used by `Provider.httpRequestFor`
+   * (inspect-without-send paths). Auth is applied by `auth`.
+   */
   def buildHttpRequest(input: ProviderCall,
                        sigil: Sigil,
                        baseUrl: URL,
@@ -230,8 +279,10 @@ object OpenAIChatCompletions {
     ))
   }
 
-  /** Drive a streaming chat-completions call end-to-end. Returns a
-    * [[Stream]] of `ProviderEvent` translated from the SSE chunks. */
+  /**
+   * Drive a streaming chat-completions call end-to-end. Returns a
+   * [[Stream]] of `ProviderEvent` translated from the SSE chunks.
+   */
   def streamCall(input: ProviderCall,
                  sigil: Sigil,
                  baseUrl: URL,
@@ -241,30 +292,30 @@ object OpenAIChatCompletions {
     val rfMode: Option[ResponseFormatMode] = config.forcedCallShape match {
       case ForcedCallShape.ToolChoice => None
       case ForcedCallShape.ResponseFormatJsonSchema => input.toolChoice match {
-        case ToolChoice.Specific(name) => Some(ResponseFormatMode.Specific(name))
-        case ToolChoice.Required       => Some(ResponseFormatMode.Required)
-        case _                         => None
-      }
+          case ToolChoice.Specific(name) => Some(ResponseFormatMode.Specific(name))
+          case ToolChoice.Required => Some(ResponseFormatMode.Required)
+          case _ => None
+        }
     }
     val state = new StreamState(new ToolCallAccumulator(input.tools, providerKey = config.providerName), rfMode)
     Stream.force(
       for {
-        raw         <- buildHttpRequest(input, sigil, baseUrl, auth, config)
+        raw <- buildHttpRequest(input, sigil, baseUrl, auth, config)
         intercepted <- sigil.wireInterceptor.before(raw)
-        lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLines()
-      } yield {
-        StreamWireInterceptor.attach(lines, sigil.wireInterceptor, intercepted, sigil.chunkLogger) { line =>
-          Stream.emits(parseLine(line, state, config))
-        }
+        lines <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLines()
+      } yield StreamWireInterceptor.attach(lines, sigil.wireInterceptor, intercepted, sigil.chunkLogger) { line =>
+        Stream.emits(parseLine(line, state, config))
       }
     )
   }
 
   // ---- body construction ----
 
-  /** Build the JSON request body. Public so providers with bespoke
-    * pre-flight tokenization (llama.cpp's `/apply-template`) can
-    * inspect the rendered messages without firing the network call. */
+  /**
+   * Build the JSON request body. Public so providers with bespoke
+   * pre-flight tokenization (llama.cpp's `/apply-template`) can
+   * inspect the rendered messages without firing the network call.
+   */
   def buildBody(input: ProviderCall, sigil: Sigil, config: Config): Json = {
     val modelName = stripNamespace(input.modelId.value, config.providerNamespace)
     val pre = config.preprocess(input)
@@ -273,9 +324,9 @@ object OpenAIChatCompletions {
     val toolsArr = renderTools(input, sigil, config)
 
     val baseFields = Vector[(String, Json)](
-      "model"          -> str(modelName),
-      "messages"       -> arr((Vector(systemMsg) ++ rendered)*),
-      "stream"         -> bool(true),
+      "model" -> str(modelName),
+      "messages" -> arr((Vector(systemMsg) ++ rendered)*),
+      "stream" -> bool(true),
       "stream_options" -> obj("include_usage" -> bool(true))
     )
 
@@ -293,12 +344,12 @@ object OpenAIChatCompletions {
       // an undocumented wire flag the backend silently ignores.
       case (ToolChoice.Required, ForcedCallShape.ResponseFormatJsonSchema) =>
         Vector(
-          "tools"           -> arr(toolsArr*),
+          "tools" -> arr(toolsArr*),
           "response_format" -> buildRequiredMetaResponseFormat(input)
         )
       case (ToolChoice.Specific(name), ForcedCallShape.ResponseFormatJsonSchema) =>
         Vector(
-          "tools"           -> arr(toolsArr*),
+          "tools" -> arr(toolsArr*),
           "response_format" -> buildSpecificResponseFormat(input, name)
         )
 
@@ -308,7 +359,7 @@ object OpenAIChatCompletions {
         Vector(
           "tools" -> arr(toolsArr*),
           "tool_choice" -> obj(
-            "type"     -> str("function"),
+            "type" -> str("function"),
             "function" -> obj("name" -> str(name.value))
           )
         )
@@ -324,8 +375,8 @@ object OpenAIChatCompletions {
         // canonical "force thinking on" mapping). Off → "none"
         // (OpenAI / DeepSeek both accept this enum value).
         gen.reasoningMode match {
-          case ReasoningMode.Off  => Vector("reasoning_effort" -> str("none"))
-          case ReasoningMode.On   =>
+          case ReasoningMode.Off => Vector("reasoning_effort" -> str("none"))
+          case ReasoningMode.On =>
             val level = gen.effort.map(Effort.openAIEffortLevel).getOrElse("high")
             Vector("reasoning_effort" -> str(level))
           case ReasoningMode.Auto =>
@@ -338,8 +389,8 @@ object OpenAIChatCompletions {
         // fire); On/Off → explicit boolean.
         gen.reasoningMode match {
           case ReasoningMode.Auto => Vector.empty
-          case ReasoningMode.On   => Vector("chat_template_kwargs" -> obj("enable_thinking" -> bool(true)))
-          case ReasoningMode.Off  => Vector("chat_template_kwargs" -> obj("enable_thinking" -> bool(false)))
+          case ReasoningMode.On => Vector("chat_template_kwargs" -> obj("enable_thinking" -> bool(true)))
+          case ReasoningMode.Off => Vector("chat_template_kwargs" -> obj("enable_thinking" -> bool(false)))
         }
     }
     val generationFields: Vector[(String, Json)] =
@@ -353,13 +404,15 @@ object OpenAIChatCompletions {
     obj((baseFields ++ toolFields ++ reasoningFields ++ generationFields ++ extraFields)*)
   }
 
-  /** Sigil bug #173 — build a `response_format: json_schema` body
-    * fragment for `ToolChoice.Specific`. The synthesized schema is
-    * the named tool's input schema (closed-object, strict-shaped),
-    * with `name = tool name`. Model emits a single JSON object
-    * matching the tool's input directly as its assistant content;
-    * stream-side parses that content as a synthetic
-    * `ToolCallStart` + `ToolCallComplete` for the named tool. */
+  /**
+   * Sigil bug #173 — build a `response_format: json_schema` body
+   * fragment for `ToolChoice.Specific`. The synthesized schema is
+   * the named tool's input schema (closed-object, strict-shaped),
+   * with `name = tool name`. Model emits a single JSON object
+   * matching the tool's input directly as its assistant content;
+   * stream-side parses that content as a synthetic
+   * `ToolCallStart` + `ToolCallComplete` for the named tool.
+   */
   private def buildSpecificResponseFormat(input: ProviderCall, name: sigil.tool.ToolName): Json = {
     val tool = input.tools.find(_.schema.name == name)
       .getOrElse(throw new IllegalStateException(
@@ -370,21 +423,23 @@ object OpenAIChatCompletions {
     obj(
       "type" -> str("json_schema"),
       "json_schema" -> obj(
-        "name"   -> str(name.value),
+        "name" -> str(name.value),
         "strict" -> bool(true),
         "schema" -> strictShape
       )
     )
   }
 
-  /** Sigil bug #173 — build a `response_format: json_schema` body
-    * fragment for `ToolChoice.Required` (force ANY tool from the
-    * roster). The synthesized meta-schema is:
-    *   `{ tool_name: enum[<all roster names>], arguments: oneOf<…> }`
-    * Model emits one JSON object matching this shape as its assistant
-    * content; stream-side looks up `tool_name`, extracts `arguments`,
-    * and emits synthetic `ToolCallStart` + `ToolCallComplete` events
-    * the orchestrator processes identically to native tool calls. */
+  /**
+   * Sigil bug #173 — build a `response_format: json_schema` body
+   * fragment for `ToolChoice.Required` (force ANY tool from the
+   * roster). The synthesized meta-schema is:
+   *   `{ tool_name: enum[<all roster names>], arguments: oneOf<…> }`
+   * Model emits one JSON object matching this shape as its assistant
+   * content; stream-side looks up `tool_name`, extracts `arguments`,
+   * and emits synthetic `ToolCallStart` + `ToolCallComplete` events
+   * the orchestrator processes identically to native tool calls.
+   */
   private def buildRequiredMetaResponseFormat(input: ProviderCall): Json = {
     val names = input.tools.map(_.schema.name.value)
     val argSchemas = input.tools.map { t =>
@@ -396,7 +451,7 @@ object OpenAIChatCompletions {
     obj(
       "type" -> str("json_schema"),
       "json_schema" -> obj(
-        "name"   -> str("sigil_tool_call"),
+        "name" -> str("sigil_tool_call"),
         "strict" -> bool(true),
         "schema" -> obj(
           "type" -> str("object"),
@@ -414,13 +469,15 @@ object OpenAIChatCompletions {
     )
   }
 
-  /** Render the wire `tools` array. Per-tool dispatch on strict-mode
-    * capability: when [[Config.strictModeCapable]] is true AND the
-    * tool's input schema has no `DefType.Json` anywhere (bug #64 —
-    * strict mode is incompatible with any-JSON-value fields), the
-    * tool ships with `strict: true` and a [[StrictSchema.forOpenAIStrict]]-
-    * shaped schema. Otherwise the schema runs through
-    * [[Config.nonStrictSchemaTransform]] and `strict` is omitted. */
+  /**
+   * Render the wire `tools` array. Per-tool dispatch on strict-mode
+   * capability: when [[Config.strictModeCapable]] is true AND the
+   * tool's input schema has no `DefType.Json` anywhere (bug #64 —
+   * strict mode is incompatible with any-JSON-value fields), the
+   * tool ships with `strict: true` and a [[StrictSchema.forOpenAIStrict]]-
+   * shaped schema. Otherwise the schema runs through
+   * [[Config.nonStrictSchemaTransform]] and `strict` is omitted.
+   */
   def renderTools(input: ProviderCall, sigil: Sigil, config: Config): Vector[Json] =
     input.tools.map { t =>
       val s = t.schema
@@ -430,18 +487,20 @@ object OpenAIChatCompletions {
         if (canBeStrict) StrictSchema.forOpenAIStrict(baseSchema)
         else config.nonStrictSchemaTransform(baseSchema)
       val fnFields = Vector[(String, Json)](
-        "name"        -> str(s.name.value),
+        "name" -> str(s.name.value),
         "description" -> str(renderDescription(t, input.currentMode, sigil)),
-        "parameters"  -> parameters
+        "parameters" -> parameters
       ) ++ (if (canBeStrict && config.honorsStrict) Vector("strict" -> bool(true)) else Vector.empty)
       obj(
-        "type"     -> str("function"),
+        "type" -> str("function"),
         "function" -> obj(fnFields*)
       )
     }
 
-  /** Translate the framework's [[ProviderMessage]] sequence into the
-    * OpenAI chat-completions `messages` array. */
+  /**
+   * Translate the framework's [[ProviderMessage]] sequence into the
+   * OpenAI chat-completions `messages` array.
+   */
   def renderMessages(messages: Vector[ProviderMessage], config: Config): Vector[Json] =
     messages.flatMap {
       case ProviderMessage.System(content) =>
@@ -455,8 +514,8 @@ object OpenAIChatCompletions {
             "role" -> str("assistant"),
             "tool_calls" -> arr(toolCalls.map { tc =>
               obj(
-                "id"       -> str(tc.id),
-                "type"     -> str("function"),
+                "id" -> str(tc.id),
+                "type" -> str("function"),
                 "function" -> obj("name" -> str(tc.name), "arguments" -> str(tc.argsJson))
               )
             }*)
@@ -474,9 +533,9 @@ object OpenAIChatCompletions {
     config.multimodalPolicy match {
       case MultimodalPolicy.TextOnlyWithWarning =>
         val (texts, images) = blocks.foldRight((List.empty[String], 0)) {
-          case (MessageContent.Text(t), (ts, n))         => (t :: ts, n)
-          case (_: MessageContent.Image, (ts, n))        => (ts, n + 1)
-          case (_: MessageContent.ImageBytes, (ts, n))   => (ts, n + 1)
+          case (MessageContent.Text(t), (ts, n)) => (t :: ts, n)
+          case (_: MessageContent.Image, (ts, n)) => (ts, n + 1)
+          case (_: MessageContent.ImageBytes, (ts, n)) => (ts, n + 1)
         }
         if (images > 0) scribe.warn(
           s"${config.providerName}Provider: dropped $images image block(s) — " +
@@ -486,7 +545,7 @@ object OpenAIChatCompletions {
       case MultimodalPolicy.OpenAIArrayForm =>
         val hasImage = blocks.exists {
           case _: MessageContent.Image | _: MessageContent.ImageBytes => true
-          case _                                                      => false
+          case _ => false
         }
         if (!hasImage) {
           val text = blocks.collect { case MessageContent.Text(t) => t }.mkString("\n")
@@ -524,7 +583,7 @@ object OpenAIChatCompletions {
 
   private def stripPolyDiscriminator(json: Json): Json = json match {
     case o: Obj => Obj(o.value - "type")
-    case other  => other
+    case other => other
   }
 
   private def stripNamespace(modelId: String, namespace: String): String = {
@@ -534,20 +593,24 @@ object OpenAIChatCompletions {
 
   // ---- SSE parsing ----
 
-  /** Parse a single SSE line into [[ProviderEvent]]s. Public so per-
-    * provider specs can drive the chunk-level paths (notably inline-error
-    * detection) without spinning up a stub HTTP server. */
+  /**
+   * Parse a single SSE line into [[ProviderEvent]]s. Public so per-
+   * provider specs can drive the chunk-level paths (notably inline-error
+   * detection) without spinning up a stub HTTP server.
+   */
   def parseLine(line: String, state: StreamState, config: Config): Vector[ProviderEvent] =
     SSELineParser.parse(line) match {
       case SSELine.Data(json) => parseChunk(json, state, config)
-      case SSELine.Done       => state.flushDone(config)
+      case SSELine.Done => state.flushDone(config)
       case SSELine.MalformedData(_, reason) =>
         Vector(ProviderEvent.Error(s"parse: $reason"))
       case SSELine.Blank | SSELine.Comment | _: SSELine.Other => Vector.empty
     }
 
-  /** Parse a single decoded SSE chunk's JSON payload into
-    * [[ProviderEvent]]s. Public for the same reason as [[parseLine]]. */
+  /**
+   * Parse a single decoded SSE chunk's JSON payload into
+   * [[ProviderEvent]]s. Public for the same reason as [[parseLine]].
+   */
   def parseChunk(json: Json, state: StreamState, config: Config): Vector[ProviderEvent] = {
     // Some backends embed mid-stream failures as `data: {"error": {...}}`
     // events on a 200-OK chat-completions stream. When configured, surface
@@ -557,8 +620,8 @@ object OpenAIChatCompletions {
       json.get("error").foreach { err =>
         if (!err.isNull) {
           val code = err.get("code").map(_.asInt).getOrElse(0)
-          val msg  = err.get("message").map(_.asString).getOrElse("(no message)")
-          val typ  = err.get("type").map(_.asString).getOrElse("error")
+          val msg = err.get("message").map(_.asString).getOrElse("(no message)")
+          val typ = err.get("type").map(_.asString).getOrElse("error")
           throw new ProviderStreamException(config.providerNamespace, code, typ, msg)
         }
       }
@@ -629,8 +692,8 @@ object OpenAIChatCompletions {
         // bug #163.
         if (!tcs.isNull) {
           tcs.asVector.foreach { tc =>
-            val index   = tc.get("index").map(_.asInt).getOrElse(0)
-            val idOpt   = tc.get("id").flatMap(j => if (j.isNull) None else Some(j.asString)).map(config.toolCallIdNormalizer)
+            val index = tc.get("index").map(_.asInt).getOrElse(0)
+            val idOpt = tc.get("id").flatMap(j => if (j.isNull) None else Some(j.asString)).map(config.toolCallIdNormalizer)
             val nameOpt = tc.get("function").flatMap(_.get("name")).flatMap(j => if (j.isNull) None else Some(j.asString))
             // Sigil audit H8 — feed both fields through `observeHeader`
             // so split-header compat backends (vLLM, SGLang) don't
@@ -654,9 +717,9 @@ object OpenAIChatCompletions {
     choice.flatMap(_.get("finish_reason")).foreach { reason =>
       if (!reason.isNull) {
         val sr = reason.asString match {
-          case "stop"           => StopReason.Complete
-          case "length"         => StopReason.MaxTokens
-          case "tool_calls"     => StopReason.ToolCall
+          case "stop" => StopReason.Complete
+          case "length" => StopReason.MaxTokens
+          case "tool_calls" => StopReason.ToolCall
           case "content_filter" => StopReason.ContentFiltered
           case other =>
             scribe.warn(s"Unmapped finish_reason from ${config.providerName}: '$other' — treating as Complete")
@@ -696,46 +759,54 @@ object OpenAIChatCompletions {
 
   private def parseUsage(json: Json): TokenUsage =
     TokenUsage(
-      promptTokens     = json.get("prompt_tokens").map(_.asInt).getOrElse(0),
+      promptTokens = json.get("prompt_tokens").map(_.asInt).getOrElse(0),
       completionTokens = json.get("completion_tokens").map(_.asInt).getOrElse(0),
-      totalTokens      = json.get("total_tokens").map(_.asInt).getOrElse(0)
+      totalTokens = json.get("total_tokens").map(_.asInt).getOrElse(0)
     )
 
-  /** Streaming state: pending [[StopReason]] held back until the
-    * trailing `usage` chunk (or `[DONE]`) arrives, plus the tool-call
-    * accumulator. Public so callers with bespoke pre/post handling
-    * (llama.cpp's pre-flight, etc.) can share it.
-    *
-    * `responseFormatMode` carries the bug #173 forced-call substitution
-    * shape (when active). `None` means standard tool_calls flow. The
-    * stream-side handler suppresses TextDelta emission in that mode
-    * (avoid creating a streaming Message UI for what is actually a
-    * tool call) and buffers the content for end-of-stream synthesis
-    * into ToolCallStart/Complete events. */
+  /**
+   * Streaming state: pending [[StopReason]] held back until the
+   * trailing `usage` chunk (or `[DONE]`) arrives, plus the tool-call
+   * accumulator. Public so callers with bespoke pre/post handling
+   * (llama.cpp's pre-flight, etc.) can share it.
+   *
+   * `responseFormatMode` carries the bug #173 forced-call substitution
+   * shape (when active). `None` means standard tool_calls flow. The
+   * stream-side handler suppresses TextDelta emission in that mode
+   * (avoid creating a streaming Message UI for what is actually a
+   * tool call) and buffers the content for end-of-stream synthesis
+   * into ToolCallStart/Complete events.
+   */
   final class StreamState(val acc: ToolCallAccumulator,
                           val responseFormatMode: Option[ResponseFormatMode] = None) {
     var pendingDone: Option[StopReason] = None
     val responseFormatBuf: StringBuilder = new StringBuilder
 
-    /** Accumulates `delta.refusal` text. OpenAI streams this as a
-      * sibling to `delta.content` when the model declines to
-      * comply (safety / policy). The framework treats refusal as a
-      * candidate-level failure: throw at stream close so the
-      * strategy can route to another candidate (the typed exception
-      * classifies as Fallthrough). */
+    /**
+     * Accumulates `delta.refusal` text. OpenAI streams this as a
+     * sibling to `delta.content` when the model declines to
+     * comply (safety / policy). The framework treats refusal as a
+     * candidate-level failure: throw at stream close so the
+     * strategy can route to another candidate (the typed exception
+     * classifies as Fallthrough).
+     */
     val refusalBuf: StringBuilder = new StringBuilder
 
-    /** Tracks whether the stream emitted any TextDelta with non-empty
-      * text OR a tool-call Start event. `reasoning_content` deltas
-      * (ThinkingDelta) do NOT flip this — a stream of pure reasoning
-      * with no content/tool emissions IS the no-useful-output failure
-      * mode the empty-budget-burn detection surfaces. */
+    /**
+     * Tracks whether the stream emitted any TextDelta with non-empty
+     * text OR a tool-call Start event. `reasoning_content` deltas
+     * (ThinkingDelta) do NOT flip this — a stream of pure reasoning
+     * with no content/tool emissions IS the no-useful-output failure
+     * mode the empty-budget-burn detection surfaces.
+     */
     var hasUsefulOutput: Boolean = false
 
-    /** Latest `usage` block observed in the stream. Captured so
-      * [[flushDone]] can detect a degenerate-empty completion shape
-      * (the model burned `completion_tokens` but emitted no content,
-      * no reasoning, no tool calls, and no `finish_reason`). */
+    /**
+     * Latest `usage` block observed in the stream. Captured so
+     * [[flushDone]] can detect a degenerate-empty completion shape
+     * (the model burned `completion_tokens` but emitted no content,
+     * no reasoning, no tool calls, and no `finish_reason`).
+     */
     var lastUsage: Option[sigil.provider.TokenUsage] = None
 
     def flushDone(config: Config): Vector[ProviderEvent] = pendingDone match {
@@ -746,17 +817,17 @@ object OpenAIChatCompletions {
           refusalBuf.clear()
           throw new ProviderStreamException(
             providerKey = config.providerNamespace,
-            code        = 200,
-            typ         = "refusal",
-            message_    = s"${config.providerName} refused: $refusalText"
+            code = 200,
+            typ = "refusal",
+            message_ = s"${config.providerName} refused: $refusalText"
           )
         }
         if (config.emptyBudgetBurnThrows && sr == StopReason.MaxTokens && !hasUsefulOutput) {
           throw new ProviderStreamException(
             providerKey = config.providerNamespace,
-            code        = 200,
-            typ         = "empty_budget_burn",
-            message_    = s"${config.providerName} consumed max_tokens budget without emitting any content or tool calls" +
+            code = 200,
+            typ = "empty_budget_burn",
+            message_ = s"${config.providerName} consumed max_tokens budget without emitting any content or tool calls" +
               " — likely a deployment-level degeneration (e.g. reasoning-only output or null-padded stream)."
           )
         }
@@ -769,14 +840,16 @@ object OpenAIChatCompletions {
         // for the no-finish-reason flavor. Throw a typed exception so
         // ProviderStrategy can route around it; the typed dispatch
         // classifies as Fallthrough.
-        if (config.emptyBudgetBurnThrows && !hasUsefulOutput &&
-            lastUsage.exists(_.completionTokens > 0)) {
+        if (
+          config.emptyBudgetBurnThrows && !hasUsefulOutput &&
+          lastUsage.exists(_.completionTokens > 0)
+        ) {
           val burned = lastUsage.map(_.completionTokens).getOrElse(0)
           throw new ProviderStreamException(
             providerKey = config.providerNamespace,
-            code        = 200,
-            typ         = "empty_completion",
-            message_    = s"${config.providerName} closed the stream after burning $burned completion tokens " +
+            code = 200,
+            typ = "empty_completion",
+            message_ = s"${config.providerName} closed the stream after burning $burned completion tokens " +
               "without emitting any content, reasoning, tool calls, or a finish_reason."
           )
         }
@@ -784,11 +857,13 @@ object OpenAIChatCompletions {
     }
   }
 
-  /** Sigil bug #173 — at end-of-stream in response_format mode, parse
-    * the buffered content and emit synthetic ToolCallStart +
-    * appendArgs + complete events. The accumulator's downstream
-    * processing (typed input materialisation, malformed-args
-    * detection, etc.) runs identically to a native tool call. */
+  /**
+   * Sigil bug #173 — at end-of-stream in response_format mode, parse
+   * the buffered content and emit synthetic ToolCallStart +
+   * appendArgs + complete events. The accumulator's downstream
+   * processing (typed input materialisation, malformed-args
+   * detection, etc.) runs identically to a native tool call.
+   */
   private def synthesizeToolCallFromContent(state: StreamState,
                                             mode: ResponseFormatMode,
                                             config: Config): Vector[ProviderEvent] = {
@@ -804,22 +879,25 @@ object OpenAIChatCompletions {
         // Content is `{tool_name, arguments}` per the meta-schema.
         try {
           val parsed = fabric.io.JsonParser(raw)
-          val tn  = parsed.get("tool_name").map(_.asString).getOrElse {
+          val tn = parsed.get("tool_name").map(_.asString).getOrElse {
             throw new ProviderStreamException(
-              providerKey = config.providerNamespace, code = 200,
+              providerKey = config.providerNamespace,
+              code = 200,
               typ = "malformed_response_format",
               message_ = s"response_format substitution: content lacks tool_name field. Got: ${raw.take(200)}"
             )
           }
-          val ar  = parsed.get("arguments").map(j => fabric.io.JsonFormatter.Compact(j)).getOrElse("{}")
+          val ar = parsed.get("arguments").map(j => fabric.io.JsonFormatter.Compact(j)).getOrElse("{}")
           (tn, ar)
         } catch {
           case e: ProviderStreamException => throw e
           case t: Throwable =>
             throw new ProviderStreamException(
-              providerKey = config.providerNamespace, code = 200,
+              providerKey = config.providerNamespace,
+              code = 200,
               typ = "malformed_response_format",
-              message_ = s"response_format substitution: content failed to parse as {tool_name, arguments}. Error: ${t.getMessage}. Content: ${raw.take(200)}"
+              message_ =
+                s"response_format substitution: content failed to parse as {tool_name, arguments}. Error: ${t.getMessage}. Content: ${raw.take(200)}"
             )
         }
     }
@@ -833,21 +911,29 @@ object OpenAIChatCompletions {
     events.result()
   }
 
-  /** Records the forced-call substitution that's active on this stream
-    * so the end-of-stream handler can synthesize the right
-    * `ToolCallStart` + `ToolCallComplete` events from the buffered
-    * content. Sigil bug #173. */
+  /**
+   * Records the forced-call substitution that's active on this stream
+   * so the end-of-stream handler can synthesize the right
+   * `ToolCallStart` + `ToolCallComplete` events from the buffered
+   * content. Sigil bug #173.
+   */
   sealed trait ResponseFormatMode
   object ResponseFormatMode {
-    /** `ToolChoice.Specific(name)` substituted to response_format.
-      * The buffered content is the named tool's typed input JSON
-      * directly — emit one synthetic ToolCallStart(name) + appendArgs
-      * of the entire content. */
+
+    /**
+     * `ToolChoice.Specific(name)` substituted to response_format.
+     * The buffered content is the named tool's typed input JSON
+     * directly — emit one synthetic ToolCallStart(name) + appendArgs
+     * of the entire content.
+     */
     final case class Specific(name: sigil.tool.ToolName) extends ResponseFormatMode
-    /** `ToolChoice.Required` substituted to response_format with a
-      * meta-schema. The buffered content is
-      * `{tool_name, arguments}`; the synthesizer extracts both and
-      * emits the corresponding pair of events. */
+
+    /**
+     * `ToolChoice.Required` substituted to response_format with a
+     * meta-schema. The buffered content is
+     * `{tool_name, arguments}`; the synthesizer extracts both and
+     * emits the corresponding pair of events.
+     */
     case object Required extends ResponseFormatMode
   }
 }

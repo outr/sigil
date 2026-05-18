@@ -38,11 +38,14 @@ object TimeTrigger {
   val Kind: String = "time"
 }
 
-/** Strider-side time trigger. `register` records the activation
-  * timestamp; `check` returns the next scheduled fire when the
-  * current wall clock has caught up. */
+/**
+ * Strider-side time trigger. `register` records the activation
+ * timestamp; `check` returns the next scheduled fire when the
+ * current wall clock has caught up.
+ */
 final case class TimeTriggerImpl(spec: TimeTrigger,
-                                 id: Id[Step] = Step.id()) extends Trigger derives RW {
+                                 id: Id[Step] = Step.id())
+  extends Trigger derives RW {
   override def name: String = "Time"
   override def mode: TriggerMode =
     if (spec.intervalMs.isDefined || spec.cron.isDefined) TriggerMode.Branch
@@ -79,9 +82,11 @@ final case class TimeTriggerImpl(spec: TimeTrigger,
 
   override def unregister(workflow: Workflow): Task[Unit] = Task.unit
 
-  /** Per-minute fire gate — delegates field matching to
-    * [[CronExpression]] and suppresses duplicate fires within the
-    * same wall-clock minute. */
+  /**
+   * Per-minute fire gate — delegates field matching to
+   * [[CronExpression]] and suppresses duplicate fires within the
+   * same wall-clock minute.
+   */
   private def cronMatches(expr: String, nowMs: Long, lastMs: Long): Boolean = {
     if ((nowMs / 60_000L) == (lastMs / 60_000L)) return false
     CronExpression.matches(expr, nowMs)

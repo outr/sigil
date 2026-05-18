@@ -9,7 +9,9 @@ import sigil.tool.{ToolInput, ToolName, TypedTool}
 
 import java.util.concurrent.atomic.AtomicReference
 
-/** Empty input — `get_balance` takes no arguments. */
+/**
+ * Empty input — `get_balance` takes no arguments.
+ */
 final case class GetBalanceInput() extends ToolInput derives RW
 
 /**

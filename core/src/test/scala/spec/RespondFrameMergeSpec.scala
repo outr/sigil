@@ -42,19 +42,19 @@ class RespondFrameMergeSpec extends AnyWordSpec with Matchers {
       val replyText = "Here is the answer to your question."
       val frames = Vector[ContextFrame](
         ContextFrame.Text(
-          content       = "What's the answer?",
+          content = "What's the answer?",
           participantId = spec.TestUser,
           sourceEventId = Id[Event]("user-msg")
         ),
         ContextFrame.ToolCall(
-          toolName      = RespondTool.schema.name,
-          argsJson      = s"""{"topicLabel":"x","topicSummary":"y","content":"$replyText","disposition":"Success","endsTurn":true}""",
-          callId        = callId,
+          toolName = RespondTool.schema.name,
+          argsJson = s"""{"topicLabel":"x","topicSummary":"y","content":"$replyText","disposition":"Success","endsTurn":true}""",
+          callId = callId,
           participantId = agent,
           sourceEventId = Id[Event]("toolinvoke-respond-1")
         ),
         ContextFrame.Text(
-          content       = replyText,
+          content = replyText,
           participantId = agent,
           sourceEventId = Id[Event]("message-respond-1")
         )
@@ -83,14 +83,14 @@ class RespondFrameMergeSpec extends AnyWordSpec with Matchers {
       val replyText = "I cannot complete this task."
       val frames = Vector[ContextFrame](
         ContextFrame.ToolCall(
-          toolName      = _root_.sigil.tool.core.RespondFailureTool.schema.name,
-          argsJson      = s"""{"reason":"$replyText","recoverable":false}""",
-          callId        = callId,
+          toolName = _root_.sigil.tool.core.RespondFailureTool.schema.name,
+          argsJson = s"""{"reason":"$replyText","recoverable":false}""",
+          callId = callId,
           participantId = agent,
           sourceEventId = Id[Event]("toolinvoke-respond-failure-1")
         ),
         ContextFrame.Text(
-          content       = replyText,
+          content = replyText,
           participantId = agent,
           sourceEventId = Id[Event]("message-respond-failure-1")
         )
@@ -111,24 +111,24 @@ class RespondFrameMergeSpec extends AnyWordSpec with Matchers {
       val unrelated = "Some other text the agent emitted earlier."
       val frames = Vector[ContextFrame](
         ContextFrame.Text(
-          content       = unrelated,
+          content = unrelated,
           participantId = agent,
           sourceEventId = Id[Event]("earlier-agent-msg")
         ),
         ContextFrame.Text(
-          content       = "Now the user asks something.",
+          content = "Now the user asks something.",
           participantId = spec.TestUser,
           sourceEventId = Id[Event]("user-msg-2")
         ),
         ContextFrame.ToolCall(
-          toolName      = RespondTool.schema.name,
-          argsJson      = """{"topicLabel":"x","topicSummary":"y","content":"reply","disposition":"Success","endsTurn":true}""",
-          callId        = callId,
+          toolName = RespondTool.schema.name,
+          argsJson = """{"topicLabel":"x","topicSummary":"y","content":"reply","disposition":"Success","endsTurn":true}""",
+          callId = callId,
           participantId = agent,
           sourceEventId = Id[Event]("toolinvoke-respond-3")
         ),
         ContextFrame.Text(
-          content       = "reply",
+          content = "reply",
           participantId = agent,
           sourceEventId = Id[Event]("message-respond-3")
         )

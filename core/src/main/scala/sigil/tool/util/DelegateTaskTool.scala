@@ -58,37 +58,38 @@ case object DelegateTaskTool
   ) {
   override def paginate: Boolean = false
 
-
   override protected def executeTyped(input: DelegateTaskInput, ctx: TurnContext): Stream[Event] = Stream.force {
     ctx.sigil match {
       case ws: WorkflowSigil =>
         spawnWorker(ws, input, ctx)
       case _ =>
-        Task.pure(emit(ctx, obj(
-          "ok"    -> str("false"),
-          "error" -> str("delegate_task requires the host Sigil to mix in WorkflowSigil; the workflow runtime is not active.")
-        )))
+        Task.pure(emit(
+          ctx,
+          obj(
+            "ok" -> str("false"),
+            "error" -> str("delegate_task requires the host Sigil to mix in WorkflowSigil; the workflow runtime is not active.")
+          )))
     }
   }
 
   private def spawnWorker(ws: WorkflowSigil & sigil.Sigil, input: DelegateTaskInput, ctx: TurnContext): Task[Stream[Event]] = {
-    val workerLabel  = s"Worker: ${input.role.name}"
+    val workerLabel = s"Worker: ${input.role.name}"
     val parentConvId = ctx.conversation.id
 
     for {
       workerConv <- ws.newConversation(
-        createdBy             = ctx.caller,
-        label                 = workerLabel,
-        summary               = input.brief.take(80),
-        participants          = Nil,
-        parentConversationId  = Some(parentConvId)
+        createdBy = ctx.caller,
+        label = workerLabel,
+        summary = input.brief.take(80),
+        participants = Nil,
+        parentConversationId = Some(parentConvId)
       )
       stepInput = AgentDecisionStepInput(
-        id        = "decision-0",
-        name      = Some(s"Worker decision (${input.role.name})"),
-        role      = input.role,
-        brief     = input.brief,
-        modelId   = input.modelId,
+        id = "decision-0",
+        name = Some(s"Worker decision (${input.role.name})"),
+        role = input.role,
+        brief = input.brief,
+        modelId = input.modelId,
         toolNames = input.toolNames
       )
       compiled = WorkflowStepInputCompiler.compile(List(stepInput))(using summon[fabric.rw.RW[strider.step.Step]])
@@ -104,27 +105,29 @@ case object DelegateTaskTool
       // monitor's `txn.upsert` of its working-snapshot wiped the
       // post-schedule modify, leaving `conversationId = None` at
       // settle time and silently breaking lifecycle attribution.
-      run     <- ws.workflowManager.schedule(
-        name            = workerLabel,
-        steps           = compiled.steps,
-        sourceId        = sourceId,
-        conversationId  = Some(workerConv._id.value)
+      run <- ws.workflowManager.schedule(
+        name = workerLabel,
+        steps = compiled.steps,
+        sourceId = sourceId,
+        conversationId = Some(workerConv._id.value)
       )
-    } yield emit(ctx, obj(
-      "ok"            -> str("true"),
-      "taskId"        -> str(run._id.value),
-      "workerConvId"  -> str(workerConv._id.value),
-      "role"          -> str(input.role.name)
-    ))
+    } yield emit(
+      ctx,
+      obj(
+        "ok" -> str("true"),
+        "taskId" -> str(run._id.value),
+        "workerConvId" -> str(workerConv._id.value),
+        "role" -> str(input.role.name)
+      ))
   }
 
   private def emit(ctx: TurnContext, payload: fabric.Json): Stream[Event] =
     Stream.emit[Event](Message(
-      participantId  = ctx.caller,
+      participantId = ctx.caller,
       conversationId = ctx.conversation.id,
-      topicId        = ctx.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Text(fabric.io.JsonFormatter.Compact(payload))),
-      state          = EventState.Complete,
-      role           = MessageRole.Tool
+      topicId = ctx.conversation.currentTopicId,
+      content = Vector(ResponseContent.Text(fabric.io.JsonFormatter.Compact(payload))),
+      state = EventState.Complete,
+      role = MessageRole.Tool
     ))
 }

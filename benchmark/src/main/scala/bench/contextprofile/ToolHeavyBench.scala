@@ -44,10 +44,9 @@ object ToolHeavyBench {
     "Extract named entities (people / orgs / places) from a block of text."
   )
 
-  private def fakeTools(count: Int): Vector[Tool] =
-    (0 until count).iterator.map { i =>
-      new ProfilerHarness.FakeTool(s"tool_$i", descriptions(i % descriptions.size))
-    }.toVector
+  private def fakeTools(count: Int): Vector[Tool] = (0 until count).iterator.map { i =>
+    new ProfilerHarness.FakeTool(s"tool_$i", descriptions(i % descriptions.size))
+  }.toVector
 
   def main(args: Array[String]): Unit = {
     val turns = 30
@@ -62,8 +61,11 @@ object ToolHeavyBench {
         current :+= ProfilerHarness.textFrame(s"User turn $n: please find a tool that can help with task $n.")
         val fcCall = ProfilerHarness.toolCallFrame("find_capability", s"""{"keywords":"task $n action"}""")
         current :+= fcCall
-        current :+= ProfilerHarness.toolResultFrame(fcCall.callId,
-          s"""{"matches":[{"name":"tool_${n % 25}","description":"${descriptions(n % descriptions.size)}","capabilityType":"Tool","score":${25 - n % 25},"status":{"type":"Ready"}}]}""")
+        current :+= ProfilerHarness.toolResultFrame(
+          fcCall.callId,
+          s"""{"matches":[{"name":"tool_${n % 25}","description":"${descriptions(n %
+              descriptions.size)}","capabilityType":"Tool","score":${25 - n % 25},"status":{"type":"Ready"}}]}"""
+        )
         val toolCall = ProfilerHarness.toolCallFrame(s"tool_${n % 25}", s"""{"value":"input for turn $n"}""")
         current :+= toolCall
         current :+= ProfilerHarness.toolResultFrame(toolCall.callId, s"""{"result":"tool_${n % 25} executed for turn $n"}""")

@@ -22,7 +22,7 @@ final class ProcessSignalTool(registry: ProcessRegistry)
         |then SIGKILL on grace timeout), `interrupt` (SIGINT-equivalent), `kill` (SIGKILL).
         |Returns `{handle, signal, ok}`.""".stripMargin,
     examples = List(
-      ToolExample("Terminate gracefully",  ProcessSignalInput(handle = "p1")),
+      ToolExample("Terminate gracefully", ProcessSignalInput(handle = "p1")),
       ToolExample("Force-kill a hung proc", ProcessSignalInput(handle = "p1", signal = "kill"))
     ),
     keywords = Set("process", "signal", "terminate", "kill", "stop")
@@ -34,7 +34,7 @@ final class ProcessSignalTool(registry: ProcessRegistry)
       val payload = obj(
         "handle" -> str(input.handle),
         "signal" -> str(input.signal),
-        "ok"     -> bool(ok)
+        "ok" -> bool(ok)
       )
       Stream.emit[Event](FsToolEmit(payload, ctx))
     }

@@ -15,4 +15,5 @@ import sigil.tool.ToolInput
 case class BrowserXPathQueryInput(htmlFileId: String,
                                   xpath: String,
                                   maxResults: Int = 20,
-                                  includeOuterHtml: Boolean = false) extends ToolInput derives RW
+                                  includeOuterHtml: Boolean = false)
+  extends ToolInput derives RW

@@ -121,8 +121,8 @@ class ApprovalNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       def step(action: TimeoutAction): TimeoutAction =
         SigilApproval(ApprovalStepInput(id = "x", prompt = "?", timeoutAction = action)).timeoutAction
       step(TimeoutAction.Proceed) shouldBe TimeoutAction.Proceed
-      step(TimeoutAction.Skip)    shouldBe TimeoutAction.Skip
-      step(TimeoutAction.Fail)    shouldBe TimeoutAction.Fail
+      step(TimeoutAction.Skip) shouldBe TimeoutAction.Skip
+      step(TimeoutAction.Fail) shouldBe TimeoutAction.Fail
     }
   }
 

@@ -111,12 +111,12 @@ class GreetOnJoinSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       recorder.attach(TestSigil)
       NoOpStubProvider.callCount.set(0)
       val convId = freshConvId("fresh-greet")
-      val a      = agent(greetsOnJoin = true)
+      val a = agent(greetsOnJoin = true)
       for {
-        _      <- TestSigil.newConversation(createdBy = TestUser, participants = List(a), conversationId = convId)
-        seen   <- awaitClaim(recorder, TestAgent.value)
-        _      <- awaitSettled(recorder)
-        claims  = claimsFor(recorder, TestAgent.value)
+        _ <- TestSigil.newConversation(createdBy = TestUser, participants = List(a), conversationId = convId)
+        seen <- awaitClaim(recorder, TestAgent.value)
+        _ <- awaitSettled(recorder)
+        claims = claimsFor(recorder, TestAgent.value)
       } yield {
         seen shouldBe true
         claims should not be empty
@@ -130,7 +130,7 @@ class GreetOnJoinSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       recorder.attach(TestSigil)
       NoOpStubProvider.callCount.set(0)
       val convId = freshConvId("fresh-no-greet")
-      val a      = agent(greetsOnJoin = false)
+      val a = agent(greetsOnJoin = false)
       for {
         _ <- TestSigil.newConversation(createdBy = TestUser, participants = List(a), conversationId = convId)
         _ <- Task.sleep(negativeWindow)
@@ -145,16 +145,15 @@ class GreetOnJoinSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       recorder.attach(TestSigil)
       NoOpStubProvider.callCount.set(0)
       val convId = freshConvId("multi-role")
-      val a      = agent(roles = List(plannerRole, workerRole), greetsOnJoin = true)
+      val a = agent(roles = List(plannerRole, workerRole), greetsOnJoin = true)
       for {
         _ <- TestSigil.newConversation(createdBy = TestUser, participants = List(a), conversationId = convId)
         _ <- awaitClaim(recorder, TestAgent.value)
         _ <- awaitSettled(recorder)
-      } yield {
+      } yield
         // Merged dispatch: regardless of role count, the agent's greeting
         // produces exactly one provider call (one merged turn).
         NoOpStubProvider.callCount.get() shouldBe 1
-      }
     }
 
     "fire on late-join via Sigil.addParticipant" in {
@@ -162,14 +161,14 @@ class GreetOnJoinSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       recorder.attach(TestSigil)
       NoOpStubProvider.callCount.set(0)
       val convId = freshConvId("late-join")
-      val a      = agent(greetsOnJoin = true)
+      val a = agent(greetsOnJoin = true)
       for {
-        _      <- TestSigil.newConversation(createdBy = TestUser, conversationId = convId)
-        _      <- Task.sleep(negativeWindow)
-        before  = claimsFor(recorder, TestAgent.value)
-        _      <- TestSigil.addParticipant(convId, a)
-        seen   <- awaitClaim(recorder, TestAgent.value)
-        _      <- awaitSettled(recorder)
+        _ <- TestSigil.newConversation(createdBy = TestUser, conversationId = convId)
+        _ <- Task.sleep(negativeWindow)
+        before = claimsFor(recorder, TestAgent.value)
+        _ <- TestSigil.addParticipant(convId, a)
+        seen <- awaitClaim(recorder, TestAgent.value)
+        _ <- awaitSettled(recorder)
       } yield {
         before shouldBe empty
         seen shouldBe true
@@ -182,7 +181,7 @@ class GreetOnJoinSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       recorder.attach(TestSigil)
       NoOpStubProvider.callCount.set(0)
       val convId = freshConvId("late-join-silent")
-      val a      = agent(greetsOnJoin = false)
+      val a = agent(greetsOnJoin = false)
       for {
         _ <- TestSigil.newConversation(createdBy = TestUser, conversationId = convId)
         _ <- TestSigil.addParticipant(convId, a)
@@ -198,17 +197,15 @@ class GreetOnJoinSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       recorder.attach(TestSigil)
       NoOpStubProvider.callCount.set(0)
       val convId = freshConvId("idempotent")
-      val a      = agent(greetsOnJoin = true)
+      val a = agent(greetsOnJoin = true)
       for {
-        _          <- TestSigil.newConversation(createdBy = TestUser, participants = List(a), conversationId = convId)
-        _          <- awaitClaim(recorder, TestAgent.value)
-        _          <- awaitSettled(recorder)
-        firstCount  = NoOpStubProvider.callCount.get()
-        _          <- TestSigil.addParticipant(convId, a)
-        _          <- Task.sleep(negativeWindow)
-      } yield {
-        NoOpStubProvider.callCount.get() shouldBe firstCount
-      }
+        _ <- TestSigil.newConversation(createdBy = TestUser, participants = List(a), conversationId = convId)
+        _ <- awaitClaim(recorder, TestAgent.value)
+        _ <- awaitSettled(recorder)
+        firstCount = NoOpStubProvider.callCount.get()
+        _ <- TestSigil.addParticipant(convId, a)
+        _ <- Task.sleep(negativeWindow)
+      } yield NoOpStubProvider.callCount.get() shouldBe firstCount
     }
   }
 
@@ -217,9 +214,11 @@ class GreetOnJoinSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   }
 }
 
-/** Stub provider used by [[GreetOnJoinSpec]]. Emits exactly one
-  * `Done(StopReason.Complete)` per call so the agent loop terminates
-  * cleanly without an LLM round-trip. */
+/**
+ * Stub provider used by [[GreetOnJoinSpec]]. Emits exactly one
+ * `Done(StopReason.Complete)` per call so the agent loop terminates
+ * cleanly without an LLM round-trip.
+ */
 private object NoOpStubProvider extends Provider {
   val modelId: Id[Model] = Model.id("noop-stub")
 
@@ -241,9 +240,14 @@ private object NoOpStubProvider extends Provider {
     val callId = _root_.sigil.provider.CallId(s"noop-call-${callCount.get()}")
     Stream.emits(List(
       ProviderEvent.ToolCallStart(callId, _root_.sigil.tool.core.RespondTool.schema.name.value),
-      ProviderEvent.ToolCallComplete(callId, _root_.sigil.tool.model.RespondInput(
-        topicLabel = "Greeting", topicSummary = "Greeting", content = "Hi.", endsTurn = true
-      )),
+      ProviderEvent.ToolCallComplete(
+        callId,
+        _root_.sigil.tool.model.RespondInput(
+          topicLabel = "Greeting",
+          topicSummary = "Greeting",
+          content = "Hi.",
+          endsTurn = true
+        )),
       ProviderEvent.Done(StopReason.Complete)
     ))
   }

@@ -35,4 +35,5 @@ import sigil.conversation.Conversation
 case class FrameworkWorkflowNotice(workflowId: String,
                                    workflowType: String,
                                    phase: FrameworkWorkflowPhase,
-                                   conversationId: Option[Id[Conversation]] = None) extends Notice derives RW
+                                   conversationId: Option[Id[Conversation]] = None)
+  extends Notice derives RW

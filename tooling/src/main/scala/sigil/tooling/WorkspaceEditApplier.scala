@@ -24,16 +24,21 @@ import org.eclipse.lsp4j.{TextEdit, WorkspaceEdit}
  * [[SandboxedWorkspaceEditApplier]] or supply their own.
  */
 trait WorkspaceEditApplier {
-  /** Apply the edit; return true if every operation succeeded. */
+
+  /**
+   * Apply the edit; return true if every operation succeeded.
+   */
   def apply(edit: WorkspaceEdit): Boolean
 }
 
 object WorkspaceEditApplier {
 
-  /** Apply a list of TextEdits to a string. The protocol contract is
-    * "non-overlapping ranges" — we sort descending and apply
-    * back-to-front so earlier edits don't shift later edit ranges.
-    * lsp4j's rename / code-action results follow this convention. */
+  /**
+   * Apply a list of TextEdits to a string. The protocol contract is
+   * "non-overlapping ranges" — we sort descending and apply
+   * back-to-front so earlier edits don't shift later edit ranges.
+   * lsp4j's rename / code-action results follow this convention.
+   */
   def applyTextEdits(text: String, edits: List[TextEdit]): String = {
     if (edits.isEmpty) return text
     val sorted = edits.sortBy { e =>
@@ -49,10 +54,12 @@ object WorkspaceEditApplier {
     builder.toString
   }
 
-  /** Convert a (line, character) position to a 0-based offset in the
-    * full string. Both inputs are 0-based per LSP convention. UTF-16
-    * code-unit semantics — matches what most servers send for
-    * Scala / TypeScript / JavaScript. */
+  /**
+   * Convert a (line, character) position to a 0-based offset in the
+   * full string. Both inputs are 0-based per LSP convention. UTF-16
+   * code-unit semantics — matches what most servers send for
+   * Scala / TypeScript / JavaScript.
+   */
   private def lineCharOffset(text: String, line: Int, character: Int): Int = {
     var off = 0
     var l = 0

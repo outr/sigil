@@ -35,23 +35,23 @@ class PinnedModelSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   // Seed the registry with the fixture model so PinModelTool's
   // resolver accepts the id rather than refusing it as unresolvable.
   TestSigil.cache.replace(List(sigil.db.Model(
-    canonicalSlug        = "test/pinned-fixture",
-    huggingFaceId        = "",
-    name                 = "pinned-fixture",
-    description          = "PinnedModelSpec fixture",
-    contextLength        = 32_000,
-    architecture         = sigil.db.ModelArchitecture("text->text", List("text"), List("text"), "Unknown", None),
-    pricing              = sigil.db.ModelPricing(BigDecimal(0), BigDecimal(0), None, None),
-    topProvider          = sigil.db.ModelTopProvider(Some(32_000L), Some(8_192L), false),
-    perRequestLimits     = None,
-    supportedParameters  = Set("temperature"),
-    defaultParameters    = sigil.db.ModelDefaultParameters(),
-    knowledgeCutoff      = None,
-    expirationDate       = None,
-    links                = sigil.db.ModelLinks(""),
-    created              = lightdb.time.Timestamp(),
-    modified             = lightdb.time.Timestamp(),
-    _id                  = pinnedModelId
+    canonicalSlug = "test/pinned-fixture",
+    huggingFaceId = "",
+    name = "pinned-fixture",
+    description = "PinnedModelSpec fixture",
+    contextLength = 32_000,
+    architecture = sigil.db.ModelArchitecture("text->text", List("text"), List("text"), "Unknown", None),
+    pricing = sigil.db.ModelPricing(BigDecimal(0), BigDecimal(0), None, None),
+    topProvider = sigil.db.ModelTopProvider(Some(32_000L), Some(8_192L), false),
+    perRequestLimits = None,
+    supportedParameters = Set("temperature"),
+    defaultParameters = sigil.db.ModelDefaultParameters(),
+    knowledgeCutoff = None,
+    expirationDate = None,
+    links = sigil.db.ModelLinks(""),
+    created = lightdb.time.Timestamp(),
+    modified = lightdb.time.Timestamp(),
+    _id = pinnedModelId
   ))).sync()
 
   private def freshConversation(): Task[Conversation] = {
@@ -74,30 +74,28 @@ class PinnedModelSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   private def ctx(conv: Conversation): TurnContext =
     TurnContext(
-      sigil        = TestSigil,
-      chain        = List(TestUser, TestAgent),
+      sigil = TestSigil,
+      chain = List(TestUser, TestAgent),
       conversation = conv,
-      turnInput    = TurnInput(conversationId = conv.id)
+      turnInput = TurnInput(conversationId = conv.id)
     )
 
   "pin_model" should {
 
     "persist pinnedModelId on the Conversation record" in {
       for {
-        conv     <- freshConversation()
-        _        <- PinModelTool.execute(PinModelInput(pinnedModelId.value), ctx(conv)).toList
-        loaded   <- TestSigil.withDB(_.conversations.transaction(_.get(conv.id)))
-      } yield {
-        loaded.flatMap(_.pinnedModelId) shouldBe Some(pinnedModelId)
-      }
+        conv <- freshConversation()
+        _ <- PinModelTool.execute(PinModelInput(pinnedModelId.value), ctx(conv)).toList
+        loaded <- TestSigil.withDB(_.conversations.transaction(_.get(conv.id)))
+      } yield loaded.flatMap(_.pinnedModelId) shouldBe Some(pinnedModelId)
     }
 
     "be cleared by unpin_model" in {
       for {
-        conv      <- freshConversation()
-        _         <- PinModelTool.execute(PinModelInput(pinnedModelId.value), ctx(conv)).toList
-        afterPin  <- TestSigil.withDB(_.conversations.transaction(_.get(conv.id)))
-        _         <- UnpinModelTool.execute(UnpinModelInput(), ctx(conv)).toList
+        conv <- freshConversation()
+        _ <- PinModelTool.execute(PinModelInput(pinnedModelId.value), ctx(conv)).toList
+        afterPin <- TestSigil.withDB(_.conversations.transaction(_.get(conv.id)))
+        _ <- UnpinModelTool.execute(UnpinModelInput(), ctx(conv)).toList
         afterUnpin <- TestSigil.withDB(_.conversations.transaction(_.get(conv.id)))
       } yield {
         afterPin.flatMap(_.pinnedModelId) shouldBe Some(pinnedModelId)
@@ -108,11 +106,11 @@ class PinnedModelSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "be no-op against a non-existent conversation" in {
       val orphan = Conversation(
         topics = List(TopicEntry(
-          id      = Topic.id(s"orphan-topic-${rapid.Unique()}"),
-          label   = "spec",
+          id = Topic.id(s"orphan-topic-${rapid.Unique()}"),
+          label = "spec",
           summary = "spec"
         )),
-        _id    = Conversation.id(s"orphan-${rapid.Unique()}")
+        _id = Conversation.id(s"orphan-${rapid.Unique()}")
       )
       // Pin against a Conversation that was never persisted — the
       // tool's `_.modify(...)` returns None for missing ids and the

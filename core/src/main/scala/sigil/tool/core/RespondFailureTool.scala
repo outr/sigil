@@ -18,24 +18,25 @@ import sigil.tool.model.{RespondFailureInput, ResponseContent}
  * Message. This tool is kept in core for apps that prefer the
  * named-tool dispatch path.
  */
-case object RespondFailureTool extends TypedTool[RespondFailureInput](
-  name = ToolName("respond_failure"),
-  description =
-    """Signal that you can't complete the task. `recoverable` = true if a retry might succeed
+case object RespondFailureTool
+  extends TypedTool[RespondFailureInput](
+    name = ToolName("respond_failure"),
+    description =
+      """Signal that you can't complete the task. `recoverable` = true if a retry might succeed
       |(transient: rate limits, network); false if permanent (missing permissions, unsupported input).""".stripMargin,
-  examples = Nil
-) with RespondFamilyTool {
+    examples = Nil
+  )
+  with RespondFamilyTool {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: RespondFailureInput, context: TurnContext): rapid.Stream[Event] = {
+  override protected def executeTyped(input: RespondFailureInput, context: TurnContext): rapid.Stream[Event] =
     rapid.Stream.emits(List(Message(
-      participantId  = context.caller,
+      participantId = context.caller,
       conversationId = context.conversation.id,
-      topicId        = context.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Text(input.reason)),
-      disposition    = MessageDisposition.Failure(recoverable = input.recoverable),
-      state          = EventState.Complete,
-      modelId        = context.modelId
+      topicId = context.conversation.currentTopicId,
+      content = Vector(ResponseContent.Text(input.reason)),
+      disposition = MessageDisposition.Failure(recoverable = input.recoverable),
+      state = EventState.Complete,
+      modelId = context.modelId
     )))
-  }
 }

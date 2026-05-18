@@ -10,7 +10,8 @@ import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
 import sigil.workflow.{WorkflowTemplate, WorkflowTrigger}
 
 case class RegisterTriggerInput(workflowId: String,
-                                trigger: WorkflowTrigger) extends ToolInput derives RW
+                                trigger: WorkflowTrigger)
+  extends ToolInput derives RW
 
 /**
  * Append a [[WorkflowTrigger]] to a persisted template's
@@ -21,28 +22,30 @@ case class RegisterTriggerInput(workflowId: String,
  * (Sage's downstream additions) work the same as the framework's
  * baseline four.
  */
-final class RegisterTriggerTool extends TypedTool[RegisterTriggerInput](
-  name = ToolName("register_trigger"),
-  description =
-    """Add a typed WorkflowTrigger to a workflow template.
+final class RegisterTriggerTool
+  extends TypedTool[RegisterTriggerInput](
+    name = ToolName("register_trigger"),
+    description =
+      """Add a typed WorkflowTrigger to a workflow template.
       |
       |`workflowId` is the template id. `trigger` is the typed trigger shape — pick
       |from the available subtypes (ConversationMessageTrigger, TimeTrigger, WebhookTrigger,
       |WorkflowEventTrigger, plus app-defined ones).""".stripMargin,
-  examples = List(
-    ToolExample(
-      "fire on a daily 9am cron",
-      RegisterTriggerInput(
-        workflowId = "wf-abc",
-        trigger = sigil.workflow.trigger.TimeTrigger(cron = Some("0 9 * * *"))
+    examples = List(
+      ToolExample(
+        "fire on a daily 9am cron",
+        RegisterTriggerInput(
+          workflowId = "wf-abc",
+          trigger = sigil.workflow.trigger.TimeTrigger(cron = Some("0 9 * * *"))
+        )
       )
-    )
-  ),
-  keywords = Set("workflow", "trigger", "schedule", "register")
-) with WorkflowToolSupport {
+    ),
+    keywords = Set("workflow", "trigger", "schedule", "register")
+  )
+  with WorkflowToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: RegisterTriggerInput, ctx: TurnContext): Stream[Event] = {
+  override protected def executeTyped(input: RegisterTriggerInput, ctx: TurnContext): Stream[Event] =
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)
       case Right(host) =>
@@ -64,5 +67,4 @@ final class RegisterTriggerTool extends TypedTool[RegisterTriggerInput](
         }
         Stream.force(task.map(text => reply(ctx, text)))
     }
-  }
 }

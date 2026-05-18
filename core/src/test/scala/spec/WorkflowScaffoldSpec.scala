@@ -80,16 +80,14 @@ class WorkflowScaffoldSpec extends AnyWordSpec with Matchers {
       roundTrip[WorkflowTrigger](TimeTrigger(intervalMs = Some(60000L)))
       roundTrip[WorkflowTrigger](TimeTrigger(cron = Some("0 9 * * 1")))
     }
-    "round-trip WebhookTrigger" in {
+    "round-trip WebhookTrigger" in
       roundTrip[WorkflowTrigger](WebhookTrigger(path = "/webhooks/build", secret = "topsecret"))
-    }
-    "round-trip WorkflowEventTrigger" in {
+    "round-trip WorkflowEventTrigger" in
       roundTrip[WorkflowTrigger](WorkflowEventTrigger(eventName = "build_succeeded"))
-    }
   }
 
   "WorkflowStepInput subtypes" should {
-    "round-trip JobStepInput" in {
+    "round-trip JobStepInput" in
       roundTrip[WorkflowStepInput](JobStepInput(
         id = "summarize",
         name = Some("Summarize the input"),
@@ -97,23 +95,20 @@ class WorkflowScaffoldSpec extends AnyWordSpec with Matchers {
         modelId = Some("openai/gpt-5.4-mini"),
         output = Some("summary")
       ))
-    }
-    "round-trip ConditionStepInput" in {
+    "round-trip ConditionStepInput" in
       roundTrip[WorkflowStepInput](ConditionStepInput(
         id = "check",
         expression = "{{count}} > 0",
         onTrue = "process",
         onFalse = "noop"
       ))
-    }
-    "round-trip ApprovalStepInput" in {
+    "round-trip ApprovalStepInput" in
       roundTrip[WorkflowStepInput](ApprovalStepInput(
         id = "review",
         prompt = "Approve the deploy?",
         options = List("approve", "reject"),
         timeoutMs = Some(3600000L)
       ))
-    }
     "round-trip ParallelStepInput with nested branches" in {
       import strider.step.JoinMode
       roundTrip[WorkflowStepInput](ParallelStepInput(
@@ -125,27 +120,24 @@ class WorkflowScaffoldSpec extends AnyWordSpec with Matchers {
         joinMode = JoinMode.All
       ))
     }
-    "round-trip LoopStepInput with a body" in {
+    "round-trip LoopStepInput with a body" in
       roundTrip[WorkflowStepInput](LoopStepInput(
         id = "loop",
         over = "items",
         body = List(JobStepInput(id = "process", prompt = Some("{{item}}"), modelId = Some("m")))
       ))
-    }
-    "round-trip SubWorkflowStepInput" in {
+    "round-trip SubWorkflowStepInput" in
       roundTrip[WorkflowStepInput](SubWorkflowStepInput(
         id = "sub",
         workflowId = "wf-123",
         variables = Map("input" -> "{{prior}}"),
         output = Some("subResult")
       ))
-    }
-    "round-trip TriggerStepInput carrying a typed trigger" in {
+    "round-trip TriggerStepInput carrying a typed trigger" in
       roundTrip[WorkflowStepInput](TriggerStepInput(
         id = "wait",
         trigger = TimeTrigger(intervalMs = Some(30000L))
       ))
-    }
     "round-trip AgentDecisionStepInput carrying the worker's role + brief" in {
       import sigil.role.Role
       import sigil.provider.AnalysisWork

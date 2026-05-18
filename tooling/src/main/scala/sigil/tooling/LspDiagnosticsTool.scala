@@ -9,7 +9,8 @@ import sigil.tooling.types.{LspDiagnostic, LspDiagnosticsResult}
 
 case class LspDiagnosticsInput(languageId: String,
                                filePath: String,
-                               waitMs: Long = 1500L) extends ToolInput derives RW
+                               waitMs: Long = 1500L)
+  extends ToolInput derives RW
 
 /**
  * Returns the language server's current diagnostics for a file —
@@ -29,10 +30,11 @@ case class LspDiagnosticsInput(languageId: String,
  * the typed list and pattern-match on severity instead of regex-
  * parsing rendered strings.
  */
-final class LspDiagnosticsTool(val manager: LspManager) extends TypedOutputTool[LspDiagnosticsInput, LspDiagnosticsResult](
-  name = ToolName("lsp_diagnostics"),
-  description =
-    """Fetch the language server's diagnostics for a file (errors, warnings, hints).
+final class LspDiagnosticsTool(val manager: LspManager)
+  extends TypedOutputTool[LspDiagnosticsInput, LspDiagnosticsResult](
+    name = ToolName("lsp_diagnostics"),
+    description =
+      """Fetch the language server's diagnostics for a file (errors, warnings, hints).
       |
       |`languageId` selects the persisted LspServerConfig (e.g. "scala", "rust", "python").
       |`filePath` is the absolute path to the file. The session's project root is resolved
@@ -41,30 +43,51 @@ final class LspDiagnosticsTool(val manager: LspManager) extends TypedOutputTool[
       |diagnostics after opening the file. Pass 0 to read the existing snapshot only.
       |
       |Returns `{filePath, diagnostics: [{range:{start, end}, severity, message, code, source}]}`.""".stripMargin,
-  keywords = Set(
-    "lsp", "language", "diagnostics", "errors", "warnings", "problems",
-    "lint", "compile-check", "analyze", "examine", "inspect", "review",
-    "evaluate", "what's broken", "issues", "semantic",
-    "scala", "type", "fix", "code"
-  ),
-  examples = List(
-    ToolExample(
-      "scala diagnostics for a single file",
-      LspDiagnosticsInput(languageId = "scala", filePath = "/abs/path/to/Foo.scala")
+    keywords = Set(
+      "lsp",
+      "language",
+      "diagnostics",
+      "errors",
+      "warnings",
+      "problems",
+      "lint",
+      "compile-check",
+      "analyze",
+      "examine",
+      "inspect",
+      "review",
+      "evaluate",
+      "what's broken",
+      "issues",
+      "semantic",
+      "scala",
+      "type",
+      "fix",
+      "code"
+    ),
+    examples = List(
+      ToolExample(
+        "scala diagnostics for a single file",
+        LspDiagnosticsInput(languageId = "scala", filePath = "/abs/path/to/Foo.scala")
+      )
     )
   )
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  with sigil.tool.ReadOnlyExternalTool
+  with LspToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspDiagnosticsInput, context: TurnContext): Task[LspDiagnosticsResult] =
     withOpenDocumentTyped[LspDiagnosticsResult](
-      input.languageId, input.filePath, context,
+      input.languageId,
+      input.filePath,
+      context,
       onError = msg => throw new RuntimeException(msg)
     ) { (session, uri) =>
       val wait = if (input.waitMs > 0) session.waitForDiagnostics(input.waitMs) else Task.unit
-      wait.map(_ => LspDiagnosticsResult(
-        filePath    = input.filePath,
-        diagnostics = session.diagnosticsFor(uri).map(LspDiagnostic.fromLsp4j(input.filePath, _))
-      ))
+      wait.map(_ =>
+        LspDiagnosticsResult(
+          filePath = input.filePath,
+          diagnostics = session.diagnosticsFor(uri).map(LspDiagnostic.fromLsp4j(input.filePath, _))
+        ))
     }
 }

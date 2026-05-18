@@ -35,9 +35,11 @@ class OrchestratorMultiToolPerTurnSpec extends AsyncWordSpec with AsyncTaskSpec 
 
   private val modelId: Id[Model] = Model.id("test", "model")
 
-  /** Atomic tool that throws synchronously inside `execute`. */
+  /**
+   * Atomic tool that throws synchronously inside `execute`.
+   */
   private object ThrowingTool extends Tool {
-  override def paginate: Boolean = false
+    override def paginate: Boolean = false
     override val name: ToolName = ToolName("throw_atomic")
     override def description: String = "Always throws on execute."
     override def inputRW: RW[? <: ToolInput] = summon[RW[NoResponseInput]]
@@ -47,9 +49,11 @@ class OrchestratorMultiToolPerTurnSpec extends AsyncWordSpec with AsyncTaskSpec 
     override def _id: Id[Tool] = Id[Tool](name.value)
   }
 
-  /** Provider that emits two tool calls back-to-back (no respond
-    * text between them) then Done. The second tool's name is
-    * `ThrowingTool`, which fails synchronously. */
+  /**
+   * Provider that emits two tool calls back-to-back (no respond
+   * text between them) then Done. The second tool's name is
+   * `ThrowingTool`, which fails synchronously.
+   */
   private class TwoCallProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -74,27 +78,27 @@ class OrchestratorMultiToolPerTurnSpec extends AsyncWordSpec with AsyncTaskSpec 
     val conv = Conversation(topics = TestTopicStack, _id = convId)
     val viewConvId = convId
     val request = ConversationRequest(
-      conversationId     = convId,
-      modelId            = modelId,
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = viewConvId),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
-      previousTopics     = Nil,
+      conversationId = convId,
+      modelId = modelId,
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = viewConvId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      chain              = List(TestUser, TestAgent),
+      chain = List(TestUser, TestAgent),
       // Both tools must be in the request roster — the orchestrator
       // looks them up by name on `ToolCallComplete`.
-      tools              = Vector(NoResponseTool, ThrowingTool)
+      tools = Vector(NoResponseTool, ThrowingTool)
     )
     for {
-      _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
     } yield signals
   }
 
   "Orchestrator (bug #49)" should {
-    "surface ToolDelta for both tool calls in a turn even when the second tool throws" in {
+    "surface ToolDelta for both tool calls in a turn even when the second tool throws" in
       runWith(new TwoCallProvider, suffix = "throw").map { signals =>
         // Two ToolInvoke events, one per tool call.
         val invokes = signals.collect { case t: ToolInvoke => t }
@@ -117,10 +121,9 @@ class OrchestratorMultiToolPerTurnSpec extends AsyncWordSpec with AsyncTaskSpec 
         val toolMessages = signals.collect { case m: Message => m }
         toolMessages.exists(_.content.exists {
           case sigil.tool.model.ResponseContent.Text(t) => t.contains("execution failed")
-          case _                                        => false
+          case _ => false
         }) shouldBe true
       }
-    }
   }
 
   "tear down" should {

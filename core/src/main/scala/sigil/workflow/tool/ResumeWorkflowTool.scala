@@ -12,7 +12,8 @@ import strider.step.Step
 
 case class ResumeWorkflowInput(runId: String,
                                stepId: String,
-                               payload: Option[String] = None) extends ToolInput derives RW
+                               payload: Option[String] = None)
+  extends ToolInput derives RW
 
 /**
  * Resume a workflow run paused on a [[strider.step.Approval]] or
@@ -24,26 +25,28 @@ case class ResumeWorkflowInput(runId: String,
  * approval step's `options`). Empty payload resumes with
  * `Json.Null`.
  */
-final class ResumeWorkflowTool extends TypedTool[ResumeWorkflowInput](
-  name = ToolName("resume_workflow"),
-  description =
-    """Resume a workflow run paused on an approval / trigger step.
+final class ResumeWorkflowTool
+  extends TypedTool[ResumeWorkflowInput](
+    name = ToolName("resume_workflow"),
+    description =
+      """Resume a workflow run paused on an approval / trigger step.
       |
       |`runId` is the run id; `stepId` is the id of the waiting step (visible from
       |the workflow's lifecycle Events).
       |`payload` (optional) is the chosen value — for approval steps, one of the
       |configured options.""".stripMargin,
-  examples = List(
-    ToolExample(
-      "approve a pending approval",
-      ResumeWorkflowInput(runId = "run-abc", stepId = "review", payload = Some("approve"))
-    )
-  ),
-  keywords = Set("workflow", "resume", "approve", "continue")
-) with WorkflowToolSupport {
+    examples = List(
+      ToolExample(
+        "approve a pending approval",
+        ResumeWorkflowInput(runId = "run-abc", stepId = "review", payload = Some("approve"))
+      )
+    ),
+    keywords = Set("workflow", "resume", "approve", "continue")
+  )
+  with WorkflowToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: ResumeWorkflowInput, ctx: TurnContext): Stream[Event] = {
+  override protected def executeTyped(input: ResumeWorkflowInput, ctx: TurnContext): Stream[Event] =
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)
       case Right(host) =>
@@ -63,5 +66,4 @@ final class ResumeWorkflowTool extends TypedTool[ResumeWorkflowInput](
         }
         Stream.force(task.map(text => reply(ctx, text)))
     }
-  }
 }

@@ -133,7 +133,7 @@ class SecretStoreSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       } yield {
         firstVerify shouldBe true
         secondGet shouldBe Some("second")
-        verifyAfterOverwrite shouldBe false   // hashed entry is gone
+        verifyAfterOverwrite shouldBe false // hashed entry is gone
       }
     }
 

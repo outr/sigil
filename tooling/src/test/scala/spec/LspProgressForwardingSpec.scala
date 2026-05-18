@@ -1,7 +1,7 @@
 package spec
 
 import org.eclipse.lsp4j.*
-import org.eclipse.lsp4j.jsonrpc.messages.{Either as LspEither}
+import org.eclipse.lsp4j.jsonrpc.messages.Either as LspEither
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.tooling.{LspRecordingClient, WorkspaceEditApplier}
@@ -65,36 +65,36 @@ class LspProgressForwardingSpec extends AnyWordSpec with Matchers {
 
     "surface WorkDoneProgressBegin's title through the status callback" in {
       val captured = new AtomicReference[List[String]](Nil)
-      val client   = newClient(captured)
+      val client = newClient(captured)
       client.notifyProgress(workDoneBegin("Indexing", message = Some("scala sources")))
       captured.get() shouldBe List("Indexing — scala sources")
     }
 
     "surface WorkDoneProgressReport with percentage" in {
       val captured = new AtomicReference[List[String]](Nil)
-      val client   = newClient(captured)
+      val client = newClient(captured)
       client.notifyProgress(workDoneReport("47 of 124 files", percent = Some(38)))
-      captured.get().head should include ("47 of 124 files")
-      captured.get().head should include ("38%")
+      captured.get().head should include("47 of 124 files")
+      captured.get().head should include("38%")
     }
 
     "surface WorkDoneProgressReport without percentage" in {
       val captured = new AtomicReference[List[String]](Nil)
-      val client   = newClient(captured)
+      val client = newClient(captured)
       client.notifyProgress(workDoneReport("Compiling"))
       captured.get() shouldBe List("Compiling")
     }
 
     "surface WorkDoneProgressEnd's message when present" in {
       val captured = new AtomicReference[List[String]](Nil)
-      val client   = newClient(captured)
+      val client = newClient(captured)
       client.notifyProgress(workDoneEnd(message = Some("Done")))
       captured.get() shouldBe List("Done")
     }
 
     "be silent on WorkDoneProgressEnd with no message" in {
       val captured = new AtomicReference[List[String]](Nil)
-      val client   = newClient(captured)
+      val client = newClient(captured)
       client.notifyProgress(workDoneEnd())
       captured.get() shouldBe Nil
     }
@@ -103,7 +103,7 @@ class LspProgressForwardingSpec extends AnyWordSpec with Matchers {
   "LspRecordingClient.logMessage" should {
     "route message text through the status callback" in {
       val captured = new AtomicReference[List[String]](Nil)
-      val client   = newClient(captured)
+      val client = newClient(captured)
       client.logMessage(new MessageParams(MessageType.Info, "Indexing scala/java sources"))
       captured.get() shouldBe List("Indexing scala/java sources")
     }
@@ -112,7 +112,7 @@ class LspProgressForwardingSpec extends AnyWordSpec with Matchers {
   "LspRecordingClient.showMessage" should {
     "route message text through the status callback" in {
       val captured = new AtomicReference[List[String]](Nil)
-      val client   = newClient(captured)
+      val client = newClient(captured)
       client.showMessage(new MessageParams(MessageType.Info, "Importing build via sbt-bloop"))
       captured.get() shouldBe List("Importing build via sbt-bloop")
     }

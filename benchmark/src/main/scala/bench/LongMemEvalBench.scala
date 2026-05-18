@@ -31,8 +31,10 @@ object LongMemEvalBench {
 
   private val Collection = "sigil-bench-longmemeval"
 
-  /** LongMemEval stamps: "2023/05/30 (Tue) 23:40" → epoch millis. */
-  private def parseDate(dateStr: String): Long = {
+  /**
+   * LongMemEval stamps: "2023/05/30 (Tue) 23:40" → epoch millis.
+   */
+  private def parseDate(dateStr: String): Long =
     try {
       val clean = dateStr.replaceAll("\\([A-Za-z]+\\)\\s*", "").trim
       val fmt = java.time.format.DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm")
@@ -41,14 +43,15 @@ object LongMemEvalBench {
     } catch {
       case _: Exception => System.currentTimeMillis()
     }
-  }
 
-  /** `topResults` entries: `(sessionId, score, contentSnippet)`.
-    * Content is the turn's actual text, truncated for report
-    * readability. Session-level dedupe happens at scoring time
-    * (see `rankedSessionIdsDistinct`), but the per-turn list is
-    * kept un-deduped in the report so a reader can see *which*
-    * turn within the session scored best. */
+  /**
+   * `topResults` entries: `(sessionId, score, contentSnippet)`.
+   * Content is the turn's actual text, truncated for report
+   * readability. Session-level dedupe happens at scoring time
+   * (see `rankedSessionIdsDistinct`), but the per-turn list is
+   * kept un-deduped in the report so a reader can see *which*
+   * turn within the session scored best.
+   */
   private case class QuestionResult(questionIdx: Int,
                                     question: String,
                                     questionType: String,
@@ -72,7 +75,7 @@ object LongMemEvalBench {
     val k = RetrievalFlags.flagInt(args, "--k").getOrElse(5)
     val indices: Option[Set[Int]] = args.indexOf("--indices") match {
       case -1 => None
-      case i  => args.lift(i + 1).map(_.split(",").flatMap(_.trim.toIntOption).map(_ - 1).toSet)
+      case i => args.lift(i + 1).map(_.split(",").flatMap(_.trim.toIntOption).map(_ - 1).toSet)
     }
     val reportPath = RetrievalFlags.flagString(args, "--report").getOrElse("benchmark-results.md")
 
@@ -97,7 +100,7 @@ object LongMemEvalBench {
     val entries = JsonParser(raw).asVector
     val questionIndices = indices match {
       case Some(idxs) => idxs.filter(_ < entries.size).toList.sorted
-      case None       => (0 until math.min(entries.size, limit)).toList
+      case None => (0 until math.min(entries.size, limit)).toList
     }
     val total = questionIndices.size
     println(s"Loaded ${entries.size} questions, running $total${indices.map(_ => " (specific indices)").getOrElse("")}")
@@ -133,12 +136,16 @@ object LongMemEvalBench {
           session.asVector.zipWithIndex.foreach { case (turn, turnIdx) =>
             val messageId = s"msg-$i-$sessId-turn-$turnIdx"
             messageToSession(messageId) = sessId
-            batch += ((messageId, turn("content").asString, Map(
-              "kind" -> "longmemeval-message",
-              "conversationId" -> s"bench-$i-$sessId",
-              "messageId" -> messageId,
-              "timestamp" -> epochMs.toString
-            )))
+            batch +=
+              ((
+                messageId,
+                turn("content").asString,
+                Map(
+                  "kind" -> "longmemeval-message",
+                  "conversationId" -> s"bench-$i-$sessId",
+                  "messageId" -> messageId,
+                  "timestamp" -> epochMs.toString
+                )))
           }
 
           val userText = session.asVector
@@ -149,12 +156,16 @@ object LongMemEvalBench {
           if (truncatedText.length >= 50) {
             val summaryId = s"msg-$i-$sessId-summary"
             messageToSession(summaryId) = sessId
-            batch += ((summaryId, truncatedText, Map(
-              "kind" -> "longmemeval-summary",
-              "conversationId" -> s"bench-$i-$sessId",
-              "messageId" -> summaryId,
-              "timestamp" -> epochMs.toString
-            )))
+            batch +=
+              ((
+                summaryId,
+                truncatedText,
+                Map(
+                  "kind" -> "longmemeval-summary",
+                  "conversationId" -> s"bench-$i-$sessId",
+                  "messageId" -> summaryId,
+                  "timestamp" -> epochMs.toString
+                )))
           }
         }
         harness.embedAndIndexBatch(batch.toList).sync()
@@ -216,9 +227,16 @@ object LongMemEvalBench {
         }
 
         allResults += QuestionResult(
-          i, question, questionType, answer, answerSessionIds,
+          i,
+          question,
+          questionType,
+          answer,
+          answerSessionIds,
           topResultsWithContent,
-          answerRank, hit, ndcgScore, messageToSession.size
+          answerRank,
+          hit,
+          ndcgScore,
+          messageToSession.size
         )
         totalRun += 1
 
@@ -231,7 +249,8 @@ object LongMemEvalBench {
         val pct = correct.toDouble / totalRun * 100
         val etaStr = if (eta > 60) s"${eta / 60}m${eta % 60}s" else s"${eta}s"
         if (indices.isDefined || totalRun % 5 == 0 || totalRun == total || totalRun <= 5 || !hit) {
-          println(f"[Q${i+1}%d $totalRun%d/$total] R@$k=$pct%.1f%% NDCG@$k=${ndcgSum / totalRun * 100}%.1f%% ($rate%.2f q/s, ETA $etaStr) ${if (hit) "✓" else "✗"} $questionType")
+          println(f"[Q${i + 1}%d $totalRun%d/$total] R@$k=$pct%.1f%% NDCG@$k=${ndcgSum / totalRun *
+              100}%.1f%% ($rate%.2f q/s, ETA $etaStr) ${if (hit) "✓" else "✗"} $questionType")
         }
       }
     }
@@ -242,7 +261,7 @@ object LongMemEvalBench {
     val overallPct = correct.toDouble / math.max(totalRun, 1) * 100
     println(f"Recall@$k: $correct/$totalRun ($overallPct%.1f%%)")
     println(f"NDCG@$k:   ${ndcgSum / math.max(totalRun, 1) * 100}%.1f%%")
-    println(f"Time:      ${elapsed}%.1fs (${totalRun / math.max(elapsed, 0.001)}%.1f q/s)")
+    println(f"Time:      $elapsed%.1fs (${totalRun / math.max(elapsed, 0.001)}%.1f q/s)")
     println()
     println("By question type:")
     typeBreakdown.toList.sortBy(_._1).foreach { case (qtype, (c, t)) =>
@@ -257,7 +276,7 @@ object LongMemEvalBench {
     report.append(s"**Pipeline:** Sigil (VectorIndex + OpenAI-compatible embeddings)\n")
     report.append(f"**Score:** $correct/$totalRun ($overallPct%.1f%% R@$k)\n")
     report.append(f"**NDCG@$k:** ${ndcgSum / math.max(totalRun, 1) * 100}%.1f%%\n")
-    report.append(f"**Time:** ${elapsed}%.0fs (${totalRun / math.max(elapsed, 0.001)}%.1f q/s)\n\n")
+    report.append(f"**Time:** $elapsed%.0fs (${totalRun / math.max(elapsed, 0.001)}%.1f q/s)\n\n")
 
     report.append("## Results by Question Type\n\n")
     report.append("| Type | Correct | Total | Accuracy |\n")
@@ -291,9 +310,9 @@ object LongMemEvalBench {
       report.append(s"- **Answer session(s):** ${r.answerSessionIds.mkString(", ")}\n")
       r.answerRank match {
         case Some(rank) if r.hit => report.append(s"- **Answer found at rank:** #$rank ✓\n")
-        case Some(rank)          => report.append(s"- **Answer found at rank:** #$rank (outside top $k)\n")
-        case None if !r.hit      => report.append(s"- **Answer not found in top 50 results**\n")
-        case _                   =>
+        case Some(rank) => report.append(s"- **Answer found at rank:** #$rank (outside top $k)\n")
+        case None if !r.hit => report.append(s"- **Answer not found in top 50 results**\n")
+        case _ =>
       }
       report.append(s"- **Turns embedded:** ${r.turnCount}\n")
       report.append(s"- **Top 5 distinct sessions:**\n")
@@ -301,7 +320,7 @@ object LongMemEvalBench {
         val isAnswer = r.answerSessionIds.contains(sessId)
         val mark = if (isAnswer) "✓" else " "
         report.append(f"  ${idx + 1}. $mark `$sessId` (score=$score%.4f)\n")
-        if (content.nonEmpty) report.append(s"     > ${content}\n")
+        if (content.nonEmpty) report.append(s"     > $content\n")
       }
       report.append("\n")
     }

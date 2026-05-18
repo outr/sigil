@@ -192,7 +192,7 @@ class EffortWiringSpec extends AnyWordSpec with Matchers {
   "OpenAIProvider reasoning" should {
     val provider = OpenAIProvider(apiKey = "sk-test", sigilRef = TestSigil)
     val reasoningModelId = Model.id("openai", "gpt-5")
-    val plainModelId     = Model.id("openai", "gpt-4o-mini")
+    val plainModelId = Model.id("openai", "gpt-4o-mini")
 
     // Bug #62 — for reasoning-family models, the request always opts
     // into `reasoning.summary = "auto"` (and `include =

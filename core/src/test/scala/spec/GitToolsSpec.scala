@@ -23,7 +23,7 @@ import scala.jdk.CollectionConverters.*
 class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  private val convId  = Conversation.id("git-tools-conv")
+  private val convId = Conversation.id("git-tools-conv")
   private val topicId = TestTopicId
 
   private def gitOnPath: Boolean = sys.env.get("PATH").exists { p =>
@@ -51,17 +51,17 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   private def turnContext(): TurnContext = {
     val conv = Conversation(
       topics = List(TopicEntry(topicId, "test", "test")),
-      _id    = convId
+      _id = convId
     )
     TurnContext(
-      sigil            = TestSigil,
-      chain            = List(TestUser),
-      conversation     = conv,
-      turnInput        = TurnInput(ConversationView(conversationId = convId))
+      sigil = TestSigil,
+      chain = List(TestUser),
+      conversation = conv,
+      turnInput = TurnInput(ConversationView(conversationId = convId))
     )
   }
 
-  private def extractJson(events: List[sigil.event.Event]): fabric.Json = {
+  private def extractJson(events: List[sigil.event.Event]): fabric.Json =
     // Bug #134 — FsToolEmit now emits ToolResults with the typed
     // payload in `typed` instead of a Message with JSON-stringified
     // text. Pull from `typed` first; fall back to the legacy
@@ -73,7 +73,6 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         }.flatten.map(JsonParser(_))
       )
       .getOrElse(fabric.Obj.empty)
-  }
 
   private def writeAndCommit(ctx: FileSystemContext, dir: Path, file: String, content: String, message: String): Task[Unit] =
     for {
@@ -91,7 +90,7 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       "report a clean repo with the current branch" in withRepo { (ctx, dir) =>
         val tc = turnContext()
         for {
-          _   <- writeAndCommit(ctx, dir, "README.md", "hello", "init")
+          _ <- writeAndCommit(ctx, dir, "README.md", "hello", "init")
           out <- new GitStatusTool(ctx).execute(GitStatusInput(workingDir = Some(dir.toString)), tc).toList
         } yield {
           val payload = extractJson(out)
@@ -103,8 +102,8 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       "report modified working-tree files" in withRepo { (ctx, dir) =>
         val tc = turnContext()
         for {
-          _   <- writeAndCommit(ctx, dir, "f.txt", "v1", "init")
-          _   <- ctx.writeFile("f.txt", "v2")
+          _ <- writeAndCommit(ctx, dir, "f.txt", "v1", "init")
+          _ <- ctx.writeFile("f.txt", "v2")
           out <- new GitStatusTool(ctx).execute(GitStatusInput(workingDir = Some(dir.toString)), tc).toList
         } yield {
           val payload = extractJson(out)
@@ -120,8 +119,8 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       "return text diff by default" in withRepo { (ctx, dir) =>
         val tc = turnContext()
         for {
-          _   <- writeAndCommit(ctx, dir, "f.txt", "v1\n", "init")
-          _   <- ctx.writeFile("f.txt", "v2\n")
+          _ <- writeAndCommit(ctx, dir, "f.txt", "v1\n", "init")
+          _ <- ctx.writeFile("f.txt", "v2\n")
           out <- new GitDiffTool(ctx).execute(GitDiffInput(workingDir = Some(dir.toString)), tc).toList
         } yield {
           val payload = extractJson(out)
@@ -132,12 +131,12 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       "return structured hunks when format = hunks" in withRepo { (ctx, dir) =>
         val tc = turnContext()
         for {
-          _   <- writeAndCommit(ctx, dir, "f.txt", "v1\n", "init")
-          _   <- ctx.writeFile("f.txt", "v2\n")
+          _ <- writeAndCommit(ctx, dir, "f.txt", "v1\n", "init")
+          _ <- ctx.writeFile("f.txt", "v2\n")
           out <- new GitDiffTool(ctx).execute(GitDiffInput(format = "hunks", workingDir = Some(dir.toString)), tc).toList
         } yield {
           val payload = extractJson(out)
-          val hunks   = payload.get("hunks").map(_.asVector.toList).getOrElse(Nil)
+          val hunks = payload.get("hunks").map(_.asVector.toList).getOrElse(Nil)
           hunks should not be empty
           val lines = hunks.head.get("lines").map(_.asVector.toList).getOrElse(Nil)
           val kinds = lines.flatMap(_.get("kind").map(_.asString)).toSet
@@ -151,8 +150,8 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       "list recent commits with sha + subject" in withRepo { (ctx, dir) =>
         val tc = turnContext()
         for {
-          _   <- writeAndCommit(ctx, dir, "f.txt", "v1", "first commit")
-          _   <- writeAndCommit(ctx, dir, "f.txt", "v2", "second commit")
+          _ <- writeAndCommit(ctx, dir, "f.txt", "v1", "first commit")
+          _ <- writeAndCommit(ctx, dir, "f.txt", "v2", "second commit")
           out <- new GitLogTool(ctx).execute(GitLogInput(limit = Some(5), workingDir = Some(dir.toString)), tc).toList
         } yield {
           val commits = extractJson(out).get("commits").map(_.asVector.toList).getOrElse(Nil)
@@ -168,7 +167,7 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       "identify the current branch" in withRepo { (ctx, dir) =>
         val tc = turnContext()
         for {
-          _   <- writeAndCommit(ctx, dir, "f.txt", "v1", "init")
+          _ <- writeAndCommit(ctx, dir, "f.txt", "v1", "init")
           out <- new GitBranchTool(ctx).execute(GitBranchInput(workingDir = Some(dir.toString)), tc).toList
         } yield {
           val payload = extractJson(out)
@@ -183,7 +182,7 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       "render HEAD with subject + author + sha" in withRepo { (ctx, dir) =>
         val tc = turnContext()
         for {
-          _   <- writeAndCommit(ctx, dir, "f.txt", "v1", "first commit")
+          _ <- writeAndCommit(ctx, dir, "f.txt", "v1", "first commit")
           out <- new GitShowTool(ctx).execute(GitShowInput(sha = "HEAD", workingDir = Some(dir.toString)), tc).toList
         } yield {
           val payload = extractJson(out)
@@ -198,9 +197,9 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       "stage and commit, returning the sha" in withRepo { (ctx, dir) =>
         val tc = turnContext()
         for {
-          _   <- writeAndCommit(ctx, dir, "seed.txt", "seed", "init")
-          _   <- ctx.writeFile("new.txt", "fresh")
-          _   <- ctx.executeCommand("git add new.txt", Some(dir.toString))
+          _ <- writeAndCommit(ctx, dir, "seed.txt", "seed", "init")
+          _ <- ctx.writeFile("new.txt", "fresh")
+          _ <- ctx.executeCommand("git add new.txt", Some(dir.toString))
           out <- new GitCommitTool(ctx).execute(GitCommitInput(message = "Add new.txt", workingDir = Some(dir.toString)), tc).toList
         } yield {
           val payload = extractJson(out)

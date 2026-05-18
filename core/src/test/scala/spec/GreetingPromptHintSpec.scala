@@ -30,25 +30,27 @@ class GreetingPromptHintSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
   private def buildRequest(isGreeting: Boolean): ConversationRequest =
     ConversationRequest(
-      conversationId     = Conversation.id("greeting-test"),
-      modelId            = modelId,
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = Conversation.id("greeting-test")),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
-      previousTopics     = Nil,
+      conversationId = Conversation.id("greeting-test"),
+      modelId = modelId,
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = Conversation.id("greeting-test")),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      tools              = CoreTools.all,
-      chain              = List(TestUser, TestAgent),
-      isGreeting         = isGreeting
+      tools = CoreTools.all,
+      chain = List(TestUser, TestAgent),
+      isGreeting = isGreeting
     )
 
-  /** Render the system prompt the provider would send by going
-    * through the same `requestConverter` path as a real call. */
+  /**
+   * Render the system prompt the provider would send by going
+   * through the same `requestConverter` path as a real call.
+   */
   private def renderSystemPromptVia(provider: Provider, request: ConversationRequest): Task[String] =
     provider.requestConverter(request).map(_.content match {
       case Some(c: spice.http.content.StringContent) => c.value
-      case _                                          => ""
+      case _ => ""
     })
 
   "ConversationRequest.isGreeting" should {

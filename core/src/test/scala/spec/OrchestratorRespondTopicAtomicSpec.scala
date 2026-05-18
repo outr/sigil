@@ -39,10 +39,12 @@ class OrchestratorRespondTopicAtomicSpec extends AsyncWordSpec with AsyncTaskSpe
 
   private val modelId: Id[Model] = Model.id("test", "atomic-respond-topic")
 
-  /** Emits a single atomic respond call (no streaming text content
-    * before the tool args). Tests the framework's atomic-respond path
-    * end-to-end without depending on a live model. */
-  private final class AtomicRespondProvider(topicLabel: String, topicSummary: String, content: String) extends Provider {
+  /**
+   * Emits a single atomic respond call (no streaming text content
+   * before the tool args). Tests the framework's atomic-respond path
+   * end-to-end without depending on a live model.
+   */
+  final private class AtomicRespondProvider(topicLabel: String, topicSummary: String, content: String) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -55,10 +57,10 @@ class OrchestratorRespondTopicAtomicSpec extends AsyncWordSpec with AsyncTaskSpe
         ProviderEvent.ToolCallComplete(
           callId,
           RespondInput(
-            topicLabel   = topicLabel,
+            topicLabel = topicLabel,
             topicSummary = topicSummary,
-            content      = content,
-            endsTurn     = true
+            content = content,
+            endsTurn = true
           )
         ),
         ProviderEvent.Done(StopReason.Complete)
@@ -68,19 +70,21 @@ class OrchestratorRespondTopicAtomicSpec extends AsyncWordSpec with AsyncTaskSpe
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
-  /** Seed a conversation with a two-topic stack so the proposed-
-    * label fast paths exercise without invoking the classifier
-    * (the fake test provider can't answer a TopicClassifier call —
-    * it always emits the configured respond). The `topics` list
-    * order is oldest → newest: `currentTopic` = last, `previousTopics`
-    * = everything else. */
+  /**
+   * Seed a conversation with a two-topic stack so the proposed-
+   * label fast paths exercise without invoking the classifier
+   * (the fake test provider can't answer a TopicClassifier call —
+   * it always emits the configured respond). The `topics` list
+   * order is oldest → newest: `currentTopic` = last, `previousTopics`
+   * = everything else.
+   */
   private def runWith(provider: Provider,
                       convPrefix: String,
                       activeTopic: TopicEntry,
@@ -88,19 +92,19 @@ class OrchestratorRespondTopicAtomicSpec extends AsyncWordSpec with AsyncTaskSpe
                       userInput: String): Task[(Id[Conversation], List[Event])] = {
     TestSigil.setProvider(Task.pure(provider))
     val convId = Conversation.id(s"$convPrefix-${rapid.Unique()}")
-    val stack  = priorTopics :+ activeTopic
-    val agent  = makeAgent()
-    val conv   = Conversation(topics = stack, participants = List(agent), _id = convId)
+    val stack = priorTopics :+ activeTopic
+    val agent = makeAgent()
+    val conv = Conversation(topics = stack, participants = List(agent), _id = convId)
     for {
-      _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-      _   <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = activeTopic.id,
-               content        = Vector(ResponseContent.Text(userInput)),
-               state          = EventState.Complete
-             ))
-      _   <- Task.sleep(3.seconds)
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.publish(Message(
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = activeTopic.id,
+        content = Vector(ResponseContent.Text(userInput)),
+        state = EventState.Complete
+      ))
+      _ <- Task.sleep(3.seconds)
       evs <- TestSigil.withDB(_.events.transaction(_.list))
     } yield (convId, evs.filter(_.conversationId == convId))
   }
@@ -114,12 +118,12 @@ class OrchestratorRespondTopicAtomicSpec extends AsyncWordSpec with AsyncTaskSpe
       // Stack: prior = "TypeScript Generics", active = "Roman Empire History".
       // Agent's respond proposes "TypeScript Generics" — fast-path
       // prior-match triggers without invoking the classifier.
-      val prior  = topicEntry("ts-prior", "TypeScript Generics", "Brief explanation of TypeScript generics")
+      val prior = topicEntry("ts-prior", "TypeScript Generics", "Brief explanation of TypeScript generics")
       val active = topicEntry("roman-active", "Roman Empire History", "Discussion of late-Republic politics")
       val provider = new AtomicRespondProvider(
-        topicLabel   = "TypeScript Generics",
+        topicLabel = "TypeScript Generics",
         topicSummary = "Brief explanation of TypeScript generics",
-        content      = "Yeah, TypeScript generics let you parameterise types — `identity<T>(x: T): T` works on any T."
+        content = "Yeah, TypeScript generics let you parameterise types — `identity<T>(x: T): T` works on any T."
       )
       runWith(provider, "topic-prior", activeTopic = active, priorTopics = List(prior), userInput = "Back to generics — refresh me?").map {
         case (_, evs) =>
@@ -128,16 +132,16 @@ class OrchestratorRespondTopicAtomicSpec extends AsyncWordSpec with AsyncTaskSpe
             tcs should not be empty
           }
           tcs.head.newLabel shouldBe "TypeScript Generics"
-          tcs.head.kind shouldBe a [TopicChangeKind.Switch]
+          tcs.head.kind shouldBe a[TopicChangeKind.Switch]
       }
     }
 
     "NOT fire a TopicChange when the respond's topicLabel matches the active topic (fast-path NoChange)" in {
       val active = topicEntry("roman-active", "Roman Empire History", "Discussion of late-Republic politics")
       val provider = new AtomicRespondProvider(
-        topicLabel   = "Roman Empire History",
+        topicLabel = "Roman Empire History",
         topicSummary = "Discussion of late-Republic politics",
-        content      = "The Gracchi brothers' land reforms in the 130s BC marked a turning point."
+        content = "The Gracchi brothers' land reforms in the 130s BC marked a turning point."
       )
       runWith(provider, "topic-nochange", activeTopic = active, userInput = "Tell me about the Gracchi.").map {
         case (_, evs) =>

@@ -2,8 +2,10 @@ package sigil.tooling.types
 
 import fabric.rw.*
 
-/** Single source entry for a BSP target. `kind` is "dir" or "file"
-  * matching bsp4j's `SourceItemKind`. */
+/**
+ * Single source entry for a BSP target. `kind` is "dir" or "file"
+ * matching bsp4j's `SourceItemKind`.
+ */
 case class BspSourceItem(uri: String, kind: String, generated: Boolean) derives RW
 
 object BspSourceItem {

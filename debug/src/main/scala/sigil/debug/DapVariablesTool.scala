@@ -8,7 +8,8 @@ import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
 
 case class DapVariablesInput(sessionId: String,
                              variablesReference: Int,
-                             maxResults: Int = 100) extends ToolInput derives RW
+                             maxResults: Int = 100)
+  extends ToolInput derives RW
 
 /**
  * Fetch variables from a scope or expanded structured value.
@@ -19,22 +20,24 @@ case class DapVariablesInput(sessionId: String,
  * Capped at `maxResults` so a giant collection doesn't blow the
  * agent's context.
  */
-final class DapVariablesTool(val manager: DapManager) extends TypedTool[DapVariablesInput](
-  name = ToolName("dap_variables"),
-  description =
-    """Fetch variables for a scope or structured value's children.
+final class DapVariablesTool(val manager: DapManager)
+  extends TypedTool[DapVariablesInput](
+    name = ToolName("dap_variables"),
+    description =
+      """Fetch variables for a scope or structured value's children.
       |
       |`sessionId` selects the active session.
       |`variablesReference` is from a prior `dap_scopes` / `dap_variables` / `dap_evaluate` call.
       |`maxResults` (default 100) caps the response.
       |Each variable shows name, value, type, and a child-reference (if expandable).""".stripMargin,
-  examples = List(
-    ToolExample(
-      "fetch locals for a scope",
-      DapVariablesInput(sessionId = "demo-session", variablesReference = 1001)
+    examples = List(
+      ToolExample(
+        "fetch locals for a scope",
+        DapVariablesInput(sessionId = "demo-session", variablesReference = 1001)
+      )
     )
   )
-) with DapToolSupport {
+  with DapToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: DapVariablesInput, context: TurnContext): Stream[Event] =

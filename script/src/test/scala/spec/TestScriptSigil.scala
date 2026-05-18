@@ -28,8 +28,8 @@ object TestScriptSigil extends Sigil with ScriptSigil {
   override type DB = DefaultSigilDB
 
   override protected def buildDB(directory: Option[Path],
-                                  storeManager: CollectionManager,
-                                  upgrades: List[DatabaseUpgrade]): DefaultSigilDB =
+                                 storeManager: CollectionManager,
+                                 upgrades: List[DatabaseUpgrade]): DefaultSigilDB =
     new DefaultSigilDB(directory, storeManager, upgrades)
 
   override def testMode: Boolean = true
@@ -100,7 +100,7 @@ object TestScriptSigil extends Sigil with ScriptSigil {
     ()
   }
 
-  private def deleteRecursive(path: java.nio.file.Path): Unit = {
+  private def deleteRecursive(path: java.nio.file.Path): Unit =
     if (java.nio.file.Files.exists(path)) {
       val s = java.nio.file.Files.walk(path)
       try {
@@ -108,5 +108,4 @@ object TestScriptSigil extends Sigil with ScriptSigil {
         s.iterator().asScala.toList.reverse.foreach(p => java.nio.file.Files.deleteIfExists(p))
       } finally s.close()
     }
-  }
 }

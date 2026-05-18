@@ -33,13 +33,17 @@ final case class Node[A](payload: A,
 
 object Node {
 
-  /** Convenience: a leaf node (no children). */
+  /**
+   * Convenience: a leaf node (no children).
+   */
   def leaf[A](payload: A): Node[A] = Node(payload, hasChildren = false)
 
-  /** Convenience: a parent node that ships its children inline.
-    * The framework drains the child stream lazily; tool authors
-    * can compose this with `rapid.Stream.fromIterable(seq)` to
-    * declare a parent whose children are known in memory. */
+  /**
+   * Convenience: a parent node that ships its children inline.
+   * The framework drains the child stream lazily; tool authors
+   * can compose this with `rapid.Stream.fromIterable(seq)` to
+   * declare a parent whose children are known in memory.
+   */
   def parent[A](payload: A, children: rapid.Stream[Node[A]]): Node[A] =
     Node(payload, hasChildren = true, children = children)
 }

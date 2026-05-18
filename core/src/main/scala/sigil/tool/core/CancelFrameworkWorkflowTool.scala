@@ -6,21 +6,28 @@ import sigil.TurnContext
 import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
 
 case class CancelFrameworkWorkflowInput(workflowId: String,
-                                        reason: Option[String] = None) extends ToolInput derives RW
+                                        reason: Option[String] = None)
+  extends ToolInput derives RW
 
 enum CancelFrameworkWorkflowOutput derives RW {
 
-  /** Cancellation flag flipped successfully — the workflow body
-    * will honour it at its next checkpoint and emit a
-    * `FrameworkWorkflowPhase.Failed("cancelled: …", …)` Notice. */
+  /**
+   * Cancellation flag flipped successfully — the workflow body
+   * will honour it at its next checkpoint and emit a
+   * `FrameworkWorkflowPhase.Failed("cancelled: …", …)` Notice.
+   */
   case Cancelled(workflowId: String, workflowType: String, label: String)
 
-  /** Workflow id wasn't found in the active set — either the
-    * workflow already finished, or the id is wrong. Idempotent
-    * shape so re-cancellation is a clean no-op. */
+  /**
+   * Workflow id wasn't found in the active set — either the
+   * workflow already finished, or the id is wrong. Idempotent
+   * shape so re-cancellation is a clean no-op.
+   */
   case NotActive(workflowId: String)
 
-  /** Workflow was already cancelled by an earlier call. */
+  /**
+   * Workflow was already cancelled by an earlier call.
+   */
   case AlreadyCancelled(workflowId: String, existingReason: String)
 }
 
@@ -40,23 +47,25 @@ enum CancelFrameworkWorkflowOutput derives RW {
  * cancelling. The `find_capability` keyword set distinguishes them
  * ("framework workflow" vs "workflow run / strider").
  */
-case object CancelFrameworkWorkflowTool extends TypedOutputTool[CancelFrameworkWorkflowInput, CancelFrameworkWorkflowOutput](
-  name = ToolName("cancel_framework_workflow"),
-  description =
-    """Cancel a framework-internal workflow (pre-flight, compress, frame-load, …) by its
+case object CancelFrameworkWorkflowTool
+  extends TypedOutputTool[CancelFrameworkWorkflowInput, CancelFrameworkWorkflowOutput](
+    name = ToolName("cancel_framework_workflow"),
+    description =
+      """Cancel a framework-internal workflow (pre-flight, compress, frame-load, …) by its
       |workflow id. Cooperative: the workflow body honours the cancellation at its next
       |internal checkpoint, so very short operations may complete before the cancel takes
       |effect. Idempotent.""".stripMargin,
-  examples = List(
-    ToolExample("Cancel a slow compress",
-      CancelFrameworkWorkflowInput(workflowId = "wf-abc-123", reason = Some("user clicked cancel")))
-  ),
-  keywords = Set("cancel", "framework", "workflow", "abort", "stop", "preflight", "compress")
-) {
+    examples = List(
+      ToolExample(
+        "Cancel a slow compress",
+        CancelFrameworkWorkflowInput(workflowId = "wf-abc-123", reason = Some("user clicked cancel")))
+    ),
+    keywords = Set("cancel", "framework", "workflow", "abort", "stop", "preflight", "compress")
+  ) {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: CancelFrameworkWorkflowInput,
-                                       ctx: TurnContext): Task[CancelFrameworkWorkflowOutput] = Task {
+                                      ctx: TurnContext): Task[CancelFrameworkWorkflowOutput] = Task {
     val sigil = ctx.sigil
     val reason = input.reason.getOrElse(s"agent ${ctx.caller}")
     sigil.activeFrameworkWorkflows.find(_.workflowId == input.workflowId) match {

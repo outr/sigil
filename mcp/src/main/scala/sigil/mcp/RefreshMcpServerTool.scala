@@ -10,11 +10,15 @@ import sigil.tool.model.ResponseContent
 
 case class RefreshMcpServerInput(name: String) extends ToolInput derives RW
 
-/** Force-refresh the cached tool / resource / prompt list for a server. */
-final class RefreshMcpServerTool(manager: McpManager) extends TypedTool[RefreshMcpServerInput](
-  name = ToolName("refresh_mcp_server"),
-  description = "Force-refresh the cached tool / resource / prompt list for a registered MCP server, bypassing the standard refresh interval."
-) {
+/**
+ * Force-refresh the cached tool / resource / prompt list for a server.
+ */
+final class RefreshMcpServerTool(manager: McpManager)
+  extends TypedTool[RefreshMcpServerInput](
+    name = ToolName("refresh_mcp_server"),
+    description =
+      "Force-refresh the cached tool / resource / prompt list for a registered MCP server, bypassing the standard refresh interval."
+  ) {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: RefreshMcpServerInput, context: TurnContext): Stream[Event] =

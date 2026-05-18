@@ -26,24 +26,22 @@ class ToolingScaffoldSpec extends AnyWordSpec with Matchers {
   }
 
   "LspServerConfig" should {
-    "round-trip via its derived RW" in {
+    "round-trip via its derived RW" in
       roundTrip(LspServerConfig(
         languageId = "scala",
         command = "metals",
         args = List("-J-Xmx2G"),
         rootMarkers = List("build.sbt", "build.sc")
       ))
-    }
   }
 
   "BspBuildConfig" should {
-    "round-trip via its derived RW" in {
+    "round-trip via its derived RW" in
       roundTrip(BspBuildConfig(
         projectRoot = "/abs/path/myproject",
         command = "sbt",
         args = List("-bsp")
       ))
-    }
   }
 
   "LSP tool inputs" should {
@@ -55,19 +53,30 @@ class ToolingScaffoldSpec extends AnyWordSpec with Matchers {
       roundTrip(LspCompletionInput(languageId = "scala", filePath = "/abs/Foo.scala", line = 10, character = 5))
       roundTrip(LspSignatureHelpInput(languageId = "scala", filePath = "/abs/Foo.scala", line = 10, character = 5))
       roundTrip(LspCodeActionInput(
-        languageId = "scala", filePath = "/abs/Foo.scala",
-        startLine = 10, startCharacter = 0, endLine = 10, endCharacter = 0,
+        languageId = "scala",
+        filePath = "/abs/Foo.scala",
+        startLine = 10,
+        startCharacter = 0,
+        endLine = 10,
+        endCharacter = 0,
         onlyKinds = List("quickfix")
       ))
       roundTrip(LspApplyCodeActionInput(languageId = "scala", filePath = "/abs/Foo.scala", index = 0))
       roundTrip(LspFormatInput(languageId = "scala", filePath = "/abs/Foo.scala"))
       roundTrip(LspFormatRangeInput(
-        languageId = "scala", filePath = "/abs/Foo.scala",
-        startLine = 0, startCharacter = 0, endLine = 5, endCharacter = 0
+        languageId = "scala",
+        filePath = "/abs/Foo.scala",
+        startLine = 0,
+        startCharacter = 0,
+        endLine = 5,
+        endCharacter = 0
       ))
       roundTrip(LspRenameInput(
-        languageId = "scala", filePath = "/abs/Foo.scala",
-        line = 10, character = 5, newName = "renamed"
+        languageId = "scala",
+        filePath = "/abs/Foo.scala",
+        line = 10,
+        character = 5,
+        newName = "renamed"
       ))
       roundTrip(LspPrepareRenameInput(languageId = "scala", filePath = "/abs/Foo.scala", line = 10, character = 5))
       roundTrip(LspFindReferencesInput(languageId = "scala", filePath = "/abs/Foo.scala", line = 10, character = 5))
@@ -77,7 +86,8 @@ class ToolingScaffoldSpec extends AnyWordSpec with Matchers {
       roundTrip(LspWorkspaceSymbolsInput(languageId = "scala", projectRoot = "/abs/path", query = "Provider"))
       roundTrip(LspFoldingRangeInput(languageId = "scala", filePath = "/abs/Foo.scala"))
       roundTrip(LspSelectionRangeInput(
-        languageId = "scala", filePath = "/abs/Foo.scala",
+        languageId = "scala",
+        filePath = "/abs/Foo.scala",
         positions = List(LspSelectionRangeInput.Pos(line = 10, character = 5))
       ))
       roundTrip(LspPullDiagnosticsInput(languageId = "scala", filePath = "/abs/Foo.scala"))
@@ -116,8 +126,8 @@ class ToolingScaffoldSpec extends AnyWordSpec with Matchers {
       import org.eclipse.lsp4j.{Position, Range, TextEdit}
       val text = "abcdefghij"
       val edits = List(
-        new TextEdit(new Range(new Position(0, 0), new Position(0, 1)), "X"),  // a → X
-        new TextEdit(new Range(new Position(0, 5), new Position(0, 6)), "Y")   // f → Y
+        new TextEdit(new Range(new Position(0, 0), new Position(0, 1)), "X"), // a → X
+        new TextEdit(new Range(new Position(0, 5), new Position(0, 6)), "Y") // f → Y
       )
       WorkspaceEditApplier.applyTextEdits(text, edits) shouldBe "XbcdeYghij"
     }

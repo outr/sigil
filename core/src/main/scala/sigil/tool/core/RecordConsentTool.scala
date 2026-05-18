@@ -33,10 +33,11 @@ import sigil.tool.model.{RecordConsentInput, ResponseContent}
  * is sticky — flip the decision by recording a fresh
  * `approved=true`.
  */
-case object RecordConsentTool extends TypedTool[RecordConsentInput](
-  name = ToolName("record_consent"),
-  description =
-    """Record the user's consent decision for a `requiresUserConsent` tool. Call AFTER the
+case object RecordConsentTool
+  extends TypedTool[RecordConsentInput](
+    name = ToolName("record_consent"),
+    description =
+      """Record the user's consent decision for a `requiresUserConsent` tool. Call AFTER the
       |user has answered an approval prompt (typically via a structured-options reply).
       |The framework refuses to dispatch consent-gated tools until an approval record exists.
       |
@@ -47,19 +48,23 @@ case object RecordConsentTool extends TypedTool[RecordConsentInput](
       |
       |Record `approved=false` for declined options too, so a later iteration doesn't revisit
       |them.""".stripMargin,
-  examples = List(
-    ToolExample(
-      "user picked Metals from setup options",
-      RecordConsentInput(toolName = "start_metals", approved = true,
-        reason = Some("user picked Metals from setup options"))
-    ),
-    ToolExample(
-      "user did not select Claude state when offered",
-      RecordConsentInput(toolName = "load_claude_state", approved = false,
-        reason = Some("user did not select Claude state in setup options"))
+    examples = List(
+      ToolExample(
+        "user picked Metals from setup options",
+        RecordConsentInput(
+          toolName = "start_metals",
+          approved = true,
+          reason = Some("user picked Metals from setup options"))
+      ),
+      ToolExample(
+        "user did not select Claude state when offered",
+        RecordConsentInput(
+          toolName = "load_claude_state",
+          approved = false,
+          reason = Some("user did not select Claude state in setup options"))
+      )
     )
-  )
-) {
+  ) {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: RecordConsentInput, ctx: TurnContext): Stream[Event] = {
@@ -83,24 +88,24 @@ case object RecordConsentTool extends TypedTool[RecordConsentInput](
               "Don't fabricate names — the framework refuses to persist approvals for tools that " +
               "aren't in the registry."
           val failure = Message(
-            participantId  = ctx.caller,
+            participantId = ctx.caller,
             conversationId = ctx.conversation.id,
-            topicId        = ctx.conversation.currentTopicId,
-            content        = Vector(ResponseContent.Text(failureBody)),
-            disposition    = sigil.event.MessageDisposition.Failure(recoverable = true),
-            role           = MessageRole.Tool,
-            state          = EventState.Complete
+            topicId = ctx.conversation.currentTopicId,
+            content = Vector(ResponseContent.Text(failureBody)),
+            disposition = sigil.event.MessageDisposition.Failure(recoverable = true),
+            role = MessageRole.Tool,
+            state = EventState.Complete
           )
           Stream.emit[Event](failure)
 
         case Some(_) =>
           val approval = ToolApproval(
-            toolName       = targetName,
-            approved       = input.approved,
-            reason         = input.reason,
-            participantId  = ctx.caller,
+            toolName = targetName,
+            approved = input.approved,
+            reason = input.reason,
+            participantId = ctx.caller,
             conversationId = ctx.conversation.id,
-            topicId        = ctx.conversation.currentTopicId
+            topicId = ctx.conversation.currentTopicId
           )
           // Bug #84 — emit a Tool-role confirmation Message
           // alongside the durable ToolApproval so the orchestrator's
@@ -115,12 +120,12 @@ case object RecordConsentTool extends TypedTool[RecordConsentInput](
               s"Consent recorded: `${input.toolName}` $verdict"
           }
           val confirmation = Message(
-            participantId  = ctx.caller,
+            participantId = ctx.caller,
             conversationId = ctx.conversation.id,
-            topicId        = ctx.conversation.currentTopicId,
-            content        = Vector(ResponseContent.Text(confirmationText)),
-            role           = MessageRole.Tool,
-            state          = EventState.Complete
+            topicId = ctx.conversation.currentTopicId,
+            content = Vector(ResponseContent.Text(confirmationText)),
+            role = MessageRole.Tool,
+            state = EventState.Complete
           )
           Stream.emits(List[Event](approval, confirmation))
       }

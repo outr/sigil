@@ -9,8 +9,10 @@ import fabric.rw.*
  */
 case class McpPrompt(name: String,
                      description: Option[String] = None,
-                     arguments: List[McpPromptArgument] = Nil) derives RW
+                     arguments: List[McpPromptArgument] = Nil)
+  derives RW
 
 case class McpPromptArgument(name: String,
                              description: Option[String] = None,
-                             required: Boolean = false) derives RW
+                             required: Boolean = false)
+  derives RW

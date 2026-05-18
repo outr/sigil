@@ -26,4 +26,5 @@ import sigil.tool.ToolInput
  */
 case class RespondOptionsInput(prompt: String,
                                options: List[SelectOption],
-                               allowMultiple: Boolean) extends ToolInput derives RW
+                               allowMultiple: Boolean)
+  extends ToolInput derives RW

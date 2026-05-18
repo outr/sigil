@@ -18,19 +18,21 @@ case class CancelWorkflowInput(runId: String) extends ToolInput derives RW
  * clear message — idempotent semantics match Strider's
  * underlying `cancel` API.
  */
-final class CancelWorkflowTool extends TypedTool[CancelWorkflowInput](
-  name = ToolName("cancel_workflow"),
-  description =
-    """Cancel a running or scheduled workflow run.
+final class CancelWorkflowTool
+  extends TypedTool[CancelWorkflowInput](
+    name = ToolName("cancel_workflow"),
+    description =
+      """Cancel a running or scheduled workflow run.
       |
       |`runId` is the run id. The run's current step finishes if mid-execution, then
       |no further steps run. Idempotent — cancelling a finished run is a no-op.""".stripMargin,
-  examples = List(ToolExample("cancel by run id", CancelWorkflowInput(runId = "run-abc"))),
-  keywords = Set("workflow", "cancel", "stop", "abort")
-) with WorkflowToolSupport {
+    examples = List(ToolExample("cancel by run id", CancelWorkflowInput(runId = "run-abc"))),
+    keywords = Set("workflow", "cancel", "stop", "abort")
+  )
+  with WorkflowToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: CancelWorkflowInput, ctx: TurnContext): Stream[Event] = {
+  override protected def executeTyped(input: CancelWorkflowInput, ctx: TurnContext): Stream[Event] =
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)
       case Right(host) =>
@@ -48,5 +50,4 @@ final class CancelWorkflowTool extends TypedTool[CancelWorkflowInput](
         }
         Stream.force(task.map(text => reply(ctx, text)))
     }
-  }
 }

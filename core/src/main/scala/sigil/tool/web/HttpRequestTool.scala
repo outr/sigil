@@ -21,10 +21,11 @@ import scala.concurrent.duration.*
  * UTF-8 and truncated to `maxResponseBytes` so a large response
  * doesn't blow the agent's context window.
  */
-case object HttpRequestTool extends TypedOutputTool[HttpRequestInput, HttpRequestOutput](
-  name = ToolName("http_request"),
-  description =
-    """Issue an HTTP request to an arbitrary URL.
+case object HttpRequestTool
+  extends TypedOutputTool[HttpRequestInput, HttpRequestOutput](
+    name = ToolName("http_request"),
+    description =
+      """Issue an HTTP request to an arbitrary URL.
       |
       |`url` is the target. `method` is `GET` (default) / `POST` / `PUT` / `PATCH` / `DELETE` /
       |`HEAD` / `OPTIONS`. `headers` is a flat key→value map; `Content-Type` defaults to
@@ -35,23 +36,23 @@ case object HttpRequestTool extends TypedOutputTool[HttpRequestInput, HttpReques
       |is set in the result.
       |
       |Returns `{status, statusText, headers, body, bodyTruncated, contentType}`.""".stripMargin,
-  examples = List(
-    ToolExample(
-      "GET a JSON endpoint",
-      HttpRequestInput(url = "https://api.example.com/v1/status")
-    ),
-    ToolExample(
-      "POST a JSON body",
-      HttpRequestInput(
-        url     = "https://api.example.com/v1/items",
-        method  = "POST",
-        headers = Map("Authorization" -> "Bearer ..."),
-        body    = Some("""{"name":"thing"}""")
+    examples = List(
+      ToolExample(
+        "GET a JSON endpoint",
+        HttpRequestInput(url = "https://api.example.com/v1/status")
+      ),
+      ToolExample(
+        "POST a JSON body",
+        HttpRequestInput(
+          url = "https://api.example.com/v1/items",
+          method = "POST",
+          headers = Map("Authorization" -> "Bearer ..."),
+          body = Some("""{"name":"thing"}""")
+        )
       )
-    )
-  ),
-  keywords = Set("http", "request", "api", "rest", "fetch", "curl", "post", "put", "patch", "delete")
-) {
+    ),
+    keywords = Set("http", "request", "api", "rest", "fetch", "curl", "post", "put", "patch", "delete")
+  ) {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: HttpRequestInput, context: TurnContext): Task[HttpRequestOutput] = Task.defer {
@@ -85,23 +86,23 @@ case object HttpRequestTool extends TypedOutputTool[HttpRequestInput, HttpReques
       response.content match {
         case None =>
           Task.pure(HttpRequestOutput(
-            status        = response.status.code,
-            statusText    = response.status.message,
-            headers       = responseHeaders,
-            body          = "",
+            status = response.status.code,
+            statusText = response.status.message,
+            headers = responseHeaders,
+            body = "",
             bodyTruncated = false,
-            contentType   = contentTypeHdr
+            contentType = contentTypeHdr
           ))
         case Some(content) =>
           content.asString.map { raw =>
             val truncated = raw.length > input.maxResponseBytes
             HttpRequestOutput(
-              status        = response.status.code,
-              statusText    = response.status.message,
-              headers       = responseHeaders,
-              body          = if (truncated) raw.take(input.maxResponseBytes) else raw,
+              status = response.status.code,
+              statusText = response.status.message,
+              headers = responseHeaders,
+              body = if (truncated) raw.take(input.maxResponseBytes) else raw,
               bodyTruncated = truncated,
-              contentType   = contentTypeHdr
+              contentType = contentTypeHdr
             )
           }
       }

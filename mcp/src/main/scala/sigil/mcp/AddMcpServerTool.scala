@@ -14,7 +14,8 @@ case class AddMcpServerInput(name: String,
                              url: Option[String] = None,
                              prefix: Option[String] = None,
                              headers: Map[String, String] = Map.empty,
-                             roots: List[String] = Nil) extends ToolInput derives RW
+                             roots: List[String] = Nil)
+  extends ToolInput derives RW
 
 /**
  * Register an MCP server. `command` (with optional `args`) selects
@@ -22,27 +23,28 @@ case class AddMcpServerInput(name: String,
  * transport. Persisted via [[McpManager.addConfig]] so the server
  * is available across restarts; first call lazily connects.
  */
-final class AddMcpServerTool(manager: McpManager) extends TypedTool[AddMcpServerInput](
-  name = ToolName("add_mcp_server"),
-  description =
-    """Register an MCP (Model Context Protocol) server.
+final class AddMcpServerTool(manager: McpManager)
+  extends TypedTool[AddMcpServerInput](
+    name = ToolName("add_mcp_server"),
+    description =
+      """Register an MCP (Model Context Protocol) server.
       |
       |Use either `command` (+ optional `args`) for stdio transport, or `url` (+ optional `headers`) for HTTP+SSE.
       |`prefix` (optional) is prepended to every tool name advertised by this server, disambiguating cross-server collisions.
       |`roots` (optional) lists filesystem workspace roots to advertise to filesystem-aware servers.
       |
       |Persists the config; the server is available across restarts and connects lazily on first use.""".stripMargin,
-  examples = List(
-    ToolExample(
-      "stdio fetch server",
-      AddMcpServerInput(name = "fetch", command = Some("mcp-server-fetch"), prefix = Some("fetch_"))
-    ),
-    ToolExample(
-      "remote HTTP+SSE server with auth",
-      AddMcpServerInput(name = "github", url = Some("https://mcp.example.com"), headers = Map("Authorization" -> "Bearer ..."))
+    examples = List(
+      ToolExample(
+        "stdio fetch server",
+        AddMcpServerInput(name = "fetch", command = Some("mcp-server-fetch"), prefix = Some("fetch_"))
+      ),
+      ToolExample(
+        "remote HTTP+SSE server with auth",
+        AddMcpServerInput(name = "github", url = Some("https://mcp.example.com"), headers = Map("Authorization" -> "Bearer ..."))
+      )
     )
-  )
-) {
+  ) {
   override def paginate: Boolean = false
 
   import spice.net.{TLDValidation, URL}
@@ -53,7 +55,7 @@ final class AddMcpServerTool(manager: McpManager) extends TypedTool[AddMcpServer
       case (_, Some(urlStr)) =>
         URL.get(urlStr, tldValidation = TLDValidation.Off) match {
           case Right(u) => Right(McpTransport.HttpSse(u, input.headers))
-          case Left(e)  => Left(s"Invalid url '$urlStr': $e")
+          case Left(e) => Left(s"Invalid url '$urlStr': $e")
         }
       case _ => Left("Either `command` or `url` must be provided.")
     }

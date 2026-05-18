@@ -21,7 +21,7 @@ import sigil.vector.InMemoryVectorIndex
  * time pathway.
  */
 class LlamaCppPerTurnExtractionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
-  override implicit protected val testTimeout: scala.concurrent.duration.FiniteDuration =
+  implicit override protected val testTimeout: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.DurationInt(5).minutes
 
   TestSigil.initFor(getClass.getSimpleName)
@@ -61,7 +61,8 @@ class LlamaCppPerTurnExtractionSpec extends AsyncWordSpec with AsyncTaskSpec wit
 
       val convId = Conversation.id(s"per-turn-extract-${rapid.Unique()}")
       TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-        _id = convId, topics = List(TestTopicEntry)
+        _id = convId,
+        topics = List(TestTopicEntry)
       )))).sync()
 
       val extractor = StandardMemoryExtractor(
@@ -88,7 +89,8 @@ class LlamaCppPerTurnExtractionSpec extends AsyncWordSpec with AsyncTaskSpec wit
             .findMemories(Set(MemoryTestSpace))
             .map(_.filter(_.conversationId.contains(convId)))
             .map { stored =>
-              withClue(s"extractor returned ${persisted.size} entries: ${persisted.map(_.key).mkString(", ")} | persisted: ${stored.map(_.key).mkString(", ")}") {
+              withClue(
+                s"extractor returned ${persisted.size} entries: ${persisted.map(_.key).mkString(", ")} | persisted: ${stored.map(_.key).mkString(", ")}") {
                 stored should not be empty
                 // Auto-extracted facts land as Approved by default so the
                 // primary path surfaces them on the next turn without
@@ -100,9 +102,8 @@ class LlamaCppPerTurnExtractionSpec extends AsyncWordSpec with AsyncTaskSpec wit
                 val keys = stored.flatMap(_.key.map(_.toLowerCase))
                 val looksDurable = keys.exists(k =>
                   k.contains("name") || k.contains("location") ||
-                  k.contains("prefer") || k.contains("language") ||
-                  k.contains("theme") || k.contains("user")
-                )
+                    k.contains("prefer") || k.contains("language") ||
+                    k.contains("theme") || k.contains("user"))
                 looksDurable shouldBe true
               }
             }

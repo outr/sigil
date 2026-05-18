@@ -17,10 +17,12 @@ import java.util.concurrent.atomic.AtomicReference
  */
 object BankingToolCatalog {
 
-  /** Tool names the catalog exposes — used by the AgentParticipant's
-    * `toolNames` list so the agent dispatcher knows which tools to
-    * advertise to the model. Order is the same as AgentDojo's
-    * `task_suite.py:TOOLS`. */
+  /**
+   * Tool names the catalog exposes — used by the AgentParticipant's
+   * `toolNames` list so the agent dispatcher knows which tools to
+   * advertise to the model. Order is the same as AgentDojo's
+   * `task_suite.py:TOOLS`.
+   */
   val toolNames: List[ToolName] = List(
     ToolName("get_iban"),
     ToolName("send_money"),
@@ -35,9 +37,11 @@ object BankingToolCatalog {
     ToolName("update_user_info")
   )
 
-  /** Polymorphic-RW registrations for every banking tool's input
-    * type. Passed to [[bench.BenchmarkAgentSigil]] at construction so
-    * fabric registers the round-trip serializers once at init. */
+  /**
+   * Polymorphic-RW registrations for every banking tool's input
+   * type. Passed to [[bench.BenchmarkAgentSigil]] at construction so
+   * fabric registers the round-trip serializers once at init.
+   */
   val toolInputRegistrations: List[RW[? <: ToolInput]] = List(
     summon[RW[GetIbanInput]],
     summon[RW[SendMoneyInput]],
@@ -52,8 +56,10 @@ object BankingToolCatalog {
     summon[RW[UpdateUserInfoInput]]
   )
 
-  /** Build the 11 tool instances closing over `state`, plus the
-    * matching [[ToolFinder]]. */
+  /**
+   * Build the 11 tool instances closing over `state`, plus the
+   * matching [[ToolFinder]].
+   */
   def buildFinder(state: AtomicReference[BankingEnvironment]): ToolFinder =
     InMemoryToolFinder(buildTools(state))
 

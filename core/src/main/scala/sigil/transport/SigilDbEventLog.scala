@@ -45,9 +45,11 @@ final class SigilDbEventLog(sigil: Sigil) extends EventLog[LId[Conversation], Si
   private val seqCounters: ConcurrentHashMap[LId[Conversation], AtomicLong] =
     new ConcurrentHashMap[LId[Conversation], AtomicLong]()
 
-  /** Per-channel monotonic seq. `hint` biases the value (Event
-    * timestamp, or now) but the result is always > the previous
-    * seq returned for the channel. */
+  /**
+   * Per-channel monotonic seq. `hint` biases the value (Event
+   * timestamp, or now) but the result is always > the previous
+   * seq returned for the channel.
+   */
   private def nextSeq(channelId: LId[Conversation], hint: Long): Long = {
     val counter = seqCounters.computeIfAbsent(channelId, _ => new AtomicLong(0L))
     counter.updateAndGet(prev => math.max(prev + 1, hint))
@@ -55,7 +57,7 @@ final class SigilDbEventLog(sigil: Sigil) extends EventLog[LId[Conversation], Si
 
   override def append(channelId: LId[Conversation], signal: Signal): Task[Long] = signal match {
     case e: Event => Task.pure(nextSeq(channelId, e.timestamp.value))
-    case _        => Task.pure(nextSeq(channelId, System.currentTimeMillis()))
+    case _ => Task.pure(nextSeq(channelId, System.currentTimeMillis()))
   }
 
   override def replay(channelId: LId[Conversation], afterSeq: Long): Task[List[(Long, Signal)]] =

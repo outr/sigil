@@ -16,7 +16,8 @@ case class UpdateWorkflowInput(workflowId: String,
                                triggers: Option[List[WorkflowTrigger]] = None,
                                variableDefs: Option[List[strider.WorkflowVariable]] = None,
                                tags: Option[List[String]] = None,
-                               enabled: Option[Boolean] = None) extends ToolInput derives RW
+                               enabled: Option[Boolean] = None)
+  extends ToolInput derives RW
 
 /**
  * Update a workflow template in place. Every field is optional —
@@ -26,25 +27,27 @@ case class UpdateWorkflowInput(workflowId: String,
  * In-flight runs are unaffected; the update lands for the next
  * scheduling.
  */
-final class UpdateWorkflowTool extends TypedTool[UpdateWorkflowInput](
-  name = ToolName("update_workflow"),
-  description =
-    """Update a workflow template's fields. Only set fields are overwritten.
+final class UpdateWorkflowTool
+  extends TypedTool[UpdateWorkflowInput](
+    name = ToolName("update_workflow"),
+    description =
+      """Update a workflow template's fields. Only set fields are overwritten.
       |
       |Useful for incremental editing — e.g. add a step without resending the full step list.
       |For step-list edits, fetch the current template first, modify, then pass the full
       |updated list here.""".stripMargin,
-  examples = List(
-    ToolExample(
-      "disable a workflow",
-      UpdateWorkflowInput(workflowId = "wf-abc", enabled = Some(false))
-    )
-  ),
-  keywords = Set("workflow", "update", "edit", "modify")
-) with WorkflowToolSupport {
+    examples = List(
+      ToolExample(
+        "disable a workflow",
+        UpdateWorkflowInput(workflowId = "wf-abc", enabled = Some(false))
+      )
+    ),
+    keywords = Set("workflow", "update", "edit", "modify")
+  )
+  with WorkflowToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: UpdateWorkflowInput, ctx: TurnContext): Stream[Event] = {
+  override protected def executeTyped(input: UpdateWorkflowInput, ctx: TurnContext): Stream[Event] =
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)
       case Right(host) =>
@@ -56,21 +59,19 @@ final class UpdateWorkflowTool extends TypedTool[UpdateWorkflowInput](
               case Left(_) => Task.pure(s"Workflow '${input.workflowId}' not found.")
               case Right(_) =>
                 val updated = prior.copy(
-                  name         = input.name.getOrElse(prior.name),
-                  description  = input.description.orElse(prior.description),
-                  steps        = input.steps.getOrElse(prior.steps),
-                  triggers     = input.triggers.getOrElse(prior.triggers),
+                  name = input.name.getOrElse(prior.name),
+                  description = input.description.orElse(prior.description),
+                  steps = input.steps.getOrElse(prior.steps),
+                  triggers = input.triggers.getOrElse(prior.triggers),
                   variableDefs = input.variableDefs.getOrElse(prior.variableDefs),
-                  tags         = input.tags.map(_.toSet).getOrElse(prior.tags),
-                  enabled      = input.enabled.getOrElse(prior.enabled),
-                  modified     = Timestamp()
+                  tags = input.tags.map(_.toSet).getOrElse(prior.tags),
+                  enabled = input.enabled.getOrElse(prior.enabled),
+                  modified = Timestamp()
                 )
                 host.withDB(_.workflowTemplates.transaction(_.upsert(updated))).map(_ =>
-                  s"Workflow '${updated.name}' updated."
-                )
+                  s"Workflow '${updated.name}' updated.")
             }
         }
         Stream.force(task.map(text => reply(ctx, text)))
     }
-  }
 }

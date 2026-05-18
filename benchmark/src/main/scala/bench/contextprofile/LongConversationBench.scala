@@ -21,8 +21,12 @@ object LongConversationBench {
     // Build cumulative frame list: each turn adds [userMessage, agentRespond].
     val framesByTurn: Vector[Vector[ContextFrame]] = (1 to turns).scanLeft(Vector.empty[ContextFrame]) {
       case (prev, n) =>
-        val userMsg  = ProfilerHarness.textFrame(s"User message $n: tell me about the framework's pipeline architecture in detail.", ProfilerHarness.UserId)
-        val agentMsg = ProfilerHarness.textFrame(s"Agent reply $n: ${"the pipeline operates on a stream of signals; each signal can be an event or a delta. ".repeat(3)}", ProfilerHarness.AgentId)
+        val userMsg = ProfilerHarness.textFrame(
+          s"User message $n: tell me about the framework's pipeline architecture in detail.",
+          ProfilerHarness.UserId)
+        val agentMsg = ProfilerHarness.textFrame(
+          s"Agent reply $n: ${"the pipeline operates on a stream of signals; each signal can be an event or a delta. ".repeat(3)}",
+          ProfilerHarness.AgentId)
         prev :+ userMsg :+ agentMsg
     }.tail.toVector
 

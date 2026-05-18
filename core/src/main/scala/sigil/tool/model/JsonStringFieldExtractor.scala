@@ -21,8 +21,7 @@ final class JsonStringFieldExtractor(field: String) {
 
   private var phase: Phase = Phase.Prefix
   private val prefixBuf = new StringBuilder
-  private val prefixRegex =
-    ("""[\{,]\s*"""" + Pattern.quote(field) + """"\s*:\s*"""").r
+  private val prefixRegex = ("""[\{,]\s*"""" + Pattern.quote(field) + """"\s*:\s*"""").r
   private var unicodeRemaining: Int = 0
   private val unicodeAcc = new StringBuilder
 

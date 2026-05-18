@@ -86,9 +86,8 @@ class SseFramerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   }
 
   "SseFramer.Heartbeat" should {
-    "be a valid SSE comment frame" in {
+    "be a valid SSE comment frame" in
       Task(SseFramer.Heartbeat shouldBe ":hb\n\n")
-    }
   }
 
   "tear down" should {

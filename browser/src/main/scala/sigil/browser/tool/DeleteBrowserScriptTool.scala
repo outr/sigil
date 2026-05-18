@@ -9,16 +9,19 @@ import sigil.tool.model.ResponseContent
 import sigil.tool.{ToolName, TypedTool}
 import sigil.{GlobalSpace, TurnContext}
 
-/** Delete a stored [[BrowserScript]] by name. Authz: caller's
-  * `accessibleSpaces` must include the script's space (or the
-  * script must live in [[GlobalSpace]]). */
-case object DeleteBrowserScriptTool extends TypedTool[DeleteBrowserScriptInput](
-  name = ToolName("delete_browser_script"),
-  description =
-    "Delete a stored browser-script tool by name. Caller must have access to the script's space.",
-  modes = Set(WebBrowserMode.id),
-  keywords = Set("delete", "remove", "browser", "script")
-) {
+/**
+ * Delete a stored [[BrowserScript]] by name. Authz: caller's
+ * `accessibleSpaces` must include the script's space (or the
+ * script must live in [[GlobalSpace]]).
+ */
+case object DeleteBrowserScriptTool
+  extends TypedTool[DeleteBrowserScriptInput](
+    name = ToolName("delete_browser_script"),
+    description =
+      "Delete a stored browser-script tool by name. Caller must have access to the script's space.",
+    modes = Set(WebBrowserMode.id),
+    keywords = Set("delete", "remove", "browser", "script")
+  ) {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: DeleteBrowserScriptInput,
@@ -30,28 +33,32 @@ case object DeleteBrowserScriptTool extends TypedTool[DeleteBrowserScriptInput](
             Task.pure(Stream.emit[Event](reply(ctx, s"No browser script named '${input.name}'.")))
           case Some(existing: BrowserScript) =>
             if (existing.space != GlobalSpace && !accessible.contains(existing.space))
-              Task.pure(Stream.emit[Event](reply(ctx,
+              Task.pure(Stream.emit[Event](reply(
+                ctx,
                 s"Browser script '${input.name}' is not accessible to this caller.")))
             else
               tx.delete(existing._id).map { _ =>
                 Stream.emit[Event](reply(ctx, s"Deleted browser script '${input.name}'."))
               }
           case Some(_) =>
-            Task.pure(Stream.emit[Event](reply(ctx,
+            Task.pure(Stream.emit[Event](reply(
+              ctx,
               s"Tool '${input.name}' exists but is not a browser script.")))
         }
       })
-    }.handleError(t => Task.pure(Stream.emit[Event](reply(ctx,
-      s"Failed to delete browser script: ${t.getMessage}"))))
+    }.handleError(t =>
+      Task.pure(Stream.emit[Event](reply(
+        ctx,
+        s"Failed to delete browser script: ${t.getMessage}"))))
   )
 
   private def reply(ctx: TurnContext, text: String): Event = Message(
-    participantId  = ctx.caller,
+    participantId = ctx.caller,
     conversationId = ctx.conversation.id,
-    topicId        = ctx.conversation.currentTopicId,
-    content        = Vector(ResponseContent.Text(text)),
-    state          = EventState.Complete,
-    role           = MessageRole.Tool,
-    visibility     = MessageVisibility.Agents
+    topicId = ctx.conversation.currentTopicId,
+    content = Vector(ResponseContent.Text(text)),
+    state = EventState.Complete,
+    role = MessageRole.Tool,
+    visibility = MessageVisibility.Agents
   )
 }

@@ -25,7 +25,7 @@ class RouteResolvedSignalSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
   private val testModelId: Id[Model] = Model.id("test", "routing-signal")
 
-  private final class RespondOnce extends Provider {
+  final private class RespondOnce extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -43,10 +43,10 @@ class RouteResolvedSignalSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = testModelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = testModelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
@@ -60,28 +60,28 @@ class RouteResolvedSignalSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         ),
         routes = Map(
           AnalysisWork -> List(
-            ModelCandidate(Model.id("test", "analysis-low"),  supportedComplexity = Set(Complexity.Low)),
+            ModelCandidate(Model.id("test", "analysis-low"), supportedComplexity = Set(Complexity.Low)),
             ModelCandidate(Model.id("test", "analysis-high"), supportedComplexity = Set(Complexity.Low, Complexity.Medium, Complexity.High))
           )
         ),
-        inferWorkType   = Some((_, _) => Task.pure(AnalysisWork)),
+        inferWorkType = Some((_, _) => Task.pure(AnalysisWork)),
         inferComplexity = Some((_, _) => Task.pure(Complexity.High))
       )
       TestSigil.setResolveProviderStrategy(_ => Task.pure(Some(strategy)))
       TestSigil.setProvider(Task.pure(new RespondOnce))
       val convId = Conversation.id(s"route-resolved-${rapid.Unique()}")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
       for {
-        _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _   <- TestSigil.publish(Message(
-                 participantId  = TestUser,
-                 conversationId = convId,
-                 topicId        = TestTopicEntry.id,
-                 content        = Vector(ResponseContent.Text("Audit this auth flow for vulnerabilities")),
-                 state          = EventState.Complete
-               ))
-        _   <- Task.sleep(2.seconds)
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(Message(
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Audit this auth flow for vulnerabilities")),
+          state = EventState.Complete
+        ))
+        _ <- Task.sleep(2.seconds)
         evs <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         val rrs = evs.collect { case rr: RouteResolved if rr.conversationId == convId => rr }
@@ -101,23 +101,23 @@ class RouteResolvedSignalSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val uniform = List(ModelCandidate(testModelId))
       val strategy = ProviderStrategy.routed(
         default = uniform,
-        routes  = Map(AnalysisWork -> uniform, ConversationWork -> uniform)
+        routes = Map(AnalysisWork -> uniform, ConversationWork -> uniform)
       )
       TestSigil.setResolveProviderStrategy(_ => Task.pure(Some(strategy)))
       TestSigil.setProvider(Task.pure(new RespondOnce))
       val convId = Conversation.id(s"route-resolved-skip-${rapid.Unique()}")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
       for {
-        _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _   <- TestSigil.publish(Message(
-                 participantId  = TestUser,
-                 conversationId = convId,
-                 topicId        = TestTopicEntry.id,
-                 content        = Vector(ResponseContent.Text("Hi")),
-                 state          = EventState.Complete
-               ))
-        _   <- Task.sleep(2.seconds)
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(Message(
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Hi")),
+          state = EventState.Complete
+        ))
+        _ <- Task.sleep(2.seconds)
         evs <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         val rrs = evs.collect { case rr: RouteResolved if rr.conversationId == convId => rr }

@@ -26,27 +26,27 @@ import scala.jdk.CollectionConverters.*
  * `maxResults` caps the returned matches; `totalCount` reports the
  * unbounded count.
  */
-final class BrowserTextSearchTool extends TypedTool[BrowserTextSearchInput](
-  name = ToolName("browser_text_search"),
-  description =
-    """Substring-search the visible text of an HTML file saved earlier (use the `htmlFileId` from `browser_save_html`).
+final class BrowserTextSearchTool
+  extends TypedTool[BrowserTextSearchInput](
+    name = ToolName("browser_text_search"),
+    description =
+      """Substring-search the visible text of an HTML file saved earlier (use the `htmlFileId` from `browser_save_html`).
       |Each match returns surrounding context plus the containing element's xpath, so you can pivot to
       |`browser_xpath_query` to extract structure around the hit. Default case-insensitive.""".stripMargin,
-  examples = List(
-    ToolExample(
-      "Find every occurrence of a person's name",
-      BrowserTextSearchInput(htmlFileId = "abc123", query = "Alice")
+    examples = List(
+      ToolExample(
+        "Find every occurrence of a person's name",
+        BrowserTextSearchInput(htmlFileId = "abc123", query = "Alice")
+      ),
+      ToolExample(
+        "Find a specific phrase, more context per hit",
+        BrowserTextSearchInput(htmlFileId = "abc123", query = "Section 3.2", contextChars = 200)
+      )
     ),
-    ToolExample(
-      "Find a specific phrase, more context per hit",
-      BrowserTextSearchInput(htmlFileId = "abc123", query = "Section 3.2", contextChars = 200)
-    )
-  ),
-  modes = Set(WebBrowserMode.id),
-  keywords = Set("browser", "text", "search", "find", "substring", "query")
-) {
+    modes = Set(WebBrowserMode.id),
+    keywords = Set("browser", "text", "search", "find", "substring", "query")
+  ) {
   override def paginate: Boolean = false
-
 
   override protected def executeTyped(input: BrowserTextSearchInput, ctx: TurnContext): Stream[Event] =
     Stream.force(
@@ -54,16 +54,16 @@ final class BrowserTextSearchTool extends TypedTool[BrowserTextSearchInput](
         case None =>
           Stream.emit[Event](BrowserToolBase.toolResult(
             obj(
-              "error"      -> str(s"htmlFileId '${input.htmlFileId}' not found or not authorized"),
-              "matches"    -> arr(),
+              "error" -> str(s"htmlFileId '${input.htmlFileId}' not found or not authorized"),
+              "matches" -> arr(),
               "totalCount" -> num(0),
-              "returned"   -> num(0)
+              "returned" -> num(0)
             ),
             ctx
           ))
         case Some((_, bytes)) =>
           val html = new String(bytes, java.nio.charset.StandardCharsets.UTF_8)
-          val doc  = Jsoup.parse(html)
+          val doc = Jsoup.parse(html)
 
           // Walk the body's text nodes, building (position, textNode) pairs against
           // a single concatenated body text. We squish whitespace per node so the
@@ -88,10 +88,10 @@ final class BrowserTextSearchTool extends TypedTool[BrowserTextSearchInput](
           }
           NodeTraversor.traverse(visitor, body)
 
-          val haystack    = flat.toString
-          val needle      = input.query
+          val haystack = flat.toString
+          val needle = input.query
           val needleLower = if (input.caseSensitive) needle else needle.toLowerCase
-          val haystackLU  = if (input.caseSensitive) haystack else haystack.toLowerCase
+          val haystackLU = if (input.caseSensitive) haystack else haystack.toLowerCase
 
           // Collect all match positions.
           val positions = mutable.ListBuffer.empty[Int]
@@ -104,16 +104,16 @@ final class BrowserTextSearchTool extends TypedTool[BrowserTextSearchInput](
           }
 
           val totalCount = positions.size
-          val limited    = positions.take(input.maxResults).toList
+          val limited = positions.take(input.maxResults).toList
 
           val matches: List[Json] = limited.map { pos =>
-            val matchText    = haystack.substring(pos, math.min(pos + needle.length, haystack.length))
-            val ctxStart     = math.max(0, pos - input.contextChars)
+            val matchText = haystack.substring(pos, math.min(pos + needle.length, haystack.length))
+            val ctxStart = math.max(0, pos - input.contextChars)
             val ctxEndBefore = pos
             val ctxStartAfter = math.min(haystack.length, pos + matchText.length)
-            val ctxEndAfter   = math.min(haystack.length, ctxStartAfter + input.contextChars)
-            val before        = haystack.substring(ctxStart, ctxEndBefore)
-            val after         = haystack.substring(ctxStartAfter, ctxEndAfter)
+            val ctxEndAfter = math.min(haystack.length, ctxStartAfter + input.contextChars)
+            val before = haystack.substring(ctxStart, ctxEndBefore)
+            val after = haystack.substring(ctxStartAfter, ctxEndAfter)
 
             // Find the TextNode whose offset range contains pos — last
             // entry whose start offset ≤ pos. nodeOffsets is in source
@@ -132,10 +132,10 @@ final class BrowserTextSearchTool extends TypedTool[BrowserTextSearchInput](
             }.getOrElse("")
 
             obj(
-              "position"        -> num(pos),
-              "contextBefore"   -> str(before),
-              "matchText"       -> str(matchText),
-              "contextAfter"    -> str(after),
+              "position" -> num(pos),
+              "contextBefore" -> str(before),
+              "matchText" -> str(matchText),
+              "contextAfter" -> str(after),
               "containingXPath" -> str(containingXPath)
             )
           }
@@ -143,10 +143,10 @@ final class BrowserTextSearchTool extends TypedTool[BrowserTextSearchInput](
           Stream.emit[Event](BrowserToolBase.toolResult(
             obj(
               "htmlFileId" -> str(input.htmlFileId),
-              "query"      -> str(needle),
-              "matches"    -> arr(matches*),
+              "query" -> str(needle),
+              "matches" -> arr(matches*),
               "totalCount" -> num(totalCount),
-              "returned"   -> num(limited.size)
+              "returned" -> num(limited.size)
             ),
             ctx
           ))

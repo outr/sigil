@@ -36,11 +36,11 @@ object DigitalOceanResponsesProvider {
              apiKey: String,
              baseUrl: URL = url"https://inference.do-ai.run"): Task[OpenAIProvider] =
     Task.pure(OpenAIProvider(
-      apiKey                      = apiKey,
-      sigilRef                    = sigil,
-      baseUrl                     = baseUrl,
-      providerType                = ProviderType.DigitalOcean,
-      providerNamespace           = DigitalOcean.Provider,
+      apiKey = apiKey,
+      sigilRef = sigil,
+      baseUrl = baseUrl,
+      providerType = ProviderType.DigitalOcean,
+      providerNamespace = DigitalOcean.Provider,
       // Historically DO's Responses surface rejected
       // `tool_choice: "required"` with HTTP 424 "unexpected EOF".
       // Recent (2026-05) probes against kimi-k2.5 + 6 tools show

@@ -7,7 +7,9 @@ import sigil.signal.EventState
 import sigil.tool.{ToolInput, ToolName, TypedTool}
 import sigil.tool.model.ResponseContent
 
-/** Empty input — `get_magic_number` takes no arguments. */
+/**
+ * Empty input — `get_magic_number` takes no arguments.
+ */
 final case class GetMagicNumberInput() extends ToolInput derives RW
 
 /**
@@ -25,10 +27,11 @@ final case class GetMagicNumberInput() extends ToolInput derives RW
  * a re-trigger — so the agent never gets the chance to read the
  * result and compose a `respond` call.
  */
-case object GetMagicNumberTool extends TypedTool[GetMagicNumberInput](
-  name = ToolName("get_magic_number"),
-  description = "Returns the magic number. Call this first, then tell the user what number you got."
-) {
+case object GetMagicNumberTool
+  extends TypedTool[GetMagicNumberInput](
+    name = ToolName("get_magic_number"),
+    description = "Returns the magic number. Call this first, then tell the user what number you got."
+  ) {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: GetMagicNumberInput, context: TurnContext): rapid.Stream[Event] =

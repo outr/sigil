@@ -91,7 +91,8 @@ class MemoryContextCompressorSpec extends AsyncWordSpec with AsyncTaskSpec with 
       TestSigil.reset()
       val convId = Conversation.id(s"mcc-${rapid.Unique()}")
       TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-        _id = convId, topics = List(TestTopicEntry)
+        _id = convId,
+        topics = List(TestTopicEntry)
       )))).sync()
       TestSigil.setCompressionSpace(Some(MemoryTestSpace))
       TestSigil.setProvider(Task.pure(new StubProvider(
@@ -123,7 +124,8 @@ class MemoryContextCompressorSpec extends AsyncWordSpec with AsyncTaskSpec with 
       TestSigil.setVectorIndex(new InMemoryVectorIndex)
       val convId = Conversation.id(s"mcc-retrieve-${rapid.Unique()}")
       TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-        _id = convId, topics = List(TestTopicEntry)
+        _id = convId,
+        topics = List(TestTopicEntry)
       )))).sync()
       TestSigil.setCompressionSpace(Some(MemoryTestSpace))
       TestSigil.setProvider(Task.pure(new StubProvider(
@@ -150,7 +152,8 @@ class MemoryContextCompressorSpec extends AsyncWordSpec with AsyncTaskSpec with 
       TestSigil.reset()
       val convId = Conversation.id(s"mcc-none-${rapid.Unique()}")
       TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-        _id = convId, topics = List(TestTopicEntry)
+        _id = convId,
+        topics = List(TestTopicEntry)
       )))).sync()
       TestSigil.setCompressionSpace(None)
       TestSigil.setProvider(Task.pure(new StubProvider(

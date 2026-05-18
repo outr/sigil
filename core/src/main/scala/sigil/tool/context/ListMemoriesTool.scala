@@ -40,10 +40,11 @@ import sigil.tool.model.ResponseContent
  * `pin_memory` / `unpin_memory` / `move_memory` / `forget_memory` to
  * act on a selection.
  */
-case object ListMemoriesTool extends TypedTool[ListMemoriesInput](
-  name = ToolName("list_memories"),
-  description =
-    """List memories you can see — pinned and unpinned — with filters and pagination.
+case object ListMemoriesTool
+  extends TypedTool[ListMemoriesInput](
+    name = ToolName("list_memories"),
+    description =
+      """List memories you can see — pinned and unpinned — with filters and pagination.
       |
       |- `spaces` — optional filter; empty = every space your chain can access.
       |- `query`  — optional case-insensitive substring matched against key / label /
@@ -57,16 +58,18 @@ case object ListMemoriesTool extends TypedTool[ListMemoriesInput](
       |`pinned`. Use the lookup tool to pull a memory's full fact; use the
       |memory-pinning / unpinning / moving / forgetting tools to act on individual
       |entries.""".stripMargin,
-  keywords = Set("list", "memories", "browse", "recall", "review", "all", "show")
-) {
+    keywords = Set("list", "memories", "browse", "recall", "review", "all", "show")
+  ) {
   override def paginate: Boolean = false
 
   override def resultTtl: Option[Int] = Some(0)
   override val requiresAccessibleSpaces: Boolean = true
 
-  /** Server-side page-size clamp — defends against the agent passing
-    * an enormous `limit` and dumping the entire memory store into
-    * the next turn's prompt. */
+  /**
+   * Server-side page-size clamp — defends against the agent passing
+   * an enormous `limit` and dumping the entire memory store into
+   * the next turn's prompt.
+   */
   private val MaxPageSize: Int = 100
 
   override protected def executeTyped(input: ListMemoriesInput, context: TurnContext): Stream[Event] =
@@ -92,7 +95,7 @@ case object ListMemoriesTool extends TypedTool[ListMemoriesInput](
         // path needs to stay fast as the memory store grows.
         val source: Task[List[ContextMemory]] = input.pinned match {
           case Some(true) => context.sigil.findCriticalMemories(effective)
-          case _          => context.sigil.findMemories(effective)
+          case _ => context.sigil.findMemories(effective)
         }
         source.map { memories =>
           val filtered = applyFilters(memories, input)
@@ -106,9 +109,9 @@ case object ListMemoriesTool extends TypedTool[ListMemoriesInput](
 
   private def applyFilters(memories: List[ContextMemory], input: ListMemoriesInput): List[ContextMemory] = {
     val byPinned = input.pinned match {
-      case Some(true)  => memories.filter(_.pinned)
+      case Some(true) => memories.filter(_.pinned)
       case Some(false) => memories.filterNot(_.pinned)
-      case None        => memories
+      case None => memories
     }
     val byQuery = input.query.map(_.trim).filter(_.nonEmpty) match {
       case None => byPinned
@@ -116,10 +119,10 @@ case object ListMemoriesTool extends TypedTool[ListMemoriesInput](
         val needle = q.toLowerCase
         byPinned.filter { m =>
           m.key.exists(_.toLowerCase.contains(needle)) ||
-            m.label.toLowerCase.contains(needle) ||
-            m.summary.toLowerCase.contains(needle) ||
-            m.fact.toLowerCase.contains(needle) ||
-            m.keywords.exists(_.toLowerCase.contains(needle))
+          m.label.toLowerCase.contains(needle) ||
+          m.summary.toLowerCase.contains(needle) ||
+          m.fact.toLowerCase.contains(needle) ||
+          m.keywords.exists(_.toLowerCase.contains(needle))
         }
     }
     // Stable ordering for deterministic pagination: pinned first, then
@@ -133,29 +136,29 @@ case object ListMemoriesTool extends TypedTool[ListMemoriesInput](
       val rendered = if (m.summary.trim.nonEmpty) m.summary else m.fact
       val justificationJson: fabric.Json = m.justification match {
         case Some(j) => str(j)
-        case None    => fabric.Null
+        case None => fabric.Null
       }
       obj(
-        "key"           -> str(m.key.getOrElse(m._id.value)),
-        "label"         -> str(m.label),
-        "summary"       -> str(m.summary),
-        "tokens"        -> num(tokenizer.count(rendered)),
-        "spaceId"       -> str(m.spaceId.value),
-        "pinned"        -> bool(m.pinned),
-        "confidence"    -> num(m.confidence),
+        "key" -> str(m.key.getOrElse(m._id.value)),
+        "label" -> str(m.label),
+        "summary" -> str(m.summary),
+        "tokens" -> num(tokenizer.count(rendered)),
+        "spaceId" -> str(m.spaceId.value),
+        "pinned" -> bool(m.pinned),
+        "confidence" -> num(m.confidence),
         "justification" -> justificationJson
       )
     }
     val pageInfo = obj(
-      "offset"       -> num(offset),
-      "limit"        -> num(limit),
-      "returned"     -> num(page.size),
+      "offset" -> num(offset),
+      "limit" -> num(limit),
+      "returned" -> num(page.size),
       "totalMatched" -> num(totalMatched),
-      "hasMore"      -> bool(offset + page.size < totalMatched)
+      "hasMore" -> bool(offset + page.size < totalMatched)
     )
     JsonFormatter.Default(obj(
       "memories" -> arr(items*),
-      "page"     -> pageInfo
+      "page" -> pageInfo
     ))
   }
 }

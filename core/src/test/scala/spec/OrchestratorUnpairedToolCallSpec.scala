@@ -38,10 +38,12 @@ class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
 
   case class EmptyToolInput() extends ToolInput derives RW
 
-  /** Tool whose execute returns Stream.empty — simulates a tool whose
-    * executeTyped path swallowed an error or filtered everything out. */
+  /**
+   * Tool whose execute returns Stream.empty — simulates a tool whose
+   * executeTyped path swallowed an error or filtered everything out.
+   */
   private object SilentTool extends Tool {
-  override def paginate: Boolean = false
+    override def paginate: Boolean = false
     override def name: ToolName = ToolName("silent_tool")
     override def description: String = "Returns nothing."
     override def inputRW: RW[? <: ToolInput] = summon[RW[EmptyToolInput]]
@@ -50,8 +52,10 @@ class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
 
   private val modelId: Id[Model] = Model.id("test", "model")
 
-  /** Provider that emits ToolCallComplete for whatever toolName the
-    * test asks for, with empty args. */
+  /**
+   * Provider that emits ToolCallComplete for whatever toolName the
+   * test asks for, with empty args.
+   */
   private class FakeProvider(toolName: String) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -72,54 +76,52 @@ class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
     val convId = Conversation.id(s"unpaired-$suffix")
     val conv = Conversation(topics = TestTopicStack, _id = convId)
     val request = ConversationRequest(
-      conversationId     = convId,
-      modelId            = modelId,
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
-      previousTopics     = Nil,
+      conversationId = convId,
+      modelId = modelId,
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50)),
-      chain              = List(TestUser, TestAgent),
-      tools              = tools
+      chain = List(TestUser, TestAgent),
+      tools = tools
     )
     for {
-      _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
     } yield signals
   }
 
   "Orchestrator (Bug #167) for an unknown tool name" should {
 
-    "emit a Tool-role Failure Message paired to the invoke when the tool isn't in the roster" in {
+    "emit a Tool-role Failure Message paired to the invoke when the tool isn't in the roster" in
       runWith(new FakeProvider("not_a_real_tool"), tools = Vector.empty, "unknown").map { signals =>
         val toolMessages = signals.collect {
           case m: Message if m.role == MessageRole.Tool => m
         }
         toolMessages should have size 1
         val msg = toolMessages.head
-        msg.disposition shouldBe a [MessageDisposition.Failure]
-        msg.failureReason.getOrElse("") should include ("Unknown tool")
-        msg.failureReason.getOrElse("") should include ("not_a_real_tool")
+        msg.disposition shouldBe a[MessageDisposition.Failure]
+        msg.failureReason.getOrElse("") should include("Unknown tool")
+        msg.failureReason.getOrElse("") should include("not_a_real_tool")
         msg.origin shouldBe defined
       }
-    }
   }
 
   "Orchestrator (Bug #167) for a registered tool whose execute is silent" should {
 
-    "append a synthetic Tool-role Failure when the tool's execute returns Stream.empty" in {
+    "append a synthetic Tool-role Failure when the tool's execute returns Stream.empty" in
       runWith(new FakeProvider("silent_tool"), tools = Vector(SilentTool), "silent").map { signals =>
         val toolMessages = signals.collect {
           case m: Message if m.role == MessageRole.Tool => m
         }
         toolMessages should have size 1
         val msg = toolMessages.head
-        msg.disposition shouldBe a [MessageDisposition.Failure]
-        msg.failureReason.getOrElse("") should include ("failed internally")
-        msg.failureReason.getOrElse("") should include ("silent_tool")
+        msg.disposition shouldBe a[MessageDisposition.Failure]
+        msg.failureReason.getOrElse("") should include("failed internally")
+        msg.failureReason.getOrElse("") should include("silent_tool")
       }
-    }
   }
 
   "tear down" should {

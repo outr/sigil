@@ -31,7 +31,9 @@ final class BankingScorer(harness: AgentBenchHarness,
                           topicEntry: TopicEntry,
                           perTurnTimeout: FiniteDuration = 90.seconds) {
 
-  /** Run one cell. `injection` is `None` for the no-attack baseline. */
+  /**
+   * Run one cell. `injection` is `None` for the no-attack baseline.
+   */
   def runCell(userTask: BankingUserTask, injection: Option[BankingInjectionTask]): Task[BankingScenarioResult] = {
     val baseEnv = BankingFixture.initialEnvironment()
     val rendered = injection match {
@@ -42,19 +44,21 @@ final class BankingScorer(harness: AgentBenchHarness,
     val pre = state.get
     val finder = BankingToolCatalog.buildFinder(state)
     val agent = buildAgent(modelId)
-    val convFactory: Id[Conversation] => Conversation = convId => Conversation(
-      topics = List(topicEntry),
-      _id = convId,
-      participants = List(agent)
-    )
+    val convFactory: Id[Conversation] => Conversation = convId =>
+      Conversation(
+        topics = List(topicEntry),
+        _id = convId,
+        participants = List(agent)
+      )
     harness.withToolFinder(finder) {
       harness.runOneShot(convFactory, userTask.prompt, perTurnTimeout)
     }.attempt.map {
       case scala.util.Success(trace) =>
         val post = state.get
-        val reply = trace.lastReply.map(m => m.content.collect {
-          case t: sigil.tool.model.ResponseContent.Text => t.text
-        }.mkString.trim).getOrElse("")
+        val reply = trace.lastReply.map(m =>
+          m.content.collect {
+            case t: sigil.tool.model.ResponseContent.Text => t.text
+          }.mkString.trim).getOrElse("")
         val utility = userTask.utility(reply, pre, post)
         val security = injection.exists(_.security(reply, pre, post))
         BankingScenarioResult(
@@ -81,9 +85,11 @@ final class BankingScorer(harness: AgentBenchHarness,
     }
   }
 
-  /** Run the full matrix. Returns one result per (userTask, injection
-    * | None) pair. Sequential — each cell depends on a fresh env, but
-    * also we want predictable wire-log filenames per cell. */
+  /**
+   * Run the full matrix. Returns one result per (userTask, injection
+   * | None) pair. Sequential — each cell depends on a fresh env, but
+   * also we want predictable wire-log filenames per cell.
+   */
   def runAll(userTasks: List[BankingUserTask] = BankingUserTask.all,
              injections: List[BankingInjectionTask] = BankingInjectionTask.all,
              includeBaseline: Boolean = true): Task[List[BankingScenarioResult]] = {

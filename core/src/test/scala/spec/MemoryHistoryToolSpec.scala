@@ -38,12 +38,12 @@ class MemoryHistoryToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
   private def memoryAt(key: String, fact: String): ContextMemory =
     ContextMemory(
-      fact     = fact,
-      label    = "Language",
-      summary  = fact,
-      source   = MemorySource.Explicit,
-      spaceId  = TestSpace,
-      key      = Some(key)
+      fact = fact,
+      label = "Language",
+      summary = fact,
+      source = MemorySource.Explicit,
+      spaceId = TestSpace,
+      key = Some(key)
     )
 
   "MemoryHistoryTool" should {
@@ -53,8 +53,11 @@ class MemoryHistoryToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       for {
         _ <- TestSigil.upsertMemoryByKey(memoryAt(key, "Scala"))
         _ <- TestSigil.upsertMemoryByKey(memoryAt(key, "Rust"))
-        events <- MemoryHistoryTool.execute(MemoryHistoryInput(
-          key = key, spaceId = Some(TestSpace)), ctx(c)).toList
+        events <- MemoryHistoryTool.execute(
+          MemoryHistoryInput(
+            key = key,
+            spaceId = Some(TestSpace)),
+          ctx(c)).toList
       } yield {
         val body = bodyOf(events.head.asInstanceOf[Message])
         body should include("2 version(s)")

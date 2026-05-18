@@ -32,35 +32,45 @@ final class RefactorSessionStore(val ttl: FiniteDuration = 30.minutes) {
 
   private val sessions = new ConcurrentHashMap[String, RefactorSession]()
 
-  /** Register a prepared session keyed by its sessionId. Overwrites
-    * any prior session with the same id (callers should mint a
-    * fresh id per prepare). */
+  /**
+   * Register a prepared session keyed by its sessionId. Overwrites
+   * any prior session with the same id (callers should mint a
+   * fresh id per prepare).
+   */
   def create(session: RefactorSession): Unit = {
     sessions.put(session.sessionId, session)
     ()
   }
 
-  /** Read without removing. Used by inspection paths that don't
-    * intend to consume the session. */
+  /**
+   * Read without removing. Used by inspection paths that don't
+   * intend to consume the session.
+   */
   def peek(sessionId: String): Option[RefactorSession] =
     Option(sessions.get(sessionId))
 
-  /** Atomic remove + return. The apply path uses this so two
-    * concurrent applies against the same sessionId can't both
-    * commit the same edits. */
+  /**
+   * Atomic remove + return. The apply path uses this so two
+   * concurrent applies against the same sessionId can't both
+   * commit the same edits.
+   */
   def take(sessionId: String): Option[RefactorSession] =
     Option(sessions.remove(sessionId))
 
-  /** Drop a session by id; returns whether it was present. Used by
-    * the cancel path — idempotent against repeated cancel or
-    * cancel-after-apply. */
+  /**
+   * Drop a session by id; returns whether it was present. Used by
+   * the cancel path — idempotent against repeated cancel or
+   * cancel-after-apply.
+   */
   def remove(sessionId: String): Boolean =
     sessions.remove(sessionId) != null
 
-  /** Evict every session whose age (against `now`) exceeds [[ttl]].
-    * Returns the number of sessions removed. The store doesn't
-    * sweep autonomously; the host calls this on whatever cadence
-    * makes sense (or, for tests, drives expiration directly). */
+  /**
+   * Evict every session whose age (against `now`) exceeds [[ttl]].
+   * Returns the number of sessions removed. The store doesn't
+   * sweep autonomously; the host calls this on whatever cadence
+   * makes sense (or, for tests, drives expiration directly).
+   */
   def evictExpired(now: Long): Int = {
     val cutoff = now - ttl.toMillis
     val toRemove = sessions.values.iterator.asScala
@@ -70,6 +80,8 @@ final class RefactorSessionStore(val ttl: FiniteDuration = 30.minutes) {
     toRemove.size
   }
 
-  /** Current session count. Diagnostic / metric surface. */
+  /**
+   * Current session count. Diagnostic / metric surface.
+   */
   def size: Int = sessions.size
 }

@@ -9,8 +9,10 @@ package sigil.provider.openai
 object OpenAI {
   val Provider: String = "openai"
 
-  /** Strip the `openai/` provider prefix from a sigil model id so the
-    * wire request carries the bare OpenAI id. */
+  /**
+   * Strip the `openai/` provider prefix from a sigil model id so the
+   * wire request carries the bare OpenAI id.
+   */
   def stripProviderPrefix(sigilModelId: String): String = {
     val prefix = s"$Provider/"
     if (sigilModelId.startsWith(prefix)) sigilModelId.drop(prefix.length) else sigilModelId

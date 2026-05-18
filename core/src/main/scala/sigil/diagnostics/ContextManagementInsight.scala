@@ -22,21 +22,33 @@ import fabric.rw.*
 case class ContextManagementInsight(level: InsightLevel,
                                     category: InsightCategory,
                                     message: String,
-                                    suggestedAction: Option[String] = None) derives RW
+                                    suggestedAction: Option[String] = None)
+  derives RW
 
-/** How urgent / actionable an insight is. */
+/**
+ * How urgent / actionable an insight is.
+ */
 enum InsightLevel derives RW {
-  /** Background telemetry — useful to display, no action needed. */
+
+  /**
+   * Background telemetry — useful to display, no action needed.
+   */
   case Info
 
-  /** Worth a glance — something is trending toward needing attention. */
+  /**
+   * Worth a glance — something is trending toward needing attention.
+   */
   case Warning
 
-  /** Specific change worth considering — paired with a `suggestedAction`. */
+  /**
+   * Specific change worth considering — paired with a `suggestedAction`.
+   */
   case Recommendation
 }
 
-/** Which subsystem an insight relates to. */
+/**
+ * Which subsystem an insight relates to.
+ */
 enum InsightCategory derives RW {
   case Memory
   case Tools

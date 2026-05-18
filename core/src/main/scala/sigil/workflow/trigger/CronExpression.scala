@@ -35,20 +35,22 @@ package sigil.workflow.trigger
  */
 object CronExpression {
 
-  /** True iff the wall clock at `epochMillis` matches every field of
-    * `expression`. Unlike `TimeTriggerImpl.check`, this does NOT
-    * suppress duplicate fires within the same minute — that's a
-    * concern of the trigger's run loop, not the expression itself. */
+  /**
+   * True iff the wall clock at `epochMillis` matches every field of
+   * `expression`. Unlike `TimeTriggerImpl.check`, this does NOT
+   * suppress duplicate fires within the same minute — that's a
+   * concern of the trigger's run loop, not the expression itself.
+   */
   def matches(expression: String, epochMillis: Long): Boolean = {
     val parts = expression.trim.split("\\s+")
     if (parts.length != 5) return false
     val cal = java.util.Calendar.getInstance()
     cal.setTimeInMillis(epochMillis)
     val minute = cal.get(java.util.Calendar.MINUTE)
-    val hour   = cal.get(java.util.Calendar.HOUR_OF_DAY)
-    val dom    = cal.get(java.util.Calendar.DAY_OF_MONTH)
-    val month  = cal.get(java.util.Calendar.MONTH) + 1
-    val dow    = {
+    val hour = cal.get(java.util.Calendar.HOUR_OF_DAY)
+    val dom = cal.get(java.util.Calendar.DAY_OF_MONTH)
+    val month = cal.get(java.util.Calendar.MONTH) + 1
+    val dow = {
       val raw = cal.get(java.util.Calendar.DAY_OF_WEEK)
       if (raw == java.util.Calendar.SUNDAY) 0 else raw - 1
     }
@@ -59,25 +61,24 @@ object CronExpression {
     val domMatch = matchField(domField, dom, 1, 31)
     val dowMatch = matchField(dowField, dow, 0, 6)
     val dayMatch =
-      if (domStar || dowStar) domMatch && dowMatch  // standard AND when at least one is `*`
-      else domMatch || dowMatch                     // Vixie OR when both restricted
+      if (domStar || dowStar) domMatch && dowMatch // standard AND when at least one is `*`
+      else domMatch || dowMatch // Vixie OR when both restricted
 
     matchField(parts(0), minute, 0, 59) &&
-      matchField(parts(1), hour, 0, 23) &&
-      matchField(parts(3), month, 1, 12) &&
-      dayMatch
+    matchField(parts(1), hour, 0, 23) &&
+    matchField(parts(3), month, 1, 12) &&
+    dayMatch
   }
 
   private def matchField(field: String, value: Int, min: Int, max: Int): Boolean =
     field.split(",").iterator.map(_.trim).exists(term => matchTerm(term, value, min, max))
 
-  private def matchTerm(term: String, value: Int, min: Int, max: Int): Boolean = {
+  private def matchTerm(term: String, value: Int, min: Int, max: Int): Boolean =
     parseTerm(term, min, max) match {
-      case ParsedTerm.Literal(k)              => k == value
-      case ParsedTerm.Range(lo, hi, step)     => value >= lo && value <= hi && ((value - lo) % step == 0)
-      case ParsedTerm.Invalid                 => false
+      case ParsedTerm.Literal(k) => k == value
+      case ParsedTerm.Range(lo, hi, step) => value >= lo && value <= hi && ((value - lo) % step == 0)
+      case ParsedTerm.Invalid => false
     }
-  }
 
   private enum ParsedTerm {
     case Literal(value: Int)
@@ -110,7 +111,7 @@ object CronExpression {
           // Step modifier on a literal isn't meaningful — treat as
           // pure literal when step==1, otherwise reject.
           case Some(k) if step == 1 && k >= min && k <= max => ParsedTerm.Literal(k)
-          case _                                            => ParsedTerm.Invalid
+          case _ => ParsedTerm.Invalid
         }
     }
   }

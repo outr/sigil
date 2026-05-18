@@ -69,7 +69,7 @@ final class BspManager(sigil: Sigil { type DB <: SigilDB & ToolingCollections })
   def shutdown(projectRoot: String): Task[Unit] =
     Option(sessions.remove(projectRoot)) match {
       case Some(s) => s.shutdown()
-      case None    => Task.unit
+      case None => Task.unit
     }
 
   def shutdownAll(): Task[Unit] = Task.defer {

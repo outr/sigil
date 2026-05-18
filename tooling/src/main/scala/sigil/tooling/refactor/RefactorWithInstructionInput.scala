@@ -41,4 +41,5 @@ case class RefactorWithInstructionInput(path: String,
                                         instruction: String,
                                         workerModelId: Option[String] = None,
                                         maxParallel: Int = 5,
-                                        maxWorkers: Int = 1000) extends ToolInput derives RW
+                                        maxWorkers: Int = 1000)
+  extends ToolInput derives RW

@@ -42,8 +42,8 @@ import java.util.concurrent.atomic.AtomicReference
 object TestSigil extends Sigil {
   override type DB = sigil.db.DefaultSigilDB
   override protected def buildDB(directory: Option[java.nio.file.Path],
-                                  storeManager: lightdb.store.CollectionManager,
-                                  appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
+                                 storeManager: lightdb.store.CollectionManager,
+                                 appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
     new sigil.db.DefaultSigilDB(directory, storeManager, appUpgrades)
 
   override def testMode: Boolean = true
@@ -52,50 +52,56 @@ object TestSigil extends Sigil {
     Profig("sigil.llamacpp.host").asOr[URL](url"https://llama.voidcraft.ai")
   )
 
-  /** Per-conversation workspace overrides for tests that exercise
-    * `workspaceFor`-aware code paths (filesystem tools, Metals
-    * routing, etc.). Tests call [[setWorkspace]] before exercising
-    * the code path; the framework default returns `None`. */
+  /**
+   * Per-conversation workspace overrides for tests that exercise
+   * `workspaceFor`-aware code paths (filesystem tools, Metals
+   * routing, etc.). Tests call [[setWorkspace]] before exercising
+   * the code path; the framework default returns `None`.
+   */
   private val workspaceOverrides: java.util.concurrent.ConcurrentHashMap[
-    lightdb.id.Id[sigil.conversation.Conversation], java.nio.file.Path
+    lightdb.id.Id[sigil.conversation.Conversation],
+    java.nio.file.Path
   ] = new java.util.concurrent.ConcurrentHashMap()
 
   def setWorkspace(conversationId: lightdb.id.Id[sigil.conversation.Conversation],
                    path: Option[java.nio.file.Path]): Unit = path match {
     case Some(p) => workspaceOverrides.put(conversationId, p); ()
-    case None    => workspaceOverrides.remove(conversationId); ()
+    case None => workspaceOverrides.remove(conversationId); ()
   }
 
-  /** Spec hook for sigil bug #172 — invoke the boot-time stale-Active
-    * reconciliation against the already-open DB. */
+  /**
+   * Spec hook for sigil bug #172 — invoke the boot-time stale-Active
+   * reconciliation against the already-open DB.
+   */
   def runStaleActiveReconciliation(): rapid.Task[Unit] =
     runStaleActiveReconciliationTask
 
   override def workspaceFor(conversationId: lightdb.id.Id[sigil.conversation.Conversation])
-      : rapid.Task[Option[java.nio.file.Path]] =
+    : rapid.Task[Option[java.nio.file.Path]] =
     rapid.Task(Option(workspaceOverrides.get(conversationId)))
 
   // Core tools + a few app tools. The framework's StaticToolSyncUpgrade
   // writes all of these into SigilDB.tools at startup; the default
   // DbToolFinder resolves by name from there.
   override def staticTools: List[Tool] =
-    super.staticTools ++ (List(
-      sigil.tool.core.ChangeModeTool,
-      sigil.tool.provider.PinComplexityTool,
-      // Deprecated standalone respond-family tools (sigil bug #157)
-      // — kept registered here so specs that exercise the legacy
-      // by-name dispatch path (e.g. PostRespondContextSpec) still
-      // resolve them through `findTools`.
-      sigil.tool.core.RespondOptionsTool,
-      sigil.tool.core.RespondFieldTool,
-      sigil.tool.core.RespondFailureTool,
-      sigil.tool.core.NoResponseTool,
-      SendSlackMessageTool,
-      sigil.tool.util.SleepTool,
-      sigil.tool.util.LookupTool,
-      GetMagicNumberTool,
-      ProgressEmittingTool
-    ): @annotation.nowarn("cat=deprecation"))
+    super.staticTools ++
+      (List(
+        sigil.tool.core.ChangeModeTool,
+        sigil.tool.provider.PinComplexityTool,
+        // Deprecated standalone respond-family tools (sigil bug #157)
+        // — kept registered here so specs that exercise the legacy
+        // by-name dispatch path (e.g. PostRespondContextSpec) still
+        // resolve them through `findTools`.
+        sigil.tool.core.RespondOptionsTool,
+        sigil.tool.core.RespondFieldTool,
+        sigil.tool.core.RespondFailureTool,
+        sigil.tool.core.NoResponseTool,
+        SendSlackMessageTool,
+        sigil.tool.util.SleepTool,
+        sigil.tool.util.LookupTool,
+        GetMagicNumberTool,
+        ProgressEmittingTool
+      ): @annotation.nowarn("cat=deprecation"))
 
   // ---- registration lists ----
 
@@ -103,19 +109,25 @@ object TestSigil extends Sigil {
 
   override protected def participants: List[RW[? <: Participant]] = Nil
 
-  /** Registers every test-only participant id once. Add new test
-    * participants to this list — re-registration is cheap and
-    * avoids per-suite Sigil variants. */
+  /**
+   * Registers every test-only participant id once. Add new test
+   * participants to this list — re-registration is cheap and
+   * avoids per-suite Sigil variants.
+   */
   override protected def participantIds: List[RW[? <: ParticipantId]] =
     List(RW.static(TestUser), RW.static(TestAgent))
 
-  /** Registers every test-only [[SpaceId]] once. Add new test
-    * spaces here when specs introduce them. */
+  /**
+   * Registers every test-only [[SpaceId]] once. Add new test
+   * spaces here when specs introduce them.
+   */
   override protected def spaceIds: List[RW[? <: SpaceId]] =
     List(RW.static(TestSpace), RW.static(WiringSpace), RW.static(MemoryTestSpace))
 
-  /** Registers the test-only `TestCodingMode` and `TestSkilledMode` for
-    * both polymorphic Mode RW and `modeByName` resolution. */
+  /**
+   * Registers the test-only `TestCodingMode` and `TestSkilledMode` for
+   * both polymorphic Mode RW and `modeByName` resolution.
+   */
   override protected def modes: List[Mode] =
     List(TestCodingMode, TestSkilledMode, WebResearchMode, TestModeAlpha)
 
@@ -165,9 +177,8 @@ object TestSigil extends Sigil {
   private val memoryExtractorRef = new AtomicReference[MemoryExtractor](defaultMemoryExtractor)
   private val locationForRef = new AtomicReference[(ParticipantId, Id[Conversation]) => Task[Option[Place]]](defaultLocationFor)
   private val geocoderRef = new AtomicReference[Geocoder](defaultGeocoder)
-  private val accessibleSpacesRef = new AtomicReference[List[ParticipantId] => Task[Set[SpaceId]]](
-    (_: List[ParticipantId]) => Task.pure(Set.empty[SpaceId])
-  )
+  private val accessibleSpacesRef =
+    new AtomicReference[List[ParticipantId] => Task[Set[SpaceId]]]((_: List[ParticipantId]) => Task.pure(Set.empty[SpaceId]))
   private val memoryClassifierModelRef = new AtomicReference[Option[Id[Model]]](None)
   // The default for resolveProviderStrategy delegates to the
   // framework's real flow (storage + lookup through
@@ -183,11 +194,14 @@ object TestSigil extends Sigil {
     new AtomicReference[Option[ToolFinder]](None)
   private val activeToolchainsHookRef =
     new AtomicReference[Option[Id[Conversation] => Task[Set[String]]]](None)
-  /** Per-spec override of the framework's `reservedTopicLabels` set.
-    * Some(set) — return that set as the override; None — use the
-    * framework default. Used by ReservedTopicLabelsSpec to exercise
-    * apps adding the agent's display name to the reserved set
-    * without permanently mutating shared TestSigil state. */
+
+  /**
+   * Per-spec override of the framework's `reservedTopicLabels` set.
+   * Some(set) — return that set as the override; None — use the
+   * framework default. Used by ReservedTopicLabelsSpec to exercise
+   * apps adding the agent's display name to the reserved set
+   * without permanently mutating shared TestSigil state.
+   */
   val reservedTopicLabelsOverride =
     new AtomicReference[Option[Set[String]]](None)
 
@@ -205,7 +219,7 @@ object TestSigil extends Sigil {
   override def putInformations(informations: Vector[Information]): Task[Unit] =
     putInformationsRef.get() match {
       case Some(f) => Task(f(informations))
-      case None    => super.putInformations(informations)  // default = N putInformation calls
+      case None => super.putInformations(informations) // default = N putInformation calls
     }
 
   override def embeddingProvider: EmbeddingProvider = embeddingProviderRef.get()
@@ -236,7 +250,7 @@ object TestSigil extends Sigil {
   override def resolveProviderStrategy(space: SpaceId): Task[Option[sigil.provider.ProviderStrategy]] =
     resolveProviderStrategyRef.get() match {
       case Some(fn) => fn.apply(space)
-      case None     => super.resolveProviderStrategy(space)
+      case None => super.resolveProviderStrategy(space)
     }
 
   override def findTools: ToolFinder = toolFinderRef.get().getOrElse(super.findTools)
@@ -244,7 +258,7 @@ object TestSigil extends Sigil {
   override def activeToolchains(conversationId: Id[Conversation]): Task[Set[String]] =
     activeToolchainsHookRef.get() match {
       case Some(fn) => fn.apply(conversationId)
-      case None     => super.activeToolchains(conversationId)
+      case None => super.activeToolchains(conversationId)
     }
 
   override def memoryClassifierModel: Option[Id[Model]] = memoryClassifierModelRef.get()
@@ -258,110 +272,140 @@ object TestSigil extends Sigil {
   def setEmbeddingProvider(p: EmbeddingProvider): Unit = embeddingProviderRef.set(p)
   def setVectorIndex(v: VectorIndex): Unit = vectorIndexRef.set(v)
 
-  /** Per-test cap override — specs exercising the iteration-cap
-    * soft-stop (sigil bug #125) tighten the cap so the soft-stop
-    * fires within a reasonable test window. `resetMaxAgentIterations`
-    * reverts to the framework default. */
+  /**
+   * Per-test cap override — specs exercising the iteration-cap
+   * soft-stop (sigil bug #125) tighten the cap so the soft-stop
+   * fires within a reasonable test window. `resetMaxAgentIterations`
+   * reverts to the framework default.
+   */
   private val maxAgentIterationsRef =
     new java.util.concurrent.atomic.AtomicReference[Option[Int]](None)
   override def maxAgentIterations: Int =
     maxAgentIterationsRef.get().getOrElse(super.maxAgentIterations)
   def setMaxAgentIterations(n: Int): Unit = maxAgentIterationsRef.set(Some(n))
-  def resetMaxAgentIterations(): Unit     = maxAgentIterationsRef.set(None)
+  def resetMaxAgentIterations(): Unit = maxAgentIterationsRef.set(None)
 
-  /** Per-test override for the progress-checkpoint cadence (sigil
-    * bug #133). Specs exercising the stall-intervention forced-
-    * synthesis path lower this to 1-2 iterations so the checkpoint
-    * fires within a reasonable test window without driving the
-    * default 15-iteration cadence. `resetProgressCheckpointInterval`
-    * reverts to the framework default. */
+  /**
+   * Per-test override for the progress-checkpoint cadence (sigil
+   * bug #133). Specs exercising the stall-intervention forced-
+   * synthesis path lower this to 1-2 iterations so the checkpoint
+   * fires within a reasonable test window without driving the
+   * default 15-iteration cadence. `resetProgressCheckpointInterval`
+   * reverts to the framework default.
+   */
   private val progressCheckpointIntervalRef =
     new java.util.concurrent.atomic.AtomicReference[Option[Int]](None)
   override def progressCheckpointInterval: Int =
     progressCheckpointIntervalRef.get().getOrElse(super.progressCheckpointInterval)
   def setProgressCheckpointInterval(n: Int): Unit = progressCheckpointIntervalRef.set(Some(n))
-  def resetProgressCheckpointInterval(): Unit     = progressCheckpointIntervalRef.set(None)
+  def resetProgressCheckpointInterval(): Unit = progressCheckpointIntervalRef.set(None)
 
-  /** Per-test ToolFinder override — specs that need a synthetic
-    * tool catalog (consent gate, toolchain boost, etc.) install
-    * one without touching the persisted DB tools. `None` reverts
-    * to the framework default (DbToolFinder over the static
-    * roster). */
+  /**
+   * Per-test ToolFinder override — specs that need a synthetic
+   * tool catalog (consent gate, toolchain boost, etc.) install
+   * one without touching the persisted DB tools. `None` reverts
+   * to the framework default (DbToolFinder over the static
+   * roster).
+   */
   def setToolFinder(f: ToolFinder): Unit = toolFinderRef.set(Some(f))
   def clearToolFinder(): Unit = toolFinderRef.set(None)
 
-  /** Per-test [[Sigil.activeToolchains]] override — specs that
-    * exercise the toolchain-boost ranker (#85) wire which
-    * toolchains are "active" without spawning a real Metals /
-    * BSP / etc. session. `None` reverts to the framework
-    * default `Set.empty`. */
+  /**
+   * Per-test [[Sigil.activeToolchains]] override — specs that
+   * exercise the toolchain-boost ranker (#85) wire which
+   * toolchains are "active" without spawning a real Metals /
+   * BSP / etc. session. `None` reverts to the framework
+   * default `Set.empty`.
+   */
   def setActiveToolchainsHook(f: Id[Conversation] => Task[Set[String]]): Unit =
     activeToolchainsHookRef.set(Some(f))
   def clearActiveToolchainsHook(): Unit = activeToolchainsHookRef.set(None)
   def setCompressionSpace(s: Option[SpaceId]): Unit = compressionSpaceRef.set(s)
 
-  /** Install a callback invoked on every `putInformation` call — specs
-    * that want to capture writes for assertions pass an appender. */
+  /**
+   * Install a callback invoked on every `putInformation` call — specs
+   * that want to capture writes for assertions pass an appender.
+   */
   def onPutInformation(f: Information => Unit): Unit = putInformationRef.set(f)
 
-  /** Install a callback invoked on every `putInformations` (bulk)
-    * call. When set, the framework's default delegation to per-record
-    * `putInformation` is bypassed — specs use this to assert the
-    * batch path. Unset by default: TestSigil falls back to the
-    * framework's `N` calls to `putInformation` so existing specs
-    * that hook `onPutInformation` continue to capture the same
-    * writes. */
+  /**
+   * Install a callback invoked on every `putInformations` (bulk)
+   * call. When set, the framework's default delegation to per-record
+   * `putInformation` is bypassed — specs use this to assert the
+   * batch path. Unset by default: TestSigil falls back to the
+   * framework's `N` calls to `putInformation` so existing specs
+   * that hook `onPutInformation` continue to capture the same
+   * writes.
+   */
   def onPutInformations(f: Vector[Information] => Unit): Unit =
     putInformationsRef.set(Some(f))
 
   def clearPutInformations(): Unit = putInformationsRef.set(None)
 
-  /** Install a curator function — specs exercising compression /
-    * custom TurnInput shaping wire a curator via this hook. */
+  /**
+   * Install a curator function — specs exercising compression /
+   * custom TurnInput shaping wire a curator via this hook.
+   */
   def setCurate(f: (Id[Conversation], Id[Model], List[ParticipantId]) => Task[TurnInput]): Unit =
     curateRef.set(f)
 
-  /** Install a wire interceptor — specs needing full HTTP logging
-    * (e.g. dumping the OpenAI request/response stream) wire a
-    * [[sigil.provider.debug.JsonLinesInterceptor]] via this hook. */
+  /**
+   * Install a wire interceptor — specs needing full HTTP logging
+   * (e.g. dumping the OpenAI request/response stream) wire a
+   * [[sigil.provider.debug.JsonLinesInterceptor]] via this hook.
+   */
   def setWireInterceptor(i: spice.http.client.intercept.Interceptor): Unit =
     wireInterceptorRef.set(i)
 
-  /** Install a per-turn memory extractor — specs exercising the
-    * Orchestrator's extraction hook wire a stub here. */
+  /**
+   * Install a per-turn memory extractor — specs exercising the
+   * Orchestrator's extraction hook wire a stub here.
+   */
   def setMemoryExtractor(e: MemoryExtractor): Unit = memoryExtractorRef.set(e)
 
-  /** Install a capture hook — specs exercising the publish-time
-    * location capture wire a stub here. */
+  /**
+   * Install a capture hook — specs exercising the publish-time
+   * location capture wire a stub here.
+   */
   def setLocationFor(f: (ParticipantId, Id[Conversation]) => Task[Option[Place]]): Unit =
     locationForRef.set(f)
 
-  /** Install a [[Geocoder]] — specs exercising async enrichment wire
-    * an [[sigil.spatial.InMemoryGeocoder]] or custom impl here. */
+  /**
+   * Install a [[Geocoder]] — specs exercising async enrichment wire
+   * an [[sigil.spatial.InMemoryGeocoder]] or custom impl here.
+   */
   def setGeocoder(g: Geocoder): Unit = geocoderRef.set(g)
 
-  /** Install an `accessibleSpaces` resolver — specs exercising space
-    * authz (storage, tool discovery) wire whatever they need. Default
-    * is `Set.empty` (fail-closed, matches Sigil's framework default). */
+  /**
+   * Install an `accessibleSpaces` resolver — specs exercising space
+   * authz (storage, tool discovery) wire whatever they need. Default
+   * is `Set.empty` (fail-closed, matches Sigil's framework default).
+   */
   def setAccessibleSpaces(f: List[ParticipantId] => Task[Set[SpaceId]]): Unit =
     accessibleSpacesRef.set(f)
 
-  /** Install a `memoryClassifierModel` — specs exercising save-side
-    * keyword extraction wire the model id used for the one-shot
-    * extraction call. Default is `None` (extraction skipped). */
+  /**
+   * Install a `memoryClassifierModel` — specs exercising save-side
+   * keyword extraction wire the model id used for the one-shot
+   * extraction call. Default is `None` (extraction skipped).
+   */
   def setMemoryClassifierModel(modelId: Option[Id[Model]]): Unit =
     memoryClassifierModelRef.set(modelId)
 
-  /** Install a `resolveProviderStrategy` resolver — specs exercising
-    * provider routing (bug #41 size-aware candidate picking, etc.)
-    * wire a custom strategy here. Default returns `None` (no
-    * strategy → routedModelFor falls back to its `fallback` arg). */
+  /**
+   * Install a `resolveProviderStrategy` resolver — specs exercising
+   * provider routing (bug #41 size-aware candidate picking, etc.)
+   * wire a custom strategy here. Default returns `None` (no
+   * strategy → routedModelFor falls back to its `fallback` arg).
+   */
   def setResolveProviderStrategy(f: SpaceId => Task[Option[sigil.provider.ProviderStrategy]]): Unit =
     resolveProviderStrategyRef.set(Some(f))
 
-  /** Reset every mutable hook to its default. Call from `beforeEach`
-    * (or inline at the start of a test) to guarantee isolation from
-    * prior tests within the same suite. */
+  /**
+   * Reset every mutable hook to its default. Call from `beforeEach`
+   * (or inline at the start of a test) to guarantee isolation from
+   * prior tests within the same suite.
+   */
   def reset(): Unit = {
     providerRef.set(defaultProvider)
     informationRef.set(new InMemoryInformation)
@@ -380,9 +424,11 @@ object TestSigil extends Sigil {
     accessibleSpacesRef.set((_: List[ParticipantId]) => Task.pure(Set.empty[SpaceId]))
   }
 
-  /** Expose the in-memory information store that backs `getInformation`
-    * so specs populate it before exercising
-    * [[sigil.tool.util.LookupTool]]. */
+  /**
+   * Expose the in-memory information store that backs `getInformation`
+   * so specs populate it before exercising
+   * [[sigil.tool.util.LookupTool]].
+   */
   def information: InMemoryInformation = informationRef.get()
 
   /**
@@ -418,7 +464,7 @@ object TestSigil extends Sigil {
     ()
   }
 
-  private def deleteRecursive(path: java.nio.file.Path): Unit = {
+  private def deleteRecursive(path: java.nio.file.Path): Unit =
     if (java.nio.file.Files.exists(path)) {
       val stream = java.nio.file.Files.walk(path)
       try {
@@ -431,7 +477,6 @@ object TestSigil extends Sigil {
           .foreach(p => java.nio.file.Files.deleteIfExists(p))
       } finally stream.close()
     }
-  }
 }
 
 /**
@@ -441,11 +486,12 @@ object TestSigil extends Sigil {
  */
 case class SendSlackMessageInput(channel: String, text: String) extends ToolInput derives RW
 
-case object SendSlackMessageTool extends sigil.tool.TypedTool[SendSlackMessageInput](
-  name = sigil.tool.ToolName("send_slack_message"),
-  description = "Send a message to a Slack channel on behalf of the user. Takes a channel name and the message text.",
-  keywords = Set("slack", "message", "channel")
-) {
+case object SendSlackMessageTool
+  extends sigil.tool.TypedTool[SendSlackMessageInput](
+    name = sigil.tool.ToolName("send_slack_message"),
+    description = "Send a message to a Slack channel on behalf of the user. Takes a channel name and the message text.",
+    keywords = Set("slack", "message", "channel")
+  ) {
   override def paginate: Boolean = false
   override protected def executeTyped(input: SendSlackMessageInput, context: TurnContext): rapid.Stream[Event] = rapid.Stream.empty
 }
@@ -490,23 +536,29 @@ case object TestAgent extends AgentParticipantId {
   override val value: String = "test-agent"
 }
 
-/** General-purpose memory space used by specs that need to persist
-  * memories without caring about the scope. Registered once via
-  * [[TestSigil.spaceIds]]. */
+/**
+ * General-purpose memory space used by specs that need to persist
+ * memories without caring about the scope. Registered once via
+ * [[TestSigil.spaceIds]].
+ */
 case object TestSpace extends SpaceId {
   override val value: String = "test-space"
   override val displayName: String = "Test space"
   override val description: Option[String] = Some("Generic test scope used by specs that don't care about partitioning.")
 }
 
-/** Memory space used by the Sigil embedding-wiring spec. */
+/**
+ * Memory space used by the Sigil embedding-wiring spec.
+ */
 case object WiringSpace extends SpaceId {
   override val value: String = "wiring-space"
   override val displayName: String = "Wiring space"
   override val description: Option[String] = Some("Vector-wiring spec scope.")
 }
 
-/** Memory space used by the memory-compressor spec for extracted facts. */
+/**
+ * Memory space used by the memory-compressor spec for extracted facts.
+ */
 case object MemoryTestSpace extends SpaceId {
   override val value: String = "memory-compressor-space"
   override val displayName: String = "Memory test space"
@@ -537,12 +589,14 @@ case object TestSkilledMode extends sigil.provider.Mode {
   ))
 }
 
-/** Deterministic test embedder — each token contributes to a
-  * fixed-dim vector via a stable hash. Avoids a real embedding API
-  * while exercising the vector-wired code paths. Used by any spec
-  * that needs [[sigil.Sigil.searchMemories]] or
-  * [[sigil.Sigil.searchConversationEvents]] to go through the vector
-  * branch rather than the Lucene fallback. */
+/**
+ * Deterministic test embedder — each token contributes to a
+ * fixed-dim vector via a stable hash. Avoids a real embedding API
+ * while exercising the vector-wired code paths. Used by any spec
+ * that needs [[sigil.Sigil.searchMemories]] or
+ * [[sigil.Sigil.searchConversationEvents]] to go through the vector
+ * branch rather than the Lucene fallback.
+ */
 object TestHashEmbeddingProvider extends EmbeddingProvider {
   override def dimensions: Int = 32
 

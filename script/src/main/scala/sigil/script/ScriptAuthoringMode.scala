@@ -161,21 +161,23 @@ case object ScriptAuthoringMode extends Mode {
         |""".stripMargin
   ))
 
-  /** Adds the script-authoring tool family to the roster. The
-    * baseline (respond, no_response, change_mode, stop, find_capability)
-    * is preserved by `ToolPolicy.Active`'s semantics — these tools
-    * supplement, don't replace.
-    *
-    * Bug #60 — names are written as [[ToolName]] literals rather than
-    * referencing the tool objects' `.name` field. The tool objects
-    * carry `modes = Set(ScriptAuthoringMode.id)` in their super-
-    * constructor, so referencing them here would create a circular
-    * static-init dependency: whichever side loads first re-enters the
-    * other's still-running `<clinit>` and reads `MODULE$ == null`,
-    * throwing `ExceptionInInitializerError`. Literals break the
-    * cycle — this side no longer touches the tool objects, so the
-    * tools load lazily on first use against an already-initialised
-    * `ScriptAuthoringMode`. */
+  /**
+   * Adds the script-authoring tool family to the roster. The
+   * baseline (respond, no_response, change_mode, stop, find_capability)
+   * is preserved by `ToolPolicy.Active`'s semantics — these tools
+   * supplement, don't replace.
+   *
+   * Bug #60 — names are written as [[ToolName]] literals rather than
+   * referencing the tool objects' `.name` field. The tool objects
+   * carry `modes = Set(ScriptAuthoringMode.id)` in their super-
+   * constructor, so referencing them here would create a circular
+   * static-init dependency: whichever side loads first re-enters the
+   * other's still-running `<clinit>` and reads `MODULE$ == null`,
+   * throwing `ExceptionInInitializerError`. Literals break the
+   * cycle — this side no longer touches the tool objects, so the
+   * tools load lazily on first use against an already-initialised
+   * `ScriptAuthoringMode`.
+   */
   override val tools: ToolPolicy = ToolPolicy.Active(List(
     ToolName("library_lookup"),
     ToolName("class_signatures"),

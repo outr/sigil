@@ -44,45 +44,45 @@ class CurrentModelToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     description = s"$provider's $model — test fixture",
     contextLength = 100_000,
     architecture = ModelArchitecture(
-      modality         = "text->text",
-      inputModalities  = List("text"),
+      modality = "text->text",
+      inputModalities = List("text"),
       outputModalities = List("text"),
-      tokenizer        = "cl100k_base",
-      instructType     = None
+      tokenizer = "cl100k_base",
+      instructType = None
     ),
     pricing = ModelPricing(
-      prompt        = BigDecimal("0.000001"),
-      completion    = BigDecimal("0.000002"),
-      webSearch     = None,
+      prompt = BigDecimal("0.000001"),
+      completion = BigDecimal("0.000002"),
+      webSearch = None,
       inputCacheRead = None
     ),
     topProvider = ModelTopProvider(
-      contextLength       = Some(100_000L),
+      contextLength = Some(100_000L),
       maxCompletionTokens = Some(8_192L),
-      isModerated         = false
+      isModerated = false
     ),
-    perRequestLimits     = None,
-    supportedParameters  = Set("temperature", "max_tokens"),
-    defaultParameters    = ModelDefaultParameters(),
-    knowledgeCutoff      = None,
-    expirationDate       = None,
-    links                = ModelLinks(details = ""),
-    created              = Timestamp(),
-    modified             = Timestamp(),
-    _id                  = Model.id(provider, model)
+    perRequestLimits = None,
+    supportedParameters = Set("temperature", "max_tokens"),
+    defaultParameters = ModelDefaultParameters(),
+    knowledgeCutoff = None,
+    expirationDate = None,
+    links = ModelLinks(details = ""),
+    created = Timestamp(),
+    modified = Timestamp(),
+    _id = Model.id(provider, model)
   )
 
   private def freshConversation(): Task[Conversation] = {
     val convId = Conversation.id(s"current-${rapid.Unique()}")
     val topic = Topic(
       conversationId = convId,
-      label          = "spec",
-      summary        = "spec",
-      createdBy      = TestUser
+      label = "spec",
+      summary = "spec",
+      createdBy = TestUser
     )
     val conv = Conversation(
       topics = List(TopicEntry(topic._id, topic.label, topic.summary)),
-      _id    = convId
+      _id = convId
     )
     for {
       _ <- TestSigil.withDB(_.topics.transaction(_.upsert(topic))).unit
@@ -92,20 +92,22 @@ class CurrentModelToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
   private def ctx(conv: Conversation): TurnContext =
     TurnContext(
-      sigil        = TestSigil,
-      chain        = List(TestUser, TestAgent),
+      sigil = TestSigil,
+      chain = List(TestUser, TestAgent),
       conversation = conv,
-      turnInput    = TurnInput(conversationId = conv.id)
+      turnInput = TurnInput(conversationId = conv.id)
     )
 
-  /** In-memory conversation skeleton — no DB persistence. Adequate for
-    * `list_models` which doesn't read the conversation. */
+  /**
+   * In-memory conversation skeleton — no DB persistence. Adequate for
+   * `list_models` which doesn't read the conversation.
+   */
   private def stubConv(suffix: String): Conversation = {
     val convId = Conversation.id(s"$suffix-${rapid.Unique()}")
     Conversation(
       topics = List(TopicEntry(
-        id      = Topic.id(s"$suffix-topic"),
-        label   = "stub",
+        id = Topic.id(s"$suffix-topic"),
+        label = "stub",
         summary = "stub"
       )),
       _id = convId
@@ -120,7 +122,7 @@ class CurrentModelToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "return all-None for a fresh conversation with no pin / strategy / history" in {
       for {
         conv <- freshConversation()
-        out  <- CurrentModelTool.invoke(CurrentModelInput(), ctx(conv))
+        out <- CurrentModelTool.invoke(CurrentModelInput(), ctx(conv))
       } yield {
         out.pinned shouldBe None
         out.assignedStrategy shouldBe None
@@ -133,9 +135,9 @@ class CurrentModelToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "report the pinned model id and a registry-resolved summary when pin_model is active" in {
       for {
         conv <- freshConversation()
-        _    <- PinModelTool.execute(PinModelInput(localModel._id.value), ctx(conv)).toList
+        _ <- PinModelTool.execute(PinModelInput(localModel._id.value), ctx(conv)).toList
         reloaded <- reloadConv(conv)
-        out  <- CurrentModelTool.invoke(CurrentModelInput(), ctx(reloaded))
+        out <- CurrentModelTool.invoke(CurrentModelInput(), ctx(reloaded))
       } yield {
         out.pinned.map(_.id) shouldBe Some(localModel._id.value)
         // The registry contains the model, so the summary is populated.
@@ -155,12 +157,12 @@ class CurrentModelToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       val phantomId = lightdb.id.Id[Model]("phantom/unknown")
       for {
         conv <- freshConversation()
-        _    <- TestSigil.withDB(_.conversations.transaction(_.modify(conv.id) {
-          case None    => Task.pure(None)
+        _ <- TestSigil.withDB(_.conversations.transaction(_.modify(conv.id) {
+          case None => Task.pure(None)
           case Some(c) => Task.pure(Some(c.copy(pinnedModelId = Some(phantomId))))
         })).unit
         reloaded <- reloadConv(conv)
-        out  <- CurrentModelTool.invoke(CurrentModelInput(), ctx(reloaded))
+        out <- CurrentModelTool.invoke(CurrentModelInput(), ctx(reloaded))
       } yield {
         out.pinned.map(_.id) shouldBe Some("phantom/unknown")
         out.pinned.flatMap(_.summary) shouldBe None
@@ -174,81 +176,75 @@ class CurrentModelToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         olderTs = Timestamp(System.currentTimeMillis() - 10_000)
         _ <- TestSigil.withDB(_.events.transaction(_.upsert(
           Message(
-            participantId  = TestAgent,
+            participantId = TestAgent,
             conversationId = conv.id,
-            topicId        = conv.currentTopicId,
-            role           = MessageRole.Standard,
-            state          = EventState.Complete,
-            modelId        = Some(anthropicModel._id),
-            timestamp      = olderTs
+            topicId = conv.currentTopicId,
+            role = MessageRole.Standard,
+            state = EventState.Complete,
+            modelId = Some(anthropicModel._id),
+            timestamp = olderTs
           )
         ))).unit
         // Newer agent message — stamped with openai. lastUsed should
         // pick this up, ignoring the older anthropic stamp.
         _ <- TestSigil.withDB(_.events.transaction(_.upsert(
           Message(
-            participantId  = TestAgent,
+            participantId = TestAgent,
             conversationId = conv.id,
-            topicId        = conv.currentTopicId,
-            role           = MessageRole.Standard,
-            state          = EventState.Complete,
-            modelId        = Some(openaiModel._id),
-            timestamp      = Timestamp()
+            topicId = conv.currentTopicId,
+            role = MessageRole.Standard,
+            state = EventState.Complete,
+            modelId = Some(openaiModel._id),
+            timestamp = Timestamp()
           )
         ))).unit
         out <- CurrentModelTool.invoke(CurrentModelInput(), ctx(conv))
-      } yield {
-        out.lastUsed.map(_.id) shouldBe Some(openaiModel._id.value)
-      }
+      } yield out.lastUsed.map(_.id) shouldBe Some(openaiModel._id.value)
     }
   }
 
   "list_models" should {
 
-    "return every model when no filter is supplied" in {
+    "return every model when no filter is supplied" in
       ListModelsTool.invoke(ListModelsInput(), ctx(stubConv("list-noop"))).map { out =>
         // The registry has at least our three test models; downstream
         // catalog refreshes may add more, so assert >= and that ours
         // appear.
         out.total should be >= 3
         val ids = out.models.map(_.id).toSet
-        ids should contain (openaiModel._id.value)
-        ids should contain (anthropicModel._id.value)
-        ids should contain (localModel._id.value)
+        ids should contain(openaiModel._id.value)
+        ids should contain(anthropicModel._id.value)
+        ids should contain(localModel._id.value)
       }
-    }
 
-    "filter by provider exact-match" in {
+    "filter by provider exact-match" in
       ListModelsTool.invoke(
         ListModelsInput(provider = Some("openai")),
         ctx(stubConv("list-openai"))
       ).map { out =>
         out.models.map(_.provider).distinct shouldBe List("openai")
-        out.models.map(_.id) should contain (openaiModel._id.value)
+        out.models.map(_.id) should contain(openaiModel._id.value)
       }
-    }
 
-    "filter by provider 'local' to surface the local llamacpp model" in {
+    "filter by provider 'local' to surface the local llamacpp model" in
       ListModelsTool.invoke(
         ListModelsInput(provider = Some("local")),
         ctx(stubConv("list-local"))
       ).map { out =>
-        out.models.map(_.id) should contain (localModel._id.value)
+        out.models.map(_.id) should contain(localModel._id.value)
         out.models.foreach(_.provider shouldBe "local")
         succeed
       }
-    }
 
-    "filter by query substring against id / name / description" in {
+    "filter by query substring against id / name / description" in
       ListModelsTool.invoke(
         ListModelsInput(query = Some("qwen")),
         ctx(stubConv("list-qwen"))
       ).map { out =>
-        out.models.map(_.id) should contain (localModel._id.value)
+        out.models.map(_.id) should contain(localModel._id.value)
       }
-    }
 
-    "respect limit when supplied" in {
+    "respect limit when supplied" in
       ListModelsTool.invoke(
         ListModelsInput(limit = Some(1)),
         ctx(stubConv("list-limited"))
@@ -257,7 +253,6 @@ class CurrentModelToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         out.models.size shouldBe 1
         out.total should be >= 3
       }
-    }
   }
 
   "tear down" should {

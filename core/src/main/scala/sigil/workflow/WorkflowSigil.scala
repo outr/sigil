@@ -43,19 +43,25 @@ import java.nio.file.Path
 trait WorkflowSigil extends Sigil {
   type DB <: SigilDB & WorkflowCollections
 
-  /** App-defined [[WorkflowTrigger]] subtypes — Sigil's framework
-    * triggers (`ConversationMessageTrigger`, `TimeTrigger`,
-    * `WebhookTrigger`, `WorkflowEventTrigger`) are auto-registered.
-    * Apps add their own (Slack, GitHub, etc.) by overriding this. */
+  /**
+   * App-defined [[WorkflowTrigger]] subtypes — Sigil's framework
+   * triggers (`ConversationMessageTrigger`, `TimeTrigger`,
+   * `WebhookTrigger`, `WorkflowEventTrigger`) are auto-registered.
+   * Apps add their own (Slack, GitHub, etc.) by overriding this.
+   */
   protected def workflowTriggerRegistrations: List[RW[? <: WorkflowTrigger]] = Nil
 
-  /** App-defined [[WorkflowStepInput]] subtypes. Sigil's seven
-    * framework step shapes are auto-registered. */
+  /**
+   * App-defined [[WorkflowStepInput]] subtypes. Sigil's seven
+   * framework step shapes are auto-registered.
+   */
   protected def workflowStepInputRegistrations: List[RW[? <: WorkflowStepInput]] = Nil
 
-  /** Auto-register the workflow lifecycle Events so they round-trip
-    * through fabric's polymorphic `Signal` discriminator. Apps that
-    * override `eventRegistrations` should chain through `super`. */
+  /**
+   * Auto-register the workflow lifecycle Events so they round-trip
+   * through fabric's polymorphic `Signal` discriminator. Apps that
+   * override `eventRegistrations` should chain through `super`.
+   */
   override protected def eventRegistrations: List[RW[? <: Event]] =
     summon[RW[sigil.workflow.event.WorkflowRunStarted]] ::
       summon[RW[sigil.workflow.event.WorkflowStepCompleted]] ::
@@ -64,25 +70,31 @@ trait WorkflowSigil extends Sigil {
       summon[RW[sigil.workflow.event.TaskExecuted]] ::
       super.eventRegistrations
 
-  /** Auto-register the workflow Notices (approval prompts, etc.) so
-    * the `Signal` poly RW round-trips them on the wire. */
+  /**
+   * Auto-register the workflow Notices (approval prompts, etc.) so
+   * the `Signal` poly RW round-trips them on the wire.
+   */
   override protected def noticeRegistrations: List[RW[? <: Notice]] =
     summon[RW[sigil.workflow.signal.WorkflowApprovalRequested]] ::
       super.noticeRegistrations
 
-  /** Set the process-wide [[WorkflowHost]] reference at trait init —
-    * compiled jobs / triggers reach back to this Sigil through
-    * that handle without threading it through Strider's engine. */
+  /**
+   * Set the process-wide [[WorkflowHost]] reference at trait init —
+   * compiled jobs / triggers reach back to this Sigil through
+   * that handle without threading it through Strider's engine.
+   */
   WorkflowHost.set(this)
 
-  /** Register the framework-shipped workflow triggers + step inputs.
-    * Runs inside [[Sigil.polymorphicRegistrations]] (via the
-    * [[Sigil.mixinPolymorphicRegistrations]] hook) after the framework
-    * leaf polytypes (WorkType, Mode, SpaceId, ...) — required because
-    * `AgentDecisionStepInput.role: Role` references `WorkType`, and
-    * forcing the step input's RW.def before WorkType is registered
-    * would cache an empty WorkType polytype state in Role.def's lazy
-    * val (sigil bug #18). */
+  /**
+   * Register the framework-shipped workflow triggers + step inputs.
+   * Runs inside [[Sigil.polymorphicRegistrations]] (via the
+   * [[Sigil.mixinPolymorphicRegistrations]] hook) after the framework
+   * leaf polytypes (WorkType, Mode, SpaceId, ...) — required because
+   * `AgentDecisionStepInput.role: Role` references `WorkType`, and
+   * forcing the step input's RW.def before WorkType is registered
+   * would cache an empty WorkType polytype state in Role.def's lazy
+   * val (sigil bug #18).
+   */
   override protected def mixinPolymorphicRegistrations: Task[Unit] =
     super.mixinPolymorphicRegistrations.flatMap { _ =>
       Task {
@@ -107,38 +119,46 @@ trait WorkflowSigil extends Sigil {
       }
     }
 
-  /** Override to point the Strider engine at a specific directory.
-    * Default: a `workflows` sub-directory under the host Sigil's
-    * `sigil.dbPath` (read via Profig — same source the framework
-    * itself uses to locate its RocksDB / Lucene paths). Apps using
-    * Postgres / non-disk storage override this to `None` and wire
-    * a custom workflow DB. */
+  /**
+   * Override to point the Strider engine at a specific directory.
+   * Default: a `workflows` sub-directory under the host Sigil's
+   * `sigil.dbPath` (read via Profig — same source the framework
+   * itself uses to locate its RocksDB / Lucene paths). Apps using
+   * Postgres / non-disk storage override this to `None` and wire
+   * a custom workflow DB.
+   */
   protected def workflowDbDirectory: Option[Path] = {
     val raw = profig.Profig("sigil.dbPath").asOr[String]("db/sigil")
     Some(java.nio.file.Path.of(raw, "workflows"))
   }
 
-  /** Maximum concurrent workflow runs the manager allows. */
+  /**
+   * Maximum concurrent workflow runs the manager allows.
+   */
   protected def maxConcurrentWorkflows: Int = 1
 
-  /** The Strider DB this manager persists into. First access also
-    * initializes the underlying LightDB — direct callers (the
-    * scheduler, tests) can use the DB's `transaction` API safely
-    * without separately invoking `workflowManager`. The lazy delay
-    * ensures consumers can configure `sigil.dbPath` (via Profig /
-    * `initFor`) before Strider reads it. */
+  /**
+   * The Strider DB this manager persists into. First access also
+   * initializes the underlying LightDB — direct callers (the
+   * scheduler, tests) can use the DB's `transaction` API safely
+   * without separately invoking `workflowManager`. The lazy delay
+   * ensures consumers can configure `sigil.dbPath` (via Profig /
+   * `initFor`) before Strider reads it.
+   */
   final lazy val workflowDb: SigilWorkflowDB = {
     val db = new SigilWorkflowDB(workflowDbDirectory)
     db.init.sync()
     db
   }
 
-  /** The framework's workflow manager. Lazy-initialized on first
-    * access — the engine starts when this is summoned. Runs until
-    * [[Sigil.shutdown]] tears it down.
-    *
-    * Calls the manager's API directly to schedule / cancel /
-    * resume runs from app code or tools. */
+  /**
+   * The framework's workflow manager. Lazy-initialized on first
+   * access — the engine starts when this is summoned. Runs until
+   * [[Sigil.shutdown]] tears it down.
+   *
+   * Calls the manager's API directly to schedule / cancel /
+   * resume runs from app code or tools.
+   */
   final lazy val workflowManager: SigilWorkflowManager = {
     val manager = new SigilWorkflowManager(
       this.asInstanceOf[Sigil { type DB <: SigilDB & WorkflowCollections }],
@@ -151,7 +171,7 @@ trait WorkflowSigil extends Sigil {
   }
 
   override def activeTasksFor(conversationId: Id[sigil.conversation.Conversation])
-    : Task[List[sigil.conversation.ConversationTask]] = {
+    : Task[List[sigil.conversation.ConversationTask]] =
     if (!_workflowManagerStarted) Task.pure(Nil)
     else workflowManager.collection.transaction { tx =>
       tx.query.toList.map { all =>
@@ -162,10 +182,9 @@ trait WorkflowSigil extends Sigil {
           .toList
       }
     }
-  }
 
   override def activeTasks(viewer: sigil.participant.ParticipantId)
-    : Task[List[sigil.conversation.ConversationTask]] = {
+    : Task[List[sigil.conversation.ConversationTask]] =
     if (!_workflowManagerStarted) Task.pure(Nil)
     else for {
       runs <- workflowManager.collection.transaction(_.query.toList)
@@ -178,24 +197,25 @@ trait WorkflowSigil extends Sigil {
           case conv if conv.participants.exists(_.id == viewer) => conv._id.value
         }.toSet
       }
-    } yield {
-      runs.iterator
-        .filter(wf => wf.conversationId.exists(viewerConvIds.contains))
-        .filter(wf => !wf.finished)
-        .flatMap(sigil.conversation.ConversationTask.fromWorkflow)
-        .toList
-        .sortBy(_.modifiedAt.value)(using Ordering.Long.reverse)
-    }
-  }
+    } yield runs.iterator
+      .filter(wf => wf.conversationId.exists(viewerConvIds.contains))
+      .filter(wf => !wf.finished)
+      .flatMap(sigil.conversation.ConversationTask.fromWorkflow)
+      .toList
+      .sortBy(_.modifiedAt.value)(using Ordering.Long.reverse)
 
-  /** Whether the framework's workflow management tools (`create_workflow`,
-    * `list_workflows`, `run_workflow`, …) are appended to `staticTools`.
-    * Default true. Apps locking down the agent surface override to false
-    * and register a curated subset. */
+  /**
+   * Whether the framework's workflow management tools (`create_workflow`,
+   * `list_workflows`, `run_workflow`, …) are appended to `staticTools`.
+   * Default true. Apps locking down the agent surface override to false
+   * and register a curated subset.
+   */
   def workflowToolsEnabled: Boolean = true
 
-  /** Whether [[WorkflowBuilderMode]] is added to the registered
-    * `modes`. Default true. */
+  /**
+   * Whether [[WorkflowBuilderMode]] is added to the registered
+   * `modes`. Default true.
+   */
   def workflowBuilderModeEnabled: Boolean = true
 
   override def staticTools: List[Tool] = {
@@ -224,22 +244,25 @@ trait WorkflowSigil extends Sigil {
     if (workflowBuilderModeEnabled) WorkflowBuilderMode :: base else base
   }
 
-  /** Tear down the Strider-backed workflow manager on Sigil shutdown.
-    * Disposes the manager's executor fiber + flushes any in-flight
-    * runs; chains through `super.onShutdown` so apps that mix multiple
-    * modules into one Sigil tear each down in declaration order.
-    *
-    * Guarded by `_workflowManagerStarted` so we never accidentally
-    * trigger `workflowManager`'s lazy init (which starts the engine)
-    * just to dispose it — apps that never used the engine pay zero
-    * shutdown cost. */
+  /**
+   * Tear down the Strider-backed workflow manager on Sigil shutdown.
+   * Disposes the manager's executor fiber + flushes any in-flight
+   * runs; chains through `super.onShutdown` so apps that mix multiple
+   * modules into one Sigil tear each down in declaration order.
+   *
+   * Guarded by `_workflowManagerStarted` so we never accidentally
+   * trigger `workflowManager`'s lazy init (which starts the engine)
+   * just to dispose it — apps that never used the engine pay zero
+   * shutdown cost.
+   */
   override protected def onShutdown: rapid.Task[Unit] =
     (if (_workflowManagerStarted) workflowManager.dispose() else rapid.Task.unit)
       .flatMap(_ => super.onShutdown)
 
-  /** Tracks whether `workflowManager`'s lazy val has been forced.
-    * Updated by an internal accessor wrapper so `onShutdown` can
-    * decide whether disposal is even needed. */
+  /**
+   * Tracks whether `workflowManager`'s lazy val has been forced.
+   * Updated by an internal accessor wrapper so `onShutdown` can
+   * decide whether disposal is even needed.
+   */
   @volatile private var _workflowManagerStarted: Boolean = false
 }
-

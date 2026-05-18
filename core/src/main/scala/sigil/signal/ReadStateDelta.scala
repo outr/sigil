@@ -39,6 +39,6 @@ case class ReadStateDelta(target: Id[Event],
 
   override def apply(target: Event): Event = target match {
     case r: ReadState => r.copy(lastReadAt = lastReadAt)
-    case other        => other
+    case other => other
   }
 }

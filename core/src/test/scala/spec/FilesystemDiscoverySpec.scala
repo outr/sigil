@@ -26,16 +26,18 @@ class FilesystemDiscoverySpec extends AnyWordSpec with Matchers {
   // touch the Sigil instance.
   private val fs = LocalFileSystemContext(basePath = None)
   private val readFile = new ReadFileTool(fs)
-  private val glob     = new GlobTool(fs)
-  private val grep     = new GrepTool(fs)
-  private val bash     = new BashTool(fs)
-  private val all      = List(readFile, glob, grep, bash)
+  private val glob = new GlobTool(fs)
+  private val grep = new GrepTool(fs)
+  private val bash = new BashTool(fs)
+  private val all = List(readFile, glob, grep, bash)
 
-  /** Score every tool against the query and rank by score
-    * descending. */
+  /**
+   * Score every tool against the query and rank by score
+   * descending.
+   */
   private def rank(query: String): List[(String, Double)] =
     all.map(t => t.name.value -> DiscoveryFilter.score(t, query))
-       .sortBy(-_._2)
+      .sortBy(-_._2)
 
   "Filesystem-tool ranking against natural-language queries (#102)" should {
 
@@ -64,7 +66,7 @@ class FilesystemDiscoverySpec extends AnyWordSpec with Matchers {
       val ranked = rank("find files by pattern")
       // Either glob or grep can reasonably win here; assert glob is
       // top-2 (find by pattern is genuinely ambiguous).
-      ranked.take(2).map(_._1) should contain ("glob")
+      ranked.take(2).map(_._1) should contain("glob")
     }
 
     "rank grep high for 'search files for text'" in {
@@ -76,7 +78,7 @@ class FilesystemDiscoverySpec extends AnyWordSpec with Matchers {
       val ranked = rank("find pattern in source code")
       // grep wins on "pattern" + "find"; read_file may compete
       // because of "source code". Assert grep is top-2.
-      ranked.take(2).map(_._1) should contain ("grep")
+      ranked.take(2).map(_._1) should contain("grep")
     }
 
     "rank bash high for 'run shell command'" in {

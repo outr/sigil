@@ -33,8 +33,10 @@ final class DapSession(val config: DebugAdapterConfig,
 
   // ---- lifecycle ----
 
-  /** Initialize the adapter — handshake. The framework calls this
-    * once at spawn; tools shouldn't normally invoke it directly. */
+  /**
+   * Initialize the adapter — handshake. The framework calls this
+   * once at spawn; tools shouldn't normally invoke it directly.
+   */
   def initialize(adapterId: String = "sigil-debug"): Task[Capabilities] = Task.defer {
     touch()
     val args = new InitializeRequestArguments()
@@ -49,23 +51,29 @@ final class DapSession(val config: DebugAdapterConfig,
     DapSession.fromFuture(server.initialize(args))
   }
 
-  /** Start a fresh process for debugging. `arguments` is a free-form
-    * map of adapter-specific keys (program path, cwd, environment,
-    * etc.) — the agent supplies what the language adapter expects. */
+  /**
+   * Start a fresh process for debugging. `arguments` is a free-form
+   * map of adapter-specific keys (program path, cwd, environment,
+   * etc.) — the agent supplies what the language adapter expects.
+   */
   def launch(arguments: java.util.Map[String, Object]): Task[Unit] = Task.defer {
     touch()
     DapSession.fromFuture(server.launch(arguments)).map(_ => ())
   }
 
-  /** Attach to a running process. */
+  /**
+   * Attach to a running process.
+   */
   def attach(arguments: java.util.Map[String, Object]): Task[Unit] = Task.defer {
     touch()
     DapSession.fromFuture(server.attach(arguments)).map(_ => ())
   }
 
-  /** Tell the adapter all setup (breakpoints, exception filters) is
-    * done. Required before the program runs to its first natural
-    * stop. */
+  /**
+   * Tell the adapter all setup (breakpoints, exception filters) is
+   * done. Required before the program runs to its first natural
+   * stop.
+   */
   def configurationDone(): Task[Unit] = Task.defer {
     touch()
     DapSession.fromFuture(server.configurationDone(new ConfigurationDoneArguments())).map(_ => ())
@@ -194,7 +202,8 @@ final class DapSession(val config: DebugAdapterConfig,
   def shutdown(): Task[Unit] = Task {
     try { server.disconnect(new DisconnectArguments()).get(2, java.util.concurrent.TimeUnit.SECONDS); () }
     catch { case _: Throwable => () }
-    try { process.destroy() } catch { case _: Throwable => () }
+    try process.destroy()
+    catch { case _: Throwable => () }
     if (process.isAlive) {
       process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
       if (process.isAlive) process.destroyForcibly()
@@ -205,9 +214,11 @@ final class DapSession(val config: DebugAdapterConfig,
 
 object DapSession {
 
-  /** Spawn a debug adapter, run the `initialize` handshake, and
-    * return a ready-to-use session. The agent then calls `launch` /
-    * `attach` and proceeds through the DAP lifecycle. */
+  /**
+   * Spawn a debug adapter, run the `initialize` handshake, and
+   * return a ready-to-use session. The agent then calls `launch` /
+   * `attach` and proceeds through the DAP lifecycle.
+   */
   def spawn(config: DebugAdapterConfig,
             sessionId: String,
             client: DapRecordingClient = new DapRecordingClient): Task[DapSession] = Task.defer {
@@ -235,7 +246,7 @@ object DapSession {
       if (error != null) {
         val unwrapped = error match {
           case ce: java.util.concurrent.CompletionException if ce.getCause != null => ce.getCause
-          case other                                                               => other
+          case other => other
         }
         completable.failure(unwrapped)
       } else completable.success(value)

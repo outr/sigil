@@ -33,24 +33,26 @@ class ToolLogSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   private def upsertConv(): Task[Conversation] = {
     val convId = Conversation.id(s"toollog-${rapid.Unique()}")
-    val topic  = TopicEntry(id = Topic.id(s"topic-$convId"), label = "test", summary = "test")
-    val conv   = Conversation(_id = convId, topics = List(topic))
+    val topic = TopicEntry(id = Topic.id(s"topic-$convId"), label = "test", summary = "test")
+    val conv = Conversation(_id = convId, topics = List(topic))
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
   }
 
-  /** Capture every signal emitted while `body` runs. */
+  /**
+   * Capture every signal emitted while `body` runs.
+   */
   private def captureSignals[A](body: Task[A]): Task[(A, List[Signal])] = {
     val recorded = new ConcurrentLinkedQueue[Signal]()
-    val running  = new atomic.AtomicBoolean(true)
+    val running = new atomic.AtomicBoolean(true)
     TestSigil.signals
       .takeWhile(_ => running.get())
       .evalMap(s => Task { recorded.add(s); () })
       .drain
       .startUnit()
     for {
-      _      <- Task.sleep(50.millis)
+      _ <- Task.sleep(50.millis)
       result <- body
-      _      <- Task.sleep(150.millis)
+      _ <- Task.sleep(150.millis)
     } yield {
       running.set(false)
       (result, recorded.iterator().asScala.toList)
@@ -59,12 +61,12 @@ class ToolLogSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   private def freshContext(conv: Conversation, invokeId: Option[Id[Event]]): TurnContext =
     TurnContext(
-      sigil               = TestSigil,
-      chain               = List(TestUser),
-      conversation        = conv,
-      turnInput           = TurnInput(conversationId = conv._id),
+      sigil = TestSigil,
+      chain = List(TestUser),
+      conversation = conv,
+      turnInput = TurnInput(conversationId = conv._id),
       currentToolInvokeId = invokeId,
-      currentToolName     = invokeId.map(_ => ToolName("test_tool"))
+      currentToolName = invokeId.map(_ => ToolName("test_tool"))
     )
 
   "TurnContext.toolLog" should {
@@ -73,11 +75,11 @@ class ToolLogSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       for {
         conv <- upsertConv()
         invoke = ToolInvoke(
-          toolName       = ToolName("test_tool"),
-          participantId  = TestUser,
+          toolName = ToolName("test_tool"),
+          participantId = TestUser,
           conversationId = conv._id,
-          topicId        = conv.currentTopicId,
-          state          = EventState.Complete
+          topicId = conv.currentTopicId,
+          state = EventState.Complete
         )
         _ <- TestSigil.publish(invoke)
         ctx = freshContext(conv, Some(invoke._id))
@@ -108,9 +110,7 @@ class ToolLogSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         ctx = freshContext(conv, None)
         captured <- captureSignals(ctx.toolLog("nobody listens"))
         (_, signals) = captured
-      } yield {
-        signals.collect { case _: ToolLog => 1 } shouldBe empty
-      }
+      } yield signals.collect { case _: ToolLog => 1 } shouldBe empty
     }
   }
 

@@ -8,9 +8,7 @@ import sigil.conversation.SkillSource
 import sigil.participant.{AgentParticipant, DefaultAgentParticipant}
 import sigil.provider.{GenerationSettings, Instructions, Mode, ToolPolicy}
 import sigil.tool.ToolName
-import sigil.tool.core.{
-  FindCapabilityTool, RespondTool, RespondOptionsTool, CancelTool
-}
+import sigil.tool.core.{FindCapabilityTool, RespondTool, RespondOptionsTool, CancelTool}
 
 /**
  * Coverage for the [[Role]] role primitive, the
@@ -63,18 +61,17 @@ class RoleSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     }
 
     "reject an empty roles list at construction" in Task {
-      an[IllegalArgumentException] should be thrownBy {
+      an[IllegalArgumentException] should be thrownBy
         DefaultAgentParticipant(
           id = TestAgent,
           modelId = sigil.db.Model.id("test", "model"),
           roles = Nil
         )
-      }
     }
 
     "accept a multi-role list" in Task {
       val planner = Role(name = "planner", description = "Plan steps.")
-      val critic  = Role(name = "critic",  description = "Question assumptions.")
+      val critic = Role(name = "critic", description = "Question assumptions.")
       val a = agent(roles = List(planner, critic))
       a.roles shouldBe List(planner, critic)
       a.roles.map(_.name) shouldBe List("planner", "critic")

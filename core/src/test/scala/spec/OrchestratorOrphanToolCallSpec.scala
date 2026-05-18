@@ -29,8 +29,10 @@ class OrchestratorOrphanToolCallSpec extends AsyncWordSpec with AsyncTaskSpec wi
 
   private val modelId: Id[Model] = Model.id("test", "model")
 
-  /** Provider that emits a `ToolCallStart` then immediately `Done`,
-    * simulating a stream that died mid-tool-call. */
+  /**
+   * Provider that emits a `ToolCallStart` then immediately `Done`,
+   * simulating a stream that died mid-tool-call.
+   */
   private class OrphanedDoneProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -46,14 +48,16 @@ class OrchestratorOrphanToolCallSpec extends AsyncWordSpec with AsyncTaskSpec wi
     }
   }
 
-  /** Provider that emits a `ToolCallStart` then THROWS — the
-    * stream never reaches `Done` / `Error`. Simulates HTTP layer
-    * raising mid-stream (e.g., context-overflow 400, dropped
-    * connection, fiber cancel). The orchestrator's `onErrorFinalize`
-    * must publish a synthetic terminal `ToolDelta` for the orphan
-    * before propagating, otherwise clients see a forever-Active
-    * `ToolInvoke`. This is bug #37 — the residual case bug #33's
-    * fix didn't cover. */
+  /**
+   * Provider that emits a `ToolCallStart` then THROWS — the
+   * stream never reaches `Done` / `Error`. Simulates HTTP layer
+   * raising mid-stream (e.g., context-overflow 400, dropped
+   * connection, fiber cancel). The orchestrator's `onErrorFinalize`
+   * must publish a synthetic terminal `ToolDelta` for the orphan
+   * before propagating, otherwise clients see a forever-Active
+   * `ToolInvoke`. This is bug #37 — the residual case bug #33's
+   * fix didn't cover.
+   */
   private class OrphanedThrowingProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -76,7 +80,9 @@ class OrchestratorOrphanToolCallSpec extends AsyncWordSpec with AsyncTaskSpec wi
     }
   }
 
-  /** Same shape but ends with `Error` instead of `Done`. */
+  /**
+   * Same shape but ends with `Error` instead of `Done`.
+   */
   private class OrphanedErrorProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -115,7 +121,7 @@ class OrchestratorOrphanToolCallSpec extends AsyncWordSpec with AsyncTaskSpec wi
   }
 
   "Orchestrator (bug #33)" should {
-    "emit a terminal ToolDelta when the provider stream ends mid-tool-call (Done arm)" in {
+    "emit a terminal ToolDelta when the provider stream ends mid-tool-call (Done arm)" in
       runWith(new OrphanedDoneProvider, suffix = "done").map { signals =>
         val invoke = signals.collectFirst { case t: ToolInvoke => t }.getOrElse(
           fail(s"Expected a ToolInvoke; saw ${signals.map(_.getClass.getSimpleName).mkString(", ")}")
@@ -126,9 +132,8 @@ class OrchestratorOrphanToolCallSpec extends AsyncWordSpec with AsyncTaskSpec wi
         terminalDelta should not be empty
         terminalDelta.flatMap(_.state) shouldBe Some(EventState.Complete)
       }
-    }
 
-    "emit a terminal ToolDelta when the provider stream ends mid-tool-call (Error arm)" in {
+    "emit a terminal ToolDelta when the provider stream ends mid-tool-call (Error arm)" in
       runWith(new OrphanedErrorProvider, suffix = "error").map { signals =>
         val invoke = signals.collectFirst { case t: ToolInvoke => t }.getOrElse(
           fail("Expected a ToolInvoke")
@@ -137,24 +142,23 @@ class OrchestratorOrphanToolCallSpec extends AsyncWordSpec with AsyncTaskSpec wi
         terminalDelta should not be empty
         terminalDelta.flatMap(_.state) shouldBe Some(EventState.Complete)
       }
-    }
   }
 
   "Orchestrator (bug #37)" should {
     "publish a terminal ToolDelta when the provider stream throws mid-call (no Done/Error arm reached)" in {
       val convId = Conversation.id("orphan-throw")
-      val conv   = Conversation(topics = TestTopicStack, _id = convId)
+      val conv = Conversation(topics = TestTopicStack, _id = convId)
       val request = ConversationRequest(
-        conversationId     = convId,
-        modelId            = modelId,
-        instructions       = Instructions(),
-        turnInput          = TurnInput(conversationId = convId),
-        currentMode        = ConversationMode,
-        currentTopic       = TestTopicEntry,
-        previousTopics     = Nil,
+        conversationId = convId,
+        modelId = modelId,
+        instructions = Instructions(),
+        turnInput = TurnInput(conversationId = convId),
+        currentMode = ConversationMode,
+        currentTopic = TestTopicEntry,
+        previousTopics = Nil,
         generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-        chain              = List(TestUser, TestAgent),
-        tools              = Vector(RespondTool)
+        chain = List(TestUser, TestAgent),
+        tools = Vector(RespondTool)
       )
 
       // Subscribe to the host's signal stream so the directly-published
@@ -177,8 +181,8 @@ class OrchestratorOrphanToolCallSpec extends AsyncWordSpec with AsyncTaskSpec wi
         // failed Task; we attempt it and assert the failure
         // propagates AND the orphan settle was published.
         attempted <- Orchestrator.process(TestSigil, new OrphanedThrowingProvider, request, conv).toList.attempt
-        _          = Thread.sleep(150)
-        _          = running = false
+        _ = Thread.sleep(150)
+        _ = running = false
       } yield {
         attempted.isFailure shouldBe true
         attempted.failed.get.getMessage should include("simulated mid-stream")

@@ -50,4 +50,5 @@ import sigil.provider.{ConversationWork, WorkType}
 case class Role(name: String,
                 description: String,
                 skill: Option[ActiveSkillSlot] = None,
-                workType: WorkType = ConversationWork) derives RW
+                workType: WorkType = ConversationWork)
+  derives RW

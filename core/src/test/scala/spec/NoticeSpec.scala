@@ -74,8 +74,8 @@ class NoticeSpec extends AnyWordSpec with Matchers {
       hub.close()
 
       broadcast.toList.sync() shouldBe List(notice)
-      scopedA.toList.sync()   shouldBe List(notice)
-      scopedB.toList.sync()   shouldBe List(notice)
+      scopedA.toList.sync() shouldBe List(notice)
+      scopedB.toList.sync() shouldBe List(notice)
     }
 
     "deliver emitTo(viewer) only to that viewer's scoped subscriber" in {
@@ -92,8 +92,8 @@ class NoticeSpec extends AnyWordSpec with Matchers {
       // broadcast subscribers (no viewer) and other-viewer subscriptions
       // do NOT receive it.
       broadcast.toList.sync() shouldBe empty
-      scopedA.toList.sync()   shouldBe List(notice)
-      scopedB.toList.sync()   shouldBe empty
+      scopedA.toList.sync() shouldBe List(notice)
+      scopedB.toList.sync() shouldBe empty
     }
   }
 

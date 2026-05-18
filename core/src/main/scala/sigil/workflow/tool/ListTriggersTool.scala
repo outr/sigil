@@ -17,20 +17,22 @@ case class ListTriggersInput(workflowId: String) extends ToolInput derives RW
  * `unregister_trigger`), its `kind` discriminator, and its typed
  * field values (compact JSON of the trigger's case-class shape).
  */
-final class ListTriggersTool extends TypedTool[ListTriggersInput](
-  name = ToolName("list_triggers"),
-  description =
-    """List the triggers registered on a workflow template.
+final class ListTriggersTool
+  extends TypedTool[ListTriggersInput](
+    name = ToolName("list_triggers"),
+    description =
+      """List the triggers registered on a workflow template.
       |
       |`workflowId` is the template id. Returns each trigger's index, kind, and typed
       |field values — useful before unregistering a trigger by index, or when reviewing
       |what events fire a workflow.""".stripMargin,
-  examples = List(ToolExample("list triggers on a template", ListTriggersInput(workflowId = "wf-abc"))),
-  keywords = Set("workflow", "trigger", "list")
-) with WorkflowToolSupport {
+    examples = List(ToolExample("list triggers on a template", ListTriggersInput(workflowId = "wf-abc"))),
+    keywords = Set("workflow", "trigger", "list")
+  )
+  with WorkflowToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: ListTriggersInput, ctx: TurnContext): Stream[Event] = {
+  override protected def executeTyped(input: ListTriggersInput, ctx: TurnContext): Stream[Event] =
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)
       case Right(host) =>
@@ -50,5 +52,4 @@ final class ListTriggersTool extends TypedTool[ListTriggersInput](
         }
         Stream.force(task.map(text => reply(ctx, text)))
     }
-  }
 }

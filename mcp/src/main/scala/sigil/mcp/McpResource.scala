@@ -10,4 +10,5 @@ import fabric.rw.*
 case class McpResource(uri: String,
                        name: Option[String] = None,
                        description: Option[String] = None,
-                       mimeType: Option[String] = None) derives RW
+                       mimeType: Option[String] = None)
+  derives RW

@@ -69,8 +69,8 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
       val ex = intercept[IllegalStateException] {
         FrameBuilder.appendFor(FrameBuilder.appendFor(Vector.empty, invoke), orphan)
       }
-      ex.getMessage should include ("origin")
-      ex.getMessage should include ("Tool-role")
+      ex.getMessage should include("origin")
+      ex.getMessage should include("Tool-role")
     }
 
     "pair correctly when origin is set on a Message" in {
@@ -114,9 +114,9 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
       // frames sharing the call_id, ready for renderFrames to merge
       // into one wire-level function_call_output.
       val invoke = completeInvoke("multi_emit")
-      val ack          = toolMessage("step 1: ack",          origin = Some(invoke._id))
-      val suggestion   = toolMessage("step 2: schema",       origin = Some(invoke._id))
-      val followup     = toolMessage("step 3: invocation",   origin = Some(invoke._id))
+      val ack = toolMessage("step 1: ack", origin = Some(invoke._id))
+      val suggestion = toolMessage("step 2: schema", origin = Some(invoke._id))
+      val followup = toolMessage("step 3: invocation", origin = Some(invoke._id))
       val frames = List(ack, suggestion, followup).foldLeft(
         FrameBuilder.appendFor(Vector.empty, invoke)
       )(FrameBuilder.appendFor)
@@ -217,12 +217,12 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
         // origin = None — user's first message is a conversational root.
       )
       val invoke = completeInvoke("traced_chain").copy(origin = Some(userMsg._id))
-      val reply  = toolMessage("done", origin = Some(invoke._id))
+      val reply = toolMessage("done", origin = Some(invoke._id))
 
       val byId: Map[Id[Event], Event] = Map(userMsg._id -> userMsg, invoke._id -> invoke, reply._id -> reply)
       def ancestors(start: Event): List[Event] = start.origin match {
         case Some(parentId) => byId.get(parentId).toList.flatMap(p => p :: ancestors(p))
-        case None           => Nil
+        case None => Nil
       }
       val chain = ancestors(reply)
       chain.map(_._id) shouldBe List(invoke._id, userMsg._id)
@@ -377,9 +377,9 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
       }
 
       // All three result markers appear — the content is preserved.
-      body should include ("PRIMARY_RESULT_MARKER")
-      body should include ("FOLLOWUP_RESULT_MARKER")
-      body should include ("TRAILING_RESULT_MARKER")
+      body should include("PRIMARY_RESULT_MARKER")
+      body should include("FOLLOWUP_RESULT_MARKER")
+      body should include("TRAILING_RESULT_MARKER")
 
       // BUT: only ONE `function_call_output` for the merge-test
       // invoke. The wire stays 1:1 — the three frames collapsed

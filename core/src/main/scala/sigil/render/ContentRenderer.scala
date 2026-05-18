@@ -21,23 +21,31 @@ import sigil.tool.model.ResponseContent
  */
 trait ContentRenderer[Output] {
 
-  /** Render a single block. Recursive entry point for renderers that
+  /**
+   * Render a single block. Recursive entry point for renderers that
    * compose per-block output (most String renderers concatenate; a
-   * Slack Block Kit renderer would build elements). */
+   * Slack Block Kit renderer would build elements).
+   */
   def renderBlock(block: ResponseContent): Output
 
-  /** Render a sequence of blocks into one Output. Default: render each
+  /**
+   * Render a sequence of blocks into one Output. Default: render each
    * block and combine via [[combine]]; renderers may override for
-   * sequence-aware behavior (e.g. inserting separators between blocks). */
+   * sequence-aware behavior (e.g. inserting separators between blocks).
+   */
   def render(blocks: Vector[ResponseContent]): Output =
     blocks.map(renderBlock).foldLeft(empty)(combine)
 
-  /** The "no content" identity element — the starting point for `render`
-   * and the result of an empty content vector. */
+  /**
+   * The "no content" identity element — the starting point for `render`
+   * and the result of an empty content vector.
+   */
   def empty: Output
 
-  /** Combine two rendered outputs. For string renderers this is typically
+  /**
+   * Combine two rendered outputs. For string renderers this is typically
    * concatenation with a separator (`"\n\n"`); for structural renderers
-   * it's vector concatenation. */
+   * it's vector concatenation.
+   */
   def combine(a: Output, b: Output): Output
 }

@@ -26,7 +26,8 @@ final class GitStatusTool(context: FileSystemContext)
       ToolExample("Status of a specific repo", GitStatusInput(workingDir = Some("/abs/path/to/repo")))
     ),
     keywords = Set("git", "status", "changes", "diff", "porcelain", "uncommitted")
-  ) with sigil.tool.ReadOnlyExternalTool {
+  )
+  with sigil.tool.ReadOnlyExternalTool {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: GitStatusInput, ctx: TurnContext): Stream[Event] = Stream.force(

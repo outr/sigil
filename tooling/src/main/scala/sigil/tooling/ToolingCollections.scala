@@ -12,5 +12,5 @@ import sigil.db.SigilDB
  */
 trait ToolingCollections { self: SigilDB =>
   val lspServers: S[LspServerConfig, LspServerConfig.type] = store(LspServerConfig)()
-  val bspBuilds:  S[BspBuildConfig, BspBuildConfig.type]   = store(BspBuildConfig)()
+  val bspBuilds: S[BspBuildConfig, BspBuildConfig.type] = store(BspBuildConfig)()
 }

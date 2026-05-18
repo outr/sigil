@@ -24,15 +24,16 @@ import sigil.tool.model.ResponseContent
  * plus [[DeleteScriptToolTool]] (in case the user gives up) and the
  * just-touched tool's own schema (to demo the result).
  */
-case object UpdateScriptToolTool extends TypedTool[UpdateScriptToolInput](
-  name = ToolName("update_script_tool"),
-  description =
-    """Update the body, description, parameters schema, or keywords of an existing script-backed
+case object UpdateScriptToolTool
+  extends TypedTool[UpdateScriptToolInput](
+    name = ToolName("update_script_tool"),
+    description =
+      """Update the body, description, parameters schema, or keywords of an existing script-backed
       |tool. Identified by `name`; any omitted field keeps its stored value. The tool's space is
       |fixed at creation — copy the tool to surface it under a different space.""".stripMargin,
-  modes = Set(ScriptAuthoringMode.id),
-  keywords = Set("update", "edit", "modify", "tool", "script", "change")
-) {
+    modes = Set(ScriptAuthoringMode.id),
+    keywords = Set("update", "edit", "modify", "tool", "script", "change")
+  ) {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: UpdateScriptToolInput,
@@ -42,20 +43,22 @@ case object UpdateScriptToolTool extends TypedTool[UpdateScriptToolInput](
         tx.query.filter(_.toolName === input.name).toList.map(_.headOption).flatMap {
           case None =>
             Task.pure(Stream.emit[Event](errorReply(
-              context, s"No script tool named '${input.name}' found."
+              context,
+              s"No script tool named '${input.name}' found."
             )))
           case Some(existing: ScriptTool) =>
             if (existing.space != sigil.GlobalSpace && !accessible.contains(existing.space)) {
               Task.pure(Stream.emit[Event](errorReply(
-                context, s"Tool '${input.name}' is not accessible to this caller."
+                context,
+                s"Tool '${input.name}' is not accessible to this caller."
               )))
             } else {
               val updated = existing.copy(
                 description = input.description.getOrElse(existing.description),
-                code        = input.code.getOrElse(existing.code),
-                parameters  = input.parameters.fold(existing.parameters)(JsonSchemaToDefinition.apply),
-                keywords    = input.keywords.getOrElse(existing.keywords),
-                modified    = Timestamp(Nowish())
+                code = input.code.getOrElse(existing.code),
+                parameters = input.parameters.fold(existing.parameters)(JsonSchemaToDefinition.apply),
+                keywords = input.keywords.getOrElse(existing.keywords),
+                modified = Timestamp(Nowish())
               )
               tx.upsert(updated).map { stored =>
                 // Bug #69 — single Message(Tool) carrying the
@@ -73,20 +76,21 @@ case object UpdateScriptToolTool extends TypedTool[UpdateScriptToolInput](
                 text.append(s"  arguments matching this schema:\n")
                 text.append(schemaJson).append("\n")
                 val ack = Message(
-                  participantId  = context.caller,
+                  participantId = context.caller,
                   conversationId = context.conversation.id,
-                  topicId        = context.conversation.currentTopicId,
-                  content        = Vector(ResponseContent.Text(text.toString)),
-                  state          = EventState.Complete,
-                  role           = MessageRole.Tool,
-                  visibility     = MessageVisibility.Agents
+                  topicId = context.conversation.currentTopicId,
+                  content = Vector(ResponseContent.Text(text.toString)),
+                  state = EventState.Complete,
+                  role = MessageRole.Tool,
+                  visibility = MessageVisibility.Agents
                 )
                 Stream.emit[Event](ack)
               }
             }
           case Some(_) =>
             Task.pure(Stream.emit[Event](errorReply(
-              context, s"Tool '${input.name}' exists but is not a script tool."
+              context,
+              s"Tool '${input.name}' exists but is not a script tool."
             )))
         }
       })
@@ -97,12 +101,12 @@ case object UpdateScriptToolTool extends TypedTool[UpdateScriptToolInput](
 
   private def errorReply(context: TurnContext, text: String): Event =
     Message(
-      participantId  = context.caller,
+      participantId = context.caller,
       conversationId = context.conversation.id,
-      topicId        = context.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete,
-      role           = MessageRole.Tool,
-      visibility     = MessageVisibility.Agents
+      topicId = context.conversation.currentTopicId,
+      content = Vector(ResponseContent.Text(text)),
+      state = EventState.Complete,
+      role = MessageRole.Tool,
+      visibility = MessageVisibility.Agents
     )
 }

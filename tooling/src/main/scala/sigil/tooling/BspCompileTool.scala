@@ -8,7 +8,8 @@ import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
 import sigil.tooling.types.{BspCompileResult, BspDiagnostic}
 
 case class BspCompileInput(projectRoot: String,
-                           targets: List[String] = Nil) extends ToolInput derives RW
+                           targets: List[String] = Nil)
+  extends ToolInput derives RW
 
 /**
  * Compile build targets via the project's BSP server (sbt or Bloop).
@@ -19,48 +20,67 @@ case class BspCompileInput(projectRoot: String,
  * ERROR / CANCELLED / NO_TARGETS) and any diagnostics the server
  * published.
  */
-final class BspCompileTool(val manager: BspManager) extends TypedOutputTool[BspCompileInput, BspCompileResult](
-  name = ToolName("bsp_compile"),
-  description =
-    """Compile build targets via the project's BSP server (sbt or Bloop).
+final class BspCompileTool(val manager: BspManager)
+  extends TypedOutputTool[BspCompileInput, BspCompileResult](
+    name = ToolName("bsp_compile"),
+    description =
+      """Compile build targets via the project's BSP server (sbt or Bloop).
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is a list of target URIs; empty compiles every workspace target.
       |Returns `{projectRoot, status, targetCount, diagnostics: [{filePath, range, severity, message, code, source}]}`.""".stripMargin,
-  keywords = Set(
-    "bsp", "compile", "build", "type-check", "verify",
-    "errors", "warnings", "compile-check", "examine", "inspect",
-    "analyze", "review",
-    "scala", "sbt", "project", "targets", "evaluate", "validate",
-    "rebuild", "diagnostics", "fix"
-  ),
-  examples = List(
-    ToolExample(
-      "compile all targets in a project",
-      BspCompileInput(projectRoot = "/abs/path/myproject")
+    keywords = Set(
+      "bsp",
+      "compile",
+      "build",
+      "type-check",
+      "verify",
+      "errors",
+      "warnings",
+      "compile-check",
+      "examine",
+      "inspect",
+      "analyze",
+      "review",
+      "scala",
+      "sbt",
+      "project",
+      "targets",
+      "evaluate",
+      "validate",
+      "rebuild",
+      "diagnostics",
+      "fix"
+    ),
+    examples = List(
+      ToolExample(
+        "compile all targets in a project",
+        BspCompileInput(projectRoot = "/abs/path/myproject")
+      )
     )
   )
-) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  with sigil.tool.ReadOnlyExternalTool
+  with BspToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: BspCompileInput, context: TurnContext): Task[BspCompileResult] =
     withSessionTyped[BspCompileResult](
-      input.projectRoot, context,
+      input.projectRoot,
+      context,
       onError = msg => BspCompileResult(input.projectRoot, "ERROR", 0, Nil)
     ) { session =>
       targetsFromInput(session, input.targets).flatMap { targets =>
         if (targets.isEmpty) {
           Task.pure(BspCompileResult(
             projectRoot = input.projectRoot,
-            status      = "NO_TARGETS",
+            status = "NO_TARGETS",
             targetCount = 0,
             diagnostics = Nil
           ))
-        }
-        else session.compile(targets).map { result =>
+        } else session.compile(targets).map { result =>
           val status = result.getStatusCode match {
-            case StatusCode.OK        => "OK"
-            case StatusCode.ERROR     => "ERROR"
+            case StatusCode.OK => "OK"
+            case StatusCode.ERROR => "ERROR"
             case StatusCode.CANCELLED => "CANCELLED"
           }
           val diags = session.client.diagnosticsSnapshot
@@ -73,7 +93,7 @@ final class BspCompileTool(val manager: BspManager) extends TypedOutputTool[BspC
           }
           BspCompileResult(
             projectRoot = input.projectRoot,
-            status      = status,
+            status = status,
             targetCount = targets.size,
             diagnostics = typedDiags
           )

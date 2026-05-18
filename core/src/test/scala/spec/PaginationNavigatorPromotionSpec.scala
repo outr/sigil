@@ -40,23 +40,23 @@ class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec 
     // first, then pair the ToolResults to it.
     val invokeId = Event.id()
     val invoke = ToolInvoke(
-      toolName       = ToolName("paginated_probe"),
-      participantId  = TestAgent,
+      toolName = ToolName("paginated_probe"),
+      participantId = TestAgent,
       conversationId = convId,
-      topicId        = TestTopicEntry.id,
-      _id            = invokeId,
-      state          = EventState.Complete
+      topicId = TestTopicEntry.id,
+      _id = invokeId,
+      state = EventState.Complete
     )
     val result = ToolResults(
-      schemas        = Nil,
-      participantId  = TestAgent,
+      schemas = Nil,
+      participantId = TestAgent,
       conversationId = convId,
-      topicId        = TestTopicEntry.id,
-      outcome        = ToolOutcome.Success,
-      typed          = Some(summon[RW[JsonPagedResult]].read(typedPayload)),
-      state          = EventState.Complete,
-      role           = MessageRole.Tool,
-      origin         = Some(invokeId)
+      topicId = TestTopicEntry.id,
+      outcome = ToolOutcome.Success,
+      typed = Some(summon[RW[JsonPagedResult]].read(typedPayload)),
+      state = EventState.Complete,
+      role = MessageRole.Tool,
+      origin = Some(invokeId)
     )
     TestSigil.publish(invoke).flatMap(_ => TestSigil.publish(result)).unit
   }
@@ -69,17 +69,17 @@ class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec 
     "auto-promote next_page + query_tool_output when a ToolResults carries a JsonPagedResult with hasMore = true" in {
       val convId = freshConvId()
       val page = JsonPagedResult(
-        items       = Nil,
-        hasMore     = true,
-        page        = 0,
-        pageSize    = 50,
+        items = Nil,
+        hasMore = true,
+        page = 0,
+        pageSize = 50,
         referenceId = "ref-1",
-        callId      = Id[Event]("call-1")
+        callId = Id[Event]("call-1")
       )
       for {
-        _      <- setup(convId)
-        _      <- publishPaginatedToolResult(convId, page)
-        names  <- suggestedToolsOf(TestAgent, convId)
+        _ <- setup(convId)
+        _ <- publishPaginatedToolResult(convId, page)
+        names <- suggestedToolsOf(TestAgent, convId)
       } yield {
         names should contain("next_page")
         names should contain("query_tool_output")
@@ -89,18 +89,18 @@ class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec 
     "auto-promote when there are no more pages but child nodeIds exist" in {
       val convId = freshConvId()
       val page = JsonPagedResult(
-        items       = Nil,
-        hasMore     = false,
-        page        = 0,
-        pageSize    = 50,
+        items = Nil,
+        hasMore = false,
+        page = 0,
+        pageSize = 50,
         referenceId = "ref-2",
-        callId      = Id[Event]("call-2"),
-        nodeIds     = List("node-a", "node-b")
+        callId = Id[Event]("call-2"),
+        nodeIds = List("node-a", "node-b")
       )
       for {
-        _      <- setup(convId)
-        _      <- publishPaginatedToolResult(convId, page)
-        names  <- suggestedToolsOf(TestAgent, convId)
+        _ <- setup(convId)
+        _ <- publishPaginatedToolResult(convId, page)
+        names <- suggestedToolsOf(TestAgent, convId)
       } yield {
         names should contain("next_page")
         names should contain("query_tool_output")
@@ -110,18 +110,18 @@ class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec 
     "NOT promote when a paginated result fits in one page with no children (nothing to navigate to)" in {
       val convId = freshConvId()
       val page = JsonPagedResult(
-        items       = Nil,
-        hasMore     = false,
-        page        = 0,
-        pageSize    = 50,
+        items = Nil,
+        hasMore = false,
+        page = 0,
+        pageSize = 50,
         referenceId = "ref-3",
-        callId      = Id[Event]("call-3"),
-        nodeIds     = Nil
+        callId = Id[Event]("call-3"),
+        nodeIds = Nil
       )
       for {
-        _      <- setup(convId)
-        _      <- publishPaginatedToolResult(convId, page)
-        names  <- suggestedToolsOf(TestAgent, convId)
+        _ <- setup(convId)
+        _ <- publishPaginatedToolResult(convId, page)
+        names <- suggestedToolsOf(TestAgent, convId)
       } yield {
         names should not contain "next_page"
         names should not contain "query_tool_output"
@@ -133,28 +133,28 @@ class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec 
       val convId = freshConvId()
       val invokeId = Event.id()
       val invoke = ToolInvoke(
-        toolName       = ToolName("non_paginated_probe"),
-        participantId  = TestAgent,
+        toolName = ToolName("non_paginated_probe"),
+        participantId = TestAgent,
         conversationId = convId,
-        topicId        = TestTopicEntry.id,
-        _id            = invokeId,
-        state          = EventState.Complete
+        topicId = TestTopicEntry.id,
+        _id = invokeId,
+        state = EventState.Complete
       )
       val result = ToolResults(
-        schemas        = Nil,
-        participantId  = TestAgent,
+        schemas = Nil,
+        participantId = TestAgent,
         conversationId = convId,
-        topicId        = TestTopicEntry.id,
-        outcome        = ToolOutcome.Success,
-        typed          = Some(obj("result" -> str("ok"))),
-        state          = EventState.Complete,
-        role           = MessageRole.Tool,
-        origin         = Some(invokeId)
+        topicId = TestTopicEntry.id,
+        outcome = ToolOutcome.Success,
+        typed = Some(obj("result" -> str("ok"))),
+        state = EventState.Complete,
+        role = MessageRole.Tool,
+        origin = Some(invokeId)
       )
       for {
-        _     <- setup(convId)
-        _     <- TestSigil.publish(invoke)
-        _     <- TestSigil.publish(result)
+        _ <- setup(convId)
+        _ <- TestSigil.publish(invoke)
+        _ <- TestSigil.publish(result)
         names <- suggestedToolsOf(TestAgent, convId)
       } yield {
         names should not contain "next_page"
@@ -179,82 +179,83 @@ class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec 
       val discovered = (1 to 50).map(i => s"discovered_tool_$i").toList
 
       // 50 fake find_capability matches.
-      val capMatches = discovered.map(n => CapabilityMatch(
-        name           = n,
-        description    = s"fake $n",
-        capabilityType = CapabilityType.Tool,
-        score          = 1.0,
-        status         = CapabilityStatus.Ready
-      ))
+      val capMatches = discovered.map(n =>
+        CapabilityMatch(
+          name = n,
+          description = s"fake $n",
+          capabilityType = CapabilityType.Tool,
+          score = 1.0,
+          status = CapabilityStatus.Ready
+        ))
       val findInvokeId = Event.id()
       val findInvoke = ToolInvoke(
-        toolName       = ToolName("find_capability"),
-        participantId  = TestAgent,
+        toolName = ToolName("find_capability"),
+        participantId = TestAgent,
         conversationId = convId,
-        topicId        = TestTopicEntry.id,
-        _id            = findInvokeId,
-        state          = EventState.Complete
+        topicId = TestTopicEntry.id,
+        _id = findInvokeId,
+        state = EventState.Complete
       )
       val capResults = CapabilityResults(
-        matches        = capMatches,
-        participantId  = TestAgent,
+        matches = capMatches,
+        participantId = TestAgent,
         conversationId = convId,
-        topicId        = TestTopicEntry.id,
-        query          = "fake query",
-        state          = EventState.Complete,
-        role           = MessageRole.Tool,
-        origin         = Some(findInvokeId)
+        topicId = TestTopicEntry.id,
+        query = "fake query",
+        state = EventState.Complete,
+        role = MessageRole.Tool,
+        origin = Some(findInvokeId)
       )
 
       def pagedInvokeAndResult(toolName: String, ref: String): (ToolInvoke, ToolResults) = {
         val invokeId = Event.id()
         val invoke = ToolInvoke(
-          toolName       = ToolName(toolName),
-          participantId  = TestAgent,
+          toolName = ToolName(toolName),
+          participantId = TestAgent,
           conversationId = convId,
-          topicId        = TestTopicEntry.id,
-          _id            = invokeId,
-          state          = EventState.Complete
+          topicId = TestTopicEntry.id,
+          _id = invokeId,
+          state = EventState.Complete
         )
         val page = JsonPagedResult(
-          items       = Nil,
-          hasMore     = true,
-          page        = 0,
-          pageSize    = 100,
+          items = Nil,
+          hasMore = true,
+          page = 0,
+          pageSize = 100,
           referenceId = ref,
-          callId      = Id[Event](s"$ref-call")
+          callId = Id[Event](s"$ref-call")
         )
         val result = ToolResults(
-          schemas        = Nil,
-          participantId  = TestAgent,
+          schemas = Nil,
+          participantId = TestAgent,
           conversationId = convId,
-          topicId        = TestTopicEntry.id,
-          outcome        = ToolOutcome.Success,
-          typed          = Some(summon[RW[JsonPagedResult]].read(page)),
-          state          = EventState.Complete,
-          role           = MessageRole.Tool,
-          origin         = Some(invokeId)
+          topicId = TestTopicEntry.id,
+          outcome = ToolOutcome.Success,
+          typed = Some(summon[RW[JsonPagedResult]].read(page)),
+          state = EventState.Complete,
+          role = MessageRole.Tool,
+          origin = Some(invokeId)
         )
         (invoke, result)
       }
 
       val (grepInvoke, grepResult) = pagedInvokeAndResult("grep", "grep-ref")
-      val (qtoInvoke,  qtoResult)  = pagedInvokeAndResult("query_tool_output", "qto-ref")
+      val (qtoInvoke, qtoResult) = pagedInvokeAndResult("query_tool_output", "qto-ref")
 
       for {
-        _              <- setup(convId)
+        _ <- setup(convId)
         // 1. find_capability lands → 50 suggestedTools.
-        _              <- TestSigil.publish(findInvoke)
-        _              <- TestSigil.publish(capResults)
-        afterFind      <- suggestedToolsOf(TestAgent, convId)
+        _ <- TestSigil.publish(findInvoke)
+        _ <- TestSigil.publish(capResults)
+        afterFind <- suggestedToolsOf(TestAgent, convId)
         // 2. grep lands (PaginatedTool shape, schemas=Nil).
-        _              <- TestSigil.publish(grepInvoke)
-        _              <- TestSigil.publish(grepResult)
-        afterGrep      <- suggestedToolsOf(TestAgent, convId)
+        _ <- TestSigil.publish(grepInvoke)
+        _ <- TestSigil.publish(grepResult)
+        afterGrep <- suggestedToolsOf(TestAgent, convId)
         // 3. query_tool_output lands (TypedOutputTool shape, schemas=Nil).
-        _              <- TestSigil.publish(qtoInvoke)
-        _              <- TestSigil.publish(qtoResult)
-        afterQto       <- suggestedToolsOf(TestAgent, convId)
+        _ <- TestSigil.publish(qtoInvoke)
+        _ <- TestSigil.publish(qtoResult)
+        afterQto <- suggestedToolsOf(TestAgent, convId)
       } yield {
         // After find_capability: exactly the 50 discovered tools.
         afterFind.size shouldBe 50
@@ -285,28 +286,28 @@ class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec 
       }).unit
 
       val grepPage = JsonPagedResult(
-        items       = Nil,
-        hasMore     = true,
-        page        = 0,
-        pageSize    = 100,
+        items = Nil,
+        hasMore = true,
+        page = 0,
+        pageSize = 100,
         referenceId = "grep-ref",
-        callId      = Id[Event]("grep-call")
+        callId = Id[Event]("grep-call")
       )
       val qtoPage = JsonPagedResult(
-        items       = Nil,
-        hasMore     = true,
-        page        = 0,
-        pageSize    = 100,
+        items = Nil,
+        hasMore = true,
+        page = 0,
+        pageSize = 100,
         referenceId = "qto-ref",
-        callId      = Id[Event]("qto-call")
+        callId = Id[Event]("qto-call")
       )
 
       for {
-        _      <- setup(convId)
-        _      <- preSeed
-        _      <- publishPaginatedToolResult(convId, grepPage)
+        _ <- setup(convId)
+        _ <- preSeed
+        _ <- publishPaginatedToolResult(convId, grepPage)
         afterGrep <- suggestedToolsOf(TestAgent, convId)
-        _      <- publishPaginatedToolResult(convId, qtoPage)
+        _ <- publishPaginatedToolResult(convId, qtoPage)
         afterQto <- suggestedToolsOf(TestAgent, convId)
       } yield {
         // After grep: original 10 preserved + 2 navigators.

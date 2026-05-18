@@ -33,24 +33,26 @@ object DigitalOcean {
     if (sigilModelId.startsWith(prefix)) sigilModelId.drop(prefix.length) else sigilModelId
   }
 
-  /** Fetch DO's hosted-model catalog from `GET /v1/models` and merge
-    * the entries into the registry under the `digitalocean/` namespace.
-    * DO's response follows the OpenAI list shape:
-    * `{ "object": "list", "data": [ { "id": "kimi-k2.5", ... }, ... ] }`.
-    * The framework keeps the entries small — DO doesn't publish pricing
-    * or architecture metadata on the list endpoint, so the registry
-    * gets the id + default placeholders. Apps with richer cost
-    * tracking override [[Model.pricing]] post-merge. */
+  /**
+   * Fetch DO's hosted-model catalog from `GET /v1/models` and merge
+   * the entries into the registry under the `digitalocean/` namespace.
+   * DO's response follows the OpenAI list shape:
+   * `{ "object": "list", "data": [ { "id": "kimi-k2.5", ... }, ... ] }`.
+   * The framework keeps the entries small — DO doesn't publish pricing
+   * or architecture metadata on the list endpoint, so the registry
+   * gets the id + default placeholders. Apps with richer cost
+   * tracking override [[Model.pricing]] post-merge.
+   */
   def refreshModels(sigil: Sigil,
                     apiKey: String,
                     baseUrl: URL = url"https://inference.do-ai.run"): Task[List[Model]] = {
     val req = HttpRequest(
       method = HttpMethod.Get,
-      url    = baseUrl.withPath("/v1/models")
+      url = baseUrl.withPath("/v1/models")
     ).withHeader("Authorization", s"Bearer $apiKey")
     HttpClient.modify(_ => req).call[Json].flatMap { json =>
       val rows = json.get("data").map(_.asVector).getOrElse(Vector.empty)
-      val now  = Timestamp()
+      val now = Timestamp()
       val models = rows.toList.flatMap { row =>
         row.get("id").map(_.asString).filter(_.nonEmpty).map { modelId =>
           val canonical = s"$Provider/$modelId"
@@ -61,42 +63,42 @@ object DigitalOcean {
           // numbers; fall back to 0 when missing — apps that care
           // override post-merge with their own pricing / context data.
           val contextLength = row.get("context_length").map(_.asLong).getOrElse(0L)
-          val maxOutput    = row.get("max_output_tokens").map(_.asLong)
-          val ownedBy      = row.get("owned_by").map(_.asString).getOrElse("")
+          val maxOutput = row.get("max_output_tokens").map(_.asLong)
+          val ownedBy = row.get("owned_by").map(_.asString).getOrElse("")
           Model(
-            canonicalSlug       = canonical,
-            huggingFaceId       = "",
-            name                = modelId,
-            displayName         = Some(modelId),
-            description         = if (ownedBy.nonEmpty) s"owned_by=$ownedBy" else "",
-            contextLength       = contextLength,
-            architecture        = ModelArchitecture(
-              modality         = "text->text",
-              inputModalities  = List("text"),
+            canonicalSlug = canonical,
+            huggingFaceId = "",
+            name = modelId,
+            displayName = Some(modelId),
+            description = if (ownedBy.nonEmpty) s"owned_by=$ownedBy" else "",
+            contextLength = contextLength,
+            architecture = ModelArchitecture(
+              modality = "text->text",
+              inputModalities = List("text"),
               outputModalities = List("text"),
-              tokenizer        = "Unknown",
-              instructType     = None
+              tokenizer = "Unknown",
+              instructType = None
             ),
-            pricing             = ModelPricing(
-              prompt         = BigDecimal(0),
-              completion     = BigDecimal(0),
-              webSearch      = None,
+            pricing = ModelPricing(
+              prompt = BigDecimal(0),
+              completion = BigDecimal(0),
+              webSearch = None,
               inputCacheRead = None
             ),
-            topProvider         = ModelTopProvider(
-              contextLength       = if (contextLength > 0) Some(contextLength) else None,
+            topProvider = ModelTopProvider(
+              contextLength = if (contextLength > 0) Some(contextLength) else None,
               maxCompletionTokens = maxOutput,
-              isModerated         = false
+              isModerated = false
             ),
-            perRequestLimits    = None,
+            perRequestLimits = None,
             supportedParameters = Set.empty,
-            defaultParameters   = ModelDefaultParameters(),
-            knowledgeCutoff     = None,
-            expirationDate      = None,
-            links               = ModelLinks(details = ""),
-            created             = now,
-            modified            = now,
-            _id                 = Id[Model](canonical)
+            defaultParameters = ModelDefaultParameters(),
+            knowledgeCutoff = None,
+            expirationDate = None,
+            links = ModelLinks(details = ""),
+            created = now,
+            modified = now,
+            _id = Id[Model](canonical)
           )
         }
       }

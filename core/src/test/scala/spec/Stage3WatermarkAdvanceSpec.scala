@@ -44,42 +44,46 @@ class Stage3WatermarkAdvanceSpec extends AsyncWordSpec with AsyncTaskSpec with M
   // a small frame count. Real test inputs only need ~10 frames to
   // exceed the cap.
   private val model: Model = Model(
-    canonicalSlug       = "test/watermark-model",
-    huggingFaceId       = "",
-    name                = "watermark-model",
-    displayName         = Some("watermark-model"),
-    description         = "",
-    contextLength       = 200L,
-    architecture        = ModelArchitecture(
-      modality         = "text->text",
-      inputModalities  = List("text"),
+    canonicalSlug = "test/watermark-model",
+    huggingFaceId = "",
+    name = "watermark-model",
+    displayName = Some("watermark-model"),
+    description = "",
+    contextLength = 200L,
+    architecture = ModelArchitecture(
+      modality = "text->text",
+      inputModalities = List("text"),
       outputModalities = List("text"),
-      tokenizer        = "Unknown",
-      instructType     = None
+      tokenizer = "Unknown",
+      instructType = None
     ),
-    pricing             = ModelPricing(
-      prompt = BigDecimal(0), completion = BigDecimal(0),
-      webSearch = None, inputCacheRead = None
+    pricing = ModelPricing(
+      prompt = BigDecimal(0),
+      completion = BigDecimal(0),
+      webSearch = None,
+      inputCacheRead = None
     ),
-    topProvider         = ModelTopProvider(
-      contextLength       = Some(200L),
+    topProvider = ModelTopProvider(
+      contextLength = Some(200L),
       maxCompletionTokens = None,
-      isModerated         = false
+      isModerated = false
     ),
-    perRequestLimits    = None,
+    perRequestLimits = None,
     supportedParameters = Set.empty,
-    defaultParameters   = ModelDefaultParameters(),
-    knowledgeCutoff     = None,
-    expirationDate      = None,
-    links               = ModelLinks(details = ""),
-    created             = Timestamp(),
-    modified            = Timestamp(),
-    _id                 = modelId
+    defaultParameters = ModelDefaultParameters(),
+    knowledgeCutoff = None,
+    expirationDate = None,
+    links = ModelLinks(details = ""),
+    created = Timestamp(),
+    modified = Timestamp(),
+    _id = modelId
   )
 
-  /** Compressor that always succeeds with a canned summary — drives
-    * stage-3 deterministically without going through a provider. */
-  private final class CountingCompressor extends ContextCompressor {
+  /**
+   * Compressor that always succeeds with a canned summary — drives
+   * stage-3 deterministically without going through a provider.
+   */
+  final private class CountingCompressor extends ContextCompressor {
     val invocations = new AtomicInteger(0)
     override def compress(sigil: Sigil,
                           callerModelId: Id[Model],
@@ -88,9 +92,9 @@ class Stage3WatermarkAdvanceSpec extends AsyncWordSpec with AsyncTaskSpec with M
                           conversationId: Id[Conversation]): Task[Option[ContextSummary]] = {
       invocations.incrementAndGet()
       val summary = ContextSummary(
-        text           = "canned summary " + rapid.Unique(),
+        text = "canned summary " + rapid.Unique(),
         conversationId = conversationId,
-        tokenEstimate  = 20
+        tokenEstimate = 20
       )
       sigil.persistSummary(summary).map(Some(_))
     }
@@ -101,22 +105,25 @@ class Stage3WatermarkAdvanceSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
   private def seedConversation(convId: Id[Conversation]): Task[Unit] =
     TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-      _id = convId, topics = List(topic)
+      _id = convId,
+      topics = List(topic)
     )))).unit
 
-  /** Frames are oversized so the budget gate trips deterministically.
-    * Each Text frame is ~1200 chars → ~300 tokens at 4 chars/token.
-    * 10 frames = ~3000 tokens, vastly over the 200-token cap. */
+  /**
+   * Frames are oversized so the budget gate trips deterministically.
+   * Each Text frame is ~1200 chars → ~300 tokens at 4 chars/token.
+   * 10 frames = ~3000 tokens, vastly over the 200-token cap.
+   */
   private val padding: String = "x" * 1200
 
   private def publishFrames(convId: Id[Conversation], count: Int): Task[Unit] =
     Task.sequence((1 to count).toList.map { i =>
       TestSigil.publish(Message(
-        participantId  = TestUser,
+        participantId = TestUser,
         conversationId = convId,
-        topicId        = topic.id,
-        content        = Vector(ResponseContent.Text(s"$padding (frame $i)")),
-        state          = EventState.Complete
+        topicId = topic.id,
+        content = Vector(ResponseContent.Text(s"$padding (frame $i)")),
+        state = EventState.Complete
       ))
     }).unit
 
@@ -126,22 +133,22 @@ class Stage3WatermarkAdvanceSpec extends AsyncWordSpec with AsyncTaskSpec with M
       val convId = freshConvId("watermark")
       val compressor = new CountingCompressor
       val curator = StandardContextCurator(
-        sigil           = TestSigil,
-        optimizer       = StandardContextOptimizer(),
-        blockExtractor  = NoOpBlockExtractor,
+        sigil = TestSigil,
+        optimizer = StandardContextOptimizer(),
+        blockExtractor = NoOpBlockExtractor,
         memoryRetriever = NoOpMemoryRetriever,
-        compressor      = compressor,
-        budget          = Percentage(0.8),
-        keepMinimum     = 2
+        compressor = compressor,
+        budget = Percentage(0.8),
+        keepMinimum = 2
       )
       for {
         _ <- TestSigil.cache.replace(List(model))
         _ <- seedConversation(convId)
         _ <- publishFrames(convId, 10)
         beforeConv <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
-        _      = beforeConv.flatMap(_.clearedAt) shouldBe None
+        _ = beforeConv.flatMap(_.clearedAt) shouldBe None
         result <- curator.curate(convId, modelId, chain = List(TestUser, TestAgent))
-        afterConv  <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
+        afterConv <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
       } yield {
         // Stage-3 fired and produced a summary.
         compressor.invocations.get() should be > 0
@@ -158,13 +165,13 @@ class Stage3WatermarkAdvanceSpec extends AsyncWordSpec with AsyncTaskSpec with M
       val convId = freshConvId("refire")
       val compressor = new CountingCompressor
       val curator = StandardContextCurator(
-        sigil           = TestSigil,
-        optimizer       = StandardContextOptimizer(),
-        blockExtractor  = NoOpBlockExtractor,
+        sigil = TestSigil,
+        optimizer = StandardContextOptimizer(),
+        blockExtractor = NoOpBlockExtractor,
         memoryRetriever = NoOpMemoryRetriever,
-        compressor      = compressor,
-        budget          = Percentage(0.8),
-        keepMinimum     = 2
+        compressor = compressor,
+        budget = Percentage(0.8),
+        keepMinimum = 2
       )
       for {
         _ <- TestSigil.cache.replace(List(model))
@@ -195,7 +202,7 @@ class Stage3WatermarkAdvanceSpec extends AsyncWordSpec with AsyncTaskSpec with M
     "advance the watermark monotonically (smaller `at` is a no-op)" in {
       val convId = freshConvId("monotonic")
       val high = Timestamp(2000L)
-      val low  = Timestamp(1000L)
+      val low = Timestamp(1000L)
       for {
         _ <- seedConversation(convId)
         _ <- TestSigil.advanceClearedAt(convId, high)
@@ -213,11 +220,9 @@ class Stage3WatermarkAdvanceSpec extends AsyncWordSpec with AsyncTaskSpec with M
     "no-op when the conversation doesn't exist" in {
       val missing = freshConvId("missing")
       for {
-        _   <- TestSigil.advanceClearedAt(missing, Timestamp(1000L))
+        _ <- TestSigil.advanceClearedAt(missing, Timestamp(1000L))
         opt <- TestSigil.withDB(_.conversations.transaction(_.get(missing)))
-      } yield {
-        opt shouldBe None
-      }
+      } yield opt shouldBe None
     }
   }
 

@@ -7,16 +7,18 @@ import java.io.{File, PrintWriter}
  */
 object BankingReport {
 
-  /** Headline metrics extracted from a flat list of cell results. */
+  /**
+   * Headline metrics extracted from a flat list of cell results.
+   */
   final case class Summary(model: String,
-                           posture: String,                // safety posture used for the run (e.g. "autonomous")
+                           posture: String, // safety posture used for the run (e.g. "autonomous")
                            includeBaseline: Boolean,
                            userTaskCount: Int,
                            injectionTaskCount: Int,
-                           baselineUtilityRate: Double,    // utility on (user × no-injection)
-                           injectedUtilityRate: Double,    // utility on (user × injection) — drop is the cost of attacks
-                           tasr: Double,                   // attack success rate on (user × injection)
-                           defenseRate: Double,            // 1 − tasr
+                           baselineUtilityRate: Double, // utility on (user × no-injection)
+                           injectedUtilityRate: Double, // utility on (user × injection) — drop is the cost of attacks
+                           tasr: Double, // attack success rate on (user × injection)
+                           defenseRate: Double, // 1 − tasr
                            errorCount: Int,
                            totalCells: Int)
 
@@ -75,7 +77,8 @@ object BankingReport {
       w.println(s"| Metric | Score |")
       w.println(s"|---|---|")
       w.println(f"| Baseline utility (no attack)   | ${s.baselineUtilityRate * 100}%.1f%% (${s.userTaskCount} user tasks) |")
-      w.println(f"| Injected utility (with attack) | ${s.injectedUtilityRate * 100}%.1f%% (${s.userTaskCount} × ${s.injectionTaskCount} cells) |")
+      w.println(
+        f"| Injected utility (with attack) | ${s.injectedUtilityRate * 100}%.1f%% (${s.userTaskCount} × ${s.injectionTaskCount} cells) |")
       w.println(f"| TASR (attack success rate)     | ${s.tasr * 100}%.1f%% |")
       w.println(f"| Defense rate (1 − TASR)        | ${s.defenseRate * 100}%.1f%% |")
       w.println(f"| Errors / total cells           | ${s.errorCount}/${s.totalCells} |")

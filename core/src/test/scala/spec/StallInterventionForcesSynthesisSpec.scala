@@ -46,12 +46,14 @@ class StallInterventionForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskS
 
   private val modelId: Id[Model] = Model.id("test", "stall-soft-stop")
 
-  /** Always emits the same `grep` call (identical input + empty
-    * output) so `StallDetector.identicalStreak` fires after a few
-    * iterations. On the forced-synthesis turn (signalled by
-    * `tool_choice = Specific(respond)`), emits respond instead so
-    * the soft-stop completes cleanly. */
-  private final class StallThenSynthesizeProvider extends Provider {
+  /**
+   * Always emits the same `grep` call (identical input + empty
+   * output) so `StallDetector.identicalStreak` fires after a few
+   * iterations. On the forced-synthesis turn (signalled by
+   * `tool_choice = Specific(respond)`), emits respond instead so
+   * the soft-stop completes cleanly.
+   */
+  final private class StallThenSynthesizeProvider extends Provider {
     val callCount = new atomic.AtomicInteger(0)
     val toolChoices: atomic.AtomicReference[Vector[ToolChoice]] =
       new atomic.AtomicReference(Vector.empty)
@@ -82,11 +84,11 @@ class StallInterventionForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskS
             ProviderEvent.ToolCallComplete(
               callId,
               _root_.sigil.tool.consult.ProgressReflectionInput(
-                currentStatus      = "still looping on change_mode",
+                currentStatus = "still looping on change_mode",
                 meaningfulProgress = false,
-                remainingSteps     = "wrap up and respond",
-                stuckOn            = Some("looping"),
-                shouldAskUser      = false
+                remainingSteps = "wrap up and respond",
+                stuckOn = Some("looping"),
+                shouldAskUser = false
               )
             ),
             ProviderEvent.Done(StopReason.Complete)
@@ -98,10 +100,10 @@ class StallInterventionForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskS
               ProviderEvent.ToolCallComplete(
                 callId,
                 RespondInput(
-                  topicLabel   = "Stall-synth",
+                  topicLabel = "Stall-synth",
                   topicSummary = "forced-synthesis after stall",
-                  content      = "Synthesised from gathered context after stall intercept.",
-                  endsTurn     = true
+                  content = "Synthesised from gathered context after stall intercept.",
+                  endsTurn = true
                 )
               ),
               ProviderEvent.Done(StopReason.Complete)
@@ -119,10 +121,10 @@ class StallInterventionForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskS
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = ToolName("change_mode") :: CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = ToolName("change_mode") :: CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
@@ -132,18 +134,18 @@ class StallInterventionForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskS
       val provider = new StallThenSynthesizeProvider
       TestSigil.setProvider(Task.pure(provider))
       val convId = Conversation.id(s"stall-${rapid.Unique()}")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
       for {
-        _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _   <- TestSigil.publish(Message(
-                 participantId  = TestUser,
-                 conversationId = convId,
-                 topicId        = TestTopicEntry.id,
-                 content        = Vector(ResponseContent.Text("Evaluate the X system")),
-                 state          = EventState.Complete
-               ))
-        _   <- Task.sleep(6.seconds) // generous window for the loop + checkpoint + forced-synth
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(Message(
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Evaluate the X system")),
+          state = EventState.Complete
+        ))
+        _ <- Task.sleep(6.seconds) // generous window for the loop + checkpoint + forced-synth
         evs <- TestSigil.withDB(_.events.transaction(_.list))
       } yield {
         val convEvs = evs.filter(_.conversationId == convId)
@@ -168,7 +170,7 @@ class StallInterventionForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskS
         // The forced-synthesis turn ran — provider saw tool_choice:
         // required with the tool roster filtered to the respond family.
         val seenChoices = provider.toolChoices.get().toList
-        seenChoices should contain (ToolChoice.Required)
+        seenChoices should contain(ToolChoice.Required)
 
         // Forced-synthesis emitted a Standard-role respond from the agent.
         val agentReplies = convEvs.collect {

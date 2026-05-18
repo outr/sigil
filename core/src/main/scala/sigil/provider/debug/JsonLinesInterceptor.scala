@@ -71,10 +71,12 @@ case class JsonLinesInterceptor(path: Path) extends Interceptor {
     result
   }
 
-  /** Convert a content payload to a JSON field. Parses JSON bodies
-    * as structured JSON (so readers don't have to double-decode);
-    * wraps non-JSON strings as plain text; summarizes anything
-    * else. */
+  /**
+   * Convert a content payload to a JSON field. Parses JSON bodies
+   * as structured JSON (so readers don't have to double-decode);
+   * wraps non-JSON strings as plain text; summarizes anything
+   * else.
+   */
   private def bodyToJson(content: Option[spice.http.content.Content]): Json = content match {
     case Some(s: StringContent) =>
       Try(JsonParser(s.value)).toOption.getOrElse(str(s.value))
@@ -84,7 +86,7 @@ case class JsonLinesInterceptor(path: Path) extends Interceptor {
   }
 
   private def appendLine(line: Json): Unit = synchronized {
-    parent.foreach { p => if (!Files.exists(p)) Files.createDirectories(p) }
+    parent.foreach(p => if (!Files.exists(p)) Files.createDirectories(p))
     val serialized = JsonFormatter.Compact(line) + "\n"
     Files.writeString(path, serialized, writeOpts*)
   }

@@ -43,13 +43,16 @@ case class SaveMemoryInput(fact: String,
                            space: Option[String] = None,
                            keywords: Vector[String] = Vector.empty,
                            memoryType: MemoryType = MemoryType.Fact,
-                           /** Per-[[sigil.provider.Mode]] retrieval gate.
-                             * Pass mode `name`s (e.g. `"coding"`, `"research"`)
-                             * when the user's directive only applies in
-                             * specific modes — "always create failing unit
-                             * tests before fixing a bug" → `Set("coding")`.
-                             * Empty (default) = the memory loads in every
-                             * mode. Sigil bug #195 — keeps mode-specific
-                             * directives from bloating the prompt budget
-                             * of unrelated turns. */
-                           modeAffinity: Set[String] = Set.empty) extends ToolInput derives RW
+                           /**
+                            * Per-[[sigil.provider.Mode]] retrieval gate.
+                            * Pass mode `name`s (e.g. `"coding"`, `"research"`)
+                            * when the user's directive only applies in
+                            * specific modes — "always create failing unit
+                            * tests before fixing a bug" → `Set("coding")`.
+                            * Empty (default) = the memory loads in every
+                            * mode. Sigil bug #195 — keeps mode-specific
+                            * directives from bloating the prompt budget
+                            * of unrelated turns.
+                            */
+                           modeAffinity: Set[String] = Set.empty)
+  extends ToolInput derives RW

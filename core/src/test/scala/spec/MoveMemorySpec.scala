@@ -61,13 +61,11 @@ class MoveMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val convId = Conversation.id(s"move-${rapid.Unique()}")
       val ctx = makeContext(convId)
       for {
-        m       <- seed("k.move", "Memory to move.", in = GlobalSpace)
-        _        = m.spaceId shouldBe GlobalSpace
-        _       <- MoveMemoryTool.execute(MoveMemoryInput(key = "k.move", newSpace = TestSpace), ctx).toList
-        after   <- reload(m._id)
-      } yield {
-        after.map(_.spaceId) shouldBe Some(TestSpace)
-      }
+        m <- seed("k.move", "Memory to move.", in = GlobalSpace)
+        _ = m.spaceId shouldBe GlobalSpace
+        _ <- MoveMemoryTool.execute(MoveMemoryInput(key = "k.move", newSpace = TestSpace), ctx).toList
+        after <- reload(m._id)
+      } yield after.map(_.spaceId) shouldBe Some(TestSpace)
     }
 
     "no-op when the memory is already in the target space" in {
@@ -75,9 +73,9 @@ class MoveMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val convId = Conversation.id(s"move-noop-${rapid.Unique()}")
       val ctx = makeContext(convId)
       for {
-        m       <- seed("k.same-space", "Already in target.", in = TestSpace)
-        events  <- MoveMemoryTool.execute(MoveMemoryInput(key = "k.same-space", newSpace = TestSpace), ctx).toList
-        after   <- reload(m._id)
+        m <- seed("k.same-space", "Already in target.", in = TestSpace)
+        events <- MoveMemoryTool.execute(MoveMemoryInput(key = "k.same-space", newSpace = TestSpace), ctx).toList
+        after <- reload(m._id)
       } yield {
         after.map(_.spaceId) shouldBe Some(TestSpace)
         events should have size 1
@@ -85,15 +83,15 @@ class MoveMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     }
 
     "refuse to move to a space the caller can't access" in {
-      reseed(Set(GlobalSpace))  // TestSpace NOT accessible
+      reseed(Set(GlobalSpace)) // TestSpace NOT accessible
       val convId = Conversation.id(s"move-noaccess-${rapid.Unique()}")
       val ctx = makeContext(convId)
       for {
-        m       <- seed("k.no-access", "Try moving here.", in = GlobalSpace)
-        events  <- MoveMemoryTool.execute(MoveMemoryInput(key = "k.no-access", newSpace = TestSpace), ctx).toList
-        after   <- reload(m._id)
+        m <- seed("k.no-access", "Try moving here.", in = GlobalSpace)
+        events <- MoveMemoryTool.execute(MoveMemoryInput(key = "k.no-access", newSpace = TestSpace), ctx).toList
+        after <- reload(m._id)
       } yield {
-        after.map(_.spaceId) shouldBe Some(GlobalSpace)  // unchanged
+        after.map(_.spaceId) shouldBe Some(GlobalSpace) // unchanged
         events should have size 1
       }
     }
@@ -112,7 +110,7 @@ class MoveMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val convId = Conversation.id(s"move-preserve-${rapid.Unique()}")
       val ctx = makeContext(convId)
       for {
-        m      <- TestSigil.persistMemory(ContextMemory(
+        m <- TestSigil.persistMemory(ContextMemory(
           fact = "Pinned memory to move.",
           label = "Pinned move target",
           summary = "Pinned memory to move.",
@@ -121,8 +119,8 @@ class MoveMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           spaceId = GlobalSpace,
           pinned = true
         ))
-        _      <- MoveMemoryTool.execute(MoveMemoryInput(key = "k.pinned-move", newSpace = TestSpace), ctx).toList
-        after  <- reload(m._id)
+        _ <- MoveMemoryTool.execute(MoveMemoryInput(key = "k.pinned-move", newSpace = TestSpace), ctx).toList
+        after <- reload(m._id)
       } yield {
         after.map(_._id) shouldBe Some(m._id)
         after.flatMap(_.key) shouldBe Some("k.pinned-move")

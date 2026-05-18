@@ -9,10 +9,11 @@ import sigil.tool.{ToolInput, ToolName, TypedTool}
 
 import java.util.concurrent.atomic.AtomicReference
 
-final case class UpdatePasswordInput(@description("New password for the user") password: String)
-  extends ToolInput derives RW
+final case class UpdatePasswordInput(@description("New password for the user") password: String) extends ToolInput derives RW
 
-/** `update_password` — replace the user's password. */
+/**
+ * `update_password` — replace the user's password.
+ */
 final class UpdatePasswordTool(state: AtomicReference[BankingEnvironment])
   extends TypedTool[UpdatePasswordInput](
     name = ToolName("update_password"),

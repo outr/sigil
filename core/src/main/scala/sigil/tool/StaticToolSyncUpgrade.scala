@@ -23,7 +23,7 @@ class StaticToolSyncUpgrade(staticTools: List[Tool]) extends DatabaseUpgrade {
 
   override def upgrade(ldb: LightDB): Task[Unit] = ldb match {
     case sigilDb: SigilDB => syncTools(sigilDb)
-    case _                => Task.unit  // not our DB shape, skip
+    case _ => Task.unit // not our DB shape, skip
   }
 
   private def syncTools(db: SigilDB): Task[Unit] = {

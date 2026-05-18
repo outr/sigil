@@ -34,44 +34,49 @@ case class ConversationTask(taskId: String,
                             displayStatus: TaskDisplayStatus,
                             startedAt: Timestamp,
                             modifiedAt: Timestamp,
-                            workflowSourceId: String) derives RW
+                            workflowSourceId: String)
+  derives RW
 
 object ConversationTask {
 
-  /** Project a Strider [[Workflow]] run into the panel-display
-    * [[ConversationTask]]. Workflows without a `conversationId`
-    * (autonomous cron / background) return None — those don't
-    * belong to any conversation's panel. */
+  /**
+   * Project a Strider [[Workflow]] run into the panel-display
+   * [[ConversationTask]]. Workflows without a `conversationId`
+   * (autonomous cron / background) return None — those don't
+   * belong to any conversation's panel.
+   */
   def fromWorkflow(wf: Workflow): Option[ConversationTask] =
     wf.conversationId.map { convIdStr =>
       ConversationTask(
-        taskId           = wf._id.value,
-        conversationId   = Id[Conversation](convIdStr),
-        name             = wf.name,
-        status           = wf.status,
-        displayStatus    = computeDisplayStatus(wf),
-        startedAt        = wf.created,
-        modifiedAt       = wf.modified,
+        taskId = wf._id.value,
+        conversationId = Id[Conversation](convIdStr),
+        name = wf.name,
+        status = wf.status,
+        displayStatus = computeDisplayStatus(wf),
+        startedAt = wf.created,
+        modifiedAt = wf.modified,
         workflowSourceId = wf.sourceId.value
       )
     }
 
-  /** Refine Strider's lifecycle status with Sigil-specific
-    * waiting flavors based on which step the run is parked on. */
+  /**
+   * Refine Strider's lifecycle status with Sigil-specific
+   * waiting flavors based on which step the run is parked on.
+   */
   private def computeDisplayStatus(wf: Workflow): TaskDisplayStatus = wf.status match {
-    case WorkflowStatus.Pending   => TaskDisplayStatus.Pending
+    case WorkflowStatus.Pending => TaskDisplayStatus.Pending
     case WorkflowStatus.Scheduled => TaskDisplayStatus.Scheduled
-    case WorkflowStatus.Running   => TaskDisplayStatus.Running
-    case WorkflowStatus.Success   => TaskDisplayStatus.Success
-    case WorkflowStatus.Failure   => TaskDisplayStatus.Failure
+    case WorkflowStatus.Running => TaskDisplayStatus.Running
+    case WorkflowStatus.Success => TaskDisplayStatus.Success
+    case WorkflowStatus.Failure => TaskDisplayStatus.Failure
     case WorkflowStatus.Cancelled => TaskDisplayStatus.Cancelled
-    case WorkflowStatus.TimedOut  => TaskDisplayStatus.TimedOut
-    case WorkflowStatus.Waiting   =>
+    case WorkflowStatus.TimedOut => TaskDisplayStatus.TimedOut
+    case WorkflowStatus.Waiting =>
       val waitingStep = wf.waitingStepId.flatMap(id => wf.byStepId(id))
       waitingStep match {
-        case Some(_: SigilApproval)     => TaskDisplayStatus.WaitingForApproval
+        case Some(_: SigilApproval) => TaskDisplayStatus.WaitingForApproval
         case Some(_: AnswerTriggerImpl) => TaskDisplayStatus.WaitingForAnswer
-        case _                          => TaskDisplayStatus.Waiting
+        case _ => TaskDisplayStatus.Waiting
       }
   }
 }

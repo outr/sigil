@@ -17,15 +17,19 @@ import fabric.define.DefType
  */
 object PaginationValidator {
 
-  /** Recognised pagination field names. A `paginate = true` tool's
-    * input schema must contain at least one of these (unless it
-    * extends [[sigil.tool.output.PaginatedTool]]). */
+  /**
+   * Recognised pagination field names. A `paginate = true` tool's
+   * input schema must contain at least one of these (unless it
+   * extends [[sigil.tool.output.PaginatedTool]]).
+   */
   val PaginationFieldNames: Set[String] =
     Set("offset", "limit", "cursor", "page", "pageSize", "pageToken")
 
-  /** Validate one tool. Returns `Left(reason)` when the declaration
-    * is inconsistent with the schema, `Right(())` otherwise. */
-  def validate(tool: Tool): Either[String, Unit] = {
+  /**
+   * Validate one tool. Returns `Left(reason)` when the declaration
+   * is inconsistent with the schema, `Right(())` otherwise.
+   */
+  def validate(tool: Tool): Either[String, Unit] =
     if (!tool.paginate) Right(())
     else if (tool.isInstanceOf[sigil.tool.output.PaginatedTool[?, ?]]) Right(())
     else tool.inputDefinition.defType match {
@@ -45,15 +49,15 @@ object PaginationValidator {
             "object payload that carries a pagination field."
         )
     }
-  }
 
-  /** Validate a roster, raising on the first violation. */
-  def validateAll(tools: Iterable[Tool]): Unit = {
+  /**
+   * Validate a roster, raising on the first violation.
+   */
+  def validateAll(tools: Iterable[Tool]): Unit =
     tools.foreach { t =>
       validate(t) match {
-        case Right(_)     => ()
+        case Right(_) => ()
         case Left(reason) => throw new IllegalStateException(reason)
       }
     }
-  }
 }

@@ -24,12 +24,15 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
                                  workflowDb: SigilWorkflowDB,
                                  maxConcurrent: Int = 1)
   extends AbstractWorkflowManager[WorkflowParent, SigilWorkflowModel.type](
-    workflowDb.workflows, maxConcurrent
+    workflowDb.workflows,
+    maxConcurrent
   ) {
 
-  /** Resolve sourceId to the persisted Sigil-side template. The
-    * mapping is direct: the Strider `sourceId` is the
-    * `WorkflowTemplate._id` value. */
+  /**
+   * Resolve sourceId to the persisted Sigil-side template. The
+   * mapping is direct: the Strider `sourceId` is the
+   * `WorkflowTemplate._id` value.
+   */
   override protected def resolveParent(sourceId: Id[WorkflowParent]): Task[Option[WorkflowParent]] =
     host.withDB(_.workflowTemplates.transaction(_.get(Id[WorkflowTemplate](sourceId.value))))
       .map(_.map(SigilWorkflowParent.apply))
@@ -37,8 +40,11 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
   override protected def onWorkflowStarted(workflow: Workflow): Task[Unit] =
     publishLifecycle(workflow) { case (caller, convId, topicId) =>
       WorkflowRunStarted(
-        participantId = caller, conversationId = convId, topicId = topicId,
-        workflowId = workflow.sourceId.value, workflowName = workflow.name,
+        participantId = caller,
+        conversationId = convId,
+        topicId = topicId,
+        workflowId = workflow.sourceId.value,
+        workflowName = workflow.name,
         runId = workflow._id.value
       )
     }
@@ -46,8 +52,11 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
   override protected def onWorkflowCompleted(workflow: Workflow): Task[Unit] =
     publishLifecycle(workflow) { case (caller, convId, topicId) =>
       WorkflowRunCompleted(
-        participantId = caller, conversationId = convId, topicId = topicId,
-        workflowId = workflow.sourceId.value, workflowName = workflow.name,
+        participantId = caller,
+        conversationId = convId,
+        topicId = topicId,
+        workflowId = workflow.sourceId.value,
+        workflowName = workflow.name,
         runId = workflow._id.value
       )
     }.flatMap(_ => maybePublishTaskExecuted(workflow))
@@ -58,9 +67,13 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
         .collectFirst { case h if h.activity.toString.contains("Failure") => h.activity.toString }
         .getOrElse("unknown")
       WorkflowRunFailed(
-        participantId = caller, conversationId = convId, topicId = topicId,
-        workflowId = workflow.sourceId.value, workflowName = workflow.name,
-        runId = workflow._id.value, reason = reason
+        participantId = caller,
+        conversationId = convId,
+        topicId = topicId,
+        workflowId = workflow.sourceId.value,
+        workflowName = workflow.name,
+        runId = workflow._id.value,
+        reason = reason
       )
     }
 
@@ -68,24 +81,31 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
     publishLifecycle(workflow) { case (caller, convId, topicId) =>
       val stepName = workflow.byStepId(stepId).map(_.name).getOrElse(stepId.value)
       WorkflowStepCompleted(
-        participantId = caller, conversationId = convId, topicId = topicId,
-        workflowId = workflow.sourceId.value, runId = workflow._id.value,
-        stepId = stepId.value, stepName = stepName, success = success
+        participantId = caller,
+        conversationId = convId,
+        topicId = topicId,
+        workflowId = workflow.sourceId.value,
+        runId = workflow._id.value,
+        stepId = stepId.value,
+        stepName = stepName,
+        success = success
       )
     }
 
-  /** When a settled workflow run is a *worker* (contains an
-    * [[SigilAgentDecisionStep]]) AND its conversation has a
-    * [[sigil.conversation.Conversation.parentConversationId]] set,
-    * publish a [[TaskExecuted]] Event into the parent conversation
-    * carrying the worker's summary, role name, and iteration
-    * count. Lets the parent agent's TriggerFilter fire on the
-    * settle without having to subscribe to step-result diffs.
-    *
-    * Workers without a parent conv (orphan workers — unusual) and
-    * non-worker workflow runs (cron jobs, agent-authored multi-step
-    * templates) emit nothing here; their `WorkflowRunCompleted`
-    * stays the only signal. */
+  /**
+   * When a settled workflow run is a *worker* (contains an
+   * [[SigilAgentDecisionStep]]) AND its conversation has a
+   * [[sigil.conversation.Conversation.parentConversationId]] set,
+   * publish a [[TaskExecuted]] Event into the parent conversation
+   * carrying the worker's summary, role name, and iteration
+   * count. Lets the parent agent's TriggerFilter fire on the
+   * settle without having to subscribe to step-result diffs.
+   *
+   * Workers without a parent conv (orphan workers — unusual) and
+   * non-worker workflow runs (cron jobs, agent-authored multi-step
+   * templates) emit nothing here; their `WorkflowRunCompleted`
+   * stays the only signal.
+   */
   private def maybePublishTaskExecuted(workflow: Workflow): Task[Unit] = {
     val agentSteps = workflow.steps.collect { case s: SigilAgentDecisionStep => s }
     if (agentSteps.isEmpty) return Task.unit
@@ -97,56 +117,56 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
         host.withDB(_.conversations.transaction(_.get(workerConvId))).flatMap {
           case None => Task.unit
           case Some(workerConv) => workerConv.parentConversationId match {
-            case None => Task.unit
-            case Some(parentConvId) =>
-              host.withDB(_.conversations.transaction(_.get(parentConvId))).flatMap {
-                case None => Task.unit
-                case Some(parentConv) =>
-                  // Pull the latest AgentDecisionStep's settle payload
-                  // — that's where the summary text lives.
-                  val finalResult: Option[fabric.Json] = workflow.stepResults.headOption.flatMap(_.output)
-                  val summary    = finalResult.flatMap(_.get("summary").map(_.asString)).getOrElse("")
-                  val exhausted  = finalResult.flatMap(_.get("exhausted").map(_.asBoolean)).getOrElse(false)
-                  val iterations = finalResult.flatMap(_.get("iteration").map(_.asInt)).getOrElse(0) + 1
-                  val roleName   = agentSteps.head.input.role.name
+              case None => Task.unit
+              case Some(parentConvId) =>
+                host.withDB(_.conversations.transaction(_.get(parentConvId))).flatMap {
+                  case None => Task.unit
+                  case Some(parentConv) =>
+                    // Pull the latest AgentDecisionStep's settle payload
+                    // — that's where the summary text lives.
+                    val finalResult: Option[fabric.Json] = workflow.stepResults.headOption.flatMap(_.output)
+                    val summary = finalResult.flatMap(_.get("summary").map(_.asString)).getOrElse("")
+                    val exhausted = finalResult.flatMap(_.get("exhausted").map(_.asBoolean)).getOrElse(false)
+                    val iterations = finalResult.flatMap(_.get("iteration").map(_.asInt)).getOrElse(0) + 1
+                    val roleName = agentSteps.head.input.role.name
 
-                  parentConv.participants.headOption match {
-                    case None => Task.unit
-                    case Some(p) =>
-                      val ev = TaskExecuted(
-                        participantId         = p.id,
-                        conversationId        = parentConvId,
-                        topicId               = parentConv.currentTopicId,
-                        taskId                = workflow._id.value,
-                        roleName              = roleName,
-                        summary               = summary,
-                        iterations            = iterations,
-                        exhausted             = exhausted,
-                        workerConversationId  = Some(workerConvId)
-                      )
-                      host.publish(ev).handleError(t =>
-                        Task(scribe.warn(s"TaskExecuted publish failed for run ${workflow._id.value}: ${t.getMessage}"))
-                      )
-                  }
-              }
-          }
+                    parentConv.participants.headOption match {
+                      case None => Task.unit
+                      case Some(p) =>
+                        val ev = TaskExecuted(
+                          participantId = p.id,
+                          conversationId = parentConvId,
+                          topicId = parentConv.currentTopicId,
+                          taskId = workflow._id.value,
+                          roleName = roleName,
+                          summary = summary,
+                          iterations = iterations,
+                          exhausted = exhausted,
+                          workerConversationId = Some(workerConvId)
+                        )
+                        host.publish(ev).handleError(t =>
+                          Task(scribe.warn(s"TaskExecuted publish failed for run ${workflow._id.value}: ${t.getMessage}")))
+                    }
+                }
+            }
         }
     }
   }
 
-  /** Helper — when a workflow run carries a `conversationId`,
-    * publish the supplied lifecycle Event into that conversation
-    * via the host's `publish` pipeline. Cron-fired runs without a
-    * conversation context produce nothing (intentional silent
-    * background path).
-    *
-    * `participantId` resolution: prefer the workflow's `createdBy`
-    * (matched against the conversation's participants list);
-    * fall back to the first participant if the createdBy isn't a
-    * member; emit nothing if the conversation has no participants
-    * (effectively unowned — a corner case that shouldn't happen). */
-  private def publishLifecycle(workflow: Workflow)
-                              (build: (ParticipantId, Id[Conversation], Id[Topic]) => Event): Task[Unit] =
+  /**
+   * Helper — when a workflow run carries a `conversationId`,
+   * publish the supplied lifecycle Event into that conversation
+   * via the host's `publish` pipeline. Cron-fired runs without a
+   * conversation context produce nothing (intentional silent
+   * background path).
+   *
+   * `participantId` resolution: prefer the workflow's `createdBy`
+   * (matched against the conversation's participants list);
+   * fall back to the first participant if the createdBy isn't a
+   * member; emit nothing if the conversation has no participants
+   * (effectively unowned — a corner case that shouldn't happen).
+   */
+  private def publishLifecycle(workflow: Workflow)(build: (ParticipantId, Id[Conversation], Id[Topic]) => Event): Task[Unit] =
     workflow.conversationId match {
       case None => Task.unit
       case Some(convIdStr) =>
@@ -158,22 +178,23 @@ final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & Wor
             val matched = conv.participants.find(_.id.value == createdByValue).map(_.id)
             val caller = matched.orElse(conv.participants.headOption.map(_.id))
             caller match {
-              case None      => Task.unit
+              case None => Task.unit
               case Some(pid) =>
                 val event = build(pid, convId, conv.currentTopicId)
                 host.publish(event).handleError(t =>
-                  Task(scribe.warn(s"publishLifecycle: publish failed for run ${workflow._id.value}: ${t.getMessage}"))
-                )
+                  Task(scribe.warn(s"publishLifecycle: publish failed for run ${workflow._id.value}: ${t.getMessage}")))
             }
         }
     }
 }
 
-/** Adapter: wraps a Sigil [[WorkflowTemplate]] as Strider's
-  * [[WorkflowParent]] so the engine's recycle / parent-resolution
-  * paths see the right `workflow` definition. The wrapped workflow
-  * is the empty placeholder — recycling rebuilds steps from the
-  * template each time. */
+/**
+ * Adapter: wraps a Sigil [[WorkflowTemplate]] as Strider's
+ * [[WorkflowParent]] so the engine's recycle / parent-resolution
+ * paths see the right `workflow` definition. The wrapped workflow
+ * is the empty placeholder — recycling rebuilds steps from the
+ * template each time.
+ */
 final case class SigilWorkflowParent(template: WorkflowTemplate) extends WorkflowParent {
   override def workflow: Workflow = Workflow(
     name = template.name,

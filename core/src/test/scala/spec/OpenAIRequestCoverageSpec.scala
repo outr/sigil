@@ -24,15 +24,19 @@ class OpenAIRequestCoverageSpec extends AbstractRequestCoverageSpec {
     OpenAIProvider(apiKey = "sk-test-placeholder", sigilRef = TestSigil)
   override protected def modelId: Id[Model] = Model.id("openai", "gpt-5.4-nano")
 
-  /** Bug #61 — OpenAI's Responses API requires reasoning items from
-    * prior turns to be replayed in the next request's `input` array;
-    * the abstract spec's Reasoning-frame coverage test asserts the
-    * serialized shape when this is `true`. */
+  /**
+   * Bug #61 — OpenAI's Responses API requires reasoning items from
+   * prior turns to be replayed in the next request's `input` array;
+   * the abstract spec's Reasoning-frame coverage test asserts the
+   * serialized shape when this is `true`.
+   */
   override protected def expectsReasoningSerialized: Boolean = true
 
-  /** Build a request body using a different modelId than the spec's
-    * default — used to exercise the reasoning-family vs non-reasoning
-    * gating in `buildBody`. */
+  /**
+   * Build a request body using a different modelId than the spec's
+   * default — used to exercise the reasoning-family vs non-reasoning
+   * gating in `buildBody`.
+   */
   private def bodyWithModelId(targetModelId: Id[Model]): String = {
     val req: ProviderRequest = ConversationRequest(
       conversationId = conversationId,
@@ -60,7 +64,7 @@ class OpenAIRequestCoverageSpec extends AbstractRequestCoverageSpec {
       body should include("\"include\":[\"reasoning.encrypted_content\"]")
     }
 
-    "ask for reasoning.summary='auto' and include 'reasoning.encrypted_content' for o1 / o3 / o4 models" in {
+    "ask for reasoning.summary='auto' and include 'reasoning.encrypted_content' for o1 / o3 / o4 models" in
       List("o1-preview", "o3-mini", "o4-pilot").foreach { name =>
         val body = bodyWithModelId(Model.id("openai", name))
         withClue(s"model=$name body=$body") {
@@ -68,9 +72,8 @@ class OpenAIRequestCoverageSpec extends AbstractRequestCoverageSpec {
           body should include("\"include\":[\"reasoning.encrypted_content\"]")
         }
       }
-    }
 
-    "NOT add reasoning or include for non-reasoning models (gpt-4o, gpt-4.1, gpt-3.5)" in {
+    "NOT add reasoning or include for non-reasoning models (gpt-4o, gpt-4.1, gpt-3.5)" in
       List("gpt-4o-mini", "gpt-4.1", "gpt-3.5-turbo").foreach { name =>
         val body = bodyWithModelId(Model.id("openai", name))
         withClue(s"model=$name body=$body") {
@@ -82,7 +85,6 @@ class OpenAIRequestCoverageSpec extends AbstractRequestCoverageSpec {
           body shouldNot include("\"summary\":\"auto\"")
         }
       }
-    }
   }
 
   "tear down" should {

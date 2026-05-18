@@ -23,27 +23,27 @@ import scala.jdk.CollectionConverters.*
  * matches; `totalCount` reports the unbounded match count so the
  * agent knows whether to refine the query.
  */
-final class BrowserXPathQueryTool extends TypedTool[BrowserXPathQueryInput](
-  name = ToolName("browser_xpath_query"),
-  description =
-    """Run an XPath query against an HTML file saved earlier (use the `htmlFileId` from `browser_save_html`).
+final class BrowserXPathQueryTool
+  extends TypedTool[BrowserXPathQueryInput](
+    name = ToolName("browser_xpath_query"),
+    description =
+      """Run an XPath query against an HTML file saved earlier (use the `htmlFileId` from `browser_save_html`).
       |Returns matched nodes as `{tag, text, attributes}`. Set `includeOuterHtml=true` only when you need raw markup —
       |it can be large. Use the overview's `headings`, `landmarks`, and `linkClusters` xpaths as starting points.""".stripMargin,
-  examples = List(
-    ToolExample(
-      "Pull all article links from a list",
-      BrowserXPathQueryInput(htmlFileId = "abc123", xpath = "//main//a[@href]", maxResults = 50)
+    examples = List(
+      ToolExample(
+        "Pull all article links from a list",
+        BrowserXPathQueryInput(htmlFileId = "abc123", xpath = "//main//a[@href]", maxResults = 50)
+      ),
+      ToolExample(
+        "Get the page's main heading element with markup",
+        BrowserXPathQueryInput(htmlFileId = "abc123", xpath = "//h1[1]", includeOuterHtml = true)
+      )
     ),
-    ToolExample(
-      "Get the page's main heading element with markup",
-      BrowserXPathQueryInput(htmlFileId = "abc123", xpath = "//h1[1]", includeOuterHtml = true)
-    )
-  ),
-  modes = Set(WebBrowserMode.id),
-  keywords = Set("browser", "xpath", "query", "extract", "html", "structure")
-) {
+    modes = Set(WebBrowserMode.id),
+    keywords = Set("browser", "xpath", "query", "extract", "html", "structure")
+  ) {
   override def paginate: Boolean = false
-
 
   override protected def executeTyped(input: BrowserXPathQueryInput, ctx: TurnContext): Stream[Event] =
     Stream.force(
@@ -51,28 +51,28 @@ final class BrowserXPathQueryTool extends TypedTool[BrowserXPathQueryInput](
         case None =>
           Stream.emit[Event](BrowserToolBase.toolResult(
             obj(
-              "error"      -> str(s"htmlFileId '${input.htmlFileId}' not found or not authorized"),
-              "matches"    -> arr(),
+              "error" -> str(s"htmlFileId '${input.htmlFileId}' not found or not authorized"),
+              "matches" -> arr(),
               "totalCount" -> num(0),
-              "returned"   -> num(0)
+              "returned" -> num(0)
             ),
             ctx
           ))
         case Some((_, bytes)) =>
           val html = new String(bytes, java.nio.charset.StandardCharsets.UTF_8)
-          val doc  = Jsoup.parse(html)
-          val all  = doc.selectXpath(input.xpath).iterator().asScala.toList
+          val doc = Jsoup.parse(html)
+          val all = doc.selectXpath(input.xpath).iterator().asScala.toList
           val totalCount = all.size
-          val limited    = all.take(input.maxResults)
+          val limited = all.take(input.maxResults)
 
           val matches: List[Json] = limited.map { el =>
             val attrs = el.attributes().iterator().asScala.toList.map { a =>
               a.getKey -> str(a.getValue)
             }
             val base = List(
-              "xpath"      -> str(BrowserHtmlOverview.xpathOf(el)),
-              "tag"        -> str(el.tagName()),
-              "text"       -> str(BrowserHtmlOverview.squish(el.text()).take(500)),
+              "xpath" -> str(BrowserHtmlOverview.xpathOf(el)),
+              "tag" -> str(el.tagName()),
+              "text" -> str(BrowserHtmlOverview.squish(el.text()).take(500)),
               "attributes" -> obj(attrs*)
             )
             val full =
@@ -84,10 +84,10 @@ final class BrowserXPathQueryTool extends TypedTool[BrowserXPathQueryInput](
           Stream.emit[Event](BrowserToolBase.toolResult(
             obj(
               "htmlFileId" -> str(input.htmlFileId),
-              "xpath"      -> str(input.xpath),
-              "matches"    -> arr(matches*),
+              "xpath" -> str(input.xpath),
+              "matches" -> arr(matches*),
               "totalCount" -> num(totalCount),
-              "returned"   -> num(limited.size)
+              "returned" -> num(limited.size)
             ),
             ctx
           ))

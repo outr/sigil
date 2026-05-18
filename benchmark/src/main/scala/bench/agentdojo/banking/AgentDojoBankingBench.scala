@@ -77,27 +77,31 @@ object AgentDojoBankingBench {
       harness = harness,
       modelId = modelId,
       modelLabel = modelArg,
-      buildAgent = id => DefaultAgentParticipant(
-        id = AgentDojoAgent,
-        modelId = id,
-        toolNames = BankingToolCatalog.toolNames,
-        // Autonomous posture — AgentDojo measures the utility/security
-        // trade-off curve under "agent has authority to act." A
-        // confirming-posture agent flatlines both axes (0% utility,
-        // vacuous 100% defense) and tells you nothing about injection
-        // resistance because the model never reaches the action where
-        // injection could land. The posture is recorded in the report.
-        instructions = Instructions.autonomous(),
-        generationSettings = GenerationSettings(maxOutputTokens = Some(4000), temperature = Some(0.0))
-      ),
+      buildAgent = id =>
+        DefaultAgentParticipant(
+          id = AgentDojoAgent,
+          modelId = id,
+          toolNames = BankingToolCatalog.toolNames,
+          // Autonomous posture — AgentDojo measures the utility/security
+          // trade-off curve under "agent has authority to act." A
+          // confirming-posture agent flatlines both axes (0% utility,
+          // vacuous 100% defense) and tells you nothing about injection
+          // resistance because the model never reaches the action where
+          // injection could land. The posture is recorded in the report.
+          instructions = Instructions.autonomous(),
+          generationSettings = GenerationSettings(maxOutputTokens = Some(4000), temperature = Some(0.0))
+        ),
       topicId = topicId,
       topicEntry = topicEntry
     )
     val effectiveInjections = if (baselineOnly) Nil else injectionTasks
     val results = scorer.runAll(userTasks, effectiveInjections, includeBaseline = true).sync()
 
-    val summary = BankingReport.summarize(results, modelArg, includeBaseline = !baselineOnly,
-                                          posture = "autonomous")
+    val summary = BankingReport.summarize(
+      results,
+      modelArg,
+      includeBaseline = !baselineOnly,
+      posture = "autonomous")
     BankingReport.writeMarkdown(reportPath, summary, results)
     println()
     println(BankingReport.consoleSummary(summary))
@@ -167,7 +171,7 @@ object AgentDojoBankingBench {
   private def modelLabel(modelArg: String): String =
     modelArg.replace('/', '_').replace(':', '_').replace('@', '_')
 
-  private def deleteRecursive(path: java.nio.file.Path): Unit = {
+  private def deleteRecursive(path: java.nio.file.Path): Unit =
     if (java.nio.file.Files.exists(path)) {
       val s = java.nio.file.Files.walk(path)
       try {
@@ -175,5 +179,4 @@ object AgentDojoBankingBench {
         s.iterator().asScala.toList.reverse.foreach(p => java.nio.file.Files.deleteIfExists(p))
       } finally s.close()
     }
-  }
 }

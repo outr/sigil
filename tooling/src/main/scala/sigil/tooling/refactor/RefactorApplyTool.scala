@@ -37,20 +37,21 @@ final class RefactorApplyTool(fs: FileSystemContext,
         |After a successful apply the session no longer exists; calling apply again returns
         |`not-found`.""".stripMargin,
     keywords = Set("refactor", "apply", "commit", "session", "workspace", "edit")
-  ) with sigil.tool.DestructiveExternalTool {
+  )
+  with sigil.tool.DestructiveExternalTool {
 
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: RefactorApplyInput,
-                                      ctx: TurnContext): Task[RefactorApplyOutput] = {
+                                      ctx: TurnContext): Task[RefactorApplyOutput] =
     sessionStore.take(input.sessionId) match {
       case None =>
         Task.pure(RefactorApplyOutput(
-          sessionId         = input.sessionId,
-          status            = RefactorApplyStatus.NotFound,
-          filesModified     = 0,
+          sessionId = input.sessionId,
+          status = RefactorApplyStatus.NotFound,
+          filesModified = 0,
           totalEditsApplied = 0,
-          perFile           = Nil
+          perFile = Nil
         ))
       case Some(session) =>
         if (session.edits.isEmpty) {
@@ -59,38 +60,37 @@ final class RefactorApplyTool(fs: FileSystemContext,
           // no-op). Treat as a successful apply of zero edits;
           // the caller's wire shape mirrors a normal apply.
           Task.pure(RefactorApplyOutput(
-            sessionId         = input.sessionId,
-            status            = RefactorApplyStatus.Applied,
-            filesModified     = 0,
+            sessionId = input.sessionId,
+            status = RefactorApplyStatus.Applied,
+            filesModified = 0,
             totalEditsApplied = 0,
-            perFile           = Nil
+            perFile = Nil
           ))
         } else {
           ApplyWorkspaceEdit(fs, session.edits).map { result =>
             val perFile = result.results.map(toPerFile)
             val rolledBack = result.results.exists {
               case _: ApplyWorkspaceEdit.FileResult.WriteRolledBack => true
-              case _                                                 => false
+              case _ => false
             }
             val preflightFailed = result.results.exists {
               case _: ApplyWorkspaceEdit.FileResult.PreflightFailed => true
-              case _                                                 => false
+              case _ => false
             }
             val status =
               if (result.filesWritten == session.edits.size) RefactorApplyStatus.Applied
-              else if (rolledBack || preflightFailed)        RefactorApplyStatus.Aborted
-              else                                            RefactorApplyStatus.Applied
+              else if (rolledBack || preflightFailed) RefactorApplyStatus.Aborted
+              else RefactorApplyStatus.Applied
             RefactorApplyOutput(
-              sessionId         = input.sessionId,
-              status            = status,
-              filesModified     = result.filesWritten,
+              sessionId = input.sessionId,
+              status = status,
+              filesModified = result.filesWritten,
               totalEditsApplied = result.filesWritten,
-              perFile           = perFile
+              perFile = perFile
             )
           }
         }
     }
-  }
 
   private def toPerFile(r: ApplyWorkspaceEdit.FileResult): FileApplyResult = r match {
     case ApplyWorkspaceEdit.FileResult.Applied(p) =>

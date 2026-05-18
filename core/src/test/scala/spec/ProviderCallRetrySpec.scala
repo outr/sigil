@@ -34,16 +34,20 @@ class ProviderCallRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
   private val modelId: Id[Model] = Model.id("test", "retry-spec")
 
-  /** Records every call's input and (per attempt) the throwable
-    * each attempt was instructed to raise. */
-  private final class CallRecorder {
+  /**
+   * Records every call's input and (per attempt) the throwable
+   * each attempt was instructed to raise.
+   */
+  final private class CallRecorder {
     val callCount: atomic.AtomicInteger = new atomic.AtomicInteger(0)
     def record(): Int = callCount.incrementAndGet()
   }
 
-  /** Provider that throws a `Retry`-classified error on its FIRST
-    * call and emits a clean `respond` on subsequent calls. */
-  private final class FirstCallTransientThenSucceeds(recorder: CallRecorder) extends Provider {
+  /**
+   * Provider that throws a `Retry`-classified error on its FIRST
+   * call and emits a clean `respond` on subsequent calls.
+   */
+  final private class FirstCallTransientThenSucceeds(recorder: CallRecorder) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -63,10 +67,10 @@ class ProviderCallRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matche
           ProviderEvent.ToolCallComplete(
             cid,
             RespondInput(
-              topicLabel    = "T",
-              topicSummary  = "summary",
-              content       = "ok",
-              endsTurn      = true
+              topicLabel = "T",
+              topicSummary = "summary",
+              content = "ok",
+              endsTurn = true
             )
           ),
           ProviderEvent.Done(StopReason.Complete)
@@ -75,8 +79,10 @@ class ProviderCallRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     }
   }
 
-  /** Provider that throws `Retry`-classified errors on EVERY call. */
-  private final class AlwaysTransient(recorder: CallRecorder) extends Provider {
+  /**
+   * Provider that throws `Retry`-classified errors on EVERY call.
+   */
+  final private class AlwaysTransient(recorder: CallRecorder) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -88,8 +94,10 @@ class ProviderCallRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     }
   }
 
-  /** Provider that throws a `Fatal`-classified error (auth failure). */
-  private final class AlwaysFatal(recorder: CallRecorder) extends Provider {
+  /**
+   * Provider that throws a `Fatal`-classified error (auth failure).
+   */
+  final private class AlwaysFatal(recorder: CallRecorder) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -103,27 +111,27 @@ class ProviderCallRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matche
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings()
     )
 
   private def runUserTurn(provider: Provider, label: String): Task[Id[Conversation]] = {
     TestSigil.setProvider(Task.pure(provider))
     val convId = Conversation.id(s"$label-${rapid.Unique()}")
-    val agent  = makeAgent()
-    val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+    val agent = makeAgent()
+    val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = TestTopicEntry.id,
-             content        = Vector(ResponseContent.Text("Say hi.")),
-             state          = EventState.Complete
-           ))
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("Say hi.")),
+        state = EventState.Complete
+      ))
       _ <- Task.sleep(3.seconds)
     } yield convId
   }
@@ -138,7 +146,7 @@ class ProviderCallRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val provider = new FirstCallTransientThenSucceeds(recorder)
       for {
         convId <- runUserTurn(provider, "retry-then-succeed")
-        evs    <- eventsFor(convId)
+        evs <- eventsFor(convId)
       } yield {
         // The first attempt errored; the retry must have fired
         // (>= 2 underlying provider calls). Subsequent agent
@@ -151,7 +159,7 @@ class ProviderCallRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         // no Failure bubble surfaced for the user.
         val agentReplies = evs.collect {
           case m: Message
-            if m.participantId == TestAgent && m.isSuccess && m.role == MessageRole.Standard => m
+              if m.participantId == TestAgent && m.isSuccess && m.role == MessageRole.Standard => m
         }
         agentReplies should not be empty
         val failureBubbles = evs.collect {
@@ -166,7 +174,7 @@ class ProviderCallRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val provider = new AlwaysTransient(recorder)
       for {
         convId <- runUserTurn(provider, "retry-both-fail")
-        evs    <- eventsFor(convId)
+        evs <- eventsFor(convId)
       } yield {
         // Each provider.apply call attempts at most TWICE
         // (one initial + one retry). Per-call cap of 2 must hold —
@@ -187,7 +195,7 @@ class ProviderCallRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       val provider = new AlwaysFatal(recorder)
       for {
         convId <- runUserTurn(provider, "fatal-no-retry")
-        evs    <- eventsFor(convId)
+        evs <- eventsFor(convId)
       } yield {
         // Exactly ONE provider call — no retry on Fatal-classified
         // errors. The framework's classifier marks 401 as Fatal.

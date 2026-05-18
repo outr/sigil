@@ -41,8 +41,12 @@ class PolymorphicRegistrationOrderSpec extends AnyWordSpec with Matchers {
       // dispatcher.
       poly.values.size should be >= 6
       poly.values.keySet should contain allOf (
-        "ConversationWork", "CodingWork", "AnalysisWork",
-        "ClassificationWork", "CreativeWork", "SummarizationWork"
+        "ConversationWork",
+        "CodingWork",
+        "AnalysisWork",
+        "ClassificationWork",
+        "CreativeWork",
+        "SummarizationWork"
       )
     }
 
@@ -55,14 +59,16 @@ class PolymorphicRegistrationOrderSpec extends AnyWordSpec with Matchers {
       val poly = polyOf(modeDef).getOrElse {
         fail(s"Expected Mode to resolve to DefType.Poly; saw ${modeDef.defType}")
       }
-      poly.values.keySet should contain ("conversation")
+      poly.values.keySet should contain("conversation")
     }
   }
 
-  /** Walk a `Definition` looking for a named field. Definitions are
-    * lazy in fabric — accessing `.defType` here is the same access
-    * the codegen does, so this is the test that would have caught
-    * the bug. */
+  /**
+   * Walk a `Definition` looking for a named field. Definitions are
+   * lazy in fabric — accessing `.defType` here is the same access
+   * the codegen does, so this is the test that would have caught
+   * the bug.
+   */
   private def fieldDefinition(d: Definition, name: String): Option[Definition] =
     d.defType match {
       case DefType.Obj(map) => map.get(name)
@@ -70,15 +76,17 @@ class PolymorphicRegistrationOrderSpec extends AnyWordSpec with Matchers {
       case _ => None
     }
 
-  /** Unwrap any `Opt(...)` layers and return the inner `Poly`, if any.
-    * Fields with case-class defaults are wrapped in `Opt` even when
-    * the Scala type is non-`Option`, so direct pattern matching on
-    * `defType` misses real Polys. */
+  /**
+   * Unwrap any `Opt(...)` layers and return the inner `Poly`, if any.
+   * Fields with case-class defaults are wrapped in `Opt` even when
+   * the Scala type is non-`Option`, so direct pattern matching on
+   * `defType` misses real Polys.
+   */
   private def polyOf(d: Definition): Option[DefType.Poly] =
     d.defType match {
-      case p: DefType.Poly  => Some(p)
+      case p: DefType.Poly => Some(p)
       case DefType.Opt(inner) => polyOf(inner)
-      case _                => None
+      case _ => None
     }
 
   "tear down" should {

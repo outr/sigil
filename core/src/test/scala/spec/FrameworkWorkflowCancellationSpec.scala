@@ -28,8 +28,8 @@ class FrameworkWorkflowCancellationSpec extends AsyncWordSpec with AsyncTaskSpec
 
   private def makeContext(): TurnContext = {
     val convId = Id[Conversation](java.util.UUID.randomUUID().toString)
-    val topic  = TopicEntry(id = Topic.id(s"topic-$convId"), label = "test", summary = "test")
-    val conv   = Conversation(_id = convId, topics = List(topic))
+    val topic = TopicEntry(id = Topic.id(s"topic-$convId"), label = "test", summary = "test")
+    val conv = Conversation(_id = convId, topics = List(topic))
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv))).sync()
     TurnContext(
       sigil = TestSigil,
@@ -64,7 +64,10 @@ class FrameworkWorkflowCancellationSpec extends AsyncWordSpec with AsyncTaskSpec
 
     "deregister even when the body throws" in {
       val before = TestSigil.activeFrameworkWorkflows.size
-      TestSigil.runAsFrameworkWorkflow("test-error-cleanup", "boom", None,
+      TestSigil.runAsFrameworkWorkflow(
+        "test-error-cleanup",
+        "boom",
+        None,
         Task.error[Unit](new RuntimeException("boom"))
       ).handleError(_ => Task.unit).map { _ =>
         TestSigil.activeFrameworkWorkflows.size shouldBe before
@@ -92,7 +95,7 @@ class FrameworkWorkflowCancellationSpec extends AsyncWordSpec with AsyncTaskSpec
         }.map(_ => "should-not-reach")
       }.handleError {
         case _: CancellationException => Task.pure("cancelled-as-expected")
-        case e                        => Task.error(e)
+        case e => Task.error(e)
       }.start()
       Task {
         started.await(2, java.util.concurrent.TimeUnit.SECONDS) shouldBe true
@@ -120,9 +123,9 @@ class FrameworkWorkflowCancellationSpec extends AsyncWordSpec with AsyncTaskSpec
   "cancel_framework_workflow tool" should {
 
     "return NotActive for an unknown workflow id" in {
-      val tool  = CancelFrameworkWorkflowTool
+      val tool = CancelFrameworkWorkflowTool
       val input = CancelFrameworkWorkflowInput(workflowId = "no-such-id")
-      val ctx   = makeContext()
+      val ctx = makeContext()
       tool.invoke(input, ctx).map { out =>
         out shouldBe CancelFrameworkWorkflowOutput.NotActive("no-such-id")
       }
@@ -145,17 +148,19 @@ class FrameworkWorkflowCancellationSpec extends AsyncWordSpec with AsyncTaskSpec
       }.flatMap { _ =>
         val ctx = makeContext()
         val first = CancelFrameworkWorkflowTool.invoke(
-          CancelFrameworkWorkflowInput(workflowId = workflowIdRef.get(), reason = Some("first")), ctx
+          CancelFrameworkWorkflowInput(workflowId = workflowIdRef.get(), reason = Some("first")),
+          ctx
         )
         val second = CancelFrameworkWorkflowTool.invoke(
-          CancelFrameworkWorkflowInput(workflowId = workflowIdRef.get(), reason = Some("second")), ctx
+          CancelFrameworkWorkflowInput(workflowId = workflowIdRef.get(), reason = Some("second")),
+          ctx
         )
         for {
           a <- first
           b <- second
         } yield (a, b)
       }.flatMap { case (firstResult, secondResult) =>
-        Task { release.countDown() }.flatMap(_ => bodyFiber.join).map { _ =>
+        Task(release.countDown()).flatMap(_ => bodyFiber.join).map { _ =>
           firstResult shouldBe a[CancelFrameworkWorkflowOutput.Cancelled]
           firstResult.asInstanceOf[CancelFrameworkWorkflowOutput.Cancelled].workflowType shouldBe "test-tool-cancel"
           secondResult shouldBe a[CancelFrameworkWorkflowOutput.AlreadyCancelled]

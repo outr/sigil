@@ -17,4 +17,5 @@ import sigil.tool.ToolInput
  *     permissions, unsupported input, etc.).
  */
 case class RespondFailureInput(reason: String,
-                               recoverable: Boolean = false) extends ToolInput derives RW
+                               recoverable: Boolean = false)
+  extends ToolInput derives RW

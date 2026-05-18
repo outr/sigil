@@ -38,10 +38,12 @@ case class CapabilityResults(matches: List[CapabilityMatch],
                              participantId: ParticipantId,
                              conversationId: Id[Conversation],
                              topicId: Id[Topic],
-                             /** Normalised query keywords that produced these
-                               * matches. Empty when not populated by the framework's
-                               * [[sigil.tool.core.FindCapabilityTool]] (external
-                               * callers, replayed history). */
+                             /**
+                              * Normalised query keywords that produced these
+                              * matches. Empty when not populated by the framework's
+                              * [[sigil.tool.core.FindCapabilityTool]] (external
+                              * callers, replayed history).
+                              */
                              query: String = "",
                              topicIndex: Int = 0,
                              state: EventState = EventState.Active,

@@ -48,31 +48,31 @@ final class SaveMemoryTool(space: SpaceId,
       )
     ),
     keywords = Set("memory", "save", "remember", "store", "persist", "fact")
-  ) with sigil.tool.DestructiveInternalTool {
+  )
+  with sigil.tool.DestructiveInternalTool {
   override def paginate: Boolean = false
-
 
   override val requiresAccessibleSpaces: Boolean = true
 
   override protected def executeTyped(input: SaveMemoryInput, ctx: TurnContext): Task[SaveMemoryOutput] =
     resolveSpace(input.space, ctx).flatMap { resolvedSpace =>
       val mem = ContextMemory(
-        fact         = input.fact,
-        label        = input.label,
-        summary      = input.summary,
-        source       = source,
-        spaceId      = resolvedSpace,
-        key          = input.key,
-        pinned       = input.permanence.contains(sigil.conversation.Permanence.Always),
-        keywords     = input.keywords,
-        memoryType   = input.memoryType,
+        fact = input.fact,
+        label = input.label,
+        summary = input.summary,
+        source = source,
+        spaceId = resolvedSpace,
+        key = input.key,
+        pinned = input.permanence.contains(sigil.conversation.Permanence.Always),
+        keywords = input.keywords,
+        memoryType = input.memoryType,
         modeAffinity = resolveModeAffinity(input.modeAffinity, ctx)
       )
       input.key match {
         case Some(_) =>
           ctx.sigil.upsertMemoryByKeyFor(mem, ctx.chain, ctx.conversation.id).map { r =>
             val outcome = r match {
-              case _: UpsertMemoryResult.Stored    => "Stored"
+              case _: UpsertMemoryResult.Stored => "Stored"
               case _: UpsertMemoryResult.Refreshed => "Refreshed"
               case _: UpsertMemoryResult.Versioned => "Versioned"
             }
@@ -84,10 +84,12 @@ final class SaveMemoryTool(space: SpaceId,
       }
     }
 
-  /** Resolve the agent's space hint to a concrete [[SpaceId]]. When
-    * the hint is omitted or doesn't match an accessible space, fall
-    * back to the tool's default `space` and let the framework's
-    * classifier decide if the caller left it at GlobalSpace. */
+  /**
+   * Resolve the agent's space hint to a concrete [[SpaceId]]. When
+   * the hint is omitted or doesn't match an accessible space, fall
+   * back to the tool's default `space` and let the framework's
+   * classifier decide if the caller left it at GlobalSpace.
+   */
   private def resolveSpace(hint: Option[String], ctx: TurnContext): Task[SpaceId] = hint match {
     case None => Task.pure(space)
     case Some(value) =>
@@ -96,10 +98,12 @@ final class SaveMemoryTool(space: SpaceId,
       }
   }
 
-  /** Resolve mode `name`s to `Id[Mode]`. Unknown names are dropped
-    * with a WARN — better to persist the memory as universal (empty
-    * set) than to lose it entirely on a typo. Sigil bug #195. */
-  private def resolveModeAffinity(names: Set[String], ctx: TurnContext): Set[Id[Mode]] = {
+  /**
+   * Resolve mode `name`s to `Id[Mode]`. Unknown names are dropped
+   * with a WARN — better to persist the memory as universal (empty
+   * set) than to lose it entirely on a typo. Sigil bug #195.
+   */
+  private def resolveModeAffinity(names: Set[String], ctx: TurnContext): Set[Id[Mode]] =
     if (names.isEmpty) Set.empty
     else {
       val known = ctx.sigil.availableModes.map(_.name).toSet
@@ -112,6 +116,5 @@ final class SaveMemoryTool(space: SpaceId,
         }
       }.toSet
     }
-  }
 
 }

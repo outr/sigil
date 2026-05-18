@@ -40,9 +40,11 @@ class SuggestedToolsOverlaySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   private val convId = Conversation.id("sst-overlay")
   private val topicId = TestTopicEntry.id
 
-  /** Tool-role events require `origin` per Sigil.validateEventInvariants
-    * — point each to a fixed synthetic id so the validator passes
-    * without having to publish a real parent ToolInvoke. */
+  /**
+   * Tool-role events require `origin` per Sigil.validateEventInvariants
+   * — point each to a fixed synthetic id so the validator passes
+   * without having to publish a real parent ToolInvoke.
+   */
   private val syntheticOrigin: Id[Event] = Id[Event]("sst-overlay-parent-invoke")
 
   // Idempotent — repeated initFor + setup blocks across tests share the same DB
@@ -129,7 +131,7 @@ class SuggestedToolsOverlaySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       } yield {
         afterDiscovery should contain(ToolName("create_workflow"))
         afterBuild should contain allOf (ToolName("add_workflow_step"), ToolName("add_trigger"))
-        afterBuild shouldNot contain (ToolName("create_workflow"))  // replaced, not merged
+        afterBuild shouldNot contain(ToolName("create_workflow")) // replaced, not merged
       }
     }
   }
@@ -166,7 +168,7 @@ class SuggestedToolsOverlaySpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         afterNoOp <- projection
       } yield {
         beforeNoOp should contain(ToolName("load_claude_state"))
-        afterNoOp shouldBe beforeNoOp   // unchanged — the bug-fix invariant
+        afterNoOp shouldBe beforeNoOp // unchanged — the bug-fix invariant
       }
     }
   }

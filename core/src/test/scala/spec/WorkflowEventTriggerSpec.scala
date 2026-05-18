@@ -27,11 +27,11 @@ class WorkflowEventTriggerSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val name = freshName()
       val t = WorkflowEventTriggerImpl(WorkflowEventTrigger(name))
       for {
-        _    <- t.register(workflow)
-        _    <- WorkflowEventTrigger.publishEvent(name, str("hello"))
+        _ <- t.register(workflow)
+        _ <- WorkflowEventTrigger.publishEvent(name, str("hello"))
         seen <- t.check(workflow)
-        _     = seen.map(_.asString) shouldBe Some("hello")
-        _    <- t.unregister(workflow)
+        _ = seen.map(_.asString) shouldBe Some("hello")
+        _ <- t.unregister(workflow)
       } yield succeed
     }
 

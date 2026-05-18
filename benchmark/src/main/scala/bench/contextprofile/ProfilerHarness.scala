@@ -12,9 +12,7 @@ import sigil.diagnostics.{RequestProfile, RequestProfileReport, RequestProfiler}
 import sigil.event.Event
 import sigil.information.{Information, InformationSummary}
 import sigil.participant.{AgentParticipantId, ParticipantId}
-import sigil.provider.{
-  ConversationMode, GenerationSettings, Instructions, Mode, ResolvedReferences
-}
+import sigil.provider.{ConversationMode, GenerationSettings, Instructions, Mode, ResolvedReferences}
 import sigil.role.Role
 import sigil.tool.{Tool, ToolInput, ToolName, TypedTool}
 import sigil.tokenize.{JtokkitTokenizer, Tokenizer}
@@ -32,31 +30,38 @@ import sigil.tokenize.{JtokkitTokenizer, Tokenizer}
  */
 object ProfilerHarness {
 
-  /** Default tokenizer for benches: jtokkit cl100k_base — accurate for
-    * OpenAI ChatGPT-class models and a fair approximation elsewhere. */
+  /**
+   * Default tokenizer for benches: jtokkit cl100k_base — accurate for
+   * OpenAI ChatGPT-class models and a fair approximation elsewhere.
+   */
   val tokenizer: Tokenizer = JtokkitTokenizer.OpenAIChatGpt
 
   // ---- well-known synthetic identities ----
 
-  case object UserId extends ParticipantId      { override val value: String = "bench-user" }
+  case object UserId extends ParticipantId { override val value: String = "bench-user" }
   case object AgentId extends AgentParticipantId { override val value: String = "bench-agent" }
 
   val ConvId: Id[Conversation] = Conversation.id("bench-conv")
-  val TopicId: Id[Topic]       = Id("bench-topic")
+  val TopicId: Id[Topic] = Id("bench-topic")
 
   val DefaultTopic: TopicEntry = TopicEntry(TopicId, "Bench Topic", "Synthetic conversation for context profiling.")
 
-  /** A fully-typed dummy ToolInput used by synthetic tools below. */
+  /**
+   * A fully-typed dummy ToolInput used by synthetic tools below.
+   */
   case class DummyInput(value: String = "") extends ToolInput derives RW
 
-  /** Synthetic Tool with caller-supplied name + description. Static
-    * description (no `descriptionFor` override), so the profiler
-    * doesn't need a Sigil reference for these. */
-  class FakeTool(toolName: String, toolDescription: String) extends TypedTool[DummyInput](
-    name = ToolName(toolName),
-    description = toolDescription
-  ) {
-  override def paginate: Boolean = false
+  /**
+   * Synthetic Tool with caller-supplied name + description. Static
+   * description (no `descriptionFor` override), so the profiler
+   * doesn't need a Sigil reference for these.
+   */
+  class FakeTool(toolName: String, toolDescription: String)
+    extends TypedTool[DummyInput](
+      name = ToolName(toolName),
+      description = toolDescription
+    ) {
+    override def paginate: Boolean = false
 
     override protected def executeTyped(input: DummyInput, context: sigil.TurnContext): rapid.Stream[Event] =
       rapid.Stream.empty
@@ -124,8 +129,7 @@ object ProfilerHarness {
                    roles: List[Role] = Nil,
                    information: Vector[InformationSummary] = Vector.empty,
                    extra: Map[sigil.conversation.ContextKey, String] = Map.empty,
-                   chain: List[ParticipantId] = List(UserId, AgentId)
-                  ): sigil.provider.ConversationRequest = {
+                   chain: List[ParticipantId] = List(UserId, AgentId)): sigil.provider.ConversationRequest = {
     val turn = TurnInput(
       conversationId = ConvId,
       frames = frames,
@@ -151,9 +155,11 @@ object ProfilerHarness {
     )
   }
 
-  /** Resolve memory/summary id buckets directly from the records (no
-    * DB lookup). For benches that synthesize records, this is the
-    * right abstraction. */
+  /**
+   * Resolve memory/summary id buckets directly from the records (no
+   * DB lookup). For benches that synthesize records, this is the
+   * right abstraction.
+   */
   def resolved(critical: Vector[ContextMemory] = Vector.empty,
                retrieved: Vector[ContextMemory] = Vector.empty,
                summaries: Vector[ContextSummary] = Vector.empty): ResolvedReferences =

@@ -31,15 +31,20 @@ import scala.concurrent.duration.*
  * not per-provider-instance.
  */
 trait RateLimiter {
-  /** Suspend until the limiter believes it's safe to send. Returns
+
+  /**
+   * Suspend until the limiter believes it's safe to send. Returns
    * immediately when no limit data has been observed yet (apps using
    * the limiter against a fresh provider don't pay sleep cost on the
-   * first request). */
+   * first request).
+   */
   def acquire: Task[Unit]
 
-  /** Update the limiter's view of headroom from a fresh response. The
+  /**
+   * Update the limiter's view of headroom from a fresh response. The
    * concrete impl reads each provider's specific header names — the
-   * trait stays neutral. */
+   * trait stays neutral.
+   */
   def observe(remainingRequests: Option[Long],
               remainingTokens: Option[Long],
               resetSeconds: Option[Long],
@@ -53,15 +58,19 @@ case class RateLimiterConfig(softFloor: Double = 0.05,
 
 object RateLimiter {
 
-  /** Default limiter — tracks the most-recent `observe` call's
+  /**
+   * Default limiter — tracks the most-recent `observe` call's
    * proportional headroom and waits before sending when the bucket is
    * below the configured floors. Thread-safe; one instance can be
-   * shared across many concurrent agent loops. */
+   * shared across many concurrent agent loops.
+   */
   def default(config: RateLimiterConfig = RateLimiterConfig()): RateLimiter = new ProportionalRateLimiter(config)
 
-  /** A no-op limiter — `acquire` returns immediately, `observe`
+  /**
+   * A no-op limiter — `acquire` returns immediately, `observe`
    * discards. The default Provider hook returns this so apps that
-   * don't care about rate limiting pay zero overhead. */
+   * don't care about rate limiting pay zero overhead.
+   */
   val NoOp: RateLimiter = new RateLimiter {
     override val acquire: Task[Unit] = Task.unit
     override def observe(remainingRequests: Option[Long],
@@ -72,20 +81,24 @@ object RateLimiter {
 
   private val registry: ConcurrentHashMap[String, RateLimiter] = new ConcurrentHashMap[String, RateLimiter]
 
-  /** Per-API-key shared limiter. The key is opaque to the framework —
+  /**
+   * Per-API-key shared limiter. The key is opaque to the framework —
    * apps typically pass the API key itself, or `s"$provider:$apiKey"`
    * for cross-provider keying. Two provider instances using the same
-   * key share one limiter. */
+   * key share one limiter.
+   */
   def forKey(key: String, config: RateLimiterConfig = RateLimiterConfig()): RateLimiter =
     registry.computeIfAbsent(key, _ => default(config))
 }
 
-private final class ProportionalRateLimiter(config: RateLimiterConfig) extends RateLimiter {
+final private class ProportionalRateLimiter(config: RateLimiterConfig) extends RateLimiter {
 
-  /** Most-recent observed (remaining, capacity) ratio per kind. Two
+  /**
+   * Most-recent observed (remaining, capacity) ratio per kind. Two
    * dimensions matter for OpenAI / Anthropic: requests-per-minute and
    * tokens-per-minute. We track each separately and pick the tighter
-   * floor for `acquire`'s sleep decision. */
+   * floor for `acquire`'s sleep decision.
+   */
   private val state: AtomicReference[State] = new AtomicReference(State.empty)
 
   override def acquire: Task[Unit] = {
@@ -123,11 +136,11 @@ private final class ProportionalRateLimiter(config: RateLimiterConfig) extends R
       val newTokenCap = remainingTokens.map(t => math.max(prev.tokenCapacity, t.toDouble))
         .getOrElse(prev.tokenCapacity)
       State(
-        requestRatio   = nextRequest,
-        tokenRatio     = nextToken,
-        retryUntil     = deadline,
+        requestRatio = nextRequest,
+        tokenRatio = nextToken,
+        retryUntil = deadline,
         requestCapacity = newRequestCap,
-        tokenCapacity   = newTokenCap
+        tokenCapacity = newTokenCap
       )
     }
     ()

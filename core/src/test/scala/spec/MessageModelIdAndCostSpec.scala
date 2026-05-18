@@ -31,10 +31,12 @@ import scala.concurrent.duration.DurationInt
 class MessageModelIdAndCostSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Concrete pricing so the math is easy to assert. Per-token USD —
-    * matches `ModelPricing` semantics. */
+  /**
+   * Concrete pricing so the math is easy to assert. Per-token USD —
+   * matches `ModelPricing` semantics.
+   */
   private val pricing: ModelPricing = ModelPricing(
-    prompt = BigDecimal("0.000001"),     // 1e-6 USD per prompt token (i.e. $1 / M tokens)
+    prompt = BigDecimal("0.000001"), // 1e-6 USD per prompt token (i.e. $1 / M tokens)
     completion = BigDecimal("0.000002"), // 2e-6 USD per completion token
     webSearch = None,
     inputCacheRead = None
@@ -70,9 +72,11 @@ class MessageModelIdAndCostSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   // (additive) — replace would clobber other specs' fixtures.
   TestSigil.cache.merge(List(priced)).sync()
 
-  /** Ensure a Conversation row exists in the DB. The cost projection
-    * runs inside `_.modify(conversationId)` which is a no-op when no
-    * row is present — for the projection assertion we need the row. */
+  /**
+   * Ensure a Conversation row exists in the DB. The cost projection
+   * runs inside `_.modify(conversationId)` which is a no-op when no
+   * row is present — for the projection assertion we need the row.
+   */
   private def seedConversation(convId: Id[Conversation]): Task[Unit] =
     TestSigil.withDB(_.conversations.transaction(_.upsert(
       Conversation(topics = TestTopicStack, _id = convId)
@@ -101,9 +105,7 @@ class MessageModelIdAndCostSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         _ <- seedConversation(convId)
         _ <- TestSigil.publish(msg)
         loaded <- TestSigil.withDB(_.events.transaction(_.get(msg._id)))
-      } yield {
-        loaded.collect { case m: Message => m.modelId } shouldBe Some(Some(pricedModelId))
-      }
+      } yield loaded.collect { case m: Message => m.modelId } shouldBe Some(Some(pricedModelId))
     }
   }
 
@@ -118,7 +120,7 @@ class MessageModelIdAndCostSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
       val expectedDelta1 = pricing.prompt * 100 + pricing.completion * 50
       val expectedDelta2 = pricing.prompt * 200 + pricing.completion * 75
-      val expectedTotal  = expectedDelta1 + expectedDelta2
+      val expectedTotal = expectedDelta1 + expectedDelta2
 
       val recorded = new ConcurrentLinkedQueue[Signal]()
       @volatile var running = true
@@ -129,11 +131,11 @@ class MessageModelIdAndCostSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         .startUnit()
 
       for {
-        _ <- Task.sleep(100.millis)  // give the subscriber time to attach
+        _ <- Task.sleep(100.millis) // give the subscriber time to attach
         _ <- seedConversation(convId)
         _ <- TestSigil.publish(m1)
         _ <- TestSigil.publish(m2)
-        _ <- Task.sleep(150.millis)  // drain to the subscriber
+        _ <- Task.sleep(150.millis) // drain to the subscriber
         loaded <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
       } yield {
         running = false

@@ -43,21 +43,25 @@ final class SignalHub(subscriberCapacity: Int = 1024) {
   private val subscribers = new ConcurrentLinkedQueue[Subscriber]()
   private val closed = new AtomicBoolean(false)
 
-  /** Emit a signal to every active subscriber. Non-blocking; drops
-    * oldest + warns on per-subscriber overflow. No-op once [[close]]
-    * has been called. */
+  /**
+   * Emit a signal to every active subscriber. Non-blocking; drops
+   * oldest + warns on per-subscriber overflow. No-op once [[close]]
+   * has been called.
+   */
   def emit(signal: Signal): Unit = {
     if (closed.get()) return
     import scala.jdk.CollectionConverters.*
     subscribers.iterator().asScala.foreach(s => offerOrDropOldest(s.queue, signal))
   }
 
-  /** Emit a signal only to subscribers whose registered viewer matches.
-    * Used by `Sigil.publishTo(viewer, signal)` to single-target a
-    * Notice (snapshot, reply, etc.) at one connected viewer.
-    * Subscribers that registered with `viewer = None` (e.g. internal
-    * `Sigil.signals` consumers) do NOT receive emitTo signals — they
-    * only see broadcasts. */
+  /**
+   * Emit a signal only to subscribers whose registered viewer matches.
+   * Used by `Sigil.publishTo(viewer, signal)` to single-target a
+   * Notice (snapshot, reply, etc.) at one connected viewer.
+   * Subscribers that registered with `viewer = None` (e.g. internal
+   * `Sigil.signals` consumers) do NOT receive emitTo signals — they
+   * only see broadcasts.
+   */
   def emitTo(viewer: ParticipantId, signal: Signal): Unit = {
     if (closed.get()) return
     import scala.jdk.CollectionConverters.*
@@ -66,7 +70,7 @@ final class SignalHub(subscriberCapacity: Int = 1024) {
     }
   }
 
-  private def offerOrDropOldest(q: LinkedBlockingQueue[Option[Signal]], signal: Signal): Unit = {
+  private def offerOrDropOldest(q: LinkedBlockingQueue[Option[Signal]], signal: Signal): Unit =
     if (!q.offer(Some(signal))) {
       q.poll() // drop oldest
       q.offer(Some(signal))
@@ -74,12 +78,13 @@ final class SignalHub(subscriberCapacity: Int = 1024) {
         s"SignalHub subscriber queue full (capacity=$subscriberCapacity); dropping oldest"
       )
     }
-  }
 
-  /** Close the hub: subsequent [[emit]] calls are no-ops, and every
-    * active subscriber's stream completes (the next pull returns
-    * `None`, which the stream interprets as natural end). Idempotent. */
-  def close(): Unit = {
+  /**
+   * Close the hub: subsequent [[emit]] calls are no-ops, and every
+   * active subscriber's stream completes (the next pull returns
+   * `None`, which the stream interprets as natural end). Idempotent.
+   */
+  def close(): Unit =
     if (closed.compareAndSet(false, true)) {
       import scala.jdk.CollectionConverters.*
       subscribers.iterator().asScala.foreach { s =>
@@ -89,17 +94,20 @@ final class SignalHub(subscriberCapacity: Int = 1024) {
         }
       }
     }
-  }
 
-  /** New broadcast subscription — sees every Signal emitted via
-    * [[emit]]. Does NOT receive [[emitTo]] signals targeted at a
-    * specific viewer. Used by app-internal consumers (audit log,
-    * recording broadcaster) that want the full firehose. */
+  /**
+   * New broadcast subscription — sees every Signal emitted via
+   * [[emit]]. Does NOT receive [[emitTo]] signals targeted at a
+   * specific viewer. Used by app-internal consumers (audit log,
+   * recording broadcaster) that want the full firehose.
+   */
   def subscribe: Stream[Signal] = subscribeInternal(viewer = None)
 
-  /** New viewer-scoped subscription — sees broadcasts AND
-    * [[emitTo]] signals targeted at this viewer. Used by per-client
-    * wire transports (DurableSocket sink via SignalTransport.attach). */
+  /**
+   * New viewer-scoped subscription — sees broadcasts AND
+   * [[emitTo]] signals targeted at this viewer. Used by per-client
+   * wire transports (DurableSocket sink via SignalTransport.attach).
+   */
   def subscribeFor(viewer: ParticipantId): Stream[Signal] =
     subscribeInternal(viewer = Some(viewer))
 
@@ -112,15 +120,18 @@ final class SignalHub(subscriberCapacity: Int = 1024) {
         Stream.unfoldStreamEval(qq) { queue =>
           Task(queue.take()).map {
             case Some(sig) => Some((Stream.emit(sig), queue))
-            case None      => None // close sentinel — terminate stream
+            case None => None // close sentinel — terminate stream
           }
-        }
-      )(_ => Task { subscribers.remove(sub); () })
+        })(_ => Task { subscribers.remove(sub); () })
   }
 
-  /** Current subscriber count (for diagnostics / tests). */
+  /**
+   * Current subscriber count (for diagnostics / tests).
+   */
   def subscriberCount: Int = subscribers.size()
 
-  /** Whether [[close]] has been called. */
+  /**
+   * Whether [[close]] has been called.
+   */
   def isClosed: Boolean = closed.get()
 }

@@ -22,14 +22,13 @@ class DebugScaffoldSpec extends AnyWordSpec with Matchers {
   }
 
   "DebugAdapterConfig" should {
-    "round-trip via its derived RW" in {
+    "round-trip via its derived RW" in
       roundTrip(DebugAdapterConfig(
         languageId = "python",
         command = "python",
         args = List("-m", "debugpy", "--listen", "5678"),
         launchType = "launch"
       ))
-    }
   }
 
   "DAP tool inputs" should {

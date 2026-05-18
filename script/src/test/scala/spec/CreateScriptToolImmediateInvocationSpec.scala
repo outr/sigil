@@ -30,8 +30,8 @@ class CreateScriptToolImmediateInvocationSpec extends AsyncWordSpec with AsyncTa
   // returns Nil and the ranking-side tests would never see the
   // just-created tool.
   TestScriptSigil.setToolFinder(sigil.tool.DbToolFinder(
-    sigil          = TestScriptSigil,
-    toolInputRWs   = Nil
+    sigil = TestScriptSigil,
+    toolInputRWs = Nil
   ))
 
   private val convId = Conversation.id(s"create-script-${rapid.Unique()}")
@@ -52,30 +52,33 @@ class CreateScriptToolImmediateInvocationSpec extends AsyncWordSpec with AsyncTa
     )
 
   private def createTool(name: String): Task[Unit] =
-    CreateScriptToolTool.execute(CreateScriptToolInput(
-      name = name,
-      description = s"Stub script tool $name",
-      code = "args",
-      parameters = fabric.obj("type" -> fabric.str("object"), "properties" -> fabric.obj()),
-      keywords = Set.empty,
-      space = None
-    ), ctx()).toList.map(_ => ())
+    CreateScriptToolTool.execute(
+      CreateScriptToolInput(
+        name = name,
+        description = s"Stub script tool $name",
+        code = "args",
+        parameters = fabric.obj("type" -> fabric.str("object"), "properties" -> fabric.obj()),
+        keywords = Set.empty,
+        space = None
+      ),
+      ctx()
+    ).toList.map(_ => ())
 
   "create_script_tool" should {
 
     "install a ConversationToolOverlay pinning the new tool to the conversation" in {
       val toolName = s"my_special_tool_${rapid.Unique()}"
       for {
-        _        <- TestScriptSigil.withDB(_.conversations.transaction(_.upsert(conv))).unit
-        _        <- TestScriptSigil.withDB(_.topics.transaction(_.upsert(topic))).unit
-        _        <- createTool(toolName)
+        _ <- TestScriptSigil.withDB(_.conversations.transaction(_.upsert(conv))).unit
+        _ <- TestScriptSigil.withDB(_.topics.transaction(_.upsert(topic))).unit
+        _ <- createTool(toolName)
         overlays <- TestScriptSigil.conversationToolOverlays(convId)
       } yield {
         val mine = overlays.filter(_.source == s"create_script_tool:$toolName")
         mine should have size 1
         mine.head.policy match {
-          case ToolPolicy.Active(names) => names should contain (ToolName(toolName))
-          case other                    => fail(s"expected Active(...) overlay, got: $other")
+          case ToolPolicy.Active(names) => names should contain(ToolName(toolName))
+          case other => fail(s"expected Active(...) overlay, got: $other")
         }
       }
     }
@@ -84,13 +87,13 @@ class CreateScriptToolImmediateInvocationSpec extends AsyncWordSpec with AsyncTa
       val toolName = s"my_unique_tool_${rapid.Unique()}"
       val accessibleSpaces = Set[sigil.SpaceId](GlobalSpace)
       for {
-        _        <- TestScriptSigil.withDB(_.conversations.transaction(_.upsert(conv))).unit
-        _        <- TestScriptSigil.withDB(_.topics.transaction(_.upsert(topic))).unit
-        _        <- createTool(toolName)
-        matches  <- TestScriptSigil.findCapabilities(DiscoveryRequest(
-          keywords     = toolName,
-          chain        = List(TestScriptUser, TestScriptAgent),
-          mode         = ConversationMode,
+        _ <- TestScriptSigil.withDB(_.conversations.transaction(_.upsert(conv))).unit
+        _ <- TestScriptSigil.withDB(_.topics.transaction(_.upsert(topic))).unit
+        _ <- createTool(toolName)
+        matches <- TestScriptSigil.findCapabilities(DiscoveryRequest(
+          keywords = toolName,
+          chain = List(TestScriptUser, TestScriptAgent),
+          mode = ConversationMode,
           callerSpaces = accessibleSpaces,
           conversationId = Some(convId)
         ))

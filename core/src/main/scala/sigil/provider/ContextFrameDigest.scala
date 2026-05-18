@@ -2,11 +2,13 @@ package sigil.provider
 
 import sigil.conversation.ContextFrame
 
-/** Cross-provider digest renderer for [[ContextFrame]]. Used by the
-  * default [[Provider.appendFrame]] to build the encoded-context
-  * buffer (bug #26) — a newline-delimited textual representation
-  * that's opaque-but-readable. Providers with bespoke wire shapes
-  * override `appendFrame` directly. */
+/**
+ * Cross-provider digest renderer for [[ContextFrame]]. Used by the
+ * default [[Provider.appendFrame]] to build the encoded-context
+ * buffer (bug #26) — a newline-delimited textual representation
+ * that's opaque-but-readable. Providers with bespoke wire shapes
+ * override `appendFrame` directly.
+ */
 object ContextFrameDigest {
   def render(frame: ContextFrame): String = frame match {
     case t: ContextFrame.Text =>

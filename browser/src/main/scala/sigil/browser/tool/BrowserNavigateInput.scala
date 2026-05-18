@@ -9,4 +9,5 @@ import sigil.tool.ToolInput
  * default 15s matches RoboBrowser's typical reasonable wait.
  */
 case class BrowserNavigateInput(url: String,
-                                waitForLoadSeconds: Int = 15) extends ToolInput derives RW
+                                waitForLoadSeconds: Int = 15)
+  extends ToolInput derives RW

@@ -51,33 +51,36 @@ class OpenAICallIdRoundtripSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   TestSigil.initFor(getClass.getSimpleName)
 
   private val apiKey: String = sys.env.getOrElse("OPENAI_API_KEY", "")
-  private val live: Boolean  = apiKey.startsWith("sk-")
+  private val live: Boolean = apiKey.startsWith("sk-")
 
   private val modelId: Id[Model] = Model.id("openai", "gpt-5-mini")
   private lazy val openai = OpenAIProvider(apiKey, TestSigil, url"https://api.openai.com")
 
   private def turn1Request(convId: Id[Conversation]): ConversationRequest =
     ConversationRequest(
-      conversationId     = convId,
-      modelId            = modelId,
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId, frames = Vector(
-        sigil.conversation.ContextFrame.Text(
-          content = "Find a tool to look up information about the manufacturing product RD2500.",
-          participantId = TestUser,
-          sourceEventId = Id[Event]("user-1"),
-          visibility = sigil.event.MessageVisibility.All
+      conversationId = convId,
+      modelId = modelId,
+      instructions = Instructions(),
+      turnInput = TurnInput(
+        conversationId = convId,
+        frames = Vector(
+          sigil.conversation.ContextFrame.Text(
+            content = "Find a tool to look up information about the manufacturing product RD2500.",
+            participantId = TestUser,
+            sourceEventId = Id[Event]("user-1"),
+            visibility = sigil.event.MessageVisibility.All
+          )
         )
-      )),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
+      ),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
       generationSettings = GenerationSettings(maxOutputTokens = Some(1000)),
-      chain              = List(TestUser, TestAgent),
+      chain = List(TestUser, TestAgent),
       // FindCapability is already registered via CoreTools.toolInputRWs,
       // so its input RW round-trips through fabric's PolyType. The
       // model is heavily nudged to call it by the standard system
       // prompt (discovery-first).
-      tools              = Vector(FindCapabilityTool)
+      tools = Vector(FindCapabilityTool)
     )
 
   "Live OpenAI Responses call_id roundtrip (Bug #167 r5)" should {
@@ -106,12 +109,13 @@ class OpenAICallIdRoundtripSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         // surface.
         _ <- Task.sequence(sigs.map(TestSigil.publish))
         invokes = sigs.collect { case ti: ToolInvoke => ti }
-        _ = withClue(s"Turn 1 must have produced a ToolInvoke (find_capability). Signals: ${sigs.map(_.getClass.getSimpleName).mkString(", ")}") {
+        _ = withClue(
+          s"Turn 1 must have produced a ToolInvoke (find_capability). Signals: ${sigs.map(_.getClass.getSimpleName).mkString(", ")}") {
           invokes should not be empty
         }
         // --- Turn 2: render with prev_id chain, POST to OpenAI ---
         frames <- TestSigil.framesFor(convId)
-        proj   <- TestSigil.projectionFor(TestAgent, convId)
+        proj <- TestSigil.projectionFor(TestAgent, convId)
         _ = withClue("Turn 1's response should have captured a previous_response_id on the projection.") {
           proj.latestProviderResponseId.isDefined shouldBe true
         }
@@ -131,8 +135,8 @@ class OpenAICallIdRoundtripSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         val respBody = response.content.collect { case s: StringContent => s.value }.getOrElse("")
         withClue(
           s"Turn 2 chained via previous_response_id must NOT 400. Got status=$status. " +
-          s"Response body (first 600 chars): ${respBody.take(600)} " +
-          s"Sigil's Turn 2 wire body (first 600 chars): ${nonStreamBody.take(600)}"
+            s"Response body (first 600 chars): ${respBody.take(600)} " +
+            s"Sigil's Turn 2 wire body (first 600 chars): ${nonStreamBody.take(600)}"
         ) {
           status.isSuccess shouldBe true
         }

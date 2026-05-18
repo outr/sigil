@@ -23,7 +23,9 @@ import scala.jdk.CollectionConverters.*
  */
 private[browser] object BrowserHtmlOverview {
 
-  /** Build the overview JSON for a parsed jSoup [[Document]]. */
+  /**
+   * Build the overview JSON for a parsed jSoup [[Document]].
+   */
   def overview(doc: Document, htmlFileId: String, currentUrl: String): Json = {
     val title = Option(doc.title()).getOrElse("")
 
@@ -31,7 +33,7 @@ private[browser] object BrowserHtmlOverview {
       doc.select(s"h$lvl").iterator().asScala.toList.map { el =>
         obj(
           "level" -> num(lvl),
-          "text"  -> str(squish(el.text()).take(140)),
+          "text" -> str(squish(el.text()).take(140)),
           "xpath" -> str(xpathOf(el))
         )
       }
@@ -41,8 +43,8 @@ private[browser] object BrowserHtmlOverview {
     val landmarks: List[Json] = landmarkTags.flatMap { tag =>
       doc.select(tag).iterator().asScala.toList.map { el =>
         obj(
-          "tag"        -> str(tag),
-          "xpath"      -> str(xpathOf(el)),
+          "tag" -> str(tag),
+          "xpath" -> str(xpathOf(el)),
           "childCount" -> num(el.children().size())
         )
       }
@@ -65,27 +67,29 @@ private[browser] object BrowserHtmlOverview {
     }
 
     val totals = obj(
-      "links"  -> num(doc.select("a[href]").size()),
+      "links" -> num(doc.select("a[href]").size()),
       "images" -> num(doc.select("img[src]").size()),
-      "forms"  -> num(doc.select("form").size())
+      "forms" -> num(doc.select("form").size())
     )
 
     obj(
-      "htmlFileId"   -> str(htmlFileId),
-      "url"          -> str(currentUrl),
-      "title"        -> str(title.take(200)),
-      "headings"     -> arr(headings*),
-      "landmarks"    -> arr(landmarks*),
+      "htmlFileId" -> str(htmlFileId),
+      "url" -> str(currentUrl),
+      "title" -> str(title.take(200)),
+      "headings" -> arr(headings*),
+      "landmarks" -> arr(landmarks*),
       "linkClusters" -> arr(linkClusters*),
-      "totals"       -> totals
+      "totals" -> totals
     )
   }
 
-  /** Build a stable XPath for an [[Element]] by walking parents and
-    * emitting `tag[index]` segments. Matches jSoup's `selectXpath`
-    * dialect so round-tripping a returned xpath works. Indexes are
-    * 1-based, per XPath convention; same-tag siblings get the
-    * positional index. */
+  /**
+   * Build a stable XPath for an [[Element]] by walking parents and
+   * emitting `tag[index]` segments. Matches jSoup's `selectXpath`
+   * dialect so round-tripping a returned xpath works. Indexes are
+   * 1-based, per XPath convention; same-tag siblings get the
+   * positional index.
+   */
   def xpathOf(el: Element): String = {
     val segments = scala.collection.mutable.ListBuffer.empty[String]
     var current: Node = el
@@ -110,9 +114,11 @@ private[browser] object BrowserHtmlOverview {
     "/" + segments.mkString("/")
   }
 
-  /** Collapse runs of whitespace to single spaces; trim. Used so the
-    * overview's heading text doesn't dump newline-padded markup at
-    * the agent. */
+  /**
+   * Collapse runs of whitespace to single spaces; trim. Used so the
+   * overview's heading text doesn't dump newline-padded markup at
+   * the agent.
+   */
   def squish(text: String): String =
     text.replaceAll("\\s+", " ").trim
 }

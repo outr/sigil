@@ -15,12 +15,12 @@ import fabric.rw.*
  * `Waiting` splits based on the workflow's current step.
  */
 enum TaskDisplayStatus derives RW {
-  case Pending             // not yet scheduled
-  case Scheduled           // queued, not yet running
-  case Running             // a step is actively executing
-  case WaitingForAnswer    // suspended on a worker AnswerTrigger
-  case WaitingForApproval  // gated on a SigilApproval step
-  case Waiting             // generic wait (TimeTrigger, WebhookTrigger, ...)
+  case Pending // not yet scheduled
+  case Scheduled // queued, not yet running
+  case Running // a step is actively executing
+  case WaitingForAnswer // suspended on a worker AnswerTrigger
+  case WaitingForApproval // gated on a SigilApproval step
+  case Waiting // generic wait (TimeTrigger, WebhookTrigger, ...)
   case Success
   case Failure
   case Cancelled

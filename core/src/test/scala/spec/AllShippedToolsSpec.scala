@@ -29,7 +29,7 @@ import sigil.tool.process.{ProcessOutputTool, ProcessRegistry, ProcessSpawnTool}
  */
 class AllShippedToolsSpec extends AnyWordSpec with Matchers {
 
-  private val fs       = LocalFileSystemContext()
+  private val fs = LocalFileSystemContext()
   private val registry = new ProcessRegistry()
 
   "AllShippedTools" should {
@@ -90,15 +90,15 @@ class AllShippedToolsSpec extends AnyWordSpec with Matchers {
       // than once. Two calls with the SAME registry must hand back
       // process tools that share the in-memory handle map, otherwise
       // an agent that spawns via call-1 can't read output via call-2.
-      val callA  = AllShippedTools(fs, TestSpace, Some(registry))
-      val callB  = AllShippedTools(fs, TestSpace, Some(registry))
-      val spawnA = callA.collectFirst { case t: ProcessSpawnTool  => t }.get
-      val outB   = callB.collectFirst { case t: ProcessOutputTool => t }.get
+      val callA = AllShippedTools(fs, TestSpace, Some(registry))
+      val callB = AllShippedTools(fs, TestSpace, Some(registry))
+      val spawnA = callA.collectFirst { case t: ProcessSpawnTool => t }.get
+      val outB = callB.collectFirst { case t: ProcessOutputTool => t }.get
       // Different tool instances...
       (spawnA eq callB.collectFirst { case t: ProcessSpawnTool => t }.get) shouldBe false
       // ...but the same registry — the only state that matters.
-      registry.size shouldBe 0  // sanity: nothing leaked from earlier tests
-      val _ = outB                   // silences unused warning
+      registry.size shouldBe 0 // sanity: nothing leaked from earlier tests
+      val _ = outB // silences unused warning
       val _ = spawnA
       succeed
     }

@@ -9,7 +9,8 @@ import sigil.tooling.types.{LspRange, LspSelectionRangeChain, LspSelectionRangeR
 
 case class LspSelectionRangeInput(languageId: String,
                                   filePath: String,
-                                  positions: List[LspSelectionRangeInput.Pos]) extends ToolInput derives RW
+                                  positions: List[LspSelectionRangeInput.Pos])
+  extends ToolInput derives RW
 
 object LspSelectionRangeInput {
   case class Pos(line: Int, character: Int) derives RW
@@ -27,38 +28,44 @@ object LspSelectionRangeInput {
  * essential when the agent is reasoning about "the entire surrounding
  * context" for an edit.
  */
-final class LspSelectionRangeTool(val manager: LspManager) extends TypedOutputTool[LspSelectionRangeInput, LspSelectionRangeResult](
-  name = ToolName("lsp_selection_range"),
-  description =
-    """For each input cursor position, return the chain of progressively-larger semantic
+final class LspSelectionRangeTool(val manager: LspManager)
+  extends TypedOutputTool[LspSelectionRangeInput, LspSelectionRangeResult](
+    name = ToolName("lsp_selection_range"),
+    description =
+      """For each input cursor position, return the chain of progressively-larger semantic
       |regions enclosing it (identifier → expression → statement → method → class …).
       |
       |`languageId` + `filePath` identify the document.
       |`positions` is the list of (line, character) pairs (0-based).
       |Returns `{filePath, chains: [{ranges: [innermost, ..., outermost]}]}` — one chain per input position.""".stripMargin,
-  keywords = Set("lsp", "selection", "expand selection", "smart selection"),
-  examples = List(
-    ToolExample(
-      "expand selection at one position",
-      LspSelectionRangeInput(
-        languageId = "scala", filePath = "/abs/path/Foo.scala",
-        positions = List(LspSelectionRangeInput.Pos(line = 10, character = 7))
+    keywords = Set("lsp", "selection", "expand selection", "smart selection"),
+    examples = List(
+      ToolExample(
+        "expand selection at one position",
+        LspSelectionRangeInput(
+          languageId = "scala",
+          filePath = "/abs/path/Foo.scala",
+          positions = List(LspSelectionRangeInput.Pos(line = 10, character = 7))
+        )
       )
     )
   )
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  with sigil.tool.ReadOnlyExternalTool
+  with LspToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspSelectionRangeInput, context: TurnContext): Task[LspSelectionRangeResult] =
     withOpenDocumentTyped[LspSelectionRangeResult](
-      input.languageId, input.filePath, context,
+      input.languageId,
+      input.filePath,
+      context,
       onError = msg => throw new RuntimeException(msg)
     ) { (session, uri) =>
       val positions = input.positions.map(p => new Position(p.line, p.character))
       session.selectionRange(uri, positions).map { results =>
         LspSelectionRangeResult(
           filePath = input.filePath,
-          chains   = results.map(r => LspSelectionRangeChain(flatten(r)))
+          chains = results.map(r => LspSelectionRangeChain(flatten(r)))
         )
       }
     }

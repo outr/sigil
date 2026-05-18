@@ -86,9 +86,11 @@ object StorageRouteFilter {
     }
   }
 
-  /** No-op authn — every request gets `Nil` chain. Combined with an
-    * `accessibleSpaces` override that returns the universe, this
-    * gives unauthenticated public access. Only safe for trusted
-    * networks / dev. */
+  /**
+   * No-op authn — every request gets `Nil` chain. Combined with an
+   * `accessibleSpaces` override that returns the universe, this
+   * gives unauthenticated public access. Only safe for trusted
+   * networks / dev.
+   */
   val OpenAuth: HttpExchange => Task[List[ParticipantId]] = _ => Task.pure(Nil)
 }

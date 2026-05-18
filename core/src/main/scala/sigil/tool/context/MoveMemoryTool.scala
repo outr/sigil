@@ -25,10 +25,11 @@ import sigil.tool.model.ResponseContent
  * `modified` change. Versioning is preserved; pinned status is
  * preserved.
  */
-case object MoveMemoryTool extends TypedTool[MoveMemoryInput](
-  name = ToolName("move_memory"),
-  description =
-    """Re-scope a memory to a different accessible space — useful when a memory was classified
+case object MoveMemoryTool
+  extends TypedTool[MoveMemoryInput](
+    name = ToolName("move_memory"),
+    description =
+      """Re-scope a memory to a different accessible space — useful when a memory was classified
       |into the wrong space ("oh, this isn't a project rule, it's a personal preference") or
       |when scope changes ("this used to be project-A only; it now applies to me across projects").
       |
@@ -37,8 +38,8 @@ case object MoveMemoryTool extends TypedTool[MoveMemoryInput](
       |- `fromSpace` — optional disambiguator when the same key exists in multiple spaces.
       |
       |The record's id, key, and pinned status are preserved.""".stripMargin,
-  keywords = Set("move", "rescope", "memory", "space", "transfer")
-) {
+    keywords = Set("move", "rescope", "memory", "space", "transfer")
+  ) {
   override def paginate: Boolean = false
 
   override def resultTtl: Option[Int] = Some(0)
@@ -86,7 +87,7 @@ case object MoveMemoryTool extends TypedTool[MoveMemoryInput](
         case None =>
           context.sigil.withDB(_.memories.transaction(_.get(Id[ContextMemory](key)))).map {
             case some @ Some(m) if spaces.contains(m.spaceId) => some
-            case _                                            => None
+            case _ => None
           }
       }
     }

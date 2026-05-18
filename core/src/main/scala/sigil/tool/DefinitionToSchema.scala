@@ -34,12 +34,12 @@ object DefinitionToSchema {
    * whose input contains a `Json` field opts out of strict per-tool.
    */
   def containsJson(definition: Definition): Boolean = definition.defType match {
-    case DefType.Json            => true
-    case DefType.Opt(t)          => containsJson(t)
-    case DefType.Arr(t)          => containsJson(t)
-    case DefType.Obj(map)        => map.values.exists(containsJson)
+    case DefType.Json => true
+    case DefType.Opt(t) => containsJson(t)
+    case DefType.Arr(t) => containsJson(t)
+    case DefType.Obj(map) => map.values.exists(containsJson)
     case DefType.Poly(values, _) => values.values.exists(containsJson)
-    case _                       => false
+    case _ => false
   }
 
   private def convert(definition: Definition): Json = {

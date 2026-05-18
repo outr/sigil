@@ -14,9 +14,7 @@ import sigil.provider.{
 import sigil.signal.EventState
 import sigil.tool.core.{CoreTools, RespondTool}
 import sigil.tool.model.ResponseContent
-import sigil.tool.provider.{
-  PinComplexityInput, PinComplexityTool, UnpinComplexityInput, UnpinComplexityTool
-}
+import sigil.tool.provider.{PinComplexityInput, PinComplexityTool, UnpinComplexityInput, UnpinComplexityTool}
 import sigil.TurnContext
 
 /**
@@ -57,19 +55,17 @@ class PinComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   "Conversation.pinnedComplexity" should {
 
-    "default to None on fresh conversations" in {
+    "default to None on fresh conversations" in
       freshConv("default").map { conv =>
         conv.pinnedComplexity shouldBe None
       }
-    }
 
-    "persist and round-trip when set" in {
+    "persist and round-trip when set" in
       freshConv("persist", pinned = Some(Complexity.High)).flatMap { conv =>
         TestSigil.withDB(_.conversations.transaction(_.get(conv._id))).map { reloaded =>
           reloaded.flatMap(_.pinnedComplexity) shouldBe Some(Complexity.High)
         }
       }
-    }
   }
 
   "classifyForRoute" should {
@@ -87,23 +83,21 @@ class PinComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
             ModelCandidate(Model.id("test", "hi"), supportedComplexity = Set(Complexity.Low, Complexity.Medium, Complexity.High))
           )
         ),
-        inferWorkType   = Some((_, _) => Task.pure(ConversationWork)),
+        inferWorkType = Some((_, _) => Task.pure(ConversationWork)),
         inferComplexity = Some((_, _) => Task.pure(Complexity.Low))
       )
       TestSigil.setResolveProviderStrategy(_ => Task.pure(Some(strategy)))
       for {
         conv <- freshConv("classify-pin", pinned = Some(Complexity.High))
         userMsg = Message(
-          participantId  = TestUser,
+          participantId = TestUser,
           conversationId = conv._id,
-          topicId        = TestTopicEntry.id,
-          content        = Vector(ResponseContent.Text("trivial")),
-          state          = EventState.Complete
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("trivial")),
+          state = EventState.Complete
         )
         result <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, Some(userMsg), buildCtx(conv))
-      } yield {
-        result._2 shouldBe Complexity.High
-      }
+      } yield result._2 shouldBe Complexity.High
     }
 
     "use the classifier when pinnedComplexity is None" in {
@@ -115,23 +109,21 @@ class PinComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
             ModelCandidate(Model.id("test", "med"), supportedComplexity = Set(Complexity.Low, Complexity.Medium, Complexity.High))
           )
         ),
-        inferWorkType   = Some((_, _) => Task.pure(ConversationWork)),
+        inferWorkType = Some((_, _) => Task.pure(ConversationWork)),
         inferComplexity = Some((_, _) => Task.pure(Complexity.Medium))
       )
       TestSigil.setResolveProviderStrategy(_ => Task.pure(Some(strategy)))
       for {
         conv <- freshConv("classify-none")
         userMsg = Message(
-          participantId  = TestUser,
+          participantId = TestUser,
           conversationId = conv._id,
-          topicId        = TestTopicEntry.id,
-          content        = Vector(ResponseContent.Text("some content")),
-          state          = EventState.Complete
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("some content")),
+          state = EventState.Complete
         )
         result <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, Some(userMsg), buildCtx(conv))
-      } yield {
-        result._2 shouldBe Complexity.Medium
-      }
+      } yield result._2 shouldBe Complexity.Medium
     }
   }
 
@@ -141,11 +133,9 @@ class PinComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       for {
         conv <- freshConv("pin-tool")
         ctx = buildCtx(conv)
-        _   <- PinComplexityTool.execute(PinComplexityInput("high"), ctx).toList
+        _ <- PinComplexityTool.execute(PinComplexityInput("high"), ctx).toList
         reloaded <- TestSigil.withDB(_.conversations.transaction(_.get(conv._id)))
-      } yield {
-        reloaded.flatMap(_.pinnedComplexity) shouldBe Some(Complexity.High)
-      }
+      } yield reloaded.flatMap(_.pinnedComplexity) shouldBe Some(Complexity.High)
     }
 
     "accept multiple normalisations of the same tier" in {
@@ -155,7 +145,7 @@ class PinComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         for {
           conv <- freshConv(s"normalise-${raw.replaceAll("\\W", "")}")
           ctx = buildCtx(conv)
-          _   <- PinComplexityTool.execute(PinComplexityInput(raw), ctx).toList
+          _ <- PinComplexityTool.execute(PinComplexityInput(raw), ctx).toList
           reloaded <- TestSigil.withDB(_.conversations.transaction(_.get(conv._id)))
         } yield reloaded.flatMap(_.pinnedComplexity)
       }).map { results =>
@@ -168,11 +158,9 @@ class PinComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       for {
         conv <- freshConv("reject")
         ctx = buildCtx(conv)
-        _   <- PinComplexityTool.execute(PinComplexityInput("ultra"), ctx).toList
+        _ <- PinComplexityTool.execute(PinComplexityInput("ultra"), ctx).toList
         reloaded <- TestSigil.withDB(_.conversations.transaction(_.get(conv._id)))
-      } yield {
-        reloaded.flatMap(_.pinnedComplexity) shouldBe None
-      }
+      } yield reloaded.flatMap(_.pinnedComplexity) shouldBe None
     }
   }
 
@@ -182,22 +170,18 @@ class PinComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       for {
         conv <- freshConv("unpin", pinned = Some(Complexity.High))
         ctx = buildCtx(conv)
-        _   <- UnpinComplexityTool.execute(UnpinComplexityInput(), ctx).toList
+        _ <- UnpinComplexityTool.execute(UnpinComplexityInput(), ctx).toList
         reloaded <- TestSigil.withDB(_.conversations.transaction(_.get(conv._id)))
-      } yield {
-        reloaded.flatMap(_.pinnedComplexity) shouldBe None
-      }
+      } yield reloaded.flatMap(_.pinnedComplexity) shouldBe None
     }
 
     "no-op when nothing pinned" in {
       for {
         conv <- freshConv("unpin-noop")
         ctx = buildCtx(conv)
-        _   <- UnpinComplexityTool.execute(UnpinComplexityInput(), ctx).toList
+        _ <- UnpinComplexityTool.execute(UnpinComplexityInput(), ctx).toList
         reloaded <- TestSigil.withDB(_.conversations.transaction(_.get(conv._id)))
-      } yield {
-        reloaded.flatMap(_.pinnedComplexity) shouldBe None
-      }
+      } yield reloaded.flatMap(_.pinnedComplexity) shouldBe None
     }
   }
 

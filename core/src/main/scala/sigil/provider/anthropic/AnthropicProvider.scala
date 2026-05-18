@@ -35,46 +35,55 @@ import scala.util.Success
 case class AnthropicProvider(apiKey: String,
                              sigilRef: Sigil,
                              baseUrl: URL = url"https://api.anthropic.com",
-                             /** Per-read idle timeout for the SSE stream. Fires
-                               * only when no bytes arrive for the duration —
-                               * slow-but-working streams keep going. */
+                             /**
+                              * Per-read idle timeout for the SSE stream. Fires
+                              * only when no bytes arrive for the duration —
+                              * slow-but-working streams keep going.
+                              */
                              tokenIdleTimeout: FiniteDuration = 120.seconds,
-                             /** How to send the credential. Anthropic's direct API
-                               * uses `x-api-key` + `anthropic-version`; vendor
-                               * mirrors that expose `/v1/messages` (DigitalOcean
-                               * Inference for `anthropic-claude-*` models) use the
-                               * OpenAI-style `Authorization: Bearer`. The wire
-                               * body is identical across both modes — only the
-                               * auth + version headers differ. */
-                             authMode: AnthropicAuthMode = AnthropicAuthMode.XApiKey) extends Provider {
+                             /**
+                              * How to send the credential. Anthropic's direct API
+                              * uses `x-api-key` + `anthropic-version`; vendor
+                              * mirrors that expose `/v1/messages` (DigitalOcean
+                              * Inference for `anthropic-claude-*` models) use the
+                              * OpenAI-style `Authorization: Bearer`. The wire
+                              * body is identical across both modes — only the
+                              * auth + version headers differ.
+                              */
+                             authMode: AnthropicAuthMode = AnthropicAuthMode.XApiKey)
+  extends Provider {
   override def `type`: ProviderType = ProviderType.Anthropic
   override val providerKey: String = Anthropic.Provider
   override protected def sigil: Sigil = sigilRef
 
-  /** Anthropic's tokenizer isn't published; cl100k_base is within
-    * ~10% of empirical Claude token counts for English prose, which
-    * is plenty of accuracy for budget headroom checks. The pre-flight
-    * gate errs conservative anyway, and overshoot only triggers
-    * extra (already-cheap) shedding stages. */
+  /**
+   * Anthropic's tokenizer isn't published; cl100k_base is within
+   * ~10% of empirical Claude token counts for English prose, which
+   * is plenty of accuracy for budget headroom checks. The pre-flight
+   * gate errs conservative anyway, and overshoot only triggers
+   * extra (already-cheap) shedding stages.
+   */
   override def tokenizer: Tokenizer = JtokkitTokenizer.OpenAIChatGpt
 
   override def call(input: ProviderCall): Stream[ProviderEvent] = {
     val state = new StreamState(new ToolCallAccumulator(input.tools, providerKey = "anthropic"))
     Stream.force(
       for {
-        raw         <- httpRequestFor(input)
+        raw <- httpRequestFor(input)
         intercepted <- sigilRef.wireInterceptor.before(raw)
-        lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLines()
-      } yield {
+        lines <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLines()
+      } yield
         // okhttp's per-read timeout already catches network stalls
         // (no bytes for the duration); slow-but-working streams keep
         // going as long as tokens flow.
         _root_.sigil.provider.debug.StreamWireInterceptor.attach(
-          lines, sigilRef.wireInterceptor, intercepted, sigilRef.chunkLogger
+          lines,
+          sigilRef.wireInterceptor,
+          intercepted,
+          sigilRef.chunkLogger
         ) { line =>
           Stream.emits(parseLine(line, state))
         }
-      }
     )
   }
 
@@ -251,8 +260,8 @@ case class AnthropicProvider(apiKey: String,
       // `ToolCallAccumulator` for every provider) to re-check the
       // parsed args against those constraints post-decode.
       obj(
-        "name"         -> str(s.name.value),
-        "description"  -> str(renderDescription(t, input.currentMode)),
+        "name" -> str(s.name.value),
+        "description" -> str(renderDescription(t, input.currentMode)),
         "input_schema" -> StrictSchema.forAnthropic(DefinitionToSchema(s.input))
       )
     }
@@ -284,16 +293,16 @@ case class AnthropicProvider(apiKey: String,
 
   private def stripPolyDiscriminator(json: Json): Json = json match {
     case o: Obj => Obj(o.value - "type")
-    case other  => other
+    case other => other
   }
 
   // ---- response parsing ----
 
   private def parseLine(line: String, state: StreamState): Vector[ProviderEvent] =
     SSELineParser.parse(line) match {
-      case SSELine.Data(json)                    => parseEvent(json, state)
-      case SSELine.Done                          => state.flushDone()
-      case SSELine.MalformedData(_, r)           => Vector(ProviderEvent.Error(s"parse: $r"))
+      case SSELine.Data(json) => parseEvent(json, state)
+      case SSELine.Done => state.flushDone()
+      case SSELine.MalformedData(_, r) => Vector(ProviderEvent.Error(s"parse: $r"))
       case SSELine.Blank | SSELine.Comment | _: SSELine.Other => Vector.empty
     }
 
@@ -364,11 +373,11 @@ case class AnthropicProvider(apiKey: String,
         stopReason match {
           case Some(s) =>
             val mapped = s match {
-              case "end_turn"    => StopReason.Complete
-              case "max_tokens"  => StopReason.MaxTokens
-              case "tool_use"    => StopReason.ToolCall
+              case "end_turn" => StopReason.Complete
+              case "max_tokens" => StopReason.MaxTokens
+              case "tool_use" => StopReason.ToolCall
               case "stop_sequence" => StopReason.Complete
-              case _             => StopReason.Complete
+              case _ => StopReason.Complete
             }
             state.pendingDone = Some(mapped)
             usageEv
@@ -390,9 +399,9 @@ case class AnthropicProvider(apiKey: String,
         // runAgentLoop's handler (Bug #6) surfaces a user-visible
         // Failure Message instead of leaving the chat with the
         // "(agent completed without a reply)" placeholder.
-        val err  = json.get("error").getOrElse(Obj.empty)
-        val msg  = err.get("message").map(_.asString).getOrElse("unknown error")
-        val typ  = err.get("type").map(_.asString).getOrElse("error")
+        val err = json.get("error").getOrElse(Obj.empty)
+        val msg = err.get("message").map(_.asString).getOrElse("unknown error")
+        val typ = err.get("type").map(_.asString).getOrElse("error")
         throw new ProviderStreamException(Anthropic.Provider, 0, typ, msg)
 
       case _ => Vector.empty
@@ -413,14 +422,17 @@ case class AnthropicProvider(apiKey: String,
 
     def flushDone(): Vector[ProviderEvent] = pendingDone match {
       case Some(sr) => pendingDone = None; Vector(ProviderEvent.Done(sr))
-      case None     => Vector.empty
+      case None => Vector.empty
     }
   }
 }
 
 object AnthropicProvider {
-  /** Construct an AnthropicProvider. Models are read from
-    * [[sigil.cache.ModelRegistry]] at access time. */
+
+  /**
+   * Construct an AnthropicProvider. Models are read from
+   * [[sigil.cache.ModelRegistry]] at access time.
+   */
   def create(sigil: Sigil, apiKey: String, baseUrl: URL = url"https://api.anthropic.com"): Task[AnthropicProvider] =
     Task.pure(AnthropicProvider(apiKey, sigil, baseUrl))
 }

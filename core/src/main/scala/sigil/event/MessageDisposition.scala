@@ -23,13 +23,17 @@ import fabric.rw.*
  */
 enum MessageDisposition derives RW {
 
-  /** Normal reply — the agent answered, asked, or reported status. */
+  /**
+   * Normal reply — the agent answered, asked, or reported status.
+   */
   case Success
 
-  /** The agent could not complete the requested work. Content
-    * carries the reason as markdown. Framework-emitted failures
-    * (caught tool exceptions, etc.) populate `recoverable` and
-    * `errorContext`; agent-emitted failures leave the defaults. */
+  /**
+   * The agent could not complete the requested work. Content
+   * carries the reason as markdown. Framework-emitted failures
+   * (caught tool exceptions, etc.) populate `recoverable` and
+   * `errorContext`; agent-emitted failures leave the defaults.
+   */
   case Failure(recoverable: Boolean = false,
                errorContext: Option[ErrorContext] = None)
 }

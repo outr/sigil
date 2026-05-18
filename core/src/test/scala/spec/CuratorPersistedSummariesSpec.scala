@@ -5,7 +5,9 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.{Conversation, ContextFrame, ContextSummary, TopicEntry}
-import sigil.conversation.compression.{NoOpBlockExtractor, NoOpContextCompressor, NoOpMemoryRetriever, Percentage, StandardContextCurator, StandardContextOptimizer}
+import sigil.conversation.compression.{
+  NoOpBlockExtractor, NoOpContextCompressor, NoOpMemoryRetriever, Percentage, StandardContextCurator, StandardContextOptimizer
+}
 import sigil.db.{Model, ModelArchitecture, ModelDefaultParameters, ModelLinks, ModelPricing, ModelTopProvider}
 import sigil.event.{Event, Message, MessageVisibility}
 import sigil.signal.EventState
@@ -33,37 +35,39 @@ class CuratorPersistedSummariesSpec extends AsyncWordSpec with AsyncTaskSpec wit
   private val topic = TopicEntry(sigil.conversation.Topic.id("t"), label = "t", summary = "t")
 
   private val model: Model = Model(
-    canonicalSlug       = "test/summaries-model",
-    huggingFaceId       = "",
-    name                = "summaries-model",
-    displayName         = Some("summaries-model"),
-    description         = "",
-    contextLength       = 100_000L,
-    architecture        = ModelArchitecture(
-      modality         = "text->text",
-      inputModalities  = List("text"),
+    canonicalSlug = "test/summaries-model",
+    huggingFaceId = "",
+    name = "summaries-model",
+    displayName = Some("summaries-model"),
+    description = "",
+    contextLength = 100_000L,
+    architecture = ModelArchitecture(
+      modality = "text->text",
+      inputModalities = List("text"),
       outputModalities = List("text"),
-      tokenizer        = "Unknown",
-      instructType     = None
+      tokenizer = "Unknown",
+      instructType = None
     ),
-    pricing             = ModelPricing(
-      prompt = BigDecimal(0), completion = BigDecimal(0),
-      webSearch = None, inputCacheRead = None
+    pricing = ModelPricing(
+      prompt = BigDecimal(0),
+      completion = BigDecimal(0),
+      webSearch = None,
+      inputCacheRead = None
     ),
-    topProvider         = ModelTopProvider(
-      contextLength       = Some(100_000L),
+    topProvider = ModelTopProvider(
+      contextLength = Some(100_000L),
       maxCompletionTokens = None,
-      isModerated         = false
+      isModerated = false
     ),
-    perRequestLimits    = None,
+    perRequestLimits = None,
     supportedParameters = Set.empty,
-    defaultParameters   = ModelDefaultParameters(),
-    knowledgeCutoff     = None,
-    expirationDate      = None,
-    links               = ModelLinks(details = ""),
-    created             = lightdb.time.Timestamp(),
-    modified            = lightdb.time.Timestamp(),
-    _id                 = modelId
+    defaultParameters = ModelDefaultParameters(),
+    knowledgeCutoff = None,
+    expirationDate = None,
+    links = ModelLinks(details = ""),
+    created = lightdb.time.Timestamp(),
+    modified = lightdb.time.Timestamp(),
+    _id = modelId
   )
 
   private def freshConvId(label: String): Id[Conversation] =
@@ -71,17 +75,18 @@ class CuratorPersistedSummariesSpec extends AsyncWordSpec with AsyncTaskSpec wit
 
   private def seedConversation(convId: Id[Conversation]): Task[Unit] =
     TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-      _id = convId, topics = List(topic)
+      _id = convId,
+      topics = List(topic)
     )))).unit
 
   private def publishFrames(convId: Id[Conversation], count: Int): Task[Unit] =
     Task.sequence((1 to count).toList.map { i =>
       TestSigil.publish(Message(
-        participantId  = TestUser,
+        participantId = TestUser,
         conversationId = convId,
-        topicId        = topic.id,
-        content        = Vector(ResponseContent.Text(s"message $i")),
-        state          = EventState.Complete
+        topicId = topic.id,
+        content = Vector(ResponseContent.Text(s"message $i")),
+        state = EventState.Complete
       ))
     }).unit
 
@@ -90,12 +95,12 @@ class CuratorPersistedSummariesSpec extends AsyncWordSpec with AsyncTaskSpec wit
     "load persisted ContextSummary records into TurnInput.summaries when enabled" in {
       val convId = freshConvId("persisted")
       val curator = StandardContextCurator(
-        sigil           = TestSigil,
-        optimizer       = StandardContextOptimizer(),
-        blockExtractor  = NoOpBlockExtractor,
+        sigil = TestSigil,
+        optimizer = StandardContextOptimizer(),
+        blockExtractor = NoOpBlockExtractor,
         memoryRetriever = NoOpMemoryRetriever,
-        compressor      = NoOpContextCompressor,
-        budget          = Percentage(0.8)
+        compressor = NoOpContextCompressor,
+        budget = Percentage(0.8)
       )
       for {
         _ <- TestSigil.cache.replace(List(model))
@@ -106,20 +111,18 @@ class CuratorPersistedSummariesSpec extends AsyncWordSpec with AsyncTaskSpec wit
         s1 <- TestSigil.persistSummary(ContextSummary("epoch 1 summary text", convId, tokenEstimate = 10))
         s2 <- TestSigil.persistSummary(ContextSummary("epoch 2 summary text", convId, tokenEstimate = 10))
         result <- curator.curate(convId, modelId, chain = List(TestUser, TestAgent))
-      } yield {
-        result.summaries.toSet shouldBe Set(s1._id, s2._id)
-      }
+      } yield result.summaries.toSet shouldBe Set(s1._id, s2._id)
     }
 
     "skip the summariesFor lookup when disabled" in {
       val convId = freshConvId("opt-out")
       val curator = StandardContextCurator(
-        sigil                  = TestSigil,
-        optimizer              = StandardContextOptimizer(),
-        blockExtractor         = NoOpBlockExtractor,
-        memoryRetriever        = NoOpMemoryRetriever,
-        compressor             = NoOpContextCompressor,
-        budget                 = Percentage(0.8),
+        sigil = TestSigil,
+        optimizer = StandardContextOptimizer(),
+        blockExtractor = NoOpBlockExtractor,
+        memoryRetriever = NoOpMemoryRetriever,
+        compressor = NoOpContextCompressor,
+        budget = Percentage(0.8),
         loadPersistedSummaries = false
       )
       for {
@@ -128,9 +131,7 @@ class CuratorPersistedSummariesSpec extends AsyncWordSpec with AsyncTaskSpec wit
         _ <- publishFrames(convId, 3)
         _ <- TestSigil.persistSummary(ContextSummary("should be ignored", convId, tokenEstimate = 10))
         result <- curator.curate(convId, modelId, chain = List(TestUser, TestAgent))
-      } yield {
-        result.summaries shouldBe empty
-      }
+      } yield result.summaries shouldBe empty
     }
   }
 
@@ -139,12 +140,12 @@ class CuratorPersistedSummariesSpec extends AsyncWordSpec with AsyncTaskSpec wit
     "cap the frame budget at the configured limit, dropping the oldest" in {
       val convId = freshConvId("framecap")
       val curator = StandardContextCurator(
-        sigil            = TestSigil,
-        optimizer        = StandardContextOptimizer(),
-        blockExtractor   = NoOpBlockExtractor,
-        memoryRetriever  = NoOpMemoryRetriever,
-        compressor       = NoOpContextCompressor,
-        budget           = Percentage(0.8),
+        sigil = TestSigil,
+        optimizer = StandardContextOptimizer(),
+        blockExtractor = NoOpBlockExtractor,
+        memoryRetriever = NoOpMemoryRetriever,
+        compressor = NoOpContextCompressor,
+        budget = Percentage(0.8),
         maxFramesPerTurn = 3
       )
       for {
@@ -163,12 +164,12 @@ class CuratorPersistedSummariesSpec extends AsyncWordSpec with AsyncTaskSpec wit
     "pass through unchanged when conversation has fewer than maxFramesPerTurn frames" in {
       val convId = freshConvId("under-cap")
       val curator = StandardContextCurator(
-        sigil            = TestSigil,
-        optimizer        = StandardContextOptimizer(),
-        blockExtractor   = NoOpBlockExtractor,
-        memoryRetriever  = NoOpMemoryRetriever,
-        compressor       = NoOpContextCompressor,
-        budget           = Percentage(0.8),
+        sigil = TestSigil,
+        optimizer = StandardContextOptimizer(),
+        blockExtractor = NoOpBlockExtractor,
+        memoryRetriever = NoOpMemoryRetriever,
+        compressor = NoOpContextCompressor,
+        budget = Percentage(0.8),
         maxFramesPerTurn = 100
       )
       for {
@@ -176,9 +177,7 @@ class CuratorPersistedSummariesSpec extends AsyncWordSpec with AsyncTaskSpec wit
         _ <- seedConversation(convId)
         _ <- publishFrames(convId, 4)
         result <- curator.curate(convId, modelId, chain = List(TestUser, TestAgent))
-      } yield {
-        result.frames should have size 4
-      }
+      } yield result.frames should have size 4
     }
   }
 

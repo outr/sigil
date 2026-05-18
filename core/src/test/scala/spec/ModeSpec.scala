@@ -8,9 +8,7 @@ import sigil.role.Role
 import sigil.participant.DefaultAgentParticipant
 import sigil.provider.{ConversationMode, GenerationSettings, Instructions, Mode, ToolPolicy}
 import sigil.tool.ToolName
-import sigil.tool.core.{
-  CoreTools, FindCapabilityTool, RespondTool, RespondOptionsTool, CancelTool
-}
+import sigil.tool.core.{CoreTools, FindCapabilityTool, RespondTool, RespondOptionsTool, CancelTool}
 
 /**
  * Coverage for the [[Mode]] PolyType, [[ToolPolicy]] policy cases,
@@ -113,8 +111,8 @@ class ModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "always include suggested tools (regardless of policy)" in Task {
       val suggested = List(toolD)
       val active = TestSigil.effectiveToolNames(a, mode(ToolPolicy.Active(Nil)), suggested).toSet
-      val excl   = TestSigil.effectiveToolNames(a, mode(ToolPolicy.Exclusive(Nil)), suggested).toSet
-      val none   = TestSigil.effectiveToolNames(a, mode(ToolPolicy.None), suggested).toSet
+      val excl = TestSigil.effectiveToolNames(a, mode(ToolPolicy.Exclusive(Nil)), suggested).toSet
+      val none = TestSigil.effectiveToolNames(a, mode(ToolPolicy.None), suggested).toSet
       active should contain(toolD)
       excl should contain(toolD)
       none should contain(toolD)

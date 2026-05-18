@@ -49,13 +49,13 @@ class ConsecutiveAssistantsMergeSpec extends AsyncWordSpec with AsyncTaskSpec wi
   "FrameBuilder.computeFrame" should {
     "produce no frame for a TopicChange (metadata, not history)" in {
       val tc = TopicChange(
-        kind           = TopicChangeKind.Switch(previousTopicId = sigil.conversation.Topic.id("prev")),
-        newLabel       = "Admin services",
-        newSummary     = "Evaluating the admin module.",
-        participantId  = TestAgent,
+        kind = TopicChangeKind.Switch(previousTopicId = sigil.conversation.Topic.id("prev")),
+        newLabel = "Admin services",
+        newSummary = "Evaluating the admin module.",
+        participantId = TestAgent,
         conversationId = Conversation.id("frame-test"),
-        topicId        = sigil.conversation.Topic.id("admin"),
-        state          = EventState.Complete
+        topicId = sigil.conversation.Topic.id("admin"),
+        state = EventState.Complete
       )
       Task(FrameBuilder.computeFrame(tc) shouldBe None)
     }
@@ -67,29 +67,29 @@ class ConsecutiveAssistantsMergeSpec extends AsyncWordSpec with AsyncTaskSpec wi
       val provider = new RecordingTwoRespondProvider
       TestSigil.setProvider(Task.pure(provider))
       val convId = Conversation.id(s"two-respond-${rapid.Unique()}")
-      val agent  = makeAgent()
-      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val agent = makeAgent()
+      val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
 
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("Evaluate the admin services.")),
-               state          = EventState.Complete
-             ))
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Evaluate the admin services.")),
+          state = EventState.Complete
+        ))
         // Trigger a third turn so we get a wire request that includes
         // both prior responds in its history. The third call is what
         // proves no consecutive assistants land in the request body.
         _ <- Task.sleep(2.seconds)
         _ <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("Continue.")),
-               state          = EventState.Complete
-             ))
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("Continue.")),
+          state = EventState.Complete
+        ))
         _ <- Task.sleep(1500.millis)
       } yield {
         val recorded = provider.calls.iterator().asScala.toList
@@ -97,14 +97,15 @@ class ConsecutiveAssistantsMergeSpec extends AsyncWordSpec with AsyncTaskSpec wi
         // content-only assistant entries appear.
         recorded.zipWithIndex.foreach { case (call, idx) =>
           val pairs = call.messages.sliding(2).toList.zipWithIndex
-          pairs.foreach { case (Vector(a, b), i) =>
-            (a, b) match {
-              case (pa: ProviderMessage.Assistant, pb: ProviderMessage.Assistant)
-                if pa.toolCalls.isEmpty && pb.toolCalls.isEmpty =>
+          pairs.foreach {
+            case (Vector(a, b), i) =>
+              (a, b) match {
+                case (pa: ProviderMessage.Assistant, pb: ProviderMessage.Assistant)
+                    if pa.toolCalls.isEmpty && pb.toolCalls.isEmpty =>
                   fail(s"Call $idx: messages[$i] and messages[${i + 1}] are both content-only assistant — wire spec violation. " +
-                       s"Content: '${pa.content.take(60)}…' / '${pb.content.take(60)}…'")
-              case _ => ()
-            }
+                    s"Content: '${pa.content.take(60)}…' / '${pb.content.take(60)}…'")
+                case _ => ()
+              }
             case _ => ()
           }
         }
@@ -121,17 +122,19 @@ class ConsecutiveAssistantsMergeSpec extends AsyncWordSpec with AsyncTaskSpec wi
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = Model.id("test", "merge-spec-model"),
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = Model.id("test", "merge-spec-model"),
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
-  /** Provider that scripts: turn 1 → respond(endsTurn=false) →
-    * respond(endsTurn=true); turn 2 → respond(endsTurn=true).
-    * Records every ProviderCall so the spec can inspect the
-    * messages array sent on every turn. */
+  /**
+   * Provider that scripts: turn 1 → respond(endsTurn=false) →
+   * respond(endsTurn=true); turn 2 → respond(endsTurn=true).
+   * Records every ProviderCall so the spec can inspect the
+   * messages array sent on every turn.
+   */
   private class RecordingTwoRespondProvider extends Provider {
     val calls: java.util.concurrent.ConcurrentLinkedQueue[ProviderCall] =
       new java.util.concurrent.ConcurrentLinkedQueue()
@@ -151,27 +154,27 @@ class ConsecutiveAssistantsMergeSpec extends AsyncWordSpec with AsyncTaskSpec wi
           // that triggers a TopicChange (different topicLabel) and
           // continues the loop.
           RespondInput(
-            topicLabel   = "Admin services in widge-server",
+            topicLabel = "Admin services in widge-server",
             topicSummary = "Evaluating the admin services.",
-            content      = "Found 500 matches. I'll refine to focus on admin service definitions.",
-            endsTurn     = false
+            content = "Found 500 matches. I'll refine to focus on admin service definitions.",
+            endsTurn = false
           )
         case 2 =>
           // Second respond in the SAME turn — final answer.
           RespondInput(
-            topicLabel   = "Admin services in widge-server",
+            topicLabel = "Admin services in widge-server",
             topicSummary = "Final breakdown of admin services.",
-            content      = "I found 500 matches for \"admin\" in widge-server. Here's the breakdown: …",
-            endsTurn     = true
+            content = "I found 500 matches for \"admin\" in widge-server. Here's the breakdown: …",
+            endsTurn = true
           )
         case _ =>
           // Subsequent turn — final answer; this is the call whose
           // messages array is the wire-spec validation target.
           RespondInput(
-            topicLabel   = "Admin services in widge-server",
+            topicLabel = "Admin services in widge-server",
             topicSummary = "Continuing the analysis.",
-            content      = "Continuing.",
-            endsTurn     = true
+            content = "Continuing.",
+            endsTurn = true
           )
       }
       Stream.emits(List(

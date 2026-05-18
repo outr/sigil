@@ -43,20 +43,22 @@ class FrameworkStateLeakageSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   private def buildRequest(convId: Id[Conversation]): ConversationRequest =
     ConversationRequest(
-      conversationId     = convId,
-      modelId            = modelId,
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
-      previousTopics     = Nil,
+      conversationId = convId,
+      modelId = modelId,
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      chain              = List(TestUser, TestAgent),
-      tools              = CoreTools.all.toVector :+ ChangeModeTool
+      chain = List(TestUser, TestAgent),
+      tools = CoreTools.all.toVector :+ ChangeModeTool
     )
 
-  /** Provider that emits a fixed [[ProviderEvent]] stream. */
-  private final class FixedProvider(events: List[ProviderEvent]) extends Provider {
+  /**
+   * Provider that emits a fixed [[ProviderEvent]] stream.
+   */
+  final private class FixedProvider(events: List[ProviderEvent]) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -68,8 +70,8 @@ class FrameworkStateLeakageSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   "Orphan-synth path" should {
 
     "emit exactly ONE ToolInvoke event when a real ToolCallStart preceded ToolCallComplete (no synth duplicate)" in {
-      val convId  = Conversation.id(s"single-invoke-${rapid.Unique()}")
-      val conv    = Conversation(topics = TestTopicStack, _id = convId)
+      val convId = Conversation.id(s"single-invoke-${rapid.Unique()}")
+      val conv = Conversation(topics = TestTopicStack, _id = convId)
       val request = buildRequest(convId)
       val provider = new FixedProvider(List(
         ProviderEvent.ToolCallStart(CallId("change-mode-1"), "change_mode"),
@@ -77,7 +79,7 @@ class FrameworkStateLeakageSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         ProviderEvent.Done(StopReason.ToolCall)
       ))
       for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
       } yield {
         val invokes = signals.collect { case t: ToolInvoke if t.callId.contains("change-mode-1") => t }
@@ -91,8 +93,8 @@ class FrameworkStateLeakageSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       // Pre-fix: the orphan-synth fired on the second complete (since
       // activeCalls was already drained by the first complete) and
       // produced a phantom Active ToolInvoke with no paired result.
-      val convId  = Conversation.id(s"dupe-complete-${rapid.Unique()}")
-      val conv    = Conversation(topics = TestTopicStack, _id = convId)
+      val convId = Conversation.id(s"dupe-complete-${rapid.Unique()}")
+      val conv = Conversation(topics = TestTopicStack, _id = convId)
       val request = buildRequest(convId)
       val provider = new FixedProvider(List(
         ProviderEvent.ToolCallStart(CallId("change-mode-dup"), "change_mode"),
@@ -101,7 +103,7 @@ class FrameworkStateLeakageSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         ProviderEvent.Done(StopReason.ToolCall)
       ))
       for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
       } yield {
         val invokes = signals.collect { case t: ToolInvoke if t.callId.contains("change-mode-dup") => t }
@@ -121,8 +123,8 @@ class FrameworkStateLeakageSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       // call with identical arguments to an earlier call …" — a
       // generic prose directive that pollutes the agent's next-turn
       // context window with framework state.
-      val convId  = Conversation.id(s"dupe-args-${rapid.Unique()}")
-      val conv    = Conversation(topics = TestTopicStack, _id = convId)
+      val convId = Conversation.id(s"dupe-args-${rapid.Unique()}")
+      val conv = Conversation(topics = TestTopicStack, _id = convId)
       val request = buildRequest(convId)
       val provider = new FixedProvider(List(
         ProviderEvent.ToolCallStart(CallId("change-mode-a"), "change_mode"),
@@ -132,13 +134,13 @@ class FrameworkStateLeakageSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         ProviderEvent.Done(StopReason.ToolCall)
       ))
       for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
       } yield {
         val offendingProse = signals.collect {
           case m: Message if m.role == MessageRole.Tool =>
             m.content.collect {
-              case ResponseContent.Text(t)     => t
+              case ResponseContent.Text(t) => t
               case ResponseContent.Markdown(t) => t
             }.mkString(" ")
         }.filter(_.contains("This is a duplicate"))

@@ -11,13 +11,17 @@ case class LspFindReferencesInput(languageId: String,
                                   line: Int,
                                   character: Int,
                                   includeDeclaration: Boolean = true,
-                                  maxResults: Int = 200) extends ToolInput derives RW
+                                  maxResults: Int = 200)
+  extends ToolInput derives RW
 
-/** Typed result for [[LspFindReferencesTool]]. `truncated = true`
-  * when the server returned more locations than `maxResults`; the
-  * `locations` list reflects the post-cap slice. */
+/**
+ * Typed result for [[LspFindReferencesTool]]. `truncated = true`
+ * when the server returned more locations than `maxResults`; the
+ * `locations` list reflects the post-cap slice.
+ */
 case class LspFindReferencesOutput(locations: List[LspLocation],
-                                   truncated: Boolean) derives RW
+                                   truncated: Boolean)
+  derives RW
 
 /**
  * Find every usage of a symbol across the workspace. The server
@@ -28,10 +32,11 @@ case class LspFindReferencesOutput(locations: List[LspLocation],
  * Capped at `maxResults` to keep huge codebases from blowing the
  * agent's context. `truncated` is true when the cap fired.
  */
-final class LspFindReferencesTool(val manager: LspManager) extends TypedOutputTool[LspFindReferencesInput, LspFindReferencesOutput](
-  name = ToolName("lsp_find_references"),
-  description =
-    """Find every usage of a symbol across the workspace.
+final class LspFindReferencesTool(val manager: LspManager)
+  extends TypedOutputTool[LspFindReferencesInput, LspFindReferencesOutput](
+    name = ToolName("lsp_find_references"),
+    description =
+      """Find every usage of a symbol across the workspace.
       |
       |`languageId` + `filePath` identify the source document.
       |`line` + `character` (0-based) point inside the symbol.
@@ -39,27 +44,49 @@ final class LspFindReferencesTool(val manager: LspManager) extends TypedOutputTo
       |`maxResults` (default 200) — caps the response.
       |
       |Returns `{locations: [{uri, filePath, range}], truncated}`.""".stripMargin,
-  keywords = Set(
-    "lsp", "references", "usages", "callers", "who calls", "find usage", "find all",
-    "occurrences", "examine", "inspect", "analyze", "review", "uses",
-    "where used", "find symbol", "semantic",
-    "scala", "language", "code", "navigate"
-  ),
-  examples = List(
-    ToolExample(
-      "find references to a method",
-      LspFindReferencesInput(
-        languageId = "scala", filePath = "/abs/path/Foo.scala",
-        line = 10, character = 7
+    keywords = Set(
+      "lsp",
+      "references",
+      "usages",
+      "callers",
+      "who calls",
+      "find usage",
+      "find all",
+      "occurrences",
+      "examine",
+      "inspect",
+      "analyze",
+      "review",
+      "uses",
+      "where used",
+      "find symbol",
+      "semantic",
+      "scala",
+      "language",
+      "code",
+      "navigate"
+    ),
+    examples = List(
+      ToolExample(
+        "find references to a method",
+        LspFindReferencesInput(
+          languageId = "scala",
+          filePath = "/abs/path/Foo.scala",
+          line = 10,
+          character = 7
+        )
       )
     )
   )
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  with sigil.tool.ReadOnlyExternalTool
+  with LspToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspFindReferencesInput, context: TurnContext): Task[LspFindReferencesOutput] =
     withOpenDocumentTyped[LspFindReferencesOutput](
-      input.languageId, input.filePath, context,
+      input.languageId,
+      input.filePath,
+      context,
       onError = msg => throw new RuntimeException(msg)
     ) { (session, uri) =>
       session.references(uri, input.line, input.character, input.includeDeclaration).map { locations =>

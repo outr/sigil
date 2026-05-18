@@ -25,24 +25,26 @@ import scala.jdk.CollectionConverters.*
 class GitPushToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  private val convId  = sigil.conversation.Conversation.id("git-push-spec")
+  private val convId = sigil.conversation.Conversation.id("git-push-spec")
   private val topicId = sigil.conversation.Topic.id("topic-spec")
 
   private def gitOnPath: Boolean = sys.env.get("PATH").exists { p =>
     p.split(java.io.File.pathSeparator).exists(d => Files.exists(Path.of(d, "git")))
   }
 
-  /** Set up: bare repo as remote, working clone with one initial
-    * commit (so HEAD has something to push). `body` gets the clone's
-    * FileSystemContext + path. */
+  /**
+   * Set up: bare repo as remote, working clone with one initial
+   * commit (so HEAD has something to push). `body` gets the clone's
+   * FileSystemContext + path.
+   */
   private def withRepoPair[T](body: (FileSystemContext, Path, Path) => Task[T]): Task[T] = Task.defer {
-    val baseTmp   = Files.createTempDirectory("sigil-git-push-")
+    val baseTmp = Files.createTempDirectory("sigil-git-push-")
     val remoteDir = baseTmp.resolve("remote.git")
-    val workDir   = baseTmp.resolve("work")
+    val workDir = baseTmp.resolve("work")
     Files.createDirectories(remoteDir)
     Files.createDirectories(workDir)
-    val baseCtx   = new LocalFileSystemContext(Some(baseTmp))
-    val workCtx   = new LocalFileSystemContext(Some(workDir))
+    val baseCtx = new LocalFileSystemContext(Some(baseTmp))
+    val workCtx = new LocalFileSystemContext(Some(workDir))
     val init = for {
       _ <- baseCtx.executeCommand("git init --bare", Some(remoteDir.toString))
       _ <- workCtx.executeCommand("git init -b master", Some(workDir.toString))
@@ -65,13 +67,13 @@ class GitPushToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   private def turnContext(): TurnContext = {
     val conv = Conversation(
       topics = List(TopicEntry(topicId, "test", "test")),
-      _id    = convId
+      _id = convId
     )
     TurnContext(
-      sigil        = TestSigil,
-      chain        = List(TestUser),
+      sigil = TestSigil,
+      chain = List(TestUser),
       conversation = conv,
-      turnInput    = TurnInput(ConversationView(conversationId = convId))
+      turnInput = TurnInput(ConversationView(conversationId = convId))
     )
   }
 
@@ -105,13 +107,13 @@ class GitPushToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       "push subsequent commits without setUpstream once tracking is established" in withRepoPair { (workCtx, _, workDir) =>
         val tool = new GitPushTool(workCtx)
         for {
-          _   <- tool.execute(
-                   GitPushInput(workingDir = Some(workDir.toString), setUpstream = true),
-                   turnContext()
-                 ).toList
-          _   <- workCtx.writeFile("second.txt", "hi")
-          _   <- workCtx.executeCommand("git add -- second.txt", Some(workDir.toString))
-          _   <- workCtx.executeCommand("git commit -m 'second'", Some(workDir.toString))
+          _ <- tool.execute(
+            GitPushInput(workingDir = Some(workDir.toString), setUpstream = true),
+            turnContext()
+          ).toList
+          _ <- workCtx.writeFile("second.txt", "hi")
+          _ <- workCtx.executeCommand("git add -- second.txt", Some(workDir.toString))
+          _ <- workCtx.executeCommand("git commit -m 'second'", Some(workDir.toString))
           out <- tool.execute(GitPushInput(workingDir = Some(workDir.toString)), turnContext()).toList
         } yield {
           val payload = extractJson(out)
@@ -125,8 +127,8 @@ class GitPushToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           out <- tool.execute(
             GitPushInput(
               workingDir = Some(workDir.toString),
-              branch     = Some("master"),
-              force      = true
+              branch = Some("master"),
+              force = true
             ),
             turnContext()
           ).toList
@@ -144,15 +146,15 @@ class GitPushToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       "allow force-push to protected branch when confirmForcePush = true" in withRepoPair { (workCtx, _, workDir) =>
         val tool = new GitPushTool(workCtx)
         for {
-          _   <- tool.execute(
-                   GitPushInput(workingDir = Some(workDir.toString), setUpstream = true),
-                   turnContext()
-                 ).toList
+          _ <- tool.execute(
+            GitPushInput(workingDir = Some(workDir.toString), setUpstream = true),
+            turnContext()
+          ).toList
           out <- tool.execute(
             GitPushInput(
-              workingDir       = Some(workDir.toString),
-              branch           = Some("master"),
-              forceWithLease   = true,
+              workingDir = Some(workDir.toString),
+              branch = Some("master"),
+              forceWithLease = true,
               confirmForcePush = true
             ),
             turnContext()
@@ -169,18 +171,19 @@ class GitPushToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         }
       }
 
-      "classify 'no upstream' as a structured error when neither setUpstream nor explicit remote is supplied" in withRepoPair { (workCtx, _, workDir) =>
-        // Fresh branch with no upstream — default push fails.
-        val tool = new GitPushTool(workCtx)
-        for {
-          _   <- workCtx.executeCommand("git checkout -b feature/unpushed", Some(workDir.toString))
-          out <- tool.execute(GitPushInput(workingDir = Some(workDir.toString)), turnContext()).toList
-        } yield {
-          val payload = extractJson(out)
-          payload.get("error").map(_.asString).getOrElse("") should (
-            include("upstream") or include("push failed")
-          )
-        }
+      "classify 'no upstream' as a structured error when neither setUpstream nor explicit remote is supplied" in withRepoPair {
+        (workCtx, _, workDir) =>
+          // Fresh branch with no upstream — default push fails.
+          val tool = new GitPushTool(workCtx)
+          for {
+            _ <- workCtx.executeCommand("git checkout -b feature/unpushed", Some(workDir.toString))
+            out <- tool.execute(GitPushInput(workingDir = Some(workDir.toString)), turnContext()).toList
+          } yield {
+            val payload = extractJson(out)
+            payload.get("error").map(_.asString).getOrElse("") should (
+              include("upstream") or include("push failed")
+            )
+          }
       }
     }
   }

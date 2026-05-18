@@ -14,7 +14,7 @@ import sigil.provider.{
 }
 import sigil.signal.{MessageDelta, Signal}
 import sigil.tool.core.RespondTool
-import sigil.tool.model.{RespondInput}
+import sigil.tool.model.RespondInput
 import spice.http.HttpRequest
 
 /**
@@ -41,9 +41,11 @@ class OrchestratorMessageMetadataSpec extends AsyncWordSpec with AsyncTaskSpec w
 
   private val modelId: Id[Model] = Model.id("test", "model-55")
 
-  /** Tool-call-only provider: emits ToolCallStart → ToolCallComplete
-    * → Usage → Done with no ContentBlockDelta. Mirrors the llama.cpp
-    * grammar-constrained `respond` path. */
+  /**
+   * Tool-call-only provider: emits ToolCallStart → ToolCallComplete
+   * → Usage → Done with no ContentBlockDelta. Mirrors the llama.cpp
+   * grammar-constrained `respond` path.
+   */
   private class ToolCallOnlyRespondProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -66,27 +68,27 @@ class OrchestratorMessageMetadataSpec extends AsyncWordSpec with AsyncTaskSpec w
 
   private def run(): Task[List[Signal]] = {
     val convId = Conversation.id("orchestrator-bug55")
-    val conv   = Conversation(topics = TestTopicStack, _id = convId)
+    val conv = Conversation(topics = TestTopicStack, _id = convId)
     val request = ConversationRequest(
-      conversationId     = convId,
-      modelId            = modelId,
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
-      previousTopics     = Nil,
+      conversationId = convId,
+      modelId = modelId,
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      chain              = List(TestUser, TestAgent),
-      tools              = Vector(RespondTool)
+      chain = List(TestUser, TestAgent),
+      tools = Vector(RespondTool)
     )
     for {
-      _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       signals <- Orchestrator.process(TestSigil, new ToolCallOnlyRespondProvider, request, conv).toList
     } yield signals
   }
 
   "Orchestrator (bug #55)" should {
-    "stamp modelId on the agent's Message even when the provider only emits tool_calls (no ContentBlockDelta)" in {
+    "stamp modelId on the agent's Message even when the provider only emits tool_calls (no ContentBlockDelta)" in
       run().map { signals =>
         // Filter to Standard-role agent Messages — sigil bug #174's
         // durable fix adds a synthetic empty Tool-role Message after
@@ -100,9 +102,8 @@ class OrchestratorMessageMetadataSpec extends AsyncWordSpec with AsyncTaskSpec w
         agentMessages should have size 1
         agentMessages.head.modelId shouldBe Some(modelId)
       }
-    }
 
-    "emit a usage MessageDelta targeting the agent Message when no streaming activeMessageId exists" in {
+    "emit a usage MessageDelta targeting the agent Message when no streaming activeMessageId exists" in
       run().map { signals =>
         val agentMessage = signals.collect {
           case m: Message if m.participantId == TestAgent && m.role == sigil.event.MessageRole.Standard => m
@@ -116,7 +117,6 @@ class OrchestratorMessageMetadataSpec extends AsyncWordSpec with AsyncTaskSpec w
         usageDeltas.head.usage.get.promptTokens shouldBe 4622
         usageDeltas.head.usage.get.completionTokens shouldBe 46
       }
-    }
   }
 
   "tear down" should {

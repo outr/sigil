@@ -18,9 +18,9 @@ import sigil.workflow.{AgentDecisionStepInput, SigilAgentDecisionStep}
 class AgentDecisionStepLogicSpec extends AnyWordSpec with Matchers {
 
   private val sampleInput = AgentDecisionStepInput(
-    id      = "decision-0",
-    role    = Role(name = "researcher", description = "Research and synthesize.", workType = AnalysisWork),
-    brief   = "Find recent papers on RAG",
+    id = "decision-0",
+    role = Role(name = "researcher", description = "Research and synthesize.", workType = AnalysisWork),
+    brief = "Find recent papers on RAG",
     modelId = "anthropic/claude-sonnet-4-6"
   )
 
@@ -145,27 +145,31 @@ class AgentDecisionStepLogicSpec extends AnyWordSpec with Matchers {
     import strider.step.Step
     import sigil.workflow.{ParentAnswer, SigilAgentDecisionStep}
 
-    /** Minimal Workflow base — everything extractParentAnswers reads
-      * is overridden in the per-test `copy`. */
+    /**
+     * Minimal Workflow base — everything extractParentAnswers reads
+     * is overridden in the per-test `copy`.
+     */
     val baseWorkflow: Workflow = Workflow(
-      name      = "test",
-      steps     = Nil,
+      name = "test",
+      steps = Nil,
       scheduled = 0L,
-      queue     = Nil,
-      sourceId  = Id("source")
+      queue = Nil,
+      sourceId = Id("source")
     )
 
-    /** Build a Workflow with the given trigger payloads (questionId →
-      * answer pairs). The corresponding step ids are placed in
-      * `steps` in payload-iteration order so ordering is
-      * deterministic. */
+    /**
+     * Build a Workflow with the given trigger payloads (questionId →
+     * answer pairs). The corresponding step ids are placed in
+     * `steps` in payload-iteration order so ordering is
+     * deterministic.
+     */
     def workflowWith(pairs: (String, String)*): Workflow = {
       val triggerSteps: List[Step] = pairs.toList.map { case (qid, _) =>
         new strider.step.Trigger {
           override val id: Id[Step] = Id[Step](s"trig-$qid")
           override val name: String = s"trig-$qid"
           override def register(w: Workflow) = rapid.Task.pure(fabric.Null)
-          override def check(w: Workflow)    = rapid.Task.pure(None)
+          override def check(w: Workflow) = rapid.Task.pure(None)
         }
       }
       val payloads: Map[Id[Step], fabric.Json] =
@@ -179,7 +183,7 @@ class AgentDecisionStepLogicSpec extends AnyWordSpec with Matchers {
       val wf = workflowWith("q1" -> "blue", "q2" -> "small")
       val answers = SigilAgentDecisionStep.extractParentAnswers(wf)
       answers.map(_.questionId) should contain theSameElementsAs List("q1", "q2")
-      answers.map(_.answer)     should contain theSameElementsAs List("blue", "small")
+      answers.map(_.answer) should contain theSameElementsAs List("blue", "small")
     }
 
     "return them oldest-to-newest by their trigger step's position in workflow.steps" in {
@@ -194,10 +198,10 @@ class AgentDecisionStepLogicSpec extends AnyWordSpec with Matchers {
       // truth is workflow.payloads, not workflow.stepResults.
       val wf = baseWorkflow.copy(
         stepResults = List(strider.StepResult(
-          stepId     = Id[Step]("not-a-trigger"),
-          stepName   = "fake",
-          status     = strider.StepResultStatus.Completed,
-          output     = Some(obj("questionId" -> str("ignored"), "answer" -> str("ignored"))),
+          stepId = Id[Step]("not-a-trigger"),
+          stepName = "fake",
+          status = strider.StepResultStatus.Completed,
+          output = Some(obj("questionId" -> str("ignored"), "answer" -> str("ignored"))),
           durationMs = 0L
         ))
       )

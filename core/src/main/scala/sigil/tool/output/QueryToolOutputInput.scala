@@ -24,4 +24,5 @@ case class QueryToolOutputInput(callId: String,
                                 containsText: Option[String] = None,
                                 level: Option[Int] = None,
                                 page: Int = 0,
-                                pageSize: Int = 50) extends ToolInput derives RW
+                                pageSize: Int = 50)
+  extends ToolInput derives RW

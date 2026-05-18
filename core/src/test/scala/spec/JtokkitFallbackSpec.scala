@@ -40,7 +40,7 @@ class JtokkitFallbackSpec extends AnyWordSpec with Matchers {
     }
 
     "be a Tokenizer regardless of whether jtokkit is on the classpath" in {
-      JtokkitTokenizer.OpenAIChatGpt shouldBe a [Tokenizer]
+      JtokkitTokenizer.OpenAIChatGpt shouldBe a[Tokenizer]
     }
   }
 
@@ -72,9 +72,10 @@ class JtokkitFallbackSpec extends AnyWordSpec with Matchers {
       // without actually removing jtokkit from the classpath. This is the
       // only way to lock in bug #76's fix — without this assertion, the
       // fallback branch would be dead code that no test ever executes.
-      val factory: () => sigil.tokenize.Tokenizer = () => fail(
-        "encoding factory must NOT be invoked when probe = false"
-      )
+      val factory: () => sigil.tokenize.Tokenizer = () =>
+        fail(
+          "encoding factory must NOT be invoked when probe = false"
+        )
       val result = sigil.tokenize.JtokkitTokenizer.selectTokenizer(
         probe = false,
         encodingFactory = factory,

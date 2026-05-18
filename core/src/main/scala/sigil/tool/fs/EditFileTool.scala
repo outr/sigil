@@ -40,25 +40,31 @@ final class EditFileTool(context: FileSystemContext)
         |
         |Output: `Success(replacements, hash?) | NotFound | NotUnique(occurrences) | Stale(currentHash, currentContent) | FileNotFound`.""".stripMargin,
     examples = List(
-      ToolExample("Update a single line", EditFileInput(filePath = "config.toml", oldString = "log_level = \"info\"", newString = "log_level = \"debug\"")),
-      ToolExample("Rename a symbol", EditFileInput(filePath = "src/main.rs", oldString = "old_name", newString = "new_name", replaceAll = true)),
+      ToolExample(
+        "Update a single line",
+        EditFileInput(filePath = "config.toml", oldString = "log_level = \"info\"", newString = "log_level = \"debug\"")),
+      ToolExample(
+        "Rename a symbol",
+        EditFileInput(filePath = "src/main.rs", oldString = "old_name", newString = "new_name", replaceAll = true)),
       ToolExample(
         "Edit safely against a known hash",
         EditFileInput(filePath = "config.toml", oldString = "x = 1", newString = "x = 2", expectedHash = Some("abc123..."))
       )
     ),
     keywords = Set("file", "edit", "modify", "replace", "rewrite", "patch")
-  ) with sigil.tool.DestructiveExternalTool {
+  )
+  with sigil.tool.DestructiveExternalTool {
   override def paginate: Boolean = false
 
-
-  /** Non-Success EditFileOutputs (NotFound, NotUnique, Stale, FileNotFound)
-    * are logical failures of the EDIT operation, not failures of the tool
-    * to execute. Surfacing them through `executeTypedResult` lets the
-    * agent's frame projection render them as Tool-role Failure Messages
-    * with actionable hints — instead of a Success-shaped `ToolResults`
-    * whose typed payload the agent might gloss over and incorrectly
-    * report as "I edited the file." */
+  /**
+   * Non-Success EditFileOutputs (NotFound, NotUnique, Stale, FileNotFound)
+   * are logical failures of the EDIT operation, not failures of the tool
+   * to execute. Surfacing them through `executeTypedResult` lets the
+   * agent's frame projection render them as Tool-role Failure Messages
+   * with actionable hints — instead of a Success-shaped `ToolResults`
+   * whose typed payload the agent might gloss over and incorrectly
+   * report as "I edited the file."
+   */
   override protected def executeTypedResult(input: EditFileInput, ctx: TurnContext): Task[ToolResult[EditFileOutput]] =
     WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>
       context.readFile(resolved).flatMap { content =>
@@ -97,8 +103,7 @@ final class EditFileTool(context: FileSystemContext)
           input.expectedHash match {
             case None =>
               context.writeFile(resolved, next).map(_ =>
-                ToolResult.success(EditFileOutput.Success(replacements = replaced, hash = None))
-              )
+                ToolResult.success(EditFileOutput.Success(replacements = replaced, hash = None)))
             case Some(hash) =>
               val expected = FileVersion(hash, Timestamp())
               context.writeIfMatch(resolved, next, expected).map {

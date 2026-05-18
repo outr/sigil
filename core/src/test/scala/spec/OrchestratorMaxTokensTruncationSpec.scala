@@ -40,9 +40,11 @@ class OrchestratorMaxTokensTruncationSpec extends AsyncWordSpec with AsyncTaskSp
 
   private val modelId: Id[Model] = Model.id("test", "max-tokens-truncation")
 
-  /** Provider that emits a `ToolCallStart` and then settles with
-    * `Done(StopReason.MaxTokens)` while the call is still open —
-    * exactly the wire-log scenario. */
+  /**
+   * Provider that emits a `ToolCallStart` and then settles with
+   * `Done(StopReason.MaxTokens)` while the call is still open —
+   * exactly the wire-log scenario.
+   */
   private class TruncatedArgsProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -59,9 +61,11 @@ class OrchestratorMaxTokensTruncationSpec extends AsyncWordSpec with AsyncTaskSp
     }
   }
 
-  /** Sanity-control provider: same Done(MaxTokens) but no in-flight
-    * tool call. The truncation diagnostic must NOT fire here — it's
-    * scoped to orphaned calls only. */
+  /**
+   * Sanity-control provider: same Done(MaxTokens) but no in-flight
+   * tool call. The truncation diagnostic must NOT fire here — it's
+   * scoped to orphaned calls only.
+   */
   private class IdleMaxTokensProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -76,26 +80,26 @@ class OrchestratorMaxTokensTruncationSpec extends AsyncWordSpec with AsyncTaskSp
     val convId = Conversation.id(s"max-tokens-trunc-$suffix")
     val conv = Conversation(topics = TestTopicStack, _id = convId)
     val request = ConversationRequest(
-      conversationId     = convId,
-      modelId            = modelId,
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
-      previousTopics     = Nil,
+      conversationId = convId,
+      modelId = modelId,
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
+      previousTopics = Nil,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      chain              = List(TestUser, TestAgent),
-      tools              = Vector(RespondTool)
+      chain = List(TestUser, TestAgent),
+      tools = Vector(RespondTool)
     )
     for {
-      _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
     } yield signals
   }
 
   "Orchestrator on Done(MaxTokens) with an in-flight tool call" should {
 
-    "emit a paired Tool-role Failure Message diagnosing args-truncation" in {
+    "emit a paired Tool-role Failure Message diagnosing args-truncation" in
       runWith(new TruncatedArgsProvider, suffix = "truncation").map { signals =>
         val invoke = signals.collectFirst { case t: ToolInvoke => t }
           .getOrElse(fail("Expected a ToolInvoke for the orphaned call"))
@@ -109,7 +113,7 @@ class OrchestratorMaxTokensTruncationSpec extends AsyncWordSpec with AsyncTaskSp
         // agent the actual cause + remediation.
         val pairedFailure = signals.collectFirst {
           case m: Message
-            if m.role == MessageRole.Tool && m.origin.contains(invoke._id) =>
+              if m.role == MessageRole.Tool && m.origin.contains(invoke._id) =>
             m
         }.getOrElse(fail(s"Expected a Tool-role Message paired to invoke ${invoke._id.value}; saw none"))
 
@@ -118,17 +122,16 @@ class OrchestratorMaxTokensTruncationSpec extends AsyncWordSpec with AsyncTaskSp
         pairedFailure.disposition match {
           case sigil.event.MessageDisposition.Failure(recoverable, _) =>
             val text = pairedFailure.failureReason.getOrElse("")
-            text should include ("lsp_did_change")
-            text should include ("max_tokens")
-            text should include ("arguments never fully arrived")
+            text should include("lsp_did_change")
+            text should include("max_tokens")
+            text should include("arguments never fully arrived")
             recoverable shouldBe true
           case other =>
             fail(s"Expected MessageDisposition.Failure; saw $other")
         }
       }
-    }
 
-    "NOT emit the misleading 'tool emitted no MessageRole.Tool event' framework error" in {
+    "NOT emit the misleading 'tool emitted no MessageRole.Tool event' framework error" in
       // The orphan-paired Failure closes the function_call ↔
       // function_call_output pair; the frame renderer no longer
       // needs to synthesize its "please report it" placeholder.
@@ -143,9 +146,8 @@ class OrchestratorMaxTokensTruncationSpec extends AsyncWordSpec with AsyncTaskSp
         all(anyTextMentions) should not include "please report it"
         all(anyTextMentions) should not include "tool's executeTyped"
       }
-    }
 
-    "NOT emit a truncation diagnostic when Done(MaxTokens) fires with no in-flight call" in {
+    "NOT emit a truncation diagnostic when Done(MaxTokens) fires with no in-flight call" in
       runWith(new IdleMaxTokensProvider, suffix = "idle-max").map { signals =>
         // No paired-to-orphan Failure messages should land — there's
         // no orphan to pair with. The degenerate-content path (which
@@ -153,12 +155,11 @@ class OrchestratorMaxTokensTruncationSpec extends AsyncWordSpec with AsyncTaskSp
         // exercised here.
         val pairedFailures = signals.collect {
           case m: Message
-            if m.role == MessageRole.Tool && m.origin.isDefined && m.isFailure =>
+              if m.role == MessageRole.Tool && m.origin.isDefined && m.isFailure =>
             m
         }
         pairedFailures shouldBe empty
       }
-    }
   }
 
   "tear down" should {

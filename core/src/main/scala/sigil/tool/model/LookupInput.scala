@@ -20,4 +20,5 @@ import sigil.tool.discovery.CapabilityType
  * nothing.
  */
 case class LookupInput(capabilityType: CapabilityType,
-                       name: String) extends ToolInput derives RW
+                       name: String)
+  extends ToolInput derives RW

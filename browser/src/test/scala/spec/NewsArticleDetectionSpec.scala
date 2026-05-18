@@ -38,7 +38,7 @@ class NewsArticleDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   // The full loop is several agent turns + browser navigation; budget
   // generously.
-  override implicit protected val testTimeout: FiniteDuration = 5.minutes
+  implicit override protected val testTimeout: FiniteDuration = 5.minutes
 
   // Agent attribution participant for the live test.
   case object NewsAgent extends sigil.participant.AgentParticipantId {
@@ -63,19 +63,21 @@ class NewsArticleDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     response.status.code == 200
   } catch { case _: Throwable => false }
 
-  /** Provider preference for this test:
-    *
-    *   - If `OPENAI_API_KEY` is set, use OpenAI — its context window
-    *     is plenty for the agent's HTML + 8 browser-tool schemas +
-    *     chat history (~5 K tokens).
-    *   - Otherwise fall back to local llama.cpp, which historically
-    *     ran the test fine but can fail with `MissingCoreLibrary`-
-    *     style "exceeds the available context size" errors when the
-    *     locally-loaded model has tighter effective context (gemma's
-    *     sliding-window attention, parallel-slot bucketing).
-    *
-    * Returns the model id + Provider task to install. */
-  private val providerSelection: Option[(Id[Model], Task[Provider])] = {
+  /**
+   * Provider preference for this test:
+   *
+   *   - If `OPENAI_API_KEY` is set, use OpenAI — its context window
+   *     is plenty for the agent's HTML + 8 browser-tool schemas +
+   *     chat history (~5 K tokens).
+   *   - Otherwise fall back to local llama.cpp, which historically
+   *     ran the test fine but can fail with `MissingCoreLibrary`-
+   *     style "exceeds the available context size" errors when the
+   *     locally-loaded model has tighter effective context (gemma's
+   *     sliding-window attention, parallel-slot bucketing).
+   *
+   * Returns the model id + Provider task to install.
+   */
+  private val providerSelection: Option[(Id[Model], Task[Provider])] =
     sys.env.get("OPENAI_API_KEY").filter(_.nonEmpty) match {
       case Some(apiKey) =>
         val mid: Id[Model] = Model.id(sys.env.getOrElse("OPENAI_TEST_MODEL", "openai/gpt-5.4-mini"))
@@ -85,23 +87,24 @@ class NewsArticleDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         Some(mid -> LlamaCppProvider(TestBrowserSigil, TestBrowserSigil.llamaCppHost).singleton)
       case None => None
     }
-  }
 
-  /** Marquee live-integration specs are gated on `SIGIL_LIVE=1` to keep
-    * CI's default `sbt test` deterministic — the multi-turn agent loop
-    * through headless Chrome + a public LLM service is too sensitive
-    * to upstream latency to pass reliably in a shared runner. Local
-    * `test-all.sh` sets the env var, so devs running the full suite
-    * still exercise it. The remaining `chromeAvailable` /
-    * `providerSelection` gates run only after the live opt-in
-    * succeeds — they catch the case where a contributor sets
-    * `SIGIL_LIVE=1` but doesn't have Chrome / a reachable LLM
-    * configured. */
+  /**
+   * Marquee live-integration specs are gated on `SIGIL_LIVE=1` to keep
+   * CI's default `sbt test` deterministic — the multi-turn agent loop
+   * through headless Chrome + a public LLM service is too sensitive
+   * to upstream latency to pass reliably in a shared runner. Local
+   * `test-all.sh` sets the env var, so devs running the full suite
+   * still exercise it. The remaining `chromeAvailable` /
+   * `providerSelection` gates run only after the live opt-in
+   * succeeds — they catch the case where a contributor sets
+   * `SIGIL_LIVE=1` but doesn't have Chrome / a reachable LLM
+   * configured.
+   */
   private val sigilLive: Boolean = sys.env.get("SIGIL_LIVE").exists(_.nonEmpty)
 
   private val skipReason: Option[String] =
-    if (!sigilLive)               Some("SIGIL_LIVE not set — live-integration test")
-    else if (!chromeAvailable)    Some("Chrome / chromedriver not installed")
+    if (!sigilLive) Some("SIGIL_LIVE not set — live-integration test")
+    else if (!chromeAvailable) Some("Chrome / chromedriver not installed")
     else if (providerSelection.isEmpty) Some(
       s"no provider available — set OPENAI_API_KEY for OpenAI, or run llama.cpp at ${TestBrowserSigil.llamaCppHost}"
     )
@@ -124,8 +127,9 @@ class NewsArticleDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   override protected def afterAll(): Unit = {
     skipReason match {
       case Some(_) => ()
-      case None    =>
-        try fixture.stop().sync() catch { case _: Throwable => () }
+      case None =>
+        try fixture.stop().sync()
+        catch { case _: Throwable => () }
     }
     super.afterAll()
   }
@@ -170,19 +174,19 @@ class NewsArticleDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val a = agent()
 
       val task: Task[org.scalatest.compatible.Assertion] = for {
-        _    <- TestBrowserSigil.newConversation(
-                  createdBy = NewsUser,
-                  participants = List(a),
-                  currentMode = WebBrowserMode,
-                  conversationId = convId
-                )
+        _ <- TestBrowserSigil.newConversation(
+          createdBy = NewsUser,
+          participants = List(a),
+          currentMode = WebBrowserMode,
+          conversationId = convId
+        )
         conv <- TestBrowserSigil.withDB(_.conversations.transaction(_.get(convId)))
-        _    <- TestBrowserSigil.publish(Message(
-                  participantId  = NewsUser,
-                  conversationId = convId,
-                  topicId        = conv.get.currentTopicId,
-                  content        = Vector(ResponseContent.Text(
-                    s"""Go to ${fixture.indexUrl} and list which of the links on that page are news articles
+        _ <- TestBrowserSigil.publish(Message(
+          participantId = NewsUser,
+          conversationId = convId,
+          topicId = conv.get.currentTopicId,
+          content = Vector(ResponseContent.Text(
+            s"""Go to ${fixture.indexUrl} and list which of the links on that page are news articles
                        |(not nav / footer / about). Pipeline:
                        | - call browser_navigate to load the page
                        | - call browser_save_html — the response includes an `htmlFileId` plus a structural
@@ -190,10 +194,10 @@ class NewsArticleDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
                        | - use the linkClusters' xpaths with browser_xpath_query to inspect link groups; the
                        |   article list is typically inside a <main> / <article> landmark, not <nav> / <footer>
                        | - respond with one URL per line, nothing else.""".stripMargin
-                  )),
-                  state          = EventState.Complete,
-                  role           = MessageRole.Standard
-                ))
+          )),
+          state = EventState.Complete,
+          role = MessageRole.Standard
+        ))
         // Wait for the agent loop to settle — poll the events store
         // until we see a non-Tool Message from the agent (the final
         // respond) or hit the deadline.
@@ -203,24 +207,24 @@ class NewsArticleDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         // 90-second budget was too tight on slow workstations.
         finalText <- awaitFinalAgentText(convId, deadline = System.currentTimeMillis() + 5.minutes.toMillis)
         // Dispose the browser controller so its Chrome process closes.
-        _    <- TestBrowserSigil.disposeBrowserController(convId)
-      } yield {
-        withClue(s"Final agent text:\n$finalText\n") {
-          fixture.articleUrls.foreach(u => finalText should include (u))
-          fixture.nonArticleUrls.foreach(u => finalText shouldNot include (u))
-          succeed
-        }
+        _ <- TestBrowserSigil.disposeBrowserController(convId)
+      } yield withClue(s"Final agent text:\n$finalText\n") {
+        fixture.articleUrls.foreach(u => finalText should include(u))
+        fixture.nonArticleUrls.foreach(u => finalText shouldNot include(u))
+        succeed
       }
       task
     }
   }
 
-  /** Poll the conversation's events store for the agent's final
-    * `respond` Message — a `MessageRole.Standard` (NOT `Tool`)
-    * message authored by the agent. We accept either `Active` (still
-    * streaming content) or `Complete` (settled) state, and we wait
-    * for at least one second of stability before returning so the
-    * content has had time to fully stream in. */
+  /**
+   * Poll the conversation's events store for the agent's final
+   * `respond` Message — a `MessageRole.Standard` (NOT `Tool`)
+   * message authored by the agent. We accept either `Active` (still
+   * streaming content) or `Complete` (settled) state, and we wait
+   * for at least one second of stability before returning so the
+   * content has had time to fully stream in.
+   */
   private def awaitFinalAgentText(convId: Id[Conversation], deadline: Long): Task[String] = {
     def fetchAgentMessages: Task[List[Message]] =
       TestBrowserSigil.withDB(_.events.transaction(_.list)).map { all =>
@@ -237,10 +241,10 @@ class NewsArticleDetectionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
           // not just Text. Concatenate every block's textual content so the
           // assertions don't depend on the agent's formatting choice.
           val text = m.content.collect {
-            case ResponseContent.Text(t)        => t
-            case ResponseContent.Markdown(t)    => t
-            case ResponseContent.Heading(t)     => t
-            case ResponseContent.Code(c, _)     => c
+            case ResponseContent.Text(t) => t
+            case ResponseContent.Markdown(t) => t
+            case ResponseContent.Heading(t) => t
+            case ResponseContent.Code(c, _) => c
             case ResponseContent.ItemList(items, _) => items.mkString("\n")
             case ResponseContent.Link(u, label) => s"$label $u"
           }.mkString("\n")

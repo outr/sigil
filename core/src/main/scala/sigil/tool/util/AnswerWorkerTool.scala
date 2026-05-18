@@ -40,21 +40,20 @@ case object AnswerWorkerTool
   ) {
   override def paginate: Boolean = false
 
-
   override protected def executeTyped(input: AnswerWorkerInput, ctx: TurnContext): Stream[Event] = Stream.force {
     ctx.sigil.publish(WorkerAnswer(input.taskId, input.questionId, input.answer)).map { _ =>
       val payload = obj(
-        "ok"         -> bool(true),
-        "taskId"     -> str(input.taskId),
+        "ok" -> bool(true),
+        "taskId" -> str(input.taskId),
         "questionId" -> str(input.questionId)
       )
       Stream.emit[Event](Message(
-        participantId  = ctx.caller,
+        participantId = ctx.caller,
         conversationId = ctx.conversation.id,
-        topicId        = ctx.conversation.currentTopicId,
-        content        = Vector(ResponseContent.Text(fabric.io.JsonFormatter.Compact(payload))),
-        state          = EventState.Complete,
-        role           = MessageRole.Tool
+        topicId = ctx.conversation.currentTopicId,
+        content = Vector(ResponseContent.Text(fabric.io.JsonFormatter.Compact(payload))),
+        state = EventState.Complete,
+        role = MessageRole.Tool
       ))
     }
   }

@@ -25,7 +25,8 @@ import scala.compiletime.uninitialized
  * by `questionId`.
  */
 final case class AnswerTrigger(taskId: String,
-                               questionId: String) extends WorkflowTrigger derives RW {
+                               questionId: String)
+  extends WorkflowTrigger derives RW {
 
   override def kind: String = AnswerTrigger.Kind
 
@@ -35,50 +36,60 @@ final case class AnswerTrigger(taskId: String,
 object AnswerTrigger {
   val Kind: String = "answer"
 
-  /** Per-(taskId, questionId) state: matched-answers queue plus a
-    * refcount of registered triggers waiting on it. Lives in a
-    * static map so state survives the trigger's per-poll
-    * rehydration from the workflow row's persisted JSON — Strider's
-    * `checkWaitingWorkflows` reads the workflow fresh each tick and
-    * gets a brand-new `AnswerTriggerImpl` each time; without static
-    * keyed storage the matched-queue would be reset between writes
-    * and reads. Same shape as [[WorkflowEventTrigger]]'s queues. */
-  private final case class QueueState(queue: ConcurrentLinkedQueue[WorkerAnswer], refCount: Int)
+  /**
+   * Per-(taskId, questionId) state: matched-answers queue plus a
+   * refcount of registered triggers waiting on it. Lives in a
+   * static map so state survives the trigger's per-poll
+   * rehydration from the workflow row's persisted JSON — Strider's
+   * `checkWaitingWorkflows` reads the workflow fresh each tick and
+   * gets a brand-new `AnswerTriggerImpl` each time; without static
+   * keyed storage the matched-queue would be reset between writes
+   * and reads. Same shape as [[WorkflowEventTrigger]]'s queues.
+   */
+  final private case class QueueState(queue: ConcurrentLinkedQueue[WorkerAnswer], refCount: Int)
 
   private val queues: ConcurrentHashMap[(String, String), QueueState] = new ConcurrentHashMap()
 
   private[trigger] def acquire(taskId: String, questionId: String): ConcurrentLinkedQueue[WorkerAnswer] =
-    queues.compute((taskId, questionId), (_, existing) => {
-      if (existing == null) QueueState(new ConcurrentLinkedQueue[WorkerAnswer](), 1)
-      else existing.copy(refCount = existing.refCount + 1)
-    }).queue
+    queues.compute(
+      (taskId, questionId),
+      (_, existing) =>
+        if (existing == null) QueueState(new ConcurrentLinkedQueue[WorkerAnswer](), 1)
+        else existing.copy(refCount = existing.refCount + 1)
+    ).queue
 
   private[trigger] def release(taskId: String, questionId: String): Unit = {
-    queues.compute((taskId, questionId), (_, existing) => {
-      if (existing == null) null
-      else if (existing.refCount <= 1) null
-      else existing.copy(refCount = existing.refCount - 1)
-    })
+    queues.compute(
+      (taskId, questionId),
+      (_, existing) =>
+        if (existing == null) null
+        else if (existing.refCount <= 1) null
+        else existing.copy(refCount = existing.refCount - 1)
+    )
     ()
   }
 
   private[trigger] def queueFor(taskId: String, questionId: String): Option[ConcurrentLinkedQueue[WorkerAnswer]] =
     Option(queues.get((taskId, questionId))).map(_.queue)
 
-  /** Diagnostic — true while at least one trigger is registered
-    * for `(taskId, questionId)`. Tests use this to assert the
-    * register / unregister lifecycle is balanced. */
+  /**
+   * Diagnostic — true while at least one trigger is registered
+   * for `(taskId, questionId)`. Tests use this to assert the
+   * register / unregister lifecycle is balanced.
+   */
   def isRegistered(taskId: String, questionId: String): Boolean =
     queues.containsKey((taskId, questionId))
 }
 
-/** Strider-side implementation. Matched-answers state is keyed off
-  * the static [[AnswerTrigger.queues]] map so it survives the
-  * trigger's per-poll rehydration from the workflow row's persisted
-  * JSON. The fiber that subscribes to `sigil.signals` is started
-  * fresh on each register; Strider only registers a trigger once
-  * per workflow lifecycle so this isn't load-bearing across
-  * rehydrations. */
+/**
+ * Strider-side implementation. Matched-answers state is keyed off
+ * the static [[AnswerTrigger.queues]] map so it survives the
+ * trigger's per-poll rehydration from the workflow row's persisted
+ * JSON. The fiber that subscribes to `sigil.signals` is started
+ * fresh on each register; Strider only registers a trigger once
+ * per workflow lifecycle so this isn't load-bearing across
+ * rehydrations.
+ */
 final case class AnswerTriggerImpl(spec: AnswerTrigger,
                                    id: Id[Step] = Step.id())
   extends Trigger derives RW {
@@ -106,9 +117,9 @@ final case class AnswerTriggerImpl(spec: AnswerTrigger,
   override def check(workflow: Workflow): Task[Option[Json]] = Task {
     AnswerTrigger.queueFor(spec.taskId, spec.questionId).flatMap(q => Option(q.poll())).map { w =>
       obj(
-        "taskId"     -> str(w.taskId),
+        "taskId" -> str(w.taskId),
         "questionId" -> str(w.questionId),
-        "answer"     -> str(w.answer)
+        "answer" -> str(w.answer)
       ): Json
     }
   }

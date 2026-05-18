@@ -26,7 +26,8 @@ import sigil.Sigil
  */
 case class DbToolFinder(sigil: Sigil,
                         override val toolInputRWs: List[RW[? <: ToolInput]],
-                        maxResults: Int = 10) extends ToolFinder {
+                        maxResults: Int = 10)
+  extends ToolFinder {
 
   override def apply(request: DiscoveryRequest): Task[List[Tool]] = {
     val tokens = request.keywords.toLowerCase.split("\\s+").filter(_.nonEmpty).toList
@@ -42,7 +43,7 @@ case class DbToolFinder(sigil: Sigil,
         }
         .scored
         .sort(Sort.BestMatch())
-        .limit(maxResults * 2)  // over-fetch; affinity filter trims to maxResults below
+        .limit(maxResults * 2) // over-fetch; affinity filter trims to maxResults below
         .toList
     }).map { tools =>
       tools

@@ -6,9 +6,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.conversation.{Conversation, TopicEntry, TurnInput}
 import sigil.db.Model
-import sigil.provider.{
-  ConversationMode, ConversationRequest, GenerationSettings, Instructions
-}
+import sigil.provider.{ConversationMode, ConversationRequest, GenerationSettings, Instructions}
 import sigil.provider.anthropic.{AnthropicAuthMode, AnthropicProvider}
 import sigil.provider.digitalocean.DigitalOceanMessagesProvider
 import sigil.tool.core.CoreTools
@@ -26,33 +24,32 @@ class DigitalOceanMessagesProviderSpec extends AsyncWordSpec with AsyncTaskSpec 
   TestSigil.initFor(getClass.getSimpleName)
 
   private val convId = Conversation.id("do-messages-spec")
-  private val topic  = TopicEntry(sigil.conversation.Topic.id("t"), label = "t", summary = "t")
+  private val topic = TopicEntry(sigil.conversation.Topic.id("t"), label = "t", summary = "t")
   private val modelId: Id[Model] = Model.id("anthropic", "anthropic-claude-opus-4")
 
   private def baseRequest(model: Id[Model]): ConversationRequest =
     ConversationRequest(
-      conversationId     = convId,
-      modelId            = model,
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId),
-      currentMode        = ConversationMode,
-      currentTopic       = topic,
+      conversationId = convId,
+      modelId = model,
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId),
+      currentMode = ConversationMode,
+      currentTopic = topic,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      tools              = CoreTools.all,
-      chain              = List(TestUser, TestAgent)
+      tools = CoreTools.all,
+      chain = List(TestUser, TestAgent)
     )
 
   "DigitalOceanMessagesProvider.create" should {
 
-    "produce an AnthropicProvider configured with Bearer auth at the DO base URL" in {
+    "produce an AnthropicProvider configured with Bearer auth at the DO base URL" in
       DigitalOceanMessagesProvider.create(TestSigil, apiKey = "do-test-key").map { provider =>
         provider.authMode.shouldBe(AnthropicAuthMode.Bearer)
         provider.baseUrl.toString should include("inference.do-ai.run")
         provider.apiKey.shouldBe("do-test-key")
       }
-    }
 
-    "send Authorization: Bearer instead of x-api-key + anthropic-version on the wire" in {
+    "send Authorization: Bearer instead of x-api-key + anthropic-version on the wire" in
       DigitalOceanMessagesProvider.create(TestSigil, apiKey = "do-test-key").flatMap { provider =>
         provider.requestConverter(baseRequest(modelId)).map { req =>
           val headerNames = req.headers.map.keySet.map(_.toLowerCase)
@@ -63,7 +60,6 @@ class DigitalOceanMessagesProviderSpec extends AsyncWordSpec with AsyncTaskSpec 
           authValues.exists(_.startsWith("Bearer ")).shouldBe(true)
         }
       }
-    }
   }
 
   "AnthropicProvider default" should {

@@ -5,7 +5,9 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.Conversation
-import sigil.conversation.compression.{Percentage, StandardContextCurator, StandardContextOptimizer, StandardMemoryRetriever, NoOpBlockExtractor, NoOpContextCompressor}
+import sigil.conversation.compression.{
+  Percentage, StandardContextCurator, StandardContextOptimizer, StandardMemoryRetriever, NoOpBlockExtractor, NoOpContextCompressor
+}
 import sigil.db.Model
 import sigil.event.Message
 import sigil.signal.EventState
@@ -35,38 +37,42 @@ class CuratorBudgetTokenizerSpec extends AsyncWordSpec with AsyncTaskSpec with M
   // actually exercised — the count assertion would be meaningless
   // otherwise.
   TestSigil.cache.replace(List(sigil.db.Model(
-    canonicalSlug    = "test/budget-tok-model",
-    huggingFaceId    = "",
-    name             = "budget-tok-model",
-    description      = "",
-    contextLength    = 4096L,
-    architecture     = sigil.db.ModelArchitecture(
-      modality         = "text->text",
-      inputModalities  = List("text"),
+    canonicalSlug = "test/budget-tok-model",
+    huggingFaceId = "",
+    name = "budget-tok-model",
+    description = "",
+    contextLength = 4096L,
+    architecture = sigil.db.ModelArchitecture(
+      modality = "text->text",
+      inputModalities = List("text"),
       outputModalities = List("text"),
-      tokenizer        = "None",
-      instructType     = None
+      tokenizer = "None",
+      instructType = None
     ),
-    pricing          = sigil.db.ModelPricing(
-      prompt = BigDecimal(0), completion = BigDecimal(0),
-      webSearch = None, inputCacheRead = None
+    pricing = sigil.db.ModelPricing(
+      prompt = BigDecimal(0),
+      completion = BigDecimal(0),
+      webSearch = None,
+      inputCacheRead = None
     ),
-    topProvider      = sigil.db.ModelTopProvider(
-      contextLength       = Some(4096L),
+    topProvider = sigil.db.ModelTopProvider(
+      contextLength = Some(4096L),
       maxCompletionTokens = None,
-      isModerated         = false
+      isModerated = false
     ),
-    perRequestLimits    = None,
+    perRequestLimits = None,
     supportedParameters = Set.empty,
-    knowledgeCutoff     = None,
-    expirationDate      = None,
-    links               = sigil.db.ModelLinks(details = ""),
-    created             = lightdb.time.Timestamp(),
-    _id                 = modelId
+    knowledgeCutoff = None,
+    expirationDate = None,
+    links = sigil.db.ModelLinks(details = ""),
+    created = lightdb.time.Timestamp(),
+    _id = modelId
   ))).sync()
 
-  /** Counts every call so the test can prove the budget path never used it. */
-  private final class CountingTokenizer extends Tokenizer {
+  /**
+   * Counts every call so the test can prove the budget path never used it.
+   */
+  final private class CountingTokenizer extends Tokenizer {
     val calls = new AtomicInteger(0)
     override def count(text: String): Int = {
       calls.incrementAndGet()
@@ -85,42 +91,41 @@ class CuratorBudgetTokenizerSpec extends AsyncWordSpec with AsyncTaskSpec with M
       val convId = Conversation.id(s"budget-tok-${rapid.Unique()}")
 
       val curator = StandardContextCurator(
-        sigil           = TestSigil,
-        optimizer       = StandardContextOptimizer(),
-        blockExtractor  = NoOpBlockExtractor,
+        sigil = TestSigil,
+        optimizer = StandardContextOptimizer(),
+        blockExtractor = NoOpBlockExtractor,
         memoryRetriever = StandardMemoryRetriever(limit = 5),
-        compressor      = NoOpContextCompressor,
-        budget          = Percentage(0.8),
-        tokenizer       = networkTokenizer
+        compressor = NoOpContextCompressor,
+        budget = Percentage(0.8),
+        tokenizer = networkTokenizer
       )
 
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(
-               Conversation(_id = convId, topics = List(TestTopicEntry))
-             )))
+          Conversation(_id = convId, topics = List(TestTopicEntry))
+        )))
         // 200 frames of trivial content — enough that wiring the
         // CountingTokenizer into the budget path would produce a
         // very visible call count (and wall-clock penalty).
         _ <- Task.sequence(
-               (1 to 200).toList.map { i =>
-                 TestSigil.publish(Message(
-                   participantId  = TestUser,
-                   conversationId = convId,
-                   topicId        = TestTopicEntry.id,
-                   content        = Vector(ResponseContent.Text(s"frame body $i")),
-                   state          = EventState.Complete
-                 ))
-               }
-             )
+          (1 to 200).toList.map { i =>
+            TestSigil.publish(Message(
+              participantId = TestUser,
+              conversationId = convId,
+              topicId = TestTopicEntry.id,
+              content = Vector(ResponseContent.Text(s"frame body $i")),
+              state = EventState.Complete
+            ))
+          }
+        )
         _ <- curator.curate(convId, modelId, chain = List(TestUser, TestAgent))
-      } yield {
+      } yield
         // The budget path uses budgetTokenizer (HeuristicTokenizer by
         // default). Calls into the network-style sentinel must be
         // bounded — the warning path may legitimately count a few
         // times against `tokenizer`, but the 200-frame budget pass
         // must never touch it.
         networkTokenizer.calls.get should be < 50
-      }
     }
 
     "use the explicitly-passed budgetTokenizer when an app opts in" in {
@@ -128,32 +133,31 @@ class CuratorBudgetTokenizerSpec extends AsyncWordSpec with AsyncTaskSpec with M
       val convId = Conversation.id(s"budget-tok-opt-${rapid.Unique()}")
 
       val curator = StandardContextCurator(
-        sigil           = TestSigil,
-        optimizer       = StandardContextOptimizer(),
-        blockExtractor  = NoOpBlockExtractor,
+        sigil = TestSigil,
+        optimizer = StandardContextOptimizer(),
+        blockExtractor = NoOpBlockExtractor,
         memoryRetriever = StandardMemoryRetriever(limit = 5),
-        compressor      = NoOpContextCompressor,
-        budget          = Percentage(0.8),
+        compressor = NoOpContextCompressor,
+        budget = Percentage(0.8),
         budgetTokenizer = budgetSentinel
       )
 
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(
-               Conversation(_id = convId, topics = List(TestTopicEntry))
-             )))
+          Conversation(_id = convId, topics = List(TestTopicEntry))
+        )))
         _ <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("one short frame")),
-               state          = EventState.Complete
-             ))
+          participantId = TestUser,
+          conversationId = convId,
+          topicId = TestTopicEntry.id,
+          content = Vector(ResponseContent.Text("one short frame")),
+          state = EventState.Complete
+        ))
         _ <- curator.curate(convId, modelId, chain = List(TestUser, TestAgent))
-      } yield {
+      } yield
         // The explicit budgetTokenizer is in play — at least the one
         // frame above flowed through it.
         budgetSentinel.calls.get should be >= 1
-      }
     }
   }
 

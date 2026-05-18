@@ -12,4 +12,5 @@ case class GrepInput(path: String,
                      pattern: String,
                      glob: Option[String] = None,
                      maxMatches: Int = 500,
-                     contextLines: Int = 0) extends ToolInput derives RW
+                     contextLines: Int = 0)
+  extends ToolInput derives RW

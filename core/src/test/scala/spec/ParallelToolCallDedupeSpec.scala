@@ -40,29 +40,32 @@ class ParallelToolCallDedupeSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
   private val invocations = new AtomicInteger(0)
 
-  case object CountingTool extends TypedTool[CountingInput](
-    name        = ToolName("counting_tool"),
-    description = "Records every executeTyped invocation."
-  ) {
-  override def paginate: Boolean = false
+  case object CountingTool
+    extends TypedTool[CountingInput](
+      name = ToolName("counting_tool"),
+      description = "Records every executeTyped invocation."
+    ) {
+    override def paginate: Boolean = false
 
     override protected def executeTyped(input: CountingInput, ctx: TurnContext): Stream[Event] = {
       invocations.incrementAndGet()
       Stream.emit[Event](Message(
-        participantId  = ctx.caller,
+        participantId = ctx.caller,
         conversationId = ctx.conversation.id,
-        topicId        = ctx.conversation.currentTopicId,
-        content        = Vector(ResponseContent.Text(s"ran with ${input.payload}")),
-        role           = MessageRole.Tool,
-        state          = EventState.Complete
+        topicId = ctx.conversation.currentTopicId,
+        content = Vector(ResponseContent.Text(s"ran with ${input.payload}")),
+        role = MessageRole.Tool,
+        state = EventState.Complete
       ))
     }
   }
 
   ToolInput.register(RW.static(CountingInput("")))
 
-  /** Provider that emits the same (toolName, args) twice in a
-    * single completion — simulating parallel hedging. */
+  /**
+   * Provider that emits the same (toolName, args) twice in a
+   * single completion — simulating parallel hedging.
+   */
   private class DuplicateCallProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
@@ -83,15 +86,15 @@ class ParallelToolCallDedupeSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
   private def buildRequest(convId: Id[Conversation]): ConversationRequest =
     ConversationRequest(
-      conversationId     = convId,
-      modelId            = Model.id("test", "dedupe-spec-model"),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(conversationId = convId),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
+      conversationId = convId,
+      modelId = Model.id("test", "dedupe-spec-model"),
+      instructions = Instructions(),
+      turnInput = TurnInput(conversationId = convId),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      tools              = Vector(CountingTool),
-      chain              = List(TestUser, TestAgent)
+      tools = Vector(CountingTool),
+      chain = List(TestUser, TestAgent)
     )
 
   "Orchestrator parallel-call dedupe (#87)" should {
@@ -103,7 +106,7 @@ class ParallelToolCallDedupeSpec extends AsyncWordSpec with AsyncTaskSpec with M
       val conv = Conversation(topics = TestTopicStack, _id = convId)
       val request = buildRequest(convId)
       for {
-        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
       } yield {
         // Underlying execution ran exactly once.

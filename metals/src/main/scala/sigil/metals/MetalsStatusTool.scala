@@ -17,17 +17,26 @@ case class MetalsStatusInput() extends ToolInput derives RW
  * actually running, and for surfaces that want to render a Metals
  * chip per workspace.
  */
-final class MetalsStatusTool extends TypedTool[MetalsStatusInput](
-  name = ToolName("metals_status"),
-  description =
-    """List every workspace currently backed by a Metals subprocess. Reports the workspace path,
+final class MetalsStatusTool
+  extends TypedTool[MetalsStatusInput](
+    name = ToolName("metals_status"),
+    description =
+      """List every workspace currently backed by a Metals subprocess. Reports the workspace path,
       |MCP endpoint URL, alive flag, and milliseconds since the last touch (so you can see which
       |sessions are about to be reaped by the idle sweeper).""".stripMargin,
-  keywords = Set(
-    "metals", "status", "health", "indexing", "ready",
-    "scala", "compile", "subprocess", "running", "lsp"
-  )
-) {
+    keywords = Set(
+      "metals",
+      "status",
+      "health",
+      "indexing",
+      "ready",
+      "scala",
+      "compile",
+      "subprocess",
+      "running",
+      "lsp"
+    )
+  ) {
   override def paginate: Boolean = false
 
   import MetalsToolSupport.*
@@ -52,10 +61,10 @@ final class MetalsStatusTool extends TypedTool[MetalsStatusInput](
   }
 
   private def render(s: MetalsManager.WorkspaceStatus): String = {
-    val now    = System.currentTimeMillis()
+    val now = System.currentTimeMillis()
     val idleMs = now - s.lastUsedMs
-    val ep     = s.endpoint.getOrElse("(starting…)")
-    val alive  = if (s.alive) "alive" else "DEAD"
+    val ep = s.endpoint.getOrElse("(starting…)")
+    val alive = if (s.alive) "alive" else "DEAD"
     s"- ${s.workspaceKey}: ${s.workspace} → $ep [$alive, idle ${idleMs}ms]"
   }
 }

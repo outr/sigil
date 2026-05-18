@@ -18,4 +18,5 @@ import sigil.tool.ToolInput
  *              multiple accessible spaces.
  */
 case class PinMemoryInput(key: String,
-                          space: Option[SpaceId] = None) extends ToolInput derives RW
+                          space: Option[SpaceId] = None)
+  extends ToolInput derives RW

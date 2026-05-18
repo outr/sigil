@@ -12,7 +12,8 @@ import strider.step.Step
 
 case class ApproveWorkflowInput(runId: String,
                                 stepId: String,
-                                comment: Option[String] = None) extends ToolInput derives RW
+                                comment: Option[String] = None)
+  extends ToolInput derives RW
 
 /**
  * Approve a workflow run paused on an [[strider.step.Approval]]
@@ -30,25 +31,29 @@ case class ApproveWorkflowInput(runId: String,
  * — Strider's `resume` returns an error which surfaces in the
  * tool's reply text.
  */
-final class ApproveWorkflowTool extends TypedTool[ApproveWorkflowInput](
-  name = ToolName("approve_workflow"),
-  description =
-    """Approve a workflow run paused on an approval step.
+final class ApproveWorkflowTool
+  extends TypedTool[ApproveWorkflowInput](
+    name = ToolName("approve_workflow"),
+    description =
+      """Approve a workflow run paused on an approval step.
       |
       |`runId` is the run id; `stepId` is the id of the waiting approval step (visible
       |from the workflow's lifecycle Events). `comment` is optional free-form text —
       |passed through as the resume payload so the workflow's branching can match on it.""".stripMargin,
-  examples = List(
-    ToolExample("Approve a pending review",
-      ApproveWorkflowInput(runId = "run-abc", stepId = "review")),
-    ToolExample("Approve with a reason note",
-      ApproveWorkflowInput(runId = "run-abc", stepId = "review", comment = Some("looks correct after manual check")))
-  ),
-  keywords = Set("workflow", "approve", "ok", "yes", "continue")
-) with WorkflowToolSupport {
+    examples = List(
+      ToolExample(
+        "Approve a pending review",
+        ApproveWorkflowInput(runId = "run-abc", stepId = "review")),
+      ToolExample(
+        "Approve with a reason note",
+        ApproveWorkflowInput(runId = "run-abc", stepId = "review", comment = Some("looks correct after manual check")))
+    ),
+    keywords = Set("workflow", "approve", "ok", "yes", "continue")
+  )
+  with WorkflowToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: ApproveWorkflowInput, ctx: TurnContext): Stream[Event] = {
+  override protected def executeTyped(input: ApproveWorkflowInput, ctx: TurnContext): Stream[Event] =
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)
       case Right(host) =>
@@ -67,5 +72,4 @@ final class ApproveWorkflowTool extends TypedTool[ApproveWorkflowInput](
         }
         Stream.force(task.map(text => reply(ctx, text)))
     }
-  }
 }

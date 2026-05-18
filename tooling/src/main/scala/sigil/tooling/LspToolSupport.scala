@@ -31,15 +31,16 @@ trait LspToolSupport extends sigil.tool.Tool {
 
   override def toolchain: Option[String] = Some("lsp")
 
-  /** Run `body` against a session for `languageId` rooted appropriately
-    * for `filePath`. Wraps every error path (no config / spawn failure
-    * / RPC error) into a single Stream emission carrying an explanatory
-    * Message — agents always receive a structured tool-result, never
-    * an exception. */
+  /**
+   * Run `body` against a session for `languageId` rooted appropriately
+   * for `filePath`. Wraps every error path (no config / spawn failure
+   * / RPC error) into a single Stream emission carrying an explanatory
+   * Message — agents always receive a structured tool-result, never
+   * an exception.
+   */
   protected def withSession(languageId: String,
                             filePath: String,
-                            context: TurnContext)
-                           (body: (LspSession, String, String) => Task[String]): Stream[Event] = {
+                            context: TurnContext)(body: (LspSession, String, String) => Task[String]): Stream[Event] = {
     val task = manager.configFor(languageId).flatMap {
       case None =>
         Task.pure(reply(context, s"No LspServerConfig persisted for '$languageId'.", isError = true))
@@ -55,15 +56,16 @@ trait LspToolSupport extends sigil.tool.Tool {
     Stream.force(task.map(Stream.emit))
   }
 
-  /** Convenience around [[withSession]] that also calls `didOpen` on
-    * the target file before running `body`, reading the file's bytes
-    * fresh from disk. Most navigation / completion / hover tools
-    * want this. Returns "" body if the file doesn't exist or can't
-    * be read — the LSP call itself will fail in a meaningful way. */
+  /**
+   * Convenience around [[withSession]] that also calls `didOpen` on
+   * the target file before running `body`, reading the file's bytes
+   * fresh from disk. Most navigation / completion / hover tools
+   * want this. Returns "" body if the file doesn't exist or can't
+   * be read — the LSP call itself will fail in a meaningful way.
+   */
   protected def withOpenDocument(languageId: String,
                                  filePath: String,
-                                 context: TurnContext)
-                                (body: (LspSession, String) => Task[String]): Stream[Event] =
+                                 context: TurnContext)(body: (LspSession, String) => Task[String]): Stream[Event] =
     withSession(languageId, filePath, context) { (session, uri, _) =>
       val text = scala.util.Try(Files.readString(Paths.get(filePath))).toOption.getOrElse("")
       session.didOpen(uri, languageId, text).flatMap(_ => body(session, uri))
@@ -80,33 +82,36 @@ trait LspToolSupport extends sigil.tool.Tool {
       visibility = MessageVisibility.All
     )
 
-  /** JSON-emitting variant of [[reply]] for tools that produce
-    * structured [[sigil.tooling.types]] values. Serializes `value`
-    * to compact JSON via fabric so apps consuming the wire receive
-    * a typed-shape payload (Bug #9 phase 6) — no regex-parsing of
-    * rendered text required.
-    *
-    * The tool's body becomes "compute the typed value, return it";
-    * `replyJsonStream` wraps it into a Stream\[Event] for the typed
-    * tool's `executeTyped` return. */
+  /**
+   * JSON-emitting variant of [[reply]] for tools that produce
+   * structured [[sigil.tooling.types]] values. Serializes `value`
+   * to compact JSON via fabric so apps consuming the wire receive
+   * a typed-shape payload (Bug #9 phase 6) — no regex-parsing of
+   * rendered text required.
+   *
+   * The tool's body becomes "compute the typed value, return it";
+   * `replyJsonStream` wraps it into a Stream\[Event] for the typed
+   * tool's `executeTyped` return.
+   */
   protected def replyJson[T: RW](context: TurnContext, value: T): Event = {
-    val rw   = summon[RW[T]]
+    val rw = summon[RW[T]]
     val json = rw.read(value)
     reply(context, JsonFormatter.Compact(json), isError = false)
   }
 
-  /** Typed variant of [[withSession]] for tools that extend
-    * `TypedOutputTool[I, O]`. Runs `body` against an open session
-    * and returns its typed `Output`. Error paths (no config / spawn
-    * failure / RPC error) get routed to the caller's `onError`
-    * mapping — typically a sentinel variant on the tool's Output
-    * enum. Lets each tool's typed shape carry its own error states
-    * without forcing a generic envelope. */
+  /**
+   * Typed variant of [[withSession]] for tools that extend
+   * `TypedOutputTool[I, O]`. Runs `body` against an open session
+   * and returns its typed `Output`. Error paths (no config / spawn
+   * failure / RPC error) get routed to the caller's `onError`
+   * mapping — typically a sentinel variant on the tool's Output
+   * enum. Lets each tool's typed shape carry its own error states
+   * without forcing a generic envelope.
+   */
   protected def withSessionTyped[Output](languageId: String,
                                          filePath: String,
                                          context: TurnContext,
-                                         onError: String => Output)
-                                        (body: (LspSession, String, String) => Task[Output]): Task[Output] =
+                                         onError: String => Output)(body: (LspSession, String, String) => Task[Output]): Task[Output] =
     manager.configFor(languageId).flatMap {
       case None => Task.pure(onError(s"No LspServerConfig persisted for '$languageId'."))
       case Some(config) =>
@@ -118,8 +123,7 @@ trait LspToolSupport extends sigil.tool.Tool {
           // tool's chip via `ctx.reportProgress`. Cleared on body
           // exit so other concurrent calls don't see stale text.
           session.setStatusCallback(Some(text =>
-            context.reportProgress(text).handleError(_ => Task.unit).startUnit()
-          ))
+            context.reportProgress(text).handleError(_ => Task.unit).startUnit()))
           body(session, uri, root).map { result =>
             session.setStatusCallback(None)
             result
@@ -130,13 +134,14 @@ trait LspToolSupport extends sigil.tool.Tool {
         }.handleError(e => Task.pure(onError(s"LSP error: ${e.getMessage}")))
     }
 
-  /** Typed variant of [[withOpenDocument]] for `TypedOutputTool[I, O]`
-    * tools. Calls `didOpen` on the target file before running `body`. */
+  /**
+   * Typed variant of [[withOpenDocument]] for `TypedOutputTool[I, O]`
+   * tools. Calls `didOpen` on the target file before running `body`.
+   */
   protected def withOpenDocumentTyped[Output](languageId: String,
                                               filePath: String,
                                               context: TurnContext,
-                                              onError: String => Output)
-                                             (body: (LspSession, String) => Task[Output]): Task[Output] =
+                                              onError: String => Output)(body: (LspSession, String) => Task[Output]): Task[Output] =
     withSessionTyped(languageId, filePath, context, onError) { (session, uri, _) =>
       val text = scala.util.Try(Files.readString(Paths.get(filePath))).toOption.getOrElse("")
       session.didOpen(uri, languageId, text).flatMap(_ => body(session, uri))

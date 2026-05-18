@@ -14,7 +14,8 @@ case class LspInlayHintsInput(languageId: String,
                               startLine: Int = 0,
                               startCharacter: Int = 0,
                               endLine: Int = Int.MaxValue,
-                              endCharacter: Int = 0) extends ToolInput derives RW
+                              endCharacter: Int = 0)
+  extends ToolInput derives RW
 
 /**
  * List inlay hints in a range — inferred type annotations, parameter
@@ -24,28 +25,33 @@ case class LspInlayHintsInput(languageId: String,
  *
  * Default range covers the whole file (`startLine=0, endLine=∞`).
  */
-final class LspInlayHintsTool(val manager: LspManager) extends TypedOutputTool[LspInlayHintsInput, LspInlayHintsResult](
-  name = ToolName("lsp_inlay_hints"),
-  description =
-    """List inlay hints (inferred types, parameter labels) in a range.
+final class LspInlayHintsTool(val manager: LspManager)
+  extends TypedOutputTool[LspInlayHintsInput, LspInlayHintsResult](
+    name = ToolName("lsp_inlay_hints"),
+    description =
+      """List inlay hints (inferred types, parameter labels) in a range.
       |
       |`languageId` + `filePath` identify the document.
       |`startLine`/`startCharacter`/`endLine`/`endCharacter` (0-based) bound the range;
       |defaults to the whole file.
       |Each item: `{kind, position, label}` where kind is `type` / `param` / `hint`.""".stripMargin,
-  keywords = Set("lsp", "inlay", "hints", "type annotation", "parameter hint", "type hint"),
-  examples = List(
-    ToolExample(
-      "scala inlay hints for the whole file",
-      LspInlayHintsInput(languageId = "scala", filePath = "/abs/path/Foo.scala")
+    keywords = Set("lsp", "inlay", "hints", "type annotation", "parameter hint", "type hint"),
+    examples = List(
+      ToolExample(
+        "scala inlay hints for the whole file",
+        LspInlayHintsInput(languageId = "scala", filePath = "/abs/path/Foo.scala")
+      )
     )
   )
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  with sigil.tool.ReadOnlyExternalTool
+  with LspToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspInlayHintsInput, context: TurnContext): Task[LspInlayHintsResult] =
     withOpenDocumentTyped[LspInlayHintsResult](
-      input.languageId, input.filePath, context,
+      input.languageId,
+      input.filePath,
+      context,
       onError = msg => throw new RuntimeException(msg)
     ) { (session, uri) =>
       val range = new Range(
@@ -59,7 +65,7 @@ final class LspInlayHintsTool(val manager: LspManager) extends TypedOutputTool[L
 
   private def toItem(hint: InlayHint): LspInlayHintItem = {
     val kind = Option(hint.getKind).map {
-      case InlayHintKind.Type      => "type"
+      case InlayHintKind.Type => "type"
       case InlayHintKind.Parameter => "param"
     }.getOrElse("hint")
     val label = hint.getLabel match {

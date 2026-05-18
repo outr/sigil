@@ -21,40 +21,47 @@ import sigil.db.Model
  */
 object ModelAlias {
 
-  /** Symmetric alias groups — each key resolves to the same canonical
-    * provider name as the OpenRouter / LlamaCpp catalog uses. */
+  /**
+   * Symmetric alias groups — each key resolves to the same canonical
+   * provider name as the OpenRouter / LlamaCpp catalog uses.
+   */
   val providerAliases: Map[String, String] = Map(
-    "openai"     -> "openai",
-    "gpt"        -> "openai",
-    "anthropic"  -> "anthropic",
-    "claude"     -> "anthropic",
-    "google"     -> "google",
-    "gemini"     -> "google",
-    "deepseek"   -> "deepseek",
-    "local"      -> "llamacpp",
-    "llama"      -> "llamacpp",
-    "llamacpp"   -> "llamacpp",
-    "llama-cpp"  -> "llamacpp"
+    "openai" -> "openai",
+    "gpt" -> "openai",
+    "anthropic" -> "anthropic",
+    "claude" -> "anthropic",
+    "google" -> "google",
+    "gemini" -> "google",
+    "deepseek" -> "deepseek",
+    "local" -> "llamacpp",
+    "llama" -> "llamacpp",
+    "llamacpp" -> "llamacpp",
+    "llama-cpp" -> "llamacpp"
   )
 
-  /** Aliases resolved via the active conversation's lookup chain
-    * rather than the static provider mapping. */
+  /**
+   * Aliases resolved via the active conversation's lookup chain
+   * rather than the static provider mapping.
+   */
   val conversationAliases: Set[String] = Set("current", "this")
 
-  /** All alias names — surfaced in the refusal message so the agent
-    * can re-prompt the user with the legal options. */
-  val allAliasNames: List[String] =
-    (providerAliases.keys ++ conversationAliases).toList.distinct.sorted
+  /**
+   * All alias names — surfaced in the refusal message so the agent
+   * can re-prompt the user with the legal options.
+   */
+  val allAliasNames: List[String] = (providerAliases.keys ++ conversationAliases).toList.distinct.sorted
 
-  /** Resolve `input` (case-insensitive, trimmed) to a registered
-    * model id. Returns `None` if the input isn't an alias the
-    * resolver knows about — callers fall through to strict id
-    * matching against the registry. */
+  /**
+   * Resolve `input` (case-insensitive, trimmed) to a registered
+   * model id. Returns `None` if the input isn't an alias the
+   * resolver knows about — callers fall through to strict id
+   * matching against the registry.
+   */
   def resolve(input: String, ctx: TurnContext): Task[Option[Id[Model]]] = {
     val key = input.toLowerCase.trim
     if (conversationAliases.contains(key)) ctx.sigil.currentModelFor(ctx.conversation)
     else providerAliases.get(key) match {
-      case None              => Task.pure(None)
+      case None => Task.pure(None)
       case Some(canonicalProvider) =>
         Task.pure(
           ctx.sigil.cache.find(provider = Some(canonicalProvider), model = None)

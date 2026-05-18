@@ -57,13 +57,13 @@ class OpenAIFixedSamplingSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   private def bodyOf(req: OneShotRequest): String =
     provider.requestConverter(req).sync().content match {
       case Some(c: spice.http.content.StringContent) => c.value
-      case _                                          => ""
+      case _ => ""
     }
 
   private def request(modelId: Id[Model]): OneShotRequest = OneShotRequest(
-    modelId      = modelId,
+    modelId = modelId,
     systemPrompt = "Be terse.",
-    userPrompt   = "Hi.",
+    userPrompt = "Hi.",
     generationSettings = GenerationSettings(temperature = Some(0.0), topP = Some(0.5), maxOutputTokens = Some(50))
   )
 

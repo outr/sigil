@@ -65,4 +65,3 @@ class SigilEmbeddingWiringSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
   }
 }
-

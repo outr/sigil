@@ -31,14 +31,14 @@ class SecretStoreKeySurfaceSpec extends AnyWordSpec with Matchers {
     "throw NoSuchFileException when the key file does not exist" in {
       val nonexistent = Path.of("/tmp", s"sigil-no-such-key-${rapid.Unique()}.key")
       Files.exists(nonexistent) shouldBe false
-      a [NoSuchFileException] should be thrownBy DatabaseSecretStore.fromKeyFile(null, nonexistent)
+      a[NoSuchFileException] should be thrownBy DatabaseSecretStore.fromKeyFile(null, nonexistent)
     }
   }
 
   "DatabaseSecretStore.generateKeyFile" should {
     "create the file with a fresh key on first call" in {
       val path = Files.createTempFile("sigil-key-gen-", ".key")
-      Files.deleteIfExists(path)  // tempFile creates it; we want it absent for the test
+      Files.deleteIfExists(path) // tempFile creates it; we want it absent for the test
       try {
         val key = DatabaseSecretStore.generateKeyFile(path)
         key should not be empty
@@ -51,7 +51,7 @@ class SecretStoreKeySurfaceSpec extends AnyWordSpec with Matchers {
       val path = Files.createTempFile("sigil-key-gen-", ".key")
       try {
         Files.writeString(path, "existing-key-do-not-clobber")
-        a [java.nio.file.FileAlreadyExistsException] should be thrownBy
+        a[java.nio.file.FileAlreadyExistsException] should be thrownBy
           DatabaseSecretStore.generateKeyFile(path)
         // Existing content untouched
         Files.readString(path).trim shouldBe "existing-key-do-not-clobber"

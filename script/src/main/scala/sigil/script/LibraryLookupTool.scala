@@ -29,10 +29,11 @@ import java.util.zip.ZipException
  * lone "C" against a 5k-jar classpath) get truncated rather than
  * flooding the agent's context.
  */
-case object LibraryLookupTool extends TypedTool[LibraryLookupInput](
-  name = ToolName("library_lookup"),
-  description =
-    """Fuzzy-resolve an unqualified class name or method reference to its fully-qualified
+case object LibraryLookupTool
+  extends TypedTool[LibraryLookupInput](
+    name = ToolName("library_lookup"),
+    description =
+      """Fuzzy-resolve an unqualified class name or method reference to its fully-qualified
       |form(s) on the executor's classpath. Use this BEFORE writing code that touches an API
       |you're unsure about — one round-trip beats one failed compile.
       |
@@ -42,11 +43,10 @@ case object LibraryLookupTool extends TypedTool[LibraryLookupInput](
       |
       |Returns up to 25 candidates. After picking the right one, call `class_signatures(fqn)`
       |for the full method/field surface.""".stripMargin,
-  modes = Set(ScriptAuthoringMode.id),
-  keywords = Set("lookup", "find", "symbol", "class", "method", "fqn", "library", "api")
-) {
+    modes = Set(ScriptAuthoringMode.id),
+    keywords = Set("lookup", "find", "symbol", "class", "method", "fqn", "library", "api")
+  ) {
   override def paginate: Boolean = false
-
 
   private val MaxCandidates = 25
 
@@ -58,9 +58,9 @@ case object LibraryLookupTool extends TypedTool[LibraryLookupInput](
 
   private def render(symbol: String): String = {
     val (classPart, methodPart) = symbol.split('.').toList match {
-      case Nil          => ("", None)
+      case Nil => ("", None)
       case single :: Nil => (single, None)
-      case many          =>
+      case many =>
         // Heuristic: if the last segment starts lower-case, treat it as
         // a method (e.g. `Task.map`); otherwise it's a nested class
         // path and we match the whole thing as the receiver.
@@ -82,7 +82,7 @@ case object LibraryLookupTool extends TypedTool[LibraryLookupInput](
         sb.append(s"\n- $fqn")
         methodPart match {
           case Some(m) => appendMatchingMethods(sb, fqn, m)
-          case None    => ()
+          case None => ()
         }
       }
       if (truncated) sb.append(s"\n\n(${classes.size - MaxCandidates} additional matches truncated; refine the symbol)")
@@ -90,14 +90,17 @@ case object LibraryLookupTool extends TypedTool[LibraryLookupInput](
     }
   }
 
-  /** Append matching method signatures under a candidate. Silent on
-    * load failure — a hit on the class name is still useful even if
-    * we couldn't reflect on it. */
+  /**
+   * Append matching method signatures under a candidate. Silent on
+   * load failure — a hit on the class name is still useful even if
+   * we couldn't reflect on it.
+   */
   private def appendMatchingMethods(sb: StringBuilder, fqn: String, methodName: String): Unit = {
     val cls = try Class.forName(fqn)
-    catch { case _: Throwable =>
-      try Class.forName(fqn + "$")
-      catch { case _: Throwable => return }
+    catch {
+      case _: Throwable =>
+        try Class.forName(fqn + "$")
+        catch { case _: Throwable => return }
     }
     val matching = cls.getDeclaredMethods.toList
       .filter(m => java.lang.reflect.Modifier.isPublic(m.getModifiers))
@@ -118,19 +121,23 @@ case object LibraryLookupTool extends TypedTool[LibraryLookupInput](
     if (t.isArray) s"Array[${simpleName(t.getComponentType)}]" else short
   }
 
-  /** Case-insensitive match of the simple class name (last `.`-segment,
-    * `$`-stripped) against the symbol. Trailing `$` on the FQN means a
-    * Scala module — match the bare name. */
+  /**
+   * Case-insensitive match of the simple class name (last `.`-segment,
+   * `$`-stripped) against the symbol. Trailing `$` on the FQN means a
+   * Scala module — match the bare name.
+   */
   private def matches(fqn: String, symbol: String): Boolean = {
     val simple = fqn.substring(fqn.lastIndexOf('.') + 1).stripSuffix("$")
     simple.equalsIgnoreCase(symbol)
   }
 
-  /** Walk the context classloader chain and gather every `.class`
-    * entry's FQN. Each invocation scans fresh — script-authoring is
-    * an interactive flow, not a hot path. Falls back to
-    * `java.class.path` when the loader chain has no URLClassLoader
-    * ancestors (sbt 1 worker JVMs, fat-jar launches, jlink images). */
+  /**
+   * Walk the context classloader chain and gather every `.class`
+   * entry's FQN. Each invocation scans fresh — script-authoring is
+   * an interactive flow, not a hot path. Falls back to
+   * `java.class.path` when the loader chain has no URLClassLoader
+   * ancestors (sbt 1 worker JVMs, fat-jar launches, jlink images).
+   */
   private def scanClasspath(): List[String] = {
     val loader = Thread.currentThread().getContextClassLoader
     val out = collection.mutable.LinkedHashSet.empty[String]
@@ -159,10 +166,9 @@ case object LibraryLookupTool extends TypedTool[LibraryLookupInput](
     out.toList
   }
 
-  private def gatherEntry(file: File, out: collection.mutable.LinkedHashSet[String]): Unit = {
+  private def gatherEntry(file: File, out: collection.mutable.LinkedHashSet[String]): Unit =
     if (file.isFile && file.getName.endsWith(".jar")) gatherJar(file, out)
     else if (file.isDirectory) gatherDir(file, file, out)
-  }
 
   private def gatherJar(file: File, out: collection.mutable.LinkedHashSet[String]): Unit = {
     var jar: JarFile = null
@@ -178,8 +184,10 @@ case object LibraryLookupTool extends TypedTool[LibraryLookupInput](
       }
     } catch {
       case _: ZipException => ()
-      case _: Throwable    => ()
-    } finally if (jar != null) try jar.close() catch { case _: Throwable => () }
+      case _: Throwable => ()
+    } finally
+      if (jar != null) try jar.close()
+      catch { case _: Throwable => () }
   }
 
   private def gatherDir(root: File, current: File, out: collection.mutable.LinkedHashSet[String]): Unit = {
@@ -195,12 +203,12 @@ case object LibraryLookupTool extends TypedTool[LibraryLookupInput](
 
   private def reply(context: TurnContext, text: String): Message =
     Message(
-      participantId  = context.caller,
+      participantId = context.caller,
       conversationId = context.conversation.id,
-      topicId        = context.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete,
-      role           = MessageRole.Tool,
-      visibility     = MessageVisibility.Agents
+      topicId = context.conversation.currentTopicId,
+      content = Vector(ResponseContent.Text(text)),
+      state = EventState.Complete,
+      role = MessageRole.Tool,
+      visibility = MessageVisibility.Agents
     )
 }

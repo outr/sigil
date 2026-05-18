@@ -10,10 +10,11 @@ import sigil.tool.{ToolName, TypedTool}
  * Event, and decides whether to continue the agent loop or to
  * intervene.
  */
-case object ProgressReflectionTool extends TypedTool[ProgressReflectionInput](
-  name = ToolName("report_progress"),
-  description =
-    """Report your progress checkpoint relative to the prior status anchor in the system prompt.
+case object ProgressReflectionTool
+  extends TypedTool[ProgressReflectionInput](
+    name = ToolName("report_progress"),
+    description =
+      """Report your progress checkpoint relative to the prior status anchor in the system prompt.
       |
       |Pick a `currentStatus` (one line summary of where things stand RIGHT NOW), set
       |`meaningfulProgress = true` only when you're in a substantively different place than the
@@ -24,7 +25,7 @@ case object ProgressReflectionTool extends TypedTool[ProgressReflectionInput](
       |
       |Be honest — if your status looks identical to the prior status or you're cycling through
       |the same searches, say so (`meaningfulProgress = false`) so the framework can intervene.""".stripMargin
-) {
+  ) {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: ProgressReflectionInput,

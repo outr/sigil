@@ -47,11 +47,11 @@ class DefaultComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with Matche
   private def userMessage(conv: Conversation, content: String = ""): Option[Message] =
     if (content.isEmpty) None
     else Some(Message(
-      participantId  = TestUser,
+      participantId = TestUser,
       conversationId = conv._id,
-      topicId        = TestTopicEntry.id,
-      content        = Vector(ResponseContent.Text(content)),
-      state          = EventState.Complete
+      topicId = TestTopicEntry.id,
+      content = Vector(ResponseContent.Text(content)),
+      state = EventState.Complete
     ))
 
   "ProviderStrategy.routed.defaultComplexity" should {
@@ -62,18 +62,16 @@ class DefaultComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       // override, we expect Medium.
       val strategy = ProviderStrategy.routed(
         default = List(
-          ModelCandidate(modelId,                   supportedComplexity = Set(Complexity.Low)),
-          ModelCandidate(Model.id("test", "med"),   supportedComplexity = Set(Complexity.Medium)),
-          ModelCandidate(Model.id("test", "hi"),    supportedComplexity = Set(Complexity.High))
+          ModelCandidate(modelId, supportedComplexity = Set(Complexity.Low)),
+          ModelCandidate(Model.id("test", "med"), supportedComplexity = Set(Complexity.Medium)),
+          ModelCandidate(Model.id("test", "hi"), supportedComplexity = Set(Complexity.High))
         )
       )
       TestSigil.setResolveProviderStrategy(_ => Task.pure(Some(strategy)))
       for {
-        conv   <- freshConv("default-medium")
+        conv <- freshConv("default-medium")
         result <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, None, buildCtx(conv))
-      } yield {
-        result._2 shouldBe Complexity.Medium
-      }
+      } yield result._2 shouldBe Complexity.Medium
     }
 
     "honour an explicit Low override on empty-text turns (greet path)" in {
@@ -82,18 +80,16 @@ class DefaultComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       // there instead of Medium.
       val strategy = ProviderStrategy.routed(
         default = List(
-          ModelCandidate(modelId,                   supportedComplexity = Set(Complexity.Low)),
-          ModelCandidate(Model.id("test", "med"),   supportedComplexity = Set(Complexity.Medium))
+          ModelCandidate(modelId, supportedComplexity = Set(Complexity.Low)),
+          ModelCandidate(Model.id("test", "med"), supportedComplexity = Set(Complexity.Medium))
         ),
         defaultComplexity = Complexity.Low
       )
       TestSigil.setResolveProviderStrategy(_ => Task.pure(Some(strategy)))
       for {
-        conv   <- freshConv("default-low")
+        conv <- freshConv("default-low")
         result <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, None, buildCtx(conv))
-      } yield {
-        result._2 shouldBe Complexity.Low
-      }
+      } yield result._2 shouldBe Complexity.Low
     }
 
     "honour the override when the classifier fails" in {
@@ -102,32 +98,30 @@ class DefaultComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       // back to defaultComplexity.
       val strategy = ProviderStrategy.routed(
         default = List(
-          ModelCandidate(modelId,                 supportedComplexity = Set(Complexity.Low)),
-          ModelCandidate(Model.id("test", "hi"),  supportedComplexity = Set(Complexity.High))
+          ModelCandidate(modelId, supportedComplexity = Set(Complexity.Low)),
+          ModelCandidate(Model.id("test", "hi"), supportedComplexity = Set(Complexity.High))
         ),
         routes = Map(
           ConversationWork -> List(
-            ModelCandidate(modelId,                supportedComplexity = Set(Complexity.Low)),
+            ModelCandidate(modelId, supportedComplexity = Set(Complexity.Low)),
             ModelCandidate(Model.id("test", "hi"), supportedComplexity = Set(Complexity.High))
           )
         ),
-        inferComplexity   = Some((_, _) => Task.error(new RuntimeException("classifier offline"))),
-        inferWorkType     = Some((_, _) => Task.pure(ConversationWork)),
+        inferComplexity = Some((_, _) => Task.error(new RuntimeException("classifier offline"))),
+        inferWorkType = Some((_, _) => Task.pure(ConversationWork)),
         defaultComplexity = Complexity.Low
       )
       TestSigil.setResolveProviderStrategy(_ => Task.pure(Some(strategy)))
       for {
-        conv   <- freshConv("classifier-fail")
+        conv <- freshConv("classifier-fail")
         result <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, userMessage(conv, "anything"), buildCtx(conv))
-      } yield {
-        result._2 shouldBe Complexity.Low
-      }
+      } yield result._2 shouldBe Complexity.Low
     }
 
     "skip the override when a pin is set (pin wins over both classifier + default)" in {
       val strategy = ProviderStrategy.routed(
         default = List(
-          ModelCandidate(modelId,                supportedComplexity = Set(Complexity.Low, Complexity.Medium, Complexity.High))
+          ModelCandidate(modelId, supportedComplexity = Set(Complexity.Low, Complexity.Medium, Complexity.High))
         ),
         defaultComplexity = Complexity.Low
       )
@@ -139,37 +133,33 @@ class DefaultComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         pinnedComplexity = Some(Complexity.High)
       )
       for {
-        _      <- TestSigil.withDB(_.conversations.transaction(_.upsert(pinned)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(pinned)))
         result <- TestSigil.classifyForRoute(strategy, ConversationWork, pinned, None, buildCtx(pinned))
-      } yield {
-        result._2 shouldBe Complexity.High
-      }
+      } yield result._2 shouldBe Complexity.High
     }
 
     "skip the override when the classifier returns a real value" in {
       // Classifier runs successfully — override doesn't apply.
       val strategy = ProviderStrategy.routed(
         default = List(
-          ModelCandidate(modelId,                 supportedComplexity = Set(Complexity.Low)),
-          ModelCandidate(Model.id("test", "hi"),  supportedComplexity = Set(Complexity.High))
+          ModelCandidate(modelId, supportedComplexity = Set(Complexity.Low)),
+          ModelCandidate(Model.id("test", "hi"), supportedComplexity = Set(Complexity.High))
         ),
         routes = Map(
           ConversationWork -> List(
-            ModelCandidate(modelId,                supportedComplexity = Set(Complexity.Low)),
+            ModelCandidate(modelId, supportedComplexity = Set(Complexity.Low)),
             ModelCandidate(Model.id("test", "hi"), supportedComplexity = Set(Complexity.High))
           )
         ),
-        inferComplexity   = Some((_, _) => Task.pure(Complexity.High)),
-        inferWorkType     = Some((_, _) => Task.pure(ConversationWork)),
+        inferComplexity = Some((_, _) => Task.pure(Complexity.High)),
+        inferWorkType = Some((_, _) => Task.pure(ConversationWork)),
         defaultComplexity = Complexity.Low
       )
       TestSigil.setResolveProviderStrategy(_ => Task.pure(Some(strategy)))
       for {
-        conv   <- freshConv("classifier-ok")
+        conv <- freshConv("classifier-ok")
         result <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, userMessage(conv, "any text"), buildCtx(conv))
-      } yield {
-        result._2 shouldBe Complexity.High
-      }
+      } yield result._2 shouldBe Complexity.High
     }
   }
 

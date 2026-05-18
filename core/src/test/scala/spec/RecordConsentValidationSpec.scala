@@ -23,9 +23,9 @@ class RecordConsentValidationSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   private def freshConv(suffix: String): Task[Conversation] = {
     val convId = Conversation.id(s"consent-validate-$suffix-${rapid.Unique()}")
-    val topic  = TopicEntry(
-      id      = sigil.conversation.Topic.id(s"topic-$convId"),
-      label   = "test",
+    val topic = TopicEntry(
+      id = sigil.conversation.Topic.id(s"topic-$convId"),
+      label = "test",
       summary = "test"
     )
     val conv = Conversation(_id = convId, topics = List(topic))
@@ -34,10 +34,10 @@ class RecordConsentValidationSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   private def turnContextFor(conv: Conversation): TurnContext =
     TurnContext(
-      sigil        = TestSigil,
-      chain        = List(TestUser, TestAgent),
+      sigil = TestSigil,
+      chain = List(TestUser, TestAgent),
       conversation = conv,
-      turnInput    = TurnInput(conversationId = conv._id)
+      turnInput = TurnInput(conversationId = conv._id)
     )
 
   "record_consent" should {
@@ -45,17 +45,18 @@ class RecordConsentValidationSpec extends AsyncWordSpec with AsyncTaskSpec with 
     "REFUSE to persist a ToolApproval for an unknown tool name" in {
       for {
         conv <- freshConv("unknown")
-        ctx   = turnContextFor(conv)
-        evs  <- RecordConsentTool.execute(
-                  RecordConsentInput(toolName = "definitely_not_a_real_tool",
-                                     approved = true,
-                                     reason   = Some("test")),
-                  ctx
-                ).toList
+        ctx = turnContextFor(conv)
+        evs <- RecordConsentTool.execute(
+          RecordConsentInput(
+            toolName = "definitely_not_a_real_tool",
+            approved = true,
+            reason = Some("test")),
+          ctx
+        ).toList
         persistedApprovals <- TestSigil.withDB(_.events.transaction(_.list)).map { all =>
-                                all.collect { case ta: ToolApproval => ta }
-                                   .filter(_.toolName.value == "definitely_not_a_real_tool")
-                              }
+          all.collect { case ta: ToolApproval => ta }
+            .filter(_.toolName.value == "definitely_not_a_real_tool")
+        }
       } yield {
         val failures = evs.collect {
           case m: Message =>
@@ -70,26 +71,28 @@ class RecordConsentValidationSpec extends AsyncWordSpec with AsyncTaskSpec with 
     "ALLOW a ToolApproval to persist for a known tool name" in {
       for {
         conv <- freshConv("known")
-        ctx   = turnContextFor(conv)
+        ctx = turnContextFor(conv)
         // Drive via `dispatchAtomic` so the orchestrator stamps
         // `origin` on the Tool-role confirmation Message; direct
         // `execute` bypasses origin-stamping and trips the
         // framework's Tool-role-needs-origin invariant on publish.
         invokeId = sigil.event.Event.id()
-        evs  <- Orchestrator.dispatchAtomic(
-                  RecordConsentTool,
-                  RecordConsentInput(toolName = RecordConsentTool.schema.name.value,
-                                     approved = true,
-                                     reason   = Some("self-test")),
-                  ctx,
-                  invokeId
-                ).toList
-        _    <- Task.sequence(evs.collect { case e: sigil.event.Event => TestSigil.publish(e) })
+        evs <- Orchestrator.dispatchAtomic(
+          RecordConsentTool,
+          RecordConsentInput(
+            toolName = RecordConsentTool.schema.name.value,
+            approved = true,
+            reason = Some("self-test")),
+          ctx,
+          invokeId
+        ).toList
+        _ <- Task.sequence(evs.collect { case e: sigil.event.Event => TestSigil.publish(e) })
         approvalsForConv <- TestSigil.withDB(_.events.transaction(_.list)).map { all =>
-                              all.collect { case ta: ToolApproval => ta }
-                                 .filter(ta => ta.conversationId == conv._id &&
-                                               ta.toolName == RecordConsentTool.schema.name)
-                            }
+          all.collect { case ta: ToolApproval => ta }
+            .filter(ta =>
+              ta.conversationId == conv._id &&
+                ta.toolName == RecordConsentTool.schema.name)
+        }
       } yield {
         approvalsForConv.size shouldBe 1
         approvalsForConv.head.approved shouldBe true

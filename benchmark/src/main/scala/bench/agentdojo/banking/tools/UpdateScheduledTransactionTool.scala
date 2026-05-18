@@ -17,7 +17,9 @@ final case class UpdateScheduledTransactionInput(@description("ID of the transac
                                                  @description("Is the transaction recurring (optional)") recurring: Option[Boolean] = None)
   extends ToolInput derives RW
 
-/** `update_scheduled_transaction` — patch a scheduled transaction by id. */
+/**
+ * `update_scheduled_transaction` — patch a scheduled transaction by id.
+ */
 final class UpdateScheduledTransactionTool(state: AtomicReference[BankingEnvironment])
   extends TypedTool[UpdateScheduledTransactionInput](
     name = ToolName("update_scheduled_transaction"),

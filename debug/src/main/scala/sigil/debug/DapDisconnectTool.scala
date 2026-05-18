@@ -7,7 +7,8 @@ import sigil.event.Event
 import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
 
 case class DapDisconnectInput(sessionId: String,
-                              terminateDebuggee: Boolean = false) extends ToolInput derives RW
+                              terminateDebuggee: Boolean = false)
+  extends ToolInput derives RW
 
 /**
  * End a debug session. `terminateDebuggee = true` kills the
@@ -15,24 +16,26 @@ case class DapDisconnectInput(sessionId: String,
  * running. After this call, the session id is freed and the agent
  * can launch a new one with the same id.
  */
-final class DapDisconnectTool(val manager: DapManager) extends TypedTool[DapDisconnectInput](
-  name = ToolName("dap_disconnect"),
-  description =
-    """End a debug session.
+final class DapDisconnectTool(val manager: DapManager)
+  extends TypedTool[DapDisconnectInput](
+    name = ToolName("dap_disconnect"),
+    description =
+      """End a debug session.
       |
       |`sessionId` selects the active session.
       |`terminateDebuggee` (default false) — when true, kill the debugged program; otherwise detach.""".stripMargin,
-  examples = List(
-    ToolExample(
-      "detach without killing the program",
-      DapDisconnectInput(sessionId = "demo-session")
-    ),
-    ToolExample(
-      "kill the debugged program on disconnect",
-      DapDisconnectInput(sessionId = "demo-session", terminateDebuggee = true)
+    examples = List(
+      ToolExample(
+        "detach without killing the program",
+        DapDisconnectInput(sessionId = "demo-session")
+      ),
+      ToolExample(
+        "kill the debugged program on disconnect",
+        DapDisconnectInput(sessionId = "demo-session", terminateDebuggee = true)
+      )
     )
   )
-) with DapToolSupport {
+  with DapToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: DapDisconnectInput, context: TurnContext): Stream[Event] =

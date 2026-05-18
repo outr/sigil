@@ -25,10 +25,11 @@ import sigil.tool.model.ResponseContent
  * as a warning, not an error. Apps that want hard rejection override
  * [[sigil.Sigil.validateCoreContextCap]].
  */
-case object PinMemoryTool extends TypedTool[PinMemoryInput](
-  name = ToolName("pin_memory"),
-  description =
-    """Pin a previously-saved memory so it renders every turn — useful when an existing fact
+case object PinMemoryTool
+  extends TypedTool[PinMemoryInput](
+    name = ToolName("pin_memory"),
+    description =
+      """Pin a previously-saved memory so it renders every turn — useful when an existing fact
       |turns out to be a hard rule the agent should always follow ("from now on, always do X
       |whenever Y").
       |
@@ -36,8 +37,8 @@ case object PinMemoryTool extends TypedTool[PinMemoryInput](
       |- `space` — optional disambiguator when the same key exists in multiple accessible spaces.
       |
       |Reversible via `unpin_memory(key)`.""".stripMargin,
-  keywords = Set("pin", "promote", "memory", "directive", "always", "permanent")
-) {
+    keywords = Set("pin", "promote", "memory", "directive", "always", "permanent")
+  ) {
   override def paginate: Boolean = false
 
   override def resultTtl: Option[Int] = Some(0)
@@ -73,7 +74,9 @@ case object PinMemoryTool extends TypedTool[PinMemoryInput](
         }
     }
 
-  /** Look for the target by `key` first, then by `_id` fallback. */
+  /**
+   * Look for the target by `key` first, then by `_id` fallback.
+   */
   private def findTarget(key: String,
                          spaces: Set[sigil.SpaceId],
                          context: TurnContext): Task[Option[ContextMemory]] =
@@ -83,7 +86,7 @@ case object PinMemoryTool extends TypedTool[PinMemoryInput](
         case None =>
           context.sigil.withDB(_.memories.transaction(_.get(Id[ContextMemory](key)))).map {
             case some @ Some(m) if spaces.contains(m.spaceId) => some
-            case _                                            => None
+            case _ => None
           }
       }
     }

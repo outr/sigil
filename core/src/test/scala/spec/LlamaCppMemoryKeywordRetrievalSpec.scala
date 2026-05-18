@@ -45,7 +45,7 @@ import sigil.vector.InMemoryVectorIndex
  */
 class LlamaCppMemoryKeywordRetrievalSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
-  override implicit protected val testTimeout: scala.concurrent.duration.FiniteDuration =
+  implicit override protected val testTimeout: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.DurationInt(5).minutes
 
   TestSigil.initFor(getClass.getSimpleName)
@@ -93,12 +93,12 @@ class LlamaCppMemoryKeywordRetrievalSpec extends AsyncWordSpec with AsyncTaskSpe
   private def setKeywords(convId: Id[Conversation], keywords: Vector[String]): Task[Unit] =
     TestSigil.withDB(_.conversations.transaction(_.modify(convId) {
       case Some(c) => Task.pure(Some(c.copy(currentKeywords = keywords)))
-      case None    => Task.pure(None)
+      case None => Task.pure(None)
     })).unit
 
   private def seedMemory(fact: String,
-                        label: String,
-                        summary: String): Task[ContextMemory] =
+                         label: String,
+                         summary: String): Task[ContextMemory] =
     TestSigil.persistMemory(ContextMemory(
       fact = fact,
       label = label,
@@ -178,11 +178,10 @@ class LlamaCppMemoryKeywordRetrievalSpec extends AsyncWordSpec with AsyncTaskSpe
         rendered <- TestSigil.withDB(_.memories.transaction { tx =>
           Task.sequence(result.memories.map(id => tx.get(id))).map(_.flatten)
         })
-      } yield {
-        withClue(s"top results: ${rendered.map(_.label).mkString(",")} | keywords seeded on scala-style: ${scalaMem.keywords.mkString(",")}: ") {
-          result.memories should not be empty
-          rendered.headOption.map(_.label) shouldBe Some("scala-style")
-        }
+      } yield withClue(
+        s"top results: ${rendered.map(_.label).mkString(",")} | keywords seeded on scala-style: ${scalaMem.keywords.mkString(",")}: ") {
+        result.memories should not be empty
+        rendered.headOption.map(_.label) shouldBe Some("scala-style")
       }
     }
   }
@@ -204,7 +203,7 @@ class LlamaCppMemoryKeywordRetrievalSpec extends AsyncWordSpec with AsyncTaskSpe
           participantProjections = Map.empty
         )
         retriever = StandardMemoryRetriever(limit = 3)
-        first  <- retriever.retrieve(TestSigil, view.conversationId, view.frames, chain = List(TestUser, TestAgent))
+        first <- retriever.retrieve(TestSigil, view.conversationId, view.frames, chain = List(TestUser, TestAgent))
         second <- retriever.retrieve(TestSigil, view.conversationId, view.frames, chain = List(TestUser, TestAgent))
       } yield {
         // Identical references — same cached result, not re-derived.
@@ -297,7 +296,7 @@ class LlamaCppMemoryKeywordRetrievalSpec extends AsyncWordSpec with AsyncTaskSpe
       } yield {
         cachedAfterFirst should not be None
         cachedAfterRename shouldBe cachedAfterFirst // survived
-        cachedAfterSwitch shouldBe None              // invalidated
+        cachedAfterSwitch shouldBe None // invalidated
       }
     }
   }

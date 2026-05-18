@@ -30,7 +30,8 @@ import scala.concurrent.duration.*
  * [[Sigil.orphanStagingCutoff]] / [[Sigil.orphanStagingSweepInterval]].
  */
 final case class OrphanStagingConversationSweep(interval: FiniteDuration = 1.hour,
-                                                cutoff: FiniteDuration = 24.hours) extends MaintenanceTask {
+                                                cutoff: FiniteDuration = 24.hours)
+  extends MaintenanceTask {
   override def name: String = "orphan-staging-conversation-sweep"
 
   override def runOnce(host: Sigil): Task[Unit] = {

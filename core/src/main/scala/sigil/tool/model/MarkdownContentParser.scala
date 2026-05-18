@@ -32,9 +32,11 @@ import spice.net.URL
 object MarkdownContentParser {
   private val parser = CMParser.builder().build()
 
-  /** `> [!Type ...]` or bare `[!Type ...]` directive on the first line
-    * of a blockquote body. Captures the type name + any inline
-    * attributes (`icon="..."`, `multi`, `(recoverable)`). */
+  /**
+   * `> [!Type ...]` or bare `[!Type ...]` directive on the first line
+   * of a blockquote body. Captures the type name + any inline
+   * attributes (`icon="..."`, `multi`, `(recoverable)`).
+   */
   private val AlertDirective = """^\s*\[!([A-Za-z][A-Za-z0-9_-]*)\s*(.*?)\]\s*$""".r
 
   def parse(markdown: String): Vector[ResponseContent] = {
@@ -43,7 +45,7 @@ object MarkdownContentParser {
 
     sealed trait Item
     final case class Boundary(title: String) extends Item
-    final case class Block(content: ResponseContent)  extends Item
+    final case class Block(content: ResponseContent) extends Item
 
     val items = Vector.newBuilder[Item]
     var node = doc.getFirstChild
@@ -56,7 +58,7 @@ object MarkdownContentParser {
         case bq: BlockQuote =>
           parseAlert(bq) match {
             case Some(block) => items += Block(block)
-            case None        => blockFor(bq).foreach(b => items += Block(b))
+            case None => blockFor(bq).foreach(b => items += Block(b))
           }
         case _ =>
           blockFor(node).foreach(b => items += Block(b))
@@ -83,18 +85,20 @@ object MarkdownContentParser {
       case Block(b) =>
         card match {
           case Some((_, sections)) => sections += b
-          case None                => out += b
+          case None => out += b
         }
     }
     flushCard()
     out.result()
   }
 
-  /** Recognise `> [!Type attrs...]\n> body...` GitHub alert callouts.
-    * Returns Some[ResponseContent] when the directive maps to a known
-    * structured block. Returns None for either non-alert blockquotes
-    * or alerts whose type isn't one we extract — those fall through
-    * to the generic markdown blockquote path. */
+  /**
+   * Recognise `> [!Type attrs...]\n> body...` GitHub alert callouts.
+   * Returns Some[ResponseContent] when the directive maps to a known
+   * structured block. Returns None for either non-alert blockquotes
+   * or alerts whose type isn't one we extract — those fall through
+   * to the generic markdown blockquote path.
+   */
   private def parseAlert(bq: BlockQuote): Option[ResponseContent] = {
     val rendered = renderMarkdown(bq).stripPrefix("> ")
     val lines = rendered.split("\n").toList.map(_.stripPrefix("> "))
@@ -102,31 +106,35 @@ object MarkdownContentParser {
     val directiveLine = lines.head.trim
     AlertDirective.findFirstMatchIn(directiveLine) match {
       case Some(m) =>
-        val typ   = m.group(1)
+        val typ = m.group(1)
         val attrs = parseAttrs(m.group(2))
-        val body  = lines.tail.map(_.replaceFirst("^>\\s*", "")).filter(_.nonEmpty)
+        val body = lines.tail.map(_.replaceFirst("^>\\s*", "")).filter(_.nonEmpty)
         typ.toLowerCase match {
           case "field" => parseFieldBody(body, attrs)
-          case _       => None  // unknown alert type — let caller fall through
+          case _ => None // unknown alert type — let caller fall through
         }
       case None => None
     }
   }
 
-  /** Extract `key="value"`, bare `flag`, and `(parenthetical)` markers
-    * from the directive's attribute suffix. */
+  /**
+   * Extract `key="value"`, bare `flag`, and `(parenthetical)` markers
+   * from the directive's attribute suffix.
+   */
   private def parseAttrs(s: String): Map[String, String] = {
     val out = scala.collection.mutable.Map.empty[String, String]
-    val keyEq    = """(\w+)\s*=\s*"([^"]*)"""".r
-    val parens   = """\(\s*(\w+)\s*\)""".r
+    val keyEq = """(\w+)\s*=\s*"([^"]*)"""".r
+    val parens = """\(\s*(\w+)\s*\)""".r
     keyEq.findAllMatchIn(s).foreach(m => out += (m.group(1).toLowerCase -> m.group(2)))
     parens.findAllMatchIn(s).foreach(m => out += (m.group(1).toLowerCase -> "true"))
     out.toMap
   }
 
-  /** Body shape accepted:
-    *   `Label: Value` (single line, split on first `:`)
-    *   `Label:` + `Value:` (two lines extracted by key) */
+  /**
+   * Body shape accepted:
+   *   `Label: Value` (single line, split on first `:`)
+   *   `Label:` + `Value:` (two lines extracted by key)
+   */
   private def parseFieldBody(body: List[String], attrs: Map[String, String]): Option[ResponseContent.Field] = {
     val icon = attrs.get("icon")
     if (body.isEmpty) return None
@@ -187,8 +195,10 @@ object MarkdownContentParser {
     items.result()
   }
 
-  /** Flattened text content of a node — used for Heading / Image alt
-    * text where we want plain text rather than markdown source. */
+  /**
+   * Flattened text content of a node — used for Heading / Image alt
+   * text where we want plain text rather than markdown source.
+   */
   private def textOf(node: Node): String = {
     val sb = new StringBuilder
     val visitor = new AbstractVisitor {

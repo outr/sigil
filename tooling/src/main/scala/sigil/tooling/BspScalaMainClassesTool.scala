@@ -9,7 +9,8 @@ import sigil.tooling.types.{BspMainClassEntry, BspMainClassesResult, BspTargetMa
 import scala.jdk.CollectionConverters.*
 
 case class BspScalaMainClassesInput(projectRoot: String,
-                                    targets: List[String] = Nil) extends ToolInput derives RW
+                                    targets: List[String] = Nil)
+  extends ToolInput derives RW
 
 /**
  * List discovered Scala `main` classes for each target — every
@@ -17,27 +18,30 @@ case class BspScalaMainClassesInput(projectRoot: String,
  * calling [[BspRunTool]] when the agent doesn't know which class
  * to run.
  */
-final class BspScalaMainClassesTool(val manager: BspManager) extends TypedOutputTool[BspScalaMainClassesInput, BspMainClassesResult](
-  name = ToolName("bsp_scala_main_classes"),
-  description =
-    """List discovered Scala main classes for each target.
+final class BspScalaMainClassesTool(val manager: BspManager)
+  extends TypedOutputTool[BspScalaMainClassesInput, BspMainClassesResult](
+    name = ToolName("bsp_scala_main_classes"),
+    description =
+      """List discovered Scala main classes for each target.
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin,
-  keywords = Set("bsp", "main classes", "main", "entry points", "scala", "runnable"),
-  examples = List(
-    ToolExample(
-      "list main classes",
-      BspScalaMainClassesInput(projectRoot = "/abs/path/myproject")
+    keywords = Set("bsp", "main classes", "main", "entry points", "scala", "runnable"),
+    examples = List(
+      ToolExample(
+        "list main classes",
+        BspScalaMainClassesInput(projectRoot = "/abs/path/myproject")
+      )
     )
   )
-) with BspToolSupport {
+  with BspToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: BspScalaMainClassesInput,
                                       context: TurnContext): Task[BspMainClassesResult] =
     withSessionTyped[BspMainClassesResult](
-      input.projectRoot, context,
+      input.projectRoot,
+      context,
       onError = _ => BspMainClassesResult(input.projectRoot, Nil)
     ) { session =>
       targetsFromInput(session, input.targets).flatMap { targets =>

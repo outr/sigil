@@ -58,9 +58,9 @@ case class BrowserScript(name: ToolName,
                          override val createdBy: Option[ParticipantId] = None,
                          override val created: Timestamp = Timestamp(Nowish()),
                          override val modified: Timestamp = Timestamp(Nowish()),
-                         override val _id: Id[Tool] = Id(Unique())) extends Tool derives RW {
+                         override val _id: Id[Tool] = Id(Unique()))
+  extends Tool derives RW {
   override def paginate: Boolean = false
-
 
   override val inputRW: RW[JsonInput] = summon[RW[JsonInput]]
 
@@ -69,7 +69,7 @@ case class BrowserScript(name: ToolName,
   override def execute(input: ToolInput, context: TurnContext): Stream[Event] = {
     val args = input match {
       case j: JsonInput => j.json
-      case other        => summon[RW[ToolInput]].read(other)
+      case other => summon[RW[ToolInput]].read(other)
     }
     Stream.force(BrowserScript.runSteps(this, args, context))
   }
@@ -77,15 +77,17 @@ case class BrowserScript(name: ToolName,
 
 object BrowserScript {
 
-  /** Run every step in order against the conversation's
-    * [[BrowserController]]. Returns a single tool-result Message
-    * aggregating per-step outputs. */
+  /**
+   * Run every step in order against the conversation's
+   * [[BrowserController]]. Returns a single tool-result Message
+   * aggregating per-step outputs.
+   */
   private[browser] def runSteps(script: BrowserScript,
                                 args: Json,
                                 context: TurnContext): Task[Stream[Event]] = context.sigil match {
     case bs: BrowserSigil =>
       val outputs = scala.collection.mutable.LinkedHashMap.empty[String, String]
-      val log     = scala.collection.mutable.ListBuffer.empty[Json]
+      val log = scala.collection.mutable.ListBuffer.empty[Json]
 
       def resolve(template: String): String =
         Resolver.resolve(template, args, outputs.toMap)
@@ -95,8 +97,8 @@ object BrowserScript {
           val resolved = resolve(url)
           controller.run { browser =>
             for {
-              _     <- browser.navigate(resolved)
-              _     <- browser.waitForLoaded(timeout = wait.seconds)
+              _ <- browser.navigate(resolved)
+              _ <- browser.waitForLoaded(timeout = wait.seconds)
               title <- browser.title
             } yield {
               log += fabric.obj("step" -> str("navigate"), "url" -> str(resolved), "title" -> str(title))
@@ -104,10 +106,10 @@ object BrowserScript {
             }
           }.flatMap { _ =>
             bs.publish(BrowserStateDelta(
-              target         = controller.stateId,
+              target = controller.stateId,
               conversationId = context.conversation.id,
-              url            = Some(resolved),
-              loading        = Some(false)
+              url = Some(resolved),
+              loading = Some(false)
             )).unit
           }
 
@@ -137,10 +139,10 @@ object BrowserScript {
 
         case BrowserStep.Scroll(direction, amount) =>
           val js = (direction.toLowerCase, amount.toLowerCase) match {
-            case (_, "top")    => "window.scrollTo(0, 0);"
+            case (_, "top") => "window.scrollTo(0, 0);"
             case (_, "bottom") => "window.scrollTo(0, document.body.scrollHeight);"
-            case ("up", _)     => "window.scrollBy(0, -window.innerHeight);"
-            case _             => "window.scrollBy(0, window.innerHeight);"
+            case ("up", _) => "window.scrollBy(0, -window.innerHeight);"
+            case _ => "window.scrollBy(0, window.innerHeight);"
           }
           controller.run(_.eval(js).unit).map { _ =>
             log += fabric.obj("step" -> str("scroll"), "direction" -> str(direction), "amount" -> str(amount))
@@ -153,23 +155,27 @@ object BrowserScript {
           // here — script replay focuses on machine output; an app
           // that wants the image inline can chain a second tool call.
           for {
-            bytes  <- controller.run { browser =>
-                        Task.defer {
-                          val tmp = java.nio.file.Files.createTempFile("sigil-script-shot-", ".png")
-                          browser.screenshotAs(tmp, afterLoadDelay = Some(waitSeconds.seconds)).map { _ =>
-                            val read = java.nio.file.Files.readAllBytes(tmp)
-                            try java.nio.file.Files.deleteIfExists(tmp) catch { case _: Throwable => () }
-                            read
-                          }
-                        }
-                      }
-            stored <- bs.storeBytes(sigil.GlobalSpace, bytes, "image/png",
-                        metadata = Map("kind" -> "browser-screenshot", "scriptName" -> script.name.value))
-            _      <- bs.publish(BrowserStateDelta(
-                        target           = controller.stateId,
-                        conversationId   = context.conversation.id,
-                        screenshotFileId = Some(stored._id)
-                      ))
+            bytes <- controller.run { browser =>
+              Task.defer {
+                val tmp = java.nio.file.Files.createTempFile("sigil-script-shot-", ".png")
+                browser.screenshotAs(tmp, afterLoadDelay = Some(waitSeconds.seconds)).map { _ =>
+                  val read = java.nio.file.Files.readAllBytes(tmp)
+                  try java.nio.file.Files.deleteIfExists(tmp)
+                  catch { case _: Throwable => () }
+                  read
+                }
+              }
+            }
+            stored <- bs.storeBytes(
+              sigil.GlobalSpace,
+              bytes,
+              "image/png",
+              metadata = Map("kind" -> "browser-screenshot", "scriptName" -> script.name.value))
+            _ <- bs.publish(BrowserStateDelta(
+              target = controller.stateId,
+              conversationId = context.conversation.id,
+              screenshotFileId = Some(stored._id)
+            ))
           } yield {
             log += fabric.obj("step" -> str("screenshot"), "fileId" -> str(stored._id.value))
             ()
@@ -183,33 +189,37 @@ object BrowserScript {
           import org.jsoup.Jsoup
           for {
             capture <- controller.run { browser =>
-                         browser(robobrowser.select.Selector("html")).outerHTML
-                           .map(_.headOption.getOrElse(""))
-                           .map(html => (html, browser.url()))
-                       }
+              browser(robobrowser.select.Selector("html")).outerHTML
+                .map(_.headOption.getOrElse(""))
+                .map(html => (html, browser.url()))
+            }
             (rawHtml, currentUrl) = capture
-            doc        = Jsoup.parse(rawHtml)
+            doc = Jsoup.parse(rawHtml)
             normalized = doc.outerHtml()
-            bytes      = normalized.getBytes(java.nio.charset.StandardCharsets.UTF_8)
-            stored    <- bs.storeBytes(GlobalSpace, bytes, "text/html",
-                          metadata = Map(
-                            "kind" -> "browser-html",
-                            "conversationId" -> context.conversation.id.value,
-                            "url" -> currentUrl,
-                            "scriptName" -> script.name.value
-                          ))
-            _         <- bs.publish(BrowserStateDelta(
-                          target         = controller.stateId,
-                          conversationId = context.conversation.id,
-                          htmlFileId     = Some(stored._id)
-                        ))
+            bytes = normalized.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+            stored <- bs.storeBytes(
+              GlobalSpace,
+              bytes,
+              "text/html",
+              metadata = Map(
+                "kind" -> "browser-html",
+                "conversationId" -> context.conversation.id.value,
+                "url" -> currentUrl,
+                "scriptName" -> script.name.value
+              )
+            )
+            _ <- bs.publish(BrowserStateDelta(
+              target = controller.stateId,
+              conversationId = context.conversation.id,
+              htmlFileId = Some(stored._id)
+            ))
           } yield {
             outputs.put(name, stored._id.value)
             log += fabric.obj(
-              "step"       -> str("saveHtml"),
-              "name"       -> str(name),
+              "step" -> str("saveHtml"),
+              "name" -> str(name),
               "htmlFileId" -> str(stored._id.value),
-              "url"        -> str(currentUrl)
+              "url" -> str(currentUrl)
             )
             ()
           }
@@ -218,7 +228,7 @@ object BrowserScript {
           import org.jsoup.Jsoup
           import scala.jdk.CollectionConverters.*
           val resolvedRef = resolve(htmlRef)
-          val resolvedXp  = resolve(xpath)
+          val resolvedXp = resolve(xpath)
           bs.fetchStoredFile(lightdb.id.Id[StoredFile](resolvedRef), context.chain).map {
             case None =>
               val payload = fabric.obj(
@@ -229,15 +239,15 @@ object BrowserScript {
               ()
             case Some((_, fileBytes)) =>
               val html = new String(fileBytes, java.nio.charset.StandardCharsets.UTF_8)
-              val doc  = Jsoup.parse(html)
-              val all  = doc.selectXpath(resolvedXp).iterator().asScala.toList
+              val doc = Jsoup.parse(html)
+              val all = doc.selectXpath(resolvedXp).iterator().asScala.toList
               val limited = all.take(maxResults)
               val matches = limited.map { el =>
                 val attrs = el.attributes().iterator().asScala.toList.map(a => a.getKey -> str(a.getValue))
                 val base = List(
-                  "xpath"      -> str(sigil.browser.tool.BrowserHtmlOverview.xpathOf(el)),
-                  "tag"        -> str(el.tagName()),
-                  "text"       -> str(sigil.browser.tool.BrowserHtmlOverview.squish(el.text()).take(500)),
+                  "xpath" -> str(sigil.browser.tool.BrowserHtmlOverview.xpathOf(el)),
+                  "tag" -> str(el.tagName()),
+                  "text" -> str(sigil.browser.tool.BrowserHtmlOverview.squish(el.text()).take(500)),
                   "attributes" -> fabric.obj(attrs*)
                 )
                 val full =
@@ -247,24 +257,24 @@ object BrowserScript {
               }
               val payload = fabric.obj(
                 "htmlFileId" -> str(resolvedRef),
-                "xpath"      -> str(resolvedXp),
-                "matches"    -> fabric.arr(matches*),
+                "xpath" -> str(resolvedXp),
+                "matches" -> fabric.arr(matches*),
                 "totalCount" -> fabric.num(all.size),
-                "returned"   -> fabric.num(limited.size)
+                "returned" -> fabric.num(limited.size)
               )
               outputs.put(name, JsonFormatter.Compact(payload))
               log += fabric.obj(
-                "step"       -> str("xpathQuery"),
-                "name"       -> str(name),
+                "step" -> str("xpathQuery"),
+                "name" -> str(name),
                 "totalCount" -> fabric.num(all.size),
-                "returned"   -> fabric.num(limited.size)
+                "returned" -> fabric.num(limited.size)
               )
               ()
           }
 
         case BrowserStep.TextSearch(htmlRef, query, name, contextChars, maxResults, caseSensitive) =>
           import org.jsoup.Jsoup
-          val resolvedRef   = resolve(htmlRef)
+          val resolvedRef = resolve(htmlRef)
           val resolvedQuery = resolve(query)
           bs.fetchStoredFile(lightdb.id.Id[StoredFile](resolvedRef), context.chain).map {
             case None =>
@@ -276,12 +286,12 @@ object BrowserScript {
               ()
             case Some((_, fileBytes)) =>
               val html = new String(fileBytes, java.nio.charset.StandardCharsets.UTF_8)
-              val doc  = Jsoup.parse(html)
+              val doc = Jsoup.parse(html)
               val body = Option(doc.body()).getOrElse(doc).text()
-              val haystack    = body
-              val haystackLU  = if (caseSensitive) haystack else haystack.toLowerCase
-              val needleLU    = if (caseSensitive) resolvedQuery else resolvedQuery.toLowerCase
-              val positions   = scala.collection.mutable.ListBuffer.empty[Int]
+              val haystack = body
+              val haystackLU = if (caseSensitive) haystack else haystack.toLowerCase
+              val needleLU = if (caseSensitive) resolvedQuery else resolvedQuery.toLowerCase
+              val positions = scala.collection.mutable.ListBuffer.empty[Int]
               if (needleLU.nonEmpty) {
                 var idx = haystackLU.indexOf(needleLU)
                 while (idx >= 0) {
@@ -292,29 +302,29 @@ object BrowserScript {
               val limited = positions.take(maxResults).toList
               val matches = limited.map { pos =>
                 val matchText = haystack.substring(pos, math.min(pos + resolvedQuery.length, haystack.length))
-                val before    = haystack.substring(math.max(0, pos - contextChars), pos)
-                val afterEnd  = math.min(haystack.length, pos + matchText.length + contextChars)
-                val after     = haystack.substring(math.min(haystack.length, pos + matchText.length), afterEnd)
+                val before = haystack.substring(math.max(0, pos - contextChars), pos)
+                val afterEnd = math.min(haystack.length, pos + matchText.length + contextChars)
+                val after = haystack.substring(math.min(haystack.length, pos + matchText.length), afterEnd)
                 fabric.obj(
-                  "position"      -> fabric.num(pos),
+                  "position" -> fabric.num(pos),
                   "contextBefore" -> str(before),
-                  "matchText"     -> str(matchText),
-                  "contextAfter"  -> str(after)
+                  "matchText" -> str(matchText),
+                  "contextAfter" -> str(after)
                 )
               }
               val payload = fabric.obj(
                 "htmlFileId" -> str(resolvedRef),
-                "query"      -> str(resolvedQuery),
-                "matches"    -> fabric.arr(matches*),
+                "query" -> str(resolvedQuery),
+                "matches" -> fabric.arr(matches*),
                 "totalCount" -> fabric.num(positions.size),
-                "returned"   -> fabric.num(limited.size)
+                "returned" -> fabric.num(limited.size)
               )
               outputs.put(name, JsonFormatter.Compact(payload))
               log += fabric.obj(
-                "step"       -> str("textSearch"),
-                "name"       -> str(name),
+                "step" -> str("textSearch"),
+                "name" -> str(name),
                 "totalCount" -> fabric.num(positions.size),
-                "returned"   -> fabric.num(limited.size)
+                "returned" -> fabric.num(limited.size)
               )
               ()
           }
@@ -324,7 +334,7 @@ object BrowserScript {
           def loop: Task[Boolean] =
             controller.run(_.eval(s"return Boolean($jsExpression);").map(_.apply("result")("value").asBoolean))
               .flatMap {
-                case true  => Task.pure(true)
+                case true => Task.pure(true)
                 case false if System.currentTimeMillis() > deadline => Task.pure(false)
                 case false => Task.sleep(250.millis).flatMap(_ => loop)
               }
@@ -338,47 +348,51 @@ object BrowserScript {
       bs.browserController(context.conversation.id, context.caller, context.chain).flatMap { controller =>
         Task.sequence(script.steps.map(stepTask(controller, _))).map { _ =>
           val payload = fabric.obj(
-            "script"  -> str(script.name.value),
-            "steps"   -> fabric.arr(log.toList*),
+            "script" -> str(script.name.value),
+            "steps" -> fabric.arr(log.toList*),
             "outputs" -> fabric.obj(outputs.map { case (k, v) => k -> str(v) }.toList*)
           )
           Stream.emit[Event](Message(
-            participantId  = context.caller,
+            participantId = context.caller,
             conversationId = context.conversation.id,
-            topicId        = context.conversation.currentTopicId,
-            content        = Vector(ResponseContent.Text(JsonFormatter.Compact(payload))),
-            state          = EventState.Complete,
-            role           = MessageRole.Tool
+            topicId = context.conversation.currentTopicId,
+            content = Vector(ResponseContent.Text(JsonFormatter.Compact(payload))),
+            state = EventState.Complete,
+            role = MessageRole.Tool
           ))
         }
       }
 
     case _ =>
       Task.pure(Stream.emit[Event](Message(
-        participantId  = context.caller,
+        participantId = context.caller,
         conversationId = context.conversation.id,
-        topicId        = context.conversation.currentTopicId,
-        content        = Vector(ResponseContent.Text(
+        topicId = context.conversation.currentTopicId,
+        content = Vector(ResponseContent.Text(
           "Sigil instance does not mix in BrowserSigil; cannot execute browser script."
         )),
-        state          = EventState.Complete,
-        role           = MessageRole.Tool
+        state = EventState.Complete,
+        role = MessageRole.Tool
       )))
   }
 
-  /** Simple `${arg.path}` and `${outputs.name}` template resolver.
-    * Supports dotted paths into JSON object args; missing paths
-    * resolve to the empty string (script authors should declare
-    * `parameters` so missing args are caught at provider grammar
-    * time, not silently). */
+  /**
+   * Simple `${arg.path}` and `${outputs.name}` template resolver.
+   * Supports dotted paths into JSON object args; missing paths
+   * resolve to the empty string (script authors should declare
+   * `parameters` so missing args are caught at provider grammar
+   * time, not silently).
+   */
   object Resolver {
     private val Pattern = """\$\{([^}]+)\}""".r
 
     def resolve(template: String, args: Json, outputs: Map[String, String]): String =
-      Pattern.replaceAllIn(template, m => {
-        val path = m.group(1)
-        java.util.regex.Matcher.quoteReplacement(lookup(path, args, outputs))
-      })
+      Pattern.replaceAllIn(
+        template,
+        m => {
+          val path = m.group(1)
+          java.util.regex.Matcher.quoteReplacement(lookup(path, args, outputs))
+        })
 
     private def lookup(path: String, args: Json, outputs: Map[String, String]): String = {
       val parts = path.split('.').toList
@@ -388,13 +402,13 @@ object BrowserScript {
           val v = keys.foldLeft(args) { case (j, key) =>
             j match {
               case o: Obj => o.value.getOrElse(key, fabric.Null)
-              case _      => fabric.Null
+              case _ => fabric.Null
             }
           }
           v match {
             case s: fabric.Str => s.value
-            case fabric.Null   => ""
-            case other         => JsonFormatter.Compact(other)
+            case fabric.Null => ""
+            case other => JsonFormatter.Compact(other)
           }
       }
     }

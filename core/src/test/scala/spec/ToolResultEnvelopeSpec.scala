@@ -8,13 +8,17 @@ import sigil.TurnContext
 import sigil.conversation.{Conversation, TurnInput}
 import sigil.event.{Message, MessageRole, MessageVisibility, ToolResults}
 import sigil.signal.EventState
-import sigil.tool.core.{NoResponseTool, RespondCardTool, RespondCardsTool, RespondFailureTool, RespondFieldTool, RespondOptionsTool, RespondTool}
+import sigil.tool.core.{
+  NoResponseTool, RespondCardTool, RespondCardsTool, RespondFailureTool, RespondFieldTool, RespondOptionsTool, RespondTool
+}
 import sigil.tool.model.ResponseContent
 import sigil.tool.{ToolFailureException, ToolInput, ToolName, ToolResult, TypedOutputTool}
 
 import scala.concurrent.duration.*
 
-/** Shared ad-hoc input for synchronous annotation tests. */
+/**
+ * Shared ad-hoc input for synchronous annotation tests.
+ */
 private case class PlainInput() extends ToolInput derives RW
 
 /**
@@ -38,35 +42,40 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
   ToolInput.register(RW.static(EchoInput()))
 
-  /** Legacy-shaped tool — overrides only `executeTyped`. Drives the
-    * default-wrap path: success → Success; throw → Failure. */
-  private final class LegacyEchoTool(throwOn: Option[String] = None)
+  /**
+   * Legacy-shaped tool — overrides only `executeTyped`. Drives the
+   * default-wrap path: success → Success; throw → Failure.
+   */
+  final private class LegacyEchoTool(throwOn: Option[String] = None)
     extends TypedOutputTool[EchoInput, EchoOutput](
       name = ToolName("legacy_echo"),
       description = "Echoes the payload."
     ) {
-  override def paginate: Boolean = false
+    override def paginate: Boolean = false
 
     override protected def executeTyped(input: EchoInput, context: TurnContext): Task[EchoOutput] =
       throwOn match {
         case Some(msg) => Task.error(new RuntimeException(msg))
-        case None      => Task.pure(EchoOutput(input.payload))
+        case None => Task.pure(EchoOutput(input.payload))
       }
   }
 
-  /** Envelope-aware tool — overrides `executeTypedResult` directly.
-    * Drives the explicit-Failure path. */
-  private final class EnvelopeEchoTool extends TypedOutputTool[EchoInput, EchoOutput](
-    name = ToolName("envelope_echo"),
-    description = "Echoes the payload via the envelope."
-  ) {
-  override def paginate: Boolean = false
+  /**
+   * Envelope-aware tool — overrides `executeTypedResult` directly.
+   * Drives the explicit-Failure path.
+   */
+  final private class EnvelopeEchoTool
+    extends TypedOutputTool[EchoInput, EchoOutput](
+      name = ToolName("envelope_echo"),
+      description = "Echoes the payload via the envelope."
+    ) {
+    override def paginate: Boolean = false
     override protected def executeTypedResult(input: EchoInput, context: TurnContext): Task[ToolResult[EchoOutput]] =
       if (input.payload.isEmpty)
         Task.pure(ToolResult.failure(
           message = "payload must not be empty",
-          hint    = Some("set `payload` to a non-empty string"),
-          args    = Some(s"payload.length=0")
+          hint = Some("set `payload` to a non-empty string"),
+          args = Some(s"payload.length=0")
         ))
       else Task.pure(ToolResult.success(EchoOutput(input.payload)))
   }
@@ -74,10 +83,10 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   private def turnContext(): Task[TurnContext] =
     TestSigil.curate(Conversation.id("envelope-spec"), sigil.db.Model.id("test", "envelope"), List(TestUser)).map { ti =>
       TurnContext(
-        sigil        = TestSigil,
-        chain        = List(TestUser),
+        sigil = TestSigil,
+        chain = List(TestUser),
         conversation = Conversation(topics = TestTopicStack, participants = Nil, _id = Conversation.id("envelope-spec")),
-        turnInput    = ti
+        turnInput = ti
       )
     }
 
@@ -98,7 +107,7 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         tool.invoke(EchoInput("hello"), ctx)
           .map(_ => fail("expected ToolFailureException"))
           .handleError { err =>
-            err shouldBe a [ToolFailureException]
+            err shouldBe a[ToolFailureException]
             val tfe = err.asInstanceOf[ToolFailureException]
             tfe.toolName shouldBe ToolName("legacy_echo")
             tfe.failureMessage shouldBe "kaboom"
@@ -118,7 +127,7 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         tool.invoke(EchoInput(""), ctx)
           .map(_ => fail("expected ToolFailureException"))
           .handleError { err =>
-            err shouldBe a [ToolFailureException]
+            err shouldBe a[ToolFailureException]
             val tfe = err.asInstanceOf[ToolFailureException]
             tfe.failureMessage should include("payload must not be empty")
             tfe.hint.get should include("non-empty")
@@ -174,7 +183,7 @@ class ToolAnnotationsSpec extends AnyWordSpec with Matchers {
       // base trait — every annotation must read as `false` so apps
       // that don't opt in get no behavior change.
       val noop = new sigil.tool.Tool {
-  override def paginate: Boolean = false
+        override def paginate: Boolean = false
         override def name = ToolName("plain")
         override def description = "noop"
         override def inputRW = summon[fabric.rw.RW[PlainInput]]
@@ -190,7 +199,7 @@ class ToolAnnotationsSpec extends AnyWordSpec with Matchers {
   "Respond-family tools" should {
     "all set destructive = true" in {
       val deprecatedFamily: List[sigil.tool.Tool] =
-        (List(RespondOptionsTool, RespondFieldTool, RespondFailureTool): @annotation.nowarn("cat=deprecation"))
+        List(RespondOptionsTool, RespondFieldTool, RespondFailureTool): @annotation.nowarn("cat=deprecation")
       val activeFamily: List[sigil.tool.Tool] =
         List(RespondTool, RespondCardTool, RespondCardsTool, NoResponseTool)
       (activeFamily ++ deprecatedFamily).foreach { t =>

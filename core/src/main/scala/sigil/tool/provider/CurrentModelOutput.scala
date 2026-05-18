@@ -26,7 +26,8 @@ import fabric.rw.*
 case class CurrentModelOutput(pinned: Option[ModelReference],
                               assignedStrategy: Option[AssignedStrategySummary],
                               lastUsed: Option[ModelReference],
-                              resolved: Option[ModelReference]) derives RW
+                              resolved: Option[ModelReference])
+  derives RW
 
 /**
  * Pointer to a model id alongside the registry record (when one
@@ -36,7 +37,10 @@ case class CurrentModelOutput(pinned: Option[ModelReference],
  */
 case class ModelReference(id: String, summary: Option[ModelSummary]) derives RW
 
-/** Saved strategy slice — id, label, and the headline candidate. */
+/**
+ * Saved strategy slice — id, label, and the headline candidate.
+ */
 case class AssignedStrategySummary(id: String,
                                    label: String,
-                                   primaryCandidate: Option[ModelReference]) derives RW
+                                   primaryCandidate: Option[ModelReference])
+  derives RW

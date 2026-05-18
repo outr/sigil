@@ -44,10 +44,10 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
                        modelId: Id[Model],
                        chain: List[ParticipantId],
                        userMessage: String,
-                       agentResponse: String): Task[List[ContextMemory]] = {
+                       agentResponse: String): Task[List[ContextMemory]] =
     if (!filter.isHighSignal(userMessage)) Task.pure(Nil)
     else spaceIdFor(conversationId).flatMap {
-      case None        => Task.pure(Nil)
+      case None => Task.pure(Nil)
       case Some(space) =>
         val userPrompt =
           s"""Extract durable memories from the following exchange. Output via the
@@ -109,17 +109,17 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
                   }
                 }.toSet
               val mem = ContextMemory(
-                fact           = m.content,
-                label          = m.label,
-                summary        = m.content,
-                source         = MemorySource.Compression,
-                spaceId        = space,
-                key            = m.key,
-                keywords       = otherTags.toVector,
-                memoryType     = defaultType,
-                status         = defaultStatus,
+                fact = m.content,
+                label = m.label,
+                summary = m.content,
+                source = MemorySource.Compression,
+                spaceId = space,
+                key = m.key,
+                keywords = otherTags.toVector,
+                memoryType = defaultType,
+                status = defaultStatus,
                 conversationId = Some(conversationId),
-                modeAffinity   = resolvedModes
+                modeAffinity = resolvedModes
               )
               if (m.key.isDefined)
                 sigil.upsertMemoryByKeyFor(mem, chain, conversationId).map(_.memory)
@@ -131,10 +131,10 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
             .map(_ => Nil)
         }
     }
-  }
 }
 
 object StandardMemoryExtractor {
+
   /**
    * Default system prompt for per-turn extraction. Tuned for Sigil's
    * surface (keys, tags, content).

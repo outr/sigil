@@ -93,8 +93,8 @@ class MarkdownContentParserSpec extends AnyWordSpec with Matchers {
     }
 
     "return empty vector for empty input" in {
-      MarkdownContentParser.parse("")     should be(empty)
-      MarkdownContentParser.parse("   ")  should be(empty)
+      MarkdownContentParser.parse("") should be(empty)
+      MarkdownContentParser.parse("   ") should be(empty)
       MarkdownContentParser.parse("\n\n") should be(empty)
     }
   }

@@ -21,19 +21,25 @@ sealed trait ModelResolutionResult
 
 object ModelResolutionResult {
 
-  /** Concrete resolved id plus the rule that matched. */
+  /**
+   * Concrete resolved id plus the rule that matched.
+   */
   final case class Resolved(modelId: Id[Model], via: Resolution) extends ModelResolutionResult
 
-  /** No rule matched; `guidance` lists what the caller can try next. */
+  /**
+   * No rule matched; `guidance` lists what the caller can try next.
+   */
   final case class Unresolved(input: String, guidance: String) extends ModelResolutionResult
 
-  /** Discriminator for which rule matched — surfaced in tool
-    * replies so the agent / user can see how the input was
-    * interpreted. */
+  /**
+   * Discriminator for which rule matched — surfaced in tool
+   * replies so the agent / user can see how the input was
+   * interpreted.
+   */
   enum Resolution {
-    case Alias       // mapped via ModelAlias
-    case ExactId     // exact registry hit
-    case BareModel   // <provider>/<input> lookup against the registry
+    case Alias // mapped via ModelAlias
+    case ExactId // exact registry hit
+    case BareModel // <provider>/<input> lookup against the registry
   }
 }
 
@@ -61,7 +67,8 @@ object ModelResolution {
   def resolve(input: String, ctx: TurnContext): Task[ModelResolutionResult] = {
     val raw = input.trim
     if (raw.isEmpty)
-      Task.pure(Unresolved(input,
+      Task.pure(Unresolved(
+        input,
         "switch_model / pin_model requires a model id, alias, or saved-strategy label."))
     else {
       ModelAlias.resolve(raw, ctx).flatMap {
@@ -82,9 +89,10 @@ object ModelResolution {
                 else cache.find(provider = None, model = Some(raw))
               candidates match {
                 case List(single) => Task.pure(Resolved(single._id, Resolution.BareModel))
-                case Nil          => Task.pure(Unresolved(input, refusalMessage(input, ctx)))
-                case multiple     =>
-                  Task.pure(Unresolved(input,
+                case Nil => Task.pure(Unresolved(input, refusalMessage(input, ctx)))
+                case multiple =>
+                  Task.pure(Unresolved(
+                    input,
                     s"'$input' matches multiple models — please disambiguate by full id:\n" +
                       multiple.take(8).map(m => s"  - ${m._id.value}").mkString("\n")))
               }
@@ -94,8 +102,8 @@ object ModelResolution {
   }
 
   private def refusalMessage(input: String, ctx: TurnContext): String = {
-    val cache  = ctx.sigil.cache
-    val all    = cache.all
+    val cache = ctx.sigil.cache
+    val all = cache.all
     val sample = all.sortBy(_._id.value).take(8).map(_._id.value).mkString(", ")
     val moreCount = (all.size - 8).max(0)
     val moreSuffix = if (moreCount > 0) s"  ...and $moreCount more (call list_models for the full set).\n" else ""

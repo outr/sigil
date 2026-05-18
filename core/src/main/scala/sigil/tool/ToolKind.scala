@@ -18,16 +18,20 @@ import fabric.rw.PolyType
  */
 trait ToolKind {
 
-  /** Stable string the wire layer uses on the polymorphic discriminator.
-    * Must be unique across registered subtypes. */
+  /**
+   * Stable string the wire layer uses on the polymorphic discriminator.
+   * Must be unique across registered subtypes.
+   */
   def value: String
 }
 
 object ToolKind extends PolyType[ToolKind]()(using scala.reflect.ClassTag(classOf[ToolKind]))
 
-/** Default kind for framework-shipped tools (respond, change_mode,
-  * find_capability, etc.). Apps' static catalog tools that don't
-  * declare their own kind also fall into this bucket. */
+/**
+ * Default kind for framework-shipped tools (respond, change_mode,
+ * find_capability, etc.). Apps' static catalog tools that don't
+ * declare their own kind also fall into this bucket.
+ */
 case object BuiltinKind extends ToolKind {
   override def value: String = "builtin"
 }

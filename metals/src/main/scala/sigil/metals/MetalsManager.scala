@@ -1,7 +1,9 @@
 package sigil.metals
 
 import lightdb.time.Timestamp
-import org.eclipse.lsp4j.{ClientCapabilities, InitializeParams, InitializedParams, WindowClientCapabilities, WorkspaceClientCapabilities, WorkspaceFolder}
+import org.eclipse.lsp4j.{
+  ClientCapabilities, InitializeParams, InitializedParams, WindowClientCapabilities, WorkspaceClientCapabilities, WorkspaceFolder
+}
 import org.eclipse.lsp4j.jsonrpc.Launcher
 import org.eclipse.lsp4j.services.{LanguageClient, LanguageServer}
 import rapid.Task
@@ -54,28 +56,30 @@ import scala.jdk.CollectionConverters.*
  */
 final class MetalsManager(host: MetalsSigil) {
 
-  /** Per-workspace state. `workspaceKey` is the
-    * [[MetalsWorkspaceKey]]-derived `metals-<hash>` server name.
-    * `stderrDrainerRef` carries the thread tailing the subprocess's
-    * stderr (LSP wire is on stdout; logs / fatal errors come on
-    * stderr) so failure-path diagnostics surface real subprocess
-    * output. `onLogLine` is the per-line callback supplied by the
-    * caller — typically [[StartMetalsTool]] threading
-    * `TurnContext.toolLog` — so streaming Metals output reaches the
-    * chat chip via [[sigil.event.ToolLog]] events (bug #69).
-    *
-    * `processRef` and `stderrDrainerRef` are both `Option` so a
-    * placeholder Entry can be inserted into the map BEFORE the
-    * spawn completes (sigil bug #94). Concurrent `ensureRunning`
-    * callers see the placeholder and await `ready` instead of
-    * starting a duplicate spawn. The owner (the caller whose
-    * lambda inserted the placeholder) populates these fields as
-    * the subprocess comes up.
-    *
-    * `ready` resolves with `workspaceKey` once the subprocess is
-    * alive, the LSP handshake has completed, and the rendezvous
-    * file is present. Fails with the spawn error otherwise. */
-  private final case class Entry(workspace: Path,
+  /**
+   * Per-workspace state. `workspaceKey` is the
+   * [[MetalsWorkspaceKey]]-derived `metals-<hash>` server name.
+   * `stderrDrainerRef` carries the thread tailing the subprocess's
+   * stderr (LSP wire is on stdout; logs / fatal errors come on
+   * stderr) so failure-path diagnostics surface real subprocess
+   * output. `onLogLine` is the per-line callback supplied by the
+   * caller — typically [[StartMetalsTool]] threading
+   * `TurnContext.toolLog` — so streaming Metals output reaches the
+   * chat chip via [[sigil.event.ToolLog]] events (bug #69).
+   *
+   * `processRef` and `stderrDrainerRef` are both `Option` so a
+   * placeholder Entry can be inserted into the map BEFORE the
+   * spawn completes (sigil bug #94). Concurrent `ensureRunning`
+   * callers see the placeholder and await `ready` instead of
+   * starting a duplicate spawn. The owner (the caller whose
+   * lambda inserted the placeholder) populates these fields as
+   * the subprocess comes up.
+   *
+   * `ready` resolves with `workspaceKey` once the subprocess is
+   * alive, the LSP handshake has completed, and the rendezvous
+   * file is present. Fails with the spawn error otherwise.
+   */
+  final private case class Entry(workspace: Path,
                                  workspaceKey: String,
                                  @volatile var processRef: Option[Process],
                                  @volatile var endpoint: Option[String],
@@ -85,33 +89,40 @@ final class MetalsManager(host: MetalsSigil) {
                                  onStatus: AtomicReference[Option[String => Task[Unit]]],
                                  ready: CompletableFuture[String])
 
-  /** True iff the entry's subprocess has been spawned and is still
-    * alive. Placeholder entries (spawn in flight) and crashed
-    * entries both return false. */
+  /**
+   * True iff the entry's subprocess has been spawned and is still
+   * alive. Placeholder entries (spawn in flight) and crashed
+   * entries both return false.
+   */
   private def aliveProcess(entry: Entry): Boolean =
     entry.processRef.exists(_.isAlive)
 
-  /** True iff some Sigil-managed Metals subprocess is alive for
-    * this workspace path. Used by [[spawnAndResolve]]'s H2-staleness
-    * reconciliation: if no live peer exists when we're about to
-    * spawn, any "Started" status in `metals.mv.db` is stale (the
-    * peer that wrote it is dead), so it's safe to wipe. */
+  /**
+   * True iff some Sigil-managed Metals subprocess is alive for
+   * this workspace path. Used by [[spawnAndResolve]]'s H2-staleness
+   * reconciliation: if no live peer exists when we're about to
+   * spawn, any "Started" status in `metals.mv.db` is stale (the
+   * peer that wrote it is dead), so it's safe to wipe.
+   */
   private def hasLivePeer(workspace: Path): Boolean = {
     import scala.jdk.CollectionConverters.*
     val canonical = workspace.toAbsolutePath.normalize
     entries.values().asScala.exists(e =>
-      e.workspace.toAbsolutePath.normalize == canonical && aliveProcess(e)
-    )
+      e.workspace.toAbsolutePath.normalize == canonical && aliveProcess(e))
   }
 
-  /** Keyed by canonical workspace path string. */
+  /**
+   * Keyed by canonical workspace path string.
+   */
   private val entries: ConcurrentHashMap[String, Entry] = new ConcurrentHashMap()
 
   private val started: AtomicBoolean = new AtomicBoolean(false)
   private val stopped: AtomicBoolean = new AtomicBoolean(false)
 
-  /** Watcher / reaper poll cadence. Also drives the spawn-rendezvous
-    * loop's idle pulse. */
+  /**
+   * Watcher / reaper poll cadence. Also drives the spawn-rendezvous
+   * loop's idle pulse.
+   */
   private val PollIntervalMs: Long = 200L
 
   /**
@@ -152,21 +163,24 @@ final class MetalsManager(host: MetalsSigil) {
     // local sentinel; the caller whose `entry eq sentinel` wins
     // ownership of the spawn pipeline.
     val ownerSentinel = new AtomicReference[Entry](null)
-    val entry = entries.computeIfAbsent(key, _ => {
-      val placeholder = Entry(
-        workspace        = canonical,
-        workspaceKey     = name,
-        processRef       = None,
-        endpoint         = None,
-        lastUsedMs       = System.currentTimeMillis(),
-        stderrDrainerRef = None,
-        onLogLine        = new AtomicReference(onLogLine),
-        onStatus         = new AtomicReference(onStatus),
-        ready            = new CompletableFuture[String]()
-      )
-      ownerSentinel.set(placeholder)
-      placeholder
-    })
+    val entry = entries.computeIfAbsent(
+      key,
+      _ => {
+        val placeholder = Entry(
+          workspace = canonical,
+          workspaceKey = name,
+          processRef = None,
+          endpoint = None,
+          lastUsedMs = System.currentTimeMillis(),
+          stderrDrainerRef = None,
+          onLogLine = new AtomicReference(onLogLine),
+          onStatus = new AtomicReference(onStatus),
+          ready = new CompletableFuture[String]()
+        )
+        ownerSentinel.set(placeholder)
+        placeholder
+      }
+    )
 
     if (entry eq ownerSentinel.get()) {
       // Owner — drive the spawn and resolve `ready`.
@@ -189,9 +203,11 @@ final class MetalsManager(host: MetalsSigil) {
     }
   }
 
-  /** Stop the Metals subprocess for `workspace` and remove its
-    * server config. No-op when nothing is running. Returns true if
-    * a subprocess was actually torn down. */
+  /**
+   * Stop the Metals subprocess for `workspace` and remove its
+   * server config. No-op when nothing is running. Returns true if
+   * a subprocess was actually torn down.
+   */
   def stop(workspace: Path): Task[Boolean] = Task.defer {
     val canonical = workspace.toAbsolutePath.normalize.toString
     Option(entries.remove(canonical)) match {
@@ -201,33 +217,39 @@ final class MetalsManager(host: MetalsSigil) {
     }
   }
 
-  /** Snapshot of every active Metals subprocess. Used by
-    * [[MetalsStatusTool]] to render the chip. */
+  /**
+   * Snapshot of every active Metals subprocess. Used by
+   * [[MetalsStatusTool]] to render the chip.
+   */
   def status: Task[List[MetalsManager.WorkspaceStatus]] = Task {
     import scala.jdk.CollectionConverters.*
     entries.values().asScala.iterator.map { e =>
       MetalsManager.WorkspaceStatus(
-        workspace    = e.workspace,
+        workspace = e.workspace,
         workspaceKey = e.workspaceKey,
-        endpoint     = e.endpoint,
-        alive        = aliveProcess(e),
-        lastUsedMs   = e.lastUsedMs
+        endpoint = e.endpoint,
+        alive = aliveProcess(e),
+        lastUsedMs = e.lastUsedMs
       )
     }.toList
   }
 
-  /** Mark a workspace as recently used so the reaper postpones
-    * tearing it down. Called by app code on every Metals-touching
-    * tool use; the [[ensureRunning]] / [[stop]] paths touch
-    * automatically. */
+  /**
+   * Mark a workspace as recently used so the reaper postpones
+   * tearing it down. Called by app code on every Metals-touching
+   * tool use; the [[ensureRunning]] / [[stop]] paths touch
+   * automatically.
+   */
   def touch(workspace: Path): Unit = {
     val canonical = workspace.toAbsolutePath.normalize.toString
     Option(entries.get(canonical)).foreach(_.lastUsedMs = System.currentTimeMillis())
   }
 
-  /** Tear down every spawned subprocess and remove every server
-    * config the manager owns. Called from [[MetalsSigil.onShutdown]]
-    * for orderly teardown. Idempotent. */
+  /**
+   * Tear down every spawned subprocess and remove every server
+   * config the manager owns. Called from [[MetalsSigil.onShutdown]]
+   * for orderly teardown. Idempotent.
+   */
   def shutdown: Task[Unit] = Task.defer {
     if (!stopped.compareAndSet(false, true)) Task.unit
     else {
@@ -240,15 +262,17 @@ final class MetalsManager(host: MetalsSigil) {
 
   // ---- internals ----
 
-  /** Drive the spawn + LSP handshake + rendezvous-detection pipeline
-    * for an already-inserted placeholder Entry, populating its
-    * `processRef`, `stderrDrainerRef`, and `endpoint` fields as it
-    * goes and resolving `entry.ready` with the workspaceKey on
-    * success. Sigil bug #94 — only the caller that placed the
-    * placeholder reaches here. */
+  /**
+   * Drive the spawn + LSP handshake + rendezvous-detection pipeline
+   * for an already-inserted placeholder Entry, populating its
+   * `processRef`, `stderrDrainerRef`, and `endpoint` fields as it
+   * goes and resolving `entry.ready` with the workspaceKey on
+   * success. Sigil bug #94 — only the caller that placed the
+   * placeholder reaches here.
+   */
   private def spawnAndResolve(entry: Entry): Task[String] = Task.defer {
     val workspace = entry.workspace
-    val name      = entry.workspaceKey
+    val name = entry.workspaceKey
     if (!Files.isDirectory(workspace)) {
       Task.error(new IllegalArgumentException(
         s"MetalsManager: workspace $workspace is not a directory"
@@ -273,8 +297,8 @@ final class MetalsManager(host: MetalsSigil) {
       // workflow's CancellationToken kills the subprocess if a
       // user invokes `cancel_framework_workflow`.
       host.runAsFrameworkWorkflow(
-        workflowType   = "metals-startup",
-        label          = s"Starting Metals for ${workspace.getFileName}",
+        workflowType = "metals-startup",
+        label = s"Starting Metals for ${workspace.getFileName}",
         conversationId = None
       ) { control =>
         Task.defer {
@@ -298,9 +322,9 @@ final class MetalsManager(host: MetalsSigil) {
               // the LSP launcher.
               val stderrDrainer = startStderrDrainer(process, name, tail, entry.onLogLine)
 
-              entry.processRef        = Some(process)
-              entry.stderrDrainerRef  = Some(stderrDrainer)
-              entry.lastUsedMs        = System.currentTimeMillis()
+              entry.processRef = Some(process)
+              entry.stderrDrainerRef = Some(stderrDrainer)
+              entry.lastUsedMs = System.currentTimeMillis()
 
               // Bug #70 — drive the LSP handshake via lsp4j's
               // Launcher. Metals only does work after `initialize`
@@ -320,16 +344,18 @@ final class MetalsManager(host: MetalsSigil) {
     }
   }
 
-  /** Multi-subscriber-safe Task wrapper around a CompletableFuture.
-    * Each call to this returns a fresh Task; resolving the underlying
-    * future delivers the value (or error) to every subscriber. */
+  /**
+   * Multi-subscriber-safe Task wrapper around a CompletableFuture.
+   * Each call to this returns a fresh Task; resolving the underlying
+   * future delivers the value (or error) to every subscriber.
+   */
   private def fromCompletableFuture[T](cf: CompletableFuture[T]): Task[T] = {
     val completable = rapid.Task.completable[T]
     cf.whenComplete { (value, error) =>
       if (error != null) {
         val unwrapped = error match {
           case ce: java.util.concurrent.CompletionException if ce.getCause != null => ce.getCause
-          case other                                                               => other
+          case other => other
         }
         completable.failure(unwrapped)
       } else completable.success(value)
@@ -337,14 +363,16 @@ final class MetalsManager(host: MetalsSigil) {
     completable
   }
 
-  /** Build + start the lsp4j Launcher against the subprocess's
-    * stdin/stdout, send `initialize` + `initialized`, and wait for
-    * Metals to return its server capabilities before letting the
-    * caller proceed to poll for `.metals/mcp.json`. */
+  /**
+   * Build + start the lsp4j Launcher against the subprocess's
+   * stdin/stdout, send `initialize` + `initialized`, and wait for
+   * Metals to return its server capabilities before letting the
+   * caller proceed to poll for `.metals/mcp.json`.
+   */
   private def startLspLauncher(entry: Entry,
-                                label: String,
-                                onLogLine: AtomicReference[Option[String => Task[Unit]]],
-                                onStatus: AtomicReference[Option[String => Task[Unit]]]): Task[Unit] =
+                               label: String,
+                               onLogLine: AtomicReference[Option[String => Task[Unit]]],
+                               onStatus: AtomicReference[Option[String => Task[Unit]]]): Task[Unit] =
     Task.defer {
       // Caller (spawnAndResolve) populates entry.processRef before
       // invoking this method; treat the absence as a programmer
@@ -412,26 +440,30 @@ final class MetalsManager(host: MetalsSigil) {
     caps
   }
 
-  /** Bounded buffer holding the most recent stdout lines so a
-    * failure can surface a useful tail in its diagnostic instead
-    * of an opaque "didn't start" message. */
+  /**
+   * Bounded buffer holding the most recent stdout lines so a
+   * failure can surface a useful tail in its diagnostic instead
+   * of an opaque "didn't start" message.
+   */
   private val OutputTailLimit: Int = 50
 
-  /** Monitor the subprocess until ONE of:
-    *   - `.metals/mcp.json` lands → register McpServerConfig +
-    *     resolve with the workspace name.
-    *   - subprocess exits before mcp.json → fail with the exit
-    *     code + captured stdout tail.
-    *   - workflow cancellation token fires → kill the subprocess
-    *     and fail with the cancellation reason.
-    *
-    * No wall-clock deadline, no stuck-detection threshold. The
-    * framework trusts the subprocess: if it's alive, it's
-    * working. The user-perceived "this is taking too long" case
-    * is handled by `cancel_framework_workflow` — the workflow
-    * surfaces in the activity bar with progress notices, the
-    * user cancels, the cancellation token kills the subprocess.
-    * Bug #68. */
+  /**
+   * Monitor the subprocess until ONE of:
+   *   - `.metals/mcp.json` lands → register McpServerConfig +
+   *     resolve with the workspace name.
+   *   - subprocess exits before mcp.json → fail with the exit
+   *     code + captured stdout tail.
+   *   - workflow cancellation token fires → kill the subprocess
+   *     and fail with the cancellation reason.
+   *
+   * No wall-clock deadline, no stuck-detection threshold. The
+   * framework trusts the subprocess: if it's alive, it's
+   * working. The user-perceived "this is taking too long" case
+   * is handled by `cancel_framework_workflow` — the workflow
+   * surfaces in the activity bar with progress notices, the
+   * user cancels, the cancellation token kills the subprocess.
+   * Bug #68.
+   */
   private def waitForReady(entry: Entry,
                            control: sigil.FrameworkWorkflowControl,
                            tail: java.util.concurrent.LinkedBlockingDeque[String]): Task[String] = {
@@ -441,7 +473,7 @@ final class MetalsManager(host: MetalsSigil) {
         entries.remove(entry.workspace.toAbsolutePath.normalize.toString)
         Task.error(new sigil.CancellationException(
           workflowId = control.token.workflowId,
-          reason     = control.token.reason
+          reason = control.token.reason
         ))
       } else if (!aliveProcess(entry)) {
         // Subprocess exited before mcp.json appeared — fail with
@@ -450,7 +482,8 @@ final class MetalsManager(host: MetalsSigil) {
         // the tail snapshot before we render it.
         val exitCode = entry.processRef.flatMap(p => scala.util.Try(p.exitValue()).toOption).getOrElse(-1)
         entry.stderrDrainerRef.foreach { d =>
-          try d.join(500L) catch { case _: InterruptedException => () }
+          try d.join(500L)
+          catch { case _: InterruptedException => () }
         }
         val tailSnap = drainTail(tail)
         entries.remove(entry.workspace.toAbsolutePath.normalize.toString)
@@ -479,13 +512,11 @@ final class MetalsManager(host: MetalsSigil) {
     tail.iterator().asScala.toList.takeRight(OutputTailLimit).mkString("\n")
   }
 
-  private def killSubprocess(entry: Entry): Unit = {
+  private def killSubprocess(entry: Entry): Unit =
     entry.processRef.foreach { p =>
       if (p.isAlive) p.destroy()
       if (p.isAlive) p.destroyForcibly()
     }
-  }
-
 
   private def serverConfigFor(name: String, endpoint: String, workspace: Path): McpServerConfig = {
     val url = URL.get(endpoint, tldValidation = TLDValidation.Off) match {
@@ -496,15 +527,15 @@ final class MetalsManager(host: MetalsSigil) {
         )
     }
     McpServerConfig(
-      name      = name,
+      name = name,
       transport = McpTransport.HttpSse(url, headers = Map.empty),
-      prefix    = None,
+      prefix = None,
       // The roots advertised to the server during MCP `initialize`
       // include the workspace path so Metals knows which project
       // to index. (Metals usually picks this up from cwd, but
       // advertising explicitly is the spec-correct posture.)
-      roots     = List(workspace.toAbsolutePath.normalize.toString),
-      modified  = Timestamp()
+      roots = List(workspace.toAbsolutePath.normalize.toString),
+      modified = Timestamp()
     )
   }
 
@@ -532,23 +563,26 @@ final class MetalsManager(host: MetalsSigil) {
     }
   }
 
-  /** Background fiber doing two things on the same poll loop:
-    *  1. Re-check each entry's `.metals/mcp.json` for endpoint
-    *     drift (port change after a Metals restart). On change,
-    *     update the McpServerConfig and force the McpManager to
-    *     reconnect via [[sigil.mcp.McpManager.closeClient]].
-    *  2. Reap entries idle past [[MetalsSigil.metalsIdleTimeoutMs]].
-    *
-    * Started lazily on the first `ensureRunning` call. */
+  /**
+   * Background fiber doing two things on the same poll loop:
+   *  1. Re-check each entry's `.metals/mcp.json` for endpoint
+   *     drift (port change after a Metals restart). On change,
+   *     update the McpServerConfig and force the McpManager to
+   *     reconnect via [[sigil.mcp.McpManager.closeClient]].
+   *  2. Reap entries idle past [[MetalsSigil.metalsIdleTimeoutMs]].
+   *
+   * Started lazily on the first `ensureRunning` call.
+   */
   private def ensureBackgroundFibers(): Unit = synchronized {
     if (started.compareAndSet(false, true)) {
       // Register a JVM shutdown hook so a process killed without
       // calling `Sigil.shutdown` still drops Metals subprocesses
       // (best-effort — a SIGKILL on the parent leaves orphans).
-      Runtime.getRuntime.addShutdownHook(new Thread(() => {
-        try shutdown.sync()
-        catch { case _: Throwable => () }
-      }, "sigil-metals-shutdown"))
+      Runtime.getRuntime.addShutdownHook(new Thread(
+        () =>
+          try shutdown.sync()
+          catch { case _: Throwable => () },
+        "sigil-metals-shutdown"))
 
       pollLoop.startUnit()
     }
@@ -596,35 +630,40 @@ final class MetalsManager(host: MetalsSigil) {
     }
   }
 
-  /** Drain the subprocess's stderr line-by-line. With
-    * `redirectErrorStream(false)` (required so the LSP wire on
-    * stdout stays parseable), Metals' real log output + fatal
-    * messages land here. Lines feed the failure-diagnostic tail
-    * buffer AND fan out as ToolLog events for the chat chip. */
+  /**
+   * Drain the subprocess's stderr line-by-line. With
+   * `redirectErrorStream(false)` (required so the LSP wire on
+   * stdout stays parseable), Metals' real log output + fatal
+   * messages land here. Lines feed the failure-diagnostic tail
+   * buffer AND fan out as ToolLog events for the chat chip.
+   */
   private def startStderrDrainer(process: Process,
-                                  label: String,
-                                  tail: java.util.concurrent.LinkedBlockingDeque[String],
-                                  onLogLine: AtomicReference[Option[String => Task[Unit]]]): Thread = {
-    val t = new Thread(() => {
-      val reader = new java.io.BufferedReader(
-        new java.io.InputStreamReader(process.getErrorStream, java.nio.charset.StandardCharsets.UTF_8)
-      )
-      try {
-        var line = reader.readLine()
-        while (line != null) {
-          scribe.info(s"[$label] $line")
-          if (!tail.offer(line)) {
-            tail.pollFirst()
-            tail.offer(line)
+                                 label: String,
+                                 tail: java.util.concurrent.LinkedBlockingDeque[String],
+                                 onLogLine: AtomicReference[Option[String => Task[Unit]]]): Thread = {
+    val t = new Thread(
+      () => {
+        val reader = new java.io.BufferedReader(
+          new java.io.InputStreamReader(process.getErrorStream, java.nio.charset.StandardCharsets.UTF_8)
+        )
+        try {
+          var line = reader.readLine()
+          while (line != null) {
+            scribe.info(s"[$label] $line")
+            if (!tail.offer(line)) {
+              tail.pollFirst()
+              tail.offer(line)
+            }
+            onLogLine.get().foreach(cb => cb(line).handleError(_ => Task.unit).startUnit())
+            line = reader.readLine()
           }
-          onLogLine.get().foreach(cb => cb(line).handleError(_ => Task.unit).startUnit())
-          line = reader.readLine()
-        }
-      } catch { case _: Throwable => () }
-      finally {
-        try reader.close() catch { case _: Throwable => () }
-      }
-    }, s"sigil-metals-stderr-drainer-$label")
+        } catch { case _: Throwable => () }
+        finally
+          try reader.close()
+          catch { case _: Throwable => () }
+      },
+      s"sigil-metals-stderr-drainer-$label"
+    )
     t.setDaemon(true)
     t.start()
     t
@@ -633,11 +672,13 @@ final class MetalsManager(host: MetalsSigil) {
 
 object MetalsManager {
 
-  /** Snapshot of one workspace's Metals state for status surfaces
-    * (chip, list tool, dashboards). `endpoint` is `None` while the
-    * subprocess is starting up before `.metals/mcp.json` lands;
-    * `alive` is `false` immediately after a crash, before the
-    * sweeper reaps the entry. */
+  /**
+   * Snapshot of one workspace's Metals state for status surfaces
+   * (chip, list tool, dashboards). `endpoint` is `None` while the
+   * subprocess is starting up before `.metals/mcp.json` lands;
+   * `alive` is `false` immediately after a crash, before the
+   * sweeper reaps the entry.
+   */
   final case class WorkspaceStatus(workspace: Path,
                                    workspaceKey: String,
                                    endpoint: Option[String],

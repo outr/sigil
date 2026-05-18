@@ -22,17 +22,18 @@ import sigil.tool.model.ResponseContent
  * answer the user's question; production budget enforcement uses the
  * provider's per-vendor tokenizer separately.
  */
-case object ContextBreakdownTool extends TypedTool[ContextBreakdownInput](
-  name = ToolName("context_breakdown"),
-  description =
-    """Return a section-by-section breakdown of where your context window is being spent
+case object ContextBreakdownTool
+  extends TypedTool[ContextBreakdownInput](
+    name = ToolName("context_breakdown"),
+    description =
+      """Return a section-by-section breakdown of where your context window is being spent
       |this turn — frames, critical memories, retrieved memories, active skills, etc.
       |Use this when the user asks "what's in your context?" / "why is my context full?".
       |
       |For details on specific pinned items, use the memory-listing and memory-unpinning
       |tools available in this conversation.""".stripMargin,
-  keywords = Set("context", "breakdown", "tokens", "usage", "share", "where", "why")
-) {
+    keywords = Set("context", "breakdown", "tokens", "usage", "share", "where", "why")
+  ) {
   override def paginate: Boolean = false
 
   override def resultTtl: Option[Int] = Some(0)
@@ -51,17 +52,17 @@ case object ContextBreakdownTool extends TypedTool[ContextBreakdownInput](
   private def breakdown(context: TurnContext): Task[String] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { spaces =>
       val critTask = if (spaces.isEmpty) Task.pure(List.empty[ContextMemory])
-                     else context.sigil.findCriticalMemories(spaces)
+      else context.sigil.findCriticalMemories(spaces)
       critTask.map { criticals =>
         val tokenizer = HeuristicTokenizer
         val turn = context.turnInput
 
         val frameTokens = turn.frames.iterator.map {
-          case f: ContextFrame.Text       => tokenizer.count(f.content)
-          case f: ContextFrame.ToolCall   => tokenizer.count(f.argsJson)
+          case f: ContextFrame.Text => tokenizer.count(f.content)
+          case f: ContextFrame.ToolCall => tokenizer.count(f.argsJson)
           case f: ContextFrame.ToolResult => tokenizer.count(f.content)
-          case f: ContextFrame.System     => tokenizer.count(f.content)
-          case f: ContextFrame.Reasoning  => tokenizer.count(f.summary.mkString("\n"))
+          case f: ContextFrame.System => tokenizer.count(f.content)
+          case f: ContextFrame.Reasoning => tokenizer.count(f.summary.mkString("\n"))
         }.sum
 
         val criticalTokens = criticals.iterator.map { m =>
@@ -77,10 +78,10 @@ case object ContextBreakdownTool extends TypedTool[ContextBreakdownInput](
         val total = frameTokens + criticalTokens + skillTokens + modeTokens
 
         val sections = arr(
-          obj("section" -> str("Frames"),            "tokens" -> num(frameTokens),    "count" -> num(turn.frames.size)),
-          obj("section" -> str("CriticalMemories"),  "tokens" -> num(criticalTokens), "count" -> num(criticals.size)),
-          obj("section" -> str("ActiveSkills"),      "tokens" -> num(skillTokens),    "count" -> num(skills.size)),
-          obj("section" -> str("ModeBlock"),         "tokens" -> num(modeTokens),     "count" -> num(1))
+          obj("section" -> str("Frames"), "tokens" -> num(frameTokens), "count" -> num(turn.frames.size)),
+          obj("section" -> str("CriticalMemories"), "tokens" -> num(criticalTokens), "count" -> num(criticals.size)),
+          obj("section" -> str("ActiveSkills"), "tokens" -> num(skillTokens), "count" -> num(skills.size)),
+          obj("section" -> str("ModeBlock"), "tokens" -> num(modeTokens), "count" -> num(1))
         )
 
         val payload = obj(

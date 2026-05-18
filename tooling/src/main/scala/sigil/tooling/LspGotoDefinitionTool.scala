@@ -9,7 +9,8 @@ import sigil.tooling.types.LspLocation
 case class LspGotoDefinitionInput(languageId: String,
                                   filePath: String,
                                   line: Int,
-                                  character: Int) extends ToolInput derives RW
+                                  character: Int)
+  extends ToolInput derives RW
 
 /**
  * Locate where a symbol is defined. `line` and `character` are 0-based
@@ -25,32 +26,51 @@ case class LspGotoDefinitionInput(languageId: String,
  *
  * Emits `List[LspLocation]` — empty when no definition was found.
  */
-final class LspGotoDefinitionTool(val manager: LspManager) extends TypedOutputTool[LspGotoDefinitionInput, List[LspLocation]](
-  name = ToolName("lsp_goto_definition"),
-  description =
-    """Find where a symbol is defined.
+final class LspGotoDefinitionTool(val manager: LspManager)
+  extends TypedOutputTool[LspGotoDefinitionInput, List[LspLocation]](
+    name = ToolName("lsp_goto_definition"),
+    description =
+      """Find where a symbol is defined.
       |
       |`languageId` selects the persisted LspServerConfig.
       |`filePath` + `line` + `character` (0-based) point at any character inside the identifier.
       |Returns `[{uri, filePath, range:{start, end}}]` — empty when no definition found.""".stripMargin,
-  keywords = Set(
-    "lsp", "definition", "definitions", "where defined", "declaration",
-    "jump-to", "goto", "go to", "find symbol", "examine", "inspect",
-    "navigate", "source", "semantic", "symbol",
-    "scala", "language", "code"
-  ),
-  examples = List(
-    ToolExample(
-      "scala goto-def at line 42 col 12",
-      LspGotoDefinitionInput(languageId = "scala", filePath = "/abs/path/Foo.scala", line = 42, character = 12)
+    keywords = Set(
+      "lsp",
+      "definition",
+      "definitions",
+      "where defined",
+      "declaration",
+      "jump-to",
+      "goto",
+      "go to",
+      "find symbol",
+      "examine",
+      "inspect",
+      "navigate",
+      "source",
+      "semantic",
+      "symbol",
+      "scala",
+      "language",
+      "code"
+    ),
+    examples = List(
+      ToolExample(
+        "scala goto-def at line 42 col 12",
+        LspGotoDefinitionInput(languageId = "scala", filePath = "/abs/path/Foo.scala", line = 42, character = 12)
+      )
     )
   )
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  with sigil.tool.ReadOnlyExternalTool
+  with LspToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspGotoDefinitionInput, context: TurnContext): Task[List[LspLocation]] =
     withOpenDocumentTyped[List[LspLocation]](
-      input.languageId, input.filePath, context,
+      input.languageId,
+      input.filePath,
+      context,
       onError = msg => throw new RuntimeException(msg)
     ) { (session, uri) =>
       session.gotoDefinition(uri, input.line, input.character).map(_.map(LspLocation.fromLsp4j))

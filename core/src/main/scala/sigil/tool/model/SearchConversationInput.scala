@@ -23,4 +23,5 @@ import sigil.tool.ToolInput
  */
 case class SearchConversationInput(query: String,
                                    topicId: Option[Id[Topic]] = None,
-                                   limit: Int = 10) extends ToolInput derives RW
+                                   limit: Int = 10)
+  extends ToolInput derives RW

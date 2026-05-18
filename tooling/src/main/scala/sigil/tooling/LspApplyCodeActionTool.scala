@@ -11,7 +11,8 @@ import scala.jdk.CollectionConverters.*
 
 case class LspApplyCodeActionInput(languageId: String,
                                    filePath: String,
-                                   index: Int) extends ToolInput derives RW
+                                   index: Int)
+  extends ToolInput derives RW
 
 /**
  * Apply a code action selected from the most-recent
@@ -32,32 +33,49 @@ case class LspApplyCodeActionInput(languageId: String,
  * Either way, the agent's job is "pick by index"; the wire details
  * are framework-hidden.
  */
-final class LspApplyCodeActionTool(val manager: LspManager) extends TypedOutputTool[LspApplyCodeActionInput, LspApplyCodeActionResult](
-  name = ToolName("lsp_apply_code_action"),
-  description =
-    """Apply a code action by index from the most-recently-cached code-action listing for
+final class LspApplyCodeActionTool(val manager: LspManager)
+  extends TypedOutputTool[LspApplyCodeActionInput, LspApplyCodeActionResult](
+    name = ToolName("lsp_apply_code_action"),
+    description =
+      """Apply a code action by index from the most-recently-cached code-action listing for
       |a given (languageId, filePath) pair.
       |
       |`languageId` + `filePath` identify the cached action set.
       |`index` is the 0-based position in the prior listing.
       |Returns one of `Applied` / `CommandExecuted` / `Failed` / `CacheEmpty` / `OutOfRange`.""".stripMargin,
-  keywords = Set(
-    "lsp", "apply", "fix", "quickfix", "refactor", "refactoring", "code action", "execute fix",
-    "extract method", "extract variable", "organize imports", "missing imports",
-    "modify", "change", "transform"
-  ),
-  examples = List(
-    ToolExample(
-      "apply the first available action",
-      LspApplyCodeActionInput(languageId = "scala", filePath = "/abs/path/Foo.scala", index = 0)
+    keywords = Set(
+      "lsp",
+      "apply",
+      "fix",
+      "quickfix",
+      "refactor",
+      "refactoring",
+      "code action",
+      "execute fix",
+      "extract method",
+      "extract variable",
+      "organize imports",
+      "missing imports",
+      "modify",
+      "change",
+      "transform"
+    ),
+    examples = List(
+      ToolExample(
+        "apply the first available action",
+        LspApplyCodeActionInput(languageId = "scala", filePath = "/abs/path/Foo.scala", index = 0)
+      )
     )
   )
-) with sigil.tool.DestructiveExternalTool with LspToolSupport {
+  with sigil.tool.DestructiveExternalTool
+  with LspToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspApplyCodeActionInput, context: TurnContext): Task[LspApplyCodeActionResult] =
     withSessionTyped[LspApplyCodeActionResult](
-      input.languageId, input.filePath, context,
+      input.languageId,
+      input.filePath,
+      context,
       onError = msg => throw new RuntimeException(msg)
     ) { (session, uri, _) =>
       val cached = session.cachedCodeActions(uri)
@@ -87,11 +105,11 @@ final class LspApplyCodeActionTool(val manager: LspManager) extends TypedOutputT
       case Some(e) =>
         val ok = PermissiveWorkspaceEditApplier.apply(e)
         if (ok) LspApplyCodeActionResult.Applied(title, s"applied edits for action: $title")
-        else    LspApplyCodeActionResult.Failed(title, s"failed to apply edits for action: $title")
+        else LspApplyCodeActionResult.Failed(title, s"failed to apply edits for action: $title")
       case None =>
         Option(action.getCommand) match {
           case Some(cmd) => LspApplyCodeActionResult.CommandExecuted(cmd.getTitle)
-          case None      => LspApplyCodeActionResult.Failed(title, "action carried neither edit nor command after resolve")
+          case None => LspApplyCodeActionResult.Failed(title, "action carried neither edit nor command after resolve")
         }
     }
   }

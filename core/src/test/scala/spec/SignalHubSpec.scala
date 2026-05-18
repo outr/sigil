@@ -66,7 +66,7 @@ class SignalHubSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val draining = drainTask.start()
       // Trigger termination so toList completes.
       Task.sleep(50.millis).flatMap { _ =>
-        Task { hub.close() }.flatMap { _ =>
+        Task(hub.close()).flatMap { _ =>
           draining.flatMap { signals =>
             val texts = signals.collect {
               case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString
@@ -83,7 +83,7 @@ class SignalHubSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       hub.subscriberCount shouldBe 1
       val drainTask = stream.toList.start()
       Task.sleep(25.millis).flatMap { _ =>
-        Task { hub.close() }.flatMap { _ =>
+        Task(hub.close()).flatMap { _ =>
           drainTask.flatMap { _ =>
             // After the stream completes, the subscriber should be
             // removed from the hub's list.

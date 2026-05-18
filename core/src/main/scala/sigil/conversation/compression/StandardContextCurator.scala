@@ -41,75 +41,86 @@ case class StandardContextCurator(sigil: Sigil,
                                   blockExtractor: BlockExtractor = NoOpBlockExtractor,
                                   memoryRetriever: MemoryRetriever = NoOpMemoryRetriever,
                                   compressor: ContextCompressor = NoOpContextCompressor,
-                                  /** Run over the about-to-be-shed slice in stage 3
-                                    * (frame compression) BEFORE the slice gets
-                                    * collapsed into a summary. Captures durable
-                                    * facts hidden inside older frames so they
-                                    * survive the lossy compression. Fires on a
-                                    * background fiber — failures are logged but
-                                    * don't block the curator pipeline. Default
-                                    * NoOp; wire a concrete extractor (typically
-                                    * [[StandardMemoryExtractor]]) to enable. */
+                                  /**
+                                   * Run over the about-to-be-shed slice in stage 3
+                                   * (frame compression) BEFORE the slice gets
+                                   * collapsed into a summary. Captures durable
+                                   * facts hidden inside older frames so they
+                                   * survive the lossy compression. Fires on a
+                                   * background fiber — failures are logged but
+                                   * don't block the curator pipeline. Default
+                                   * NoOp; wire a concrete extractor (typically
+                                   * [[StandardMemoryExtractor]]) to enable.
+                                   */
                                   compressionExtractor: MemoryExtractor = NoOpMemoryExtractor,
                                   budget: ContextBudget = Percentage(0.8),
                                   keepMinimum: Int = 4,
                                   tokenizer: Tokenizer = HeuristicTokenizer,
-                                  /** Token counter used in the multi-stage `budgetResolve`
-                                    * shed. Defaults to [[HeuristicTokenizer]] regardless of
-                                    * what `tokenizer` is — budget math runs over the full
-                                    * frame vector (50K+ frames on bulk-imported
-                                    * conversations) and gets re-run on the survivors of
-                                    * every shed stage. A network-backed `tokenizer`
-                                    * (`LlamaCppTokenizer` etc.) plugged here would issue
-                                    * one HTTP round-trip per unique text per pass — fine
-                                    * on a 50-frame chat, multi-minute hangs on a 50K-frame
-                                    * import. The heuristic is in-memory, instant, and
-                                    * conservative (over-counts ~7-15% which the right
-                                    * asymmetry for a pre-flight gate). Apps that genuinely
-                                    * need wire-exact budget math override this explicitly;
-                                    * everyone else benefits from the cheap default even if
-                                    * they wire a network tokenizer for other paths. */
+                                  /**
+                                   * Token counter used in the multi-stage `budgetResolve`
+                                   * shed. Defaults to [[HeuristicTokenizer]] regardless of
+                                   * what `tokenizer` is — budget math runs over the full
+                                   * frame vector (50K+ frames on bulk-imported
+                                   * conversations) and gets re-run on the survivors of
+                                   * every shed stage. A network-backed `tokenizer`
+                                   * (`LlamaCppTokenizer` etc.) plugged here would issue
+                                   * one HTTP round-trip per unique text per pass — fine
+                                   * on a 50-frame chat, multi-minute hangs on a 50K-frame
+                                   * import. The heuristic is in-memory, instant, and
+                                   * conservative (over-counts ~7-15% which the right
+                                   * asymmetry for a pre-flight gate). Apps that genuinely
+                                   * need wire-exact budget math override this explicitly;
+                                   * everyone else benefits from the cheap default even if
+                                   * they wire a network tokenizer for other paths.
+                                   */
                                   budgetTokenizer: Tokenizer = HeuristicTokenizer,
                                   pinnedShareWarningThreshold: Double = 0.20,
-                                  /** Hard cap on the number of frames the per-turn
-                                    * curate pass considers. When the conversation has
-                                    * more frames than this (typical only on bulk-
-                                    * imported histories — 50K+ events from
-                                    * `load_claude_state`), only the most-recent
-                                    * `maxFramesPerTurn` flow through block extraction,
-                                    * memory retrieval, and budget resolution. Older
-                                    * frames remain in the durable event log and stay
-                                    * reachable via `search_conversation` /
-                                    * `recall_memory` / persisted summaries —
-                                    * they're just skipped on the hot path so the
-                                    * curator doesn't try to summarize the entire
-                                    * history every turn. `Int.MaxValue` disables the
-                                    * cap (legacy behaviour). Bug #144. */
+                                  /**
+                                   * Hard cap on the number of frames the per-turn
+                                   * curate pass considers. When the conversation has
+                                   * more frames than this (typical only on bulk-
+                                   * imported histories — 50K+ events from
+                                   * `load_claude_state`), only the most-recent
+                                   * `maxFramesPerTurn` flow through block extraction,
+                                   * memory retrieval, and budget resolution. Older
+                                   * frames remain in the durable event log and stay
+                                   * reachable via `search_conversation` /
+                                   * `recall_memory` / persisted summaries —
+                                   * they're just skipped on the hot path so the
+                                   * curator doesn't try to summarize the entire
+                                   * history every turn. `Int.MaxValue` disables the
+                                   * cap (legacy behaviour). Bug #144.
+                                   */
                                   maxFramesPerTurn: Int = 5000,
-                                  /** When `true`, the curator pulls persisted
-                                    * `ContextSummary` records via
-                                    * [[sigil.Sigil.summariesFor]] and feeds them
-                                    * into the turn's `TurnInput.summaries`
-                                    * BEFORE the budget gate runs. Apps that
-                                    * precompute summaries at import time (the
-                                    * "compress once, recall many" pattern) get
-                                    * them rendered on every subsequent turn
-                                    * without re-paying the compression cost.
-                                    * Default `true`; apps that don't use the
-                                    * persisted-summary pathway can disable to
-                                    * skip the per-turn DB read. Bug #144. */
+                                  /**
+                                   * When `true`, the curator pulls persisted
+                                   * `ContextSummary` records via
+                                   * [[sigil.Sigil.summariesFor]] and feeds them
+                                   * into the turn's `TurnInput.summaries`
+                                   * BEFORE the budget gate runs. Apps that
+                                   * precompute summaries at import time (the
+                                   * "compress once, recall many" pattern) get
+                                   * them rendered on every subsequent turn
+                                   * without re-paying the compression cost.
+                                   * Default `true`; apps that don't use the
+                                   * persisted-summary pathway can disable to
+                                   * skip the per-turn DB read. Bug #144.
+                                   */
                                   loadPersistedSummaries: Boolean = true,
-                                  /** Optional detector for the
-                                    * "paraphrase without action" failure
-                                    * mode. When set and a pattern fires,
-                                    * an observation is injected into the
-                                    * next turn's `TurnInput.extraContext`
-                                    * under [[ParaphraseLoopDetector.ContextKeyValue]]
-                                    * so the model sees the loop and can
-                                    * self-correct rather than being
-                                    * silently cleaned up. Default `None`
-                                    * — opt-in. */
-                                  paraphraseDetector: Option[ParaphraseLoopDetector] = None) extends ContextCurator {
+                                  /**
+                                   * Optional detector for the
+                                   * "paraphrase without action" failure
+                                   * mode. When set and a pattern fires,
+                                   * an observation is injected into the
+                                   * next turn's `TurnInput.extraContext`
+                                   * under [[ParaphraseLoopDetector.ContextKeyValue]]
+                                   * so the model sees the loop and can
+                                   * self-correct rather than being
+                                   * silently cleaned up. Default `None`
+                                   * — opt-in.
+                                   */
+                                  paraphraseDetector: Option[ParaphraseLoopDetector] = None)
+  extends ContextCurator {
 
   override def curate(conversationId: Id[Conversation],
                       modelId: Id[Model],
@@ -128,8 +139,8 @@ case class StandardContextCurator(sigil: Sigil,
         .collect { case t if t.resultTtl.contains(0) => t.name.value }
         .toSet
       for {
-        _             <- control.step("Loading frames")
-        rawFrames     <- sigil.framesFor(conversationId)
+        _ <- control.step("Loading frames")
+        rawFrames <- sigil.framesFor(conversationId)
         visibleFrames = rawFrames.filter(f => sigil.visibilityAllows(f.visibility, chain.lastOption.orNull))
         // Cap the per-turn frame budget. Bulk-imported conversations
         // (50K+ events) flow through curate every turn; without a
@@ -139,18 +150,18 @@ case class StandardContextCurator(sigil: Sigil,
         // needs in scope; older frames remain durable and reachable
         // via search / recall / persisted summaries.
         boundedFrames = if (visibleFrames.size <= maxFramesPerTurn) visibleFrames
-                        else visibleFrames.takeRight(maxFramesPerTurn)
+        else visibleFrames.takeRight(maxFramesPerTurn)
         optimizedFrames = optimizer.optimize(boundedFrames, elide, chain.headOption)
-        _             <- control.step(s"Extracting blocks (${optimizedFrames.size} frames)")
+        _ <- control.step(s"Extracting blocks (${optimizedFrames.size} frames)")
         // Pulse the workflow step every progress callback the
         // extractor fires so the activity bar reflects forward
         // motion on bulk imports instead of sitting on the same
         // label for minutes. Default cadence (every 500 frames)
         // keeps small-conversation noise low.
-        progressCb    = (i: Int, n: Int) => control.step(s"Extracting blocks ($i / $n)")
-        blockResult   <- blockExtractor.extract(sigil, optimizedFrames, progressCb)
-        _             <- control.step("Retrieving memories")
-        memoryResult  <- memoryRetriever.retrieve(sigil, conversationId, blockResult.frames, chain)
+        progressCb = (i: Int, n: Int) => control.step(s"Extracting blocks ($i / $n)")
+        blockResult <- blockExtractor.extract(sigil, optimizedFrames, progressCb)
+        _ <- control.step("Retrieving memories")
+        memoryResult <- memoryRetriever.retrieve(sigil, conversationId, blockResult.frames, chain)
         // Pull persisted summaries — compression-time records from
         // earlier turns + any narrative summaries an app's UX
         // generated explicitly via `MemoryContextCompressor.compressHierarchical`.
@@ -159,8 +170,8 @@ case class StandardContextCurator(sigil: Sigil,
         persistedSummaries <-
           if (loadPersistedSummaries) sigil.summariesFor(conversationId).map(_.map(_._id).toVector)
           else Task.pure(Vector.empty)
-        projections   <- loadProjections(conversationId, chain)
-        tentative     = injectParaphraseObservation(
+        projections <- loadProjections(conversationId, chain)
+        tentative = injectParaphraseObservation(
           TurnInput(
             conversationId = conversationId,
             frames = blockResult.frames,
@@ -172,23 +183,25 @@ case class StandardContextCurator(sigil: Sigil,
           ),
           chain
         )
-        modelOpt      <- modelFor(modelId)
-        _             <- control.step("Resolving token budget")
-        shed          <- modelOpt match {
+        modelOpt <- modelFor(modelId)
+        _ <- control.step("Resolving token budget")
+        shed <- modelOpt match {
           case Some(model) =>
             budgetResolve(model, tentative, modelId, chain, memoryResult, blockResult.information)
           case None =>
             Task.pure(tentative)
         }
-        result        <- modelOpt match {
+        result <- modelOpt match {
           case Some(model) => attachBudgetWarning(shed, model, memoryResult, modelId, chain, conversationId)
-          case None        => Task.pure(shed)
+          case None => Task.pure(shed)
         }
       } yield result
     }
 
-  /** Snapshot every chain participant's projection from the
-    * persistent collection. Empty when none recorded yet. */
+  /**
+   * Snapshot every chain participant's projection from the
+   * persistent collection. Empty when none recorded yet.
+   */
   private def loadProjections(conversationId: Id[Conversation],
                               chain: List[ParticipantId]): Task[Map[ParticipantId, ParticipantProjection]] =
     Task.sequence(chain.distinct.map { pid =>
@@ -275,10 +288,11 @@ case class StandardContextCurator(sigil: Sigil,
                           }
                         case None => Task.unit
                       }
-                      advance.map(_ => afterStage2b.copy(
-                        frames    = newerKept,
-                        summaries = Vector(summary._id)
-                      ))
+                      advance.map(_ =>
+                        afterStage2b.copy(
+                          frames = newerKept,
+                          summaries = Vector(summary._id)
+                        ))
                     case None =>
                       Task.pure(afterStage2b.copy(frames = newerKept))
                   }
@@ -290,11 +304,13 @@ case class StandardContextCurator(sigil: Sigil,
       }
     } yield out
 
-  /** Resolve persisted-summary ids on `TurnInput.summaries` to full
-    * records via the DB. Bug #144 — the curator's budget-gate math
-    * needs the rendered token cost of every summary in the tentative
-    * TurnInput; without resolution the gate under-counts and the
-    * provider sees a request that's bigger than the budget computed. */
+  /**
+   * Resolve persisted-summary ids on `TurnInput.summaries` to full
+   * records via the DB. Bug #144 — the curator's budget-gate math
+   * needs the rendered token cost of every summary in the tentative
+   * TurnInput; without resolution the gate under-counts and the
+   * provider sees a request that's bigger than the budget computed.
+   */
   private def resolveSummaries(ids: Vector[Id[ContextSummary]]): Task[Vector[ContextSummary]] =
     if (ids.isEmpty) Task.pure(Vector.empty)
     else sigil.withDB(_.summaries.transaction { tx =>
@@ -305,11 +321,13 @@ case class StandardContextCurator(sigil: Sigil,
       Task.sequence(ids.toList.map(tx.get)).map(_.flatten.toVector)
     })
 
-  /** Iterative Stage 3 shed (bug #23 — preserves the iteration model
-    * inside the new bug-#26 architecture). Each pass either fits, hits
-    * `keepMinimum`, or falls through on a compressor refusal. When the
-    * input exceeds `cap × 3`, jump straight to the floor for a single
-    * aggressive collapse instead of rounds of halving. */
+  /**
+   * Iterative Stage 3 shed (bug #23 — preserves the iteration model
+   * inside the new bug-#26 architecture). Each pass either fits, hits
+   * `keepMinimum`, or falls through on a compressor refusal. When the
+   * input exceeds `cap × 3`, jump straight to the floor for a single
+   * aggressive collapse instead of rounds of halving.
+   */
   private def shedFramesIteratively(kept: Vector[ContextFrame],
                                     droppedSoFar: Vector[ContextFrame],
                                     summaryCarry: Option[ContextSummary],
@@ -318,7 +336,7 @@ case class StandardContextCurator(sigil: Sigil,
                                     chain: List[ParticipantId],
                                     conversationId: Id[Conversation],
                                     tokensOfKept: (Vector[ContextFrame], Option[ContextSummary]) => Int)
-      : Task[(Vector[ContextFrame], Option[ContextSummary])] = {
+    : Task[(Vector[ContextFrame], Option[ContextSummary])] = {
     val current = tokensOfKept(kept, summaryCarry)
     if (current <= cap || kept.size <= keepMinimum) Task.pure((kept, summaryCarry))
     else {
@@ -353,8 +371,10 @@ case class StandardContextCurator(sigil: Sigil,
     }
   }
 
-  /** Resolve the criticalMemories / memories id buckets from a
-    * [[MemoryRetrievalResult]] to full records via the DB. */
+  /**
+   * Resolve the criticalMemories / memories id buckets from a
+   * [[MemoryRetrievalResult]] to full records via the DB.
+   */
   private def resolveMemoriesAndSummaries(memResult: MemoryRetrievalResult): Task[(Vector[ContextMemory], Vector[ContextMemory])] = {
     val now = lightdb.time.Timestamp()
     // Sigil bug #170 — both id buckets share one memories transaction.
@@ -363,7 +383,7 @@ case class StandardContextCurator(sigil: Sigil,
     // seconds to "Resolving token budget."
     sigil.withDB(_.memories.transaction { tx =>
       for {
-        crit    <- Task.sequence(memResult.criticalMemories.toList.map(tx.get))
+        crit <- Task.sequence(memResult.criticalMemories.toList.map(tx.get))
         regular <- Task.sequence(memResult.memories.toList.map(tx.get))
       } yield (
         crit.flatten.iterator.filterNot(StandardMemoryRetriever.isExpired(_, now)).toVector,
@@ -372,19 +392,21 @@ case class StandardContextCurator(sigil: Sigil,
     })
   }
 
-  /** Information ids referenced inside the current frames. */
+  /**
+   * Information ids referenced inside the current frames.
+   */
   private def referencedInformationIds(frames: Vector[ContextFrame]): Set[String] = {
     val needle = "Information["
     frames.iterator.flatMap {
-      case t: ContextFrame.Text       => extractIds(t.content, needle)
+      case t: ContextFrame.Text => extractIds(t.content, needle)
       case tr: ContextFrame.ToolResult => extractIds(tr.content, needle)
-      case tc: ContextFrame.ToolCall   => extractIds(tc.argsJson, needle)
-      case s: ContextFrame.System     => extractIds(s.content, needle)
-      case _                          => Iterator.empty
+      case tc: ContextFrame.ToolCall => extractIds(tc.argsJson, needle)
+      case s: ContextFrame.System => extractIds(s.content, needle)
+      case _ => Iterator.empty
     }.toSet
   }
 
-  private[compression] def extractIds(content: String, needle: String): Iterator[String] = {
+  private[compression] def extractIds(content: String, needle: String): Iterator[String] =
     if (!content.contains(needle)) Iterator.empty
     else {
       val out = List.newBuilder[String]
@@ -405,7 +427,6 @@ case class StandardContextCurator(sigil: Sigil,
       }
       out.result().iterator
     }
-  }
 
   private def attachBudgetWarning(turnInput: TurnInput,
                                   model: Model,
@@ -429,7 +450,7 @@ case class StandardContextCurator(sigil: Sigil,
           }
           .sortBy(-_._2)
         val top3 = ranked.take(3)
-        val topRender = top3.map { case (k, n) => s"$k @${n} tok" }.mkString(", ")
+        val topRender = top3.map { case (k, n) => s"$k @$n tok" }.mkString(", ")
         val message =
           s"Your pinned directives use ~$pct% of this model's context window ($pinnedTokens / $ctxLen tok; top: $topRender). " +
             s"If the user wants to review pinned items, call `list_memories(pinned=true)` and offer them via `respond_options`. " +
@@ -460,11 +481,13 @@ case class StandardContextCurator(sigil: Sigil,
   private def modelFor(modelId: Id[Model]): Task[Option[Model]] =
     Task.pure(sigil.cache.find(modelId))
 
-  /** Run [[paraphraseDetector]] over the turn's frame history; on a
-    * hit, append the observation to `extraContext` under
-    * [[ParaphraseLoopDetector.ContextKeyValue]]. No-op when the
-    * detector is not configured or the chain has no agent
-    * participant the detector can scope to. */
+  /**
+   * Run [[paraphraseDetector]] over the turn's frame history; on a
+   * hit, append the observation to `extraContext` under
+   * [[ParaphraseLoopDetector.ContextKeyValue]]. No-op when the
+   * detector is not configured or the chain has no agent
+   * participant the detector can scope to.
+   */
   private def injectParaphraseObservation(turn: TurnInput, chain: List[ParticipantId]): TurnInput =
     paraphraseDetector match {
       case None => turn
@@ -473,7 +496,7 @@ case class StandardContextCurator(sigil: Sigil,
           case None => turn
           case Some(agentId) =>
             detector.detect(turn.frames, agentId) match {
-              case None          => turn
+              case None => turn
               case Some(pattern) =>
                 turn.copy(extraContext = turn.extraContext +
                   (_root_.sigil.conversation.ContextKey(ParaphraseLoopDetector.ContextKeyValue) -> pattern.render()))

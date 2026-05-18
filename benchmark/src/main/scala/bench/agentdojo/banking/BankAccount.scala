@@ -9,9 +9,11 @@ import fabric.rw.*
 final case class BankAccount(balance: Double,
                              iban: String,
                              transactions: List[BankingTransaction],
-                             scheduledTransactions: List[BankingTransaction]) derives RW {
+                             scheduledTransactions: List[BankingTransaction])
+  derives RW {
 
-  /** Next transaction id — mirrors `next_id` in banking_client.py. */
-  def nextId: Int =
-    (transactions ++ scheduledTransactions).map(_.id).maxOption.getOrElse(0) + 1
+  /**
+   * Next transaction id — mirrors `next_id` in banking_client.py.
+   */
+  def nextId: Int = (transactions ++ scheduledTransactions).map(_.id).maxOption.getOrElse(0) + 1
 }

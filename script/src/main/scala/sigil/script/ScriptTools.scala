@@ -5,8 +5,10 @@ import sigil.TurnContext
 import sigil.event.{Event, ToolResults}
 import sigil.tool.{ToolInput, ToolName}
 
-/** Bound as `tools` in script scope. Invokes a host tool by name and
-  * decodes its typed result. */
+/**
+ * Bound as `tools` in script scope. Invokes a host tool by name and
+ * decodes its typed result.
+ */
 class ScriptTools(context: TurnContext) {
 
   def callTool[Out](name: String, input: ToolInput)(using RW[Out]): Out =

@@ -14,15 +14,16 @@ import sigil.tool.model.ResponseContent
  * is a single Markdown response listing each tool's name,
  * description, and space.
  */
-case object ListScriptToolsTool extends TypedTool[ListScriptToolsInput](
-  name = ToolName("list_script_tools"),
-  description =
-    """Enumerate the script-backed tools the caller can currently see (their own scoped tools
+case object ListScriptToolsTool
+  extends TypedTool[ListScriptToolsInput](
+    name = ToolName("list_script_tools"),
+    description =
+      """Enumerate the script-backed tools the caller can currently see (their own scoped tools
       |plus globally available ones). Optional `nameContains` narrows the listing to tools
       |whose name contains the given substring.""".stripMargin,
-  modes = Set(ScriptAuthoringMode.id),
-  keywords = Set("list", "tools", "script", "enumerate", "available")
-) {
+    modes = Set(ScriptAuthoringMode.id),
+    keywords = Set("list", "tools", "script", "enumerate", "available")
+  ) {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: ListScriptToolsInput,
@@ -44,16 +45,15 @@ case object ListScriptToolsTool extends TypedTool[ListScriptToolsInput](
     val body =
       if (tools.isEmpty) "No script tools visible."
       else tools.map(t =>
-        s"- **${t.name.value}** _(space: ${t.space.value})_ — ${t.description}"
-      ).mkString("\n")
+        s"- **${t.name.value}** _(space: ${t.space.value})_ — ${t.description}").mkString("\n")
     Message(
-      participantId  = context.caller,
+      participantId = context.caller,
       conversationId = context.conversation.id,
-      topicId        = context.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Markdown(body)),
-      state          = EventState.Complete,
-      role           = MessageRole.Tool,
-      visibility     = MessageVisibility.Agents
+      topicId = context.conversation.currentTopicId,
+      content = Vector(ResponseContent.Markdown(body)),
+      state = EventState.Complete,
+      role = MessageRole.Tool,
+      visibility = MessageVisibility.Agents
     )
   }
 }

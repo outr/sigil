@@ -33,22 +33,22 @@ class ToolProgressSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   private def runScenario(invokeId: Id[Event]): Task[List[Signal]] = {
     val conv = Conversation(
-      topics       = List(TopicEntry(TestTopicId, "test", "test")),
+      topics = List(TopicEntry(TestTopicId, "test", "test")),
       participants = Nil,
-      _id          = convId
+      _id = convId
     )
 
     val ctx = TurnContext(
-      sigil               = TestSigil,
-      chain               = List(TestUser),
-      conversation        = conv,
-      turnInput           = TurnInput(conversationId = convId),
+      sigil = TestSigil,
+      chain = List(TestUser),
+      conversation = conv,
+      turnInput = TurnInput(conversationId = convId),
       currentToolInvokeId = Some(invokeId),
-      currentToolName     = Some(ProgressEmittingTool.name)
+      currentToolName = Some(ProgressEmittingTool.name)
     )
 
     val recorded = new ConcurrentLinkedQueue[Signal]()
-    val running  = new atomic.AtomicBoolean(true)
+    val running = new atomic.AtomicBoolean(true)
     TestSigil.signals
       .takeWhile(_ => running.get())
       .evalMap(s => Task { recorded.add(s); () })
@@ -84,19 +84,19 @@ class ToolProgressSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "be a no-op when currentToolInvokeId is None" in {
       val conv = Conversation(
-        topics       = List(TopicEntry(TestTopicId, "test", "test")),
+        topics = List(TopicEntry(TestTopicId, "test", "test")),
         participants = Nil,
-        _id          = Conversation.id(s"tool-progress-noop-${rapid.Unique()}")
+        _id = Conversation.id(s"tool-progress-noop-${rapid.Unique()}")
       )
       val ctx = TurnContext(
-        sigil               = TestSigil,
-        chain               = List(TestUser),
-        conversation        = conv,
-        turnInput           = TurnInput(conversationId = conv._id)
+        sigil = TestSigil,
+        chain = List(TestUser),
+        conversation = conv,
+        turnInput = TurnInput(conversationId = conv._id)
       )
 
       val recorded = new ConcurrentLinkedQueue[Signal]()
-      val running  = new atomic.AtomicBoolean(true)
+      val running = new atomic.AtomicBoolean(true)
       TestSigil.signals
         .takeWhile(_ => running.get())
         .evalMap(s => Task { recorded.add(s); () })

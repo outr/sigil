@@ -14,11 +14,13 @@ import sigil.tool.{ToolName, TypedOutputTool}
  * Pair with [[CurrentModelTool]] for "you're on X; here are
  * alternatives Y, Z, …".
  *
- * **Not auto-registered.** Apps add to `staticTools` to expose. */
-case object ListModelsTool extends TypedOutputTool[ListModelsInput, ListModelsOutput](
-  name = ToolName("list_models"),
-  description =
-    """List models registered with this Sigil instance. Optionally filter by
+ * **Not auto-registered.** Apps add to `staticTools` to expose.
+ */
+case object ListModelsTool
+  extends TypedOutputTool[ListModelsInput, ListModelsOutput](
+    name = ToolName("list_models"),
+    description =
+      """List models registered with this Sigil instance. Optionally filter by
       |provider (e.g., "openai", "anthropic", "local") or `query` for a
       |substring match against id / name / description.
       |
@@ -29,13 +31,21 @@ case object ListModelsTool extends TypedOutputTool[ListModelsInput, ListModelsOu
       |Use when the user asks "what models can I pin to?" or to disambiguate
       |a friendly name like "local" or "gpt" against the actual registry
       |before calling pin_model / switch_model.""".stripMargin,
-  keywords = Set(
-    "list", "models", "available", "provider", "options",
-    "switch", "pin", "alternatives", "what", "which", "catalog"
-  )
-) {
+    keywords = Set(
+      "list",
+      "models",
+      "available",
+      "provider",
+      "options",
+      "switch",
+      "pin",
+      "alternatives",
+      "what",
+      "which",
+      "catalog"
+    )
+  ) {
   override def paginate: Boolean = false
-
 
   override protected def executeTyped(input: ListModelsInput, ctx: TurnContext): Task[ListModelsOutput] = Task {
     val all = ctx.sigil.cache.find(provider = input.provider, model = None)
@@ -43,18 +53,18 @@ case object ListModelsTool extends TypedOutputTool[ListModelsInput, ListModelsOu
     val filtered = q match {
       case None => all
       case Some(needle) => all.filter { m =>
-        m._id.value.toLowerCase.contains(needle) ||
+          m._id.value.toLowerCase.contains(needle) ||
           m.name.toLowerCase.contains(needle) ||
           m.description.toLowerCase.contains(needle)
-      }
+        }
     }
     val sorted = filtered.sortBy(_._id.value)
-    val total  = sorted.size
+    val total = sorted.size
     val window = input.limit.fold(sorted)(n => sorted.take(math.max(0, n)))
     ListModelsOutput(
-      total    = total,
+      total = total,
       returned = window.size,
-      models   = window.map(ModelSummary.from)
+      models = window.map(ModelSummary.from)
     )
   }
 }

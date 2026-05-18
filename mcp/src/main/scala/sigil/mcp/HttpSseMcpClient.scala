@@ -39,22 +39,27 @@ final class HttpSseMcpClient(override val config: McpServerConfig,
   @volatile private var sessionId: Option[String] = None
 
   private val dispatcher = new McpDispatcher(
-    send                = sendOutgoing,
-    requestHandler      = (method, params) => method match {
-      case "sampling/createMessage" => samplingHandler.handle(config.name, params)
-      case "roots/list"             => Task.pure(obj("roots" -> Arr(config.roots.map(p => obj("uri" -> str(s"file://$p"))).toVector)))
-      case other                    => Task.error(new McpError(-32601, s"Unhandled server request: $other"))
-    },
+    send = sendOutgoing,
+    requestHandler = (method, params) =>
+      method match {
+        case "sampling/createMessage" => samplingHandler.handle(config.name, params)
+        case "roots/list" => Task.pure(obj("roots" -> Arr(config.roots.map(p => obj("uri" -> str(s"file://$p"))).toVector)))
+        case other => Task.error(new McpError(-32601, s"Unhandled server request: $other"))
+      },
     notificationHandler = notificationListener
   )
 
   override def start(): Task[Unit] = Task.defer {
     // Initialize first (gives us the session id), then open the SSE listen channel.
-    dispatcher.request("initialize", obj(
-      "protocolVersion" -> str("2024-11-05"),
-      "capabilities"    -> obj("sampling" -> obj()),
-      "clientInfo"      -> obj("name" -> str("sigil"), "version" -> str("1.0.0"))
-    ), _ => ()).flatMap(_ => dispatcher.notify("notifications/initialized", Obj.empty))
+    dispatcher.request(
+      "initialize",
+      obj(
+        "protocolVersion" -> str("2024-11-05"),
+        "capabilities" -> obj("sampling" -> obj()),
+        "clientInfo" -> obj("name" -> str("sigil"), "version" -> str("1.0.0"))
+      ),
+      _ => ()
+    ).flatMap(_ => dispatcher.notify("notifications/initialized", Obj.empty))
       .flatMap(_ => startSseListener())
   }
 
@@ -119,21 +124,23 @@ final class HttpSseMcpClient(override val config: McpServerConfig,
   override def cancelRequest(requestId: Long, reason: Option[String] = None): Task[Unit] = {
     val params = reason match {
       case Some(r) => obj("requestId" -> num(requestId), "reason" -> str(r))
-      case None    => obj("requestId" -> num(requestId))
+      case None => obj("requestId" -> num(requestId))
     }
     dispatcher.notify("notifications/cancelled", params)
   }
 
-  /** Outgoing-message hook used by the dispatcher: POST a JSON-RPC
-    * envelope to the endpoint. Inline JSON responses are dispatched
-    * back through the same [[McpDispatcher]] so request correlation
-    * and notifications dispatch identically whether the wire chose
-    * inline or SSE delivery. */
+  /**
+   * Outgoing-message hook used by the dispatcher: POST a JSON-RPC
+   * envelope to the endpoint. Inline JSON responses are dispatched
+   * back through the same [[McpDispatcher]] so request correlation
+   * and notifications dispatch identically whether the wire chose
+   * inline or SSE delivery.
+   */
   private def sendOutgoing(message: Json): Unit = {
     if (closed.get()) return
     postJson(message).map { responseOpt =>
       responseOpt.foreach(dispatcher.dispatchIncoming)
-    }.handleError(t => Task { scribe.warn(s"MCP HTTP send failed: ${t.getMessage}") }).startUnit()
+    }.handleError(t => Task(scribe.warn(s"MCP HTTP send failed: ${t.getMessage}"))).startUnit()
   }
 
   private def postJson(payload: Json): Task[Option[Json]] = {
@@ -147,17 +154,19 @@ final class HttpSseMcpClient(override val config: McpServerConfig,
       response.headers.first(HeaderKey("Mcp-Session-Id")).foreach { sid => sessionId = Some(sid) }
       response.content match {
         case Some(c) => c.asString.map { s =>
-          if (s.isEmpty) None else Some(JsonParser(s))
-        }
+            if (s.isEmpty) None else Some(JsonParser(s))
+          }
         case None => Task.pure(None)
       }
     }
   }
 
-  /** Open a long-lived SSE GET on the endpoint. Each `data:` event
-    * is parsed as a JSON-RPC message and pushed into the
-    * dispatcher. Stops naturally when [[close]] is called or the
-    * server closes the stream. */
+  /**
+   * Open a long-lived SSE GET on the endpoint. Each `data:` event
+   * is parsed as a JSON-RPC message and pushed into the
+   * dispatcher. Stops naturally when [[close]] is called or the
+   * server closes the stream.
+   */
   private def startSseListener(): Task[Unit] = Task {
     Task.defer {
       val withHeaders = httpSse.headers.foldLeft(
@@ -181,7 +190,7 @@ final class HttpSseMcpClient(override val config: McpServerConfig,
           }
           .drain
       }
-    }.handleError(t => Task { scribe.warn(s"MCP SSE listener exited: ${t.getMessage}") }).startUnit()
+    }.handleError(t => Task(scribe.warn(s"MCP SSE listener exited: ${t.getMessage}"))).startUnit()
     ()
   }
 }

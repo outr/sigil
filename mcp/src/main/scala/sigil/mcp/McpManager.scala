@@ -35,30 +35,38 @@ import scala.jdk.CollectionConverters.*
 final class McpManager(sigil: Sigil { type DB <: SigilDB & McpCollections },
                        samplingHandlerFor: McpServerConfig => SamplingHandler) {
 
-  private val clients         = new ConcurrentHashMap[String, ClientEntry]()
-  private val toolCache       = new ConcurrentHashMap[String, CachedTools]()
-  private val resourceCache   = new ConcurrentHashMap[String, CachedResources]()
-  private val promptCache     = new ConcurrentHashMap[String, CachedPrompts]()
-  private val inFlight        = new ConcurrentHashMap[ParticipantId, ConcurrentHashMap[(String, Long), Boolean]]()
+  private val clients = new ConcurrentHashMap[String, ClientEntry]()
+  private val toolCache = new ConcurrentHashMap[String, CachedTools]()
+  private val resourceCache = new ConcurrentHashMap[String, CachedResources]()
+  private val promptCache = new ConcurrentHashMap[String, CachedPrompts]()
+  private val inFlight = new ConcurrentHashMap[ParticipantId, ConcurrentHashMap[(String, Long), Boolean]]()
   @volatile private var reaperStarted: Boolean = false
 
-  /** All currently-configured server configs from the DB. */
+  /**
+   * All currently-configured server configs from the DB.
+   */
   def listConfigs(): Task[List[McpServerConfig]] =
     sigil.withDB(_.mcpServers.transaction(_.list))
 
-  /** Persist a new server config. Connects lazily on first use. */
+  /**
+   * Persist a new server config. Connects lazily on first use.
+   */
   def addConfig(config: McpServerConfig): Task[McpServerConfig] = {
     val withId = config.copy(_id = McpServerConfig.idFor(config.name))
     sigil.withDB(_.mcpServers.transaction(_.upsert(withId)))
   }
 
-  /** Remove a server config and tear down any active connection. */
+  /**
+   * Remove a server config and tear down any active connection.
+   */
   def removeConfig(name: String): Task[Boolean] = {
     val id = McpServerConfig.idFor(name)
     sigil.withDB(_.mcpServers.transaction(_.delete(id))).flatMap(_ => closeClient(name)).map(_ => true)
   }
 
-  /** Force-disconnect; next use will reconnect and re-discover. */
+  /**
+   * Force-disconnect; next use will reconnect and re-discover.
+   */
   def closeClient(name: String): Task[Unit] = Task.defer {
     Option(clients.remove(name)) match {
       case Some(entry) =>
@@ -68,7 +76,9 @@ final class McpManager(sigil: Sigil { type DB <: SigilDB & McpCollections },
     }
   }
 
-  /** Force-refresh the cached tool list for `name` regardless of staleness. */
+  /**
+   * Force-refresh the cached tool list for `name` regardless of staleness.
+   */
   def refresh(name: String): Task[List[McpToolDefinition]] = Task.defer {
     toolCache.remove(name)
     resourceCache.remove(name)
@@ -76,12 +86,16 @@ final class McpManager(sigil: Sigil { type DB <: SigilDB & McpCollections },
     listTools(name)
   }
 
-  /** Try connecting to `name` and return success/failure with details. */
+  /**
+   * Try connecting to `name` and return success/failure with details.
+   */
   def test(name: String): Task[Either[Throwable, List[McpToolDefinition]]] =
     listTools(name).map(Right(_)).handleError(t => Task.pure(Left(t)))
 
-  /** Tool definitions across all configured servers, with the
-    * server's `prefix` already applied to each name. */
+  /**
+   * Tool definitions across all configured servers, with the
+   * server's `prefix` already applied to each name.
+   */
   def allToolsByDisplayName: Task[Map[String, (McpServerConfig, McpToolDefinition)]] = listConfigs().flatMap { configs =>
     Task.sequence(configs.map { cfg =>
       listTools(cfg.name).map(_.map(td => (cfg.prefix.getOrElse("") + td.name) -> (cfg, td))).handleError { t =>
@@ -93,17 +107,25 @@ final class McpManager(sigil: Sigil { type DB <: SigilDB & McpCollections },
     }).map(_.flatten.toMap)
   }
 
-  /** Tool definitions for a single server (cache-first). */
+  /**
+   * Tool definitions for a single server (cache-first).
+   */
   def listTools(name: String): Task[List[McpToolDefinition]] =
-    cachedOrFetch(toolCache, name, refreshKind = "tools",
+    cachedOrFetch(
+      toolCache,
+      name,
+      refreshKind = "tools",
       fetch = c => c.listTools(),
-      wrap  = (now, list) => CachedTools(now, list))
+      wrap = (now, list) => CachedTools(now, list))
       .map(_.tools)
 
   def listResources(name: String): Task[List[McpResource]] =
-    cachedOrFetch(resourceCache, name, refreshKind = "resources",
+    cachedOrFetch(
+      resourceCache,
+      name,
+      refreshKind = "resources",
       fetch = c => c.listResources(),
-      wrap  = (now, list) => CachedResources(now, list))
+      wrap = (now, list) => CachedResources(now, list))
       .map(_.resources)
 
   def readResource(name: String, uri: String): Task[Json] = clientFor(name).flatMap { client =>
@@ -112,9 +134,12 @@ final class McpManager(sigil: Sigil { type DB <: SigilDB & McpCollections },
   }
 
   def listPrompts(name: String): Task[List[McpPrompt]] =
-    cachedOrFetch(promptCache, name, refreshKind = "prompts",
+    cachedOrFetch(
+      promptCache,
+      name,
+      refreshKind = "prompts",
       fetch = c => c.listPrompts(),
-      wrap  = (now, list) => CachedPrompts(now, list))
+      wrap = (now, list) => CachedPrompts(now, list))
       .map(_.prompts)
 
   def getPrompt(name: String, prompt: String, args: Map[String, String] = Map.empty): Task[Json] = clientFor(name).flatMap { client =>
@@ -122,9 +147,11 @@ final class McpManager(sigil: Sigil { type DB <: SigilDB & McpCollections },
     client.getPrompt(prompt, args)
   }
 
-  /** Invoke a tool, registering the call against the agent for
-    * cancellation tracking. The manager touches the connection's
-    * idle timer and de-registers the call on completion. */
+  /**
+   * Invoke a tool, registering the call against the agent for
+   * cancellation tracking. The manager touches the connection's
+   * idle timer and de-registers the call on completion.
+   */
   def callTool(serverName: String,
                toolName: String,
                arguments: Json,
@@ -133,10 +160,13 @@ final class McpManager(sigil: Sigil { type DB <: SigilDB & McpCollections },
       touch(serverName)
       val agentMap = inFlight.computeIfAbsent(agentId, _ => new ConcurrentHashMap[(String, Long), Boolean]())
       val wireRef = new AtomicLong(-1L)
-      client.callTool(toolName, arguments, wireId => {
-        wireRef.set(wireId)
-        agentMap.put((serverName, wireId), true)
-      })
+      client.callTool(
+        toolName,
+        arguments,
+        wireId => {
+          wireRef.set(wireId)
+          agentMap.put((serverName, wireId), true)
+        })
         .guarantee(Task {
           val wid = wireRef.get()
           if (wid >= 0) agentMap.remove((serverName, wid))
@@ -145,8 +175,10 @@ final class McpManager(sigil: Sigil { type DB <: SigilDB & McpCollections },
         })
     }
 
-  /** Cancel every in-flight tool call owned by `agentId`. Called
-    * by the framework on `Stop` events targeting that agent. */
+  /**
+   * Cancel every in-flight tool call owned by `agentId`. Called
+   * by the framework on `Stop` events targeting that agent.
+   */
   def cancelInFlight(agentId: ParticipantId, reason: Option[String] = None): Task[Unit] = Task.defer {
     Option(inFlight.remove(agentId)) match {
       case None => Task.unit
@@ -154,14 +186,16 @@ final class McpManager(sigil: Sigil { type DB <: SigilDB & McpCollections },
         val tasks = map.keySet().asScala.toList.map { case (server, wireId) =>
           Option(clients.get(server)) match {
             case Some(entry) => entry.client.cancelRequest(wireId, reason).handleError(_ => Task.unit)
-            case None        => Task.unit
+            case None => Task.unit
           }
         }
         Task.sequence(tasks).unit
     }
   }
 
-  /** Close every active connection. Called by Sigil shutdown. */
+  /**
+   * Close every active connection. Called by Sigil shutdown.
+   */
   def closeAll(): Task[Unit] = Task.defer {
     val all = clients.values().asScala.toList
     clients.clear()
@@ -174,12 +208,13 @@ final class McpManager(sigil: Sigil { type DB <: SigilDB & McpCollections },
    * persists a config via [[addConfig]] and lets [[clientFor]] manage
    * the lifecycle.
    */
-  def registerClientForTesting(name: String, client: McpClient): Unit = {
+  def registerClientForTesting(name: String, client: McpClient): Unit =
     clients.put(name, ClientEntry(client, new AtomicLong(System.currentTimeMillis())))
-  }
 
-  /** Test helper: register an in-flight call against an agent without
-    * actually invoking a tool. Used by cancellation tests. */
+  /**
+   * Test helper: register an in-flight call against an agent without
+   * actually invoking a tool. Used by cancellation tests.
+   */
   def registerInFlightForTesting(agentId: ParticipantId, serverName: String, wireId: Long): Unit = {
     val map = inFlight.computeIfAbsent(agentId, _ => new ConcurrentHashMap[(String, Long), Boolean]())
     map.put((serverName, wireId), true)
@@ -198,17 +233,18 @@ final class McpManager(sigil: Sigil { type DB <: SigilDB & McpCollections },
   }
 
   private def connectAndRegister(cfg: McpServerConfig): Task[McpClient] = Task.defer {
-    val notificationListener: (String, fabric.Json) => Task[Unit] = (method, _) => Task {
-      // Invalidate the relevant cache slice when the server signals it.
-      method match {
-        case "notifications/tools/list_changed"     => toolCache.remove(cfg.name)
-        case "notifications/resources/list_changed" => resourceCache.remove(cfg.name)
-        case "notifications/prompts/list_changed"   => promptCache.remove(cfg.name)
-        case _                                      => ()
+    val notificationListener: (String, fabric.Json) => Task[Unit] = (method, _) =>
+      Task {
+        // Invalidate the relevant cache slice when the server signals it.
+        method match {
+          case "notifications/tools/list_changed" => toolCache.remove(cfg.name)
+          case "notifications/resources/list_changed" => resourceCache.remove(cfg.name)
+          case "notifications/prompts/list_changed" => promptCache.remove(cfg.name)
+          case _ => ()
+        }
       }
-    }
     val client: McpClient = cfg.transport match {
-      case _: McpTransport.Stdio   => new StdioMcpClient(cfg, samplingHandlerFor(cfg), notificationListener)
+      case _: McpTransport.Stdio => new StdioMcpClient(cfg, samplingHandlerFor(cfg), notificationListener)
       case _: McpTransport.HttpSse => new HttpSseMcpClient(cfg, samplingHandlerFor(cfg), notificationListener)
     }
     val entry = ClientEntry(client, new AtomicLong(System.currentTimeMillis()))
@@ -221,10 +257,10 @@ final class McpManager(sigil: Sigil { type DB <: SigilDB & McpCollections },
   }
 
   private def cachedOrFetch[K, V](cache: ConcurrentHashMap[String, V],
-                                   name: String,
-                                   refreshKind: String,
-                                   fetch: McpClient => Task[K],
-                                   wrap: (Long, K) => V): Task[V] = Task.defer {
+                                  name: String,
+                                  refreshKind: String,
+                                  fetch: McpClient => Task[K],
+                                  wrap: (Long, K) => V): Task[V] = Task.defer {
     val cfg = clientConfigFor(name)
     cfg.flatMap { cfg =>
       val now = System.currentTimeMillis()

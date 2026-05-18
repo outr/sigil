@@ -41,22 +41,24 @@ object FsToolEmit {
       case _ => ToolOutcome.Success
     }
     ToolResults(
-      schemas        = Nil,
-      participantId  = ctx.caller,
+      schemas = Nil,
+      participantId = ctx.caller,
       conversationId = ctx.conversation.id,
-      topicId        = ctx.conversation.currentTopicId,
-      outcome        = outcome,
-      summary        = inferSummary(payload),
-      typed          = Some(payload),
-      origin         = ctx.currentToolInvokeId,
-      state          = EventState.Complete
+      topicId = ctx.conversation.currentTopicId,
+      outcome = outcome,
+      summary = inferSummary(payload),
+      typed = Some(payload),
+      origin = ctx.currentToolInvokeId,
+      state = EventState.Complete
     )
   }
 
-  /** Best-effort chip-friendly summary derived from common payload
-    * shapes. Returns `None` for shapes we don't recognise; the
-    * client falls back to its own default (typically the tool
-    * name + duration). */
+  /**
+   * Best-effort chip-friendly summary derived from common payload
+   * shapes. Returns `None` for shapes we don't recognise; the
+   * client falls back to its own default (typically the tool
+   * name + duration).
+   */
   private def inferSummary(payload: Json): Option[String] = payload match {
     case o: Obj =>
       o.value.get("error").collect { case s: Str => s.value }.map { e =>

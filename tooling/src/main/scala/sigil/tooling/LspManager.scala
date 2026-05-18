@@ -78,11 +78,13 @@ final class LspManager(sigil: Sigil { type DB <: SigilDB & ToolingCollections },
   def withSession[T](languageId: String, projectRoot: String)(f: LspSession => Task[T]): Task[T] =
     session(languageId, projectRoot).flatMap(f)
 
-  /** Fan-out a file-change notification to every session whose
-    * project root is an ancestor of the given path. Apps wire this
-    * from their `EditFileTool` / `WriteFileTool` so language servers
-    * pick up framework-side writes the same way they would pick up
-    * an editor save. */
+  /**
+   * Fan-out a file-change notification to every session whose
+   * project root is an ancestor of the given path. Apps wire this
+   * from their `EditFileTool` / `WriteFileTool` so language servers
+   * pick up framework-side writes the same way they would pick up
+   * an editor save.
+   */
   def notifyFileChanged(absolutePath: String, kind: FileChangeType = FileChangeType.Changed): Task[Unit] = Task.defer {
     val abs = Paths.get(absolutePath).toAbsolutePath.normalize()
     val uri = abs.toUri.toString
@@ -93,16 +95,18 @@ final class LspManager(sigil: Sigil { type DB <: SigilDB & ToolingCollections },
     Task.sequence(targets.map(_.didChangeWatchedFiles(List(event)).handleError(_ => Task.unit))).unit
   }
 
-  /** Refresh every active session's in-memory copy of a document
-    * whose contents changed externally (e.g. a filesystem-edit tool
-    * just ran). Reads the file from disk and fires
-    * `textDocument/didChange` (full-document update) on each session
-    * whose project root contains the path. Pairs with the
-    * `workspace/didChangeWatchedFiles` signal that [[notifyFileChanged]]
-    * already fires; both are usually needed for the server's
-    * diagnostic / completion state to fully refresh. Errors are
-    * swallowed per session so one failing session doesn't break
-    * others. */
+  /**
+   * Refresh every active session's in-memory copy of a document
+   * whose contents changed externally (e.g. a filesystem-edit tool
+   * just ran). Reads the file from disk and fires
+   * `textDocument/didChange` (full-document update) on each session
+   * whose project root contains the path. Pairs with the
+   * `workspace/didChangeWatchedFiles` signal that [[notifyFileChanged]]
+   * already fires; both are usually needed for the server's
+   * diagnostic / completion state to fully refresh. Errors are
+   * swallowed per session so one failing session doesn't break
+   * others.
+   */
   def notifyDocumentChanged(absolutePath: String): Task[Unit] = Task.defer {
     val abs = Paths.get(absolutePath).toAbsolutePath.normalize()
     val uri = abs.toUri.toString
@@ -115,9 +119,11 @@ final class LspManager(sigil: Sigil { type DB <: SigilDB & ToolingCollections },
     Task.sequence(targets.map(_.didChangeFull(uri, text).handleError(_ => Task.unit))).unit
   }
 
-  /** Same as [[notifyFileChanged]] but for a batch — preferred when
-    * a single agent action touches many files (e.g. an apply-edit
-    * fan-out). */
+  /**
+   * Same as [[notifyFileChanged]] but for a batch — preferred when
+   * a single agent action touches many files (e.g. an apply-edit
+   * fan-out).
+   */
   def notifyFilesChanged(events: Map[String, FileChangeType]): Task[Unit] = Task.defer {
     val byRoot = sessions.entrySet().asScala.toList.flatMap { e =>
       val rootPath = Paths.get(e.getKey._2).toAbsolutePath.normalize()
@@ -135,7 +141,7 @@ final class LspManager(sigil: Sigil { type DB <: SigilDB & ToolingCollections },
   def shutdown(languageId: String, projectRoot: String): Task[Unit] =
     Option(sessions.remove((languageId, projectRoot))) match {
       case Some(s) => s.shutdown()
-      case None    => Task.unit
+      case None => Task.unit
     }
 
   def shutdownAll(): Task[Unit] = Task.defer {

@@ -36,10 +36,12 @@ final case class ParaphraseLoopDetector(windowSize: Int = 4,
                                         similarityThreshold: Double = 0.7,
                                         escalationThreshold: Int = 5) {
 
-  /** Returns the paraphrase pattern when the agent's most recent
-    * frames form a same-shape draft sequence with no real tool
-    * execution between them. `None` when the trailing slice doesn't
-    * meet the threshold. */
+  /**
+   * Returns the paraphrase pattern when the agent's most recent
+   * frames form a same-shape draft sequence with no real tool
+   * execution between them. `None` when the trailing slice doesn't
+   * meet the threshold.
+   */
   def detect(frames: Vector[ContextFrame], agentId: ParticipantId): Option[ParaphraseLoopDetector.Pattern] = {
     val trailing = collectTrailingResponds(frames, agentId)
     if (trailing.size < windowSize) None
@@ -47,30 +49,31 @@ final case class ParaphraseLoopDetector(windowSize: Int = 4,
       val sample = trailing.take(windowSize)
       if (sample.size < 2) None
       else if (pairsAtOrAbove(sample, similarityThreshold)) Some(ParaphraseLoopDetector.Pattern(
-        count     = trailing.size,
-        samples   = trailing.take(3),
+        count = trailing.size,
+        samples = trailing.take(3),
         escalated = trailing.size >= escalationThreshold
       ))
       else None
     }
   }
 
-  /** Walk newest→oldest. Collect agent's Text frames; stop when a
-    * ToolCall, ToolResult, System, Reasoning frame, or a non-agent
-    * Text frame appears. Returns newest-first. */
+  /**
+   * Walk newest→oldest. Collect agent's Text frames; stop when a
+   * ToolCall, ToolResult, System, Reasoning frame, or a non-agent
+   * Text frame appears. Returns newest-first.
+   */
   private def collectTrailingResponds(frames: Vector[ContextFrame], agentId: ParticipantId): List[String] = {
     val out = scala.collection.mutable.ListBuffer.empty[String]
     val it = frames.reverseIterator
     var stopped = false
-    while (it.hasNext && !stopped) {
+    while (it.hasNext && !stopped)
       it.next() match {
         case t: ContextFrame.Text if t.participantId == agentId => out += t.content
-        case _: ContextFrame.Text                               => stopped = true   // user turn — pattern boundary
-        case _: ContextFrame.ToolCall                           => stopped = true   // real action taken
-        case _: ContextFrame.ToolResult                         => stopped = true   // real action taken
-        case _                                                  => ()                // System / Reasoning — skip but keep scanning
+        case _: ContextFrame.Text => stopped = true // user turn — pattern boundary
+        case _: ContextFrame.ToolCall => stopped = true // real action taken
+        case _: ContextFrame.ToolResult => stopped = true // real action taken
+        case _ => () // System / Reasoning — skip but keep scanning
       }
-    }
     out.toList
   }
 
@@ -98,18 +101,22 @@ final case class ParaphraseLoopDetector(windowSize: Int = 4,
 
 object ParaphraseLoopDetector {
 
-  /** What the detector hands back when it fires. The curator's
-    * renderer turns this into the system-prompt observation.
-    *
-    *   - `count` — total consecutive paraphrase drafts at the tail.
-    *   - `samples` — first three draft texts (newest-first).
-    *   - `escalated` — `true` once `count` reaches the escalation
-    *     threshold; observation copy shifts to a stronger warning. */
+  /**
+   * What the detector hands back when it fires. The curator's
+   * renderer turns this into the system-prompt observation.
+   *
+   *   - `count` — total consecutive paraphrase drafts at the tail.
+   *   - `samples` — first three draft texts (newest-first).
+   *   - `escalated` — `true` once `count` reaches the escalation
+   *     threshold; observation copy shifts to a stronger warning.
+   */
   final case class Pattern(count: Int, samples: List[String], escalated: Boolean) {
 
-    /** Render the observation text the curator injects into
-      * `TurnInput.extraContext`. Keep it self-contained so the
-      * model reads it without needing extra prompt context. */
+    /**
+     * Render the observation text the curator injects into
+     * `TurnInput.extraContext`. Keep it self-contained so the
+     * model reads it without needing extra prompt context.
+     */
     def render(): String = {
       val header =
         if (escalated)
@@ -127,8 +134,10 @@ object ParaphraseLoopDetector {
     }
   }
 
-  /** Stable [[sigil.conversation.ContextKey]] value the curator uses
-    * when injecting the observation into `TurnInput.extraContext`.
-    * Apps reading `extraContext` can filter on this key. */
+  /**
+   * Stable [[sigil.conversation.ContextKey]] value the curator uses
+   * when injecting the observation into `TurnInput.extraContext`.
+   * Apps reading `extraContext` can filter on this key.
+   */
   val ContextKeyValue: String = "_paraphraseObservation"
 }

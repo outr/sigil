@@ -11,4 +11,5 @@ import fabric.rw.*
  */
 case class McpToolDefinition(name: String,
                              description: Option[String] = None,
-                             inputSchema: Json = Obj.empty) derives RW
+                             inputSchema: Json = Obj.empty)
+  derives RW

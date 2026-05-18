@@ -14,12 +14,13 @@ import sigil.tool.model.{RandomUuidInput, RandomUuidOutput}
  * `SecureRandom` under the hood; safe for token-style use cases
  * where guessability matters.
  */
-case object RandomUuidTool extends TypedOutputTool[RandomUuidInput, RandomUuidOutput](
-  name = ToolName("random_uuid"),
-  description = "Generate a v4 (random) UUID. Returns `{uuid}`.",
-  examples = List(ToolExample("fresh uuid", RandomUuidInput())),
-  keywords = Set("uuid", "guid", "random", "id", "identifier", "token")
-) {
+case object RandomUuidTool
+  extends TypedOutputTool[RandomUuidInput, RandomUuidOutput](
+    name = ToolName("random_uuid"),
+    description = "Generate a v4 (random) UUID. Returns `{uuid}`.",
+    examples = List(ToolExample("fresh uuid", RandomUuidInput())),
+    keywords = Set("uuid", "guid", "random", "id", "identifier", "token")
+  ) {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: RandomUuidInput, context: TurnContext): Task[RandomUuidOutput] =

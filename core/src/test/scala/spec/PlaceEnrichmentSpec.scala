@@ -57,8 +57,10 @@ class PlaceEnrichmentSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       location = location
     )
 
-  /** Poll the events store until the Message at `msgId` has a Place
-    * satisfying `pred`, or the timeout elapses. */
+  /**
+   * Poll the events store until the Message at `msgId` has a Place
+   * satisfying `pred`, or the timeout elapses.
+   */
   private def awaitMessageLocation(msgId: Id[Event],
                                    pred: Place => Boolean,
                                    timeoutMs: Long = 5000): Task[Message] = {
@@ -80,9 +82,7 @@ class PlaceEnrichmentSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       for {
         _ <- TestSigil.publish(msg)
         loaded <- TestSigil.withDB(_.events.transaction(_.get(msg._id)))
-      } yield {
-        loaded.collect { case m: Message => m.location } shouldBe Some(Some(Place(point = mint)))
-      }
+      } yield loaded.collect { case m: Message => m.location } shouldBe Some(Some(Place(point = mint)))
     }
 
     "never capture location for an agent-authored Message" in {
@@ -92,9 +92,7 @@ class PlaceEnrichmentSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       for {
         _ <- TestSigil.publish(msg)
         loaded <- TestSigil.withDB(_.events.transaction(_.get(msg._id)))
-      } yield {
-        loaded.collect { case m: Message => m.location } shouldBe Some(None)
-      }
+      } yield loaded.collect { case m: Message => m.location } shouldBe Some(None)
     }
 
     "leave an explicit client-provided Place untouched" in {
@@ -105,9 +103,7 @@ class PlaceEnrichmentSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       for {
         _ <- TestSigil.publish(msg)
         loaded <- TestSigil.withDB(_.events.transaction(_.get(msg._id)))
-      } yield {
-        loaded.collect { case m: Message => m.location } shouldBe Some(Some(explicit))
-      }
+      } yield loaded.collect { case m: Message => m.location } shouldBe Some(Some(explicit))
     }
 
     "not emit a LocationDelta when geocoder is NoOpGeocoder (raw-GPS-only mode)" in {
@@ -163,7 +159,7 @@ class PlaceEnrichmentSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         first.map(_.place.name) shouldBe Some(Some("Blue Bottle"))
         second.map(_.place.name) shouldBe Some(Some("Blue Bottle"))
         firstCount shouldBe 1
-        secondCount shouldBe 1  // boundary-contained — delegate untouched
+        secondCount shouldBe 1 // boundary-contained — delegate untouched
       }
     }
 
@@ -185,7 +181,7 @@ class PlaceEnrichmentSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         after = delegate.invocationCount
       } yield {
         result.map(_.place.name) shouldBe Some(Some("Blue Bottle"))
-        (after - before) shouldBe 1  // stale row ignored → delegate called
+        (after - before) shouldBe 1 // stale row ignored → delegate called
       }
     }
   }

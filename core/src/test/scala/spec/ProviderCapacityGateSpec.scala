@@ -25,8 +25,10 @@ class ProviderCapacityGateSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     override def httpRequestFor(input: ProviderCall): Task[spice.http.HttpRequest] =
       Task.error(new RuntimeException("not implemented"))
 
-    /** Test-only — expose `withCapacity` so we can assert the gate's
-      * runtime behaviour against a fake task. */
+    /**
+     * Test-only — expose `withCapacity` so we can assert the gate's
+     * runtime behaviour against a fake task.
+     */
     def public[A](task: Task[A]): Task[A] = withCapacity(task)
   }
 

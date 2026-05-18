@@ -18,7 +18,8 @@ final class DeleteFileTool(context: FileSystemContext)
       ToolExample("Remove a temp file", DeleteFileInput(filePath = "/tmp/scratch.txt"))
     ),
     keywords = Set("file", "delete", "remove", "rm", "unlink")
-  ) with sigil.tool.DestructiveExternalTool {
+  )
+  with sigil.tool.DestructiveExternalTool {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: DeleteFileInput, ctx: TurnContext): Task[DeleteFileOutput] =

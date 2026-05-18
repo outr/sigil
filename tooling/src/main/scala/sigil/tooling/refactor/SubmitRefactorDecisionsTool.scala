@@ -51,6 +51,9 @@ case object SubmitRefactorDecisionsTool
                                       context: TurnContext): Stream[Event] = Stream.empty
 }
 
-/** Typed input for [[SubmitRefactorDecisionsTool]]. */
+/**
+ * Typed input for [[SubmitRefactorDecisionsTool]].
+ */
 case class SubmitRefactorDecisionsInput(filePath: String,
-                                        decisions: List[MatchDecision]) extends ToolInput derives RW
+                                        decisions: List[MatchDecision])
+  extends ToolInput derives RW

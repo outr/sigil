@@ -9,12 +9,13 @@ import sigil.tool.{ToolInput, ToolName, TypedTool}
 
 import java.util.concurrent.atomic.AtomicReference
 
-final case class ReadFileInput(@description("The path to the file to read.") file_path: String)
-  extends ToolInput derives RW
+final case class ReadFileInput(@description("The path to the file to read.") file_path: String) extends ToolInput derives RW
 
-/** `read_file` — read a file from the in-memory filesystem. Returns
-  * empty string for missing files (matches AgentDojo's `dict.get`
-  * default semantics). */
+/**
+ * `read_file` — read a file from the in-memory filesystem. Returns
+ * empty string for missing files (matches AgentDojo's `dict.get`
+ * default semantics).
+ */
 final class ReadFileTool(state: AtomicReference[BankingEnvironment])
   extends TypedTool[ReadFileInput](
     name = ToolName("read_file"),

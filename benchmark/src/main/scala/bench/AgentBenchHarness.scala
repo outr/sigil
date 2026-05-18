@@ -39,11 +39,13 @@ import scala.concurrent.duration.*
  */
 final class AgentBenchHarness(sigil: Sigil, viewer: ParticipantId) {
 
-  /** Run a multi-turn conversation. Each user message in `userMessages`
-    * is published; the harness waits for the agent's turn to settle
-    * before publishing the next one. Returns the full
-    * [[ConversationTrace]] including every settled event window plus
-    * the final persisted [[Conversation]]. */
+  /**
+   * Run a multi-turn conversation. Each user message in `userMessages`
+   * is published; the harness waits for the agent's turn to settle
+   * before publishing the next one. Returns the full
+   * [[ConversationTrace]] including every settled event window plus
+   * the final persisted [[Conversation]].
+   */
   def runConversation(conversationFactory: Id[Conversation] => Conversation,
                       userMessages: List[String],
                       perTurnTimeout: FiniteDuration = 60.seconds): Task[ConversationTrace] = {
@@ -63,20 +65,24 @@ final class AgentBenchHarness(sigil: Sigil, viewer: ParticipantId) {
     } yield ConversationTrace(convId, turns, finalConv)
   }
 
-  /** Single-turn convenience — common shape for one-shot benchmarks
-    * (BFCL, AgentDojo single-attack scenarios). */
+  /**
+   * Single-turn convenience — common shape for one-shot benchmarks
+   * (BFCL, AgentDojo single-attack scenarios).
+   */
   def runOneShot(conversationFactory: Id[Conversation] => Conversation,
                  userMessage: String,
                  timeout: FiniteDuration = 60.seconds): Task[ConversationTrace] =
     runConversation(conversationFactory, List(userMessage), timeout)
 
-  /** Run `body` with `finder` installed as the active [[ToolFinder]],
-    * restoring the previous finder on completion (success or failure).
-    * Requires the wrapped Sigil to be a [[BenchmarkAgentSigil]] —
-    * other Sigils don't expose a swappable tool catalog. Benchmarks
-    * with per-scenario tools (AgentDojo banking, τ-bench retail) wrap
-    * each scenario in this helper so each scenario's mutable env is
-    * isolated from its neighbors. */
+  /**
+   * Run `body` with `finder` installed as the active [[ToolFinder]],
+   * restoring the previous finder on completion (success or failure).
+   * Requires the wrapped Sigil to be a [[BenchmarkAgentSigil]] —
+   * other Sigils don't expose a swappable tool catalog. Benchmarks
+   * with per-scenario tools (AgentDojo banking, τ-bench retail) wrap
+   * each scenario in this helper so each scenario's mutable env is
+   * isolated from its neighbors.
+   */
   def withToolFinder[A](finder: ToolFinder)(body: => Task[A]): Task[A] = sigil match {
     case agentSigil: BenchmarkAgentSigil =>
       val previous = agentSigil.setToolFinder(finder)
@@ -125,15 +131,17 @@ final class AgentBenchHarness(sigil: Sigil, viewer: ParticipantId) {
     } yield buildTrace(userMsg, windowEvents)
   }
 
-  /** Poll `SigilDB.events` until an `AgentState(Complete)` exists for
-    * this conversation newer than `after`, then return every Complete
-    * event in the window (user message inclusive — `now` is the user
-    * message's own timestamp, so `>= after` includes it).
-    *
-    * Two-phase wait: returning on the first agent Message would race a
-    * multi-iteration loop where the agent fires a tool then chains
-    * another. AgentState=Complete is the only marker that the loop has
-    * fully released its claim. */
+  /**
+   * Poll `SigilDB.events` until an `AgentState(Complete)` exists for
+   * this conversation newer than `after`, then return every Complete
+   * event in the window (user message inclusive — `now` is the user
+   * message's own timestamp, so `>= after` includes it).
+   *
+   * Two-phase wait: returning on the first agent Message would race a
+   * multi-iteration loop where the agent fires a tool then chains
+   * another. AgentState=Complete is the only marker that the loop has
+   * fully released its claim.
+   */
   private def waitForAgentTurn(convId: Id[Conversation], after: Long, timeout: FiniteDuration): Task[Vector[Event]] = {
     val deadline = System.currentTimeMillis() + timeout.toMillis
     def loop: Task[Vector[Event]] = sigil.withDB(_.events.transaction(_.list)).flatMap { all =>

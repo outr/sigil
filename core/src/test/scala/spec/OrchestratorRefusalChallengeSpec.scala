@@ -34,9 +34,11 @@ class OrchestratorRefusalChallengeSpec extends AsyncWordSpec with AsyncTaskSpec 
 
   private val modelId: Id[Model] = Model.id("test", "refusal-challenge")
 
-  /** Emits a single atomic `respond` whose content is configurable.
-    * Records nothing — the spec inspects SigilDB.events directly. */
-  private final class RespondOnceProvider(content: String) extends Provider {
+  /**
+   * Emits a single atomic `respond` whose content is configurable.
+   * Records nothing — the spec inspects SigilDB.events directly.
+   */
+  final private class RespondOnceProvider(content: String) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -55,10 +57,12 @@ class OrchestratorRefusalChallengeSpec extends AsyncWordSpec with AsyncTaskSpec 
     }
   }
 
-  /** First call emits `find_capability`; subsequent calls emit a
-    * refusal respond. Used to verify that an agent that DID consult
-    * the catalog can still refuse without triggering a challenge. */
-  private final class DiscoveryThenRefuseProvider(refusalContent: String) extends Provider {
+  /**
+   * First call emits `find_capability`; subsequent calls emit a
+   * refusal respond. Used to verify that an agent that DID consult
+   * the catalog can still refuse without triggering a challenge.
+   */
+  final private class DiscoveryThenRefuseProvider(refusalContent: String) extends Provider {
     private val callIndex = new java.util.concurrent.atomic.AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -87,11 +91,13 @@ class OrchestratorRefusalChallengeSpec extends AsyncWordSpec with AsyncTaskSpec 
     }
   }
 
-  /** Every call emits a refusal respond. Used to verify the
-    * once-per-turn challenge limit — the agent refuses, gets
-    * challenged, refuses again, and the second refusal passes
-    * through (the framework challenged once and stepped aside). */
-  private final class AlwaysRefuseProvider(content: String) extends Provider {
+  /**
+   * Every call emits a refusal respond. Used to verify the
+   * once-per-turn challenge limit — the agent refuses, gets
+   * challenged, refuses again, and the second refusal passes
+   * through (the framework challenged once and stepped aside).
+   */
+  final private class AlwaysRefuseProvider(content: String) extends Provider {
     private val callIndex = new java.util.concurrent.atomic.AtomicInteger(0)
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -114,35 +120,35 @@ class OrchestratorRefusalChallengeSpec extends AsyncWordSpec with AsyncTaskSpec 
 
   private def makeAgent(): AgentParticipant =
     DefaultAgentParticipant(
-      id                 = TestAgent,
-      modelId            = modelId,
-      toolNames          = CoreTools.coreToolNames,
-      instructions       = Instructions(),
+      id = TestAgent,
+      modelId = modelId,
+      toolNames = CoreTools.coreToolNames,
+      instructions = Instructions(),
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
   private def runWithProvider(provider: Provider, convPrefix: String): Task[(Id[Conversation], List[Event])] = {
     TestSigil.setProvider(Task.pure(provider))
     val convId = Conversation.id(s"$convPrefix-${rapid.Unique()}")
-    val agent  = makeAgent()
-    val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+    val agent = makeAgent()
+    val conv = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
     for {
-      _   <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-      _   <- TestSigil.publish(Message(
-               participantId  = TestUser,
-               conversationId = convId,
-               topicId        = TestTopicEntry.id,
-               content        = Vector(ResponseContent.Text("switch to gpt-5.5")),
-               state          = EventState.Complete
-             ))
-      _   <- Task.sleep(3.seconds)
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.publish(Message(
+        participantId = TestUser,
+        conversationId = convId,
+        topicId = TestTopicEntry.id,
+        content = Vector(ResponseContent.Text("switch to gpt-5.5")),
+        state = EventState.Complete
+      ))
+      _ <- Task.sleep(3.seconds)
       evs <- TestSigil.withDB(_.events.transaction(_.list))
     } yield (convId, evs.filter(_.conversationId == convId))
   }
 
   "Orchestrator refusal-challenge (sigil bug #126)" should {
 
-    "challenge a refusal when no find_capability was called since the last user message" in {
+    "challenge a refusal when no find_capability was called since the last user message" in
       runWithProvider(new RespondOnceProvider("I can't switch to GPT-5.5 — the model is fixed."), "refuse-no-discovery").map {
         case (_, evs) =>
           // A synthetic `_refusal_challenge` ToolInvoke must land —
@@ -160,8 +166,8 @@ class OrchestratorRefusalChallengeSpec extends AsyncWordSpec with AsyncTaskSpec 
           // reason) so its next iteration has actionable feedback.
           val failures = evs.collect {
             case m: Message
-              if m.role == MessageRole.Tool && m.isFailure &&
-                 m.failureReason.exists(_.contains("find_capability")) => m
+                if m.role == MessageRole.Tool && m.isFailure &&
+                  m.failureReason.exists(_.contains("find_capability")) => m
           }
           failures should not be empty
 
@@ -171,10 +177,11 @@ class OrchestratorRefusalChallengeSpec extends AsyncWordSpec with AsyncTaskSpec 
           val syntheticId = challengeInvokes.head._id
           failures.exists(_.origin.contains(syntheticId)) shouldBe true
       }
-    }
 
-    "NOT challenge when find_capability was called and the agent then refuses on a later turn" in {
-      runWithProvider(new DiscoveryThenRefuseProvider("I can't switch to GPT-5.5 — no model swap is wired."), "refuse-after-discovery").map {
+    "NOT challenge when find_capability was called and the agent then refuses on a later turn" in
+      runWithProvider(
+        new DiscoveryThenRefuseProvider("I can't switch to GPT-5.5 — no model swap is wired."),
+        "refuse-after-discovery").map {
         case (_, evs) =>
           // No challenge fires — the agent did the discovery.
           val challengeInvokes = evs.collect {
@@ -188,9 +195,8 @@ class OrchestratorRefusalChallengeSpec extends AsyncWordSpec with AsyncTaskSpec 
           }
           agentStandardMessages should not be empty
       }
-    }
 
-    "NOT challenge when the respond is not actually a refusal" in {
+    "NOT challenge when the respond is not actually a refusal" in
       runWithProvider(new RespondOnceProvider("Here's a summary of what I found in your inbox."), "not-a-refusal").map {
         case (_, evs) =>
           val challengeInvokes = evs.collect {
@@ -203,9 +209,8 @@ class OrchestratorRefusalChallengeSpec extends AsyncWordSpec with AsyncTaskSpec 
           }
           agentStandardMessages should not be empty
       }
-    }
 
-    "NOT recurse infinitely — the second refusal passes through after one challenge" in {
+    "NOT recurse infinitely — the second refusal passes through after one challenge" in
       runWithProvider(new AlwaysRefuseProvider("I can't help with that — that's beyond what I do."), "stubborn-refusal").map {
         case (_, evs) =>
           // Exactly one challenge fires (the first refusal) — the
@@ -223,7 +228,6 @@ class OrchestratorRefusalChallengeSpec extends AsyncWordSpec with AsyncTaskSpec 
           }
           agentStandardMessages should not be empty
       }
-    }
   }
 
   "tear down" should {

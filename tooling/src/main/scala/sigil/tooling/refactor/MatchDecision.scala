@@ -25,14 +25,19 @@ case class MatchDecision(matchedLine: Int,
                          reason: String,
                          oldText: String,
                          newText: Option[String] = None,
-                         /** 0-based character index of the start of
-                           * the edit span on `matchedLine`. None
-                           * when `action != Edited`. */
+                         /**
+                          * 0-based character index of the start of
+                          * the edit span on `matchedLine`. None
+                          * when `action != Edited`.
+                          */
                          startChar: Option[Int] = None,
-                         /** 0-based character index of the end of
-                           * the edit span on `matchedLine`. None
-                           * when `action != Edited`. */
-                         endChar: Option[Int] = None) derives RW
+                         /**
+                          * 0-based character index of the end of
+                          * the edit span on `matchedLine`. None
+                          * when `action != Edited`.
+                          */
+                         endChar: Option[Int] = None)
+  derives RW
 
 enum MatchAction derives RW {
   case Edited, Skipped, Failed

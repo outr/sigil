@@ -27,10 +27,11 @@ import sigil.tool.model.{MarkdownContentParser, RespondInput, ResponseContent, R
  * via [[sigil.Sigil.classifyTopicShift]] so every provider (streaming
  * and tool-call-only) produces the same TopicChange shape.
  */
-case object RespondTool extends TypedTool[RespondInput](
-  name = ToolName("respond"),
-  description =
-    """Deliver text to the user. Use ONLY when:
+case object RespondTool
+  extends TypedTool[RespondInput](
+    name = ToolName("respond"),
+    description =
+      """Deliver text to the user. Use ONLY when:
       |  (a) the user is chatting or asking a question you can answer from your own knowledge, OR
       |  (b) you've already executed the requested action via another tool and are reporting the outcome.
       |
@@ -67,10 +68,10 @@ case object RespondTool extends TypedTool[RespondInput](
       |  framework stamps the resulting Message's disposition accordingly.
       |- `endsTurn` — `true` when this respond is your COMPLETE reply for this turn. Set `false`
       |  for in-flight status pulses you intend to follow up on the same turn.""".stripMargin,
-  examples = Nil
-) with RespondFamilyTool {
+    examples = Nil
+  )
+  with RespondFamilyTool {
   override def paginate: Boolean = false
-
 
   override protected def executeTyped(input: RespondInput, context: TurnContext): rapid.Stream[Event] = {
     val blocks = MarkdownContentParser.parse(input.content)
@@ -79,12 +80,12 @@ case object RespondTool extends TypedTool[RespondInput](
       case ResponseDisposition.Failure => MessageDisposition.Failure()
     }
     val message = Message(
-      participantId  = context.caller,
+      participantId = context.caller,
       conversationId = context.conversation.id,
-      topicId        = context.conversation.currentTopicId,
-      content        = blocks,
-      disposition    = disposition,
-      modelId        = context.modelId
+      topicId = context.conversation.currentTopicId,
+      content = blocks,
+      disposition = disposition,
+      modelId = context.modelId
     )
     // Topic resolution + keyword update fire here so the atomic-respond
     // path (every provider whose `respond` materialises as a function
@@ -101,15 +102,15 @@ case object RespondTool extends TypedTool[RespondInput](
         rapid.Stream.force(
           for {
             topicEvents <- context.sigil.resolveTopicShift(
-              proposedLabel   = input.topicLabel,
+              proposedLabel = input.topicLabel,
               proposedSummary = input.topicSummary,
-              caller          = context.caller,
-              conversation    = context.conversation,
-              currentTopic    = context.conversation.currentTopic,
-              previousTopics  = context.conversation.previousTopics,
-              modelId         = modelId,
-              chain           = context.chain,
-              userMessage     = userMessage
+              caller = context.caller,
+              conversation = context.conversation,
+              currentTopic = context.conversation.currentTopic,
+              previousTopics = context.conversation.previousTopics,
+              modelId = modelId,
+              chain = context.chain,
+              userMessage = userMessage
             )
             _ <- context.sigil.updateConversationKeywords(context.conversation.id, input.keywords)
           } yield rapid.Stream.emits[Event](topicEvents :+ message)

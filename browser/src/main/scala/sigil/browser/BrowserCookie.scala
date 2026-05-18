@@ -21,4 +21,5 @@ case class BrowserCookie(domain: String,
                          secure: Boolean = true,
                          httpOnly: Boolean = false,
                          sameSite: Option[String] = None,
-                         expiresEpochMs: Option[Long] = None) derives RW
+                         expiresEpochMs: Option[Long] = None)
+  derives RW

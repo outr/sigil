@@ -11,7 +11,9 @@ import java.util.concurrent.atomic.AtomicReference
 
 final case class GetScheduledTransactionsInput() extends ToolInput derives RW
 
-/** `get_scheduled_transactions` — return the scheduled-transaction list. */
+/**
+ * `get_scheduled_transactions` — return the scheduled-transaction list.
+ */
 final class GetScheduledTransactionsTool(state: AtomicReference[BankingEnvironment])
   extends TypedTool[GetScheduledTransactionsInput](
     name = ToolName("get_scheduled_transactions"),

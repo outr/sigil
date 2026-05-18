@@ -12,8 +12,10 @@ import sigil.tool.{DiscoveryFilter, DiscoveryRequest, JsonInput, Tool, ToolFinde
  */
 final class McpToolFinder(manager: McpManager) extends ToolFinder {
 
-  /** All MCP tools surface via [[JsonInput]] — the only ToolInput
-    * subclass the finder produces. */
+  /**
+   * All MCP tools surface via [[JsonInput]] — the only ToolInput
+   * subclass the finder produces.
+   */
   override def toolInputRWs: List[RW[? <: ToolInput]] = List(summon[RW[JsonInput]])
 
   override def byName(name: ToolName): Task[Option[Tool]] =

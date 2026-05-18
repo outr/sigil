@@ -22,7 +22,9 @@ trait SamplingHandler {
 
 object SamplingHandler {
 
-  /** Default — refuses every sampling request with a clear error. */
+  /**
+   * Default — refuses every sampling request with a clear error.
+   */
   val Refusing: SamplingHandler = new SamplingHandler {
     override def handle(serverName: String, params: Json): Task[Json] =
       Task.error(new McpError(

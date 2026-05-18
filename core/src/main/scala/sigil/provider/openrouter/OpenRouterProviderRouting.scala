@@ -37,9 +37,11 @@ case class OpenRouterProviderRouting(order: Option[List[String]] = None,
                                      zdr: Option[Boolean] = None,
                                      requireParameters: Option[Boolean] = None) {
 
-  /** Render as the JSON object OpenRouter expects under the
-    * top-level `provider` request field. Empty when every knob is
-    * `None` (no constraint emitted). */
+  /**
+   * Render as the JSON object OpenRouter expects under the
+   * top-level `provider` request field. Empty when every knob is
+   * `None` (no constraint emitted).
+   */
   def toJson: Json = {
     val fields = Vector.newBuilder[(String, Json)]
     order.foreach(o => fields += "order" -> arr(o.map(str)*))
@@ -55,9 +57,11 @@ case class OpenRouterProviderRouting(order: Option[List[String]] = None,
 
 object OpenRouterProviderRouting {
 
-  /** Geographic-restriction default: deny routing to any
-    * mainland-China-hosted OpenRouter provider slug. See
-    * [[OpenRouter.ChineseHostedSlugs]] for the exact deny-list. */
+  /**
+   * Geographic-restriction default: deny routing to any
+   * mainland-China-hosted OpenRouter provider slug. See
+   * [[OpenRouter.ChineseHostedSlugs]] for the exact deny-list.
+   */
   val noChineseHosting: OpenRouterProviderRouting =
     OpenRouterProviderRouting(ignore = Some(OpenRouter.ChineseHostedSlugs.toList.sorted))
 }

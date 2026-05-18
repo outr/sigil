@@ -9,4 +9,5 @@ import sigil.tool.ToolInput
  * grace, then SIGKILL), `interrupt`, or `kill`.
  */
 case class ProcessSignalInput(handle: String,
-                              signal: String = "terminate") extends ToolInput derives RW
+                              signal: String = "terminate")
+  extends ToolInput derives RW

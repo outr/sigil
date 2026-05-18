@@ -92,8 +92,7 @@ trait MetalsSigil extends Sigil with McpSigil {
                            ],
                            onStatus: java.util.concurrent.atomic.AtomicReference[
                              Option[String => rapid.Task[Unit]]
-                           ] = new java.util.concurrent.atomic.AtomicReference(None)
-                          ): org.eclipse.lsp4j.services.LanguageClient =
+                           ] = new java.util.concurrent.atomic.AtomicReference(None)): org.eclipse.lsp4j.services.LanguageClient =
     new MetalsLanguageClient(label, onLogLine, onStatus)
 
   /**
@@ -119,13 +118,13 @@ trait MetalsSigil extends Sigil with McpSigil {
    */
   def writeLspServerConfigForMetals(workspace: java.nio.file.Path): rapid.Task[Unit] = {
     val config = sigil.tooling.LspServerConfig(
-      languageId    = "scala",
-      command       = metalsLauncher.headOption.getOrElse("metals"),
-      args          = metalsLauncher.drop(1),
-      rootMarkers   = List("build.sbt", "build.sc", "pom.xml"),
-      fileGlobs     = List("**/*.scala", "**/*.sbt", "**/*.sc"),
+      languageId = "scala",
+      command = metalsLauncher.headOption.getOrElse("metals"),
+      args = metalsLauncher.drop(1),
+      rootMarkers = List("build.sbt", "build.sc", "pom.xml"),
+      fileGlobs = List("**/*.scala", "**/*.sbt", "**/*.sc"),
       idleTimeoutMs = metalsIdleTimeoutMs,
-      _id           = sigil.tooling.LspServerConfig.idFor("scala")
+      _id = sigil.tooling.LspServerConfig.idFor("scala")
     )
     withDB { db =>
       db match {
@@ -151,7 +150,7 @@ trait MetalsSigil extends Sigil with McpSigil {
    * those resolve — the boost is opt-in by Metals being
    * actually present.
    */
-  override def activeToolchains(conversationId: lightdb.id.Id[Conversation]): rapid.Task[Set[String]] = {
+  override def activeToolchains(conversationId: lightdb.id.Id[Conversation]): rapid.Task[Set[String]] =
     metalsWorkspace(conversationId).flatMap {
       case None => super.activeToolchains(conversationId)
       case Some(workspace) =>
@@ -161,21 +160,24 @@ trait MetalsSigil extends Sigil with McpSigil {
           if (active) Set("lsp", "bsp") else Set.empty[String]
         }
     }
-  }
 
-  /** Hook into Sigil's static-tool list so the lifecycle tools
-    * are discoverable via the standard `find_capability` flow.
-    * Apps that don't want them surfaced override
-    * [[metalsToolsEnabled]] to false. */
+  /**
+   * Hook into Sigil's static-tool list so the lifecycle tools
+   * are discoverable via the standard `find_capability` flow.
+   * Apps that don't want them surfaced override
+   * [[metalsToolsEnabled]] to false.
+   */
   override def staticTools: List[Tool] = {
     val base = super.staticTools
     if (metalsToolsEnabled) base ++ metalsTools else base
   }
 
-  /** Whether the framework's three Metals lifecycle tools
-    * (`start_metals`, `stop_metals`, `metals_status`) are appended
-    * to `staticTools`. Default true. Apps that prefer to gate
-    * Metals behind app-specific affordances override to false. */
+  /**
+   * Whether the framework's three Metals lifecycle tools
+   * (`start_metals`, `stop_metals`, `metals_status`) are appended
+   * to `staticTools`. Default true. Apps that prefer to gate
+   * Metals behind app-specific affordances override to false.
+   */
   def metalsToolsEnabled: Boolean = true
 
   protected def metalsTools: List[Tool] = List(
@@ -184,9 +186,11 @@ trait MetalsSigil extends Sigil with McpSigil {
     new MetalsStatusTool
   )
 
-  /** Tear down every spawned Metals subprocess on Sigil shutdown.
-    * Chains through `super.onShutdown` so apps that mix in multiple
-    * modules tear each down in declaration order. */
+  /**
+   * Tear down every spawned Metals subprocess on Sigil shutdown.
+   * Chains through `super.onShutdown` so apps that mix in multiple
+   * modules tear each down in declaration order.
+   */
   override protected def onShutdown: Task[Unit] =
     metalsManager.shutdown.flatMap(_ => super.onShutdown)
 }

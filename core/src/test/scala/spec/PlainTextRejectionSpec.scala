@@ -38,10 +38,12 @@ import spice.http.HttpRequest
 class PlainTextRejectionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  /** Provider that emits plain text deltas with no tool call —
-    * mirrors gemma-26B-A4B-Q4's drift behaviour from the bug's
-    * wire log: `delta.content` fragments + `finish_reason: stop`,
-    * no `delta.tool_calls`. */
+  /**
+   * Provider that emits plain text deltas with no tool call —
+   * mirrors gemma-26B-A4B-Q4's drift behaviour from the bug's
+   * wire log: `delta.content` fragments + `finish_reason: stop`,
+   * no `delta.tool_calls`.
+   */
   private class PlainTextProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -59,10 +61,12 @@ class PlainTextRejectionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       ))
   }
 
-  /** Provider that emits both plain text AND a tool call — the
-    * framework should NOT emit a drift diagnostic in this case
-    * (some providers leak narration alongside tool args; that's
-    * not a policy violation). */
+  /**
+   * Provider that emits both plain text AND a tool call — the
+   * framework should NOT emit a drift diagnostic in this case
+   * (some providers leak narration alongside tool args; that's
+   * not a policy violation).
+   */
   private class TextAndToolCallProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -80,9 +84,11 @@ class PlainTextRejectionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     }
   }
 
-  /** Provider that emits nothing at all — true silent completion.
-    * No drift diagnostic should fire (there's no plain text to
-    * reject). */
+  /**
+   * Provider that emits nothing at all — true silent completion.
+   * No drift diagnostic should fire (there's no plain text to
+   * reject).
+   */
   private class TrulySilentProvider extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil
@@ -97,24 +103,24 @@ class PlainTextRejectionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     val convId = Conversation.id(s"plain-text-reject-$suffix")
     val conv = Conversation(topics = TestTopicStack, _id = convId)
     val request = ConversationRequest(
-      conversationId     = convId,
-      modelId            = Model.id("test", "model"),
-      instructions       = Instructions(),
-      turnInput          = TurnInput(ConversationView(conversationId = convId)),
-      currentMode        = ConversationMode,
-      currentTopic       = TestTopicEntry,
+      conversationId = convId,
+      modelId = Model.id("test", "model"),
+      instructions = Instructions(),
+      turnInput = TurnInput(ConversationView(conversationId = convId)),
+      currentMode = ConversationMode,
+      currentTopic = TestTopicEntry,
       generationSettings = GenerationSettings(maxOutputTokens = Some(50)),
-      chain              = List(TestUser, TestAgent),
-      tools              = Vector(NoResponseTool, RespondTool)
+      chain = List(TestUser, TestAgent),
+      tools = Vector(NoResponseTool, RespondTool)
     )
     for {
-      _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
       signals <- Orchestrator.process(TestSigil, provider, request, conv).toList
     } yield signals
   }
 
   "Bug #75 — plain text without a tool call" should {
-    "emit a synthetic ToolInvoke + Tool-role Message with Failure disposition" in {
+    "emit a synthetic ToolInvoke + Tool-role Message with Failure disposition" in
       runWith(new PlainTextProvider, "drift").map { signals =>
         // Synthetic ToolInvoke is present, with the framework-
         // internal name and `internal = true` flag.
@@ -136,20 +142,19 @@ class PlainTextRejectionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
           case _ => fail("expected Failure")
         }
         val reason = msg.failureReason.getOrElse("")
-        reason should include ("plain text")
-        reason should include ("respond-family")
+        reason should include("plain text")
+        reason should include("respond-family")
         // The dropped text is included so the agent can see what it
         // tried to say and reformulate as a tool call.
-        reason should include ("Random Dog")
+        reason should include("Random Dog")
         succeed
       }
-    }
 
-    "NOT emit a diagnostic when plain text accompanies a tool call (some providers leak narration)" in {
+    "NOT emit a diagnostic when plain text accompanies a tool call (some providers leak narration)" in
       runWith(new TextAndToolCallProvider, "narration-ok").map { signals =>
         val invokes = signals.collect { case ti: ToolInvoke => ti }
         // Only the real tool call; no synthetic _plain_text_reply.
-        invokes.map(_.toolName) shouldNot contain (ToolName("_plain_text_reply"))
+        invokes.map(_.toolName) shouldNot contain(ToolName("_plain_text_reply"))
         // No Tool-role Message with Failure disposition either.
         val failures = signals.collect {
           case m: Message if m.role == MessageRole.Tool && m.isFailure => m
@@ -157,19 +162,17 @@ class PlainTextRejectionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         failures shouldBe empty
         succeed
       }
-    }
 
-    "NOT emit a diagnostic when the stream is truly silent (no text, no tool call)" in {
+    "NOT emit a diagnostic when the stream is truly silent (no text, no tool call)" in
       runWith(new TrulySilentProvider, "silent").map { signals =>
         // No synthetic invoke; bug-#46's placeholder fires later via
         // `runAgentLoop.ensureSilentTurnReply`. The orchestrator's
         // Done handler stays clean — drift detection only fires
         // when there's real text to point at.
         val invokes = signals.collect { case ti: ToolInvoke => ti }
-        invokes.map(_.toolName) shouldNot contain (ToolName("_plain_text_reply"))
+        invokes.map(_.toolName) shouldNot contain(ToolName("_plain_text_reply"))
         succeed
       }
-    }
   }
 
   "tear down" should {

@@ -9,7 +9,8 @@ import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
 import sigil.workflow.{WorkflowScheduler, WorkflowTemplate}
 
 case class RunWorkflowInput(workflowId: String,
-                            variables: Map[String, String] = Map.empty) extends ToolInput derives RW
+                            variables: Map[String, String] = Map.empty)
+  extends ToolInput derives RW
 
 /**
  * Schedule an immediate run of a persisted workflow template.
@@ -23,25 +24,27 @@ case class RunWorkflowInput(workflowId: String,
  * subsequent calls (`cancel_workflow`, `resume_workflow`,
  * etc.) to refer to a specific run.
  */
-final class RunWorkflowTool extends TypedTool[RunWorkflowInput](
-  name = ToolName("run_workflow"),
-  description =
-    """Schedule a run of a persisted workflow template.
+final class RunWorkflowTool
+  extends TypedTool[RunWorkflowInput](
+    name = ToolName("run_workflow"),
+    description =
+      """Schedule a run of a persisted workflow template.
       |
       |`workflowId` is the template id. `variables` (optional) overrides the template's
       |variable defaults — pass any inputs the workflow's `variableDefs` declare.
       |Returns the run id for cancel / resume / inspection.""".stripMargin,
-  examples = List(
-    ToolExample(
-      "run a template with one input",
-      RunWorkflowInput(workflowId = "wf-abc", variables = Map("input" -> "today's events"))
-    )
-  ),
-  keywords = Set("workflow", "run", "schedule", "execute", "trigger")
-) with WorkflowToolSupport {
+    examples = List(
+      ToolExample(
+        "run a template with one input",
+        RunWorkflowInput(workflowId = "wf-abc", variables = Map("input" -> "today's events"))
+      )
+    ),
+    keywords = Set("workflow", "run", "schedule", "execute", "trigger")
+  )
+  with WorkflowToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: RunWorkflowInput, ctx: TurnContext): Stream[Event] = {
+  override protected def executeTyped(input: RunWorkflowInput, ctx: TurnContext): Stream[Event] =
     workflowHost(ctx) match {
       case Left(err) => reply(ctx, err, isError = true)
       case Right(host) =>
@@ -60,5 +63,4 @@ final class RunWorkflowTool extends TypedTool[RunWorkflowInput](
         }
         Stream.force(task.map(text => reply(ctx, text)))
     }
-  }
 }

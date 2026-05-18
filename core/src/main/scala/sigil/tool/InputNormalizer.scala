@@ -34,8 +34,10 @@ import fabric.define.{DefType, Definition}
  */
 object InputNormalizer {
 
-  /** Walk `json` alongside `definition` and rewrite empty-string
-    * Option fields to `Null`. Returns the normalised JSON. */
+  /**
+   * Walk `json` alongside `definition` and rewrite empty-string
+   * Option fields to `Null`. Returns the normalised JSON.
+   */
   def normalize(json: Json, definition: Definition): Json =
     normalize(json, definition.defType)
 
@@ -46,7 +48,7 @@ object InputNormalizer {
           val rewritten = values.map { case (key, value) =>
             fieldMap.get(key) match {
               case Some(fieldDef) => key -> normalize(value, fieldDef.defType)
-              case None           => key -> value
+              case None => key -> value
             }
           }
           Obj(rewritten)
@@ -67,7 +69,7 @@ object InputNormalizer {
       // unchanged; the "" → None idiom is specific to strings.
       json match {
         case Str(s, _) if s.isEmpty && inner.defType == DefType.Str => Null
-        case other                                                  => normalize(other, inner.defType)
+        case other => normalize(other, inner.defType)
       }
 
     case _ => json

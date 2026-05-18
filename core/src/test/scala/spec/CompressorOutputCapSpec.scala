@@ -37,42 +37,47 @@ class CompressorOutputCapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   private val modelId: Id[Model] = Model.id("test", "output-cap-model")
 
   TestSigil.cache.replace(List(Model(
-    canonicalSlug       = "test/output-cap-model",
-    huggingFaceId       = "",
-    name                = "output-cap-model",
-    description         = "",
-    contextLength       = 100_000L,
-    architecture        = ModelArchitecture(
-      modality         = "text->text",
-      inputModalities  = List("text"),
+    canonicalSlug = "test/output-cap-model",
+    huggingFaceId = "",
+    name = "output-cap-model",
+    description = "",
+    contextLength = 100_000L,
+    architecture = ModelArchitecture(
+      modality = "text->text",
+      inputModalities = List("text"),
       outputModalities = List("text"),
-      tokenizer        = "None",
-      instructType     = None
+      tokenizer = "None",
+      instructType = None
     ),
-    pricing             = ModelPricing(
-      prompt = BigDecimal(0), completion = BigDecimal(0),
-      webSearch = None, inputCacheRead = None
+    pricing = ModelPricing(
+      prompt = BigDecimal(0),
+      completion = BigDecimal(0),
+      webSearch = None,
+      inputCacheRead = None
     ),
-    topProvider         = ModelTopProvider(
-      contextLength = Some(100_000L), maxCompletionTokens = None, isModerated = false
+    topProvider = ModelTopProvider(
+      contextLength = Some(100_000L),
+      maxCompletionTokens = None,
+      isModerated = false
     ),
-    perRequestLimits    = None,
+    perRequestLimits = None,
     supportedParameters = Set.empty,
-    knowledgeCutoff     = None,
-    expirationDate      = None,
-    links               = ModelLinks(details = ""),
-    created             = Timestamp(),
-    _id                 = modelId
+    knowledgeCutoff = None,
+    expirationDate = None,
+    links = ModelLinks(details = ""),
+    created = Timestamp(),
+    _id = modelId
   ))).sync()
 
   private def textFrame(s: String, id: String): ContextFrame.Text =
     ContextFrame.Text(s, TestUser, Id[Event](id))
 
-  /** Captures the `maxOutputTokens` from every ProviderCall it sees
-    * so the spec can assert the cap reached the wire. Returns
-    * canned summary / extraction results so the compressor settles. */
-  private class CapturingStubProvider(facts: List[String], summary: String)
-    extends Provider {
+  /**
+   * Captures the `maxOutputTokens` from every ProviderCall it sees
+   * so the spec can assert the cap reached the wire. Returns
+   * canned summary / extraction results so the compressor settles.
+   */
+  private class CapturingStubProvider(facts: List[String], summary: String) extends Provider {
     val seenMaxOutput = new AtomicReference[Vector[Option[Int]]](Vector.empty)
 
     override def `type`: ProviderType = ProviderType.LlamaCpp
@@ -111,17 +116,18 @@ class CompressorOutputCapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       TestSigil.reset()
       val convId = Conversation.id(s"cap-${rapid.Unique()}")
       TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-        _id = convId, topics = List(TestTopicEntry)
+        _id = convId,
+        topics = List(TestTopicEntry)
       )))).sync()
       TestSigil.setCompressionSpace(Some(MemoryTestSpace))
       val provider = new CapturingStubProvider(
-        facts   = List("Fact one for testing."),
+        facts = List("Fact one for testing."),
         summary = "Test summary content."
       )
       TestSigil.setProvider(Task.pure(provider))
 
       val compressor = MemoryContextCompressor(
-        maxSummaryTokens    = 2048,
+        maxSummaryTokens = 2048,
         maxExtractionTokens = 1024
       )
       val frames = (0 until 4).toVector.map(i => textFrame(s"utterance $i", s"ev-$i"))
@@ -135,8 +141,8 @@ class CompressorOutputCapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         // — which doesn't go through this stub.
         seen should not be empty
         seen.foreach(_ should not be None)
-        seen should contain(Some(1024))  // extraction
-        seen should contain(Some(2048))  // summarisation
+        seen should contain(Some(1024)) // extraction
+        seen should contain(Some(2048)) // summarisation
       }
     }
 
@@ -144,22 +150,27 @@ class CompressorOutputCapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       TestSigil.reset()
       val convId = Conversation.id(s"cap-low-${rapid.Unique()}")
       TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-        _id = convId, topics = List(TestTopicEntry)
+        _id = convId,
+        topics = List(TestTopicEntry)
       )))).sync()
       TestSigil.setCompressionSpace(Some(MemoryTestSpace))
       val provider = new CapturingStubProvider(
-        facts   = List("Fact."),
+        facts = List("Fact."),
         summary = "Sum."
       )
       TestSigil.setProvider(Task.pure(provider))
 
       val compressor = MemoryContextCompressor(
-        maxSummaryTokens    = 256,
+        maxSummaryTokens = 256,
         maxExtractionTokens = 128
       )
       for {
-        _ <- compressor.compress(TestSigil, modelId, chain = List(TestUser, TestAgent),
-                                  Stream.emits(Vector(textFrame("utterance", "ev-0"))), convId)
+        _ <- compressor.compress(
+          TestSigil,
+          modelId,
+          chain = List(TestUser, TestAgent),
+          Stream.emits(Vector(textFrame("utterance", "ev-0"))),
+          convId)
       } yield {
         val seen = provider.seenMaxOutput.get()
         seen should contain(Some(128))
@@ -174,10 +185,11 @@ class CompressorOutputCapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       TestSigil.reset()
       val convId = Conversation.id(s"sum-cap-${rapid.Unique()}")
       TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
-        _id = convId, topics = List(TestTopicEntry)
+        _id = convId,
+        topics = List(TestTopicEntry)
       )))).sync()
       val provider = new CapturingStubProvider(
-        facts   = Nil,
+        facts = Nil,
         summary = "Plain summary."
       )
       TestSigil.setProvider(Task.pure(provider))

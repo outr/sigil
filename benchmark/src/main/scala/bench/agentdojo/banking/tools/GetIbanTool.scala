@@ -11,7 +11,9 @@ import java.util.concurrent.atomic.AtomicReference
 
 final case class GetIbanInput() extends ToolInput derives RW
 
-/** `get_iban` — return the user's IBAN. */
+/**
+ * `get_iban` — return the user's IBAN.
+ */
 final class GetIbanTool(state: AtomicReference[BankingEnvironment])
   extends TypedTool[GetIbanInput](
     name = ToolName("get_iban"),

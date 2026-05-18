@@ -16,27 +16,31 @@ import java.nio.file.Path
  */
 private[metals] object MetalsToolSupport {
 
-  /** Cast the tool's host to a [[MetalsSigil]] if possible. Returns
-    * `None` for installations that registered the lifecycle tools
-    * without mixing the trait in (defensive — shouldn't happen in
-    * practice, but the cast crash would be opaque). */
+  /**
+   * Cast the tool's host to a [[MetalsSigil]] if possible. Returns
+   * `None` for installations that registered the lifecycle tools
+   * without mixing the trait in (defensive — shouldn't happen in
+   * practice, but the cast crash would be opaque).
+   */
   def manager(sigil: Sigil): Option[MetalsManager] = sigil match {
     case ms: MetalsSigil => Some(ms.metalsManager)
-    case _               => None
+    case _ => None
   }
 
-  /** Resolve the workspace for the conversation via
-    * [[MetalsSigil.metalsWorkspace]]. Returns `Left(message)` when
-    * the host doesn't include MetalsSigil, when the conversation
-    * has no workspace mapping (`None` from the hook), or when the
-    * mapping resolves to a non-existent path. The Right branch
-    * carries the canonical absolute path. */
+  /**
+   * Resolve the workspace for the conversation via
+   * [[MetalsSigil.metalsWorkspace]]. Returns `Left(message)` when
+   * the host doesn't include MetalsSigil, when the conversation
+   * has no workspace mapping (`None` from the hook), or when the
+   * mapping resolves to a non-existent path. The Right branch
+   * carries the canonical absolute path.
+   */
   def workspaceFor(sigil: Sigil, ctx: TurnContext): Task[Either[String, Path]] = sigil match {
     case ms: MetalsSigil =>
       ms.metalsWorkspace(ctx.conversation.id).map {
         case None =>
           Left(s"No Metals workspace configured for conversation ${ctx.conversation.id.value} — " +
-               "the app's MetalsSigil.metalsWorkspace returned None.")
+            "the app's MetalsSigil.metalsWorkspace returned None.")
         case Some(path) =>
           val canonical = path.toAbsolutePath.normalize
           if (!java.nio.file.Files.isDirectory(canonical))
@@ -50,15 +54,17 @@ private[metals] object MetalsToolSupport {
       ))
   }
 
-  /** Build a `Role.Tool` Message reply with the supplied text. */
+  /**
+   * Build a `Role.Tool` Message reply with the supplied text.
+   */
   def reply(context: TurnContext, text: String, isError: Boolean = false): Event =
     Message(
-      participantId  = context.caller,
+      participantId = context.caller,
       conversationId = context.conversation.id,
-      topicId        = context.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete,
-      role           = MessageRole.Tool,
-      visibility     = MessageVisibility.All
+      topicId = context.conversation.currentTopicId,
+      content = Vector(ResponseContent.Text(text)),
+      state = EventState.Complete,
+      role = MessageRole.Tool,
+      visibility = MessageVisibility.All
     )
 }

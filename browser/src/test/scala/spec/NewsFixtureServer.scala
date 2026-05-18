@@ -87,7 +87,8 @@ final class NewsFixtureServer {
   def start(): Task[Unit] = Task { server.start().sync(); () }
 
   def stop(): Task[Unit] = Task {
-    try server.stop().sync() catch { case _: Throwable => () }
+    try server.stop().sync()
+    catch { case _: Throwable => () }
   }
 
   def port: Int = server.config.listeners().head.port.getOrElse(0)

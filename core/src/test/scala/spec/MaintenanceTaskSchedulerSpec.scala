@@ -27,21 +27,27 @@ import scala.concurrent.duration.*
 class MaintenanceTaskSchedulerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   private val healthy = new AtomicInteger(0)
-  private val broken  = new AtomicInteger(0)
+  private val broken = new AtomicInteger(0)
 
-  /** Counter-based maintenance task — bumps on every `runOnce`. */
+  /**
+   * Counter-based maintenance task — bumps on every `runOnce`.
+   */
   private case class CountingTask(name: String,
                                   interval: FiniteDuration,
-                                  counter: AtomicInteger) extends MaintenanceTask {
+                                  counter: AtomicInteger)
+    extends MaintenanceTask {
     override def runOnce(host: Sigil): Task[Unit] = Task { counter.incrementAndGet(); () }
   }
 
-  /** Maintenance task that always throws. Used to verify failure
-    * isolation — sibling tasks keep ticking even if this one is
-    * broken. */
+  /**
+   * Maintenance task that always throws. Used to verify failure
+   * isolation — sibling tasks keep ticking even if this one is
+   * broken.
+   */
   private case class FailingTask(name: String,
                                  interval: FiniteDuration,
-                                 attempts: AtomicInteger) extends MaintenanceTask {
+                                 attempts: AtomicInteger)
+    extends MaintenanceTask {
     override def runOnce(host: Sigil): Task[Unit] =
       Task { attempts.incrementAndGet(); () }.flatMap(_ => Task.error(new RuntimeException("intentional")))
   }
@@ -53,7 +59,7 @@ class MaintenanceTaskSchedulerSpec extends AsyncWordSpec with AsyncTaskSpec with
   MaintenanceTaskTestSigil.initFor(getClass.getSimpleName)
 
   "Sigil.maintenanceTasks scheduler" should {
-    "fire registered tasks on their cadence and isolate failures" in {
+    "fire registered tasks on their cadence and isolate failures" in
       Task.sleep(400.millis).map { _ =>
         // Immediate first tick + ~3 more in 400ms at 100ms cadence.
         healthy.get() should be >= 2
@@ -61,7 +67,6 @@ class MaintenanceTaskSchedulerSpec extends AsyncWordSpec with AsyncTaskSpec with
         // drop it from the schedule.
         broken.get() should be >= 2
       }
-    }
   }
 
   "tear down" should {
@@ -69,15 +74,17 @@ class MaintenanceTaskSchedulerSpec extends AsyncWordSpec with AsyncTaskSpec with
   }
 }
 
-/** Per-suite Sigil exposing [[Sigil.maintenanceTasks]] via a mutable
-  * hook so the spec can register its tasks before `initFor` boots
-  * the instance. Mirrors [[TestSigil]]'s minimal shape; no provider,
-  * no participants. */
+/**
+ * Per-suite Sigil exposing [[Sigil.maintenanceTasks]] via a mutable
+ * hook so the spec can register its tasks before `initFor` boots
+ * the instance. Mirrors [[TestSigil]]'s minimal shape; no provider,
+ * no participants.
+ */
 object MaintenanceTaskTestSigil extends sigil.Sigil {
   override type DB = sigil.db.DefaultSigilDB
   override protected def buildDB(directory: Option[java.nio.file.Path],
-                                  storeManager: lightdb.store.CollectionManager,
-                                  appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
+                                 storeManager: lightdb.store.CollectionManager,
+                                 appUpgrades: List[lightdb.upgrade.DatabaseUpgrade]): DB =
     new sigil.db.DefaultSigilDB(directory, storeManager, appUpgrades)
   override def testMode: Boolean = true
 
@@ -99,7 +106,7 @@ object MaintenanceTaskTestSigil extends sigil.Sigil {
     ()
   }
 
-  private def deleteRecursive(path: java.nio.file.Path): Unit = {
+  private def deleteRecursive(path: java.nio.file.Path): Unit =
     if (java.nio.file.Files.exists(path)) {
       val stream = java.nio.file.Files.walk(path)
       try {
@@ -107,5 +114,4 @@ object MaintenanceTaskTestSigil extends sigil.Sigil {
         stream.iterator().asScala.toList.reverse.foreach(p => java.nio.file.Files.deleteIfExists(p))
       } finally stream.close()
     }
-  }
 }

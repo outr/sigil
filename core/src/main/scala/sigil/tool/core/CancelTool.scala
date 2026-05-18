@@ -36,10 +36,11 @@ import sigil.tool.{ToolName, TypedTool}
  * event. In the refused path: emits a single tool-role
  * [[Message]] carrying a `Failure` block.
  */
-case object CancelTool extends TypedTool[CancelInput](
-  name = ToolName("cancel"),
-  description =
-    """Cancel the current agent turn immediately. Use ONLY when:
+case object CancelTool
+  extends TypedTool[CancelInput](
+    name = ToolName("cancel"),
+    description =
+      """Cancel the current agent turn immediately. Use ONLY when:
       |  - The user explicitly halted the conversation (took over via the chat).
       |  - You've encountered an unrecoverable failure and continuing would waste effort.
       |
@@ -51,34 +52,37 @@ case object CancelTool extends TypedTool[CancelInput](
       |
       |Omit `targetParticipantId` to cancel ALL agents. `force=true` interrupts an
       |in-flight call (use for monitor-agent intercepts).""".stripMargin,
-  keywords = Set("cancel", "halt", "abort", "user-stop", "interrupt", "stop")
-) {
+    keywords = Set("cancel", "halt", "abort", "user-stop", "interrupt", "stop")
+  ) {
   override def paginate: Boolean = false
 
-
-  /** Patterns that signal the caller meant a turn-flow operation
-    * (start something, fetch results, wait, advance to the next
-    * step) rather than a cancellation. A legitimate cancel reason
-    * is typically `"user requested halt"` / `"unrecoverable
-    * failure: ..."` and doesn't trip them.
-    *
-    * The first element of each pair names the heuristic so the
-    * refusal can tell the agent which pattern matched. */
+  /**
+   * Patterns that signal the caller meant a turn-flow operation
+   * (start something, fetch results, wait, advance to the next
+   * step) rather than a cancellation. A legitimate cancel reason
+   * is typically `"user requested halt"` / `"unrecoverable
+   * failure: ..."` and doesn't trip them.
+   *
+   * The first element of each pair names the heuristic so the
+   * refusal can tell the agent which pattern matched.
+   */
   val transitionPatterns: List[(String, scala.util.matching.Regex)] = List(
-    "start"      -> raw"(?i)\bstart(ing)?\b".r,
-    "need-to"    -> raw"(?i)\bneed to (read|fetch|get|run|check|see|look at|review|examine|process|analyze)\b".r,
-    "wait"       -> raw"(?i)\b(wait|waiting|pause|pausing)\b".r,
-    "next"       -> raw"(?i)\bnext (step|action|phase|tool|call|move|iteration|turn)\b".r,
-    "then"       -> raw"(?i)\bthen (i|we|the agent) (will|should|can|need|must)\b".r,
+    "start" -> raw"(?i)\bstart(ing)?\b".r,
+    "need-to" -> raw"(?i)\bneed to (read|fetch|get|run|check|see|look at|review|examine|process|analyze)\b".r,
+    "wait" -> raw"(?i)\b(wait|waiting|pause|pausing)\b".r,
+    "next" -> raw"(?i)\bnext (step|action|phase|tool|call|move|iteration|turn)\b".r,
+    "then" -> raw"(?i)\bthen (i|we|the agent) (will|should|can|need|must)\b".r,
     "transition" -> raw"(?i)\btransition(ing)?\b".r,
-    "yield"      -> raw"(?i)\byield(ing)?\b".r,
+    "yield" -> raw"(?i)\byield(ing)?\b".r,
     "checkpoint" -> raw"(?i)\bcheckpoint\b".r
   )
 
-  /** Returns the matching pattern's name when a transition shape is
-    * detected; `None` when the reason looks like a legitimate
-    * cancel. Public so apps that wrap the cancel surface (custom
-    * tool, server-side validator, etc.) can reuse the heuristic. */
+  /**
+   * Returns the matching pattern's name when a transition shape is
+   * detected; `None` when the reason looks like a legitimate
+   * cancel. Public so apps that wrap the cancel surface (custom
+   * tool, server-side validator, etc.) can reuse the heuristic.
+   */
   def detectTransition(reason: String): Option[String] =
     if (reason.isEmpty) None
     else transitionPatterns.collectFirst {
@@ -92,13 +96,13 @@ case object CancelTool extends TypedTool[CancelInput](
         rapid.Stream.emit[Event](refuse(input, matchedPattern, context))
       case None =>
         rapid.Stream.emit[Event](Stop(
-          participantId       = context.caller,
-          conversationId      = context.conversation.id,
-          topicId             = context.conversation.currentTopicId,
+          participantId = context.caller,
+          conversationId = context.conversation.id,
+          topicId = context.conversation.currentTopicId,
           targetParticipantId = input.targetParticipantId,
-          force               = input.force,
-          reason              = input.reason,
-          role                = MessageRole.Tool
+          force = input.force,
+          reason = input.reason,
+          role = MessageRole.Tool
         ))
     }
   }
@@ -116,14 +120,14 @@ case object CancelTool extends TypedTool[CancelInput](
         "If you genuinely meant to cancel, rephrase the reason (e.g. 'user requested halt', " +
         "'unrecoverable failure: ...')."
     Message(
-      participantId  = context.caller,
+      participantId = context.caller,
       conversationId = context.conversation.id,
-      topicId        = context.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Text(guidance)),
-      disposition    = sigil.event.MessageDisposition.Failure(recoverable = true),
-      state          = EventState.Complete,
-      role           = MessageRole.Tool,
-      visibility     = MessageVisibility.Agents
+      topicId = context.conversation.currentTopicId,
+      content = Vector(ResponseContent.Text(guidance)),
+      disposition = sigil.event.MessageDisposition.Failure(recoverable = true),
+      state = EventState.Complete,
+      role = MessageRole.Tool,
+      visibility = MessageVisibility.Agents
     )
   }
 }

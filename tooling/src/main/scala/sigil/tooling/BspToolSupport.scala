@@ -29,8 +29,7 @@ trait BspToolSupport extends sigil.tool.Tool {
 
   override def toolchain: Option[String] = Some("bsp")
 
-  protected def withSession(projectRoot: String, context: TurnContext)
-                           (body: BspSession => Task[String]): Stream[Event] = {
+  protected def withSession(projectRoot: String, context: TurnContext)(body: BspSession => Task[String]): Stream[Event] = {
     val task = manager.session(projectRoot).flatMap { session =>
       installProgressCallback(session, context)
       body(session)
@@ -42,20 +41,23 @@ trait BspToolSupport extends sigil.tool.Tool {
     Stream.force(task.map(Stream.emit))
   }
 
-  /** Route BSP-server notifications (log lines, taskStart /
-    * taskProgress / taskFinish, showMessage) through the active
-    * tool's [[sigil.signal.ToolProgress]] channel. The callback is
-    * installed for the duration of `body` and cleared on exit so
-    * concurrent tool calls in the same session don't see stale
-    * text. */
+  /**
+   * Route BSP-server notifications (log lines, taskStart /
+   * taskProgress / taskFinish, showMessage) through the active
+   * tool's [[sigil.signal.ToolProgress]] channel. The callback is
+   * installed for the duration of `body` and cleared on exit so
+   * concurrent tool calls in the same session don't see stale
+   * text.
+   */
   private def installProgressCallback(session: BspSession, context: TurnContext): Unit =
     session.client.setStatusCallback(Some(text =>
-      context.reportProgress(text).handleError(_ => Task.unit).startUnit()
-    ))
+      context.reportProgress(text).handleError(_ => Task.unit).startUnit()))
 
-  /** Resolve a user-supplied target list — empty means "everything
-    * in the workspace". The server roundtrip is only paid when the
-    * input list is empty; explicit URIs short-circuit. */
+  /**
+   * Resolve a user-supplied target list — empty means "everything
+   * in the workspace". The server roundtrip is only paid when the
+   * input list is empty; explicit URIs short-circuit.
+   */
   protected def targetsFromInput(session: BspSession, requested: List[String]): Task[List[BuildTargetIdentifier]] =
     if (requested.nonEmpty) Task.pure(requested.map(uri => new BuildTargetIdentifier(uri)))
     else session.workspaceBuildTargets.map(_.map(_.getId))
@@ -71,15 +73,16 @@ trait BspToolSupport extends sigil.tool.Tool {
       visibility = MessageVisibility.All
     )
 
-  /** Typed variant for tools extending `TypedOutputTool[I, O]`. Runs
-    * `body` against a session and returns its typed `Output`. Errors
-    * (config / spawn / RPC failures) get routed to the caller's
-    * `onError` mapping — typically a sentinel variant on the tool's
-    * Output type. */
+  /**
+   * Typed variant for tools extending `TypedOutputTool[I, O]`. Runs
+   * `body` against a session and returns its typed `Output`. Errors
+   * (config / spawn / RPC failures) get routed to the caller's
+   * `onError` mapping — typically a sentinel variant on the tool's
+   * Output type.
+   */
   protected def withSessionTyped[Output](projectRoot: String,
                                          context: TurnContext,
-                                         onError: String => Output)
-                                        (body: BspSession => Task[Output]): Task[Output] =
+                                         onError: String => Output)(body: BspSession => Task[Output]): Task[Output] =
     manager.session(projectRoot).flatMap { session =>
       installProgressCallback(session, context)
       body(session).guarantee(Task(session.client.setStatusCallback(None)))

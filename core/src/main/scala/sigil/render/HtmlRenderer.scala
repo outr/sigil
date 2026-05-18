@@ -22,15 +22,15 @@ object HtmlRenderer extends ContentRenderer[String] {
     if (a.isEmpty) b else if (b.isEmpty) a else s"$a\n$b"
 
   override def renderBlock(block: ResponseContent): String = block match {
-    case ResponseContent.Text(text)             => s"<p>${escape(text)}</p>"
-    case ResponseContent.Markdown(text)         => s"<p>${escape(text)}</p>"
-    case ResponseContent.Heading(text)          => s"<h2>${escape(text)}</h2>"
+    case ResponseContent.Text(text) => s"<p>${escape(text)}</p>"
+    case ResponseContent.Markdown(text) => s"<p>${escape(text)}</p>"
+    case ResponseContent.Heading(text) => s"<h2>${escape(text)}</h2>"
     case ResponseContent.Code(code, lang) =>
       val cls = lang.fold("")(l => s""" class="language-${escape(l)}"""")
       s"<pre><code$cls>${escape(code)}</code></pre>"
     case ResponseContent.Diff(diff, _) =>
       s"""<pre><code class="language-diff">${escape(diff)}</code></pre>"""
-    case ResponseContent.Table(headers, rows)   => renderTable(headers, rows)
+    case ResponseContent.Table(headers, rows) => renderTable(headers, rows)
     case ResponseContent.ItemList(items, true) =>
       "<ol>" + items.map(i => s"<li>${escape(i)}</li>").mkString + "</ol>"
     case ResponseContent.ItemList(items, false) =>
@@ -45,7 +45,7 @@ object HtmlRenderer extends ContentRenderer[String] {
       s"<cite>$link$excerpt</cite>"
     case ResponseContent.Field(label, value, _) =>
       s"<p><strong>${escape(label)}:</strong> ${escape(value)}</p>"
-    case ResponseContent.Divider                => "<hr/>"
+    case ResponseContent.Divider => "<hr/>"
     case ResponseContent.Options(prompt, opts, _) =>
       val items = opts
         .map(o => s"<li><strong>${escape(o.label)}</strong> — ${escape(o.value)}</li>")
@@ -84,10 +84,10 @@ object HtmlRenderer extends ContentRenderer[String] {
 
   private def escape(s: String): String =
     s.replace("&", "&amp;")
-     .replace("<", "&lt;")
-     .replace(">", "&gt;")
-     .replace("\"", "&quot;")
-     .replace("'", "&#39;")
+      .replace("<", "&lt;")
+      .replace(">", "&gt;")
+      .replace("\"", "&quot;")
+      .replace("'", "&#39;")
 
   private def formatSize(bytes: Long): String =
     if (bytes < 1024) s"$bytes B"

@@ -33,4 +33,5 @@ case class CapabilityMatch(name: String,
                            capabilityType: CapabilityType,
                            score: Double,
                            status: CapabilityStatus,
-                           paginate: Option[Boolean] = None) derives RW
+                           paginate: Option[Boolean] = None)
+  derives RW

@@ -22,7 +22,7 @@ object SigilWorkflowModel extends AbstractWorkflowModel {
   // which closes back over `stepRW` itself — fabric's poly resolution
   // is lazy, so circularity is fine as long as the val isn't forced
   // at construction time.
-  override implicit lazy val stepRW: RW[Step] = RW.poly[Step]()(
+  implicit override lazy val stepRW: RW[Step] = RW.poly[Step]()(
     summon[RW[SigilJobStep]],
     summon[RW[SigilCondition]],
     summon[RW[SigilApproval]],

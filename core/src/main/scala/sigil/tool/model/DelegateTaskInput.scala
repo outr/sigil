@@ -29,4 +29,5 @@ import sigil.tool.ToolInput
 case class DelegateTaskInput(role: Role,
                              brief: String,
                              modelId: String,
-                             toolNames: List[String] = Nil) extends ToolInput derives RW
+                             toolNames: List[String] = Nil)
+  extends ToolInput derives RW

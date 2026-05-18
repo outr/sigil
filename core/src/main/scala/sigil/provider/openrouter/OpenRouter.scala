@@ -34,38 +34,44 @@ package sigil.provider.openrouter
 object OpenRouter {
   val Provider: String = "openrouter"
 
-  /** Optional `HTTP-Referer` header value used for OpenRouter's
-    * public-leaderboard attribution. Apps that want their traffic
-    * credited set this to their site URL. Defaults to none. */
+  /**
+   * Optional `HTTP-Referer` header value used for OpenRouter's
+   * public-leaderboard attribution. Apps that want their traffic
+   * credited set this to their site URL. Defaults to none.
+   */
   type Referer = String
 
-  /** Optional `X-Title` header — friendly app name for the same
-    * leaderboard. Defaults to none. */
+  /**
+   * Optional `X-Title` header — friendly app name for the same
+   * leaderboard. Defaults to none.
+   */
   type Title = String
 
-  /** OpenRouter provider slugs whose endpoints are hosted in (or
-    * affiliated with) mainland China. Sourced from
-    * `https://openrouter.ai/api/v1/providers` — each entry self-
-    * declares headquarters / datacenter locations.
-    *
-    * Two tiers folded into one set so callers get a conservative
-    * default — apps that want a stricter "datacenters-in-CN-only"
-    * filter narrow the set, apps that want to allow SG-headquartered
-    * Chinese-affiliated providers widen it:
-    *
-    *   - Direct mainland-China hosting (HQ or datacenter in CN):
-    *     `deepseek`, `alibaba`, `xiaomi`, `baidu`, `streamlake`,
-    *     `nex-agi`.
-    *   - Chinese-affiliated companies headquartered in Singapore
-    *     (no declared CN datacenters today, but parent companies are
-    *     PRC-domiciled and could route through CN in the future
-    *     without OpenRouter changing the slug):
-    *     `siliconflow`, `minimax`, `z-ai`, `moonshotai`.
-    *
-    * Verify against the live `/providers` endpoint when widening or
-    * narrowing this list — OpenRouter rotates upstreams. The
-    * [[OpenRouterProvider.providerRouting]] override is the right
-    * surface for app-specific deviations from this default. */
+  /**
+   * OpenRouter provider slugs whose endpoints are hosted in (or
+   * affiliated with) mainland China. Sourced from
+   * `https://openrouter.ai/api/v1/providers` — each entry self-
+   * declares headquarters / datacenter locations.
+   *
+   * Two tiers folded into one set so callers get a conservative
+   * default — apps that want a stricter "datacenters-in-CN-only"
+   * filter narrow the set, apps that want to allow SG-headquartered
+   * Chinese-affiliated providers widen it:
+   *
+   *   - Direct mainland-China hosting (HQ or datacenter in CN):
+   *     `deepseek`, `alibaba`, `xiaomi`, `baidu`, `streamlake`,
+   *     `nex-agi`.
+   *   - Chinese-affiliated companies headquartered in Singapore
+   *     (no declared CN datacenters today, but parent companies are
+   *     PRC-domiciled and could route through CN in the future
+   *     without OpenRouter changing the slug):
+   *     `siliconflow`, `minimax`, `z-ai`, `moonshotai`.
+   *
+   * Verify against the live `/providers` endpoint when widening or
+   * narrowing this list — OpenRouter rotates upstreams. The
+   * [[OpenRouterProvider.providerRouting]] override is the right
+   * surface for app-specific deviations from this default.
+   */
   val ChineseHostedSlugs: Set[String] = Set(
     "deepseek",
     "alibaba",

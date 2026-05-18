@@ -7,7 +7,7 @@ import profig.Profig
 import rapid.Task
 import sigil.{Sigil, SpaceId}
 import sigil.browser.{BrowserCollections, BrowserSigil, WebBrowserMode}
-import sigil.conversation.{TurnInput}
+import sigil.conversation.TurnInput
 import sigil.db.{Model, SigilDB}
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
 import sigil.information.Information
@@ -23,38 +23,42 @@ import spice.net.{TLDValidation, URL, url}
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicReference
 
-/** Concrete `SigilDB` for the browser-module tests — adds the cookie
-  * jar store ([[BrowserCollections]]) and the secret store
-  * ([[SecretsCollections]]) since [[BrowserSigil]] requires both. */
+/**
+ * Concrete `SigilDB` for the browser-module tests — adds the cookie
+ * jar store ([[BrowserCollections]]) and the secret store
+ * ([[SecretsCollections]]) since [[BrowserSigil]] requires both.
+ */
 class TestBrowserDB(directory: Option[Path],
-                   storeManager: CollectionManager,
-                   upgrades: List[DatabaseUpgrade] = Nil)
-  extends SigilDB(directory, storeManager, upgrades)
-    with BrowserCollections
-    with SecretsCollections
+                    storeManager: CollectionManager,
+                    upgrades: List[DatabaseUpgrade] = Nil)
+  extends SigilDB(directory, storeManager, upgrades) with BrowserCollections with SecretsCollections
 
-/** Test-only Sigil for `sigil-browser` specs. Mirrors the minimal
-  * shape of `TestSecretsSigil` — no provider, no vector index, no app
-  * participants. Mixes in [[BrowserSigil]] so the spec can exercise
-  * controller resolution, registration round-trips, and cookie jar
-  * persistence.
-  *
-  * Does NOT actually open Chrome — specs that need a live browser
-  * gate themselves on Chrome availability and self-skip when not
-  * present. */
+/**
+ * Test-only Sigil for `sigil-browser` specs. Mirrors the minimal
+ * shape of `TestSecretsSigil` — no provider, no vector index, no app
+ * participants. Mixes in [[BrowserSigil]] so the spec can exercise
+ * controller resolution, registration round-trips, and cookie jar
+ * persistence.
+ *
+ * Does NOT actually open Chrome — specs that need a live browser
+ * gate themselves on Chrome availability and self-skip when not
+ * present.
+ */
 object TestBrowserSigil extends Sigil with BrowserSigil {
   override type DB = TestBrowserDB
 
   override protected def buildDB(directory: Option[Path],
-                                  storeManager: CollectionManager,
-                                  upgrades: List[DatabaseUpgrade]): TestBrowserDB =
+                                 storeManager: CollectionManager,
+                                 upgrades: List[DatabaseUpgrade]): TestBrowserDB =
     new TestBrowserDB(directory, storeManager, upgrades)
 
   override def testMode: Boolean = true
 
-  /** Static test-only key — `BrowserSigil` mixes in `SecretsSigil`,
-    * which requires this. Production apps source it from a real
-    * secret manager; tests get a deterministic literal. */
+  /**
+   * Static test-only key — `BrowserSigil` mixes in `SecretsSigil`,
+   * which requires this. Production apps source it from a real
+   * secret manager; tests get a deterministic literal.
+   */
   override def secretStoreKey: String = "test-crypto-key-do-not-use-in-production"
 
   override protected def participantIds: List[RW[? <: ParticipantId]] = Nil
@@ -63,10 +67,12 @@ object TestBrowserSigil extends Sigil with BrowserSigil {
 
   override protected def modes: List[Mode] = List(WebBrowserMode)
 
-  /** Static tools include framework essentials + the seven primitive
-    * browser tools so specs running an end-to-end agent flow can
-    * resolve them via `find_capability` / direct toolNames. Specs
-    * that don't want them override `staticTools` again to `Nil`. */
+  /**
+   * Static tools include framework essentials + the seven primitive
+   * browser tools so specs running an end-to-end agent flow can
+   * resolve them via `find_capability` / direct toolNames. Specs
+   * that don't want them override `staticTools` again to `Nil`.
+   */
   override def staticTools: List[Tool] =
     CoreTools.all.toList ++ BrowserCoreTools.all
 
@@ -77,8 +83,9 @@ object TestBrowserSigil extends Sigil with BrowserSigil {
 
   // Mutable provider hook — specs install a real provider via setProvider.
   private val providerRef: AtomicReference[() => Task[Provider]] =
-    new AtomicReference(() => Task.error(new RuntimeException(
-      "TestBrowserSigil.setProvider was not called — no provider configured")))
+    new AtomicReference(() =>
+      Task.error(new RuntimeException(
+        "TestBrowserSigil.setProvider was not called — no provider configured")))
 
   // accessibleSpaces hook — specs that need authz wire their own.
   // Default authorizes GlobalSpace so the structural-query browser tools
@@ -122,10 +129,12 @@ object TestBrowserSigil extends Sigil with BrowserSigil {
   override val embeddingProvider: EmbeddingProvider = NoOpEmbeddingProvider
   override val vectorIndex: VectorIndex = NoOpVectorIndex
 
-  /** Local llama.cpp host for live-LLM specs. Defaults to the public
-    * `https://llama.voidcraft.ai` host; override with the
-    * `sigil.llamacpp.host` profig key (or `SIGIL_LLAMACPP_HOST` env)
-    * to point at a local server. */
+  /**
+   * Local llama.cpp host for live-LLM specs. Defaults to the public
+   * `https://llama.voidcraft.ai` host; override with the
+   * `sigil.llamacpp.host` profig key (or `SIGIL_LLAMACPP_HOST` env)
+   * to point at a local server.
+   */
   lazy val llamaCppHost: URL =
     Profig("sigil.llamacpp.host").asOr[URL](url"https://llama.voidcraft.ai")
 
@@ -144,7 +153,7 @@ object TestBrowserSigil extends Sigil with BrowserSigil {
     ()
   }
 
-  private def deleteRecursive(path: Path): Unit = {
+  private def deleteRecursive(path: Path): Unit =
     if (java.nio.file.Files.exists(path)) {
       val s = java.nio.file.Files.walk(path)
       try {
@@ -152,5 +161,4 @@ object TestBrowserSigil extends Sigil with BrowserSigil {
         s.iterator().asScala.toList.reverse.foreach(p => java.nio.file.Files.deleteIfExists(p))
       } finally s.close()
     }
-  }
 }

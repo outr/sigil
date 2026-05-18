@@ -14,21 +14,23 @@ case class DapScopesInput(sessionId: String, frameId: Int) extends ToolInput der
  * `variablesReference` the agent passes to `dap_variables` to
  * actually fetch the named bindings.
  */
-final class DapScopesTool(val manager: DapManager) extends TypedTool[DapScopesInput](
-  name = ToolName("dap_scopes"),
-  description =
-    """Fetch the variable scopes (Locals / Arguments / Globals / etc.) for a frame.
+final class DapScopesTool(val manager: DapManager)
+  extends TypedTool[DapScopesInput](
+    name = ToolName("dap_scopes"),
+    description =
+      """Fetch the variable scopes (Locals / Arguments / Globals / etc.) for a frame.
       |
       |`sessionId` selects the active session.
       |`frameId` is from the most-recent `dap_stack_trace` for the stopped thread.
       |Returns each scope's name and `variablesReference` for the next call.""".stripMargin,
-  examples = List(
-    ToolExample(
-      "fetch scopes for the top frame",
-      DapScopesInput(sessionId = "demo-session", frameId = 1000)
+    examples = List(
+      ToolExample(
+        "fetch scopes for the top frame",
+        DapScopesInput(sessionId = "demo-session", frameId = 1000)
+      )
     )
   )
-) with DapToolSupport {
+  with DapToolSupport {
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: DapScopesInput, context: TurnContext): Stream[Event] =

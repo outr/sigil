@@ -36,7 +36,8 @@ case object CompleteTaskTool
         |The framework settles your run; the parent agent picks up the summary from the
         |TaskExecuted event and decides how to surface it to the user.""".stripMargin,
     examples = List(
-      ToolExample("Worker reports a research result",
+      ToolExample(
+        "Worker reports a research result",
         CompleteTaskInput(summary = "Found 3 RAG papers from 2026; cited the strongest 2 in /tmp/papers.md."))
     ),
     keywords = Set("complete", "done", "finish", "terminate", "settle", "result")
