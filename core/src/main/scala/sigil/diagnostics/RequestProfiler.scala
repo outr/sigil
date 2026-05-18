@@ -2,7 +2,7 @@ package sigil.diagnostics
 
 import sigil.Sigil
 import sigil.conversation.{ContextFrame, ContextMemory}
-import sigil.provider.{ConversationRequest, ResolvedReferences}
+import sigil.provider.{ConversationRequest, Provider, ResolvedReferences}
 import sigil.tokenize.Tokenizer
 import sigil.tool.Tool
 
@@ -141,11 +141,37 @@ object RequestProfiler {
       add(ProfileSection.ActiveSkills, text)
     }
 
-    // 10. Recently used tools
-    val recentTools = chain.flatMap(id => turn.projectionFor(id).recentTools).distinct
-    if (recentTools.nonEmpty) {
-      val text = "\n== Recently used tools ==\n" + recentTools.map(t => s"- $t\n").mkString
-      add(ProfileSection.RecentTools, text)
+    // 10. Recently used tools (dedup-aware -- includes repeated-call
+    //     groups so the profiler's section accounting matches what
+    //     the system-prompt renderer emits)
+    val recentInvocations = chain.flatMap(id => turn.projectionFor(id).recentToolInvocations)
+    val nowMs = System.currentTimeMillis()
+    val recent = recentInvocations
+      .distinctBy(inv => (inv.toolName, inv.argsHash))
+      .sortBy(-_.invokedAt.value)
+      .take(Provider.RecentToolsPromptCap)
+    if (recent.nonEmpty) {
+      val lines = recent.map { inv =>
+        val ago = Provider.humanizeAgo(nowMs - inv.invokedAt.value)
+        val previewSuffix = if (inv.argsPreview.nonEmpty) s" (${inv.argsPreview})" else ""
+        s"- ${inv.toolName.value}$previewSuffix -- $ago\n"
+      }.mkString
+      val duplicateGroups = recentInvocations
+        .groupBy(inv => (inv.toolName, inv.argsHash))
+        .collect { case (key, occurrences) if occurrences.size > 1 => key -> occurrences }
+        .toList
+        .sortBy(-_._2.maxBy(_.invokedAt.value).invokedAt.value)
+      val dupText =
+        if (duplicateGroups.isEmpty) ""
+        else "\n== Repeated tool calls ==\n" + duplicateGroups.map { case ((tn, _), occurrences) =>
+          val preview = occurrences.head.argsPreview
+          val latest = occurrences.maxBy(_.invokedAt.value).invokedAt.value
+          val ago = Provider.humanizeAgo(nowMs - latest)
+          val previewText = if (preview.nonEmpty) s" `$preview`" else ""
+          s"- You called `${tn.value}` with these args ${occurrences.size} times " +
+            s"(most recently $ago):$previewText.\n"
+        }.mkString
+      add(ProfileSection.RecentTools, "\n== Recently used tools ==\n" + lines + dupText)
     }
 
     // 11. Suggested tools

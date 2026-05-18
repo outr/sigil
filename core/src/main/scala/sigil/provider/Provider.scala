@@ -961,10 +961,46 @@ trait Provider extends Service {
       }
     }
 
-    val recentTools = chain.flatMap(id => turn.projectionFor(id).recentTools).distinct
-    if (recentTools.nonEmpty) {
+    val recentInvocations = chain.flatMap(id => turn.projectionFor(id).recentToolInvocations)
+    val now = System.currentTimeMillis()
+    val recent = recentInvocations
+      .distinctBy(inv => (inv.toolName, inv.argsHash))
+      .sortBy(-_.invokedAt.value)
+      .take(Provider.RecentToolsPromptCap)
+    if (recent.nonEmpty) {
       sb.append("\n== Recently used tools ==\n")
-      recentTools.foreach(t => sb.append(s"- $t\n"))
+      recent.foreach { inv =>
+        val ago = Provider.humanizeAgo(now - inv.invokedAt.value)
+        val previewSuffix = if (inv.argsPreview.nonEmpty) s" (${inv.argsPreview})" else ""
+        sb.append(s"- ${inv.toolName.value}$previewSuffix -- $ago\n")
+      }
+    }
+    // Surface every (toolName, argsHash) bucket that fires more than
+    // once in the rolling window. The agent's prompt previously only
+    // showed tool names, leaving it blind to "I called grep with these
+    // EXACT args 30s ago" -- the model would retry expecting different
+    // output. Naming the args + the count + the directive gives the
+    // model the data it needs to switch strategy.
+    val duplicateGroups = recentInvocations
+      .groupBy(inv => (inv.toolName, inv.argsHash))
+      .collect { case (key, occurrences) if occurrences.size > 1 => key -> occurrences }
+      .toList
+      .sortBy(-_._2.maxBy(_.invokedAt.value).invokedAt.value)
+    if (duplicateGroups.nonEmpty) {
+      sb.append("\n== Repeated tool calls ==\n")
+      duplicateGroups.foreach { case ((toolName, _), occurrences) =>
+        val preview = occurrences.head.argsPreview
+        val latest = occurrences.maxBy(_.invokedAt.value).invokedAt.value
+        val ago = Provider.humanizeAgo(now - latest)
+        val previewText = if (preview.nonEmpty) s" `$preview`" else ""
+        sb.append(
+          s"- You called `${toolName.value}` with these args ${occurrences.size} times " +
+            s"(most recently $ago):$previewText. The result hasn't changed. " +
+            "Don't re-issue this call -- try a different approach (narrow the pattern, " +
+            "paginate via next_page, switch to a different tool, or ask the user for " +
+            "clarification).\n"
+        )
+      }
     }
 
     val suggestedTools = chain.flatMap(id => turn.projectionFor(id).suggestedTools).distinct
@@ -1361,4 +1397,25 @@ object Provider {
     * to a framework-initiated turn rather than user input. */
   val AgentInitiatedTurnTrigger: String =
     "(agent-initiated turn — no user input yet; produce your greeting or scheduled output)"
+
+  /** Cap on entries emitted under the "Recently used tools" prompt
+    * section. The full rolling window may carry more than this; the
+    * renderer takes the most-recent distinct (toolName, argsHash)
+    * subset so the prompt stays bounded and the agent still sees
+    * what's pertinent. */
+  val RecentToolsPromptCap: Int = 15
+
+  /** Render an elapsed-millis interval as a short "ago" string -- `Ns`
+    * for seconds, `Nm` for minutes, `Nh` for hours, `Nd` for days.
+    * Used by the prompt's "Recently used tools" + "Repeated tool
+    * calls" sections so the agent reads "30s ago" / "5m ago" without
+    * needing wall-clock math. Inputs below one second collapse to
+    * `0s`. */
+  def humanizeAgo(elapsedMs: Long): String = {
+    val seconds = math.max(0L, elapsedMs / 1000L)
+    if (seconds < 60) s"${seconds}s ago"
+    else if (seconds < 3600) s"${seconds / 60}m ago"
+    else if (seconds < 86400) s"${seconds / 3600}h ago"
+    else s"${seconds / 86400}d ago"
+  }
 }

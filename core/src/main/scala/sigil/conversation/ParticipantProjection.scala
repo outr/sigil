@@ -18,8 +18,10 @@ import sigil.tool.ToolName
  *     under the OUTGOING mode's id; on a later return to that mode,
  *     the slot is restored. Lets agents "remember" the skill they had
  *     loaded for a mode without re-discovering it.
- *   - `recentTools` — pushed onto the head when a `ToolInvoke` from this
- *     participant completes
+ *   - `recentToolInvocations` — pushed onto the head when a `ToolInvoke`
+ *     from this participant completes. Each entry carries a canonical
+ *     argument hash plus a short preview so the prompt renderer can
+ *     warn the agent when it re-issues an identical call
  *   - `suggestedTools` — replaced when a `ToolResults` from this participant
  *     carries fresh `find_capability` matches
  *   - `extraContext` — app-driven (populated via curator or tool behavior)
@@ -38,7 +40,7 @@ case class ParticipantProjection(participantId: ParticipantId,
                                  activeSkills: Map[SkillSource, ActiveSkillSlot] = Map.empty,
                                  lastDiscoverySkillByMode: Map[Id[Mode], ActiveSkillSlot] = Map.empty,
                                  discoverySkillMode: Option[Id[Mode]] = None,
-                                 recentTools: List[ToolName] = Nil,
+                                 recentToolInvocations: List[RecentToolInvocation] = Nil,
                                  suggestedTools: List[ToolName] = Nil,
                                  /** Per-conversation cache of the most recent provider-
                                    * side response id. Today only OpenAI's Responses API

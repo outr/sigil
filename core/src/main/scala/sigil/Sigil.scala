@@ -3123,12 +3123,32 @@ trait Sigil {
         // single-turn-decays at agent-loop release.
         val nextTools: List[sigil.tool.ToolName] =
           staticTools.find(_.name == ti.toolName).map(_.suggestedNextTools).getOrElse(Nil)
+        // Record the invocation in the rolling-window cache with a
+        // canonical args hash + short preview so the prompt renderer
+        // can dedupe by (toolName, argsHash) and warn when the same
+        // logical call repeats. Keep the most-recent
+        // `recentToolInvocationsLimit` entries; older fall off the
+        // tail.
+        val invocation = ti.input match {
+          case Some(in) => sigil.conversation.RecentToolInvocation(
+            toolName    = ti.toolName,
+            argsHash    = sigil.tool.ToolInputCanonicalizer.argsHash(in),
+            argsPreview = sigil.tool.ToolInputCanonicalizer.argsPreview(in),
+            invokedAt   = ti.timestamp
+          )
+          case None => sigil.conversation.RecentToolInvocation(
+            toolName    = ti.toolName,
+            argsHash    = "",
+            argsPreview = "",
+            invokedAt   = ti.timestamp
+          )
+        }
         updateProjection(ti.conversationId, ti.participantId) { proj =>
-          val recent = ti.toolName :: proj.recentTools.filterNot(_ == ti.toolName)
+          val recent = (invocation :: proj.recentToolInvocations).take(recentToolInvocationsLimit)
           val suggested =
             if (nextTools.isEmpty) proj.suggestedTools
             else (proj.suggestedTools ++ nextTools).distinct
-          proj.copy(recentTools = recent, suggestedTools = suggested)
+          proj.copy(recentToolInvocations = recent, suggestedTools = suggested)
         }
       case tr: ToolResults =>
         // Sigil bug #169 — replace the overlay only when the tool result
@@ -5183,6 +5203,26 @@ trait Sigil {
     * is aggressive (any single "no progress" report stops the
     * loop); higher values give the agent more rope. */
   protected def consecutiveNoProgressLimit: Int = 2
+
+  /** Size of the per-participant `recentToolInvocations` rolling
+    * window. Older entries fall off the tail. Drives the prompt's
+    * "Recently used tools" + "Repeated tool calls" surfaces and the
+    * Layer-3 identical-call cap. Default 20 — covers a single agent
+    * loop comfortably without bloating the per-participant
+    * projection record. */
+  def recentToolInvocationsLimit: Int = 20
+
+  /** Hard cap on identical (tool name + canonical args) dispatches in
+    * the [[recentToolInvocationsLimit]] window. When set to a positive
+    * value N, the orchestrator REFUSES to dispatch a tool whose
+    * (toolName, argsHash) already appears in the projection's recent
+    * invocations at least N-1 times — i.e. the Nth identical call is
+    * the one rejected. The refusal emits a Tool-role Failure Message
+    * paired to the originating ToolInvoke describing the count and
+    * suggesting alternatives. Set to `0` or a negative value to
+    * disable the cap entirely (the prompt-level warning remains).
+    * Default 3. */
+  def maxIdenticalToolCallsInWindow: Int = 3
 
   /** Cap on `discoveredCapabilities` entries surfaced in the
     * agent's prompt — keeps the prompt bounded even within a long

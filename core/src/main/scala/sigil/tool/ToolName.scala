@@ -7,7 +7,7 @@ import fabric.rw.*
  * referenced by identity: [[Tool.schema]], [[ToolFinder.byName]],
  * [[sigil.event.ToolInvoke.toolName]], [[sigil.conversation.ContextFrame.ToolCall.toolName]],
  * [[sigil.participant.AgentParticipant.toolNames]], and the per-
- * participant `recentTools` / `suggestedTools` projections.
+ * participant `recentToolInvocations` / `suggestedTools` projections.
  *
  * AnyVal case class — zero runtime overhead, serializes as a bare
  * string through fabric's poly machinery (same pattern as
