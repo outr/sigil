@@ -1,10 +1,9 @@
-package sigil.tooling.refactor
+package sigil.tooling
 
 import rapid.{Stream, Task}
 import sigil.TurnContext
 import sigil.tool.{ToolName, TypedOutputTool}
 import sigil.tooling.types.LspWorkspaceSymbol
-import sigil.tooling.{LspManager, LspToolSupport}
 
 import scala.jdk.CollectionConverters.*
 

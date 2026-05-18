@@ -43,6 +43,12 @@ final class GrepTool(context: FileSystemContext) extends PaginatedTool[GrepInput
   // findable when nothing more specific applies.
   override def preferIfNoBetter: Boolean = true
 
+  // Bug #230 — match lists are the canonical input to
+  // `dispatch_workers`. Surfacing the tool after a grep nudges the
+  // agent toward "per-match LLM-or-script pipeline" instead of
+  // browsing pages of hits by hand.
+  override def suggestedNextTools: List[ToolName] = List(ToolName("dispatch_workers"))
+
   override protected def executeStream(input: GrepInput, ctx: TurnContext): Stream[Node[GrepNode]] =
     Stream.force(
       WorkspacePathResolver.resolve(ctx, input.path).flatMap { base =>

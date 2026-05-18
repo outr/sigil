@@ -6,7 +6,6 @@ import fabric.rw.RW
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.tool.{Tool, ToolInput}
-import sigil.tooling.refactor.{LspRenameSymbolTool, RefactorSessionStore, RefactorWithInstructionTool}
 import sigil.tooling.{
   BspCleanTool, BspCompileTool, BspDependencyModulesTool, BspDependencySourcesTool,
   BspInverseSourcesTool, BspListTargetsTool, BspManager, BspOutputPathsTool, BspReloadTool,
@@ -16,9 +15,10 @@ import sigil.tooling.{
   LspDiagnosticsTool, LspDidChangeTool, LspDocumentLinkTool, LspDocumentSymbolsTool,
   LspFindReferencesTool, LspFoldingRangeTool, LspFormatRangeTool, LspFormatTool,
   LspGotoDefinitionTool, LspHoverTool, LspImplementationTool, LspInlayHintsTool, LspManager,
-  LspPrepareRenameTool, LspPullDiagnosticsTool, LspRenameTool, LspSelectionRangeTool,
-  LspSignatureHelpTool, LspTypeDefinitionTool, LspWorkspaceSymbolsTool
+  LspPrepareRenameTool, LspPullDiagnosticsTool, LspRenameSymbolTool, LspRenameTool,
+  LspSelectionRangeTool, LspSignatureHelpTool, LspTypeDefinitionTool, LspWorkspaceSymbolsTool
 }
+import sigil.tooling.dispatch.DispatchWorkersTool
 
 /**
  * Regression spec for sigil bug #227 — every LSP / BSP tool example
@@ -43,7 +43,10 @@ class LspBspToolExampleSpec extends AnyWordSpec with Matchers {
     val fs = new sigil.tool.fs.LocalFileSystemContext(basePath = None)
     val lsp = null.asInstanceOf[LspManager]
     val bsp = null.asInstanceOf[BspManager]
-    val store = new RefactorSessionStore()
+    // `fs` is referenced indirectly via the dispatch tool's
+    // `FromCall`/`FromFile` paths but doesn't need to be live for
+    // this metadata-only audit.
+    val _ = fs
     List(
       // LSP family — every tool registered by ToolingSigil.lspTools
       new LspDiagnosticsTool(lsp),
@@ -85,9 +88,10 @@ class LspBspToolExampleSpec extends AnyWordSpec with Matchers {
       new BspScalacOptionsTool(bsp),
       new BspScalaTestClassesTool(bsp),
       new BspScalaMainClassesTool(bsp),
-      // Refactor family — both wrap LSP under the hood
+      // Rename + dispatch — wrap LSP / framework primitives under
+      // the hood and the agent reads their examples verbatim.
       new LspRenameSymbolTool(lsp),
-      new RefactorWithInstructionTool(fs, store),
+      new DispatchWorkersTool(),
       // Pagination navigation — bug #227 also called these out for
       // leaking schema-type strings in their rendered example slot
       sigil.tool.output.NextPageTool,

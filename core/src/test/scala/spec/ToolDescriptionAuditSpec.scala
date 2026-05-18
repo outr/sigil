@@ -61,9 +61,7 @@ class ToolDescriptionAuditSpec extends AnyWordSpec with Matchers {
     val respondFam = Set("respond", "respond_options", "respond_field", "respond_failure",
       "respond_card", "respond_cards", "no_response")
     val cross = for (a <- respondFam; b <- respondFam if a != b) yield (a, b)
-    val refactorFam = Set("refactor_with_instruction", "refactor_apply", "refactor_cancel")
-    val refactorCross = for (a <- refactorFam; b <- refactorFam if a != b) yield (a, b)
-    cross ++ refactorCross ++ Set(
+    cross ++ Set(
       "pin_complexity" -> "unpin_complexity", "unpin_complexity" -> "pin_complexity",
       "pin_memory" -> "unpin_memory", "unpin_memory" -> "pin_memory",
       "pin_model" -> "unpin_model", "unpin_model" -> "pin_model",

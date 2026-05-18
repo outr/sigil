@@ -58,12 +58,11 @@ class ToolingSigilBootSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       }
     }
 
-    // The framework's refactor / rename family must all surface via
-    // ToolingSigil's staticTools so `find_capability` can advertise them.
-    // The three-tool refactor-session API (prepare / apply / cancel)
-    // needs every member registered for the handshake to work end-to-end
-    // via discovery, alongside the LSP rename tool.
-    "register all four refactor / rename tools in staticTools" in {
+    // The framework's dispatch / rename family must surface via
+    // ToolingSigil's staticTools so `find_capability` can advertise
+    // them. The generic dispatch_workers primitive (bug #230)
+    // replaced the prior three-tool refactor session.
+    "register dispatch_workers and lsp_rename_symbol in staticTools" in {
       val s = freshSigil()
       for {
         _ <- s.instance
@@ -71,9 +70,12 @@ class ToolingSigilBootSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         _ <- s.shutdown
       } yield {
         toolNames should contain("lsp_rename_symbol")
-        toolNames should contain("refactor_with_instruction")
-        toolNames should contain("refactor_apply")
-        toolNames should contain("refactor_cancel")
+        toolNames should contain("dispatch_workers")
+        // The three-tool refactor session was replaced by
+        // dispatch_workers — they must NOT appear.
+        toolNames should not contain "refactor_with_instruction"
+        toolNames should not contain "refactor_apply"
+        toolNames should not contain "refactor_cancel"
       }
     }
   }
