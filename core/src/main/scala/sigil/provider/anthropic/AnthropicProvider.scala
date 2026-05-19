@@ -6,7 +6,7 @@ import rapid.{Stream, Task}
 import sigil.Sigil
 import sigil.db.Model
 import sigil.provider.*
-import sigil.provider.sse.{SSELine, SSELineParser}
+import sigil.provider.sse.SSELineParser
 import sigil.tokenize.{JtokkitTokenizer, Tokenizer}
 import sigil.tool.{DefinitionToSchema, Tool, ToolInput, ToolSchema}
 import sigil.tool.ToolInput.given
@@ -252,7 +252,7 @@ case class AnthropicProvider(apiKey: String,
       // parsed args against those constraints post-decode.
       obj(
         "name"         -> str(s.name.value),
-        "description"  -> str(renderDescription(t, input.currentMode)),
+        "description"  -> str(ToolDescriptionRenderer.render(t, input.currentMode, sigil)),
         "input_schema" -> StrictSchema.forAnthropic(DefinitionToSchema(s.input))
       )
     }
@@ -270,32 +270,13 @@ case class AnthropicProvider(apiKey: String,
     case _ => None // Anthropic doesn't ship the others as built-ins.
   }
 
-  private def renderDescription(tool: Tool, mode: Mode): String = {
-    val base = tool.wireDescription(mode, sigil)
-    if (tool.examples.isEmpty) base
-    else {
-      val rendered = tool.examples.map { e =>
-        val json = JsonFormatter.Compact(stripPolyDiscriminator(summon[fabric.rw.RW[ToolInput]].read(e.input)))
-        s"- ${e.description}: $json"
-      }.mkString("\n")
-      s"$base\n\nExamples:\n$rendered"
-    }
-  }
-
-  private def stripPolyDiscriminator(json: Json): Json = json match {
-    case o: Obj => Obj(o.value - "type")
-    case other  => other
-  }
-
   // ---- response parsing ----
 
   private def parseLine(line: String, state: StreamState): Vector[ProviderEvent] =
-    SSELineParser.parse(line) match {
-      case SSELine.Data(json)                    => parseEvent(json, state)
-      case SSELine.Done                          => state.flushDone()
-      case SSELine.MalformedData(_, r)           => Vector(ProviderEvent.Error(s"parse: $r"))
-      case SSELine.Blank | SSELine.Comment | _: SSELine.Other => Vector.empty
-    }
+    SSELineParser.dispatch(line)(
+      onData = json => parseEvent(json, state),
+      onDone = state.flushDone()
+    )
 
   private def parseEvent(json: Json, state: StreamState): Vector[ProviderEvent] = {
     val eventType = json.get("type").map(_.asString).getOrElse("")
@@ -403,11 +384,7 @@ case class AnthropicProvider(apiKey: String,
   }
 
   private def parseUsage(json: Json): TokenUsage =
-    TokenUsage(
-      promptTokens = json.get("input_tokens").map(_.asInt).getOrElse(0),
-      completionTokens = json.get("output_tokens").map(_.asInt).getOrElse(0),
-      totalTokens = json.get("input_tokens").map(_.asInt).getOrElse(0) + json.get("output_tokens").map(_.asInt).getOrElse(0)
-    )
+    TokenUsage.fromJson(json, "input_tokens", "output_tokens")
 
   final private class StreamState(val acc: ToolCallAccumulator) {
     var indexToCallId: Map[Int, CallId] = Map.empty
