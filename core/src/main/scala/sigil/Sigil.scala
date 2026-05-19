@@ -6618,7 +6618,11 @@ trait Sigil {
   def maintenanceTasks: List[sigil.maintenance.MaintenanceTask] =
     List(
       sigil.maintenance.StoredFileExpirationSweep(storedFileExpirationInterval),
-      sigil.maintenance.ToolOutputExpirationSweep(toolOutputExpirationInterval),
+      sigil.maintenance.ConversationContainerCleanupTask(
+        interval  = conversationContainerCleanupInterval,
+        ageWindow = conversationContainerAgeWindow,
+        sizeLimit = conversationContainerSizeLimit
+      ),
       sigil.maintenance.OrphanStagingConversationSweep(orphanStagingSweepInterval, orphanStagingCutoff)
     )
 
@@ -6645,15 +6649,29 @@ trait Sigil {
   def storedFileExpirationInterval: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.DurationInt(1).hour
 
-  /** Cadence for [[sigil.maintenance.ToolOutputExpirationSweep]] —
-    * how often the framework reclaims expired
-    * [[sigil.tool.output.ToolOutputNode]] rows. Default: 15
-    * minutes. The default per-row TTL is 30 minutes (set on
-    * [[sigil.tool.output.PaginatedTool.rowTtl]]) so the sweep
-    * runs about twice per TTL window — fine grained enough that
-    * reclaimed storage doesn't grow unboundedly between sweeps. */
-  def toolOutputExpirationInterval: scala.concurrent.duration.FiniteDuration =
-    scala.concurrent.duration.DurationInt(15).minutes
+  /** Cadence for [[sigil.maintenance.ConversationContainerCleanupTask]]
+    * — how often the framework walks conversations to age-out / size-
+    * cap their persisted [[sigil.tool.output.ToolOutputNode]] rows.
+    * Default: 1 hour. */
+  def conversationContainerCleanupInterval: scala.concurrent.duration.FiniteDuration =
+    scala.concurrent.duration.DurationInt(1).hour
+
+  /** Age window — containers older than the conversation's most
+    * recent event by this duration get pruned. Defaults to 30
+    * days; apps with stricter retention override. Pinned rows are
+    * skipped. */
+  def conversationContainerAgeWindow: scala.concurrent.duration.FiniteDuration =
+    scala.concurrent.duration.DurationInt(30).days
+
+  /** Per-conversation hard cap on container row count. When a
+    * conversation's total `ToolOutputNode` row count exceeds this
+    * threshold, the cleanup pass prunes oldest containers in FIFO
+    * order (excluding pinned rows) until the row count fits.
+    * Default 100,000 — generous for most apps; bulk-tool-heavy
+    * apps override. Row count is the easier-to-reason-about
+    * proxy for storage growth (vs. estimated bytes which would
+    * need per-row serialisation on every scan). */
+  def conversationContainerSizeLimit: Int = 100000
 
   /**
    * One-shot sweep — deletes every memory with `expiresAt` set and
