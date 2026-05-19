@@ -992,7 +992,7 @@ trait Provider extends Service {
       .sortBy(-_._2.maxBy(_.invokedAt.value).invokedAt.value)
     if (duplicateGroups.nonEmpty) {
       sb.append("\n== Repeated tool calls ==\n")
-      duplicateGroups.foreach { case ((toolName, _), occurrences) =>
+      val summary = duplicateGroups.map { case ((toolName, _), occurrences) =>
         val preview = occurrences.head.argsPreview
         val latest = occurrences.maxBy(_.invokedAt.value).invokedAt.value
         val ago = Provider.humanizeAgo(now - latest)
@@ -1002,7 +1002,14 @@ trait Provider extends Service {
             s"(most recent $ago):$previewText. Identical inputs yield identical results -- " +
             "the previous outputs are already in your context.\n"
         )
-      }
+        s"${toolName.value}=${occurrences.size}x"
+      }.mkString(", ")
+      // Mirror the prompt insertion to the backend log so forensics
+      // questions ("did the duplicate-call detector fire?") resolve
+      // via a log grep without having to dig into the wire-log
+      // capture of the system prompt itself. The prompt insertion
+      // above remains authoritative for agent behavior.
+      scribe.info(s"Duplicate tool calls detected: $summary")
     }
 
     val suggestedTools = chain.flatMap(id => turn.projectionFor(id).suggestedTools).distinct
