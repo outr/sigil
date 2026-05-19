@@ -55,9 +55,8 @@ final class LspFindReferencesTool(val manager: LspManager) extends TypedOutputTo
   override def suggestedNextTools: List[ToolName] = List(ToolName("dispatch_workers"))
 
   override protected def executeTyped(input: LspFindReferencesInput, context: TurnContext): Task[LspFindReferencesOutput] =
-    withOpenDocumentTyped[LspFindReferencesOutput](
-      input.languageId, input.filePath, context,
-      onError = msg => throw new RuntimeException(msg)
+    withOpenDocumentOrThrow[LspFindReferencesOutput](
+      input.languageId, input.filePath, context
     ) { (session, uri) =>
       session.references(uri, input.line, input.character, input.includeDeclaration).map { locations =>
         val capped = locations.take(input.maxResults)

@@ -31,9 +31,8 @@ final class LspPrepareRenameTool(val manager: LspManager) extends TypedOutputToo
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspPrepareRenameInput, context: TurnContext): Task[LspPrepareRenameResult] =
-    withOpenDocumentTyped[LspPrepareRenameResult](
-      input.languageId, input.filePath, context,
-      onError = msg => throw new RuntimeException(msg)
+    withOpenDocumentOrThrow[LspPrepareRenameResult](
+      input.languageId, input.filePath, context
     ) { (session, uri) =>
       session.prepareRename(uri, input.line, input.character).map {
         case None        => LspPrepareRenameResult.NotRenameable

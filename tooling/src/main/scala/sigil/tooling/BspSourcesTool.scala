@@ -32,23 +32,21 @@ final class BspSourcesTool(val manager: BspManager) extends TypedOutputTool[BspS
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: BspSourcesInput, context: TurnContext): Task[BspSourcesResult] =
-    withSessionTyped[BspSourcesResult](
-      input.projectRoot, context,
-      onError = _ => BspSourcesResult(input.projectRoot, Nil)
-    ) { session =>
-      targetsFromInput(session, input.targets).flatMap { targets =>
-        if (targets.isEmpty) Task.pure(BspSourcesResult(input.projectRoot, Nil))
-        else session.sources(targets).map { items =>
-          BspSourcesResult(
-            projectRoot = input.projectRoot,
-            items = items.map { item =>
-              BspTargetSources(
-                target  = item.getTarget.getUri,
-                sources = Option(item.getSources).map(_.asScala.toList.map(BspSourceItem.fromBsp4j)).getOrElse(Nil)
-              )
-            }
-          )
-        }
+    withTargets[BspSourcesResult](
+      input.projectRoot, context, input.targets,
+      onError = _ => BspSourcesResult(input.projectRoot, Nil),
+      emptyResult = BspSourcesResult(input.projectRoot, Nil)
+    ) { (session, targets) =>
+      session.sources(targets).map { items =>
+        BspSourcesResult(
+          projectRoot = input.projectRoot,
+          items = items.map { item =>
+            BspTargetSources(
+              target  = item.getTarget.getUri,
+              sources = Option(item.getSources).map(_.asScala.toList.map(BspSourceItem.fromBsp4j)).getOrElse(Nil)
+            )
+          }
+        )
       }
     }
 }

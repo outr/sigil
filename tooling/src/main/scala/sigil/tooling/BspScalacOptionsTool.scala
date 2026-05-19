@@ -30,25 +30,23 @@ final class BspScalacOptionsTool(val manager: BspManager) extends TypedOutputToo
 
   override protected def executeTyped(input: BspScalacOptionsInput,
                                       context: TurnContext): Task[BspScalacOptionsResult] =
-    withSessionTyped[BspScalacOptionsResult](
-      input.projectRoot, context,
-      onError = _ => BspScalacOptionsResult(input.projectRoot, Nil)
-    ) { session =>
-      targetsFromInput(session, input.targets).flatMap { targets =>
-        if (targets.isEmpty) Task.pure(BspScalacOptionsResult(input.projectRoot, Nil))
-        else session.scalacOptions(targets).map { items =>
-          BspScalacOptionsResult(
-            projectRoot = input.projectRoot,
-            items = items.map { item =>
-              BspTargetScalacOptions(
-                target         = item.getTarget.getUri,
-                options        = Option(item.getOptions).map(_.asScala.toList).getOrElse(Nil),
-                classDirectory = Option(item.getClassDirectory).filter(_.nonEmpty),
-                classpath      = Option(item.getClasspath).map(_.asScala.toList).getOrElse(Nil)
-              )
-            }
-          )
-        }
+    withTargets[BspScalacOptionsResult](
+      input.projectRoot, context, input.targets,
+      onError = _ => BspScalacOptionsResult(input.projectRoot, Nil),
+      emptyResult = BspScalacOptionsResult(input.projectRoot, Nil)
+    ) { (session, targets) =>
+      session.scalacOptions(targets).map { items =>
+        BspScalacOptionsResult(
+          projectRoot = input.projectRoot,
+          items = items.map { item =>
+            BspTargetScalacOptions(
+              target         = item.getTarget.getUri,
+              options        = Option(item.getOptions).map(_.asScala.toList).getOrElse(Nil),
+              classDirectory = Option(item.getClassDirectory).filter(_.nonEmpty),
+              classpath      = Option(item.getClasspath).map(_.asScala.toList).getOrElse(Nil)
+            )
+          }
+        )
       }
     }
 }

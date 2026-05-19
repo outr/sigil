@@ -30,23 +30,21 @@ final class BspDependencySourcesTool(val manager: BspManager) extends TypedOutpu
 
   override protected def executeTyped(input: BspDependencySourcesInput,
                                       context: TurnContext): Task[BspDependencySourcesResult] =
-    withSessionTyped[BspDependencySourcesResult](
-      input.projectRoot, context,
-      onError = _ => BspDependencySourcesResult(input.projectRoot, Nil)
-    ) { session =>
-      targetsFromInput(session, input.targets).flatMap { targets =>
-        if (targets.isEmpty) Task.pure(BspDependencySourcesResult(input.projectRoot, Nil))
-        else session.dependencySources(targets).map { items =>
-          BspDependencySourcesResult(
-            projectRoot = input.projectRoot,
-            items = items.map { item =>
-              BspTargetDependencySources(
-                target  = item.getTarget.getUri,
-                sources = Option(item.getSources).map(_.asScala.toList).getOrElse(Nil)
-              )
-            }
-          )
-        }
+    withTargets[BspDependencySourcesResult](
+      input.projectRoot, context, input.targets,
+      onError = _ => BspDependencySourcesResult(input.projectRoot, Nil),
+      emptyResult = BspDependencySourcesResult(input.projectRoot, Nil)
+    ) { (session, targets) =>
+      session.dependencySources(targets).map { items =>
+        BspDependencySourcesResult(
+          projectRoot = input.projectRoot,
+          items = items.map { item =>
+            BspTargetDependencySources(
+              target  = item.getTarget.getUri,
+              sources = Option(item.getSources).map(_.asScala.toList).getOrElse(Nil)
+            )
+          }
+        )
       }
     }
 }

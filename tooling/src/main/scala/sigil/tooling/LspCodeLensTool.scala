@@ -29,9 +29,8 @@ final class LspCodeLensTool(val manager: LspManager) extends TypedOutputTool[Lsp
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspCodeLensInput, context: TurnContext): Task[LspCodeLensResult] =
-    withOpenDocumentTyped[LspCodeLensResult](
-      input.languageId, input.filePath, context,
-      onError = msg => throw new RuntimeException(msg)
+    withOpenDocumentOrThrow[LspCodeLensResult](
+      input.languageId, input.filePath, context
     ) { (session, uri) =>
       session.codeLens(uri).map { lenses =>
         LspCodeLensResult(filePath = input.filePath, items = lenses.map(toItem))

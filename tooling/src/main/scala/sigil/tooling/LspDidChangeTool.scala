@@ -64,9 +64,8 @@ final class LspDidChangeTool(val manager: LspManager) extends TypedOutputTool[Ls
         args = Some(s"filePath=${input.filePath}, text.length=${input.text.length}")
       ))
     } else {
-      withSessionTyped[LspDidChangeResult](
-        input.languageId, input.filePath, context,
-        onError = msg => throw new RuntimeException(msg)
+      withSessionOrThrow[LspDidChangeResult](
+        input.languageId, input.filePath, context
       ) { (session, uri, _) =>
         session.didChangeFull(uri, input.text).map(_ => LspDidChangeResult(uri))
       }.map(r => ToolResult.success(r))

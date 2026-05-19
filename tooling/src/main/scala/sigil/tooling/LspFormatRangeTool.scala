@@ -40,9 +40,8 @@ final class LspFormatRangeTool(val manager: LspManager) extends TypedOutputTool[
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspFormatRangeInput, context: TurnContext): Task[LspFormatResult] =
-    withOpenDocumentTyped[LspFormatResult](
-      input.languageId, input.filePath, context,
-      onError = msg => throw new RuntimeException(msg)
+    withOpenDocumentOrThrow[LspFormatResult](
+      input.languageId, input.filePath, context
     ) { (session, uri) =>
       val range = new Range(
         new Position(input.startLine, input.startCharacter),

@@ -51,9 +51,8 @@ final class LspDiagnosticsTool(val manager: LspManager) extends TypedOutputTool[
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspDiagnosticsInput, context: TurnContext): Task[LspDiagnosticsResult] =
-    withOpenDocumentTyped[LspDiagnosticsResult](
-      input.languageId, input.filePath, context,
-      onError = msg => throw new RuntimeException(msg)
+    withOpenDocumentOrThrow[LspDiagnosticsResult](
+      input.languageId, input.filePath, context
     ) { (session, uri) =>
       val wait = if (input.waitMs > 0) session.waitForDiagnostics(input.waitMs) else Task.unit
       wait.map(_ => LspDiagnosticsResult(

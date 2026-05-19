@@ -1,7 +1,7 @@
 package sigil.tooling
 
 import ch.epfl.scala.bsp4j.BuildTargetIdentifier
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
 import sigil.event.{Event, Message, MessageRole, MessageVisibility}
 import sigil.signal.EventState
@@ -9,7 +9,7 @@ import sigil.tool.model.ResponseContent
 
 /**
  * Shared plumbing for the agent-facing BSP tools. Mirrors
- * [[LspToolSupport]] — a `withSession` block that handles
+ * [[LspToolSupport]] — a `withSessionTyped` block that handles
  * config-not-found / spawn-failure / RPC-error and a `reply` helper
  * that emits a Message event back into the agent's signal stream.
  *
@@ -38,24 +38,6 @@ trait BspToolSupport extends sigil.tool.Tool {
   protected def validatePlaceholders(fields: (String, String)*): Option[String] =
     sigil.tool.PlaceholderInputDetector.validateNoPlaceholders(fields*)
 
-  protected def withSession(projectRoot: String, context: TurnContext)
-                           (body: BspSession => Task[String]): Stream[Event] = {
-    validatePlaceholders("projectRoot" -> projectRoot) match {
-      case Some(reason) =>
-        Stream.emit(reply(context, reason, isError = true))
-      case None =>
-        val task = manager.session(projectRoot).flatMap { session =>
-          installProgressCallback(session, context)
-          body(session)
-            .map(text => reply(context, text, isError = false))
-            .guarantee(Task(session.client.setStatusCallback(None)))
-        }.handleError { e =>
-          Task.pure(reply(context, s"BSP error: ${e.getMessage}", isError = true))
-        }
-        Stream.force(task.map(Stream.emit))
-    }
-  }
-
   /** Route BSP-server notifications (log lines, taskStart /
     * taskProgress / taskFinish, showMessage) through the active
     * tool's [[sigil.signal.ToolProgress]] channel. The callback is
@@ -74,6 +56,9 @@ trait BspToolSupport extends sigil.tool.Tool {
     if (requested.nonEmpty) Task.pure(requested.map(uri => new BuildTargetIdentifier(uri)))
     else session.workspaceBuildTargets.map(_.map(_.getId))
 
+  /** Emit a `Role.Tool` Message event carrying `text` back into the
+    * agent's signal stream — the reply primitive for raw-`Tool` BSP
+    * subclasses that don't return a typed `Output`. */
   protected def reply(context: TurnContext, text: String, isError: Boolean): Event =
     Message(
       participantId = context.caller,
@@ -101,5 +86,27 @@ trait BspToolSupport extends sigil.tool.Tool {
           installProgressCallback(session, context)
           body(session).guarantee(Task(session.client.setStatusCallback(None)))
         }.handleError(e => Task.pure(onError(s"BSP error: ${e.getMessage}")))
+    }
+
+  /** Absorbs the session-acquire + `targetsFromInput` resolve +
+    * empty-target short-circuit shared by every "operate on a list of
+    * targets" BSP tool. `requested` is the agent's `targets` input
+    * (empty means "every workspace target"); `emptyResult` is the
+    * value returned when the resolved set is empty; `call` runs the
+    * actual RPC against the non-empty target list. Both the error
+    * path and the empty path resolve to a single `emptyResult` /
+    * `onError` value so the per-tool body is just the RPC + its
+    * result mapping. */
+  protected def withTargets[Output](projectRoot: String,
+                                    context: TurnContext,
+                                    requested: List[String],
+                                    onError: String => Output,
+                                    emptyResult: => Output)
+                                   (call: (BspSession, List[BuildTargetIdentifier]) => Task[Output]): Task[Output] =
+    withSessionTyped[Output](projectRoot, context, onError) { session =>
+      targetsFromInput(session, requested).flatMap { targets =>
+        if (targets.isEmpty) Task.pure(emptyResult)
+        else call(session, targets)
+      }
     }
 }

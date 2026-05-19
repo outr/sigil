@@ -48,9 +48,8 @@ final class LspCodeActionTool(val manager: LspManager) extends TypedOutputTool[L
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspCodeActionInput, context: TurnContext): Task[LspCodeActionResult] =
-    withOpenDocumentTyped[LspCodeActionResult](
-      input.languageId, input.filePath, context,
-      onError = msg => throw new RuntimeException(msg)
+    withOpenDocumentOrThrow[LspCodeActionResult](
+      input.languageId, input.filePath, context
     ) { (session, uri) =>
       val range = new Range(
         new Position(input.startLine, input.startCharacter),

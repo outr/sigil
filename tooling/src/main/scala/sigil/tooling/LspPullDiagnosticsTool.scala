@@ -45,9 +45,8 @@ final class LspPullDiagnosticsTool(val manager: LspManager) extends TypedOutputT
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspPullDiagnosticsInput, context: TurnContext): Task[LspDiagnosticsResult] =
-    withOpenDocumentTyped[LspDiagnosticsResult](
-      input.languageId, input.filePath, context,
-      onError = msg => throw new RuntimeException(msg)
+    withOpenDocumentOrThrow[LspDiagnosticsResult](
+      input.languageId, input.filePath, context
     ) { (session, uri) =>
       // Sigil bug #100 — gate the pull request on the server's
       // advertised capability. LSP 3.17 says clients MUST NOT call

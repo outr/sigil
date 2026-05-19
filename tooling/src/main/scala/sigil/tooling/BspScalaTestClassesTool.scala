@@ -35,24 +35,22 @@ final class BspScalaTestClassesTool(val manager: BspManager) extends TypedOutput
 
   override protected def executeTyped(input: BspScalaTestClassesInput,
                                       context: TurnContext): Task[BspTestClassesResult] =
-    withSessionTyped[BspTestClassesResult](
-      input.projectRoot, context,
-      onError = _ => BspTestClassesResult(input.projectRoot, Nil)
-    ) { session =>
-      targetsFromInput(session, input.targets).flatMap { targets =>
-        if (targets.isEmpty) Task.pure(BspTestClassesResult(input.projectRoot, Nil))
-        else session.scalaTestClasses(targets).map { items =>
-          BspTestClassesResult(
-            projectRoot = input.projectRoot,
-            items = items.map { item =>
-              BspTargetTestClasses(
-                target    = item.getTarget.getUri,
-                framework = Option(item.getFramework).filter(_.nonEmpty),
-                classes   = Option(item.getClasses).map(_.asScala.toList).getOrElse(Nil)
-              )
-            }
-          )
-        }
+    withTargets[BspTestClassesResult](
+      input.projectRoot, context, input.targets,
+      onError = _ => BspTestClassesResult(input.projectRoot, Nil),
+      emptyResult = BspTestClassesResult(input.projectRoot, Nil)
+    ) { (session, targets) =>
+      session.scalaTestClasses(targets).map { items =>
+        BspTestClassesResult(
+          projectRoot = input.projectRoot,
+          items = items.map { item =>
+            BspTargetTestClasses(
+              target    = item.getTarget.getUri,
+              framework = Option(item.getFramework).filter(_.nonEmpty),
+              classes   = Option(item.getClasses).map(_.asScala.toList).getOrElse(Nil)
+            )
+          }
+        )
       }
     }
 }

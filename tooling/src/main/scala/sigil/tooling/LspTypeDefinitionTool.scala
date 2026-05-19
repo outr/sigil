@@ -34,9 +34,8 @@ final class LspTypeDefinitionTool(val manager: LspManager) extends TypedOutputTo
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspTypeDefinitionInput, context: TurnContext): Task[List[LspLocation]] =
-    withOpenDocumentTyped[List[LspLocation]](
-      input.languageId, input.filePath, context,
-      onError = msg => throw new RuntimeException(msg)
+    withOpenDocumentOrThrow[List[LspLocation]](
+      input.languageId, input.filePath, context
     ) { (session, uri) =>
       session.typeDefinition(uri, input.line, input.character).map(_.map(LspLocation.fromLsp4j))
     }

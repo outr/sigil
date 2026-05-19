@@ -27,9 +27,8 @@ final class LspFoldingRangeTool(val manager: LspManager) extends TypedOutputTool
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspFoldingRangeInput, context: TurnContext): Task[LspFoldingRangeResult] =
-    withOpenDocumentTyped[LspFoldingRangeResult](
-      input.languageId, input.filePath, context,
-      onError = msg => throw new RuntimeException(msg)
+    withOpenDocumentOrThrow[LspFoldingRangeResult](
+      input.languageId, input.filePath, context
     ) { (session, uri) =>
       session.foldingRange(uri).map { ranges =>
         LspFoldingRangeResult(
