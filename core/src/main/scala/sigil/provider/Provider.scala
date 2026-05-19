@@ -1,5 +1,7 @@
 package sigil.provider
 
+import fabric.*
+import fabric.io.JsonFormatter
 import lightdb.id.Id
 import rapid.{Stream, Task}
 import sigil.Sigil
@@ -1106,6 +1108,18 @@ trait Provider extends Service {
     val pendingToolCallIds: scala.collection.mutable.LinkedHashSet[String] =
       scala.collection.mutable.LinkedHashSet.empty
 
+    // Forensic trail — every wire id that walked through the
+    // ToolCall branch for this agent, and every wire id that
+    // walked through the ToolResult branch (paired or orphan).
+    // Surfaced in the dangling-tool_call error log so on the next
+    // field occurrence we can see whether the orphan-settle path
+    // missed a known invoke or whether the wireId itself drifted
+    // between invoke and result.
+    val invokesSeen: scala.collection.mutable.LinkedHashSet[String] =
+      scala.collection.mutable.LinkedHashSet.empty
+    val resultsSeen: scala.collection.mutable.LinkedHashSet[String] =
+      scala.collection.mutable.LinkedHashSet.empty
+
     // Sigil bug #167 r5 — track framework `Id[Event]` → wire `call_id`
     // (e.g. OpenAI's `call_<hash>`) as we encounter each
     // `ContextFrame.ToolCall`. Used to render `function_call_output.call_id`
@@ -1161,6 +1175,7 @@ trait Provider extends Service {
           // which meant the orphan-guard misfired on synthetic /
           // framework-emitted ToolCalls.
           wireCallIdByEvent(tc.callId.value) = wireId
+          invokesSeen.add(wireId)
           val isAtomic = atomicContentToolNames.contains(tc.toolName)
           // Sigil bug #210 — if the next frame is a `Text` from the
           // same agent AND this ToolCall is an atomic-content tool
@@ -1228,7 +1243,9 @@ trait Provider extends Service {
             case Some(wireId) =>
               out += ProviderMessage.ToolResult(toolCallId = wireId, content = content)
               pendingToolCallIds.remove(wireId)
+              resultsSeen.add(wireId)
             case None =>
+              resultsSeen.add(callId.value)
               scribe.warn(
                 s"Provider.renderInput: dropping orphan ToolResult frame callId=${callId.value} " +
                   "(no matching ToolCall in this request — would cause provider 400). " +
@@ -1265,20 +1282,46 @@ trait Provider extends Service {
     // (sigil bug #189 family) and gave the framework bug nothing to
     // anchor on in logs. The scribe.error is the actionable surface.
     pendingToolCallIds.foreach { callId =>
+      // Forensic dump — every wireId that walked the ToolCall and
+      // ToolResult branches of this trail. With frames materialised
+      // only for Complete events, `invokes settled` always equals
+      // `invokesSeen.size` and `invokes active` is always 0 in this
+      // renderer's input; keeping the labels stable lets log-grep
+      // queries match the same shape across future plumbing changes
+      // that might surface in-flight invokes here.
+      val settledCount = invokesSeen.size
+      val activeCount  = 0
       scribe.error(
         s"renderInput: dangling tool_call wireId=$callId has no paired ToolResult in this turn's frame trail. " +
           "The orchestrator's corruption-resistance invariant should have emitted a paired Tool-role Message " +
-          "before this turn was rendered. Emitting an empty-content function_call_output marker to keep the " +
-          "wire shape valid; investigate why the orphan-settle path missed this invoke."
+          "before this turn was rendered. " +
+          "Frame trail contents (debug):\n" +
+          s"  invokes seen: ${invokesSeen.mkString(", ")}\n" +
+          s"  results seen: ${resultsSeen.mkString(", ")}\n" +
+          s"  invokes settled: $settledCount\n" +
+          s"  invokes active:  $activeCount\n" +
+          "Emitting a diagnostic function_call_output marker to keep the wire shape valid; " +
+          "investigate why the orphan-settle path missed this invoke."
+      )
+      // Structured diagnostic payload — wire shape stays valid
+      // (function_call ↔ function_call_output) but the content the
+      // agent reads on its next iteration tells it the truth: this
+      // tool's result is unknown, do not blindly retry. Parseable
+      // marker fields let downstream analytics count occurrences
+      // without grepping logs.
+      val fallbackPayload = obj(
+        "_sigil_orphan_marker" -> bool(true),
+        "_sigil_orphan_wireId" -> str(callId),
+        "_sigil_message" -> str(
+          s"Internal: tool result for $callId was not paired by turn-render time. " +
+            "This is a Sigil orchestration bug; the tool's actual execution status " +
+            "is unknown to this iteration. Do not retry the tool as if no result " +
+            "happened — assume the prior call may have side-effected."
+        )
       )
       out += ProviderMessage.ToolResult(
         toolCallId = callId,
-        // Short non-directive marker. Non-empty so it doesn't violate
-        // the "content isn't optional" contract; not a prose directive
-        // ("tool failed, retry, …") so it doesn't poison the agent's
-        // reasoning on subsequent turns. The framework-bug surface is
-        // the scribe.error above, not this string.
-        content    = "(orphan)"
+        content    = JsonFormatter.Compact(fallbackPayload)
       )
     }
 

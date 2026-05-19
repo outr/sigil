@@ -71,8 +71,19 @@ class DanglingToolCallEmptyPairingSpec extends AnyWordSpec with Matchers {
       // corruption-resistance invariant in place, this fallback
       // should be unreachable in well-formed operation.
       src should not include "tool failed: no result emitted"
-      src should include ("\"(orphan)\"")
+      // The empty-string and "(orphan)" placeholders gave the agent
+      // no signal; replaced with a structured diagnostic payload
+      // carrying `_sigil_orphan_marker`, the wireId, and a
+      // do-not-retry message so the next iteration sees the truth
+      // (result unknown, prior call may have side-effected).
+      src should include ("_sigil_orphan_marker")
+      src should include ("_sigil_orphan_wireId")
+      src should include ("_sigil_message")
       src should include ("renderInput: dangling tool_call")
+      src should include ("invokes seen:")
+      src should include ("results seen:")
+      src should include ("invokes settled:")
+      src should include ("invokes active:")
     }
   }
 
