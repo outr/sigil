@@ -12,6 +12,14 @@ import sigil.tool.{ToolName, TypedTool}
  * event; the agent loop's iteration-boundary check picks it up and
  * exits without driving a next iteration.
  *
+ * NOT in [[CoreTools.all]] by default. Agents reach for cancel
+ * under stress (e.g. a duplicate-call warning landing on the next
+ * turn) and terminate conversations when the right recovery was
+ * `respond` with "I'm stuck on X, can you clarify?". Apps that
+ * legitimately need agent-initiated cancellation (typically
+ * monitor agents intercepting child agents) opt in by appending
+ * [[CancelTool]] to their `staticTools` override.
+ *
  * **This is NOT a turn-flow operation.** Do not call to:
  *   - End a normal turn — call `respond`.
  *   - Yield without a message — call `no_response`.

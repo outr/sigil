@@ -1,0 +1,83 @@
+{"requestHash":"798c9f6cf48fe7b658330b834042cd15572f2e154a8f309216e7c7fe502c6e55","recordedAt":1779157909767}
+{"text":"The","type":"ThinkingDelta"}
+{"text":" user","type":"ThinkingDelta"}
+{"text":" wants","type":"ThinkingDelta"}
+{"text":" a","type":"ThinkingDelta"}
+{"text":" concise","type":"ThinkingDelta"}
+{"text":",","type":"ThinkingDelta"}
+{"text":" one","type":"ThinkingDelta"}
+{"text":"-s","type":"ThinkingDelta"}
+{"text":"entence","type":"ThinkingDelta"}
+{"text":" explanation","type":"ThinkingDelta"}
+{"text":" of","type":"ThinkingDelta"}
+{"text":" TypeScript","type":"ThinkingDelta"}
+{"text":" generics","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":" This","type":"ThinkingDelta"}
+{"text":" is","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":20,"totalTokens":20,"isEstimated":true},"type":"Usage"}
+{"text":" a","type":"ThinkingDelta"}
+{"text":" straightforward","type":"ThinkingDelta"}
+{"text":" knowledge","type":"ThinkingDelta"}
+{"text":" question","type":"ThinkingDelta"}
+{"text":",","type":"ThinkingDelta"}
+{"text":" so","type":"ThinkingDelta"}
+{"text":" I","type":"ThinkingDelta"}
+{"text":" should","type":"ThinkingDelta"}
+{"text":" use","type":"ThinkingDelta"}
+{"text":" `","type":"ThinkingDelta"}
+{"text":"respond","type":"ThinkingDelta"}
+{"text":"`","type":"ThinkingDelta"}
+{"text":" to","type":"ThinkingDelta"}
+{"text":" deliver","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" answer","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":42,"totalTokens":42,"isEstimated":true},"type":"Usage"}
+{"text":".","type":"ThinkingDelta"}
+{"text":"\n","type":"ThinkingDelta"}
+{"callId":"1e6c2a215","toolName":"respond","type":"ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":42,"totalTokens":42,"isEstimated":true},"type":"Usage"}
+{"callId":"1e6c2a215","blockType":"Markdown","arg":null,"type":"ContentBlockStart"}
+{"callId":"1e6c2a215","text":"Type","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":"Script","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" generics","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" let","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" you","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" write","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" reusable","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" code","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" that","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" works","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" with","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" multiple","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" types","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" while","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" still","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" preserving","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" type","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" safety","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":",","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" so","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" you","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" can","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" define","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" functions","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":",","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" classes","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":",","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" or","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" interfaces","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" that","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" accept","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" a","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" type","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" parameter","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" instead","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" of","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" a","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" fixed","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":" type","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","text":".","type":"ContentBlockDelta"}
+{"callId":"1e6c2a215","input":{"topicLabel":"TypeScript Generics","topicSummary":"Brief explanation of TypeScript generics.","content":"TypeScript generics let you write reusable code that works with multiple types while still preserving type safety, so you can define functions, classes, or interfaces that accept a type parameter instead of a fixed type.","disposition":"Success","endsTurn":true,"keywords":["TypeScript","generics","type safety","reusability"],"type":"RespondInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":4979,"completionTokens":189,"totalTokens":5168,"isEstimated":false},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

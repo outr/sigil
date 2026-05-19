@@ -1,0 +1,52 @@
+{"requestHash":"b0124dc41b5189408634c9085b33dc39f69ec19528b76c7fb679d70a1a838208","recordedAt":1779157805063}
+{"text":"New","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"The","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" is","type":"TextDelta"}
+{"text":" introducing","type":"TextDelta"}
+{"text":" a","type":"TextDelta"}
+{"text":" completely","type":"TextDelta"}
+{"text":" new","type":"TextDelta"}
+{"text":" subject","type":"TextDelta"}
+{"text":" (\"","type":"TextDelta"}
+{"text":"Magic","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":15,"totalTokens":15,"isEstimated":true},"type":"Usage"}
+{"text":" Number","type":"TextDelta"}
+{"text":"\")","type":"TextDelta"}
+{"text":" that","type":"TextDelta"}
+{"text":" is","type":"TextDelta"}
+{"text":" distinct","type":"TextDelta"}
+{"text":" from","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" current","type":"TextDelta"}
+{"text":" topic","type":"TextDelta"}
+{"text":" (\"","type":"TextDelta"}
+{"text":"Test","type":"TextDelta"}
+{"text":" Topic","type":"TextDelta"}
+{"text":"\")","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" there","type":"TextDelta"}
+{"text":" are","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":34,"totalTokens":34,"isEstimated":true},"type":"Usage"}
+{"text":" no","type":"TextDelta"}
+{"text":" prior","type":"TextDelta"}
+{"text":" topics","type":"TextDelta"}
+{"text":" to","type":"TextDelta"}
+{"text":" return","type":"TextDelta"}
+{"text":" to","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":" Therefore","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" it","type":"TextDelta"}
+{"text":" is","type":"TextDelta"}
+{"text":" a","type":"TextDelta"}
+{"text":" new","type":"TextDelta"}
+{"text":" topic","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":50,"totalTokens":50,"isEstimated":true},"type":"Usage"}
+{"callId":"9d95147cd","toolName":"classify_topic_shift","type":"ToolCallStart"}
+{"callId":"9d95147cd","input":{"kind":"New","type":"TopicClassifierInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":586,"completionTokens":72,"totalTokens":658,"isEstimated":false},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

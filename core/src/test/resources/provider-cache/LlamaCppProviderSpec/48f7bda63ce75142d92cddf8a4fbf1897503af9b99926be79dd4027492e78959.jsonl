@@ -1,0 +1,60 @@
+{"requestHash":"48f7bda63ce75142d92cddf8a4fbf1897503af9b99926be79dd4027492e78959","recordedAt":1779157982777}
+{"text":"The","type":"ThinkingDelta"}
+{"text":" user","type":"ThinkingDelta"}
+{"text":" wants","type":"ThinkingDelta"}
+{"text":" me","type":"ThinkingDelta"}
+{"text":" to","type":"ThinkingDelta"}
+{"text":" ask","type":"ThinkingDelta"}
+{"text":" them","type":"ThinkingDelta"}
+{"text":" to","type":"ThinkingDelta"}
+{"text":" pick","type":"ThinkingDelta"}
+{"text":" between","type":"ThinkingDelta"}
+{"text":" Python","type":"ThinkingDelta"}
+{"text":",","type":"ThinkingDelta"}
+{"text":" Node","type":"ThinkingDelta"}
+{"text":".js","type":"ThinkingDelta"}
+{"text":",","type":"ThinkingDelta"}
+{"text":" or","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":16,"totalTokens":16,"isEstimated":true},"type":"Usage"}
+{"text":" Go","type":"ThinkingDelta"}
+{"text":" for","type":"ThinkingDelta"}
+{"text":" a","type":"ThinkingDelta"}
+{"text":" backend","type":"ThinkingDelta"}
+{"text":" language","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":" This","type":"ThinkingDelta"}
+{"text":" is","type":"ThinkingDelta"}
+{"text":" a","type":"ThinkingDelta"}
+{"text":" straightforward","type":"ThinkingDelta"}
+{"text":" request","type":"ThinkingDelta"}
+{"text":" to","type":"ThinkingDelta"}
+{"text":" present","type":"ThinkingDelta"}
+{"text":" options","type":"ThinkingDelta"}
+{"text":" to","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":38,"totalTokens":38,"isEstimated":true},"type":"Usage"}
+{"text":" user","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":" I","type":"ThinkingDelta"}
+{"text":" should","type":"ThinkingDelta"}
+{"text":" use","type":"ThinkingDelta"}
+{"text":" `","type":"ThinkingDelta"}
+{"text":"respond","type":"ThinkingDelta"}
+{"text":"_options","type":"ThinkingDelta"}
+{"text":"`","type":"ThinkingDelta"}
+{"text":" to","type":"ThinkingDelta"}
+{"text":" let","type":"ThinkingDelta"}
+{"text":" them","type":"ThinkingDelta"}
+{"text":" pick","type":"ThinkingDelta"}
+{"text":" from","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" three","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":55,"totalTokens":55,"isEstimated":true},"type":"Usage"}
+{"text":" options","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":"\n","type":"ThinkingDelta"}
+{"callId":"021e39ff0","toolName":"respond_options","type":"ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":57,"totalTokens":57,"isEstimated":true},"type":"Usage"}
+{"callId":"021e39ff0","input":{"prompt":"Which backend language would you like to use for your new web service?","options":[{"label":"Python","value":"python","description":null,"exclusive":false},{"label":"Node.js","value":"nodejs","description":null,"exclusive":false},{"label":"Go","value":"go","description":null,"exclusive":false}],"allowMultiple":false,"type":"RespondOptionsInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":4703,"completionTokens":170,"totalTokens":4873,"isEstimated":false},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

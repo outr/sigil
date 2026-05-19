@@ -1,0 +1,7 @@
+{"requestHash":"21cd173a1800069122290082b3a63e3e1a6f0cfe0c8d09596ac0dd8775066166","recordedAt":1779157923702}
+{"callId":"191ef9aa1","toolName":"respond","type":"ToolCallStart"}
+{"callId":"191ef9aa1","blockType":"Markdown","arg":null,"type":"ContentBlockStart"}
+{"callId":"191ef9aa1","text":"two","type":"ContentBlockDelta"}
+{"callId":"191ef9aa1","input":{"topicLabel":"Simple word reply","topicSummary":"User asked for a single word response.","content":"two","disposition":"Success","endsTurn":true,"keywords":["simple","word","reply"],"type":"RespondInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":4903,"completionTokens":107,"totalTokens":5010,"isEstimated":false},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}
