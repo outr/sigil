@@ -3,7 +3,6 @@ package spec
 import fabric.rw.*
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import sigil.{GlobalSpace, SpaceId}
 import sigil.debug.*
 
 /**
@@ -14,7 +13,6 @@ import sigil.debug.*
  * apps add when they wire a concrete adapter.
  */
 class DebugScaffoldSpec extends AnyWordSpec with Matchers {
-  SpaceId.register(RW.static[SpaceId](GlobalSpace))
 
   private def roundTrip[T: RW](value: T): Unit = {
     val rw = summon[RW[T]]
@@ -26,8 +24,7 @@ class DebugScaffoldSpec extends AnyWordSpec with Matchers {
       roundTrip(DebugAdapterConfig(
         languageId = "python",
         command = "python",
-        args = List("-m", "debugpy", "--listen", "5678"),
-        launchType = "launch"
+        args = List("-m", "debugpy", "--listen", "5678")
       ))
     }
   }

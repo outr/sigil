@@ -245,6 +245,24 @@ trait BrowserSigil extends Sigil with SecretsSigil {
   override def toolRegistrations: List[RW[? <: sigil.tool.Tool]] =
     summon[RW[BrowserScript]] :: super.toolRegistrations
 
+  /** Register the [[BrowserIdleReaper]] so idle browser controllers
+    * are disposed without waiting for `Sigil.shutdown`. The reaper
+    * runs on its own framework fiber and sweeps every 30 seconds,
+    * disposing any controller idle longer than
+    * [[browserIdleTimeoutMs]]. Apps overriding `maintenanceTasks`
+    * concatenate as usual. */
+  override def maintenanceTasks: List[sigil.maintenance.MaintenanceTask] =
+    super.maintenanceTasks :+ BrowserIdleReaper(browserIdleTimeoutMs)
+
+  /** Dispose this conversation's browser controller before the
+    * conversation's records are purged, then delegate to the standard
+    * cascade. Closes the Chrome subprocess and persists any bound
+    * cookie jar so a deleted conversation leaves no leaked browser. */
+  override def deleteConversation(conversationId: Id[Conversation]): Task[Unit] =
+    disposeBrowserController(conversationId)
+      .handleError(_ => Task.unit)
+      .flatMap(_ => super.deleteConversation(conversationId))
+
   /** Tear down every live [[BrowserController]] on `Sigil.shutdown`.
     * Each controller's Chrome subprocess is closed and any bound
     * cookie jar is persisted before disposal. Chains through

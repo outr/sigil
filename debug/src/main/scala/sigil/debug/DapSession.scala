@@ -78,11 +78,6 @@ final class DapSession(val config: DebugAdapterConfig,
     DapSession.fromFuture(server.disconnect(args)).map(_ => ())
   }
 
-  def terminate(): Task[Unit] = Task.defer {
-    touch()
-    DapSession.fromFuture(server.terminate(new TerminateArguments())).map(_ => ())
-  }
-
   // ---- breakpoints ----
 
   def setBreakpoints(sourcePath: String,
