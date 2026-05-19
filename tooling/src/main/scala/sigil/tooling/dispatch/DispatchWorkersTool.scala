@@ -1,66 +1,62 @@
 package sigil.tooling.dispatch
 
-import fabric.io.{JsonFormatter, JsonParser}
-import fabric.rw.*
-import fabric.{Arr, Bool, Json, NumDec, NumInt, Obj, Str}
+import fabric.Json
 import rapid.Task
 import sigil.TurnContext
-import sigil.provider.{CodingWork, Complexity, GenerationSettings, OneShotRequest, ProviderEvent, ProviderStrategy}
-import sigil.script.ScriptExecutor
-import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
+import sigil.script.{CompiledScript, ScriptBinding, ScriptExecutor}
 import sigil.tool.output.ToolOutputNode
+import sigil.tool.{ToolExample, TypedOutputTool, ToolName}
 import sigil.tooling.container.ContainerSupport
 
 /**
- * Generic parallel LLM-and-script per-item pipeline.
+ * Generic parallel per-item action over a container of items.
  *
- * Pipeline shapes:
- *   - LLM-only — classify / annotate / categorise each item.
- *   - LLM + script — propose an edit per item, apply via the
- *     script step (e.g. `edit_file` with its safe-edit
- *     `expectedHash` flow).
- *   - Script-only — deterministic per-item transformation, no
- *     model cost.
+ * The agent supplies one adhoc Scala `action` script. The dispatcher
+ * compiles it ONCE, then runs the compiled artifact in parallel — one
+ * worker per group of `groupSize` items. The script's per-group
+ * binding is `items: List[fabric.Json]` (the group's payloads) plus
+ * `context: sigil.TurnContext`; its trailing expression is the
+ * per-group worker result.
  *
  * Items come from a container: any tool whose output is paginated
  * (grep, LSP, …) materialises rows in `db.toolOutputs` keyed by a
  * `callId`. Pass that callId — or the `itemsId` returned by
  * `create_container` / `load_file_as_container` / `filter_container`
- * — as `itemsId`. The dispatcher reads top-level rows by default
- * (or `itemsAt`'s nominated level), caps at `itemsLimit` if set,
- * and dispatches one worker per item.
+ * — as `itemsId`. The dispatcher reads top-level rows by default (or
+ * `itemsAt`'s nominated level) and caps at `itemsLimit` if set.
  *
- * Two-phase confirm mirrors the prior refactor flow: `confirmed =
- * false` (default) returns a [[DispatchWorkersOutput.ScopePreview]]
- * with the resolved worker count + worker model id + a
- * `confirmCall` directive; `confirmed = true` runs the pipeline
- * and returns [[DispatchWorkersOutput.DispatchResult]].
+ * Two-phase confirm: `confirmed = false` (default) returns a
+ * [[DispatchWorkersOutput.ScopePreview]] after a successful compile —
+ * no worker runs; `confirmed = true` runs the action over every group
+ * and returns [[DispatchWorkersOutput.DispatchResult]]. A pre-flight
+ * compile failure short-circuits both phases with
+ * [[DispatchWorkersOutput.CompileFailure]].
  *
- * `ScriptStep` requires the host Sigil to mix in `ScriptSigil`. When
- * the host doesn't, items requesting script execution surface a
- * structured [[WorkerResult.Skipped]] outcome.
+ * The `action` script runs against the host's `ScriptExecutor` — the
+ * injected one when supplied, otherwise the host Sigil's (when it
+ * mixes in `ScriptSigil`). When no executor is available the tool
+ * surfaces a structured abort.
  */
 final class DispatchWorkersTool(scriptExecutor: Option[ScriptExecutor] = None)
   extends TypedOutputTool[DispatchWorkersInput, DispatchWorkersOutput](
     name = ToolName("dispatch_workers"),
     description =
-      """Run a per-item pipeline (optional LLM step + optional script step) over a container of
-        |items in parallel. Composable with grep / LSP / any tool whose output is a paginated list,
-        |plus inline / file / filter containers via the producer tools.
+      """Run an adhoc Scala `action` script over a container of items in parallel. The dispatcher
+        |compiles the action once, then runs it as N parallel workers. Composable with grep / LSP /
+        |any tool whose output is a paginated list, plus inline / file / filter containers via the
+        |producer tools.
         |
-        |Two-phase confirm. First call with `confirmed = false` (the default): resolves the
-        |worker-item count and worker model id and returns a ScopePreview without dispatching any
-        |worker. Read the preview's `confirmCall` directive; re-invoke with `confirmed = true` to
+        |Two-phase confirm. First call with `confirmed = false` (the default): the action is
+        |compiled and a ScopePreview is returned without dispatching any worker. If the action does
+        |not compile, a CompileFailure with typed line / column / message errors is returned and no
+        |worker runs. Read the preview's `confirmCall` directive; re-invoke with `confirmed = true`
+        |to run.
+        |
+        |The `action` script is Scala 3, same evaluator and surface as `execute_script`. Per worker
+        |it has `items: List[Json]` (the group's item payloads — one element with the default
+        |groupSize=1) and `context: TurnContext` in scope. The script's trailing expression is the
+        |per-group worker result. Runtime errors in one worker are isolated — other workers still
         |run.
-        |
-        |Pipeline shapes:
-        |  - LLM-only: classify / annotate each item — set `pipeline.llm`, leave `pipeline.script`
-        |    unset. Free-form text response by default; pass `pipeline.llm.outputSchema` to constrain
-        |    the response to a typed JSON shape.
-        |  - LLM + script: model proposes a value per item, script applies it (e.g. a safe-edit file
-        |    write with hash-based optimistic concurrency). Set both `pipeline.llm` and
-        |    `pipeline.script`.
-        |  - Script-only: deterministic per-item computation, no model cost. Set only `pipeline.script`.
         |
         |Items come from any container. Producers:
         |  - Any paginated tool (grep, lsp_find_references, lsp_workspace_symbols, ...) — pass its
@@ -69,44 +65,36 @@ final class DispatchWorkersTool(scriptExecutor: Option[ScriptExecutor] = None)
         |  - `load_file_as_container(path, parser)` — read a file into a container.
         |  - `filter_container(sourceId, predicate)` — narrow an existing container.
         |
-        |Required: `complexity` (routing tier for the worker model), `itemsId` (container reference).
-        |`workerModelId` overrides routing. `itemsAt` (default 0) picks the tree level to dispatch
-        |over (e.g. set to 1 for per-line grep matches under each file). `itemsLimit` caps the count
-        |consumed without modifying the source. `maxParallel` (default 5) caps concurrent worker
-        |invocations; `maxItems` (default 10000) caps the total item count to avoid runaway
-        |billing.""".stripMargin,
+        |Required: `itemsId` (container reference), `action` (the per-group script). `groupSize`
+        |(default 1) batches items into one worker invocation — the action handles batching
+        |internally. `itemsAt` (default 0) picks the tree level to dispatch over. `itemsLimit` caps
+        |the count consumed without modifying the source. `maxParallel` (default 5) caps concurrent
+        |worker invocations; `maxItems` (default 10000) caps the total item count to avoid runaway
+        |work.""".stripMargin,
     keywords = Set(
-      "dispatch", "workers", "parallel", "pipeline", "per-item", "per item",
+      "dispatch", "workers", "parallel", "per-item", "per item",
       "refactor", "rewrite", "modify", "multi-file", "across files", "worker",
-      "judgment", "per-match", "regex", "code change", "edit", "transform",
+      "per-match", "regex", "code change", "edit", "transform",
       "find", "replace", "find and replace", "search and replace",
       "search and edit", "find and edit", "bulk edit", "bulk replace",
       "rewrite across files", "remove", "delete pattern", "substitute",
       "search", "match", "classify", "annotate", "extract", "batch",
-      "loop", "map", "fan out"
+      "loop", "map", "fan out", "action", "script"
     ),
     examples = List(
       ToolExample(
-        "Preview dispatching workers over a grep result (confirmed=false)",
+        "Preview dispatching an action over a grep result (confirmed=false)",
         DispatchWorkersInput(
-          complexity = Complexity.Low,
-          itemsId    = lightdb.id.Id[ToolOutputNode]("example-grep-call-id"),
-          pipeline   = WorkerPipeline(
-            llm = Some(LlmStep(
-              prompt = "Remove every `// Bug #NNN` comment fragment from this file. File: {{item.filePath}}."
-            ))
-          )
+          itemsId = lightdb.id.Id[ToolOutputNode]("example-grep-call-id"),
+          action  = "items.head"
         )
       ),
       ToolExample(
-        "Classify each item with an LLM, return free-form text (confirmed=true)",
+        "Uppercase a field of each item (confirmed=true)",
         DispatchWorkersInput(
-          complexity = Complexity.Low,
-          confirmed  = true,
-          itemsId    = lightdb.id.Id[ToolOutputNode]("example-list-container-id"),
-          pipeline   = WorkerPipeline(
-            llm = Some(LlmStep(prompt = "Classify the sentiment of: {{item}}"))
-          )
+          itemsId   = lightdb.id.Id[ToolOutputNode]("example-list-container-id"),
+          action    = "fabric.Str(items.head(\"name\").asString.toUpperCase)",
+          confirmed = true
         )
       )
     )
@@ -116,253 +104,134 @@ final class DispatchWorkersTool(scriptExecutor: Option[ScriptExecutor] = None)
 
   override protected def executeTyped(input: DispatchWorkersInput,
                                       ctx: TurnContext): Task[DispatchWorkersOutput] = {
-    if (input.pipeline.llm.isEmpty && input.pipeline.script.isEmpty) {
+    if (input.groupSize < 1) {
       return Task.pure(DispatchWorkersOutput.DispatchResult(
-        totalItems      = 0,
-        successCount    = 0,
-        failureCount    = 0,
-        results         = Nil,
-        resolvedModelId = "",
-        abortReason     = Some("dispatch_workers: pipeline must declare at least one of `llm` or `script` — empty pipelines have nothing to run.")
+        sessionId    = rapid.Unique(),
+        totalItems   = 0,
+        successCount = 0,
+        failureCount = 0,
+        perItem      = Nil,
+        abortReason  = Some(s"dispatch_workers: groupSize must be >= 1 (got ${input.groupSize}).")
       ))
     }
-    ContainerSupport.resolveItems(ctx, input.itemsId, input.itemsAt, input.itemsLimit).flatMap { items =>
-      val totalItems = items.size
-      val capExceeded = totalItems > input.maxItems
-      if (items.isEmpty && input.confirmed) {
+    val executor: Option[ScriptExecutor] = scriptExecutor.orElse(DispatchWorkersTool.scriptExecutorOf(ctx.sigil))
+    executor match {
+      case None =>
         Task.pure(DispatchWorkersOutput.DispatchResult(
-          totalItems      = 0,
-          successCount    = 0,
-          failureCount    = 0,
-          results         = Nil,
-          resolvedModelId = "",
-          abortReason     = Some(
-            "dispatch_workers received an empty items list with confirmed=true. " +
-              "There's nothing to dispatch. Verify the itemsId resolves to a container with items — " +
-              "create_container, load_file_as_container, filter_container, or any paginated tool's callId."
+          sessionId    = rapid.Unique(),
+          totalItems   = 0,
+          successCount = 0,
+          failureCount = 0,
+          perItem      = Nil,
+          abortReason  = Some(
+            "dispatch_workers: no ScriptExecutor available — the host Sigil must mix in ScriptSigil " +
+              "(or an executor must be injected) to compile and run the action script."
           )
         ))
-      } else resolveWorkerModelId(input, ctx).flatMap { resolvedModelId =>
+      case Some(exec) =>
+        ContainerSupport.resolveItems(ctx, input.itemsId, input.itemsAt, input.itemsLimit).flatMap { items =>
+          dispatch(input, ctx, exec, items)
+        }
+    }
+  }
+
+  // ---- core flow ----
+
+  private def dispatch(input: DispatchWorkersInput,
+                       ctx: TurnContext,
+                       exec: ScriptExecutor,
+                       items: List[Json]): Task[DispatchWorkersOutput] = {
+    val totalItems = items.size
+    val capExceeded = totalItems > input.maxItems
+    // Compile `action` once — before any worker, before the scope
+    // preview. A compile failure short-circuits both phases.
+    exec.compile(input.action, DispatchWorkersTool.ActionBindings).flatMap {
+      case Left(errors) =>
+        Task.pure(DispatchWorkersOutput.CompileFailure(errors))
+      case Right(compiled) =>
         if (!input.confirmed) {
           val abortReason: Option[String] =
             if (capExceeded)
               Some(s"found $totalItems items; refusing to dispatch more than maxItems=${input.maxItems}. " +
                 "Narrow the item source (e.g. filter_container) or raise the cap, then re-preview.")
             else None
-          val sample = items.take(DispatchWorkersTool.PreviewSampleSize)
-          val sessionId = rapid.Unique()
           Task.pure(DispatchWorkersOutput.ScopePreview(
-            sessionId                = sessionId,
-            totalItems               = totalItems,
-            estimatedWorkerCallCount = totalItems,
-            resolvedModelId          = resolvedModelId,
-            estimatedCostNote        = costNote(input.complexity, totalItems, input.pipeline),
-            perItemSample            = sample,
-            confirmCall              = renderConfirmCall(totalItems),
-            abortReason              = abortReason
+            sessionId     = rapid.Unique(),
+            totalItems    = totalItems,
+            workerCount   = workerCount(totalItems, input.groupSize),
+            actionPreview = DispatchWorkersTool.preview(input.action),
+            compileOk     = true,
+            perItemSample = items.take(DispatchWorkersTool.PreviewSampleSize),
+            confirmCall   = renderConfirmCall(workerCount(totalItems, input.groupSize)),
+            abortReason   = abortReason
+          ))
+        } else if (items.isEmpty) {
+          Task.pure(DispatchWorkersOutput.DispatchResult(
+            sessionId    = rapid.Unique(),
+            totalItems   = 0,
+            successCount = 0,
+            failureCount = 0,
+            perItem      = Nil,
+            abortReason  = Some(
+              "dispatch_workers received an empty items list with confirmed=true. " +
+                "There's nothing to dispatch. Verify the itemsId resolves to a container with items — " +
+                "create_container, load_file_as_container, filter_container, or any paginated tool's callId."
+            )
           ))
         } else if (capExceeded) {
           Task.pure(DispatchWorkersOutput.DispatchResult(
-            totalItems      = totalItems,
-            successCount    = 0,
-            failureCount    = 0,
-            results         = Nil,
-            resolvedModelId = resolvedModelId,
-            abortReason     = Some(s"found $totalItems items; refusing to dispatch more than maxItems=${input.maxItems}.")
+            sessionId    = rapid.Unique(),
+            totalItems   = totalItems,
+            successCount = 0,
+            failureCount = 0,
+            perItem      = Nil,
+            abortReason  = Some(s"found $totalItems items; refusing to dispatch more than maxItems=${input.maxItems}.")
           ))
         } else {
-          runPipeline(input, ctx, items, resolvedModelId)
+          runWorkers(input, ctx, compiled, items)
         }
-      }
     }
   }
 
-  // ---- worker-model resolution ----
-
-  private def resolveWorkerModelId(input: DispatchWorkersInput, ctx: TurnContext): Task[String] = input.workerModelId match {
-    case Some(explicit) if explicit.nonEmpty => Task.pure(explicit)
-    case _ if input.pipeline.llm.isEmpty     => Task.pure("")
-    case _ =>
-      def fromStrategy(strategy: ProviderStrategy): Option[String] =
-        strategy.candidates(CodingWork)
-          .find(_.supportedComplexity.contains(input.complexity))
-          .map(_.modelId.value)
-
-      ctx.sigil.accessibleSpaces(ctx.chain, ctx.conversation.id).flatMap { spaces =>
-        val ordered = spaces.toList
-        def loop(remaining: List[sigil.SpaceId]): Task[Option[String]] = remaining match {
-          case Nil => Task.pure(None)
-          case space :: rest =>
-            ctx.sigil.resolveProviderStrategy(space).flatMap {
-              case Some(strategy) => fromStrategy(strategy) match {
-                case Some(id) => Task.pure(Some(id))
-                case None     => loop(rest)
-              }
-              case None => loop(rest)
-            }
-        }
-        loop(ordered).map(_.getOrElse(""))
-      }
-  }
-
-  // ---- pipeline execution ----
-
-  private def runPipeline(input: DispatchWorkersInput,
-                          ctx: TurnContext,
-                          items: List[Json],
-                          modelId: String): Task[DispatchWorkersOutput] = {
-    val perItem: List[Task[WorkerResult]] = items.map { item =>
-      runOne(input.pipeline, item, modelId, ctx)
+  private def runWorkers(input: DispatchWorkersInput,
+                         ctx: TurnContext,
+                         compiled: CompiledScript,
+                         items: List[Json]): Task[DispatchWorkersOutput] = {
+    val groups: List[List[Json]] = items.grouped(input.groupSize).toList
+    val perGroup: List[Task[WorkerOutcome]] = groups.zipWithIndex.map { case (group, index) =>
+      val bindings: Map[String, Any] = Map(
+        "items"   -> group,
+        "context" -> ctx
+      )
+      compiled.invoke(bindings)
+        .map(result => WorkerOutcome(index, result))
         .handleError { t =>
           val msg = Option(t.getMessage).getOrElse(t.getClass.getSimpleName)
-          Task.pure(WorkerResult.ScriptError(item, msg): WorkerResult)
+          Task.pure(WorkerOutcome(index, Left(msg)))
         }
     }
-    Task.parSequenceBounded(perItem, parallelism = math.max(1, input.maxParallel)).map { results =>
-      val (successes, failures) = results.partition {
-        case _: WorkerResult.Success => true
-        case _                       => false
-      }
+    Task.parSequenceBounded(perGroup, parallelism = math.max(1, input.maxParallel)).map { outcomes =>
+      val successCount = outcomes.count(_.result.isRight)
+      val failureCount = outcomes.size - successCount
       DispatchWorkersOutput.DispatchResult(
-        totalItems      = items.size,
-        successCount    = successes.size,
-        failureCount    = failures.size,
-        results         = results,
-        resolvedModelId = modelId
+        sessionId    = rapid.Unique(),
+        totalItems   = items.size,
+        successCount = successCount,
+        failureCount = failureCount,
+        perItem      = outcomes
       )
-    }
-  }
-
-  private def runOne(pipeline: WorkerPipeline,
-                     item: Json,
-                     modelId: String,
-                     ctx: TurnContext): Task[WorkerResult] = {
-    val llmStage: Task[Either[WorkerResult, Json]] = pipeline.llm match {
-      case None => Task.pure(Right(item))
-      case Some(step) => runLlm(step, item, modelId, ctx)
-    }
-    llmStage.flatMap {
-      case Left(failure) => Task.pure(failure)
-      case Right(payload) =>
-        pipeline.script match {
-          case None => Task.pure(WorkerResult.Success(item, payload): WorkerResult)
-          case Some(scriptStep) => runScript(scriptStep, item, payload, ctx)
-        }
-    }
-  }
-
-  // ---- LLM step ----
-
-  private def runLlm(step: LlmStep,
-                     item: Json,
-                     modelId: String,
-                     ctx: TurnContext): Task[Either[WorkerResult, Json]] = {
-    if (modelId.isEmpty) {
-      return Task.pure(Left(WorkerResult.ValidationFailed(item,
-        "no worker model id resolved (set `workerModelId` or wire a ProviderStrategy for CodingWork at the input's complexity).")))
-    }
-    val substitutedSystem = DispatchWorkersTool.substitute(step.systemPrompt, item)
-    val substitutedPrompt = DispatchWorkersTool.substitute(step.prompt, item)
-    val settings = GenerationSettings(
-      temperature     = step.temperature,
-      maxOutputTokens = step.maxTokens
-    )
-    ctx.sigil.providerFor(lightdb.id.Id[sigil.db.Model](modelId), ctx.chain).flatMap { provider =>
-      val request = OneShotRequest(
-        modelId            = lightdb.id.Id[sigil.db.Model](modelId),
-        systemPrompt       = if (substitutedSystem.isEmpty) " " else substitutedSystem,
-        userPrompt         = if (substitutedPrompt.isEmpty) " " else substitutedPrompt,
-        generationSettings = settings,
-        chain              = ctx.chain
-      )
-      provider(request).toList.map { events =>
-        val text = collectText(events)
-        if (text.isEmpty)
-          Left(WorkerResult.ValidationFailed(item, "worker LLM emitted an empty response"))
-        else step.outputSchema match {
-          case None      => Right(Obj("text" -> Str(text)))
-          case Some(_) =>
-            scala.util.Try(JsonParser(text)) match {
-              case scala.util.Success(j) => Right(j)
-              case scala.util.Failure(t) =>
-                Left(WorkerResult.ValidationFailed(item,
-                  s"worker LLM response did not parse as JSON (${Option(t.getMessage).getOrElse(t.getClass.getSimpleName)}): ${text.take(120)}"))
-            }
-        }
-      }
-    }.handleError { t =>
-      Task.pure(Left(WorkerResult.ValidationFailed(item,
-        s"worker LLM call failed: ${t.getClass.getSimpleName}: ${Option(t.getMessage).getOrElse("")}")))
-    }
-  }
-
-  // ---- script step ----
-
-  private def runScript(step: ScriptStep,
-                        item: Json,
-                        payload: Json,
-                        ctx: TurnContext): Task[WorkerResult] = {
-    val executor: Option[ScriptExecutor] = scriptExecutor.orElse(DispatchWorkersTool.scriptExecutorOf(ctx.sigil))
-    executor match {
-      case None =>
-        Task.pure(WorkerResult.Skipped(item,
-          "dispatch_workers: pipeline.script requires the host Sigil to mix in ScriptSigil (or an injected ScriptExecutor); neither was available."))
-      case Some(exec) =>
-        val bindings: Map[String, Any] = Map(
-          "input"   -> payload,
-          "item"    -> item,
-          "context" -> ctx
-        )
-        exec.execute(step.code, bindings).map { result =>
-          val out = scala.util.Try(JsonParser(result)).getOrElse(Str(result))
-          // Pattern-match on the script result for the standard
-          // `edit_file`-style `Stale(currentHash, ...)` shape so the
-          // dispatch surface treats hash mismatches as a first-class
-          // partial-success rather than a generic Success.
-          out match {
-            case o: Obj if o.value.contains("Stale") =>
-              val hash = o.value.get("Stale")
-                .flatMap {
-                  case so: Obj => so.value.get("currentHash").collect { case Str(s, _) => s }
-                  case _       => None
-                }
-                .getOrElse("")
-              WorkerResult.Stale(item, hash)
-            case _ => WorkerResult.Success(item, out)
-          }
-        }.handleError { t =>
-          val msg = Option(t.getMessage).getOrElse(t.getClass.getSimpleName)
-          Task.pure(WorkerResult.ScriptError(item, msg): WorkerResult)
-        }
     }
   }
 
   // ---- helpers ----
 
-  private def collectText(events: List[ProviderEvent]): String = {
-    val sb = new StringBuilder
-    events.foreach {
-      case ProviderEvent.ContentBlockDelta(_, t) => sb.append(t)
-      case ProviderEvent.TextDelta(t)            => sb.append(t)
-      case _                                     => ()
-    }
-    sb.toString
-  }
-
-  private def costNote(complexity: Complexity, items: Int, pipeline: WorkerPipeline): String = {
-    val tier = complexity match {
-      case Complexity.Low      => "cheapest tier"
-      case Complexity.Medium   => "mid tier"
-      case Complexity.High     => "high tier"
-      case Complexity.VeryHigh => "frontier tier"
-    }
-    val llmShare = if (pipeline.llm.isDefined) s"$items worker LLM call(s) on $tier" else "no LLM calls"
-    val scriptShare = if (pipeline.script.isDefined) s"$items script invocation(s)" else "no script invocations"
-    s"$llmShare; $scriptShare"
-  }
+  private def workerCount(totalItems: Int, groupSize: Int): Int =
+    if (totalItems <= 0) 0
+    else math.ceil(totalItems.toDouble / math.max(1, groupSize)).toInt
 
   private def renderConfirmCall(workers: Int): String =
-    s"call dispatch_workers again with the same arguments and confirmed=true to dispatch $workers workers"
+    s"call dispatch_workers again with the same arguments and confirmed=true to dispatch $workers " +
+      "workers running the compiled action script"
 }
 
 object DispatchWorkersTool {
@@ -372,47 +241,30 @@ object DispatchWorkersTool {
     * truncation threshold even for 1000+ item containers. */
   val PreviewSampleSize: Int = 10
 
-  /** Substitute `{{item}}` and `{{item.path.to.field}}` placeholders
-    * in `template` against `item`. Unknown paths emit the raw
-    * placeholder so the failure mode is visible in the worker
-    * prompt rather than silently dropping the substitution. */
-  private[dispatch] def substitute(template: String, item: Json): String = {
-    if (template.isEmpty) return template
-    val pattern = """\{\{item(?:\.([a-zA-Z0-9_.\[\]]+))?\}\}""".r
-    pattern.replaceAllIn(template, m => {
-      val path = Option(m.group(1))
-      val value = path match {
-        case None       => item
-        case Some(p)    => resolvePath(item, p).getOrElse(item)
-      }
-      val rendered = value match {
-        case Str(s, _)     => s
-        case NumInt(n, _)  => n.toString
-        case NumDec(d, _)  => d.toString
-        case Bool(b, _)    => b.toString
-        case fabric.Null   => "null"
-        case other         => JsonFormatter.Compact(other)
-      }
-      java.util.regex.Matcher.quoteReplacement(rendered)
-    })
-  }
+  /** Character cap on `actionPreview` in
+    * [[DispatchWorkersOutput.ScopePreview]]. */
+  val ActionPreviewLength: Int = 200
 
-  private def resolvePath(json: Json, path: String): Option[Json] = {
-    val parts = path.split("\\.").toList
-    parts.foldLeft(Option(json)) {
-      case (Some(o: Obj), key) => o.value.get(key)
-      case (Some(_: Arr), _)   => None
-      case _                   => None
-    }
-  }
+  /** The per-worker binding surface the `action` script compiles
+    * against — the group's item payloads and the turn context. */
+  val ActionBindings: List[ScriptBinding] = List(
+    ScriptBinding("items", "List[fabric.Json]"),
+    ScriptBinding("context", "sigil.TurnContext")
+  )
+
+  /** First [[ActionPreviewLength]] characters of `action`, for the
+    * scope preview's sanity-check field. */
+  private[dispatch] def preview(action: String): String =
+    if (action.length <= ActionPreviewLength) action
+    else action.take(ActionPreviewLength)
 
   /** Reflective discovery of an `Option[ScriptExecutor]` on the host
     * Sigil. Apps mixing in `ScriptSigil` expose `scriptExecutor:
     * ScriptExecutor`; we use reflection because `tooling/` cannot
     * statically depend on `script/`'s opt-in mixin (that would force
     * every tooling user to pull in scala3-repl). When the host
-    * doesn't have the method, returns `None` and the script step
-    * surfaces a structured Skipped result. */
+    * doesn't have the method, returns `None` and the dispatcher
+    * surfaces a structured abort. */
   private[dispatch] def scriptExecutorOf(host: AnyRef): Option[ScriptExecutor] = {
     val cls = host.getClass
     val method = scala.util.Try(cls.getMethod("scriptExecutor")).toOption

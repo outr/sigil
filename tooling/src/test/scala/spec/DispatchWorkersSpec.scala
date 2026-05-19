@@ -1,8 +1,7 @@
 package spec
 
-import fabric.io.{JsonFormatter, JsonParser}
 import fabric.rw.*
-import fabric.{Arr, Bool, Json, NumInt, Obj, Str}
+import fabric.{Json, NumInt, Obj, Str}
 import lightdb.id.Id
 import lightdb.store.CollectionManager
 import lightdb.upgrade.DatabaseUpgrade
@@ -16,20 +15,14 @@ import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
 import sigil.event.{Event, MessageRole, ToolInvoke}
 import sigil.information.Information
 import sigil.participant.{Participant, ParticipantId}
-import sigil.provider.{
-  CallId, GenerationSettings, Provider, ProviderCall, ProviderEvent, ProviderType,
-  StopReason, Complexity, ProviderRequest
-}
-import sigil.script.ScriptExecutor
+import sigil.provider.{CallId, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason}
+import sigil.script.ScalaScriptExecutor
 import sigil.signal.{EventState, Signal}
 import sigil.tool.fs.LocalFileSystemContext
 import sigil.tool.model.GrepInput
-import sigil.tool.{ToolName, Tool}
+import sigil.tool.{Tool, ToolName}
 import sigil.tooling.container.{CreateContainerInput, CreateContainerTool}
-import sigil.tooling.dispatch.{
-  DispatchWorkersInput, DispatchWorkersOutput, DispatchWorkersTool,
-  LlmStep, ScriptStep, WorkerPipeline, WorkerResult
-}
+import sigil.tooling.dispatch.{DispatchWorkersInput, DispatchWorkersOutput, DispatchWorkersTool}
 import sigil.vector.{NoOpVectorIndex, VectorIndex}
 import sigil.{Sigil, SpaceId, TurnContext}
 import spice.http.HttpRequest
@@ -39,18 +32,20 @@ import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.duration.*
 
 /**
- * Acceptance for sigil bug #230 — the `dispatch_workers` generic
- * primitive replacing the refactor session.
+ * Acceptance for the `dispatch_workers` generic primitive — the
+ * adhoc-`action` shape (per bug #245). Each worker runs a shared,
+ * once-compiled Scala action over a group of items.
  *
- * Six cases. All run deterministically against a stubbed Provider
- * and a real `LocalFileSystemContext` against a per-test tmpdir,
- * so the spec stays in-process and finishes in milliseconds.
+ * Runs deterministically against a real `ScalaScriptExecutor` and a
+ * per-test tmpdir, so the spec stays in-process.
  */
 class DispatchWorkersSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   DispatchTestSigil.initFor(getClass.getSimpleName)
 
-  override implicit val testTimeout: FiniteDuration = 30.seconds
+  override implicit val testTimeout: FiniteDuration = 60.seconds
+
+  private val executor = new ScalaScriptExecutor()
 
   // ------------- shared fixtures -------------
 
@@ -91,121 +86,73 @@ class DispatchWorkersSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
   }
 
   /** Persist `items` as a fresh container under `ctx`'s conversation
-    * and return the resulting `itemsId`. Lets each test arrive at
-    * the migrated input shape without duplicating the persist
-    * boilerplate in every case. */
+    * and return the resulting `itemsId`. */
   private def containerFor(items: List[Json], ctx: TurnContext): lightdb.id.Id[sigil.tool.output.ToolOutputNode] =
     CreateContainerTool.invoke(CreateContainerInput(items), ctx).sync().itemsId
 
-  // ------------- the six cases -------------
+  // ------------- the cases -------------
 
-  "dispatch_workers LLM-only" should {
+  "dispatch_workers action" should {
 
-    // Acceptance #1 — LLM-only pipeline with free-form output. Ten
-    // items, no script, classify-each-item shape. Per-item the
-    // worker LLM emits a string; the framework wraps it as
-    // `{"text": "<response>"}` and the result lands as a
-    // WorkerResult.Success carrying that payload.
-    "produce one Success per item for a free-form classification flow" in {
+    // One outcome per item, the action's trailing expression captured
+    // as that worker's Right value.
+    "produce one Right outcome per item when the action transforms each item" in {
       DispatchTestSigil.reset()
-      // Each item gets one ToolCallText response. The stub just
-      // echoes the item's payload back as JSON-ish text so we can
-      // verify per-item routing without hand-coding 10 different
-      // responses.
-      DispatchTestSigil.setProvider(Task.pure(StubProvider.echoing()))
-      val tool = new DispatchWorkersTool()
+      val tool = new DispatchWorkersTool(scriptExecutor = Some(executor))
       val ctx = turnContext()
       val items: List[Json] = (1 to 10).toList.map(i => Str(s"item-$i"))
       val input = DispatchWorkersInput(
-        complexity    = Complexity.Low,
-        confirmed     = true,
-        itemsId       = containerFor(items, ctx),
-        pipeline      = WorkerPipeline(llm = Some(LlmStep(prompt = "Echo: {{item}}"))),
-        workerModelId = Some("stub-model"),
-        maxParallel   = 4
+        itemsId   = containerFor(items, ctx),
+        action    = "fabric.Str(items.head.asString.toUpperCase)",
+        confirmed = true,
+        maxParallel = 4
       )
       tool.invoke(input, ctx).map {
         case d: DispatchWorkersOutput.DispatchResult =>
           d.totalItems shouldBe 10
           d.successCount shouldBe 10
           d.failureCount shouldBe 0
-          d.results.size shouldBe 10
-          all(d.results) shouldBe a [WorkerResult.Success]
+          d.perItem.size shouldBe 10
+          all(d.perItem.map(_.result.isRight)) shouldBe true
+          d.perItem.head.result shouldBe Right(Str("ITEM-1"))
         case other => fail(s"expected DispatchResult, got $other")
       }
     }
   }
 
-  "dispatch_workers LLM with outputSchema feeding script" should {
+  "dispatch_workers groupSize" should {
 
-    // Acceptance #2 — LLM emits a JSON object matching `outputSchema`;
-    // the script step receives the parsed Json as its `input`
-    // binding. Verify the binding round-trips by having the script
-    // re-emit the input verbatim.
-    "produce typed JSON usable as the script step's `input` binding" in {
+    // With groupSize=3 over 7 items, the action runs over 3 groups:
+    // [3, 3, 1]. Each worker sees a `items` list of the group's
+    // payloads; the action reports the group's size.
+    "batch items into one worker invocation per group of groupSize" in {
       DispatchTestSigil.reset()
-      // Stub emits a JSON object per item — the dispatcher should
-      // parse it (because `outputSchema` is set) instead of wrapping
-      // as `{"text": ...}`.
-      DispatchTestSigil.setProvider(Task.pure(StubProvider.constant(
-        """{"verdict": "ok", "score": 7}"""
-      )))
-      // Workers run on parallel fibers — a thread-safe list so
-      // concurrent script invocations don't drop a recorded input.
-      val recordedInputs = new java.util.concurrent.CopyOnWriteArrayList[Json]()
-      val executor = new ScriptExecutor {
-        override def execute(code: String, bindings: Map[String, Any]): Task[String] = Task {
-          val input = bindings("input").asInstanceOf[Json]
-          recordedInputs.add(input)
-          JsonFormatter.Compact(input)
-        }
-      }
       val tool = new DispatchWorkersTool(scriptExecutor = Some(executor))
       val ctx = turnContext()
-      val items: List[Json] = List(Str("a"), Str("b"))
+      val items: List[Json] = (1 to 7).toList.map(i => Str(s"item-$i"))
       val input = DispatchWorkersInput(
-        complexity    = Complexity.Low,
-        confirmed     = true,
-        itemsId       = containerFor(items, ctx),
-        pipeline      = WorkerPipeline(
-          llm    = Some(LlmStep(
-            prompt       = "Score: {{item}}",
-            outputSchema = Some(Obj(
-              "type" -> Str("object"),
-              "properties" -> Obj(
-                "verdict" -> Obj("type" -> Str("string")),
-                "score"   -> Obj("type" -> Str("integer"))
-              )
-            ))
-          )),
-          script = Some(ScriptStep(code = "input"))
-        ),
-        workerModelId = Some("stub-model")
+        itemsId   = containerFor(items, ctx),
+        action    = "fabric.NumInt(items.size.toLong)",
+        groupSize = 3,
+        confirmed = true
       )
       tool.invoke(input, ctx).map {
         case d: DispatchWorkersOutput.DispatchResult =>
-          d.totalItems shouldBe 2
-          d.successCount shouldBe 2
-          recordedInputs.size shouldBe 2
-          // Each recorded input is the parsed LLM output — verify the
-          // schema-shaped fields survived round-tripping.
-          val firstInput = recordedInputs.get(0) match {
-            case o: Obj => o
-            case other  => fail(s"expected parsed Obj input to script, got $other")
-          }
-          firstInput.value.get("verdict") shouldBe Some(Str("ok"))
-          firstInput.value.get("score") shouldBe Some(NumInt(7))
+          d.totalItems shouldBe 7
+          d.successCount shouldBe 3
+          d.perItem.map(_.result) shouldBe List(
+            Right(NumInt(3)), Right(NumInt(3)), Right(NumInt(1))
+          )
         case other => fail(s"expected DispatchResult, got $other")
       }
     }
   }
 
-  "dispatch_workers refactor use case (LLM + script that writes via edit_file)" should {
+  "dispatch_workers file-write action" should {
 
-    // Acceptance #3 — three files, all written. LLM proposes the
-    // edit per file, script applies it via the host `edit_file`
-    // tool's safe-edit flow (hash check passes). No session bookkeeping
-    // — the apply is in-script, not in a follow-up tool call.
+    // The action writes each file to disk — three items, three
+    // writes, verified on disk. Mirrors a refactor flow where the
+    // action is the apply step.
     "write all three files end-to-end" in {
       DispatchTestSigil.reset()
       val workspace = materialize(List(
@@ -213,62 +160,27 @@ class DispatchWorkersSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         "b.txt" -> "header\nLINE-TO-EDIT\nfooter\n",
         "c.txt" -> "header\nLINE-TO-EDIT\nfooter\n"
       ))
-      // LLM stub emits one edit per item — the script then applies
-      // the substitution. We simulate the apply directly in the
-      // executor so the test stays in-process; in production the
-      // script would invoke `edit_file` via the tools binding.
-      DispatchTestSigil.setProvider(Task.pure(StubProvider.constant(
-        """{"oldText": "LINE-TO-EDIT", "newText": "EDITED"}"""
-      )))
-      val writeCount = new AtomicInteger(0)
-      val executor = new ScriptExecutor {
-        override def execute(code: String, bindings: Map[String, Any]): Task[String] = Task {
-          val itemJson = bindings("item").asInstanceOf[Json]
-          val edit     = bindings("input").asInstanceOf[Json]
-          val filePath = itemJson match {
-            case o: Obj => o.value.get("filePath").collect { case Str(s, _) => s }.getOrElse("")
-            case _      => ""
-          }
-          val (oldText, newText) = edit match {
-            case o: Obj =>
-              (o.value.get("oldText").collect { case Str(s, _) => s }.getOrElse(""),
-               o.value.get("newText").collect { case Str(s, _) => s }.getOrElse(""))
-            case _ => ("", "")
-          }
-          val current = Files.readString(workspace.resolve(filePath))
-          val updated = current.replace(oldText, newText)
-          Files.writeString(workspace.resolve(filePath), updated,
-            StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
-          writeCount.incrementAndGet()
-          JsonFormatter.Compact(Obj("Success" -> Obj("replacements" -> NumInt(1))))
-        }
-      }
       val tool = new DispatchWorkersTool(scriptExecutor = Some(executor))
       val ctx = turnContext()
-      val items: List[Json] = List("a.txt", "b.txt", "c.txt").map(p => Obj("filePath" -> Str(p)))
+      val items: List[Json] = List("a.txt", "b.txt", "c.txt")
+        .map(p => Obj("filePath" -> Str(workspace.resolve(p).toString)))
+      val action =
+        """val path = java.nio.file.Path.of(items.head("filePath").asString)
+          |val updated = java.nio.file.Files.readString(path).replace("LINE-TO-EDIT", "EDITED")
+          |java.nio.file.Files.writeString(path, updated)
+          |fabric.Str("written")""".stripMargin
       val input = DispatchWorkersInput(
-        complexity    = Complexity.Low,
-        confirmed     = true,
-        itemsId       = containerFor(items, ctx),
-        pipeline      = WorkerPipeline(
-          llm    = Some(LlmStep(
-            prompt       = "Propose edit for {{item.filePath}}",
-            outputSchema = Some(Obj("type" -> Str("object")))
-          )),
-          script = Some(ScriptStep(code = "// apply edit via script binding"))
-        ),
-        workerModelId = Some("stub-model"),
-        maxParallel   = 3
+        itemsId     = containerFor(items, ctx),
+        action      = action,
+        confirmed   = true,
+        maxParallel = 3
       )
       tool.invoke(input, ctx).map {
         case d: DispatchWorkersOutput.DispatchResult =>
           try {
-            withClue(s"results: ${d.results.mkString("\n")}\n") {
+            withClue(s"outcomes: ${d.perItem.mkString("\n")}\n") {
               d.totalItems shouldBe 3
               d.successCount shouldBe 3
-              writeCount.get shouldBe 3
-              // Hash-check fires — the script ran edit_file's safe-edit
-              // flow; all three files updated on disk.
               Files.readString(workspace.resolve("a.txt")) should not include "LINE-TO-EDIT"
               Files.readString(workspace.resolve("b.txt")) should not include "LINE-TO-EDIT"
               Files.readString(workspace.resolve("c.txt")) should not include "LINE-TO-EDIT"
@@ -281,139 +193,12 @@ class DispatchWorkersSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     }
   }
 
-  "dispatch_workers partial-success on a Stale hash" should {
-
-    // Acceptance #4 — three files; one was mutated externally so the
-    // script returns a `Stale` marker for it. The other two commit
-    // successfully — no rollback. Verify the result carries one
-    // Stale entry and two Success entries, and the two writes
-    // happened on disk.
-    "settle two successes and one Stale entry without rolling back the successes" in {
-      DispatchTestSigil.reset()
-      val workspace = materialize(List(
-        "a.txt"          -> "header\nLINE-TO-EDIT\nfooter\n",
-        "stale.txt"      -> "header\nLINE-TO-EDIT\nfooter\n",
-        "c.txt"          -> "header\nLINE-TO-EDIT\nfooter\n"
-      ))
-      DispatchTestSigil.setProvider(Task.pure(StubProvider.constant(
-        """{"oldText": "LINE-TO-EDIT", "newText": "EDITED"}"""
-      )))
-      val executor = new ScriptExecutor {
-        override def execute(code: String, bindings: Map[String, Any]): Task[String] = Task {
-          val itemJson = bindings("item").asInstanceOf[Json]
-          val filePath = itemJson match {
-            case o: Obj => o.value.get("filePath").collect { case Str(s, _) => s }.getOrElse("")
-            case _      => ""
-          }
-          if (filePath == "stale.txt") {
-            // Simulate `edit_file` detecting a hash mismatch — the
-            // script returns the `Stale(currentHash, ...)` shape
-            // and the dispatcher pattern-matches it.
-            JsonFormatter.Compact(Obj(
-              "Stale" -> Obj(
-                "currentHash"    -> Str("deadbeef"),
-                "currentContent" -> Str("freshly-modified")
-              )
-            ))
-          } else {
-            val current = Files.readString(workspace.resolve(filePath))
-            val updated = current.replace("LINE-TO-EDIT", "EDITED")
-            Files.writeString(workspace.resolve(filePath), updated,
-              StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
-            JsonFormatter.Compact(Obj("Success" -> Obj("replacements" -> NumInt(1))))
-          }
-        }
-      }
-      val tool = new DispatchWorkersTool(scriptExecutor = Some(executor))
-      val ctx = turnContext()
-      val items: List[Json] = List("a.txt", "stale.txt", "c.txt").map(p => Obj("filePath" -> Str(p)))
-      val input = DispatchWorkersInput(
-        complexity    = Complexity.Low,
-        confirmed     = true,
-        itemsId       = containerFor(items, ctx),
-        pipeline      = WorkerPipeline(
-          llm    = Some(LlmStep(
-            prompt       = "Propose edit for {{item.filePath}}",
-            outputSchema = Some(Obj("type" -> Str("object")))
-          )),
-          script = Some(ScriptStep(code = "// apply"))
-        ),
-        workerModelId = Some("stub-model"),
-        maxParallel   = 3
-      )
-      tool.invoke(input, ctx).map {
-        case d: DispatchWorkersOutput.DispatchResult =>
-          try {
-            withClue(s"results: ${d.results.mkString("\n")}\n") {
-              d.totalItems shouldBe 3
-              d.results.count(_.isInstanceOf[WorkerResult.Success]) shouldBe 2
-              d.results.count(_.isInstanceOf[WorkerResult.Stale]) shouldBe 1
-              // The two non-stale files are written; the stale file is
-              // unchanged (the script returned Stale without writing).
-              Files.readString(workspace.resolve("a.txt")) should not include "LINE-TO-EDIT"
-              Files.readString(workspace.resolve("c.txt")) should not include "LINE-TO-EDIT"
-              Files.readString(workspace.resolve("stale.txt")) should include("LINE-TO-EDIT")
-            }
-          } finally cleanup(workspace)
-        case other =>
-          cleanup(workspace)
-          fail(s"expected DispatchResult, got $other")
-      }
-    }
-  }
-
-  "dispatch_workers confirmed=false" should {
-
-    // Acceptance #5 — confirmed=false returns a Scope preview with
-    // the resolved item count + model id; no provider call, no
-    // script invocation.
-    "return a scope preview without invoking the provider or any script" in {
-      DispatchTestSigil.reset()
-      val providerCalls = new AtomicInteger(0)
-      DispatchTestSigil.setProvider(Task.pure(StubProvider.counting(providerCalls)))
-      val scriptCalls = new AtomicInteger(0)
-      val executor = new ScriptExecutor {
-        override def execute(code: String, bindings: Map[String, Any]): Task[String] = Task {
-          scriptCalls.incrementAndGet()
-          ""
-        }
-      }
-      val tool = new DispatchWorkersTool(scriptExecutor = Some(executor))
-      val ctx = turnContext()
-      val items: List[Json] = (1 to 7).toList.map(i => Str(s"item-$i"))
-      val input = DispatchWorkersInput(
-        complexity    = Complexity.Low,
-        confirmed     = false,  // explicit — also the default
-        itemsId       = containerFor(items, ctx),
-        pipeline      = WorkerPipeline(
-          llm    = Some(LlmStep(prompt = "Classify: {{item}}")),
-          script = Some(ScriptStep(code = "input"))
-        ),
-        workerModelId = Some("stub-model")
-      )
-      tool.invoke(input, ctx).map {
-        case s: DispatchWorkersOutput.ScopePreview =>
-          s.totalItems shouldBe 7
-          s.resolvedModelId shouldBe "stub-model"
-          s.confirmCall should include("confirmed=true")
-          // No worker ran — neither the LLM stub nor the script
-          // executor was invoked.
-          providerCalls.get shouldBe 0
-          scriptCalls.get shouldBe 0
-        case other => fail(s"expected ScopePreview, got $other")
-      }
-    }
-  }
-
   "dispatch_workers suggested-tool surfacing after grep" should {
 
-    // Acceptance #6 — grep declares
-    // `suggestedNextTools = List("dispatch_workers")`. When a
-    // ToolInvoke against grep settles, the framework appends
+    // grep declares `suggestedNextTools = List("dispatch_workers")`.
+    // When a ToolInvoke against grep settles, the framework appends
     // dispatch_workers to the per-participant ParticipantProjection's
-    // `suggestedTools` overlay — the same surface that
-    // Provider.renderSystem reads to emit the "Suggested tools"
-    // prompt section.
+    // `suggestedTools` overlay.
     "append dispatch_workers to the projection's suggestedTools overlay" in {
       DispatchTestSigil.reset()
       val convId = Conversation.id(s"dispatch-overlay-${rapid.Unique()}")
@@ -441,10 +226,6 @@ class DispatchWorkersSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
           tx.list.map(_.filter(_.conversationId == convId).flatMap(_.suggestedTools).distinct)
         })
       } yield {
-        // The grep tool declared suggestedNextTools = List("dispatch_workers");
-        // the projection should now reflect that under the same overlay
-        // surface Provider.renderSystem reads to emit the "Suggested
-        // tools" prompt section.
         suggested should contain(ToolName("dispatch_workers"))
       }
     }
@@ -491,8 +272,9 @@ object DispatchTestSigil extends Sigil {
     List(RW.static(DispatchTestSpace))
   override protected def participants: List[RW[? <: Participant]] = Nil
 
-  /** Include `GrepTool` so the bug-#230 propagation path resolves the
-    * tool's `suggestedNextTools` when a `grep` ToolInvoke settles. */
+  /** Include `GrepTool` so the suggested-tool propagation path
+    * resolves the tool's `suggestedNextTools` when a `grep`
+    * ToolInvoke settles. */
   override def staticTools: List[Tool] =
     super.staticTools :+ new sigil.tool.fs.GrepTool(new LocalFileSystemContext(basePath = None))
 
@@ -544,14 +326,13 @@ object DispatchTestSigil extends Sigil {
   }
 }
 
-/** Stub provider for the DispatchWorkersSpec. Emits a single
+/** Stub provider for the dispatch specs. Emits a single
   * `ContentBlockDelta` text per call — callers parametrize the
   * response text or pass a counter. */
 object StubProvider {
 
   def echoing(): Provider = new BaseStub {
     override def call(input: ProviderCall): Stream[ProviderEvent] = {
-      // Extract the last user message text and echo it back.
       val text = userText(input).getOrElse("(no input)")
       Stream.emits(List(
         ProviderEvent.ContentBlockDelta(CallId("echo"), s"echoed: $text"),

@@ -43,10 +43,10 @@ class ScalaScriptExecutor(classpathOverride: Option[String] = None) extends Scri
   // engine.eval() calls run their `withRedirectedOutput` redirect
   // System.out / System.err to this stream, so all REPL output
   // (errors, warnings, defs) lands here.
-  private val captured: ByteArrayOutputStream = new ByteArrayOutputStream()
+  private[script] val captured: ByteArrayOutputStream = new ByteArrayOutputStream()
   private val capturedPS: PrintStream = new PrintStream(captured, /*autoFlush*/ true)
 
-  private lazy val engine = {
+  private[script] lazy val engine: ScriptEngine = {
     // Resolve the compiler's classpath in priority order:
     //   1. `classpathOverride` — caller knows best.
     //   2. URL introspection of the context classloader (bug #58) —
@@ -148,8 +148,40 @@ class ScalaScriptExecutor(classpathOverride: Option[String] = None) extends Scri
   override def execute(code: String, bindings: Map[String, Any]): Task[String] =
     executeRaw(code, bindings).map(r => if (r == null) "" else r.toString)
 
+  /**
+   * Compile `source` once into a [[ScalaCompiledScript]]. The user
+   * code is wrapped in a uniquely-named top-level `def` whose
+   * parameters are the declared `bindingTypes`; the `def` is evaluated
+   * a single time so the heavy compile happens once, and every
+   * [[CompiledScript.invoke]] only re-binds argument values and calls
+   * the persisted `def`.
+   *
+   * On a compile failure the captured REPL diagnostics are parsed into
+   * typed [[CompileError]]s via [[ScalaDiagnosticParser]] and returned
+   * as `Left`; no `CompiledScript` is produced and no body runs.
+   */
+  override def compile(source: String,
+                       bindingTypes: List[ScriptBinding]): Task[Either[List[CompileError], CompiledScript]] = Task {
+    engine.synchronized {
+      val cleaned = stripCodeFences(source)
+      val defName = s"__sigilCompiled_${java.lang.Long.toHexString(System.nanoTime())}"
+      val params = bindingTypes.map(b => s"${b.name}: ${b.typeName}").mkString(", ")
+      val wrapped = s"def $defName($params): Any = {\n$cleaned\n}"
+      captured.reset()
+      engine.eval(wrapped)
+      val diagnostics = captured.toString.trim
+      if (containsErrorDiagnostic(diagnostics)) {
+        val errors = ScalaDiagnosticParser.parse(diagnostics)
+        val nonEmpty = if (errors.nonEmpty) errors else List(CompileError(0, 0, diagnostics))
+        Left(nonEmpty): Either[List[CompileError], CompiledScript]
+      } else {
+        Right(new ScalaCompiledScript(engine, captured, defName, bindingTypes))
+      }
+    }
+  }
+
   override def executeRaw(code: String, bindings: Map[String, Any]): Task[Any] = Task {
-    synchronized {
+    engine.synchronized {
       bindAll(bindings)
       val cleaned = stripCodeFences(code)
       // Reset captured output before the eval so any error markers we

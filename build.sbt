@@ -234,7 +234,7 @@ lazy val metals = (project in file("metals"))
   )
 
 lazy val tooling = (project in file("tooling"))
-  .dependsOn(core % "compile->compile;test->test")
+  .dependsOn(core % "compile->compile;test->test", script % "test->compile")
   .settings(docNoLinkWarnings *)
   .settings(
     name := "sigil-tooling",
