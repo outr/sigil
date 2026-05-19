@@ -1,0 +1,15 @@
+{"requestHash":"9bd92be690c675e9acafa4cfa3bca700d320c6c82d7b5802e7e5d515e6faf5d7","recordedAt":1779157903375}
+{"callId":"64072be06","toolName":"respond","type":"ToolCallStart"}
+{"callId":"64072be06","blockType":"Markdown","arg":null,"type":"ContentBlockStart"}
+{"callId":"64072be06","text":"Not","type":"ContentBlockDelta"}
+{"callId":"64072be06","text":"ed","type":"ContentBlockDelta"}
+{"callId":"64072be06","text":",","type":"ContentBlockDelta"}
+{"callId":"64072be06","text":" blue","type":"ContentBlockDelta"}
+{"callId":"64072be06","text":" is","type":"ContentBlockDelta"}
+{"callId":"64072be06","text":" your","type":"ContentBlockDelta"}
+{"callId":"64072be06","text":" favorite","type":"ContentBlockDelta"}
+{"callId":"64072be06","text":" color","type":"ContentBlockDelta"}
+{"callId":"64072be06","text":".","type":"ContentBlockDelta"}
+{"callId":"64072be06","input":{"topicLabel":"Color preference","topicSummary":"User stated their favorite color is blue.","content":"Noted, blue is your favorite color.","disposition":"Success","endsTurn":true,"keywords":["acknowledge","favorite color","blue"],"type":"RespondInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":4719,"completionTokens":116,"totalTokens":4835,"isEstimated":false},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

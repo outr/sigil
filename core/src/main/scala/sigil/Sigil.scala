@@ -1495,7 +1495,7 @@ trait Sigil {
                          suggested: List[sigil.tool.ToolName],
                          overlays: List[ToolPolicy] = Nil): List[sigil.tool.ToolName] = {
     import sigil.tool.core.{
-      CancelTool, ChangeModeTool, FindCapabilityTool, NoResponseTool, RespondTool,
+      ChangeModeTool, FindCapabilityTool, NoResponseTool, RespondTool,
       RespondFailureTool, RespondFieldTool, RespondOptionsTool
     }
     import sigil.tool.skill.ActivateSkillTool
@@ -1505,10 +1505,15 @@ trait Sigil {
     // `respond_card` tools are opt-in (not essentials) — markdown
     // callouts and disposition cover their cases in `respond`.
     // `no_response` dropped from defaults in sigil bug #156.
+    // `cancel` deliberately omitted from both essentials lists — agents
+    // reach for it under stress (duplicate-call warning, ambiguous
+    // input) and terminate conversations when the right move is
+    // `respond` to ask the user. PureDiscovery without an exit hatch
+    // relies on the runaway cap as the safety mechanism.
     val fullEssentials = List(
-      RespondTool, RespondOptionsTool, CancelTool
+      RespondTool, RespondOptionsTool
     ).map(_.schema.name)
-    val pureDiscoveryEssentials = List(CancelTool.schema.name)
+    val pureDiscoveryEssentials = List.empty[sigil.tool.ToolName]
 
     case class PolicyState(extras: List[sigil.tool.ToolName],
                            includesFindCapability: Boolean,
@@ -1559,7 +1564,7 @@ trait Sigil {
       ChangeModeTool.schema.name        -> 0,
       FindCapabilityTool.schema.name    -> 1,
       ActivateSkillTool.schema.name     -> 2,
-      CancelTool.schema.name              -> 100,
+      sigil.tool.core.CancelTool.schema.name -> 100,
       // Within the response tail, `respond_options` precedes `respond` so first-tool
       // bias on small models surfaces the specific "asking" shape before the
       // catch-all "telling" tool. Sigil bug #168.

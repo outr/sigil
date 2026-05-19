@@ -1,0 +1,5 @@
+{"requestHash":"825fc7028239f84e60052e290c187a7803ce0931fa3ee6dc06aed9c8af1ef2d7","recordedAt":1779157800574}
+{"callId":"ff15705f7","toolName":"get_magic_number","type":"ToolCallStart"}
+{"callId":"ff15705f7","input":{"type":"GetMagicNumberInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":4504,"completionTokens":15,"totalTokens":4519,"isEstimated":false},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

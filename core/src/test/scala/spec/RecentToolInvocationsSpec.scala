@@ -163,11 +163,20 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       renderSystem(requestWith(proj, convId)).map { body =>
         body should include("Repeated tool calls")
         body should include(SearchTool.name.value)
-        body should include("2 times")
-        body should include("Don't re-issue this call")
+        body should include("2x with identical args")
         // The args preview shows up so the agent sees what it called.
         body should include("TODO|FIXME")
+        // Informational, not directive: stripped wording that some
+        // models read as a hard stop signal and respond to by
+        // abandoning the turn.
+        body should not include "Don't re-issue"
+        body should not include "try a different approach"
       }
+    }
+
+    "omit CancelTool from CoreTools.all so agents don't reach for it under stress" in {
+      sigil.tool.core.CoreTools.all.map(_.name.value) should not contain "cancel"
+      rapid.Task.unit.map(_ => succeed)
     }
 
     "NOT surface the warning when the same tool fires with different args" in {

@@ -77,13 +77,22 @@ import sigil.tool.skill.{ActivateSkillInput, ActivateSkillTool}
  */
 object CoreTools {
 
-  /** The tool instances — pass to `ProviderRequest.tools`. */
+  /** The tool instances — pass to `ProviderRequest.tools`.
+    *
+    * [[CancelTool]] is intentionally NOT in this default set. Field
+    * evidence showed agents reaching for `cancel` under stress
+    * (e.g. when a duplicate-tool-call warning lands on the next
+    * turn) and terminating the conversation when the right move was
+    * to recover and continue. The agent's "I'm stuck" path is
+    * `respond` — say so, keep the conversation alive. Apps that
+    * legitimately need agent-initiated cancellation (monitor agents
+    * intercepting child agents via `cancel(force=true)`) opt in by
+    * appending [[CancelTool]] to their `staticTools` override. */
   val all: Vector[Tool] =
     Vector(
       RespondTool,
       RespondOptionsTool,
       FindCapabilityTool,
-      CancelTool,
       RecordConsentTool
     )
 

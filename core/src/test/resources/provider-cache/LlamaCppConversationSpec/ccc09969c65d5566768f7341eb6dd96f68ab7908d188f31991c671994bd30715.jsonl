@@ -1,0 +1,56 @@
+{"requestHash":"ccc09969c65d5566768f7341eb6dd96f68ab7908d188f31991c671994bd30715","recordedAt":1779157917452}
+{"text":"New","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"The","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" is","type":"TextDelta"}
+{"text":" initiating","type":"TextDelta"}
+{"text":" a","type":"TextDelta"}
+{"text":" completely","type":"TextDelta"}
+{"text":" new","type":"TextDelta"}
+{"text":" subject","type":"TextDelta"}
+{"text":" (","type":"TextDelta"}
+{"text":"a","type":"TextDelta"}
+{"text":" Scala","type":"TextDelta"}
+{"text":" coding","type":"TextDelta"}
+{"text":" session","type":"TextDelta"}
+{"text":")","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":19,"totalTokens":19,"isEstimated":true},"type":"Usage"}
+{"text":" that","type":"TextDelta"}
+{"text":" is","type":"TextDelta"}
+{"text":" distinct","type":"TextDelta"}
+{"text":" from","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" current","type":"TextDelta"}
+{"text":" topic","type":"TextDelta"}
+{"text":" (\"","type":"TextDelta"}
+{"text":"Test","type":"TextDelta"}
+{"text":" Topic","type":"TextDelta"}
+{"text":"\")","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" there","type":"TextDelta"}
+{"text":" are","type":"TextDelta"}
+{"text":" no","type":"TextDelta"}
+{"text":" prior","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":38,"totalTokens":38,"isEstimated":true},"type":"Usage"}
+{"text":" topics","type":"TextDelta"}
+{"text":" to","type":"TextDelta"}
+{"text":" return","type":"TextDelta"}
+{"text":" to","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":" Therefore","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" it","type":"TextDelta"}
+{"text":" is","type":"TextDelta"}
+{"text":" a","type":"TextDelta"}
+{"text":" \"","type":"TextDelta"}
+{"text":"New","type":"TextDelta"}
+{"text":"\"","type":"TextDelta"}
+{"text":" topic","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":52,"totalTokens":52,"isEstimated":true},"type":"Usage"}
+{"callId":"961114edb","toolName":"classify_topic_shift","type":"ToolCallStart"}
+{"callId":"961114edb","input":{"kind":"New","type":"TopicClassifierInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":605,"completionTokens":76,"totalTokens":681,"isEstimated":false},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

@@ -976,11 +976,13 @@ trait Provider extends Service {
       }
     }
     // Surface every (toolName, argsHash) bucket that fires more than
-    // once in the rolling window. The agent's prompt previously only
-    // showed tool names, leaving it blind to "I called grep with these
-    // EXACT args 30s ago" -- the model would retry expecting different
-    // output. Naming the args + the count + the directive gives the
-    // model the data it needs to switch strategy.
+    // once in the rolling window. Informational, not directive: the
+    // count and args are stated as data; the agent decides what to do
+    // with it. Earlier wording prescribed "try a different approach"
+    // and listed options, which some models read as a hard stop
+    // signal and respond to by abandoning the turn entirely. Stating
+    // the fact and pointing at the prior outputs lets the agent
+    // self-correct without an over-interpreted directive.
     val duplicateGroups = recentInvocations
       .groupBy(inv => (inv.toolName, inv.argsHash))
       .collect { case (key, occurrences) if occurrences.size > 1 => key -> occurrences }
@@ -994,11 +996,9 @@ trait Provider extends Service {
         val ago = Provider.humanizeAgo(now - latest)
         val previewText = if (preview.nonEmpty) s" `$preview`" else ""
         sb.append(
-          s"- You called `${toolName.value}` with these args ${occurrences.size} times " +
-            s"(most recently $ago):$previewText. The result hasn't changed. " +
-            "Don't re-issue this call -- try a different approach (narrow the pattern, " +
-            "paginate via next_page, switch to a different tool, or ask the user for " +
-            "clarification).\n"
+          s"- `${toolName.value}` called ${occurrences.size}x with identical args " +
+            s"(most recent $ago):$previewText. Identical inputs yield identical results -- " +
+            "the previous outputs are already in your context.\n"
         )
       }
     }
