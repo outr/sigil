@@ -166,13 +166,18 @@ class ContextPoisoningGuardsSpec extends AsyncWordSpec with AsyncTaskSpec with M
         // are gone — the architectural fix (sigil bug #190) pairs
         // every ToolInvoke in the durable log before render time, so
         // this fallback is unreachable in well-formed operation. The
-        // earlier "tool failed: no result emitted" text was itself a
-        // prose directive that poisoned reasoning; replaced with a
-        // short non-directive marker that keeps wire pairing valid
-        // without telling the agent how to react.
+        // earlier "tool failed: no result emitted" / "(orphan)"
+        // placeholders are now a structured JSON marker carrying
+        // `_sigil_orphan_marker`, the wireId, and an explicit
+        // do-not-retry message — the agent's next iteration reads a
+        // truthful "result unknown" payload instead of a misleading
+        // empty / opaque placeholder, while the wire shape stays
+        // valid (function_call ↔ function_call_output pairing).
         src should not include "The previous tool call did not return a result"
         src should not include "tool failed: no result emitted"
-        src should include ("\"(orphan)\"")
+        src should include ("_sigil_orphan_marker")
+        src should include ("_sigil_orphan_wireId")
+        src should include ("_sigil_message")
       }
     }
   }

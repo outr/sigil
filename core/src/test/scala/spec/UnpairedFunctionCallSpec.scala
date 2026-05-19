@@ -81,10 +81,19 @@ class UnpairedFunctionCallSpec extends AnyWordSpec with Matchers {
       }.toMap
       resultsByCall(callA.value) shouldBe "real-result-A"
       resultsByCall.keySet should contain (callB.value)
-      // callB's content is the framework's brief non-directive marker
-      // (sigil bug #190 — the prior "tool failed: no result emitted"
-      // text was itself a prose directive that poisoned reasoning).
-      resultsByCall(callB.value) shouldBe "(orphan)"
+      // callB's content is the framework's structured diagnostic
+      // marker — a JSON object whose `_sigil_orphan_marker` flag is
+      // true and whose human-readable message warns the agent
+      // against blind retry. The wire shape stays valid
+      // (function_call ↔ function_call_output); the content is
+      // parseable so analytics can count orphans without grepping
+      // logs.
+      val orphanJson = fabric.io.JsonParser(
+        resultsByCall(callB.value), fabric.io.Format.Json
+      )
+      orphanJson("_sigil_orphan_marker") shouldBe fabric.bool(true)
+      orphanJson("_sigil_orphan_wireId") shouldBe fabric.str(callB.value)
+      orphanJson("_sigil_message").asString.toLowerCase should include ("do not retry")
     }
 
     "tolerate a ToolResult arriving for a call that was never pending (no crash)" in {
