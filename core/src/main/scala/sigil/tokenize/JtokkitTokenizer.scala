@@ -54,7 +54,7 @@ object JtokkitTokenizer {
       warnedMissing = true
       scribe.warn(
         s"jtokkit is not on the classpath — `JtokkitTokenizer.$name` falling back to " +
-          s"HeuristicTokenizer (4-chars-per-token approximation). Token-budget estimates " +
+          s"HeuristicTokenizer (~3.5-chars-per-token approximation). Token-budget estimates " +
           s"will be coarser. Add `\"com.knuddels\" % \"jtokkit\" % \"<version>\"` to your " +
           s"dependencies (or depend on `sigil-all`, which re-declares it explicitly) to restore " +
           s"accurate counts. See bugs/76."

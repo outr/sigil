@@ -7,8 +7,8 @@ package sigil.tokenize
  * shedding and the provider's pre-flight gate.
  *
  * Implementations:
- *   - [[HeuristicTokenizer]] — chars / 4 fallback for providers without
- *     a published tokenizer.
+ *   - [[HeuristicTokenizer]] — ~3.5-chars-per-token fallback for providers
+ *     without a published tokenizer.
  *   - [[JtokkitTokenizer]] — pure-Java port of OpenAI's tiktoken; accurate
  *     for OpenAI/DeepSeek, ~10% optimistic for Anthropic. No network.
  *
