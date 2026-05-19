@@ -4,7 +4,7 @@ import rapid.Task
 import sigil.TurnContext
 import sigil.storage.FileVersion
 import sigil.tool.model.{ReadFileInput, ReadFileOutput}
-import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
+import sigil.tool.{PlaceholderInputDetector, ToolExample, ToolName, ToolResult, TypedOutputTool}
 
 /**
  * Read a file from the [[FileSystemContext]]. Optional offset/limit
@@ -38,8 +38,12 @@ final class ReadFileTool(context: FileSystemContext)
   // tools when both match a query.
   override def preferIfNoBetter: Boolean = true
 
-  override protected def executeTyped(input: ReadFileInput, ctx: TurnContext): Task[ReadFileOutput] =
-    WorkspacePathResolver.resolve(ctx, input.filePath).flatMap(operate(input, _))
+  override protected def executeTypedResult(input: ReadFileInput, ctx: TurnContext): Task[ToolResult[ReadFileOutput]] =
+    PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {
+      case Some(reason) => Task.pure(ToolResult.failure(message = reason))
+      case None        =>
+        WorkspacePathResolver.resolve(ctx, input.filePath).flatMap(operate(input, _)).map(ToolResult.success(_))
+    }
 
   private def operate(input: ReadFileInput, resolved: String): Task[ReadFileOutput] = (input.offset, input.limit) match {
     case (None, None) =>

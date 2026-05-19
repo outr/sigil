@@ -3,7 +3,7 @@ package sigil.tool.fs
 import rapid.Task
 import sigil.TurnContext
 import sigil.tool.model.{DeleteFileInput, DeleteFileOutput}
-import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
+import sigil.tool.{PlaceholderInputDetector, ToolExample, ToolName, ToolResult, TypedOutputTool}
 
 /**
  * Delete a file. Emits a typed [[DeleteFileOutput]] reporting
@@ -21,8 +21,12 @@ final class DeleteFileTool(context: FileSystemContext)
   ) with sigil.tool.DestructiveExternalTool {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: DeleteFileInput, ctx: TurnContext): Task[DeleteFileOutput] =
-    WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>
-      context.deleteFile(resolved).map(existed => DeleteFileOutput(deleted = existed))
+  override protected def executeTypedResult(input: DeleteFileInput, ctx: TurnContext): Task[ToolResult[DeleteFileOutput]] =
+    PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {
+      case Some(reason) => Task.pure(ToolResult.failure(message = reason))
+      case None =>
+        WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>
+          context.deleteFile(resolved).map(existed => ToolResult.success(DeleteFileOutput(deleted = existed)))
+        }
     }
 }
