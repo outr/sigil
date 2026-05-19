@@ -10,7 +10,7 @@ import sigil.GlobalSpace
 import sigil.conversation.MemorySource
 import sigil.diagnostics.{RequestProfile, RequestProfileReport, RequestProfiler}
 import sigil.event.Event
-import sigil.information.{Information, InformationSummary}
+import sigil.information.InformationSummary
 import sigil.participant.{AgentParticipantId, ParticipantId}
 import sigil.provider.{
   ConversationMode, GenerationSettings, Instructions, Mode, ResolvedReferences

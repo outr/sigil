@@ -104,7 +104,7 @@ final case class SigilJobStep(input: JobStepInput,
     // Bug #65 — step's `modelId` falls back to a workflow-level
     // default. The default is sourced from the workflow's
     // `variables` map under [[SigilWorkflowVariables.DefaultModelId]]
-    // ("__defaultModelId"). Lets workflow authors pin the model
+    // ("__sigil_defaultModelId"). Lets workflow authors pin the model
     // once at workflow creation rather than threading it through
     // every step's input. Reads from the existing Strider
     // variables surface — no Strider schema change required.

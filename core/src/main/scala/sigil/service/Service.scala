@@ -82,5 +82,3 @@ trait Service {
     * lifecycle override to compute from internal state. */
   def currentState: ServiceState = ServiceState.Up
 }
-
-object Service

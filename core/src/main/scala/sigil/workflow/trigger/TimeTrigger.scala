@@ -1,6 +1,6 @@
 package sigil.workflow.trigger
 
-import fabric.{Json, Null, obj, num, str}
+import fabric.{Json, obj, num, str}
 import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task

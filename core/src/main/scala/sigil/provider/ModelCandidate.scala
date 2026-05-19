@@ -26,7 +26,7 @@ final case class ModelCandidate(modelId: Id[Model],
   derives RW {
 
   def retryDelay: FiniteDuration = FiniteDuration(retryDelayMs, "millis")
-  def cooldown: FiniteDuration   = FiniteDuration(cooldownMs, "millis")
+  def cooldown: FiniteDuration = FiniteDuration(cooldownMs, "millis")
 }
 
 object ModelCandidate {
@@ -54,6 +54,6 @@ object ModelCandidate {
     * not just the recovery turn. */
   val localReasoningTemplateDefaults: GenerationSettings = GenerationSettings(
     maxOutputTokens = Some(4096),
-    reasoningMode   = ReasoningMode.Off
+    reasoningMode = ReasoningMode.Off
   )
 }

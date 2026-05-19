@@ -1182,7 +1182,6 @@ trait Sigil {
                                          userMessage: Option[sigil.event.Message],
                                          strategyOpt: Option[ProviderStrategy],
                                          inferredWorkType: WorkType,
-                                         effectiveWorkType: WorkType,
                                          complexity: Complexity,
                                          candidateChain: List[Id[Model]],
                                          chosenModelId: Id[Model],
@@ -1697,7 +1696,6 @@ trait Sigil {
                userMessage        = userMsg,
                strategyOpt        = strategyOpt,
                inferredWorkType   = routedWorkType,
-               effectiveWorkType  = effectiveWorkType,
                complexity         = complexity,
                candidateChain     = candidateChain.map(_.modelId),
                chosenModelId      = modelId,
@@ -1790,9 +1788,9 @@ trait Sigil {
         t            = if (accessible.isEmpty) rawTools.filterNot(_.requiresAccessibleSpaces)
                         else rawTools
         // Resolve the agent's roles for this turn. Static agents return
-        // their declared `roles` field; DB-backed agents (e.g. Voidcraft
-        // personas) consult persistence here. Empty result is treated as
-        // a programmer error.
+        // their declared `roles` field; DB-backed agents (e.g. apps
+        // with persona records) consult persistence here. Empty result
+        // is treated as a programmer error.
         rolesResolved <- agent.resolveRoles(context).map { rs =>
           require(rs.nonEmpty,
             s"AgentParticipant.resolveRoles must return a non-empty list (id=${agent.id.value})")
@@ -2239,8 +2237,8 @@ trait Sigil {
    * `UnsupportedMediaOperation` from every method; apps that need
    * media wire a concrete implementation (e.g. Sage's
    * `sage.media.ElevenLabsTts` for voice, `sage.media.OpenAIImageGen`
-   * for image gen). Voidcraft's `SpeechService` and `ImageGenService`
-   * become thin call-throughs to whatever this provides.
+   * for image gen). A downstream app's speech and image-generation
+   * services become thin call-throughs to whatever this provides.
    */
   def mediaProvider: sigil.media.MediaProvider = sigil.media.NoOpMediaProvider
 
@@ -4821,7 +4819,7 @@ trait Sigil {
    * fall back to their default behavior.
    *
    * Default: `Task.pure(None)`. Apps with a workspace concept
-   * (Sage's per-conversation project, Voidcraft's project record)
+   * (Sage's per-conversation project, an app's project record)
    * override this once and every framework feature that wants to
    * know "where is this conversation working?" gets a consistent
    * answer.

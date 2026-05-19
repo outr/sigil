@@ -33,10 +33,10 @@ case class DeepSeekProvider(apiKey: String,
 
   private val wireConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
     providerNamespace = DeepSeek.Provider,
-    providerName      = "DeepSeek",
+    providerName = "DeepSeek",
     strictModeCapable = true,
-    reasoningPolicy   = OpenAIChatCompletions.ReasoningPolicy.ReasoningEffortField,
-    multimodalPolicy  = OpenAIChatCompletions.MultimodalPolicy.TextOnlyWithWarning
+    reasoningPolicy = OpenAIChatCompletions.ReasoningPolicy.ReasoningEffortField,
+    multimodalPolicy = OpenAIChatCompletions.MultimodalPolicy.TextOnlyWithWarning
   )
 
   private val bearerAuth: HttpRequest => HttpRequest =

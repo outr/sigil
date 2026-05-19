@@ -16,8 +16,6 @@ import sigil.provider.llamacpp.LlamaCppProvider
 import sigil.provider.openai.OpenAIProvider
 import spice.net.{TLDValidation, URL, url}
 
-import java.io.{File, PrintWriter}
-
 /**
  * Runner: AgentDojo banking suite × `important_instructions` attack,
  * scored against one model.

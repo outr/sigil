@@ -423,18 +423,6 @@ object Orchestrator {
         // carries enough info — its runtime class maps deterministically
         // to one of `request.tools` (each tool's input type is unique
         // by construction), and we mint a fresh invokeId here.
-        // Sigil bug #176 — some OpenAI-compat backends (observed:
-        // OpenRouter passing through Kimi-K2.5, also kindred to
-        // bug #163's DeepInfra streaming variance) ship a tool-call
-        // shape that doesn't trigger `ToolCallStart` upstream — either
-        // the leading `id`+`name` chunk is missing, or its keys arrive
-        // in a shape the accumulator's predicate doesn't recognize.
-        // The previous IllegalStateException tore down the whole agent
-        // loop on the first such request. Recover by populating
-        // activeCalls with a fresh invokeId here; the deferred
-        // ToolInvoke emission below uses `active.toolName` directly,
-        // so the orphan flow ends up emitting the same shape as the
-        // normal path.
         if (!state.activeCalls.contains(callId)) {
           val toolName = request.tools.iterator.collectFirst {
             case t if t.inputRW.definition.className.contains(input.getClass.getName) => t.schema.name.value
@@ -1157,7 +1145,6 @@ object Orchestrator {
         }
         val orphanRecoverable = stopReason == StopReason.MaxTokens
         val closeOrphan = settleOrphanToolInvoke(state, convId, caller, topicId, reasonFor = reasonFor, recoverable = orphanRecoverable)
-        val truncationDiagnostic: List[Signal] = Nil
         // Detect token-level repetition loops — the model hit
         // max_tokens AND the accumulated text is dominated by a
         // single repeated sentence. Surface as a Failure-block
@@ -1260,7 +1247,7 @@ object Orchestrator {
             )
             List[Signal](syntheticInvoke, diagnosticMessage)
           } else Nil
-        Stream.emits(closeOrphan ++ truncationDiagnostic ++ plainTextDiagnostic ++ degenerateDiagnostic)
+        Stream.emits(closeOrphan ++ plainTextDiagnostic ++ degenerateDiagnostic)
       case ProviderEvent.Error(msg)                       =>
         // Bug #50 — surface the provider/validator failure as a
         // Tool-role Message so the agent's next iteration sees a
@@ -1324,13 +1311,6 @@ object Orchestrator {
     }
   }
 
-  /**
-   * Emit a synthetic terminal `ToolDelta` for any in-flight
-   * `ToolInvoke` so it lands at `state=Complete` instead of getting
-   * stuck at `Active`. Idempotent — if no tool call is open the
-   * returned list is empty. Clears `state.activeToolInvokeId` /
-   * `state.activeToolName` either way.
-   */
   /** Settle every in-flight `ToolInvoke` and pair each with a durable
     * Tool-role failure Message. The pairing keeps the conversation's
     * frame trail well-formed; without it, subsequent turns'

@@ -32,7 +32,7 @@ import sigil.db.Model
  * `Sigil.saveProviderStrategy`.
  *
  * The model ids referenced here are conservative defaults
- * (Voidcraft's empirically-tuned chains). Apps with different
+ * (empirically-tuned chains). Apps with different
  * provider mixes (only Anthropic, only DeepSeek, etc.) override
  * via [[customize]] before seeding, OR build their own records
  * from scratch.
@@ -125,7 +125,7 @@ object DefaultProviderStrategies {
 
   /**
    * Customize a preset before saving — useful when you want
-   * Voidcraft's "Balanced" shape but with different model IDs
+   * the "Balanced" shape but with different model IDs
    * that match your provider mix.
    *
    * {{{

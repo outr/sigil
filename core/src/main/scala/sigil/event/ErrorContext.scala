@@ -44,41 +44,41 @@ object ErrorContext {
     if (name.contains("MalformedInputException") ||
         name.contains("UnmappableCharacterException")) {
       ErrorContext(
-        classification         = ErrorClassification.FrameworkBug,
-        exceptionClass         = cls,
-        message                = msg,
-        stackHead              = head,
-        suggestion             = Some("file may be binary or encoded non-UTF-8 — the tool should have skipped or decoded leniently"),
+        classification = ErrorClassification.FrameworkBug,
+        exceptionClass = cls,
+        message = msg,
+        stackHead = head,
+        suggestion = Some("file may be binary or encoded non-UTF-8 — the tool should have skipped or decoded leniently"),
         frameworkBugLikelihood = 0.9
       )
     } else if (name.contains("NoSuchElementException") || name.contains("NullPointerException")) {
       ErrorContext(
-        classification         = ErrorClassification.FrameworkBug,
-        exceptionClass         = cls,
-        message                = msg,
-        stackHead              = head,
-        suggestion             = None,
+        classification = ErrorClassification.FrameworkBug,
+        exceptionClass = cls,
+        message = msg,
+        stackHead = head,
+        suggestion = None,
         frameworkBugLikelihood = 0.85
       )
     } else if (name.contains("NoSuchFileException") ||
                name.contains("FileNotFoundException") ||
                name.contains("IllegalArgumentException")) {
       ErrorContext(
-        classification         = ErrorClassification.UserInputError,
-        exceptionClass         = cls,
-        message                = msg,
-        stackHead              = head,
-        suggestion             = None,
+        classification = ErrorClassification.UserInputError,
+        exceptionClass = cls,
+        message = msg,
+        stackHead = head,
+        suggestion = None,
         frameworkBugLikelihood = 0.0
       )
     } else if (name.contains("AccessDeniedException") ||
                name.contains("SecurityException")) {
       ErrorContext(
-        classification         = ErrorClassification.UserInputError,
-        exceptionClass         = cls,
-        message                = msg,
-        stackHead              = head,
-        suggestion             = Some("permission denied — try a path the agent's chain has access to"),
+        classification = ErrorClassification.UserInputError,
+        exceptionClass = cls,
+        message = msg,
+        stackHead = head,
+        suggestion = Some("permission denied — try a path the agent's chain has access to"),
         frameworkBugLikelihood = 0.0
       )
     } else if (name.contains("SocketTimeoutException") ||
@@ -86,30 +86,30 @@ object ErrorContext {
                name.contains("UnknownHostException") ||
                name.contains("TimeoutException")) {
       ErrorContext(
-        classification         = ErrorClassification.TransientError,
-        exceptionClass         = cls,
-        message                = msg,
-        stackHead              = head,
-        suggestion             = Some("retry — likely transient"),
+        classification = ErrorClassification.TransientError,
+        exceptionClass = cls,
+        message = msg,
+        stackHead = head,
+        suggestion = Some("retry — likely transient"),
         frameworkBugLikelihood = 0.1
       )
     } else if (name.contains("OutOfMemoryError") ||
                name.contains("StackOverflowError")) {
       ErrorContext(
-        classification         = ErrorClassification.ResourceExhausted,
-        exceptionClass         = cls,
-        message                = msg,
-        stackHead              = head,
-        suggestion             = None,
+        classification = ErrorClassification.ResourceExhausted,
+        exceptionClass = cls,
+        message = msg,
+        stackHead = head,
+        suggestion = None,
         frameworkBugLikelihood = 0.3
       )
     } else {
       ErrorContext(
-        classification         = ErrorClassification.Unknown,
-        exceptionClass         = cls,
-        message                = msg,
-        stackHead              = head,
-        suggestion             = None,
+        classification = ErrorClassification.Unknown,
+        exceptionClass = cls,
+        message = msg,
+        stackHead = head,
+        suggestion = None,
         frameworkBugLikelihood = 0.5
       )
     }

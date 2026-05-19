@@ -318,10 +318,9 @@ case class AnthropicProvider(apiKey: String,
           case "thinking" =>
             Vector.empty
           case "server_tool_use" =>
-            val toolName = block.get("name").map(_.asString).getOrElse("")
             val callId = CallId(s"anthro-st-$index")
             state.indexToCallId += (index -> callId)
-            val mapped = if (toolName == "web_search") BuiltInTool.WebSearch else BuiltInTool.WebSearch
+            val mapped = BuiltInTool.WebSearch
             Vector(ProviderEvent.ServerToolStart(callId, mapped, None))
           case "web_search_tool_result" =>
             val callId = state.indexToCallId.getOrElse(index, CallId(s"anthro-wsr-$index"))

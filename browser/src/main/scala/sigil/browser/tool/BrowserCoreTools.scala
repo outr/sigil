@@ -1,6 +1,6 @@
 package sigil.browser.tool
 
-import sigil.tool.{Tool, ToolName}
+import sigil.tool.Tool
 
 /**
  * Convenience aggregator for the primitive browser tools. Apps that
@@ -33,6 +33,4 @@ object BrowserCoreTools {
     new BrowserTypeTool,
     new BrowserScrollTool
   )
-
-  val toolNames: List[ToolName] = all.map(_.name)
 }

@@ -508,7 +508,7 @@ case class OpenAIProvider(apiKey: String,
   private[openai] def parseLine(line: String, state: StreamState): Vector[ProviderEvent] =
     SSELineParser.parse(line) match {
       case SSELine.Data(json)                  => parseEvent(json, state)
-      case SSELine.Done                        => state.flushDone()
+      case SSELine.Done                        => Vector.empty
       case SSELine.MalformedData(_, reason)    => Vector(ProviderEvent.Error(s"Failed to parse chunk: $reason"))
       case SSELine.Blank | SSELine.Comment | _: SSELine.Other => Vector.empty
     }
@@ -813,7 +813,6 @@ case class OpenAIProvider(apiKey: String,
     var activeItemCallId: Option[CallId] = None
     var itemIndex: Int = 0
     var nextIndex: Int = 0
-    var pendingDone: Option[StopReason] = None
     var sawFunctionCall: Boolean = false
     /** Server-side state handle captured from `response.created`. Empty
       * until the SSE delivers it; used at `response.completed` to emit
@@ -849,11 +848,6 @@ case class OpenAIProvider(apiKey: String,
       scala.collection.mutable.Map.empty
     val reasoningEncryptedContents: scala.collection.mutable.Map[String, String] =
       scala.collection.mutable.Map.empty
-
-    def flushDone(): Vector[ProviderEvent] = pendingDone match {
-      case Some(sr) => pendingDone = None; Vector(ProviderEvent.Done(sr))
-      case None     => Vector.empty
-    }
   }
 }
 

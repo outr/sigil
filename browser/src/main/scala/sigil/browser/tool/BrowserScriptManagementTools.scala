@@ -1,6 +1,6 @@
 package sigil.browser.tool
 
-import sigil.tool.{Tool, ToolName}
+import sigil.tool.Tool
 
 /** Convenience aggregator for the four BrowserScript management
   * tools. Apps that want to expose script authoring to the agent
@@ -19,6 +19,4 @@ object BrowserScriptManagementTools {
     DeleteBrowserScriptTool,
     ListBrowserScriptsTool
   )
-
-  val toolNames: List[ToolName] = all.map(_.name)
 }

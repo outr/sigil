@@ -266,8 +266,8 @@ object OpenAIChatCompletions {
       }
     }
     val state = new StreamState(
-      acc                       = new ToolCallAccumulator(input.tools, providerKey = config.providerName),
-      responseFormatMode        = rfMode,
+      acc = new ToolCallAccumulator(input.tools, providerKey = config.providerName),
+      responseFormatMode = rfMode,
       streamingSilenceTimeoutMs = sigil.streamingSilenceTimeoutMs
     )
     Stream.force(
@@ -591,11 +591,11 @@ object OpenAIChatCompletions {
           val typ  = err.get("type").map(_.asString).getOrElse("error")
           val metadata = parseErrorMetadata(err)
           throw new ProviderStreamException(
-            providerKey   = config.providerNamespace,
-            code          = code,
-            typ           = typ,
-            message_      = msg,
-            status        = if (code > 0) Some(code) else None,
+            providerKey = config.providerNamespace,
+            code = code,
+            typ = typ,
+            message_ = msg,
+            status = if (code > 0) Some(code) else None,
             errorMetadata = Some(metadata)
           )
         }
@@ -763,10 +763,10 @@ object OpenAIChatCompletions {
       if (deltaTrigger || timeTrigger) {
         val completionTokens = (state.completionChars.toDouble / streamingEstimateCharsPerToken).toInt
         events += ProviderEvent.Usage(TokenUsage(
-          promptTokens     = 0,
+          promptTokens = 0,
           completionTokens = completionTokens,
-          totalTokens      = completionTokens,
-          isEstimated      = true
+          totalTokens = completionTokens,
+          isEstimated = true
         ))
         state.lastEstimateNanos = now
         state.deltasSinceLastEstimate = 0
@@ -817,9 +817,9 @@ object OpenAIChatCompletions {
 
   private def parseUsage(json: Json): TokenUsage =
     TokenUsage(
-      promptTokens     = json.get("prompt_tokens").map(_.asInt).getOrElse(0),
+      promptTokens = json.get("prompt_tokens").map(_.asInt).getOrElse(0),
       completionTokens = json.get("completion_tokens").map(_.asInt).getOrElse(0),
-      totalTokens      = json.get("total_tokens").map(_.asInt).getOrElse(0)
+      totalTokens = json.get("total_tokens").map(_.asInt).getOrElse(0)
     )
 
   /** Streaming state: pending [[StopReason]] held back until the
@@ -920,12 +920,12 @@ object OpenAIChatCompletions {
       val elapsedMs = (now - lastMeaningfulNanos) / 1000000L
       if (elapsedMs > streamingSilenceTimeoutMs) {
         throw new ProviderStreamException(
-          providerKey   = config.providerNamespace,
-          code          = 0,
-          typ           = "upstream_silent",
-          message_      = s"${config.providerName} emitted only keepalive chunks for ${elapsedMs}ms " +
+          providerKey = config.providerNamespace,
+          code = 0,
+          typ = "upstream_silent",
+          message_ = s"${config.providerName} emitted only keepalive chunks for ${elapsedMs}ms " +
             s"(threshold ${streamingSilenceTimeoutMs}ms) — upstream is unresponsive.",
-          status        = None,
+          status = None,
           errorMetadata = Some(ProviderErrorMetadata(errorType = Some("upstream_silent")))
         )
       }
@@ -939,17 +939,17 @@ object OpenAIChatCompletions {
           refusalBuf.clear()
           throw new ProviderStreamException(
             providerKey = config.providerNamespace,
-            code        = 200,
-            typ         = "refusal",
-            message_    = s"${config.providerName} refused: $refusalText"
+            code = 200,
+            typ = "refusal",
+            message_ = s"${config.providerName} refused: $refusalText"
           )
         }
         if (config.emptyBudgetBurnThrows && sr == StopReason.MaxTokens && !hasUsefulOutput) {
           throw new ProviderStreamException(
             providerKey = config.providerNamespace,
-            code        = 200,
-            typ         = "empty_budget_burn",
-            message_    = s"${config.providerName} consumed max_tokens budget without emitting any content or tool calls" +
+            code = 200,
+            typ = "empty_budget_burn",
+            message_ = s"${config.providerName} consumed max_tokens budget without emitting any content or tool calls" +
               " — likely a deployment-level degeneration (e.g. reasoning-only output or null-padded stream)."
           )
         }
@@ -967,9 +967,9 @@ object OpenAIChatCompletions {
           val burned = lastUsage.map(_.completionTokens).getOrElse(0)
           throw new ProviderStreamException(
             providerKey = config.providerNamespace,
-            code        = 200,
-            typ         = "empty_completion",
-            message_    = s"${config.providerName} closed the stream after burning $burned completion tokens " +
+            code = 200,
+            typ = "empty_completion",
+            message_ = s"${config.providerName} closed the stream after burning $burned completion tokens " +
               "without emitting any content, reasoning, tool calls, or a finish_reason."
           )
         }

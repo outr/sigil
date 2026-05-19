@@ -1,6 +1,6 @@
 package sigil.workflow.trigger
 
-import fabric.{Json, Null, obj, str}
+import fabric.{Json, obj, str}
 import rapid.Task
 import scribe.mdc.MDC
 import spice.http.content.{Content, StringContent}
