@@ -1,0 +1,5 @@
+{"requestHash":"d91f99e86f78195ea76acf145ccf5d9609a9051bea1c8a731bd2c4d30562822a","recordedAt":1779155003764}
+{"callId":"674507009","toolName":"summarize_conversation","type":"ToolCallStart"}
+{"callId":"674507009","input":{"summary":"Alice introduced herself and specified two preferences: dark-mode interfaces for all applications and a deployment target of staging.us-east-1 for infrastructure-related tasks.","tokenEstimate":25,"type":"SummarizationInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":838,"completionTokens":72,"totalTokens":910,"isEstimated":false},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

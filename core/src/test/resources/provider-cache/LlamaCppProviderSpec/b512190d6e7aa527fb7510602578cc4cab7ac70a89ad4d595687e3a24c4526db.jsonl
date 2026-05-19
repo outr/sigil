@@ -1,7 +1,8 @@
-{"requestHash":"b512190d6e7aa527fb7510602578cc4cab7ac70a89ad4d595687e3a24c4526db","recordedAt":1779146001879}
+{"requestHash":"b512190d6e7aa527fb7510602578cc4cab7ac70a89ad4d595687e3a24c4526db","recordedAt":1779154937798}
 {"text":"The","type":"ThinkingDelta"}
 {"text":" user","type":"ThinkingDelta"}
 {"text":" wants","type":"ThinkingDelta"}
+{"text":" me","type":"ThinkingDelta"}
 {"text":" to","type":"ThinkingDelta"}
 {"text":" post","type":"ThinkingDelta"}
 {"text":" a","type":"ThinkingDelta"}
@@ -11,30 +12,31 @@
 {"text":" Slack","type":"ThinkingDelta"}
 {"text":" channel","type":"ThinkingDelta"}
 {"text":".","type":"ThinkingDelta"}
+{"text":" This","type":"ThinkingDelta"}
+{"text":" is","type":"ThinkingDelta"}
+{"text":" an","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":16,"totalTokens":16,"isEstimated":true},"type":"Usage"}
+{"text":" action","type":"ThinkingDelta"}
+{"text":" that","type":"ThinkingDelta"}
+{"text":" requires","type":"ThinkingDelta"}
+{"text":" a","type":"ThinkingDelta"}
+{"text":" tool","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
 {"text":" I","type":"ThinkingDelta"}
 {"text":" need","type":"ThinkingDelta"}
 {"text":" to","type":"ThinkingDelta"}
 {"text":" find","type":"ThinkingDelta"}
-{"usage":{"promptTokens":0,"completionTokens":16,"totalTokens":16,"isEstimated":true},"type":"Usage"}
-{"text":" a","type":"ThinkingDelta"}
-{"text":" tool","type":"ThinkingDelta"}
-{"text":" that","type":"ThinkingDelta"}
-{"text":" can","type":"ThinkingDelta"}
-{"text":" send","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" capability","type":"ThinkingDelta"}
+{"text":" for","type":"ThinkingDelta"}
+{"text":" sending","type":"ThinkingDelta"}
 {"text":" Slack","type":"ThinkingDelta"}
 {"text":" messages","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":38,"totalTokens":38,"isEstimated":true},"type":"Usage"}
 {"text":".","type":"ThinkingDelta"}
-{"text":" Let","type":"ThinkingDelta"}
-{"text":" me","type":"ThinkingDelta"}
-{"text":" search","type":"ThinkingDelta"}
-{"text":" for","type":"ThinkingDelta"}
-{"text":" the","type":"ThinkingDelta"}
-{"text":" appropriate","type":"ThinkingDelta"}
-{"text":" capability","type":"ThinkingDelta"}
-{"text":".","type":"ThinkingDelta"}
-{"usage":{"promptTokens":0,"completionTokens":37,"totalTokens":37,"isEstimated":true},"type":"Usage"}
 {"text":"\n","type":"ThinkingDelta"}
-{"callId":"753e3fad2","toolName":"find_capability","type":"ToolCallStart"}
-{"callId":"753e3fad2","input":{"keywords":"send slack channel message","type":"FindCapabilityInput"},"type":"ToolCallComplete"}
-{"usage":{"promptTokens":4998,"completionTokens":64,"totalTokens":5062,"isEstimated":false},"type":"Usage"}
+{"callId":"5280b4f36","toolName":"find_capability","type":"ToolCallStart"}
+{"callId":"5280b4f36","input":{"keywords":"send slack channel message","type":"FindCapabilityInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":0,"completionTokens":38,"totalTokens":38,"isEstimated":true},"type":"Usage"}
+{"usage":{"promptTokens":4998,"completionTokens":65,"totalTokens":5063,"isEstimated":false},"type":"Usage"}
 {"stopReason":"ToolCall","type":"Done"}

@@ -1,5 +1,0 @@
-{"requestHash":"7d9fa2491c9ba652b278e47967e3f24cb6f930320045efe37c03941646083ecf","recordedAt":1779146754085}
-{"callId":"89b3a8ac2","toolName":"extract_memories","type":"ToolCallStart"}
-{"callId":"89b3a8ac2","input":{"memories":[{"content":"The user's name is Alice.","label":"User name","key":"user.name","tags":[]},{"content":"The user prefers dark-mode interfaces in every app they use.","label":"Preferred UI theme","key":"user.preferred_theme","tags":["preference","mode:coding"]},{"content":"The deployment target is staging.us-east-1.","label":"Deployment target","key":"project.deploy_target","tags":["infrastructure"]}],"type":"ExtractMemoriesInput"},"type":"ToolCallComplete"}
-{"usage":{"promptTokens":1147,"completionTokens":140,"totalTokens":1287,"isEstimated":false},"type":"Usage"}
-{"stopReason":"ToolCall","type":"Done"}

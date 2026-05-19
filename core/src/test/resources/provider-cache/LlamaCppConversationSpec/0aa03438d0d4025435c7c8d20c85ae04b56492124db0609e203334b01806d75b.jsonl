@@ -1,0 +1,11 @@
+{"requestHash":"0aa03438d0d4025435c7c8d20c85ae04b56492124db0609e203334b01806d75b","recordedAt":1779155029796}
+{"text":"Blue","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"callId":"2b615814e","toolName":"respond","type":"ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":1,"totalTokens":1,"isEstimated":true},"type":"Usage"}
+{"callId":"2b615814e","blockType":"Markdown","arg":null,"type":"ContentBlockStart"}
+{"callId":"2b615814e","text":"Blue","type":"ContentBlockDelta"}
+{"callId":"2b615814e","input":{"topicLabel":"Favorite Color","topicSummary":"User shared their favorite color","content":"Blue","disposition":"Success","endsTurn":true,"keywords":["favorite","color","blue"],"type":"RespondInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":5227,"completionTokens":106,"totalTokens":5333,"isEstimated":false},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

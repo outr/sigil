@@ -1,0 +1,7 @@
+{"requestHash":"e608ccf92d492a2bffaac70c7d5cfc95199b09d21181a9f08903724063219a3c","recordedAt":1779154985622}
+{"callId":"9147be788","toolName":"respond","type":"ToolCallStart"}
+{"callId":"9147be788","blockType":"Markdown","arg":null,"type":"ContentBlockStart"}
+{"callId":"9147be788","text":"hi","type":"ContentBlockDelta"}
+{"callId":"9147be788","input":{"topicLabel":"Greeting","topicSummary":"User requested a simple greeting response","content":"hi","disposition":"Success","endsTurn":true,"keywords":["greeting","hello"],"type":"RespondInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":5018,"completionTokens":102,"totalTokens":5120,"isEstimated":false},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

@@ -1,0 +1,100 @@
+{"requestHash":"577b11c83f5b16097166b37fdc6147899aeb6ae1ccdbab44f881eb305ec605f4","recordedAt":1779154982790}
+{"text":"The","type":"ThinkingDelta"}
+{"text":" user","type":"ThinkingDelta"}
+{"text":" is","type":"ThinkingDelta"}
+{"text":" asking","type":"ThinkingDelta"}
+{"text":" a","type":"ThinkingDelta"}
+{"text":" knowledge","type":"ThinkingDelta"}
+{"text":" question","type":"ThinkingDelta"}
+{"text":" about","type":"ThinkingDelta"}
+{"text":" Python","type":"ThinkingDelta"}
+{"text":"'s","type":"ThinkingDelta"}
+{"text":" G","type":"ThinkingDelta"}
+{"text":"IL","type":"ThinkingDelta"}
+{"text":" and","type":"ThinkingDelta"}
+{"text":" how","type":"ThinkingDelta"}
+{"text":" it","type":"ThinkingDelta"}
+{"text":" affects","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":19,"totalTokens":19,"isEstimated":true},"type":"Usage"}
+{"text":" concurrent","type":"ThinkingDelta"}
+{"text":" threads","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":" They","type":"ThinkingDelta"}
+{"text":" want","type":"ThinkingDelta"}
+{"text":" a","type":"ThinkingDelta"}
+{"text":" one","type":"ThinkingDelta"}
+{"text":" short","type":"ThinkingDelta"}
+{"text":" sentence","type":"ThinkingDelta"}
+{"text":" answer","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":" This","type":"ThinkingDelta"}
+{"text":" is","type":"ThinkingDelta"}
+{"text":" a","type":"ThinkingDelta"}
+{"text":" factual","type":"ThinkingDelta"}
+{"text":" Q","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":39,"totalTokens":39,"isEstimated":true},"type":"Usage"}
+{"text":"&A","type":"ThinkingDelta"}
+{"text":" that","type":"ThinkingDelta"}
+{"text":" doesn","type":"ThinkingDelta"}
+{"text":"'t","type":"ThinkingDelta"}
+{"text":" require","type":"ThinkingDelta"}
+{"text":" any","type":"ThinkingDelta"}
+{"text":" tool","type":"ThinkingDelta"}
+{"text":" calls","type":"ThinkingDelta"}
+{"text":" -","type":"ThinkingDelta"}
+{"text":" I","type":"ThinkingDelta"}
+{"text":" should","type":"ThinkingDelta"}
+{"text":" just","type":"ThinkingDelta"}
+{"text":" respond","type":"ThinkingDelta"}
+{"text":" with","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" answer","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":58,"totalTokens":58,"isEstimated":true},"type":"Usage"}
+{"text":".","type":"ThinkingDelta"}
+{"text":"\n","type":"ThinkingDelta"}
+{"callId":"5b63ed72c","toolName":"respond","type":"ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":59,"totalTokens":59,"isEstimated":true},"type":"Usage"}
+{"callId":"5b63ed72c","blockType":"Markdown","arg":null,"type":"ContentBlockStart"}
+{"callId":"5b63ed72c","text":"Python","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":"'s","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" Global","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" Interpreter","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" Lock","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" (","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":"G","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":"IL","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":")","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" prevents","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" multiple","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" threads","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" from","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" executing","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" Python","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" bytecode","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" simultaneously","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":",","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" meaning","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" only","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" one","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" thread","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" can","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" run","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" Python","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" code","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" at","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" a","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" time","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" within","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" a","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" single","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" process","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":",","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" even","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" on","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" multi","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":"-core","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":" systems","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","text":".","type":"ContentBlockDelta"}
+{"callId":"5b63ed72c","input":{"topicLabel":"Python GIL","topicSummary":"Python GIL and concurrent threads","content":"Python's Global Interpreter Lock (GIL) prevents multiple threads from executing Python bytecode simultaneously, meaning only one thread can run Python code at a time within a single process, even on multi-core systems.","disposition":"Success","endsTurn":true,"keywords":["Python","GIL","concurrent","threads"],"type":"RespondInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":5286,"completionTokens":201,"totalTokens":5487,"isEstimated":false},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

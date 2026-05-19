@@ -1,0 +1,5 @@
+{"requestHash":"91ddc5d5587fde124595955e2b05a6cec6c9429cf060d0418f3058266a54723a","recordedAt":1779154932043}
+{"callId":"a97220eff","toolName":"classify_memory","type":"ToolCallStart"}
+{"callId":"a97220eff","input":{"keywords":["hiking","weekends","Pacific Northwest","outdoor","recreation","Bob","user","activity","schedule","location"],"permanence":"Once","space":"user","ambiguityReason":null,"type":"ClassifyMemoryInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":1003,"completionTokens":123,"totalTokens":1126,"isEstimated":false},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}
