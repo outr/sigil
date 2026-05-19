@@ -216,7 +216,12 @@ trait WorkflowSigil extends Sigil {
     new sigil.workflow.tool.DeclineWorkflowTool,
     new sigil.workflow.tool.RegisterTriggerTool,
     new sigil.workflow.tool.UnregisterTriggerTool,
-    new sigil.workflow.tool.ListTriggersTool
+    new sigil.workflow.tool.ListTriggersTool,
+    // Worker delegation — spawn a worker and answer its questions.
+    // Both require the workflow runtime, so they ship with the
+    // workflow management roster rather than `AllShippedTools`.
+    sigil.tool.util.DelegateTaskTool,
+    sigil.tool.util.AnswerWorkerTool
   )
 
   override protected def modes: List[Mode] = {

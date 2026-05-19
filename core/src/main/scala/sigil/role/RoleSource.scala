@@ -49,15 +49,4 @@ object RoleSource {
     override def rolesFor(agentId: AgentParticipantId, context: TurnContext): Task[List[Role]] =
       Task.pure(roles)
   }
-
-  /**
-   * The framework default — returns whatever the agent declares
-   * synchronously on its `roles` field. Used by
-   * [[sigil.participant.AgentParticipant.resolveRoles]] when no
-   * dynamic source is wired.
-   */
-  val Static: RoleSource = new RoleSource {
-    override def rolesFor(agentId: AgentParticipantId, context: TurnContext): Task[List[Role]] =
-      Task.pure(Nil) // unused — the default impl reads agent.roles directly
-  }
 }

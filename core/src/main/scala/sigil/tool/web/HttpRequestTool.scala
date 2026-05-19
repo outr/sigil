@@ -2,7 +2,7 @@ package sigil.tool.web
 
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.model.{HttpRequestInput, HttpRequestOutput}
+import sigil.tool.model.{HttpRequestInput, HttpRequestMethod, HttpRequestOutput}
 import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
 import spice.http.HttpMethod
 import spice.http.content.Content
@@ -44,7 +44,7 @@ case object HttpRequestTool extends TypedOutputTool[HttpRequestInput, HttpReques
       "POST a JSON body",
       HttpRequestInput(
         url     = "https://api.example.com/v1/items",
-        method  = "POST",
+        method  = HttpRequestMethod.Post,
         headers = Map("Authorization" -> "Bearer ..."),
         body    = Some("""{"name":"thing"}""")
       )
@@ -57,9 +57,7 @@ case object HttpRequestTool extends TypedOutputTool[HttpRequestInput, HttpReques
   override protected def executeTyped(input: HttpRequestInput, context: TurnContext): Task[HttpRequestOutput] = Task.defer {
     val timeout = input.timeoutMs.millis
     val parsedUrl = URL.parse(input.url)
-    val httpMethod = HttpMethod.get(input.method.toUpperCase).getOrElse(
-      throw new IllegalArgumentException(s"http_request: unsupported method '${input.method}'")
-    )
+    val httpMethod = methodFor(input.method)
     val client0 = spice.http.client.HttpClient
       .url(parsedUrl)
       .method(httpMethod)
@@ -110,4 +108,15 @@ case object HttpRequestTool extends TypedOutputTool[HttpRequestInput, HttpReques
 
   private def parseContentType(raw: String): Option[ContentType] =
     scala.util.Try(ContentType.parse(raw)).toOption
+
+  /** Map the typed [[HttpRequestMethod]] onto spice's `HttpMethod`. */
+  private def methodFor(method: HttpRequestMethod): HttpMethod = method match {
+    case HttpRequestMethod.Get     => HttpMethod.Get
+    case HttpRequestMethod.Post    => HttpMethod.Post
+    case HttpRequestMethod.Put     => HttpMethod.Put
+    case HttpRequestMethod.Patch   => HttpMethod.Patch
+    case HttpRequestMethod.Delete  => HttpMethod.Delete
+    case HttpRequestMethod.Head    => HttpMethod.Head
+    case HttpRequestMethod.Options => HttpMethod.Options
+  }
 }

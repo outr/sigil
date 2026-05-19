@@ -5,7 +5,7 @@ import rapid.Stream
 import sigil.TurnContext
 import sigil.event.Event
 import sigil.tool.fs.FsToolEmit
-import sigil.tool.model.ProcessListInput
+import sigil.tool.model.{ProcessListInput, ProcessListScope}
 import sigil.tool.{ToolExample, ToolName, TypedTool}
 
 /**
@@ -22,7 +22,7 @@ final class ProcessListTool(registry: ProcessRegistry)
         |handle includes `{id, pid, startedAt, command}`.""".stripMargin,
     examples = List(
       ToolExample("Processes spawned by this conversation", ProcessListInput()),
-      ToolExample("Every registered process",                ProcessListInput(scope = "all"))
+      ToolExample("Every registered process",                ProcessListInput(scope = ProcessListScope.All))
     ),
     keywords = Set("process", "list", "running", "background")
   ) {
@@ -30,8 +30,8 @@ final class ProcessListTool(registry: ProcessRegistry)
 
   override protected def executeTyped(input: ProcessListInput, ctx: TurnContext): Stream[Event] = Stream.force(
     registry.list(filterByConversation = input.scope match {
-      case "all" => None
-      case _     => Some(ctx.conversation.id)
+      case ProcessListScope.All     => None
+      case ProcessListScope.Current => Some(ctx.conversation.id)
     }).map { handles =>
       val arrJson = arr(handles.map(h => obj(
         "id"        -> str(h.id),

@@ -41,24 +41,19 @@ final class RunWorkflowTool extends TypedTool[RunWorkflowInput](
 ) with WorkflowToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: RunWorkflowInput, ctx: TurnContext): Stream[Event] = {
-    workflowHost(ctx) match {
-      case Left(err) => reply(ctx, err, isError = true)
-      case Right(host) =>
-        val id = Id[WorkflowTemplate](input.workflowId)
-        val task = host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
-          case None => Task.pure(s"Workflow '${input.workflowId}' not found.")
-          case Some(template) =>
-            authorizeAccess(host, template, ctx.chain).flatMap {
-              case Left(_) => Task.pure(s"Workflow '${input.workflowId}' not found.")
-              case Right(_) =>
-                val vars: Map[String, fabric.Json] = input.variables.map { case (k, v) => k -> (fabric.str(v): fabric.Json) }
-                WorkflowScheduler.scheduleTemplate(host, host.workflowDb, template, vars, Some(ctx.caller))
-                  .map(wf => s"Workflow '${template.name}' scheduled (runId=${wf._id.value}).")
-                  .handleError(e => Task.pure(s"Failed to schedule workflow: ${e.getMessage}"))
-            }
+  override protected def executeTyped(input: RunWorkflowInput, ctx: TurnContext): Stream[Event] = withHost(ctx) { host =>
+    val id = Id[WorkflowTemplate](input.workflowId)
+    host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
+      case None => Task.pure(s"Workflow '${input.workflowId}' not found.")
+      case Some(template) =>
+        authorizeAccess(host, template, ctx.chain).flatMap {
+          case Left(_) => Task.pure(s"Workflow '${input.workflowId}' not found.")
+          case Right(_) =>
+            val vars: Map[String, fabric.Json] = input.variables.map { case (k, v) => k -> (fabric.str(v): fabric.Json) }
+            WorkflowScheduler.scheduleTemplate(host, host.workflowDb, template, vars, Some(ctx.caller))
+              .map(wf => s"Workflow '${template.name}' scheduled (runId=${wf._id.value}).")
+              .handleError(e => Task.pure(s"Failed to schedule workflow: ${e.getMessage}"))
         }
-        Stream.force(task.map(text => reply(ctx, text)))
     }
   }
 }

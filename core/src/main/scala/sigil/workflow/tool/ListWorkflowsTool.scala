@@ -1,7 +1,7 @@
 package sigil.workflow.tool
 
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Stream
 import sigil.TurnContext
 import sigil.event.Event
 import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
@@ -29,25 +29,20 @@ final class ListWorkflowsTool extends TypedTool[ListWorkflowsInput](
 ) with WorkflowToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: ListWorkflowsInput, ctx: TurnContext): Stream[Event] = {
-    workflowHost(ctx) match {
-      case Left(err) => reply(ctx, err, isError = true)
-      case Right(host) =>
-        val task = for {
-          allowed <- host.accessibleSpaces(ctx.chain)
-          all <- host.withDB(_.workflowTemplates.transaction(_.list))
-          allowedSpaceValues = allowed.map(_.value) + sigil.GlobalSpace.value
-          filtered = all.toList
-            .filter(t => allowedSpaceValues.contains(t.space.value))
-            .filter(t => input.tag.forall(t.tags.contains))
-        } yield {
-          if (filtered.isEmpty) "No workflows visible."
-          else filtered.map { t =>
-            val flags = if (t.enabled) "" else " [disabled]"
-            s"  [${t._id.value}] ${t.name}$flags — ${t.steps.size} step(s) — ${t.description}"
-          }.mkString("\n")
-        }
-        Stream.force(task.map(text => reply(ctx, text)))
+  override protected def executeTyped(input: ListWorkflowsInput, ctx: TurnContext): Stream[Event] = withHost(ctx) { host =>
+    for {
+      allowed <- host.accessibleSpaces(ctx.chain)
+      all <- host.withDB(_.workflowTemplates.transaction(_.list))
+      allowedSpaceValues = allowed.map(_.value) + sigil.GlobalSpace.value
+      filtered = all.toList
+        .filter(t => allowedSpaceValues.contains(t.space.value))
+        .filter(t => input.tag.forall(t.tags.contains))
+    } yield {
+      if (filtered.isEmpty) "No workflows visible."
+      else filtered.map { t =>
+        val flags = if (t.enabled) "" else " [disabled]"
+        s"  [${t._id.value}] ${t.name}$flags — ${t.steps.size} step(s) — ${t.description}"
+      }.mkString("\n")
     }
   }
 }

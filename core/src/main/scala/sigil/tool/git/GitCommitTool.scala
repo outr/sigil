@@ -35,10 +35,10 @@ final class GitCommitTool(context: FileSystemContext)
       val pathsToStage = input.paths.getOrElse(Nil)
       val addCmd = pathsToStage match {
         case Nil   => "git add -u"
-        case paths => "git add -- " + paths.map(shellQuote).mkString(" ")
+        case paths => "git add -- " + paths.map(GitOps.shellQuote).mkString(" ")
       }
       val emptyFlag = if (input.allowEmpty) " --allow-empty" else ""
-      val commitCmd = s"""git commit$emptyFlag -m ${shellQuote(input.message)}"""
+      val commitCmd = s"""git commit$emptyFlag -m ${GitOps.shellQuote(input.message)}"""
       val shaCmd    = "git rev-parse HEAD"
 
       for {
@@ -67,6 +67,4 @@ final class GitCommitTool(context: FileSystemContext)
       }
     }
   )
-
-  private def shellQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
 }

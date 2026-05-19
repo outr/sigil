@@ -22,7 +22,14 @@ object ProviderTools {
     SwitchModelTool,
     ListProviderStrategiesTool,
     CurrentModelTool,
-    ListModelsTool
+    ListModelsTool,
+    // Conversation-level model / complexity pinning. `pin_*` locks a
+    // choice for the conversation; the matching `unpin_*` clears it
+    // and reverts to the normal strategy stack.
+    PinModelTool,
+    UnpinModelTool,
+    PinComplexityTool,
+    UnpinComplexityTool
   )
 
   val toolNames: List[ToolName] = all.map(_.name)

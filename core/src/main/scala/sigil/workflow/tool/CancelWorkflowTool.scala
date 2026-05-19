@@ -30,23 +30,18 @@ final class CancelWorkflowTool extends TypedTool[CancelWorkflowInput](
 ) with WorkflowToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: CancelWorkflowInput, ctx: TurnContext): Stream[Event] = {
-    workflowHost(ctx) match {
-      case Left(err) => reply(ctx, err, isError = true)
-      case Right(host) =>
-        val workflowId = Id[Workflow](input.runId)
-        val task = host.workflowDb.workflows.transaction(_.get(workflowId)).flatMap {
-          case None => Task.pure(s"Workflow run '${input.runId}' not found.")
-          case Some(wf) =>
-            authorizeRun(host, wf, ctx.chain).flatMap {
-              case Left(_) => Task.pure(s"Workflow run '${input.runId}' not found.")
-              case Right(_) =>
-                host.workflowManager.cancel(workflowId)
-                  .map(_ => s"Workflow run '${input.runId}' cancelled.")
-                  .handleError(e => Task.pure(s"Cancel failed: ${e.getMessage}"))
-            }
+  override protected def executeTyped(input: CancelWorkflowInput, ctx: TurnContext): Stream[Event] = withHost(ctx) { host =>
+    val workflowId = Id[Workflow](input.runId)
+    host.workflowDb.workflows.transaction(_.get(workflowId)).flatMap {
+      case None => Task.pure(s"Workflow run '${input.runId}' not found.")
+      case Some(wf) =>
+        authorizeRun(host, wf, ctx.chain).flatMap {
+          case Left(_) => Task.pure(s"Workflow run '${input.runId}' not found.")
+          case Right(_) =>
+            host.workflowManager.cancel(workflowId)
+              .map(_ => s"Workflow run '${input.runId}' cancelled.")
+              .handleError(e => Task.pure(s"Cancel failed: ${e.getMessage}"))
         }
-        Stream.force(task.map(text => reply(ctx, text)))
     }
   }
 }

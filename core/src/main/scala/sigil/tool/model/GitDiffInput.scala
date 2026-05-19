@@ -6,11 +6,11 @@ import sigil.tool.ToolInput
 /**
  * Input for `git_diff`. `path` (optional) restricts the diff to a
  * single file or directory; `staged = true` diffs the index against
- * HEAD instead of working tree against index. `format = "text"`
- * (default) returns the raw unified-diff string; `format = "hunks"`
- * returns a structured hunk array.
+ * HEAD instead of working tree against index. `format` defaults to
+ * [[GitDiffFormat.Text]] (raw unified-diff string);
+ * [[GitDiffFormat.Hunks]] returns a structured hunk array.
  */
 case class GitDiffInput(path: Option[String] = None,
                         staged: Boolean = false,
-                        format: String = "text",
+                        format: GitDiffFormat = GitDiffFormat.Text,
                         workingDir: Option[String] = None) extends ToolInput derives RW

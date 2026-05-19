@@ -60,7 +60,7 @@ object HtmlRenderer extends ContentRenderer[String] {
     case ResponseContent.SecretRef(_, label) =>
       s"<p><strong>${escape(label)}:</strong> ••••••••</p>"
     case ResponseContent.StoredFileReference(_, title, _, _, size) =>
-      s"""<p class="file">📎 <strong>${escape(title)}</strong> (${formatSize(size)})</p>"""
+      s"""<p class="file">📎 <strong>${escape(title)}</strong> (${RenderUtil.formatSize(size)})</p>"""
     case c: ResponseContent.Card => renderCard(c)
   }
 
@@ -88,10 +88,4 @@ object HtmlRenderer extends ContentRenderer[String] {
      .replace(">", "&gt;")
      .replace("\"", "&quot;")
      .replace("'", "&#39;")
-
-  private def formatSize(bytes: Long): String =
-    if (bytes < 1024) s"$bytes B"
-    else if (bytes < 1024 * 1024) f"${bytes / 1024.0}%.1f KB"
-    else if (bytes < 1024L * 1024 * 1024) f"${bytes / (1024.0 * 1024)}%.1f MB"
-    else f"${bytes / (1024.0 * 1024 * 1024)}%.1f GB"
 }

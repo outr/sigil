@@ -41,9 +41,6 @@ object TokenEstimator {
   def estimateInformation(infos: Vector[InformationSummary], tokenizer: Tokenizer = HeuristicTokenizer): Int =
     infos.iterator.map(i => tokenizer.count(s"${i.id.value} [${i.informationType.name}]: ${i.summary}")).sum
 
-  def estimateText(text: String, tokenizer: Tokenizer = HeuristicTokenizer): Int =
-    tokenizer.count(text)
-
   /** Sum the curator-controlled sections of a tentative TurnInput.
     * System prompt overhead + tool roster are added by the provider's
     * pre-flight gate; this is the curator's portion only. */
@@ -58,7 +55,4 @@ object TokenEstimator {
       estimateMemories(memories, tokenizer) +
       estimateSummaries(summaries, tokenizer) +
       estimateInformation(information, tokenizer)
-
-  def estimateAll(systemPrompt: String, frames: Vector[ContextFrame], extras: Iterable[String] = Nil): Int =
-    estimateText(systemPrompt) + estimateFrames(frames) + extras.iterator.map(estimateText(_)).sum
 }

@@ -9,7 +9,7 @@ import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput
 import sigil.event.Message
 import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext}
 import sigil.tool.git.{GitBranchTool, GitCommitTool, GitDiffTool, GitLogTool, GitShowTool, GitStatusTool}
-import sigil.tool.model.{GitBranchInput, GitCommitInput, GitDiffInput, GitLogInput, GitShowInput, GitStatusInput, ResponseContent}
+import sigil.tool.model.{GitBranchInput, GitCommitInput, GitDiffFormat, GitDiffInput, GitLogInput, GitShowInput, GitStatusInput, ResponseContent}
 
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
@@ -134,7 +134,7 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         for {
           _   <- writeAndCommit(ctx, dir, "f.txt", "v1\n", "init")
           _   <- ctx.writeFile("f.txt", "v2\n")
-          out <- new GitDiffTool(ctx).execute(GitDiffInput(format = "hunks", workingDir = Some(dir.toString)), tc).toList
+          out <- new GitDiffTool(ctx).execute(GitDiffInput(format = GitDiffFormat.Hunks, workingDir = Some(dir.toString)), tc).toList
         } yield {
           val payload = extractJson(out)
           val hunks   = payload.get("hunks").map(_.asVector.toList).getOrElse(Nil)

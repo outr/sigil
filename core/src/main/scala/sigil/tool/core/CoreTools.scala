@@ -127,6 +127,12 @@ object CoreTools {
       summon[RW[sigil.tool.output.QueryToolOutputInput]],
       summon[RW[sigil.tool.core.CancelFrameworkWorkflowInput]],
       summon[RW[RequestEscalationInput]],
+      // Opt-in git write tools (`git_commit` / `git_push`) are NOT in
+      // the default roster — apps register them explicitly, mirroring
+      // `delete_file`. Their input RWs are registered here so persisted
+      // ToolInvoke events round-trip even when the tool isn't wired.
+      summon[RW[sigil.tool.model.GitCommitInput]],
+      summon[RW[sigil.tool.model.GitPushInput]],
       // Framework-internal consult tools — their inputs round-trip
       // through the polymorphic [[ToolInput]] RW when consumers
       // (caching layers, debug dumps, persisted projections) inspect

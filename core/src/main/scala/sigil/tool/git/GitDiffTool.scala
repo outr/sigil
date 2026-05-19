@@ -5,7 +5,7 @@ import rapid.Stream
 import sigil.TurnContext
 import sigil.event.Event
 import sigil.tool.fs.{FileSystemContext, FsToolEmit, WorkspacePathResolver}
-import sigil.tool.model.GitDiffInput
+import sigil.tool.model.{GitDiffFormat, GitDiffInput}
 import sigil.tool.{ToolExample, ToolName, TypedTool}
 
 /**
@@ -24,7 +24,7 @@ final class GitDiffTool(context: FileSystemContext)
     examples = List(
       ToolExample("Unstaged changes", GitDiffInput()),
       ToolExample("Staged changes for a single file", GitDiffInput(path = Some("README.md"), staged = true)),
-      ToolExample("Structured hunks", GitDiffInput(format = "hunks"))
+      ToolExample("Structured hunks", GitDiffInput(format = GitDiffFormat.Hunks))
     ),
     keywords = Set("git", "diff", "changes", "patch", "hunk")
   ) with sigil.tool.ReadOnlyExternalTool {
@@ -39,8 +39,10 @@ final class GitDiffTool(context: FileSystemContext)
         val payload =
           if (r.exitCode != 0)
             obj("error" -> str(r.stderr), "exitCode" -> num(r.exitCode))
-          else if (input.format == "hunks") GitOps.parseDiff(r.stdout)
-          else obj("text" -> str(r.stdout))
+          else input.format match {
+            case GitDiffFormat.Hunks => GitOps.parseDiff(r.stdout)
+            case GitDiffFormat.Text  => obj("text" -> str(r.stdout))
+          }
         Stream.emit[Event](FsToolEmit(payload, ctx))
       }
     }

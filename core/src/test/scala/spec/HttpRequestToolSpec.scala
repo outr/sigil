@@ -8,7 +8,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
-import sigil.tool.model.HttpRequestInput
+import sigil.tool.model.{HttpRequestInput, HttpRequestMethod}
 import sigil.tool.web.HttpRequestTool
 
 import java.net.InetSocketAddress
@@ -101,7 +101,7 @@ class HttpRequestToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       HttpRequestTool.invoke(
         HttpRequestInput(
           url     = s"$baseUrl/echo",
-          method  = "POST",
+          method  = HttpRequestMethod.Post,
           headers = Map("X-Custom-Header" -> "marker-42"),
           body    = Some(body)
         ),
@@ -135,12 +135,15 @@ class HttpRequestToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       }
     }
 
-    "fail loudly on an unsupported method" in {
-      val attempt = HttpRequestTool.invoke(
-        HttpRequestInput(url = s"$baseUrl/echo", method = "TELEPORT"),
+    "map a non-GET method enum onto the wire request" in {
+      captured.set(None)
+      HttpRequestTool.invoke(
+        HttpRequestInput(url = s"$baseUrl/echo", method = HttpRequestMethod.Delete),
         ctx
-      ).attempt
-      attempt.map(_.isFailure shouldBe true)
+      ).map { out =>
+        out.status shouldBe 200
+        captured.get().map(_.method) shouldBe Some("DELETE")
+      }
     }
   }
 

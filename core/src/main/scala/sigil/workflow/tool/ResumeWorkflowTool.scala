@@ -43,25 +43,20 @@ final class ResumeWorkflowTool extends TypedTool[ResumeWorkflowInput](
 ) with WorkflowToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: ResumeWorkflowInput, ctx: TurnContext): Stream[Event] = {
-    workflowHost(ctx) match {
-      case Left(err) => reply(ctx, err, isError = true)
-      case Right(host) =>
-        val workflowId = Id[Workflow](input.runId)
-        val task = host.workflowDb.workflows.transaction(_.get(workflowId)).flatMap {
-          case None => Task.pure(s"Workflow run '${input.runId}' not found.")
-          case Some(wf) =>
-            authorizeRun(host, wf, ctx.chain).flatMap {
-              case Left(_) => Task.pure(s"Workflow run '${input.runId}' not found.")
-              case Right(_) =>
-                val payloadJson: Json = input.payload.filter(_.nonEmpty).fold[Json](Null)(str)
-                val payloadDisplay = input.payload.getOrElse("")
-                host.workflowManager.resume(workflowId, Id[Step](input.stepId), payloadJson)
-                  .map(_ => s"Workflow run '${input.runId}' resumed at step '${input.stepId}' with payload '$payloadDisplay'.")
-                  .handleError(e => Task.pure(s"Resume failed: ${e.getMessage}"))
-            }
+  override protected def executeTyped(input: ResumeWorkflowInput, ctx: TurnContext): Stream[Event] = withHost(ctx) { host =>
+    val workflowId = Id[Workflow](input.runId)
+    host.workflowDb.workflows.transaction(_.get(workflowId)).flatMap {
+      case None => Task.pure(s"Workflow run '${input.runId}' not found.")
+      case Some(wf) =>
+        authorizeRun(host, wf, ctx.chain).flatMap {
+          case Left(_) => Task.pure(s"Workflow run '${input.runId}' not found.")
+          case Right(_) =>
+            val payloadJson: Json = input.payload.filter(_.nonEmpty).fold[Json](Null)(str)
+            val payloadDisplay = input.payload.getOrElse("")
+            host.workflowManager.resume(workflowId, Id[Step](input.stepId), payloadJson)
+              .map(_ => s"Workflow run '${input.runId}' resumed at step '${input.stepId}' with payload '$payloadDisplay'.")
+              .handleError(e => Task.pure(s"Resume failed: ${e.getMessage}"))
         }
-        Stream.force(task.map(text => reply(ctx, text)))
     }
   }
 }
