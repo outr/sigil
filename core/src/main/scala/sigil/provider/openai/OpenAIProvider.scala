@@ -255,22 +255,31 @@ case class OpenAIProvider(apiKey: String,
     // Without these, the API returns `{id, type: "reasoning", summary: []}`
     // with no `encrypted_content`. Replaying a hollow item gives the
     // model no state to resume from and the next response is empty.
-    // Sigil audit H7 — `reasoningMode = Off` forces the lowest effort
-    // tier ("minimal") on reasoning-family models. There's no hard
-    // off on the Responses API, but `minimal` is the documented
-    // closest-to-off setting. Apps express "Off" once in
-    // `GenerationSettings.reasoningMode`; each provider translates.
+    // `reasoningMode = Off` picks the lowest-cost effort level the
+    // model accepts. Levels differ across families: gpt-5 / o1 / o3
+    // honor "minimal"; gpt-5.5 dropped it and uses "none"; future
+    // families may differ again. Resolution prefers the model
+    // registry's `supportedReasoningEffortLevels` declaration and
+    // falls back to a family-name heuristic when the registry is
+    // silent (`OpenAI.reasoningEffortLevelsFor`). The legacy
+    // hardcoded "minimal" path produced HTTP 400 on gpt-5.5 and
+    // silently disabled topic-shift classification.
+    val supportedEffortLevels: Set[String] =
+      if (isReasoningModel) OpenAI.reasoningEffortLevelsFor(input.modelId, sigil.cache) else Set.empty
     val reasoningField: Vector[(String, Json)] =
       if (gen.reasoningMode == ReasoningMode.Off && isReasoningModel) {
-        Vector("reasoning" -> obj("effort" -> str("minimal"), "summary" -> str("auto")))
+        Vector("reasoning" -> obj(
+          "effort"  -> str(OpenAI.lowestEffort(supportedEffortLevels)),
+          "summary" -> str("auto")
+        ))
       } else (gen.effort, isReasoningModel) match {
         case (Some(e), true) =>
           Vector("reasoning" -> obj(
-            "effort"  -> str(Effort.openAIEffortLevel(e)),
+            "effort"  -> str(OpenAI.effortLevelFor(e, supportedEffortLevels)),
             "summary" -> str("auto")
           ))
         case (Some(e), false) =>
-          Vector("reasoning" -> obj("effort" -> str(Effort.openAIEffortLevel(e))))
+          Vector("reasoning" -> obj("effort" -> str(OpenAI.effortLevelFor(e, supportedEffortLevels))))
         case (None, true) =>
           Vector("reasoning" -> obj("summary" -> str("auto")))
         case (None, false) =>
