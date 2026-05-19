@@ -2,6 +2,7 @@ package sigil.provider.sse
 
 import fabric.Json
 import fabric.io.JsonParser
+import sigil.provider.ProviderEvent
 
 /**
  * Pure SSE line classifier shared across providers.
@@ -31,11 +32,25 @@ object SSELineParser {
     else SSELine.Other(trimmed)
   }
 
-  /** Convenience for callers that only care about parseable JSON
-    * payloads. Returns None for blank, comment, done, malformed, or
-    * other lines. */
-  def parseDataLine(line: String): Option[Json] = parse(line) match {
-    case SSELine.Data(json) => Some(json)
-    case _                  => None
+  /** Classify `line` and dispatch it to the right provider callback.
+    *
+    * Every provider's `parseLine` matches the same five-way shape:
+    * a clean `data:` payload routes to `onData`, the `[DONE]`
+    * terminator routes to `onDone`, a malformed `data:` payload
+    * routes to `onMalformed`, and blank / comment / other lines
+    * produce no events. This helper owns that skeleton so providers
+    * only supply their chunk-parsing logic.
+    *
+    * `onMalformed` defaults to a generic `ProviderEvent.Error`;
+    * providers with a bespoke error-message format override it. */
+  def dispatch(line: String)(
+      onData: Json => Vector[ProviderEvent],
+      onDone: => Vector[ProviderEvent],
+      onMalformed: String => Vector[ProviderEvent] = reason => Vector(ProviderEvent.Error(s"parse: $reason"))
+  ): Vector[ProviderEvent] = parse(line) match {
+    case SSELine.Data(json)               => onData(json)
+    case SSELine.Done                     => onDone
+    case SSELine.MalformedData(_, reason) => onMalformed(reason)
+    case SSELine.Blank | SSELine.Comment | _: SSELine.Other => Vector.empty
   }
 }

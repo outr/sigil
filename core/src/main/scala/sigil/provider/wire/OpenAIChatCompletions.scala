@@ -2,11 +2,12 @@ package sigil.provider.wire
 
 import fabric.*
 import fabric.io.JsonFormatter
+import fabric.rw.*
 import rapid.{Stream, Task}
 import sigil.Sigil
 import sigil.provider.*
 import sigil.provider.debug.StreamWireInterceptor
-import sigil.provider.sse.{SSELine, SSELineParser}
+import sigil.provider.sse.SSELineParser
 import sigil.tool.{DefinitionToSchema, Tool, ToolInput}
 import sigil.tool.ToolInput.given
 import spice.http.{HttpMethod, HttpRequest}
@@ -454,7 +455,7 @@ object OpenAIChatCompletions {
         else config.nonStrictSchemaTransform(baseSchema)
       val fnFields = Vector[(String, Json)](
         "name"        -> str(s.name.value),
-        "description" -> str(renderDescription(t, input.currentMode, sigil)),
+        "description" -> str(ToolDescriptionRenderer.render(t, input.currentMode, sigil)),
         "parameters"  -> parameters
       ) ++ (if (canBeStrict && config.honorsStrict) Vector("strict" -> bool(true)) else Vector.empty)
       obj(
@@ -533,23 +534,6 @@ object OpenAIChatCompletions {
         }
     }
 
-  private def renderDescription(tool: Tool, mode: Mode, sigil: Sigil): String = {
-    val base = tool.wireDescription(mode, sigil)
-    if (tool.examples.isEmpty) base
-    else {
-      val rendered = tool.examples.map { e =>
-        val json = JsonFormatter.Compact(stripPolyDiscriminator(summon[fabric.rw.RW[ToolInput]].read(e.input)))
-        s"- ${e.description}: $json"
-      }.mkString("\n")
-      s"$base\n\nExamples:\n$rendered"
-    }
-  }
-
-  private def stripPolyDiscriminator(json: Json): Json = json match {
-    case o: Obj => Obj(o.value - "type")
-    case other  => other
-  }
-
   private def stripNamespace(modelId: String, namespace: String): String = {
     val prefix = s"$namespace/"
     if (modelId.startsWith(prefix)) modelId.drop(prefix.length) else modelId
@@ -567,13 +551,10 @@ object OpenAIChatCompletions {
     // configured budget. Event-driven (no timer thread); the next
     // chunk after the threshold trips the throw.
     state.checkStreamingSilence(config)
-    SSELineParser.parse(line) match {
-      case SSELine.Data(json) => parseChunk(json, state, config)
-      case SSELine.Done       => state.flushDone(config)
-      case SSELine.MalformedData(_, reason) =>
-        Vector(ProviderEvent.Error(s"parse: $reason"))
-      case SSELine.Blank | SSELine.Comment | _: SSELine.Other => Vector.empty
-    }
+    SSELineParser.dispatch(line)(
+      onData = json => parseChunk(json, state, config),
+      onDone = state.flushDone(config)
+    )
   }
 
   /** Parse a single decoded SSE chunk's JSON payload into
@@ -816,11 +797,7 @@ object OpenAIChatCompletions {
   }
 
   private def parseUsage(json: Json): TokenUsage =
-    TokenUsage(
-      promptTokens = json.get("prompt_tokens").map(_.asInt).getOrElse(0),
-      completionTokens = json.get("completion_tokens").map(_.asInt).getOrElse(0),
-      totalTokens = json.get("total_tokens").map(_.asInt).getOrElse(0)
-    )
+    TokenUsage.fromJson(json, "prompt_tokens", "completion_tokens", Some("total_tokens"))
 
   /** Streaming state: pending [[StopReason]] held back until the
     * trailing `usage` chunk (or `[DONE]`) arrives, plus the tool-call
@@ -1029,18 +1006,19 @@ object OpenAIChatCompletions {
   /** Records the forced-call substitution that's active on this stream
     * so the end-of-stream handler can synthesize the right
     * `ToolCallStart` + `ToolCallComplete` events from the buffered
-    * content. Sigil bug #173. */
-  sealed trait ResponseFormatMode
-  object ResponseFormatMode {
+    * content. */
+  enum ResponseFormatMode derives RW {
+
     /** `ToolChoice.Specific(name)` substituted to response_format.
       * The buffered content is the named tool's typed input JSON
       * directly — emit one synthetic ToolCallStart(name) + appendArgs
       * of the entire content. */
-    final case class Specific(name: sigil.tool.ToolName) extends ResponseFormatMode
+    case Specific(name: sigil.tool.ToolName)
+
     /** `ToolChoice.Required` substituted to response_format with a
       * meta-schema. The buffered content is
       * `{tool_name, arguments}`; the synthesizer extracts both and
       * emits the corresponding pair of events. */
-    case object Required extends ResponseFormatMode
+    case Required
   }
 }

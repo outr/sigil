@@ -712,51 +712,12 @@ trait Provider extends Service {
                                         agentId: Option[ParticipantId],
                                         previousResponseId: Option[String],
                                         priorMessageCount: Option[Int]): Task[ProviderCall] = {
-      // When the silent-turn recovery has fired, the model MUST pick a
-      // respond-family terminal call this iteration. Filter the tool
-      // roster to that family + `no_response` and let the wire
-      // `tool_choice: required` enforce one is picked. Any non-respond
-      // tools available this turn are stripped — the agent has had a
-      // normal turn already; this is the final-reply iteration.
-      val effectiveTools: Vector[_root_.sigil.tool.Tool] =
-        if (c.forceResponseSynthesis) {
-          val respondFamily = _root_.sigil.tool.core.CoreTools.atomicContentToolNames
-          c.tools.filter(t => respondFamily.contains(t.schema.name))
-        } else c.tools
+      val effectiveTools = filterToolsForForcedSynthesis(c)
       val toolChoice: ToolChoice =
         if (effectiveTools.isEmpty) ToolChoice.None
         else ToolChoice.Required
-      // Adaptive max_tokens — when the paraphrase detector has
-      // flagged a planning-without-acting loop on this turn (signal
-      // lives in `turnInput.extraContext`), cap the per-call
-      // generation budget so a degenerate model can't run all the
-      // way to its default `maxOutputTokens` producing kilobytes of
-      // repeated text. Damage bounded; the agent's next iteration
-      // reads the loop diagnostic and can self-correct.
-      val gen =
-        if (c.turnInput.extraContext.exists { case (k, _) =>
-              k.value == _root_.sigil.conversation.compression.ParaphraseLoopDetector.ContextKeyValue
-            }) {
-          val cap: Int = Provider.ParaphraseLoopMaxOutputTokensCap
-          val tightened: Option[Int] = c.generationSettings.maxOutputTokens match {
-            case Some(existing) => Some(math.min(existing, cap))
-            case None           => Some(cap)
-          }
-          c.generationSettings.copy(maxOutputTokens = tightened)
-        } else c.generationSettings
-      // Bug #132 — agent-initiated turns (greeting / scheduled / autonomous
-      // / worker-spawn) reach this code path with no user message in the
-      // conversation history → `renderFrames` returns empty → providers
-      // emit an empty `input` / `messages` array → OpenAI Responses,
-      // Anthropic Messages, and Google generateContent all reject with
-      // HTTP 400 (each requires non-empty input). Synthesize a single
-      // user-role placeholder so the wire shape is always well-formed.
-      // The placeholder is request-only — never persists to events; the
-      // agent's emitted reply is what gets stored.
-      val rendered = renderFrames(c.turnInput.frames, agentId)
-      val messages =
-        if (rendered.nonEmpty) rendered
-        else Vector(ProviderMessage.User(Provider.AgentInitiatedTurnTrigger))
+      val gen = tightenMaxTokensForParaphrase(c)
+      val messages = nonEmptyMessages(c, agentId)
       val providerCall = ProviderCall(
         modelId = c.modelId,
         system = renderSystem(c, resolved),
@@ -771,25 +732,73 @@ trait Provider extends Service {
         previousResponseId = previousResponseId,
         priorMessageCount = priorMessageCount
       )
-      // Diagnostic profiling — gated on `Sigil.profileWireRequests`
-      // (default on; apps override to false to skip). Runs the
-      // tokenizer once per turn over every section of the about-to-
-      // be-sent request and broadcasts the breakdown as a
-      // `WireRequestProfile` Notice. Cheap (jtokkit milliseconds
-      // for typical request sizes) — supports the always-visible
-      // context-utilisation gauge downstream apps render without
-      // further opt-in.
-      val emit: Task[Unit] =
-        if (sigil.profileWireRequests) {
-          agentId match {
-            case Some(pid) =>
-              val profile = RequestProfiler.profile(c, resolved, tokenizer, sigil)
-              sigil.publish(WireRequestProfile(c.conversationId, c.modelId, pid, profile))
-            case None => Task.unit
-          }
-        } else Task.unit
-      emit.map(_ => providerCall)
+      emitWireProfile(c, resolved, agentId).map(_ => providerCall)
     }
+
+  /** When the silent-turn recovery has fired, the model MUST pick a
+    * respond-family terminal call this iteration. Filter the tool
+    * roster to that family + `no_response` and let the wire
+    * `tool_choice: required` enforce one is picked. Any non-respond
+    * tools available this turn are stripped — the agent has had a
+    * normal turn already; this is the final-reply iteration. */
+  private def filterToolsForForcedSynthesis(c: ConversationRequest): Vector[Tool] =
+    if (c.forceResponseSynthesis) {
+      val respondFamily = CoreTools.atomicContentToolNames
+      c.tools.filter(t => respondFamily.contains(t.schema.name))
+    } else c.tools
+
+  /** Adaptive max_tokens — when the paraphrase detector has flagged a
+    * planning-without-acting loop on this turn (signal lives in
+    * `turnInput.extraContext`), cap the per-call generation budget so
+    * a degenerate model can't run all the way to its default
+    * `maxOutputTokens` producing kilobytes of repeated text. Damage
+    * bounded; the agent's next iteration reads the loop diagnostic and
+    * can self-correct. */
+  private def tightenMaxTokensForParaphrase(c: ConversationRequest): GenerationSettings =
+    if (c.turnInput.extraContext.exists { case (k, _) =>
+          k.value == _root_.sigil.conversation.compression.ParaphraseLoopDetector.ContextKeyValue
+        }) {
+      val cap: Int = Provider.ParaphraseLoopMaxOutputTokensCap
+      val tightened: Option[Int] = c.generationSettings.maxOutputTokens match {
+        case Some(existing) => Some(math.min(existing, cap))
+        case None           => Some(cap)
+      }
+      c.generationSettings.copy(maxOutputTokens = tightened)
+    } else c.generationSettings
+
+  /** Agent-initiated turns (greeting / scheduled / autonomous /
+    * worker-spawn) reach this code path with no user message in the
+    * conversation history — `renderFrames` returns empty and providers
+    * would emit an empty `input` / `messages` array, which OpenAI
+    * Responses, Anthropic Messages, and Google generateContent all
+    * reject with HTTP 400 (each requires non-empty input). Synthesize
+    * a single user-role placeholder so the wire shape is always
+    * well-formed. The placeholder is request-only — never persists to
+    * events; the agent's emitted reply is what gets stored. */
+  private def nonEmptyMessages(c: ConversationRequest, agentId: Option[ParticipantId]): Vector[ProviderMessage] = {
+    val rendered = renderFrames(c.turnInput.frames, agentId)
+    if (rendered.nonEmpty) rendered
+    else Vector(ProviderMessage.User(Provider.AgentInitiatedTurnTrigger))
+  }
+
+  /** Diagnostic profiling — gated on `Sigil.profileWireRequests`
+    * (default on; apps override to false to skip). Runs the tokenizer
+    * once per turn over every section of the about-to-be-sent request
+    * and broadcasts the breakdown as a `WireRequestProfile` Notice.
+    * Cheap (jtokkit milliseconds for typical request sizes) — supports
+    * the always-visible context-utilisation gauge downstream apps
+    * render without further opt-in. */
+  private def emitWireProfile(c: ConversationRequest,
+                              resolved: ResolvedReferences,
+                              agentId: Option[ParticipantId]): Task[Unit] =
+    if (sigil.profileWireRequests) {
+      agentId match {
+        case Some(pid) =>
+          val profile = RequestProfiler.profile(c, resolved, tokenizer, sigil)
+          sigil.publish(WireRequestProfile(c.conversationId, c.modelId, pid, profile))
+        case None => Task.unit
+      }
+    } else Task.unit
 
   private def translateOneShot(s: OneShotRequest): ProviderCall = {
     val toolChoice =
