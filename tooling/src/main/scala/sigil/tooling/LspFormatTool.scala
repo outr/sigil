@@ -39,9 +39,8 @@ final class LspFormatTool(val manager: LspManager) extends TypedOutputTool[LspFo
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspFormatInput, context: TurnContext): Task[LspFormatResult] =
-    withOpenDocumentTyped[LspFormatResult](
-      input.languageId, input.filePath, context,
-      onError = msg => throw new RuntimeException(msg)
+    withOpenDocumentOrThrow[LspFormatResult](
+      input.languageId, input.filePath, context
     ) { (session, uri) =>
       val opts = new FormattingOptions(input.tabSize, input.insertSpaces)
       session.formatting(uri, opts).flatMap { edits =>

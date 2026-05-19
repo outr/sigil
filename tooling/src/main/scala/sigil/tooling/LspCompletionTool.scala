@@ -38,9 +38,8 @@ final class LspCompletionTool(val manager: LspManager) extends TypedOutputTool[L
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspCompletionInput, context: TurnContext): Task[LspCompletionResult] =
-    withOpenDocumentTyped[LspCompletionResult](
-      input.languageId, input.filePath, context,
-      onError = msg => throw new RuntimeException(msg)
+    withOpenDocumentOrThrow[LspCompletionResult](
+      input.languageId, input.filePath, context
     ) { (session, uri) =>
       session.completion(uri, input.line, input.character).map { items =>
         val capped = items.take(input.maxResults).map(toItem)

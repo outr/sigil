@@ -30,28 +30,26 @@ final class BspScalaMainClassesTool(val manager: BspManager) extends TypedOutput
 
   override protected def executeTyped(input: BspScalaMainClassesInput,
                                       context: TurnContext): Task[BspMainClassesResult] =
-    withSessionTyped[BspMainClassesResult](
-      input.projectRoot, context,
-      onError = _ => BspMainClassesResult(input.projectRoot, Nil)
-    ) { session =>
-      targetsFromInput(session, input.targets).flatMap { targets =>
-        if (targets.isEmpty) Task.pure(BspMainClassesResult(input.projectRoot, Nil))
-        else session.scalaMainClasses(targets).map { items =>
-          BspMainClassesResult(
-            projectRoot = input.projectRoot,
-            items = items.map { item =>
-              BspTargetMainClasses(
-                target = item.getTarget.getUri,
-                classes = Option(item.getClasses).map(_.asScala.toList.map { c =>
-                  BspMainClassEntry(
-                    className = c.getClassName,
-                    arguments = Option(c.getArguments).map(_.asScala.toList).getOrElse(Nil)
-                  )
-                }).getOrElse(Nil)
-              )
-            }
-          )
-        }
+    withTargets[BspMainClassesResult](
+      input.projectRoot, context, input.targets,
+      onError = _ => BspMainClassesResult(input.projectRoot, Nil),
+      emptyResult = BspMainClassesResult(input.projectRoot, Nil)
+    ) { (session, targets) =>
+      session.scalaMainClasses(targets).map { items =>
+        BspMainClassesResult(
+          projectRoot = input.projectRoot,
+          items = items.map { item =>
+            BspTargetMainClasses(
+              target = item.getTarget.getUri,
+              classes = Option(item.getClasses).map(_.asScala.toList.map { c =>
+                BspMainClassEntry(
+                  className = c.getClassName,
+                  arguments = Option(c.getArguments).map(_.asScala.toList).getOrElse(Nil)
+                )
+              }).getOrElse(Nil)
+            )
+          }
+        )
       }
     }
 }

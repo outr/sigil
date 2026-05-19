@@ -1,7 +1,6 @@
 package sigil.mcp
 
 import fabric.*
-import fabric.rw.*
 import rapid.Task
 
 import java.io.{BufferedReader, InputStreamReader}
@@ -65,51 +64,19 @@ final class StdioMcpClient(override val config: McpServerConfig,
   }
 
   override def listTools(): Task[List[McpToolDefinition]] =
-    callRpc("tools/list").map { result =>
-      result.get("tools").map(_.asVector.toList.map { entry =>
-        McpToolDefinition(
-          name = entry.get("name").map(_.asString).getOrElse(""),
-          description = entry.get("description").map(_.asString),
-          inputSchema = entry.get("inputSchema").getOrElse(Obj.empty)
-        )
-      }).getOrElse(Nil)
-    }
+    callRpc("tools/list").map(McpToolDefinition.listFrom)
 
   override def callTool(name: String, arguments: Json, onWireId: Long => Unit = _ => ()): Task[Json] =
     Task.defer(rpcOrFail.requestWithId("tools/call", obj("name" -> str(name), "arguments" -> arguments), onWireId))
 
   override def listResources(): Task[List[McpResource]] =
-    callRpc("resources/list").map { result =>
-      result.get("resources").map(_.asVector.toList.map { entry =>
-        McpResource(
-          uri = entry.get("uri").map(_.asString).getOrElse(""),
-          name = entry.get("name").map(_.asString),
-          description = entry.get("description").map(_.asString),
-          mimeType = entry.get("mimeType").map(_.asString)
-        )
-      }).getOrElse(Nil)
-    }
+    callRpc("resources/list").map(McpResource.listFrom)
 
   override def readResource(uri: String): Task[Json] =
     callRpc("resources/read", obj("uri" -> str(uri)))
 
   override def listPrompts(): Task[List[McpPrompt]] =
-    callRpc("prompts/list").map { result =>
-      result.get("prompts").map(_.asVector.toList.map { entry =>
-        val args = entry.get("arguments").map(_.asVector.toList.map { a =>
-          McpPromptArgument(
-            name = a.get("name").map(_.asString).getOrElse(""),
-            description = a.get("description").map(_.asString),
-            required = a.get("required").map(_.asBoolean).getOrElse(false)
-          )
-        }).getOrElse(Nil)
-        McpPrompt(
-          name = entry.get("name").map(_.asString).getOrElse(""),
-          description = entry.get("description").map(_.asString),
-          arguments = args
-        )
-      }).getOrElse(Nil)
-    }
+    callRpc("prompts/list").map(McpPrompt.listFrom)
 
   override def getPrompt(name: String, arguments: Map[String, String] = Map.empty): Task[Json] = {
     val args = Obj(arguments.map { case (k, v) => k -> str(v) })

@@ -38,9 +38,8 @@ final class LspInlayHintsTool(val manager: LspManager) extends TypedOutputTool[L
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspInlayHintsInput, context: TurnContext): Task[LspInlayHintsResult] =
-    withOpenDocumentTyped[LspInlayHintsResult](
-      input.languageId, input.filePath, context,
-      onError = msg => throw new RuntimeException(msg)
+    withOpenDocumentOrThrow[LspInlayHintsResult](
+      input.languageId, input.filePath, context
     ) { (session, uri) =>
       val range = new Range(
         new Position(input.startLine, input.startCharacter),

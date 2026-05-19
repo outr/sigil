@@ -38,40 +38,36 @@ final class BspCompileTool(val manager: BspManager) extends TypedOutputTool[BspC
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: BspCompileInput, context: TurnContext): Task[BspCompileResult] =
-    withSessionTyped[BspCompileResult](
-      input.projectRoot, context,
-      onError = msg => BspCompileResult(input.projectRoot, "ERROR", 0, Nil)
-    ) { session =>
-      targetsFromInput(session, input.targets).flatMap { targets =>
-        if (targets.isEmpty) {
-          Task.pure(BspCompileResult(
-            projectRoot = input.projectRoot,
-            status      = "NO_TARGETS",
-            targetCount = 0,
-            diagnostics = Nil
-          ))
+    withTargets[BspCompileResult](
+      input.projectRoot, context, input.targets,
+      onError = _ => BspCompileResult(input.projectRoot, "ERROR", 0, Nil),
+      emptyResult = BspCompileResult(
+        projectRoot = input.projectRoot,
+        status      = "NO_TARGETS",
+        targetCount = 0,
+        diagnostics = Nil
+      )
+    ) { (session, targets) =>
+      session.compile(targets).map { result =>
+        val status = result.getStatusCode match {
+          case StatusCode.OK        => "OK"
+          case StatusCode.ERROR     => "ERROR"
+          case StatusCode.CANCELLED => "CANCELLED"
         }
-        else session.compile(targets).map { result =>
-          val status = result.getStatusCode match {
-            case StatusCode.OK        => "OK"
-            case StatusCode.ERROR     => "ERROR"
-            case StatusCode.CANCELLED => "CANCELLED"
-          }
-          val diags = session.client.diagnosticsSnapshot
-          val typedDiags = diags.toList.flatMap { case (uri, ds) =>
-            val path = scala.util.Try {
-              val u = new java.net.URI(uri)
-              if (u.getScheme == "file") java.nio.file.Paths.get(u).toString else uri
-            }.getOrElse(uri)
-            ds.map(BspDiagnostic.fromBsp4j(path, _))
-          }
-          BspCompileResult(
-            projectRoot = input.projectRoot,
-            status      = status,
-            targetCount = targets.size,
-            diagnostics = typedDiags
-          )
+        val diags = session.client.diagnosticsSnapshot
+        val typedDiags = diags.toList.flatMap { case (uri, ds) =>
+          val path = scala.util.Try {
+            val u = new java.net.URI(uri)
+            if (u.getScheme == "file") java.nio.file.Paths.get(u).toString else uri
+          }.getOrElse(uri)
+          ds.map(BspDiagnostic.fromBsp4j(path, _))
         }
+        BspCompileResult(
+          projectRoot = input.projectRoot,
+          status      = status,
+          targetCount = targets.size,
+          diagnostics = typedDiags
+        )
       }
     }
 }

@@ -29,9 +29,8 @@ final class LspDocumentLinkTool(val manager: LspManager) extends TypedOutputTool
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspDocumentLinkInput, context: TurnContext): Task[LspDocumentLinkResult] =
-    withOpenDocumentTyped[LspDocumentLinkResult](
-      input.languageId, input.filePath, context,
-      onError = msg => throw new RuntimeException(msg)
+    withOpenDocumentOrThrow[LspDocumentLinkResult](
+      input.languageId, input.filePath, context
     ) { (session, uri) =>
       session.documentLinks(uri).map { links =>
         LspDocumentLinkResult(filePath = input.filePath, items = links.map(toItem))

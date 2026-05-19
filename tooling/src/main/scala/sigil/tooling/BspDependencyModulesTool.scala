@@ -58,25 +58,23 @@ final class BspDependencyModulesTool(val manager: BspManager) extends TypedOutpu
 
   private def compute(input: BspDependencyModulesInput,
                       context: TurnContext): Task[BspDependencyModulesResult] =
-    withSessionTyped[BspDependencyModulesResult](
-      input.projectRoot, context,
-      onError = _ => BspDependencyModulesResult(input.projectRoot, Nil)
-    ) { session =>
-      targetsFromInput(session, input.targets).flatMap { targets =>
-        if (targets.isEmpty) Task.pure(BspDependencyModulesResult(input.projectRoot, Nil))
-        else session.dependencyModules(targets).map { items =>
-          BspDependencyModulesResult(
-            projectRoot = input.projectRoot,
-            items = items.map { item =>
-              BspTargetDependencyModules(
-                target  = item.getTarget.getUri,
-                modules = Option(item.getModules).map(_.asScala.toList.map { m =>
-                  BspDependencyModule(name = m.getName, version = m.getVersion)
-                }).getOrElse(Nil)
-              )
-            }
-          )
-        }
+    withTargets[BspDependencyModulesResult](
+      input.projectRoot, context, input.targets,
+      onError = _ => BspDependencyModulesResult(input.projectRoot, Nil),
+      emptyResult = BspDependencyModulesResult(input.projectRoot, Nil)
+    ) { (session, targets) =>
+      session.dependencyModules(targets).map { items =>
+        BspDependencyModulesResult(
+          projectRoot = input.projectRoot,
+          items = items.map { item =>
+            BspTargetDependencyModules(
+              target  = item.getTarget.getUri,
+              modules = Option(item.getModules).map(_.asScala.toList.map { m =>
+                BspDependencyModule(name = m.getName, version = m.getVersion)
+              }).getOrElse(Nil)
+            )
+          }
+        )
       }
     }
 }

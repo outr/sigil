@@ -26,16 +26,14 @@ final class BspCleanTool(val manager: BspManager) extends TypedOutputTool[BspCle
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: BspCleanInput, context: TurnContext): Task[BspCleanResult] =
-    withSessionTyped[BspCleanResult](
-      input.projectRoot, context,
-      onError = _ => BspCleanResult(input.projectRoot, 0, cleaned = false)
-    ) { session =>
-      targetsFromInput(session, input.targets).flatMap { targets =>
-        if (targets.isEmpty) Task.pure(BspCleanResult(input.projectRoot, 0, cleaned = false))
-        else session.cleanCache(targets).map { result =>
-          val ok = Option(result.getCleaned).map(_.booleanValue).getOrElse(false)
-          BspCleanResult(input.projectRoot, targets.size, cleaned = ok)
-        }
+    withTargets[BspCleanResult](
+      input.projectRoot, context, input.targets,
+      onError = _ => BspCleanResult(input.projectRoot, 0, cleaned = false),
+      emptyResult = BspCleanResult(input.projectRoot, 0, cleaned = false)
+    ) { (session, targets) =>
+      session.cleanCache(targets).map { result =>
+        val ok = Option(result.getCleaned).map(_.booleanValue).getOrElse(false)
+        BspCleanResult(input.projectRoot, targets.size, cleaned = ok)
       }
     }
 }

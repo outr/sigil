@@ -50,9 +50,8 @@ final class LspApplyCodeActionTool(val manager: LspManager) extends TypedOutputT
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspApplyCodeActionInput, context: TurnContext): Task[LspApplyCodeActionResult] =
-    withSessionTyped[LspApplyCodeActionResult](
-      input.languageId, input.filePath, context,
-      onError = msg => throw new RuntimeException(msg)
+    withSessionOrThrow[LspApplyCodeActionResult](
+      input.languageId, input.filePath, context
     ) { (session, uri, _) =>
       val cached = session.cachedCodeActions(uri)
       if (cached.isEmpty) Task.pure(LspApplyCodeActionResult.CacheEmpty(uri))

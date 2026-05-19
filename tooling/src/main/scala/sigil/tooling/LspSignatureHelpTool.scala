@@ -38,9 +38,8 @@ final class LspSignatureHelpTool(val manager: LspManager) extends TypedOutputToo
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspSignatureHelpInput, context: TurnContext): Task[LspSignatureHelpResult] =
-    withOpenDocumentTyped[LspSignatureHelpResult](
-      input.languageId, input.filePath, context,
-      onError = msg => throw new RuntimeException(msg)
+    withOpenDocumentOrThrow[LspSignatureHelpResult](
+      input.languageId, input.filePath, context
     ) { (session, uri) =>
       session.signatureHelp(uri, input.line, input.character).map(toResult)
     }

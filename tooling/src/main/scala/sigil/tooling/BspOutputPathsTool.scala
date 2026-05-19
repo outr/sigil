@@ -30,23 +30,21 @@ final class BspOutputPathsTool(val manager: BspManager) extends TypedOutputTool[
 
   override protected def executeTyped(input: BspOutputPathsInput,
                                       context: TurnContext): Task[BspOutputPathsResult] =
-    withSessionTyped[BspOutputPathsResult](
-      input.projectRoot, context,
-      onError = _ => BspOutputPathsResult(input.projectRoot, Nil)
-    ) { session =>
-      targetsFromInput(session, input.targets).flatMap { targets =>
-        if (targets.isEmpty) Task.pure(BspOutputPathsResult(input.projectRoot, Nil))
-        else session.outputPaths(targets).map { items =>
-          BspOutputPathsResult(
-            projectRoot = input.projectRoot,
-            items = items.map { item =>
-              BspTargetOutputPaths(
-                target = item.getTarget.getUri,
-                paths = Option(item.getOutputPaths).map(_.asScala.toList.map(BspOutputPathItem.fromBsp4j)).getOrElse(Nil)
-              )
-            }
-          )
-        }
+    withTargets[BspOutputPathsResult](
+      input.projectRoot, context, input.targets,
+      onError = _ => BspOutputPathsResult(input.projectRoot, Nil),
+      emptyResult = BspOutputPathsResult(input.projectRoot, Nil)
+    ) { (session, targets) =>
+      session.outputPaths(targets).map { items =>
+        BspOutputPathsResult(
+          projectRoot = input.projectRoot,
+          items = items.map { item =>
+            BspTargetOutputPaths(
+              target = item.getTarget.getUri,
+              paths = Option(item.getOutputPaths).map(_.asScala.toList.map(BspOutputPathItem.fromBsp4j)).getOrElse(Nil)
+            )
+          }
+        )
       }
     }
 }

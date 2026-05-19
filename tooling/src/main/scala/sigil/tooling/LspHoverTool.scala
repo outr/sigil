@@ -36,9 +36,8 @@ final class LspHoverTool(val manager: LspManager) extends TypedOutputTool[LspHov
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspHoverInput, context: TurnContext): Task[Option[LspHover]] =
-    withOpenDocumentTyped[Option[LspHover]](
-      input.languageId, input.filePath, context,
-      onError = msg => throw new RuntimeException(msg)
+    withOpenDocumentOrThrow[Option[LspHover]](
+      input.languageId, input.filePath, context
     ) { (session, uri) =>
       session.hover(uri, input.line, input.character).map(_.map(LspHover.fromLsp4j))
     }

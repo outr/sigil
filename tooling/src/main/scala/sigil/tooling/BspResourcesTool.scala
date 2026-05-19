@@ -29,23 +29,21 @@ final class BspResourcesTool(val manager: BspManager) extends TypedOutputTool[Bs
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: BspResourcesInput, context: TurnContext): Task[BspResourcesResult] =
-    withSessionTyped[BspResourcesResult](
-      input.projectRoot, context,
-      onError = _ => BspResourcesResult(input.projectRoot, Nil)
-    ) { session =>
-      targetsFromInput(session, input.targets).flatMap { targets =>
-        if (targets.isEmpty) Task.pure(BspResourcesResult(input.projectRoot, Nil))
-        else session.resources(targets).map { items =>
-          BspResourcesResult(
-            projectRoot = input.projectRoot,
-            items = items.map { item =>
-              BspTargetResources(
-                target    = item.getTarget.getUri,
-                resources = Option(item.getResources).map(_.asScala.toList).getOrElse(Nil)
-              )
-            }
-          )
-        }
+    withTargets[BspResourcesResult](
+      input.projectRoot, context, input.targets,
+      onError = _ => BspResourcesResult(input.projectRoot, Nil),
+      emptyResult = BspResourcesResult(input.projectRoot, Nil)
+    ) { (session, targets) =>
+      session.resources(targets).map { items =>
+        BspResourcesResult(
+          projectRoot = input.projectRoot,
+          items = items.map { item =>
+            BspTargetResources(
+              target    = item.getTarget.getUri,
+              resources = Option(item.getResources).map(_.asScala.toList).getOrElse(Nil)
+            )
+          }
+        )
       }
     }
 }

@@ -41,9 +41,8 @@ final class LspSelectionRangeTool(val manager: LspManager) extends TypedOutputTo
   override def paginate: Boolean = false
 
   override protected def executeTyped(input: LspSelectionRangeInput, context: TurnContext): Task[LspSelectionRangeResult] =
-    withOpenDocumentTyped[LspSelectionRangeResult](
-      input.languageId, input.filePath, context,
-      onError = msg => throw new RuntimeException(msg)
+    withOpenDocumentOrThrow[LspSelectionRangeResult](
+      input.languageId, input.filePath, context
     ) { (session, uri) =>
       val positions = input.positions.map(p => new Position(p.line, p.character))
       session.selectionRange(uri, positions).map { results =>

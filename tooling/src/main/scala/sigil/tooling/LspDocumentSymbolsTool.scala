@@ -43,9 +43,8 @@ final class LspDocumentSymbolsTool(val manager: LspManager) extends TypedOutputT
 
   override protected def executeTyped(input: LspDocumentSymbolsInput,
                                       context: TurnContext): Task[LspDocumentSymbolsResult] =
-    withOpenDocumentTyped[LspDocumentSymbolsResult](
-      input.languageId, input.filePath, context,
-      onError = msg => throw new RuntimeException(msg)
+    withOpenDocumentOrThrow[LspDocumentSymbolsResult](
+      input.languageId, input.filePath, context
     ) { (session, uri) =>
       session.documentSymbols(uri).map { symbols =>
         val entries = symbols.flatMap { either =>
