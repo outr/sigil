@@ -7,12 +7,8 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, ConversationView, TopicEntry, TurnInput}
 import sigil.event.Event
-import sigil.provider.Complexity
 import sigil.tooling.container.{CreateContainerInput, CreateContainerTool}
-import sigil.tooling.dispatch.{
-  DispatchWorkersInput, DispatchWorkersOutput, DispatchWorkersTool,
-  LlmStep, WorkerPipeline
-}
+import sigil.tooling.dispatch.{DispatchWorkersInput, DispatchWorkersOutput, DispatchWorkersTool}
 
 import scala.concurrent.duration.*
 
@@ -53,23 +49,19 @@ class DispatchWorkersEmptyItemsSpec extends AsyncWordSpec with AsyncTaskSpec wit
 
     "reject empty items + confirmed=true with a structured 'nothing to dispatch' failure" in {
       DispatchTestSigil.reset()
-      val tool = new DispatchWorkersTool(scriptExecutor = None)
+      val tool = new DispatchWorkersTool(scriptExecutor = Some(new sigil.script.ScalaScriptExecutor()))
       val ctx = turnContext()
       val input = DispatchWorkersInput(
-        complexity = Complexity.Low,
-        confirmed  = true,
-        itemsId    = emptyContainer(ctx),
-        pipeline   = WorkerPipeline(
-          llm = Some(LlmStep(prompt = "irrelevant: {{item}}"))
-        ),
-        workerModelId = Some("stub-model")
+        itemsId   = emptyContainer(ctx),
+        action    = "items.headOption",
+        confirmed = true
       )
       tool.invoke(input, ctx).map {
         case d: DispatchWorkersOutput.DispatchResult =>
           d.totalItems shouldBe 0
           d.successCount shouldBe 0
           d.failureCount shouldBe 0
-          d.results shouldBe empty
+          d.perItem shouldBe empty
           val reason = d.abortReason.getOrElse(fail("expected an abortReason"))
           reason should include ("empty items list")
           reason should include ("confirmed=true")
@@ -80,25 +72,22 @@ class DispatchWorkersEmptyItemsSpec extends AsyncWordSpec with AsyncTaskSpec wit
 
     "return a scope preview (0 workers, no rejection) for empty items + confirmed=false" in {
       DispatchTestSigil.reset()
-      val tool = new DispatchWorkersTool(scriptExecutor = None)
+      val tool = new DispatchWorkersTool(scriptExecutor = Some(new sigil.script.ScalaScriptExecutor()))
       val ctx = turnContext()
       val input = DispatchWorkersInput(
-        complexity = Complexity.Low,
-        confirmed  = false,
-        itemsId    = emptyContainer(ctx),
-        pipeline   = WorkerPipeline(
-          llm = Some(LlmStep(prompt = "irrelevant: {{item}}"))
-        ),
-        workerModelId = Some("stub-model")
+        itemsId   = emptyContainer(ctx),
+        action    = "items.headOption",
+        confirmed = false
       )
       tool.invoke(input, ctx).map {
         case s: DispatchWorkersOutput.ScopePreview =>
           s.totalItems shouldBe 0
+          s.workerCount shouldBe 0
           s.perItemSample shouldBe empty
+          s.compileOk shouldBe true
           // No abort reason — the scope preview is a successful response,
           // not a rejection. The agent reads "0 workers" and decides.
           s.abortReason shouldBe None
-          s.resolvedModelId shouldBe "stub-model"
         case other => fail(s"expected ScopePreview, got $other")
       }
     }

@@ -116,9 +116,10 @@ trait ToolingSigil extends Sigil {
   )
 
   /** Every dispatch-shaped tool the framework ships. The generic
-    * [[DispatchWorkersTool]] subsumes the prior three-tool refactor
-    * session — per-item LLM-or-script pipelines compose naturally
-    * with any paginated tool's output via the container abstraction. */
+    * [[DispatchWorkersTool]] runs an adhoc Scala `action` script in
+    * parallel over a container of items — compiled once, then fanned
+    * out to N workers — composing with any paginated tool's output
+    * via the container abstraction. */
   protected def dispatchTools: List[Tool] = List(
     new DispatchWorkersTool()
   )

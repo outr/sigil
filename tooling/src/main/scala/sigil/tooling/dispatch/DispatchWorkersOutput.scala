@@ -2,67 +2,81 @@ package sigil.tooling.dispatch
 
 import fabric.Json
 import fabric.rw.*
+import sigil.script.CompileError
 
 /**
- * Sum of the two shapes [[DispatchWorkersTool]] returns —
+ * Sum of the three shapes [[DispatchWorkersTool]] returns —
  *
- *  - [[ScopePreview]]    — the `confirmed = false` reply: total
- *    item count, estimated worker call count, resolved model id,
- *    and a `confirmCall` directive the agent reads to re-issue
- *    with `confirmed = true`. No worker LLM calls run.
- *  - [[DispatchResult]]  — the `confirmed = true` reply: per-item
- *    [[WorkerResult]] list and aggregate counts.
+ *  - [[CompileFailure]] — pre-flight compilation of the `action`
+ *    script failed; no worker ran. Carries typed [[CompileError]]s.
+ *  - [[ScopePreview]]   — the `confirmed = false` reply: item count,
+ *    a preview of the (successfully compiled) action, and a
+ *    `confirmCall` directive. No worker ran.
+ *  - [[DispatchResult]] — the `confirmed = true` reply: one
+ *    [[WorkerOutcome]] per worker group.
  */
 sealed trait DispatchWorkersOutput derives RW
 
 object DispatchWorkersOutput {
 
-  /** Scope-preview returned when `confirmed = false`. Resolves the
-    * worker item count + worker model id without dispatching any
-    * worker. The agent reviews and re-invokes with `confirmed = true`.
+  /** Returned when pre-flight compilation of the `action` script
+    * fails. No worker is dispatched — the agent fixes the script from
+    * the typed errors and retries.
+    *
+    *   - `errors` — one [[CompileError]] per compiler diagnostic, with
+    *     line / column / message. Never empty when this variant is
+    *     returned. */
+  case class CompileFailure(errors: List[CompileError]) extends DispatchWorkersOutput derives RW
+
+  /** Scope-preview returned when `confirmed = false`. The `action`
+    * compiled cleanly; no worker ran. The agent reviews and re-invokes
+    * with `confirmed = true`.
     *
     * Designed to fit well under the framework's inline truncation
     * threshold (8192 bytes) — the per-item sample is capped at 10
     * items.
     *
-    *   - `sessionId`                — opaque identifier for the
-    *     preview round-trip. Echoed back to the agent so wire-log
-    *     readers can correlate the preview with its subsequent
-    *     `confirmed = true` re-issue.
-    *   - `totalItems`               — total worker items after
-    *     `itemsAt` / `itemsLimit` resolution.
-    *   - `estimatedWorkerCallCount` — number of worker calls that
-    *     `confirmed = true` would dispatch. Same as `totalItems`
-    *     today (one worker per item); the separate field
-    *     accommodates future grouping shapes.
-    *   - `resolvedModelId`          — worker model id resolved via
-    *     `ProviderStrategy` at the input's `complexity`. Empty
-    *     when no strategy / candidate resolved.
-    *   - `estimatedCostNote`        — short human-readable cost
-    *     hint.
-    *   - `perItemSample`            — first 10 items so the agent
-    *     can sanity-check the dispatch shape before confirming.
-    *   - `confirmCall`              — exact human-readable
-    *     instruction the agent reads to re-invoke.
-    *   - `abortReason`              — surface-level abort (e.g.
-    *     `maxItems` exceeded). When set, no dispatch should follow.
-    */
+    *   - `sessionId`     — opaque identifier for the preview
+    *     round-trip, echoed so wire-log readers can correlate the
+    *     preview with its subsequent `confirmed = true` re-issue.
+    *   - `totalItems`    — total worker items after `itemsAt` /
+    *     `itemsLimit` resolution.
+    *   - `workerCount`   — number of worker invocations a
+    *     `confirmed = true` run would dispatch: `ceil(totalItems /
+    *     groupSize)`.
+    *   - `actionPreview` — the first ~200 characters of the action
+    *     script, for a sanity-check of what will run.
+    *   - `compileOk`     — always `true` here; present for symmetry
+    *     with [[CompileFailure]].
+    *   - `perItemSample` — first 10 items so the agent can
+    *     sanity-check the dispatch shape before confirming.
+    *   - `confirmCall`   — exact human-readable instruction the agent
+    *     reads to re-invoke.
+    *   - `abortReason`   — surface-level abort (e.g. `maxItems`
+    *     exceeded). When set, no dispatch should follow. */
   case class ScopePreview(sessionId: String,
                           totalItems: Int,
-                          estimatedWorkerCallCount: Int,
-                          resolvedModelId: String,
-                          estimatedCostNote: String,
+                          workerCount: Int,
+                          actionPreview: String,
+                          compileOk: Boolean,
                           perItemSample: List[Json],
                           confirmCall: String,
                           abortReason: Option[String] = None) extends DispatchWorkersOutput derives RW
 
-  /** Actual dispatch result returned when `confirmed = true`.
-    * Carries the per-item [[WorkerResult]] list — one entry per
-    * worker invocation, in input order. */
-  case class DispatchResult(totalItems: Int,
+  /** Actual dispatch result returned when `confirmed = true`. Carries
+    * one [[WorkerOutcome]] per worker group, in input order.
+    *
+    *   - `sessionId`    — opaque dispatch identifier.
+    *   - `totalItems`   — total worker items dispatched over.
+    *   - `successCount` — groups whose action returned a value.
+    *   - `failureCount` — groups whose action threw at runtime.
+    *   - `perItem`      — per-group outcomes in input order.
+    *   - `abortReason`  — surface-level abort (e.g. empty container,
+    *     `maxItems` exceeded). When set, no worker ran. */
+  case class DispatchResult(sessionId: String,
+                            totalItems: Int,
                             successCount: Int,
                             failureCount: Int,
-                            results: List[WorkerResult],
-                            resolvedModelId: String,
+                            perItem: List[WorkerOutcome],
                             abortReason: Option[String] = None) extends DispatchWorkersOutput derives RW
 }

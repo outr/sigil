@@ -19,11 +19,7 @@ import sigil.tooling.container.{
   FilterContainerInput, FilterContainerTool,
   PinContainerInput, PinContainerTool
 }
-import sigil.tooling.dispatch.{
-  DispatchWorkersInput, DispatchWorkersOutput, DispatchWorkersTool,
-  LlmStep, WorkerPipeline, WorkerResult
-}
-import sigil.provider.Complexity
+import sigil.tooling.dispatch.{DispatchWorkersInput, DispatchWorkersOutput, DispatchWorkersTool}
 
 import scala.concurrent.duration.*
 
@@ -98,9 +94,8 @@ class PaginatedContainerSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   // --------------- the five cases ---------------
 
   "create_container + dispatch_workers round-trip" should {
-    "produce one worker call per item when dispatch_workers consumes a 3-item container with confirmed=true" in {
+    "produce one worker outcome per item when dispatch_workers consumes a 3-item container with confirmed=true" in {
       DispatchTestSigil.reset()
-      DispatchTestSigil.setProvider(Task.pure(StubProvider.constant("classified")))
       val ctx = turnContextFor(newConversation("dispatch"))
       val items: List[Json] = List(
         Obj("name" -> Str("a")),
@@ -109,20 +104,18 @@ class PaginatedContainerSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       )
       CreateContainerTool.invoke(CreateContainerInput(items), ctx).flatMap { container =>
         container.itemCount shouldBe 3
-        val tool = new DispatchWorkersTool()
+        val tool = new DispatchWorkersTool(scriptExecutor = Some(new sigil.script.ScalaScriptExecutor()))
         val input = DispatchWorkersInput(
-          complexity    = Complexity.Low,
-          confirmed     = true,
-          itemsId       = container.itemsId,
-          pipeline      = WorkerPipeline(llm = Some(LlmStep(prompt = "Classify: {{item.name}}"))),
-          workerModelId = Some("stub-model")
+          itemsId   = container.itemsId,
+          action    = "items.head(\"name\")",
+          confirmed = true
         )
         tool.invoke(input, ctx).map {
           case d: DispatchWorkersOutput.DispatchResult =>
             d.totalItems shouldBe 3
             d.successCount shouldBe 3
-            d.results.size shouldBe 3
-            all(d.results) shouldBe a [WorkerResult.Success]
+            d.perItem.size shouldBe 3
+            all(d.perItem.map(_.result.isRight)) shouldBe true
           case other => fail(s"expected DispatchResult, got $other")
         }
       }

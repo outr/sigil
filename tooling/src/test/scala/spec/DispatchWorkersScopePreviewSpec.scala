@@ -9,14 +9,10 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, ConversationView, TopicEntry, TurnInput}
 import sigil.event.Event
-import sigil.provider.Complexity
+import sigil.script.ScalaScriptExecutor
 import sigil.tooling.container.{CreateContainerInput, CreateContainerTool}
-import sigil.tooling.dispatch.{
-  DispatchWorkersInput, DispatchWorkersOutput, DispatchWorkersTool,
-  LlmStep, WorkerPipeline
-}
+import sigil.tooling.dispatch.{DispatchWorkersInput, DispatchWorkersOutput, DispatchWorkersTool}
 
-import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.duration.*
 
 /**
@@ -24,10 +20,10 @@ import scala.concurrent.duration.*
  * shape — four cases:
  *
  *  1. `confirmed=false` returns a `ScopePreview`, NOT a
- *     `DispatchResult`; NO worker LLM calls are dispatched.
- *  2. ScopePreview includes `totalItems`, `estimatedWorkerCallCount`,
- *     non-empty `resolvedModelId`, and a `confirmCall` text
- *     containing the literal `confirmed=true`.
+ *     `DispatchResult`; NO worker runs.
+ *  2. ScopePreview includes `totalItems`, `workerCount`,
+ *     `compileOk = true`, and a `confirmCall` text containing the
+ *     literal `confirmed=true`.
  *  3. ScopePreview body stays under 8192 bytes (the framework's
  *     inline-truncation threshold) even for 1000-item containers.
  *  4. `confirmed=true` proceeds to actual dispatch (returns
@@ -38,6 +34,8 @@ class DispatchWorkersScopePreviewSpec extends AsyncWordSpec with AsyncTaskSpec w
   DispatchTestSigil.initFor(getClass.getSimpleName)
 
   override implicit val testTimeout: FiniteDuration = 60.seconds
+
+  private val executor = new ScalaScriptExecutor()
 
   private def turnContext(): TurnContext = {
     val convId = Conversation.id(s"scope-preview-${rapid.Unique()}")
@@ -61,47 +59,39 @@ class DispatchWorkersScopePreviewSpec extends AsyncWordSpec with AsyncTaskSpec w
   "dispatch_workers(confirmed=false)" should {
 
     // Case 1
-    "return a ScopePreview (not a DispatchResult) with no worker LLM calls" in {
+    "return a ScopePreview (not a DispatchResult) with no worker runs" in {
       DispatchTestSigil.reset()
-      val providerCalls = new AtomicInteger(0)
-      DispatchTestSigil.setProvider(Task.pure(StubProvider.counting(providerCalls)))
-      val tool = new DispatchWorkersTool()
+      val tool = new DispatchWorkersTool(scriptExecutor = Some(executor))
       val ctx = turnContext()
       val items: List[Json] = (1 to 47).toList.map(i => Str(s"item-$i"))
       val input = DispatchWorkersInput(
-        complexity    = Complexity.Low,
-        confirmed     = false,
-        itemsId       = containerFor(items, ctx),
-        pipeline      = WorkerPipeline(llm = Some(LlmStep(prompt = "Classify: {{item}}"))),
-        workerModelId = Some("stub-model")
+        itemsId   = containerFor(items, ctx),
+        action    = "items.headOption",
+        confirmed = false
       )
       tool.invoke(input, ctx).map { result =>
         result shouldBe a [DispatchWorkersOutput.ScopePreview]
         result shouldNot be (a [DispatchWorkersOutput.DispatchResult])
-        providerCalls.get shouldBe 0
       }
     }
 
     // Case 2
-    "include totalItems, estimatedWorkerCallCount, resolvedModelId, and a confirmCall referencing confirmed=true" in {
+    "include totalItems, workerCount, compileOk, and a confirmCall referencing confirmed=true" in {
       DispatchTestSigil.reset()
-      DispatchTestSigil.setProvider(Task.pure(StubProvider.echoing()))
-      val tool = new DispatchWorkersTool()
+      val tool = new DispatchWorkersTool(scriptExecutor = Some(executor))
       val ctx = turnContext()
       val items: List[Json] = (1 to 47).toList.map(i => Str(s"item-$i"))
       val input = DispatchWorkersInput(
-        complexity    = Complexity.Low,
-        confirmed     = false,
-        itemsId       = containerFor(items, ctx),
-        pipeline      = WorkerPipeline(llm = Some(LlmStep(prompt = "Classify: {{item}}"))),
-        workerModelId = Some("moonshot-kimi-k2.6")
+        itemsId   = containerFor(items, ctx),
+        action    = "items.headOption",
+        confirmed = false
       )
       tool.invoke(input, ctx).map {
         case s: DispatchWorkersOutput.ScopePreview =>
           s.totalItems shouldBe 47
-          s.estimatedWorkerCallCount shouldBe 47
-          s.resolvedModelId shouldBe "moonshot-kimi-k2.6"
-          s.resolvedModelId should not be empty
+          s.workerCount shouldBe 47
+          s.compileOk shouldBe true
+          s.actionPreview should not be empty
           s.confirmCall should include ("confirmed=true")
           s.sessionId should not be empty
         case other => fail(s"expected ScopePreview, got $other")
@@ -111,18 +101,15 @@ class DispatchWorkersScopePreviewSpec extends AsyncWordSpec with AsyncTaskSpec w
     // Case 3
     "stay under 8192 bytes even for 1000-item containers" in {
       DispatchTestSigil.reset()
-      DispatchTestSigil.setProvider(Task.pure(StubProvider.echoing()))
-      val tool = new DispatchWorkersTool()
+      val tool = new DispatchWorkersTool(scriptExecutor = Some(executor))
       val ctx = turnContext()
       val items: List[Json] = (1 to 1000).toList.map { i =>
         Str(s"item-$i-with-a-reasonably-long-payload-to-stress-the-preview-size-cap")
       }
       val input = DispatchWorkersInput(
-        complexity    = Complexity.Low,
-        confirmed     = false,
-        itemsId       = containerFor(items, ctx),
-        pipeline      = WorkerPipeline(llm = Some(LlmStep(prompt = "Classify: {{item}}"))),
-        workerModelId = Some("moonshot-kimi-k2.6")
+        itemsId   = containerFor(items, ctx),
+        action    = "items.headOption",
+        confirmed = false
       )
       tool.invoke(input, ctx).map {
         case s: DispatchWorkersOutput.ScopePreview =>
@@ -142,24 +129,19 @@ class DispatchWorkersScopePreviewSpec extends AsyncWordSpec with AsyncTaskSpec w
     // Case 4
     "proceed to actual dispatch (return DispatchResult; workers ran)" in {
       DispatchTestSigil.reset()
-      val providerCalls = new AtomicInteger(0)
-      DispatchTestSigil.setProvider(Task.pure(StubProvider.counting(providerCalls)))
-      val tool = new DispatchWorkersTool()
+      val tool = new DispatchWorkersTool(scriptExecutor = Some(executor))
       val ctx = turnContext()
       val items: List[Json] = (1 to 3).toList.map(i => Str(s"item-$i"))
       val input = DispatchWorkersInput(
-        complexity    = Complexity.Low,
-        confirmed     = true,
-        itemsId       = containerFor(items, ctx),
-        pipeline      = WorkerPipeline(llm = Some(LlmStep(prompt = "Classify: {{item}}"))),
-        workerModelId = Some("stub-model")
+        itemsId   = containerFor(items, ctx),
+        action    = "items.head",
+        confirmed = true
       )
       tool.invoke(input, ctx).map {
         case d: DispatchWorkersOutput.DispatchResult =>
           d.totalItems shouldBe 3
           d.successCount shouldBe 3
-          d.results.size shouldBe 3
-          providerCalls.get shouldBe 3
+          d.perItem.size shouldBe 3
         case other => fail(s"expected DispatchResult, got $other")
       }
     }
