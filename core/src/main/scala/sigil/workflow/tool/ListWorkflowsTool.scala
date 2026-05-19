@@ -1,9 +1,8 @@
 package sigil.workflow.tool
 
 import fabric.rw.*
-import lightdb.filter.*
 import rapid.{Stream, Task}
-import sigil.{Sigil, TurnContext}
+import sigil.TurnContext
 import sigil.event.Event
 import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
 import sigil.workflow.WorkflowTemplate

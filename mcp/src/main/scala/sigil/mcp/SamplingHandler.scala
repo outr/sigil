@@ -10,7 +10,7 @@ import rapid.Task
  * is unset) fails the request with an explanatory error; apps that
  * want sampling support either set `samplingModelId` (which uses the
  * framework's [[sigil.Sigil.providerFor]] to delegate) or supply a
- * custom handler on `McpSigil.samplingHandler`.
+ * custom handler by overriding `McpSigil.samplingHandlerFor`.
  *
  * The handler receives the raw `params` JSON from the server (the
  * MCP `CreateMessageRequest` shape); returns the response JSON
@@ -27,7 +27,7 @@ object SamplingHandler {
     override def handle(serverName: String, params: Json): Task[Json] =
       Task.error(new McpError(
         -32601,
-        s"Sampling not configured for MCP server '$serverName' (set samplingModelId or override McpSigil.samplingHandler)."
+        s"Sampling not configured for MCP server '$serverName' (set samplingModelId or override McpSigil.samplingHandlerFor)."
       ))
   }
 }

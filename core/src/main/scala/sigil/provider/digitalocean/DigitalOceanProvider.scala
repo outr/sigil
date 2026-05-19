@@ -39,9 +39,9 @@ case class DigitalOceanProvider(apiKey: String,
 
   private val wireConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
     providerNamespace = DigitalOcean.Provider,
-    providerName      = "DigitalOcean",
+    providerName = "DigitalOcean",
     strictModeCapable = true,
-    multimodalPolicy  = OpenAIChatCompletions.MultimodalPolicy.OpenAIArrayForm,
+    multimodalPolicy = OpenAIChatCompletions.MultimodalPolicy.OpenAIArrayForm,
     // Sigil bug #161 — DO's kimi-k2.5 deployment intermittently emits
     // either degenerate `" The!!!!"` reasoning_content or null-padded
     // content tokens until `max_tokens` cap, with no usable content or
@@ -50,7 +50,7 @@ case class DigitalOceanProvider(apiKey: String,
     // let [[ProviderStrategy.errorClassifier]] (default classifier maps
     // this to `Fallthrough`) route to the next candidate.
     emptyBudgetBurnThrows = true,
-    preprocess        = { call =>
+    preprocess = { call =>
       val modelName = DigitalOcean.stripProviderPrefix(call.modelId.value)
       val systemContent = applyKimiReasoningDirective(call.system, modelName, call.generationSettings.reasoningMode)
       OpenAIChatCompletions.Preprocessed(systemContent, call.messages)

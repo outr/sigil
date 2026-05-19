@@ -97,9 +97,7 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
         // models off mid-think and the worker never settled — every
         // iteration looped forward without termination signal. 2000
         // covers the worst-case thinking budget plus a multi-paragraph
-        // summary; workers whose body genuinely needs more
-        // override via `AgentDecisionStepInput.maxOutputTokens` (TODO
-        // — surface as input field).
+        // summary.
         val request = OneShotRequest(
           modelId            = modelId,
           systemPrompt       = systemPrompt,

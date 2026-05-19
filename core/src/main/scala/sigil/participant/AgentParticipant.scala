@@ -125,7 +125,7 @@ trait AgentParticipant extends Participant {
   /**
    * Resolve this agent's roles for a particular turn. Default returns
    * the static `roles` field synchronously; apps storing roles in a DB
-   * (Voidcraft personas, Sage `PersonaCollection`) override to consult
+   * (persona records, Sage `PersonaCollection`) override to consult
    * persistence each turn.
    *
    * The framework calls this in [[sigil.Sigil.runAgentTurn]] before

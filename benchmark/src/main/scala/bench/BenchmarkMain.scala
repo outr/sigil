@@ -7,7 +7,7 @@ package bench
  * Background: sigil's HTTP layer (Spice + Netty) spins up non-daemon
  * event-loop threads. When the main thread throws, those threads
  * keep the JVM alive indefinitely — the benchmark appears to
- * "hang for an hour" with no output. Calling `System.exit(1)` on
+ * "hang for an hour" with no output. Calling `System.exit(2)` on
  * any Throwable terminates the JVM cleanly and surfaces the
  * crash immediately.
  *

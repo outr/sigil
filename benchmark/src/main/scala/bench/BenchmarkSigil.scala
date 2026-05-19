@@ -3,7 +3,7 @@ package bench
 import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
-import sigil.{Sigil, TurnContext}
+import sigil.Sigil
 import sigil.conversation.{Conversation, TurnInput}
 import sigil.SpaceId
 import sigil.db.Model

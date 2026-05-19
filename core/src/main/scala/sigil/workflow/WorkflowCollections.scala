@@ -11,7 +11,7 @@ import sigil.db.SigilDB
  * [[WorkflowSigil]].
  *
  * Strider's own collections (`Workflow`, progress, etc.) live in the
- * Strider-managed LightDB — see [[WorkflowModel]]. We keep templates
+ * Strider-managed LightDB — see [[SigilWorkflowModel]]. We keep templates
  * separate because they're Sigil-side identity (space, createdBy,
  * conversationId) that Strider's engine doesn't model.
  */

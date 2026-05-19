@@ -31,7 +31,7 @@ class ParticipantLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   TestSigil.initFor(getClass.getSimpleName)
 
   // Test-only participant subtype carrying display fields. Mirrors the
-  // shape downstream apps will use (Voidcraft / Sage user records).
+  // shape downstream apps will use (e.g. Sage user records).
   case class DisplayUser(override val id: ParticipantId,
                          override val displayName: String,
                          override val avatarUrl: Option[String] = None) extends Participant derives RW

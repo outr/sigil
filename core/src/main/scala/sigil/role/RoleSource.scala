@@ -14,7 +14,7 @@ import sigil.participant.AgentParticipantId
  * Apps that store agent identity in a database (mutable user-owned
  * personas, persona templates, role marketplaces, role-by-tenant
  * overrides) supply a `RoleSource` so each turn pulls the current
- * roles from persistence. Voidcraft's `Persona` document, Sage's
+ * roles from persistence. A persona document, Sage's
  * `PersonaCollection`, and similar designs all implement this trait.
  *
  * The resolver runs once per turn before the prompt-rendering pass,

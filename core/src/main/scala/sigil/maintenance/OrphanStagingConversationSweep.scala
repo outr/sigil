@@ -1,6 +1,5 @@
 package sigil.maintenance
 
-import lightdb.time.Timestamp
 import rapid.Task
 import sigil.Sigil
 import sigil.conversation.Conversation

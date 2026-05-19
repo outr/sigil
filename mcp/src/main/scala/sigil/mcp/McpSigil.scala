@@ -119,17 +119,6 @@ trait McpSigil extends Sigil {
 }
 
 /**
- * Default [[SamplingHandler]] that delegates to
- * [[Sigil.providerFor]] using the per-server `samplingModelId`. The
- * server's `params` are mapped 1:1 onto a single-shot provider call
- * and the response is wrapped in MCP's `CreateMessageResult` shape.
- *
- * This is intentionally a thin pass-through. Apps with more nuanced
- * sampling needs (token-budget enforcement, system-prompt overlays,
- * model fallback) override `McpSigil.samplingHandlerFor` with their
- * own implementation.
- */
-/**
  * Real [[SamplingHandler]] backed by [[Sigil.providerFor]] +
  * [[OneShotRequest]]. The MCP server's `CreateMessageRequest` is
  * translated into:

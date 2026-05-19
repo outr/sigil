@@ -20,9 +20,9 @@ import sigil.tool.model.ResponseContent
  * changed by an update. Apps that want to "move" a tool to a
  * different space create a copy.
  *
- * Emits a [[ToolResults]] suggesting itself again (most edits cluster)
- * plus [[DeleteScriptToolTool]] (in case the user gives up) and the
- * just-touched tool's own schema (to demo the result).
+ * Emits a single Tool-role [[sigil.event.Message]] confirming the
+ * update and carrying the (possibly-updated) tool's invocation shape
+ * and JSON schema.
  */
 case object UpdateScriptToolTool extends TypedTool[UpdateScriptToolInput](
   name = ToolName("update_script_tool"),

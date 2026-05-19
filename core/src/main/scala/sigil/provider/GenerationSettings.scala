@@ -30,6 +30,6 @@ object GenerationSettings {
     * need long-form free-text generation override per call. */
   val classifierDefault: GenerationSettings = GenerationSettings(
     maxOutputTokens = Some(1500),
-    reasoningMode   = ReasoningMode.Off
+    reasoningMode = ReasoningMode.Off
   )
 }

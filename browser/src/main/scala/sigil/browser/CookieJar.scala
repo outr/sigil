@@ -18,8 +18,9 @@ import sigil.SpaceId
  *     in the project. Single-assignment rule applies — copy the
  *     record to expose under another space.
  *
- *   - **`encryptedCookies`** is the AES-encrypted JSON serialization
- *     of `List[BrowserCookie]`. The framework's
+ *   - **`encryptedData`** is the AES-encrypted JSON serialization
+ *     of `List[BrowserCookie]` and **`encryptedSalt`** is the salt
+ *     used for that encryption. The framework's
  *     [[sigil.secrets.SecretStore]] decrypts on read and encrypts on
  *     write so plaintext cookies never touch the database. Apps
  *     mixing in [[BrowserSigil]] must also mix in

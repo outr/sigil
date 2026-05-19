@@ -6,10 +6,9 @@ import scala.util.matching.Regex
 
 /**
  * Resolve `{{varName}}` placeholders in a string against the
- * workflow's variable map. Same simple substitution model
- * Voidcraft's old engine used — the agent authors prompts and
- * tool arguments with `{{outputOfPriorStep}}` to thread state
- * forward.
+ * workflow's variable map. A simple substitution model — the agent
+ * authors prompts and tool arguments with `{{outputOfPriorStep}}`
+ * to thread state forward.
  *
  * Values are rendered as their JSON representation: strings drop
  * their surrounding quotes (so the substituted prompt reads
@@ -17,9 +16,8 @@ import scala.util.matching.Regex
  * render as themselves.
  *
  * Unknown variables are left as their raw `{{var}}` literal — this
- * matches Voidcraft's behavior and lets agents debug missing inputs
- * by seeing the unresolved placeholder in the running workflow's
- * step output.
+ * lets agents debug missing inputs by seeing the unresolved
+ * placeholder in the running workflow's step output.
  */
 object WorkflowVariableSubstitution {
   private val Pattern: Regex = """\{\{(\w+)\}\}""".r

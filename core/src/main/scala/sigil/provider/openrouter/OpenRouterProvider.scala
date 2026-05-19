@@ -131,28 +131,28 @@ case class OpenRouterProvider(apiKey: String,
 
   private val wireConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
     providerNamespace = OpenRouter.Provider,
-    providerName      = "OpenRouter",
+    providerName = "OpenRouter",
     // OpenRouter's chat-completions endpoint sits under `/api/v1/...`
     // (not the bare `/v1/...` the shared wire defaults to).
-    path              = "/api/v1/chat/completions",
+    path = "/api/v1/chat/completions",
     // OpenRouter accepts and (via gateway shimming) enforces
     // per-function `strict: true` — keep both Sigil-side reshaping
     // and the wire flag on.
     strictModeCapable = true,
-    honorsStrict      = true,
+    honorsStrict = true,
     // OpenRouter honors `tool_choice: "required"` and the
     // function-form directly — no response_format substitution.
-    forcedCallShape   = OpenAIChatCompletions.ForcedCallShape.ToolChoice,
+    forcedCallShape = OpenAIChatCompletions.ForcedCallShape.ToolChoice,
     // `reasoning_effort` is the canonical forwarding field for
     // reasoning-capable models on OpenRouter (OpenAI, DeepSeek,
     // Qwen3-Thinking, …). The shared wire policy maps Sigil's
     // ReasoningMode (Auto/On/Off) + optional Effort to the right
     // enum value.
-    reasoningPolicy   = OpenAIChatCompletions.ReasoningPolicy.ReasoningEffortField,
+    reasoningPolicy = OpenAIChatCompletions.ReasoningPolicy.ReasoningEffortField,
     // Multimodal models on OpenRouter accept the OpenAI content-
     // array shape. Text-only models on the gateway tolerate it as
     // a long-form text input.
-    multimodalPolicy  = OpenAIChatCompletions.MultimodalPolicy.OpenAIArrayForm,
+    multimodalPolicy = OpenAIChatCompletions.MultimodalPolicy.OpenAIArrayForm,
     // Inject the `provider` routing block on every outbound
     // request. The default (`OpenRouterProviderRouting.noChineseHosting`)
     // populates `ignore` with the curated set of mainland-China-
@@ -162,7 +162,7 @@ case class OpenRouterProvider(apiKey: String,
     // merge it into the `ignore` deny-list so the retry routes around
     // the sick upstream entirely. Empty routing (no constraints AND no
     // retry exclusions) suppresses the field entirely.
-    extraBody         = call => {
+    extraBody = call => {
       val retryIgnore: List[String] = call.retryContext
         .flatMap(_.lastErrorUpstreamProvider)
         .toList

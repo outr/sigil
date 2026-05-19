@@ -59,8 +59,8 @@ case class DeepInfraProvider(apiKey: String,
 
   private val wireConfig: OpenAIChatCompletions.Config = OpenAIChatCompletions.Config(
     providerNamespace = DeepInfra.Provider,
-    providerName      = "DeepInfra",
-    path              = "/v1/openai/chat/completions",
+    providerName = "DeepInfra",
+    path = "/v1/openai/chat/completions",
     // Sigil bug #173 — DeepInfra accepts `strict: true` (HTTP 200)
     // but doesn't enforce it (verified against Kimi-K2.5 wire logs
     // where the model emitted JSON arrays despite per-tool strict).
@@ -68,14 +68,14 @@ case class DeepInfraProvider(apiKey: String,
     // object schema for the validator), but we don't pretend the
     // backend honors the flag — strip it from the wire body.
     strictModeCapable = true,
-    honorsStrict      = false,
+    honorsStrict = false,
     // Sigil bug #173 — DeepInfra's documented `tool_choice` set is
     // {"auto", "none"}; "required" and the function-form aren't in
     // their tool-calling docs. Express forced-call via documented
     // `response_format: json_schema` instead (sigil's structure-first
     // contract IS forced-call for every turn with tools, so this is
     // the load-bearing knob).
-    forcedCallShape   = OpenAIChatCompletions.ForcedCallShape.ResponseFormatJsonSchema,
+    forcedCallShape = OpenAIChatCompletions.ForcedCallShape.ResponseFormatJsonSchema,
     // DeepInfra exposes the canonical OpenAI `reasoning_effort` field
     // on /v1/openai/chat/completions and honors `none | low | medium |
     // high`. Verified against kimi-k2.5: `none` zeroes
@@ -84,8 +84,8 @@ case class DeepInfraProvider(apiKey: String,
     // reasoning. The shared wire policy translates
     // GenerationSettings.reasoningMode (Auto/On/Off) + optional
     // Effort into the right `reasoning_effort` value.
-    reasoningPolicy   = OpenAIChatCompletions.ReasoningPolicy.ReasoningEffortField,
-    multimodalPolicy  = OpenAIChatCompletions.MultimodalPolicy.OpenAIArrayForm
+    reasoningPolicy = OpenAIChatCompletions.ReasoningPolicy.ReasoningEffortField,
+    multimodalPolicy = OpenAIChatCompletions.MultimodalPolicy.OpenAIArrayForm
   )
 
   private val bearerAuth: HttpRequest => HttpRequest =

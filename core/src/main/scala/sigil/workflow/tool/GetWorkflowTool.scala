@@ -1,6 +1,5 @@
 package sigil.workflow.tool
 
-import fabric.io.JsonFormatter
 import fabric.rw.*
 import lightdb.id.Id
 import rapid.{Stream, Task}
