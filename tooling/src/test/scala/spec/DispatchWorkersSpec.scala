@@ -25,9 +25,10 @@ import sigil.signal.{EventState, Signal}
 import sigil.tool.fs.LocalFileSystemContext
 import sigil.tool.model.GrepInput
 import sigil.tool.{ToolName, Tool}
+import sigil.tooling.container.{CreateContainerInput, CreateContainerTool}
 import sigil.tooling.dispatch.{
   DispatchWorkersInput, DispatchWorkersOutput, DispatchWorkersTool,
-  LlmStep, ScriptStep, WorkerItemSource, WorkerPipeline, WorkerResult
+  LlmStep, ScriptStep, WorkerPipeline, WorkerResult
 }
 import sigil.vector.{NoOpVectorIndex, VectorIndex}
 import sigil.{Sigil, SpaceId, TurnContext}
@@ -89,6 +90,13 @@ class DispatchWorkersSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     }
   }
 
+  /** Persist `items` as a fresh container under `ctx`'s conversation
+    * and return the resulting `itemsId`. Lets each test arrive at
+    * the migrated input shape without duplicating the persist
+    * boilerplate in every case. */
+  private def containerFor(items: List[Json], ctx: TurnContext): lightdb.id.Id[sigil.tool.output.ToolOutputNode] =
+    CreateContainerTool.invoke(CreateContainerInput(items), ctx).sync().itemsId
+
   // ------------- the six cases -------------
 
   "dispatch_workers LLM-only" should {
@@ -106,23 +114,24 @@ class DispatchWorkersSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       // responses.
       DispatchTestSigil.setProvider(Task.pure(StubProvider.echoing()))
       val tool = new DispatchWorkersTool()
+      val ctx = turnContext()
       val items: List[Json] = (1 to 10).toList.map(i => Str(s"item-$i"))
       val input = DispatchWorkersInput(
         complexity    = Complexity.Low,
         confirmed     = true,
-        items         = WorkerItemSource.FromList(items),
+        itemsId       = containerFor(items, ctx),
         pipeline      = WorkerPipeline(llm = Some(LlmStep(prompt = "Echo: {{item}}"))),
         workerModelId = Some("stub-model"),
         maxParallel   = 4
       )
-      tool.invoke(input, turnContext()).map {
-        case d: DispatchWorkersOutput.Dispatched =>
+      tool.invoke(input, ctx).map {
+        case d: DispatchWorkersOutput.DispatchResult =>
           d.totalItems shouldBe 10
           d.successCount shouldBe 10
           d.failureCount shouldBe 0
           d.results.size shouldBe 10
           all(d.results) shouldBe a [WorkerResult.Success]
-        case other => fail(s"expected Dispatched, got $other")
+        case other => fail(s"expected DispatchResult, got $other")
       }
     }
   }
@@ -141,20 +150,23 @@ class DispatchWorkersSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       DispatchTestSigil.setProvider(Task.pure(StubProvider.constant(
         """{"verdict": "ok", "score": 7}"""
       )))
-      val recordedInputs = scala.collection.mutable.ListBuffer.empty[Json]
+      // Workers run on parallel fibers — a thread-safe list so
+      // concurrent script invocations don't drop a recorded input.
+      val recordedInputs = new java.util.concurrent.CopyOnWriteArrayList[Json]()
       val executor = new ScriptExecutor {
         override def execute(code: String, bindings: Map[String, Any]): Task[String] = Task {
           val input = bindings("input").asInstanceOf[Json]
-          recordedInputs += input
+          recordedInputs.add(input)
           JsonFormatter.Compact(input)
         }
       }
       val tool = new DispatchWorkersTool(scriptExecutor = Some(executor))
+      val ctx = turnContext()
       val items: List[Json] = List(Str("a"), Str("b"))
       val input = DispatchWorkersInput(
         complexity    = Complexity.Low,
         confirmed     = true,
-        items         = WorkerItemSource.FromList(items),
+        itemsId       = containerFor(items, ctx),
         pipeline      = WorkerPipeline(
           llm    = Some(LlmStep(
             prompt       = "Score: {{item}}",
@@ -170,20 +182,20 @@ class DispatchWorkersSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         ),
         workerModelId = Some("stub-model")
       )
-      tool.invoke(input, turnContext()).map {
-        case d: DispatchWorkersOutput.Dispatched =>
+      tool.invoke(input, ctx).map {
+        case d: DispatchWorkersOutput.DispatchResult =>
           d.totalItems shouldBe 2
           d.successCount shouldBe 2
           recordedInputs.size shouldBe 2
           // Each recorded input is the parsed LLM output — verify the
           // schema-shaped fields survived round-tripping.
-          val firstInput = recordedInputs.head match {
+          val firstInput = recordedInputs.get(0) match {
             case o: Obj => o
             case other  => fail(s"expected parsed Obj input to script, got $other")
           }
           firstInput.value.get("verdict") shouldBe Some(Str("ok"))
           firstInput.value.get("score") shouldBe Some(NumInt(7))
-        case other => fail(s"expected Dispatched, got $other")
+        case other => fail(s"expected DispatchResult, got $other")
       }
     }
   }
@@ -232,11 +244,12 @@ class DispatchWorkersSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         }
       }
       val tool = new DispatchWorkersTool(scriptExecutor = Some(executor))
+      val ctx = turnContext()
       val items: List[Json] = List("a.txt", "b.txt", "c.txt").map(p => Obj("filePath" -> Str(p)))
       val input = DispatchWorkersInput(
         complexity    = Complexity.Low,
         confirmed     = true,
-        items         = WorkerItemSource.FromList(items),
+        itemsId       = containerFor(items, ctx),
         pipeline      = WorkerPipeline(
           llm    = Some(LlmStep(
             prompt       = "Propose edit for {{item.filePath}}",
@@ -247,8 +260,8 @@ class DispatchWorkersSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         workerModelId = Some("stub-model"),
         maxParallel   = 3
       )
-      tool.invoke(input, turnContext()).map {
-        case d: DispatchWorkersOutput.Dispatched =>
+      tool.invoke(input, ctx).map {
+        case d: DispatchWorkersOutput.DispatchResult =>
           try {
             withClue(s"results: ${d.results.mkString("\n")}\n") {
               d.totalItems shouldBe 3
@@ -263,7 +276,7 @@ class DispatchWorkersSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
           } finally cleanup(workspace)
         case other =>
           cleanup(workspace)
-          fail(s"expected Dispatched, got $other")
+          fail(s"expected DispatchResult, got $other")
       }
     }
   }
@@ -312,11 +325,12 @@ class DispatchWorkersSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         }
       }
       val tool = new DispatchWorkersTool(scriptExecutor = Some(executor))
+      val ctx = turnContext()
       val items: List[Json] = List("a.txt", "stale.txt", "c.txt").map(p => Obj("filePath" -> Str(p)))
       val input = DispatchWorkersInput(
         complexity    = Complexity.Low,
         confirmed     = true,
-        items         = WorkerItemSource.FromList(items),
+        itemsId       = containerFor(items, ctx),
         pipeline      = WorkerPipeline(
           llm    = Some(LlmStep(
             prompt       = "Propose edit for {{item.filePath}}",
@@ -327,8 +341,8 @@ class DispatchWorkersSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         workerModelId = Some("stub-model"),
         maxParallel   = 3
       )
-      tool.invoke(input, turnContext()).map {
-        case d: DispatchWorkersOutput.Dispatched =>
+      tool.invoke(input, ctx).map {
+        case d: DispatchWorkersOutput.DispatchResult =>
           try {
             withClue(s"results: ${d.results.mkString("\n")}\n") {
               d.totalItems shouldBe 3
@@ -343,7 +357,7 @@ class DispatchWorkersSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
           } finally cleanup(workspace)
         case other =>
           cleanup(workspace)
-          fail(s"expected Dispatched, got $other")
+          fail(s"expected DispatchResult, got $other")
       }
     }
   }
@@ -365,27 +379,28 @@ class DispatchWorkersSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         }
       }
       val tool = new DispatchWorkersTool(scriptExecutor = Some(executor))
+      val ctx = turnContext()
       val items: List[Json] = (1 to 7).toList.map(i => Str(s"item-$i"))
       val input = DispatchWorkersInput(
         complexity    = Complexity.Low,
         confirmed     = false,  // explicit — also the default
-        items         = WorkerItemSource.FromList(items),
+        itemsId       = containerFor(items, ctx),
         pipeline      = WorkerPipeline(
           llm    = Some(LlmStep(prompt = "Classify: {{item}}")),
           script = Some(ScriptStep(code = "input"))
         ),
         workerModelId = Some("stub-model")
       )
-      tool.invoke(input, turnContext()).map {
-        case s: DispatchWorkersOutput.Scope =>
+      tool.invoke(input, ctx).map {
+        case s: DispatchWorkersOutput.ScopePreview =>
           s.totalItems shouldBe 7
           s.resolvedModelId shouldBe "stub-model"
-          s.confirmCall should include("confirmed = true")
+          s.confirmCall should include("confirmed=true")
           // No worker ran — neither the LLM stub nor the script
           // executor was invoked.
           providerCalls.get shouldBe 0
           scriptCalls.get shouldBe 0
-        case other => fail(s"expected Scope, got $other")
+        case other => fail(s"expected ScopePreview, got $other")
       }
     }
   }

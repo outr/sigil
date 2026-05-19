@@ -5,7 +5,10 @@ import sigil.Sigil
 import sigil.db.SigilDB
 import sigil.tool.Tool
 import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext}
-import sigil.tooling.dispatch.{DispatchWorkersTool, WorkerItemSourceAdapter}
+import sigil.tooling.container.{
+  CreateContainerTool, FilterContainerTool, LoadFileAsContainerTool, PinContainerTool, UnpinContainerTool
+}
+import sigil.tooling.dispatch.DispatchWorkersTool
 
 import scala.concurrent.duration.*
 
@@ -58,7 +61,7 @@ trait ToolingSigil extends Sigil {
   }
 
   protected def toolingTools: List[Tool] =
-    lspTools ++ bspTools ++ dispatchTools
+    lspTools ++ bspTools ++ dispatchTools ++ containerTools
 
   /** Every LSP-side tool the framework ships. Apps that want a
     * subset override this and pick. */
@@ -115,10 +118,22 @@ trait ToolingSigil extends Sigil {
   /** Every dispatch-shaped tool the framework ships. The generic
     * [[DispatchWorkersTool]] subsumes the prior three-tool refactor
     * session — per-item LLM-or-script pipelines compose naturally
-    * with `grep`, LSP queries, inline lists, files, and conversation
-    * extracts. */
+    * with any paginated tool's output via the container abstraction. */
   protected def dispatchTools: List[Tool] = List(
     new DispatchWorkersTool()
+  )
+
+  /** Container producer / lifecycle tools — `create_container`,
+    * `load_file_as_container`, `filter_container`, `pin_container`,
+    * `unpin_container`. These materialise / narrow / preserve the
+    * [[sigil.tool.output.ToolOutputNode]] containers `dispatch_workers`
+    * (and any future container-shaped consumer) takes as input. */
+  protected def containerTools: List[Tool] = List(
+    CreateContainerTool,
+    new LoadFileAsContainerTool(fileSystemContext),
+    FilterContainerTool,
+    PinContainerTool,
+    UnpinContainerTool
   )
 
   /** Periodic idle sweep — runs forever on a daemon fiber. */
@@ -135,11 +150,4 @@ trait ToolingSigil extends Sigil {
   }
 
   startToolingIdleSweep().sync()
-
-  // Bug #230 — register the framework-shipped WorkerItemSource
-  // adapters for grep / lsp_find_references / lsp_workspace_symbols
-  // so DispatchWorkersTool's FromCall variant projects their persisted
-  // outputs into worker items without app-side wiring. Apps add their
-  // own adapters via `WorkerItemSourceAdapter.register`.
-  WorkerItemSourceAdapter.registerShipped()
 }

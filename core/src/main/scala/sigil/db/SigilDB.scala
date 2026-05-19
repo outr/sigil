@@ -67,9 +67,10 @@ abstract class SigilDB(override val directory: Option[Path],
     store(ConversationToolOverlay).withCache(CacheConfig.lru(500))()
   /** Per-row paginated tool output — drained from each
     * [[sigil.tool.output.PaginatedTool]]'s `Stream[Node[A]]` and
-    * read back by `next_page` / `query_tool_output`. Rows carry
-    * an `expiresAt` and get swept by
-    * [[sigil.maintenance.ToolOutputExpirationSweep]]. */
+    * read back by `next_page` / `query_tool_output`. Containers
+    * persist without a per-row TTL; the
+    * [[sigil.maintenance.ConversationContainerCleanupTask]] reaps
+    * rows at the conversation level (age + size). */
   val toolOutputs: S[ToolOutputNode, ToolOutputNode.type] = store(ToolOutputNode)()
 
   override def upgrades: List[DatabaseUpgrade] = appUpgrades

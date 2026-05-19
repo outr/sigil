@@ -2,7 +2,6 @@ package sigil.tool.output
 
 import fabric.rw.*
 import lightdb.id.Id
-import lightdb.time.Timestamp
 import rapid.{Stream, Task}
 import sigil.{GlobalSpace, SpaceId, TurnContext}
 import sigil.event.{Event, MessageRole, ToolOutcome, ToolResults}
@@ -11,7 +10,6 @@ import sigil.provider.Mode
 import sigil.signal.EventState
 import sigil.tool.{Tool, ToolExample, ToolInput, ToolName}
 
-import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import scala.reflect.ClassTag
 
 /**
@@ -51,11 +49,7 @@ abstract class PaginatedTool[In <: ToolInput, A](
   override val createdBy: Option[ParticipantId] = None,
   /** Number of rows returned in the first-page emission. The
     * agent pages past this via `next_page`. Default 50. */
-  val firstPageSize: Int = 50,
-  /** Per-row TTL. Drained rows expire after this duration. The
-    * [[sigil.maintenance.ToolOutputExpirationSweep]] task reclaims
-    * them. Default 30 minutes. */
-  val rowTtl: FiniteDuration = 30.minutes
+  val firstPageSize: Int = 50
 )(using ct: ClassTag[In], inputRwEv: RW[In], outputRwEv: RW[A]) extends Tool {
 
   /** The author-supplied description before the standardized
@@ -145,8 +139,6 @@ abstract class PaginatedTool[In <: ToolInput, A](
   private def drainAndFirstPage(input: In, context: TurnContext): Task[JsonPagedResult] = {
     val convId = context.conversation.id
     val callId: Id[Event] = context.currentToolInvokeId.getOrElse(Event.id())
-    val now = System.currentTimeMillis()
-    val expiresAt = Timestamp(now + rowTtl.toMillis)
 
     def drainOne(node: Node[A],
                  referenceId: String,
@@ -160,8 +152,7 @@ abstract class PaginatedTool[In <: ToolInput, A](
         level          = level,
         ordinal        = ordinal,
         hasChildren    = node.hasChildren,
-        payload        = payloadJson,
-        expiresAt      = expiresAt
+        payload        = payloadJson
       )
       context.sigil.withDB(_.toolOutputs.transaction(_.upsert(row))).unit.flatMap { _ =>
         if (node.hasChildren)
