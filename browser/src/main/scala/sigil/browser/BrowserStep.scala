@@ -24,9 +24,10 @@ enum BrowserStep derives RW {
     * contain `${arg}` placeholders. */
   case Type(selector: String, value: String, clearFirst: Boolean = true)
 
-  /** Scroll the page. `direction` is `"up"` / `"down"`; `amount` is
-    * `"page"` / `"top"` / `"bottom"`. */
-  case Scroll(direction: String = "down", amount: String = "page")
+  /** Scroll the page. `direction` chooses up / down; `amount` chooses
+    * a one-viewport page move or an absolute top / bottom jump. */
+  case Scroll(direction: ScrollDirection = ScrollDirection.Down,
+              amount: ScrollAmount = ScrollAmount.Page)
 
   /** Capture a screenshot, persist it via storage, attach to the
     * `BrowserState`. */

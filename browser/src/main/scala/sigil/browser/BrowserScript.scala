@@ -136,14 +136,18 @@ object BrowserScript {
           }
 
         case BrowserStep.Scroll(direction, amount) =>
-          val js = (direction.toLowerCase, amount.toLowerCase) match {
-            case (_, "top")    => "window.scrollTo(0, 0);"
-            case (_, "bottom") => "window.scrollTo(0, document.body.scrollHeight);"
-            case ("up", _)     => "window.scrollBy(0, -window.innerHeight);"
-            case _             => "window.scrollBy(0, window.innerHeight);"
+          val js = (direction, amount) match {
+            case (_, ScrollAmount.Top)              => "window.scrollTo(0, 0);"
+            case (_, ScrollAmount.Bottom)           => "window.scrollTo(0, document.body.scrollHeight);"
+            case (ScrollDirection.Up, _)            => "window.scrollBy(0, -window.innerHeight);"
+            case (ScrollDirection.Down, _)          => "window.scrollBy(0, window.innerHeight);"
           }
           controller.run(_.eval(js).unit).map { _ =>
-            log += fabric.obj("step" -> str("scroll"), "direction" -> str(direction), "amount" -> str(amount))
+            log += fabric.obj(
+              "step"      -> str("scroll"),
+              "direction" -> str(direction.toString),
+              "amount"    -> str(amount.toString)
+            )
             ()
           }
 

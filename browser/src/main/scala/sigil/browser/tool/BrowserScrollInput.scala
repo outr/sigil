@@ -1,10 +1,10 @@
 package sigil.browser.tool
 
 import fabric.rw.*
+import sigil.browser.{ScrollAmount, ScrollDirection}
 import sigil.tool.ToolInput
 
-/** Input for `browser_scroll`. `direction` is `"up"` or `"down"`.
-  * `amount` is `"page"` (one viewport), `"top"` (jump to top), or
-  * `"bottom"` (jump to bottom). */
-case class BrowserScrollInput(direction: String = "down",
-                              amount: String = "page") extends ToolInput derives RW
+/** Input for `browser_scroll`. `direction` chooses up / down; `amount`
+  * chooses a one-viewport page move or an absolute top / bottom jump. */
+case class BrowserScrollInput(direction: ScrollDirection = ScrollDirection.Down,
+                              amount: ScrollAmount = ScrollAmount.Page) extends ToolInput derives RW
