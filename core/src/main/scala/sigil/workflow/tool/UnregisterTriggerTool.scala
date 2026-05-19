@@ -37,32 +37,27 @@ final class UnregisterTriggerTool extends TypedTool[UnregisterTriggerInput](
 ) with WorkflowToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: UnregisterTriggerInput, ctx: TurnContext): Stream[Event] = {
-    workflowHost(ctx) match {
-      case Left(err) => reply(ctx, err, isError = true)
-      case Right(host) =>
-        val id = Id[WorkflowTemplate](input.workflowId)
-        val task = host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
-          case None => Task.pure(s"Workflow '${input.workflowId}' not found.")
-          case Some(prior) =>
-            authorizeAccess(host, prior, ctx.chain).flatMap {
-              case Left(_) => Task.pure(s"Workflow '${input.workflowId}' not found.")
-              case Right(_) =>
-                if (input.index < 0 || input.index >= prior.triggers.size)
-                  Task.pure(s"Trigger index ${input.index} out of range (workflow has ${prior.triggers.size} trigger(s)).")
-                else {
-                  val removed = prior.triggers(input.index)
-                  val updated = prior.copy(
-                    triggers = prior.triggers.patch(input.index, Nil, 1),
-                    modified = Timestamp()
-                  )
-                  host.withDB(_.workflowTemplates.transaction(_.upsert(updated))).map { _ =>
-                    s"Trigger '${removed.kind}' (index ${input.index}) removed from workflow '${prior.name}'."
-                  }
-                }
+  override protected def executeTyped(input: UnregisterTriggerInput, ctx: TurnContext): Stream[Event] = withHost(ctx) { host =>
+    val id = Id[WorkflowTemplate](input.workflowId)
+    host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
+      case None => Task.pure(s"Workflow '${input.workflowId}' not found.")
+      case Some(prior) =>
+        authorizeAccess(host, prior, ctx.chain).flatMap {
+          case Left(_) => Task.pure(s"Workflow '${input.workflowId}' not found.")
+          case Right(_) =>
+            if (input.index < 0 || input.index >= prior.triggers.size)
+              Task.pure(s"Trigger index ${input.index} out of range (workflow has ${prior.triggers.size} trigger(s)).")
+            else {
+              val removed = prior.triggers(input.index)
+              val updated = prior.copy(
+                triggers = prior.triggers.patch(input.index, Nil, 1),
+                modified = Timestamp()
+              )
+              host.withDB(_.workflowTemplates.transaction(_.upsert(updated))).map { _ =>
+                s"Trigger '${removed.kind}' (index ${input.index}) removed from workflow '${prior.name}'."
+              }
             }
         }
-        Stream.force(task.map(text => reply(ctx, text)))
     }
   }
 }

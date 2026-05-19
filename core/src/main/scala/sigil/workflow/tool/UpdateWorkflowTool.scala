@@ -44,33 +44,28 @@ final class UpdateWorkflowTool extends TypedTool[UpdateWorkflowInput](
 ) with WorkflowToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: UpdateWorkflowInput, ctx: TurnContext): Stream[Event] = {
-    workflowHost(ctx) match {
-      case Left(err) => reply(ctx, err, isError = true)
-      case Right(host) =>
-        val id = Id[WorkflowTemplate](input.workflowId)
-        val task = host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
-          case None => Task.pure(s"Workflow '${input.workflowId}' not found.")
-          case Some(prior) =>
-            authorizeAccess(host, prior, ctx.chain).flatMap {
-              case Left(_) => Task.pure(s"Workflow '${input.workflowId}' not found.")
-              case Right(_) =>
-                val updated = prior.copy(
-                  name         = input.name.getOrElse(prior.name),
-                  description  = input.description.orElse(prior.description),
-                  steps        = input.steps.getOrElse(prior.steps),
-                  triggers     = input.triggers.getOrElse(prior.triggers),
-                  variableDefs = input.variableDefs.getOrElse(prior.variableDefs),
-                  tags         = input.tags.map(_.toSet).getOrElse(prior.tags),
-                  enabled      = input.enabled.getOrElse(prior.enabled),
-                  modified     = Timestamp()
-                )
-                host.withDB(_.workflowTemplates.transaction(_.upsert(updated))).map(_ =>
-                  s"Workflow '${updated.name}' updated."
-                )
-            }
+  override protected def executeTyped(input: UpdateWorkflowInput, ctx: TurnContext): Stream[Event] = withHost(ctx) { host =>
+    val id = Id[WorkflowTemplate](input.workflowId)
+    host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
+      case None => Task.pure(s"Workflow '${input.workflowId}' not found.")
+      case Some(prior) =>
+        authorizeAccess(host, prior, ctx.chain).flatMap {
+          case Left(_) => Task.pure(s"Workflow '${input.workflowId}' not found.")
+          case Right(_) =>
+            val updated = prior.copy(
+              name         = input.name.getOrElse(prior.name),
+              description  = input.description.orElse(prior.description),
+              steps        = input.steps.getOrElse(prior.steps),
+              triggers     = input.triggers.getOrElse(prior.triggers),
+              variableDefs = input.variableDefs.getOrElse(prior.variableDefs),
+              tags         = input.tags.map(_.toSet).getOrElse(prior.tags),
+              enabled      = input.enabled.getOrElse(prior.enabled),
+              modified     = Timestamp()
+            )
+            host.withDB(_.workflowTemplates.transaction(_.upsert(updated))).map(_ =>
+              s"Workflow '${updated.name}' updated."
+            )
         }
-        Stream.force(task.map(text => reply(ctx, text)))
     }
   }
 }

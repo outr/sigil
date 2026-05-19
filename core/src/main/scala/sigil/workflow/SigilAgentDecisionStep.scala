@@ -597,45 +597,34 @@ object SigilAgentDecisionStep {
     }
   }
 
-  /** Pull the post-`Complete:` summary out of the response. */
-  def parseCompletion(response: String): Option[String] = {
-    val pattern = "(?im)^\\s*Complete:\\s*(.+)$".r
-    pattern.findFirstMatchIn(response).map { m =>
+  /** Pull the text that follows a line-anchored `<marker>:` out of
+    * the response. The marker line may be preceded by leading
+    * whitespace and matches case-insensitively; the returned text
+    * runs from the marker to the end of the response (so a
+    * multi-line trailing payload is captured whole). `None` when no
+    * such line exists. */
+  def parseMarkerLine(response: String, marker: String): Option[String] = {
+    val markerPattern = s"(?im)^\\s*$marker:\\s*"
+    s"$markerPattern(.+)$$".r.findFirstMatchIn(response).map { m =>
       val afterMarker = response.substring(m.start)
-      "(?im)^\\s*Complete:\\s*".r.replaceFirstIn(afterMarker, "").trim
+      markerPattern.r.replaceFirstIn(afterMarker, "").trim
     }
   }
 
-  /** Pull the post-`AskParent:` question out of the response. Same
-    * anchored / case-insensitive shape as parseCompletion. */
-  def parseAskParent(response: String): Option[String] = {
-    val pattern = "(?im)^\\s*AskParent:\\s*(.+)$".r
-    pattern.findFirstMatchIn(response).map { m =>
-      val afterMarker = response.substring(m.start)
-      "(?im)^\\s*AskParent:\\s*".r.replaceFirstIn(afterMarker, "").trim
-    }
-  }
+  /** Pull the post-`Complete:` summary out of the response. */
+  def parseCompletion(response: String): Option[String] = parseMarkerLine(response, "Complete")
+
+  /** Pull the post-`AskParent:` question out of the response. */
+  def parseAskParent(response: String): Option[String] = parseMarkerLine(response, "AskParent")
 
   /** Pull the post-`Report:` user-visible message out of the
     * response. Workers use this to surface progress updates to the
     * user mid-task without terminating. */
-  def parseReport(response: String): Option[String] = {
-    val pattern = "(?im)^\\s*Report:\\s*(.+)$".r
-    pattern.findFirstMatchIn(response).map { m =>
-      val afterMarker = response.substring(m.start)
-      "(?im)^\\s*Report:\\s*".r.replaceFirstIn(afterMarker, "").trim
-    }
-  }
+  def parseReport(response: String): Option[String] = parseMarkerLine(response, "Report")
 
   /** Pull the post-`Status:` short status line out of the response.
     * Workers use this for panel-display progress text ("Compiling
     * step 3/7") that doesn't need to surface to the user but should
     * appear on the worker's task card. */
-  def parseStatus(response: String): Option[String] = {
-    val pattern = "(?im)^\\s*Status:\\s*(.+)$".r
-    pattern.findFirstMatchIn(response).map { m =>
-      val afterMarker = response.substring(m.start)
-      "(?im)^\\s*Status:\\s*".r.replaceFirstIn(afterMarker, "").trim
-    }
-  }
+  def parseStatus(response: String): Option[String] = parseMarkerLine(response, "Status")
 }

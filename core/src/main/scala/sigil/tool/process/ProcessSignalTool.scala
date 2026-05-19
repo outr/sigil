@@ -5,7 +5,7 @@ import rapid.Stream
 import sigil.TurnContext
 import sigil.event.Event
 import sigil.tool.fs.FsToolEmit
-import sigil.tool.model.ProcessSignalInput
+import sigil.tool.model.{ProcessSignal, ProcessSignalInput}
 import sigil.tool.{ToolExample, ToolName, TypedTool}
 
 /**
@@ -23,7 +23,7 @@ final class ProcessSignalTool(registry: ProcessRegistry)
         |Returns `{handle, signal, ok}`.""".stripMargin,
     examples = List(
       ToolExample("Terminate gracefully",  ProcessSignalInput(handle = "p1")),
-      ToolExample("Force-kill a hung proc", ProcessSignalInput(handle = "p1", signal = "kill"))
+      ToolExample("Force-kill a hung proc", ProcessSignalInput(handle = "p1", signal = ProcessSignal.Kill))
     ),
     keywords = Set("process", "signal", "terminate", "kill", "stop")
   ) {
@@ -33,7 +33,7 @@ final class ProcessSignalTool(registry: ProcessRegistry)
     registry.signal(input.handle, input.signal).map { ok =>
       val payload = obj(
         "handle" -> str(input.handle),
-        "signal" -> str(input.signal),
+        "signal" -> str(input.signal.toString),
         "ok"     -> bool(ok)
       )
       Stream.emit[Event](FsToolEmit(payload, ctx))

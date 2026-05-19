@@ -32,23 +32,18 @@ final class DeleteWorkflowTool extends TypedTool[DeleteWorkflowInput](
 ) with WorkflowToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: DeleteWorkflowInput, ctx: TurnContext): Stream[Event] = {
-    workflowHost(ctx) match {
-      case Left(err) => reply(ctx, err, isError = true)
-      case Right(host) =>
-        val id = Id[WorkflowTemplate](input.workflowId)
-        val task = host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
-          case None => Task.pure(s"Workflow '${input.workflowId}' not found.")
-          case Some(template) =>
-            authorizeAccess(host, template, ctx.chain).flatMap {
-              case Left(reason) => Task.pure(s"Workflow '${input.workflowId}' not found.")
-              case Right(_) =>
-                host.withDB(_.workflowTemplates.transaction(_.delete(id))).map(_ =>
-                  s"Workflow '${template.name}' deleted (id=${input.workflowId})."
-                )
-            }
+  override protected def executeTyped(input: DeleteWorkflowInput, ctx: TurnContext): Stream[Event] = withHost(ctx) { host =>
+    val id = Id[WorkflowTemplate](input.workflowId)
+    host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
+      case None => Task.pure(s"Workflow '${input.workflowId}' not found.")
+      case Some(template) =>
+        authorizeAccess(host, template, ctx.chain).flatMap {
+          case Left(reason) => Task.pure(s"Workflow '${input.workflowId}' not found.")
+          case Right(_) =>
+            host.withDB(_.workflowTemplates.transaction(_.delete(id))).map(_ =>
+              s"Workflow '${template.name}' deleted (id=${input.workflowId})."
+            )
         }
-        Stream.force(task.map(text => reply(ctx, text)))
     }
   }
 }

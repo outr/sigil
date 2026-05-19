@@ -42,27 +42,22 @@ final class RegisterTriggerTool extends TypedTool[RegisterTriggerInput](
 ) with WorkflowToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: RegisterTriggerInput, ctx: TurnContext): Stream[Event] = {
-    workflowHost(ctx) match {
-      case Left(err) => reply(ctx, err, isError = true)
-      case Right(host) =>
-        val id = Id[WorkflowTemplate](input.workflowId)
-        val task = host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
-          case None => Task.pure(s"Workflow '${input.workflowId}' not found.")
-          case Some(prior) =>
-            authorizeAccess(host, prior, ctx.chain).flatMap {
-              case Left(_) => Task.pure(s"Workflow '${input.workflowId}' not found.")
-              case Right(_) =>
-                val updated = prior.copy(
-                  triggers = prior.triggers :+ input.trigger,
-                  modified = Timestamp()
-                )
-                host.withDB(_.workflowTemplates.transaction(_.upsert(updated))).map { _ =>
-                  s"Trigger '${input.trigger.kind}' registered on workflow '${prior.name}'."
-                }
+  override protected def executeTyped(input: RegisterTriggerInput, ctx: TurnContext): Stream[Event] = withHost(ctx) { host =>
+    val id = Id[WorkflowTemplate](input.workflowId)
+    host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
+      case None => Task.pure(s"Workflow '${input.workflowId}' not found.")
+      case Some(prior) =>
+        authorizeAccess(host, prior, ctx.chain).flatMap {
+          case Left(_) => Task.pure(s"Workflow '${input.workflowId}' not found.")
+          case Right(_) =>
+            val updated = prior.copy(
+              triggers = prior.triggers :+ input.trigger,
+              modified = Timestamp()
+            )
+            host.withDB(_.workflowTemplates.transaction(_.upsert(updated))).map { _ =>
+              s"Trigger '${input.trigger.kind}' registered on workflow '${prior.name}'."
             }
         }
-        Stream.force(task.map(text => reply(ctx, text)))
     }
   }
 }

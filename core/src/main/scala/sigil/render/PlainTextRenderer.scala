@@ -45,7 +45,7 @@ object PlainTextRenderer extends ContentRenderer[String] {
     case ResponseContent.SecretInput(label, _, _) => s"$label: (secret)"
     case ResponseContent.SecretRef(_, label)      => s"$label: ••••••••"
     case ResponseContent.StoredFileReference(_, title, _, _, size) =>
-      s"$title (${formatSize(size)})"
+      s"$title (${RenderUtil.formatSize(size)})"
     case c: ResponseContent.Card => renderCard(c)
   }
 
@@ -68,10 +68,4 @@ object PlainTextRenderer extends ContentRenderer[String] {
       (head :: sep :: rows.map(fmt)).mkString("\n")
     }
   }
-
-  private def formatSize(bytes: Long): String =
-    if (bytes < 1024) s"$bytes B"
-    else if (bytes < 1024 * 1024) f"${bytes / 1024.0}%.1f KB"
-    else if (bytes < 1024L * 1024 * 1024) f"${bytes / (1024.0 * 1024)}%.1f MB"
-    else f"${bytes / (1024.0 * 1024 * 1024)}%.1f GB"
 }

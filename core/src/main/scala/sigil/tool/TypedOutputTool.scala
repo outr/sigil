@@ -93,14 +93,19 @@ abstract class TypedOutputTool[In <: ToolInput, Out](
     executeTyped(input, context)
       .map(out => ToolResult.success(out))
       .handleError { err =>
-        val argsJson =
-          try Some(JsonFormatter.Compact(inputRwEv.read(input)))
-          catch { case _: Throwable => None }
         Task.pure(ToolResult.failure(
           message = Option(err.getMessage).getOrElse(err.getClass.getSimpleName),
-          args    = argsJson
+          args    = renderInputArgs(input)
         ))
       }
+
+  /** Render the failing input to compact JSON for a
+    * [[ToolResult.Failure]]'s `args` field. Returns `None` when the
+    * input can't be serialized — a best-effort diagnostic, never a
+    * hard failure of the tool's own error path. */
+  protected def renderInputArgs(input: In): Option[String] =
+    try Some(JsonFormatter.Compact(inputRW.read(input)))
+    catch { case _: Throwable => None }
 
   /** Public composition entry. Other tools' executeTyped bodies
     * call this to invoke a typed tool and receive its typed result

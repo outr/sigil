@@ -23,6 +23,17 @@ trait WorkflowToolSupport {
       case _ => Left("Workflow tools require the host Sigil to mix in WorkflowSigil.")
     }
 
+  /** Resolve the host [[WorkflowSigil]], run `body` against it, and
+    * emit the resulting text as a `Role.Tool` Message. When the host
+    * isn't a `WorkflowSigil` the error is emitted directly. Absorbs
+    * the host-unwrap + error-reply boilerplate shared by every
+    * workflow management tool. */
+  protected def withHost(ctx: TurnContext)(body: WorkflowSigil => Task[String]): Stream[Event] =
+    workflowHost(ctx) match {
+      case Left(err)   => reply(ctx, err, isError = true)
+      case Right(host) => Stream.force(body(host).map(text => reply(ctx, text)))
+    }
+
   /** Authz check: confirm the caller's chain has access to the
     * given template's space. Returns Right when allowed; Left
     * with an explanatory message when denied. */

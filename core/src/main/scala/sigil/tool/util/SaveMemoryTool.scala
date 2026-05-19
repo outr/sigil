@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.{SpaceId, TurnContext}
 import sigil.conversation.{ContextMemory, MemorySource, UpsertMemoryResult}
 import sigil.provider.Mode
-import sigil.tool.model.{SaveMemoryInput, SaveMemoryOutput}
+import sigil.tool.model.{MemoryWriteOutcome, SaveMemoryInput, SaveMemoryOutput}
 import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
 
 /**
@@ -72,15 +72,15 @@ final class SaveMemoryTool(space: SpaceId,
         case Some(_) =>
           ctx.sigil.upsertMemoryByKeyFor(mem, ctx.chain, ctx.conversation.id).map { r =>
             val outcome = r match {
-              case _: UpsertMemoryResult.Stored    => "Stored"
-              case _: UpsertMemoryResult.Refreshed => "Refreshed"
-              case _: UpsertMemoryResult.Versioned => "Versioned"
+              case _: UpsertMemoryResult.Stored    => MemoryWriteOutcome.Stored
+              case _: UpsertMemoryResult.Refreshed => MemoryWriteOutcome.Refreshed
+              case _: UpsertMemoryResult.Versioned => MemoryWriteOutcome.Versioned
             }
             SaveMemoryOutput(outcome = outcome, memoryId = r.memory._id.value)
           }
         case None =>
           ctx.sigil.persistMemoryFor(mem, ctx.chain, ctx.conversation.id)
-            .map(stored => SaveMemoryOutput(outcome = "Stored", memoryId = stored._id.value))
+            .map(stored => SaveMemoryOutput(outcome = MemoryWriteOutcome.Stored, memoryId = stored._id.value))
       }
     }
 

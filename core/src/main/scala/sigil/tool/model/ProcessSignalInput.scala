@@ -5,8 +5,8 @@ import sigil.tool.ToolInput
 
 /**
  * Input for `process_signal` — send a signal to a registered
- * subprocess. `signal` accepts `terminate` (default — SIGTERM,
- * grace, then SIGKILL), `interrupt`, or `kill`.
+ * subprocess. `signal` defaults to [[ProcessSignal.Terminate]]
+ * (SIGTERM, grace, then SIGKILL).
  */
 case class ProcessSignalInput(handle: String,
-                              signal: String = "terminate") extends ToolInput derives RW
+                              signal: ProcessSignal = ProcessSignal.Terminate) extends ToolInput derives RW

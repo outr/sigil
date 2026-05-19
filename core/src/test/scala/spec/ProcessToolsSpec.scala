@@ -7,7 +7,7 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
 import sigil.event.Message
-import sigil.tool.model.{ProcessListInput, ProcessOutputInput, ProcessSignalInput, ProcessSpawnInput, ResponseContent}
+import sigil.tool.model.{ProcessListInput, ProcessListScope, ProcessOutputInput, ProcessSignal, ProcessSignalInput, ProcessSpawnInput, ResponseContent}
 import sigil.tool.process.{ProcessListTool, ProcessOutputTool, ProcessRegistry, ProcessSignalTool, ProcessSpawnTool, RingBuffer}
 
 /**
@@ -147,7 +147,7 @@ class ProcessToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       for {
         spawn   <- new ProcessSpawnTool(reg).execute(ProcessSpawnInput(command = "sleep 30"), tc).toList
         handle   = handleOf(extractJson(spawn))
-        sigOut  <- new ProcessSignalTool(reg).execute(ProcessSignalInput(handle = handle, signal = "kill"), tc).toList
+        sigOut  <- new ProcessSignalTool(reg).execute(ProcessSignalInput(handle = handle, signal = ProcessSignal.Kill), tc).toList
         result  <- waitFor(reg, handle, deadline)(_.get("status").map(_.asString.contains("exited")).getOrElse(false))
       } yield {
         extractJson(sigOut).get("ok").map(_.asBoolean) shouldBe Some(true)
@@ -163,8 +163,8 @@ class ProcessToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       for {
         _    <- new ProcessSpawnTool(reg).execute(ProcessSpawnInput(command = "sleep 30"), tcA).toList
         _    <- new ProcessSpawnTool(reg).execute(ProcessSpawnInput(command = "sleep 30"), tcB).toList
-        listA <- new ProcessListTool(reg).execute(ProcessListInput(scope = "current"), tcA).toList
-        listAll <- new ProcessListTool(reg).execute(ProcessListInput(scope = "all"), tcA).toList
+        listA <- new ProcessListTool(reg).execute(ProcessListInput(scope = ProcessListScope.Current), tcA).toList
+        listAll <- new ProcessListTool(reg).execute(ProcessListInput(scope = ProcessListScope.All), tcA).toList
       } yield {
         val a   = extractJson(listA).get("processes").map(_.asVector.toList).getOrElse(Nil)
         val all = extractJson(listAll).get("processes").map(_.asVector.toList).getOrElse(Nil)

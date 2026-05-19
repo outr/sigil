@@ -1,7 +1,5 @@
 package sigil.tool.fs
 
-import fabric.io.JsonFormatter
-import fabric.rw.*
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.TurnContext
@@ -70,9 +68,7 @@ final class EditFileTool(context: FileSystemContext)
       context.readFile(resolved).flatMap { content =>
         val pattern = Pattern.quote(input.oldString)
         val occurrences = pattern.r.findAllIn(content).size
-        val argsJson =
-          try Some(JsonFormatter.Compact(summon[RW[EditFileInput]].read(input)))
-          catch { case _: Throwable => None }
+        val argsJson = renderInputArgs(input)
         val preview = input.oldString.linesIterator.take(3).mkString(" / ").take(120)
         if (occurrences == 0)
           Task.pure(ToolResult.failure(

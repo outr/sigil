@@ -64,9 +64,10 @@ class AllShippedToolsSpec extends AnyWordSpec with Matchers {
       names should contain("git_show")
     }
 
-    "exclude the write-side git_commit tool" in {
+    "exclude the write-side git_commit / git_push tools" in {
       val names = AllShippedTools(fs, TestSpace, Some(registry)).map(_.name.value).toSet
       names should not contain "git_commit"
+      names should not contain "git_push"
     }
 
     "include the process_* family when a registry is supplied" in {
@@ -111,6 +112,16 @@ class AllShippedToolsSpec extends AnyWordSpec with Matchers {
     "include the web_fetch tool" in {
       val names = AllShippedTools(fs, TestSpace, Some(registry)).map(_.name.value).toSet
       names should contain("web_fetch")
+    }
+
+    "include the http_request tool" in {
+      val names = AllShippedTools(fs, TestSpace, Some(registry)).map(_.name.value).toSet
+      names should contain("http_request")
+    }
+
+    "include the cancel_framework_workflow tool" in {
+      val names = AllShippedTools(fs, TestSpace, Some(registry)).map(_.name.value).toSet
+      names should contain("cancel_framework_workflow")
     }
   }
 }

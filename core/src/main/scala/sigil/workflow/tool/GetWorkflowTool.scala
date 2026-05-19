@@ -28,19 +28,14 @@ final class GetWorkflowTool extends TypedTool[GetWorkflowInput](
 ) with WorkflowToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: GetWorkflowInput, ctx: TurnContext): Stream[Event] = {
-    workflowHost(ctx) match {
-      case Left(err) => reply(ctx, err, isError = true)
-      case Right(host) =>
-        val task = host.withDB(_.workflowTemplates.transaction(_.get(Id[WorkflowTemplate](input.workflowId)))).flatMap {
-          case None => Task.pure(s"Workflow '${input.workflowId}' not found.")
-          case Some(template) =>
-            authorizeAccess(host, template, ctx.chain).map {
-              case Left(reason) => s"Workflow '${input.workflowId}' not found."  // hide cross-space existence
-              case Right(t)     => render(t)
-            }
+  override protected def executeTyped(input: GetWorkflowInput, ctx: TurnContext): Stream[Event] = withHost(ctx) { host =>
+    host.withDB(_.workflowTemplates.transaction(_.get(Id[WorkflowTemplate](input.workflowId)))).flatMap {
+      case None => Task.pure(s"Workflow '${input.workflowId}' not found.")
+      case Some(template) =>
+        authorizeAccess(host, template, ctx.chain).map {
+          case Left(reason) => s"Workflow '${input.workflowId}' not found."  // hide cross-space existence
+          case Right(t)     => render(t)
         }
-        Stream.force(task.map(text => reply(ctx, text)))
     }
   }
 

@@ -3,6 +3,7 @@ package sigil.tool.process
 import lightdb.id.Id
 import rapid.Task
 import sigil.conversation.Conversation
+import sigil.tool.model.ProcessSignal
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -88,18 +89,18 @@ class ProcessRegistry(val ringBytes: Int = 1024 * 1024,
     loop()
   }
 
-  /** Send a signal. `signal` accepts `terminate` (default — SIGTERM
-    * with grace then SIGKILL), `interrupt` (SIGINT — best-effort via
-    * `Process.destroy`), and `kill` (SIGKILL immediately). */
-  def signal(handle: String, signal: String): Task[Boolean] = Task {
+  /** Send a signal. [[ProcessSignal.Terminate]] sends SIGTERM with
+    * grace then SIGKILL; [[ProcessSignal.Interrupt]] is a
+    * best-effort SIGINT via `Process.destroy`; [[ProcessSignal.Kill]]
+    * is an immediate SIGKILL. */
+  def signal(handle: String, signal: ProcessSignal): Task[Boolean] = Task {
     val entry = entries.get(handle)
     if (entry == null) false
     else {
       signal match {
-        case "terminate" | "term"           => entry.terminate(terminateGraceMs); true
-        case "interrupt" | "int"            => entry.terminate(terminateGraceMs); true
-        case "kill"                         => entry.kill(); true
-        case other                          => throw new IllegalArgumentException(s"Unsupported signal: $other")
+        case ProcessSignal.Terminate => entry.terminate(terminateGraceMs); true
+        case ProcessSignal.Interrupt => entry.terminate(terminateGraceMs); true
+        case ProcessSignal.Kill      => entry.kill(); true
       }
     }
   }

@@ -9,7 +9,7 @@ import sigil.tool.ToolInput
   * have a dedicated tool wrapper.
   *
   *   - `url` — the target URL.
-  *   - `method` — HTTP method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`).
+  *   - `method` — HTTP method, defaulting to [[HttpRequestMethod.Get]].
   *   - `headers` — request headers as a flat key→value map. `Content-Type`
   *     defaults to `application/json` when `body` is supplied and no
   *     content-type header is present.
@@ -22,7 +22,7 @@ import sigil.tool.ToolInput
   *     are truncated; the result flags `bodyTruncated = true`.
   */
 case class HttpRequestInput(url: String,
-                             method: String = "GET",
+                             method: HttpRequestMethod = HttpRequestMethod.Get,
                              headers: Map[String, String] = Map.empty,
                              body: Option[String] = None,
                              timeoutMs: Long = 30000L,

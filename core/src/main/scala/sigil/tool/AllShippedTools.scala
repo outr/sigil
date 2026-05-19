@@ -2,13 +2,13 @@ package sigil.tool
 
 import sigil.SpaceId
 import sigil.tool.consult.{ConsultTool, ExtractMemoriesTool, RerankTool, SummarizationTool}
-import sigil.tool.core.ChangeModeTool
+import sigil.tool.core.{CancelFrameworkWorkflowTool, ChangeModeTool}
 import sigil.tool.fs.{BashTool, DeleteFileTool, EditAtRangeTool, EditFileTool, FileSystemContext, GlobTool, GrepTool, ReadFileTool, WriteFileTool}
 import sigil.tool.git.{GitBranchTool, GitDiffTool, GitLogTool, GitShowTool, GitStatusTool}
 import sigil.tool.memory.{ForgetMemoryTool, MemoryHistoryTool}
 import sigil.tool.process.{ProcessListTool, ProcessOutputTool, ProcessRegistry, ProcessSignalTool, ProcessSpawnTool}
 import sigil.tool.util.{LookupTool, SaveMemoryTool, SearchConversationTool, SemanticSearchTool, SleepTool, SystemStatsTool}
-import sigil.tool.web.WebFetchTool
+import sigil.tool.web.{HttpRequestTool, WebFetchTool}
 
 import scala.concurrent.duration.*
 
@@ -50,9 +50,12 @@ import scala.concurrent.duration.*
  *   - `ProxyTool` — a wrapper that reroutes another tool's execution
  *     via a `ToolProxyTransport`; only meaningful around an existing
  *     concrete tool.
- *   - `GitCommitTool` — writes; opt-in like `DeleteFileTool` is
- *     opt-out. Apps that want commit authorship register `new
- *     GitCommitTool(fs)` explicitly.
+ *   - `GitCommitTool` / `GitPushTool` — write external state; opt-in
+ *     like `delete_file` is opt-out. Apps that want commit / push
+ *     authorship register `new GitCommitTool(fs)` / `new
+ *     GitPushTool(fs)` explicitly. Their input RWs are pre-registered
+ *     in `CoreTools.inputRWs` so persisted events round-trip even
+ *     when the tool itself isn't in the roster.
  *
  * Apps wanting to opt OUT of any individual tool filter the result:
  *
@@ -108,6 +111,9 @@ object AllShippedTools {
     SemanticSearchTool,
     SleepTool,
     new SystemStatsTool(fs),
+    // Framework-workflow control — cancel an in-flight framework
+    // operation (pre-flight, compress, …) by id.
+    CancelFrameworkWorkflowTool,
     // Filesystem.
     new BashTool(fs),
     new DeleteFileTool(fs),
@@ -117,16 +123,18 @@ object AllShippedTools {
     new GrepTool(fs),
     new ReadFileTool(fs),
     new WriteFileTool(fs),
-    // Git — read-only family. `git_commit` writes and ships separately;
-    // apps that want commit authorship register `new GitCommitTool(fs)`
-    // explicitly, mirroring how `delete_file` is gated.
+    // Git — read-only family. `git_commit` / `git_push` write and ship
+    // separately; apps that want commit / push authorship register
+    // `new GitCommitTool(fs)` / `new GitPushTool(fs)` explicitly,
+    // mirroring how `delete_file` is gated.
     new GitStatusTool(fs),
     new GitDiffTool(fs),
     new GitLogTool(fs),
     new GitBranchTool(fs),
     new GitShowTool(fs),
     // Web.
-    new WebFetchTool(webFetchTimeout)
+    new WebFetchTool(webFetchTimeout),
+    HttpRequestTool
   ) ++ processRegistry.toList.flatMap(reg => List(
     new ProcessSpawnTool(reg),
     new ProcessOutputTool(reg),

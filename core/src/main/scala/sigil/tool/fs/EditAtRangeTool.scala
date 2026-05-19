@@ -1,7 +1,5 @@
 package sigil.tool.fs
 
-import fabric.io.JsonFormatter
-import fabric.rw.*
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.TurnContext
@@ -66,9 +64,7 @@ final class EditAtRangeTool(context: FileSystemContext)
     }
 
   private def runEdit(input: EditAtRangeInput, ctx: TurnContext): Task[ToolResult[EditAtRangeOutput]] = {
-    val argsJson =
-      try Some(JsonFormatter.Compact(summon[RW[EditAtRangeInput]].read(input)))
-      catch { case _: Throwable => None }
+    val argsJson = renderInputArgs(input)
 
     WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>
       context.readFile(resolved).flatMap { content =>

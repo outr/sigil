@@ -34,8 +34,8 @@ final class GitLogTool(context: FileSystemContext)
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val limit  = input.limit.getOrElse(20)
       val format = "%H%x00%an%x00%aI%x00%s%x00%b%x1e"
-      val sinceArg = input.since.fold("")(s => s" --since=${shellQuote(s)}")
-      val pathArg  = input.path.fold("")(p => s" -- ${shellQuote(p)}")
+      val sinceArg = input.since.fold("")(s => s" --since=${GitOps.shellQuote(s)}")
+      val pathArg  = input.path.fold("")(p => s" -- ${GitOps.shellQuote(p)}")
       val cmd = s"""git log --pretty=format:$format -n $limit$sinceArg$pathArg"""
       context.executeCommand(cmd, dir).map { r =>
         val payload =
@@ -46,6 +46,4 @@ final class GitLogTool(context: FileSystemContext)
       }
     }
   )
-
-  private def shellQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
 }

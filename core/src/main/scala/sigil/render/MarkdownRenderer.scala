@@ -49,7 +49,7 @@ object MarkdownRenderer extends ContentRenderer[String] {
     case ResponseContent.SecretInput(label, _, _) => s"**$label:** _(secret)_"
     case ResponseContent.SecretRef(_, label)      => s"**$label:** ••••••••"
     case ResponseContent.StoredFileReference(_, title, _, _, size) =>
-      s"📎 **$title** (${formatSize(size)})"
+      s"📎 **$title** (${RenderUtil.formatSize(size)})"
     case c: ResponseContent.Card => renderCard(c)
   }
 
@@ -69,10 +69,4 @@ object MarkdownRenderer extends ContentRenderer[String] {
       List(head, sep, body).filter(_.nonEmpty).mkString("\n")
     }
   }
-
-  private def formatSize(bytes: Long): String =
-    if (bytes < 1024) s"$bytes B"
-    else if (bytes < 1024 * 1024) f"${bytes / 1024.0}%.1f KB"
-    else if (bytes < 1024L * 1024 * 1024) f"${bytes / (1024.0 * 1024)}%.1f MB"
-    else f"${bytes / (1024.0 * 1024 * 1024)}%.1f GB"
 }

@@ -1,7 +1,7 @@
 package sigil.workflow.tool
 
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Stream
 import sigil.{GlobalSpace, SpaceId, TurnContext}
 import sigil.event.Event
 import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
@@ -55,28 +55,23 @@ final class CreateWorkflowTool extends TypedTool[CreateWorkflowInput](
 ) with WorkflowToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: CreateWorkflowInput, ctx: TurnContext): Stream[Event] = {
-    workflowHost(ctx) match {
-      case Left(err) => reply(ctx, err, isError = true)
-      case Right(host) =>
-        val task = host.accessibleSpaces(ctx.chain).flatMap { spaces =>
-          val callerSpace: SpaceId = spaces.headOption.getOrElse(GlobalSpace)
-          val template = WorkflowTemplate(
-            name = input.name,
-            description = input.description,
-            steps = input.steps,
-            triggers = input.triggers,
-            variableDefs = input.variableDefs,
-            space = callerSpace,
-            createdBy = Some(ctx.caller),
-            conversationId = Some(ctx.conversation.id),
-            tags = input.tags.toSet
-          )
-          host.withDB(_.workflowTemplates.transaction(_.insert(template))).map { stored =>
-            s"Workflow '${input.name}' created with id ${stored._id.value}."
-          }
-        }
-        Stream.force(task.map(text => reply(ctx, text)))
+  override protected def executeTyped(input: CreateWorkflowInput, ctx: TurnContext): Stream[Event] = withHost(ctx) { host =>
+    host.accessibleSpaces(ctx.chain).flatMap { spaces =>
+      val callerSpace: SpaceId = spaces.headOption.getOrElse(GlobalSpace)
+      val template = WorkflowTemplate(
+        name = input.name,
+        description = input.description,
+        steps = input.steps,
+        triggers = input.triggers,
+        variableDefs = input.variableDefs,
+        space = callerSpace,
+        createdBy = Some(ctx.caller),
+        conversationId = Some(ctx.conversation.id),
+        tags = input.tags.toSet
+      )
+      host.withDB(_.workflowTemplates.transaction(_.insert(template))).map { stored =>
+        s"Workflow '${input.name}' created with id ${stored._id.value}."
+      }
     }
   }
 }
