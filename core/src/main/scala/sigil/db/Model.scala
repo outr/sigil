@@ -33,6 +33,14 @@ import lightdb.time.Timestamp
  * @param links               Related API URLs for this model.
  * @param created             Upstream creation timestamp for the model record.
  * @param modified            Local cache modification timestamp; refreshed on each update.
+ * @param supportedReasoningEffortLevels
+ *                            Optional set of `reasoning.effort` string values the model accepts
+ *                            on the OpenAI Responses API (e.g. `Set("none", "low", "medium", "high", "xhigh")`
+ *                            for gpt-5.5, `Set("minimal", "low", "medium", "high")` for gpt-5).
+ *                            `None` means "not declared"; the provider falls back to a family-name
+ *                            heuristic. OpenRouter's `/v1/models` payload does not expose this today,
+ *                            so most rows will carry `None`; apps can override per-model in their
+ *                            registry to lock in known values.
  * @param _id                 Fully-qualified model identifier (e.g. `anthropic/claude-opus-4.7`).
  */
 case class Model(canonicalSlug: String,
@@ -52,6 +60,7 @@ case class Model(canonicalSlug: String,
                  links: ModelLinks,
                  created: Timestamp,
                  modified: Timestamp = Timestamp(),
+                 supportedReasoningEffortLevels: Option[Set[String]] = None,
                  _id: Id[Model])
   extends RecordDocument[Model] {
   lazy val (provider: String, model: String) = {
