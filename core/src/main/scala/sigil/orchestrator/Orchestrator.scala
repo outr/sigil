@@ -827,80 +827,78 @@ object Orchestrator {
                     )
                     Task.pure((List.empty[Signal], Some(err)))
                   }
-              val guarded: Stream[Signal] =
-                if (isAtomic) Stream.force(drained.map { case (collected, errOpt) =>
-                  // If the tool already emitted a Tool-role event paired to
-                  // this invoke (e.g. an app-specific atomic content tool
-                  // that handles its own pairing), don't duplicate.
-                  val hasResult = collected.exists {
-                    case e: Event if e.role == MessageRole.Tool && e.origin.contains(invokeId) => true
-                    case _ => false
-                  }
-                  if (hasResult) Stream.emits(collected)
-                  else {
-                    val (content, disposition) = errOpt match {
-                      case None      => (Vector.empty[ResponseContent], MessageDisposition.Success)
-                      case Some(err) =>
-                        (Vector[ResponseContent](ResponseContent.Text(
-                          s"Tool `${active.toolName}` failed during execution: " +
-                            s"${err.getClass.getSimpleName}: ${Option(err.getMessage).getOrElse("(no message)")}"
-                        )), MessageDisposition.Failure(recoverable = true))
-                    }
-                    val synth = Message(
-                      participantId  = caller,
-                      conversationId = convId,
-                      topicId        = topicId,
-                      role           = MessageRole.Tool,
-                      content        = content,
-                      state          = EventState.Complete,
-                      disposition    = disposition,
-                      visibility     = MessageVisibility.Agents,
-                      origin         = Some(invokeId)
-                    )
-                    // Capture so a subsequent duplicate-call dispatch
-                    // can inline this content rather than fall back to
-                    // a generic prose directive. See sigil bug #189.
-                    state.dispatchedResultContent(invokeId) = synth.content
-                    Stream.emits(collected :+ synth)
-                  }
-                })
-                else Stream.force(drained.map { case (collected, errOpt) =>
-                  val hasResult = collected.exists {
-                    case e: Event if e.role == MessageRole.Tool => true
-                    case _                                       => false
-                  }
-                  if (hasResult) Stream.emits(collected)
-                  else {
-                    val argsText = canonicalArgsKey(active.toolName, input)
-                      .stripPrefix(s"${active.toolName}:")
-                      .take(200)
-                    val contentText = errOpt match {
-                      case None =>
-                        scribe.warn(
-                          s"orchestrator: tool '${active.toolName}' (invokeId=${invokeId.value}) completed " +
-                            "without emitting a MessageRole.Tool event — likely a sync throw escaping its " +
-                            "executeTyped handleError. Emitting a typed Failure result to keep the wire paired."
-                        )
-                        s"Tool `${active.toolName}` failed internally. Args: $argsText. " +
-                          "Pick a different tool or refine the approach."
-                      case Some(err) =>
+              // Drain the tool's stream and guarantee a result-shaped
+              // (`role == MessageRole.Tool`) event is paired to the
+              // invoke. Atomic-content tools and other tools differ
+              // only in the `hasResult` predicate's strictness and in
+              // the synthetic failure's wording / disposition; the
+              // drain + empty-path-synthesis skeleton is shared.
+              val guarded: Stream[Signal] = Stream.force(drained.map { case (collected, errOpt) =>
+                // Atomic-content tools (e.g. app-specific tools that
+                // handle their own pairing) require the result event to
+                // be origin-linked to THIS invoke; other tools accept
+                // any Tool-role event as the produced result.
+                val hasResult = collected.exists {
+                  case e: Event if e.role == MessageRole.Tool && (!isAtomic || e.origin.contains(invokeId)) => true
+                  case _ => false
+                }
+                if (hasResult) Stream.emits(collected)
+                else if (isAtomic) {
+                  val (content, disposition) = errOpt match {
+                    case None      => (Vector.empty[ResponseContent], MessageDisposition.Success)
+                    case Some(err) =>
+                      (Vector[ResponseContent](ResponseContent.Text(
                         s"Tool `${active.toolName}` failed during execution: " +
-                          s"${err.getClass.getSimpleName}: ${Option(err.getMessage).getOrElse("(no message)")}. " +
-                          s"Args: $argsText. Pick a different tool or refine the approach."
-                    }
-                    Stream.emits(collected :+ Message(
-                      participantId  = caller,
-                      conversationId = convId,
-                      topicId        = topicId,
-                      role           = MessageRole.Tool,
-                      content        = Vector(ResponseContent.Text(contentText)),
-                      state          = EventState.Complete,
-                      disposition    = MessageDisposition.Failure(recoverable = errOpt.isDefined),
-                      visibility     = MessageVisibility.Agents,
-                      origin         = Some(invokeId)
-                    ))
+                          s"${err.getClass.getSimpleName}: ${Option(err.getMessage).getOrElse("(no message)")}"
+                      )), MessageDisposition.Failure(recoverable = true))
                   }
-                })
+                  val synth = Message(
+                    participantId  = caller,
+                    conversationId = convId,
+                    topicId        = topicId,
+                    role           = MessageRole.Tool,
+                    content        = content,
+                    state          = EventState.Complete,
+                    disposition    = disposition,
+                    visibility     = MessageVisibility.Agents,
+                    origin         = Some(invokeId)
+                  )
+                  // Capture so a subsequent duplicate-call dispatch
+                  // can inline this content rather than fall back to
+                  // a generic prose directive. See sigil bug #189.
+                  state.dispatchedResultContent(invokeId) = synth.content
+                  Stream.emits(collected :+ synth)
+                } else {
+                  val argsText = canonicalArgsKey(active.toolName, input)
+                    .stripPrefix(s"${active.toolName}:")
+                    .take(200)
+                  val contentText = errOpt match {
+                    case None =>
+                      scribe.warn(
+                        s"orchestrator: tool '${active.toolName}' (invokeId=${invokeId.value}) completed " +
+                          "without emitting a MessageRole.Tool event — likely a sync throw escaping its " +
+                          "executeTyped handleError. Emitting a typed Failure result to keep the wire paired."
+                      )
+                      s"Tool `${active.toolName}` failed internally. Args: $argsText. " +
+                        "Pick a different tool or refine the approach."
+                    case Some(err) =>
+                      s"Tool `${active.toolName}` failed during execution: " +
+                        s"${err.getClass.getSimpleName}: ${Option(err.getMessage).getOrElse("(no message)")}. " +
+                        s"Args: $argsText. Pick a different tool or refine the approach."
+                  }
+                  Stream.emits(collected :+ Message(
+                    participantId  = caller,
+                    conversationId = convId,
+                    topicId        = topicId,
+                    role           = MessageRole.Tool,
+                    content        = Vector(ResponseContent.Text(contentText)),
+                    state          = EventState.Complete,
+                    disposition    = MessageDisposition.Failure(recoverable = errOpt.isDefined),
+                    visibility     = MessageVisibility.Agents,
+                    origin         = Some(invokeId)
+                  ))
+                }
+              })
               Stream.emits(toolDeltaPrefix) ++ guarded
             }
 
@@ -1158,28 +1156,9 @@ object Orchestrator {
               case Some(hit) =>
                 scribe.warn(s"orchestrator: degenerate generation detected (${hit.occurrences}/${hit.totalSentences} sentences " +
                   s"= ${math.round(hit.share * 100)}% repetition) in conversation $convId — emitting Failure diagnostic")
-                val syntheticInvokeId = Event.id()
-                val syntheticInvoke = ToolInvoke(
-                  toolName       = ToolName("_degenerate_generation"),
-                  participantId  = caller,
-                  conversationId = convId,
-                  topicId        = topicId,
-                  _id            = syntheticInvokeId,
-                  state          = EventState.Complete,
-                  internal       = true
-                )
-                val diagnostic = Message(
-                  participantId  = caller,
-                  conversationId = convId,
-                  topicId        = topicId,
-                  role           = MessageRole.Tool,
-                  content        = Vector(ResponseContent.Text(hit.renderDiagnostic(text.length))),
-                  disposition    = MessageDisposition.Failure(recoverable = true),
-                  state          = EventState.Complete,
-                  visibility     = MessageVisibility.Agents,
-                  origin         = Some(syntheticInvokeId)
-                )
-                List[Signal](syntheticInvoke, diagnostic)
+                SyntheticDiagnostic("_degenerate_generation", caller, convId, topicId,
+                  reason      = hit.renderDiagnostic(text.length),
+                  disposition = MessageDisposition.Failure(recoverable = true))
               case None => Nil
             }
           case _ => Nil
@@ -1224,28 +1203,9 @@ object Orchestrator {
                 "(`respond`, `respond_options`, `respond_field`, `respond_failure`, " +
                 "`no_response`) appropriate to your situation. When a tool result IS the " +
                 s"user-facing answer, call `respond` with that content. Dropped text was: $snippet"
-            val syntheticInvokeId = Event.id()
-            val syntheticInvoke = ToolInvoke(
-              toolName       = ToolName("_plain_text_reply"),
-              participantId  = caller,
-              conversationId = convId,
-              topicId        = topicId,
-              _id            = syntheticInvokeId,
-              state          = EventState.Complete,
-              internal       = true
-            )
-            val diagnosticMessage = Message(
-              participantId  = caller,
-              conversationId = convId,
-              topicId        = topicId,
-              role           = MessageRole.Tool,
-              content        = Vector(ResponseContent.Text(reason)),
-              disposition    = MessageDisposition.Failure(recoverable = true),
-              state          = EventState.Complete,
-              visibility     = MessageVisibility.Agents,
-              origin         = Some(syntheticInvokeId)
-            )
-            List[Signal](syntheticInvoke, diagnosticMessage)
+            SyntheticDiagnostic("_plain_text_reply", caller, convId, topicId,
+              reason      = reason,
+              disposition = MessageDisposition.Failure(recoverable = true))
           } else Nil
         Stream.emits(closeOrphan ++ plainTextDiagnostic ++ degenerateDiagnostic)
       case ProviderEvent.Error(msg)                       =>
@@ -1285,17 +1245,8 @@ object Orchestrator {
         val (preludeSignals, originId) = errorOrigin match {
           case Some(parent) => (Nil, parent)
           case None =>
-            val syntheticInvokeId = Event.id()
-            val syntheticInvoke = ToolInvoke(
-              toolName       = ToolName("_provider_error"),
-              participantId  = caller,
-              conversationId = convId,
-              topicId        = topicId,
-              _id            = syntheticInvokeId,
-              state          = EventState.Complete,
-              internal       = true
-            )
-            (List[Signal](syntheticInvoke), syntheticInvokeId)
+            val syntheticInvoke = SyntheticDiagnostic.invoke("_provider_error", caller, convId, topicId)
+            (List[Signal](syntheticInvoke), syntheticInvoke._id)
         }
         val errorMessage = Message(
           participantId  = caller,
@@ -1474,16 +1425,6 @@ object Orchestrator {
   private def buildRefusalChallengeSignals(caller: ParticipantId,
                                            convId: lightdb.id.Id[Conversation],
                                            topicId: lightdb.id.Id[Topic]): List[Signal] = {
-    val syntheticInvokeId = Event.id()
-    val syntheticInvoke = ToolInvoke(
-      toolName       = ToolName("_refusal_challenge"),
-      participantId  = caller,
-      conversationId = convId,
-      topicId        = topicId,
-      _id            = syntheticInvokeId,
-      state          = EventState.Complete,
-      internal       = true
-    )
     val reason =
       "Your previous `respond` refused the user without first calling `find_capability` (see the " +
         "system prompt — a refusal not preceded by `find_capability` is a bug). The tool catalog " +
@@ -1491,18 +1432,9 @@ object Orchestrator {
         "describing what the user asked, review the matches, then decide whether to refuse based on " +
         "what discovery actually returns. If no relevant capability surfaces, refuse with the " +
         "specifics of what you searched and what wasn't there."
-    val diagnostic = Message(
-      participantId  = caller,
-      conversationId = convId,
-      topicId        = topicId,
-      role           = MessageRole.Tool,
-      content        = Vector(ResponseContent.Text(reason)),
-      disposition    = MessageDisposition.Failure(recoverable = true),
-      state          = EventState.Complete,
-      visibility     = MessageVisibility.Agents,
-      origin         = Some(syntheticInvokeId)
-    )
-    List[Signal](syntheticInvoke, diagnostic)
+    SyntheticDiagnostic("_refusal_challenge", caller, convId, topicId,
+      reason      = reason,
+      disposition = MessageDisposition.Failure(recoverable = true))
   }
 
   /** Bug #159 — decide whether a `find_capability` dispatch should be
@@ -1570,16 +1502,6 @@ object Orchestrator {
                                         convId: lightdb.id.Id[Conversation],
                                         topicId: lightdb.id.Id[Topic],
                                         normalizedKeywords: String): List[Signal] = {
-    val syntheticInvokeId = Event.id()
-    val syntheticInvoke = ToolInvoke(
-      toolName       = ToolName("_repeated_query_intercept"),
-      participantId  = caller,
-      conversationId = convId,
-      topicId        = topicId,
-      _id            = syntheticInvokeId,
-      state          = EventState.Complete,
-      internal       = true
-    )
     val reason =
       s"You already called `find_capability` with keywords `$normalizedKeywords` earlier this " +
         "turn. The ranker is deterministic — the same keywords will return the same hits. " +
@@ -1587,18 +1509,9 @@ object Orchestrator {
         "`find_capability` result Message in your context), or call `find_capability` again " +
         "with DIFFERENT keywords that describe the action shape more specifically. Repeating " +
         "the same search will not produce a different answer."
-    val diagnostic = Message(
-      participantId  = caller,
-      conversationId = convId,
-      topicId        = topicId,
-      role           = MessageRole.Tool,
-      content        = Vector(ResponseContent.Text(reason)),
-      disposition    = MessageDisposition.Failure(recoverable = true),
-      state          = EventState.Complete,
-      visibility     = MessageVisibility.Agents,
-      origin         = Some(syntheticInvokeId)
-    )
-    List[Signal](syntheticInvoke, diagnostic)
+    SyntheticDiagnostic("_repeated_query_intercept", caller, convId, topicId,
+      reason      = reason,
+      disposition = MessageDisposition.Failure(recoverable = true))
   }
 
 

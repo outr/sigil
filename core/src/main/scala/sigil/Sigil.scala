@@ -46,7 +46,7 @@ import sigil.vector.{NoOpVectorIndex, VectorIndex, VectorPoint, VectorPointId, V
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 
-trait Sigil {
+trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
 
   /**
    * The concrete [[SigilDB]] type this Sigil uses. Defaults to
@@ -165,28 +165,6 @@ trait Sigil {
     sigil.provider.SummarizationWork
   ) ++ workTypeRegistrations).distinct
 
-  /**
-   * App-defined [[sigil.viewer.ViewerStatePayload]] subtypes — the
-   * concrete UI-state shapes apps want persisted per-viewer.
-   *
-   * Returns a list of fabric `RW[? <: ViewerStatePayload]`. Use
-   * `summon[RW[MyPayload]]` for case-class payloads — the
-   * macro-derived RW carries each field's schema so the Spice Dart
-   * codegen can emit a real Dart class with all fields wired up.
-   * For case-object singletons, `RW.static(MySingleton)` is fine.
-   *
-   * Same shape as [[eventRegistrations]] / [[noticeRegistrations]] —
-   * a registration shape that returns values + folds through
-   * `RW.static` (the prior shape) silently drops case-class field
-   * schema, because `RW.static(instance)` is a singleton-shaped RW.
-   *
-   * Apps that don't use [[sigil.signal.RequestViewerState]] /
-   * [[sigil.signal.UpdateViewerState]] leave the default `Nil` —
-   * the primitive is opt-in. The framework ships no concrete
-   * subtype; "what state to persist" is a 100% app decision.
-   */
-  protected def viewerStatePayloadRegistrations: List[RW[? <: sigil.viewer.ViewerStatePayload]] = Nil
-
   /** Every Event RW the framework knows about — `CoreSignals.events ++ eventRegistrations`. */
   final def allEventRWs: List[RW[? <: Event]] = CoreSignals.events ++ eventRegistrations
 
@@ -300,16 +278,6 @@ trait Sigil {
     * uses `pinnedShareLimit`; this remains so existing callers
     * compile. */
   final def coreContextShareLimit: Double = pinnedShareLimit
-
-  /** Soft check on a proposed pinned-memory write — never fails the
-    * task. Apps that want hard rejection (e.g. regulated industries
-    * where blowing the inviolable share is a real problem) override
-    * this hook to fail with their own exception based on the same
-    * [[sigil.conversation.CoreContextValidator]] estimates the
-    * framework uses for warnings. Default: no-op for any memory,
-    * pinned or not. */
-  protected def validateCoreContextCap(proposed: ContextMemory): Task[Unit] =
-    Task.unit
 
   // -- tool catalog --
 
@@ -850,138 +818,6 @@ trait Sigil {
    * choose their own resolution path (env var, secret store, KMS).
    */
   def resolveApiKey(secretId: String): Task[Option[String]] = Task.pure(None)
-
-  /** Persist or update a [[sigil.provider.ProviderConfig]] record. */
-  def saveProviderConfig(config: sigil.provider.ProviderConfig): Task[sigil.provider.ProviderConfig] =
-    withDB(_.providerConfigs.transaction(_.upsert(
-      config.copy(modified = lightdb.time.Timestamp())
-    )))
-
-  /** Read a [[sigil.provider.ProviderConfig]] by id. Authz: caller's
-    * `accessibleSpaces` must include the record's space. */
-  def getProviderConfig(id: Id[sigil.provider.ProviderConfig],
-                        chain: List[ParticipantId]): Task[Option[sigil.provider.ProviderConfig]] =
-    withDB(_.providerConfigs.transaction(_.get(id))).flatMap {
-      case None => Task.pure(None)
-      case Some(c) =>
-        accessibleSpaces(chain).map { spaces =>
-          if (spaces.contains(c.space)) Some(c) else None
-        }
-    }
-
-  /** List every [[sigil.provider.ProviderConfig]] in `space` that
-    * the caller's chain authorizes. */
-  def listProviderConfigs(space: SpaceId,
-                          chain: List[ParticipantId]): Task[List[sigil.provider.ProviderConfig]] =
-    accessibleSpaces(chain).flatMap { spaces =>
-      if (!spaces.contains(space)) Task.pure(Nil)
-      else withDB(_.providerConfigs.transaction(_.list)).map(_.toList.filter(_.space == space))
-    }
-
-  /** Delete a [[sigil.provider.ProviderConfig]] by id. Authz check
-    * mirrors `getProviderConfig`. */
-  def deleteProviderConfig(id: Id[sigil.provider.ProviderConfig],
-                           chain: List[ParticipantId]): Task[Unit] =
-    getProviderConfig(id, chain).flatMap {
-      case None    => Task.unit
-      case Some(_) => withDB(_.providerConfigs.transaction(_.delete(id))).unit
-    }
-
-  /** Persist or update a [[sigil.provider.ProviderStrategyRecord]]. */
-  def saveProviderStrategy(record: sigil.provider.ProviderStrategyRecord): Task[sigil.provider.ProviderStrategyRecord] =
-    withDB(_.providerStrategies.transaction(_.upsert(
-      record.copy(modified = lightdb.time.Timestamp())
-    )))
-
-  /** Read a [[sigil.provider.ProviderStrategyRecord]] by id with
-    * `accessibleSpaces` authz. */
-  def getProviderStrategy(id: Id[sigil.provider.ProviderStrategyRecord],
-                          chain: List[ParticipantId]): Task[Option[sigil.provider.ProviderStrategyRecord]] =
-    withDB(_.providerStrategies.transaction(_.get(id))).flatMap {
-      case None => Task.pure(None)
-      case Some(r) =>
-        accessibleSpaces(chain).map { spaces =>
-          if (spaces.contains(r.space)) Some(r) else None
-        }
-    }
-
-  /** List every [[sigil.provider.ProviderStrategyRecord]] visible
-    * to the caller in `space`. The "visibility scope" — independent
-    * from which one is currently `assigned` to the space. */
-  def listProviderStrategies(space: SpaceId,
-                             chain: List[ParticipantId]): Task[List[sigil.provider.ProviderStrategyRecord]] =
-    accessibleSpaces(chain).flatMap { spaces =>
-      if (!spaces.contains(space)) Task.pure(Nil)
-      else withDB(_.providerStrategies.transaction(_.list)).map(_.toList.filter(_.space == space))
-    }
-
-  /** Delete a [[sigil.provider.ProviderStrategyRecord]] by id with
-    * authz. Also unassigns it from any space currently using it
-    * (cascading cleanup). */
-  def deleteProviderStrategy(id: Id[sigil.provider.ProviderStrategyRecord],
-                             chain: List[ParticipantId]): Task[Unit] =
-    getProviderStrategy(id, chain).flatMap {
-      case None    => Task.unit
-      case Some(_) =>
-        for {
-          // Cascade: any space whose assignment points at this record loses its assignment.
-          // Sigil bug #170 — N deletes share one assignments transaction.
-          assigns <- withDB(_.providerAssignments.transaction(_.list))
-          orphans  = assigns.toList.filter(_.strategyId == id)
-          _       <- withDB(_.providerAssignments.transaction { tx =>
-                       Task.sequence(orphans.map(o => tx.delete(o._id))).unit
-                     })
-          _       <- withDB(_.providerStrategies.transaction(_.delete(id))).unit
-        } yield ()
-    }
-
-  /** Assign a strategy to a space — replaces any existing
-    * assignment. Caller's chain must authorize the space. */
-  def assignProviderStrategy(space: SpaceId,
-                             strategyId: Id[sigil.provider.ProviderStrategyRecord],
-                             chain: List[ParticipantId]): Task[Unit] =
-    accessibleSpaces(chain).flatMap { spaces =>
-      if (!spaces.contains(space)) Task.unit
-      else withDB(_.providerAssignments.transaction(_.upsert(
-        sigil.provider.SpaceProviderAssignment(space, strategyId)
-      ))).unit
-    }
-
-  /** Remove a space's strategy assignment. The strategy record itself
-    * is unaffected. Caller's chain must authorize the space. */
-  def unassignProviderStrategy(space: SpaceId,
-                               chain: List[ParticipantId]): Task[Unit] =
-    accessibleSpaces(chain).flatMap { spaces =>
-      if (!spaces.contains(space)) Task.unit
-      else withDB(_.providerAssignments.transaction(_.delete(
-        sigil.provider.SpaceProviderAssignment.idFor(space)
-      ))).unit
-    }
-
-  /** Read the assignment record for a space (or `None` when no
-    * strategy is currently assigned). No authz check — the
-    * presence/absence of an assignment is benign metadata. */
-  def assignedProviderStrategy(space: SpaceId): Task[Option[Id[sigil.provider.ProviderStrategyRecord]]] =
-    withDB(_.providerAssignments.transaction(_.get(
-      sigil.provider.SpaceProviderAssignment.idFor(space)
-    ))).map(_.map(_.strategyId))
-
-  /** Materialize the strategy currently assigned to `space` into a
-    * live [[sigil.provider.ProviderStrategy]] instance. Returns
-    * `None` if no assignment exists or the assigned record can't
-    * be loaded — agent dispatch falls back to the agent's pinned
-    * `modelId` in that case.
-    *
-    * The materialization is straightforward today (defaults +
-    * routes → `ProviderStrategy.routed`); apps with custom strategy
-    * semantics override to return their own `ProviderStrategy`
-    * implementation regardless of the persisted record. */
-  def resolveProviderStrategy(space: SpaceId): Task[Option[sigil.provider.ProviderStrategy]] =
-    assignedProviderStrategy(space).flatMap {
-      case None => Task.pure(None)
-      case Some(strategyId) =>
-        withDB(_.providerStrategies.transaction(_.get(strategyId))).map(_.map(materializeStrategy))
-    }
 
   /** The model id stamped on the most recent agent [[Message]] in
     * `conversationId`, when one exists. Reads `Message.modelId`
@@ -1622,74 +1458,100 @@ trait Sigil {
     case _                       => Stream.empty
   }
 
-  private def runAgentTurn(agent: AgentParticipant,
-                           context: TurnContext): Stream[Signal] = {
-    val effectiveChain = context.chain.filterNot(_ == agent.id) :+ agent.id
-    val suggested      = context.turnInput.projectionFor(agent.id).suggestedTools
+  /** The result of per-turn model routing — the strategy chain, the
+    * classifier's `(WorkType, Complexity)` verdict, the candidate chain
+    * for that work type, per-candidate skip reasons, and the chosen
+    * model id (falling back to `agent.modelId` when no candidate
+    * supports the resolved complexity). Shared by `runAgentTurn` (which
+    * also publishes a `RouteResolved` control event and a fallback
+    * notice) and `resolveRoutedModelId` (the curator's budget-gate
+    * pre-resolution). */
+  private final case class RoutingResolution(strategyOpt: Option[ProviderStrategy],
+                                             userMsg: Option[sigil.event.Message],
+                                             routedWorkType: WorkType,
+                                             complexity: Complexity,
+                                             candidateChain: List[sigil.provider.ModelCandidate],
+                                             skipReasons: Map[Id[Model], String],
+                                             chosen: Option[sigil.provider.ModelCandidate],
+                                             modelId: Id[Model])
 
-    // Strategy resolution: Mode override beats space-level
-    // assignment beats agent's pinned modelId. The strategy returns
-    // ordered candidates for the agent's `workType`; the first
-    // available candidate's `modelId` is what this turn calls. Apps
-    // wanting cooldown-aware fallback across multiple turns can
-    // override `runAgentTurn` (or override `resolveProviderStrategy`
-    // to return a custom strategy that itself encapsulates retry).
+  /** Resolve per-turn model routing for `agent` in `conv`. Pure of any
+    * side effect — no `RouteResolved` publish, no fallback notice;
+    * callers layer those on. `ctx` is the [[TurnContext]] handed to the
+    * strategy's classifier callbacks: `runAgentTurn` passes the full
+    * turn context, `resolveRoutedModelId` passes a stub (curate hasn't
+    * run yet at that point). */
+  private final def resolveRouting(agent: AgentParticipant,
+                                   conv: Conversation,
+                                   ctx: TurnContext): Task[RoutingResolution] = {
+    // Mode-overrides-agent for work-type routing: a mode that
+    // intrinsically dictates a work shape routes the turn to the
+    // matching candidate chain even when the agent itself defaults to
+    // `ConversationWork`. Modes that don't pin a work type fall through
+    // to whatever the agent declares.
+    val effectiveWorkType: WorkType =
+      conv.currentMode.workType.getOrElse(agent.workType)
+    // Strategy resolution: conversation-level pin beats Mode override
+    // beats space-level assignment beats agent's pinned modelId.
     val strategyTask: Task[Option[ProviderStrategy]] =
-      context.conversation.pinnedModelId match {
-        // Conversation-level pin wins over mode and space strategies —
-        // pinned means the user explicitly chose this model for every
-        // dispatch in the conversation.
+      conv.pinnedModelId match {
         case Some(pinnedId) =>
           Task.pure(Some(ProviderStrategy.single(pinnedId)))
         case None =>
-          context.conversation.currentMode.strategyId match {
+          conv.currentMode.strategyId match {
             case Some(modeStrategyId) =>
               withDB(_.providerStrategies.transaction(_.get(modeStrategyId)))
                 .map(_.map(materializeStrategy))
             case None =>
-              resolveProviderStrategy(context.conversation.space)
+              resolveProviderStrategy(conv.space)
           }
       }
-
-    // Mode-overrides-agent for work-type routing: a mode that intrinsically
-    // dictates a work shape (`ScriptAuthoringMode = CodingWork`,
-    // `WebBrowserMode = AnalysisWork`) routes the turn to the matching
-    // candidate chain even when the agent itself defaults to
-    // `ConversationWork`. Modes that don't pin a work type fall through
-    // to whatever the agent declares.
-    val effectiveWorkType: WorkType =
-      context.conversation.currentMode.workType.getOrElse(agent.workType)
-
-    // Bug #128 — find the latest user-authored Message; classify
-    // (WorkType, Complexity) per user turn when the strategy opted
-    // in. Cached by `Sigil.classifyForRoute` so multiple agent
-    // iterations within one user turn share the round-trip.
+    // The latest user-authored Message — classifier input + the
+    // debounce anchor for the routing-fallback notice.
     val latestUserMessage: Task[Option[sigil.event.Message]] =
       withDB(_.events.transaction(_.list)).map { evs =>
         evs.iterator
-          .collect { case m: sigil.event.Message if m.conversationId == context.conversation._id => m }
+          .collect { case m: sigil.event.Message if m.conversationId == conv._id => m }
           .filter(m => !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId])
           .filter(_.role == sigil.event.MessageRole.Standard)
           .toList
           .sortBy(-_.timestamp.value)
           .headOption
       }.handleError(_ => Task.pure(None))
+    for {
+      strategyOpt <- strategyTask
+      userMsg     <- latestUserMessage
+      (routedWorkType, complexity) <- strategyOpt match {
+        case Some(strategy) => classifyForRoute(strategy, effectiveWorkType, conv, userMsg, ctx)
+        case None           => Task.pure((effectiveWorkType, Complexity.Medium))
+      }
+      candidateChain = strategyOpt.toList.flatMap(_.availableCandidates(routedWorkType))
+      skipReasons    = candidateChain.iterator.collect {
+        case c if !c.supportedComplexity.contains(complexity) =>
+          c.modelId -> s"supportedComplexity does not include $complexity"
+      }.toMap
+      chosen  = candidateChain.find(_.supportedComplexity.contains(complexity))
+      modelId = chosen.map(_.modelId).getOrElse(agent.modelId)
+    } yield RoutingResolution(strategyOpt, userMsg, routedWorkType, complexity,
+      candidateChain, skipReasons, chosen, modelId)
+  }
+
+  private def runAgentTurn(agent: AgentParticipant,
+                           context: TurnContext): Stream[Signal] = {
+    val effectiveChain = context.chain.filterNot(_ == agent.id) :+ agent.id
+    val suggested      = context.turnInput.projectionFor(agent.id).suggestedTools
 
     val resolved: Task[(Provider, Vector[Tool], Id[Model], GenerationSettings, List[sigil.role.Role])] =
       for {
-        strategyOpt <- strategyTask
-        userMsg     <- latestUserMessage
-        (routedWorkType, complexity) <- strategyOpt match {
-          case Some(strategy) => classifyForRoute(strategy, effectiveWorkType, context.conversation, userMsg, context)
-          case None           => Task.pure((effectiveWorkType, Complexity.Medium))
-        }
-        candidateChain = strategyOpt.toList.flatMap(_.availableCandidates(routedWorkType))
-        skipReasons    = candidateChain.iterator.collect {
-          case c if !c.supportedComplexity.contains(complexity) =>
-            c.modelId -> s"supportedComplexity does not include $complexity"
-        }.toMap
-        chosen       = candidateChain.find(_.supportedComplexity.contains(complexity))
-        modelId      = chosen.map(_.modelId).getOrElse(agent.modelId)
+        routing <- resolveRouting(agent, context.conversation, context)
+        strategyOpt    = routing.strategyOpt
+        userMsg        = routing.userMsg
+        routedWorkType = routing.routedWorkType
+        complexity     = routing.complexity
+        candidateChain = routing.candidateChain
+        skipReasons    = routing.skipReasons
+        chosen         = routing.chosen
+        modelId        = routing.modelId
         _ <- publishRouteResolved(
                agentId            = agent.id,
                conversation       = context.conversation,
@@ -2224,12 +2086,6 @@ trait Sigil {
    * [[sigil.vector.InMemoryVectorIndex]] in tests.
    */
   def vectorIndex: VectorIndex = NoOpVectorIndex
-
-  /** `true` when both [[embeddingProvider]] and [[vectorIndex]] are
-    * non-NoOp — the flag the framework checks before auto-embedding on
-    * persist or attempting vector-backed search. */
-  protected final def vectorWired: Boolean =
-    embeddingProvider.dimensions > 0 && (vectorIndex ne NoOpVectorIndex)
 
   /**
    * Pluggable text-to-speech / speech-to-text / image-generation
@@ -2798,114 +2654,6 @@ trait Sigil {
           publishTo(fromViewer, sigil.signal.ConversationHistorySnapshot(convId, window.toVector, hasMore))
         }
 
-      // -- viewer-state vocabulary --
-
-      case sigil.signal.RequestViewerState(scope) =>
-        val recordId = sigil.viewer.ViewerState.idFor(fromViewer, scope)
-        withDB(_.viewerStates.transaction(_.get(recordId))).flatMap { existing =>
-          publishTo(fromViewer, sigil.signal.ViewerStateSnapshot(scope, existing.map(_.payload)))
-        }
-
-      case sigil.signal.UpdateViewerState(scope, payload) =>
-        val record = sigil.viewer.ViewerState(
-          participantId = fromViewer,
-          scope = scope,
-          payload = payload,
-          modified = lightdb.time.Timestamp(),
-          _id = sigil.viewer.ViewerState.idFor(fromViewer, scope)
-        )
-        for {
-          _ <- withDB(_.viewerStates.transaction(_.upsert(record)))
-          // Broadcast to every live session for this viewer so other
-          // tabs / devices converge. `publishTo` fans out via the
-          // hub's per-viewer queue.
-          _ <- publishTo(fromViewer, sigil.signal.ViewerStateSnapshot(scope, Some(payload)))
-        } yield ()
-
-      case sigil.signal.DeleteViewerState(scope) =>
-        val recordId = sigil.viewer.ViewerState.idFor(fromViewer, scope)
-        for {
-          _ <- withDB(_.viewerStates.transaction(_.delete(recordId).map(_ => ())))
-                  .handleError(_ => Task.unit)
-          _ <- publishTo(fromViewer, sigil.signal.ViewerStateSnapshot(scope, None))
-        } yield ()
-
-      case sigil.signal.UpdateViewerStateDelta(scope, patch) =>
-        val recordId = sigil.viewer.ViewerState.idFor(fromViewer, scope)
-        val payloadRW = summon[fabric.rw.RW[sigil.viewer.ViewerStatePayload]]
-        withDB(_.viewerStates.transaction(_.get(recordId))).flatMap { existing =>
-          val mergedPayload: sigil.viewer.ViewerStatePayload = existing match {
-            case None =>
-              // First delta for this scope acts like a full upsert
-              // — the patch IS the initial state.
-              patch
-            case Some(prior) =>
-              // Deep-merge the patch's non-null JSON fields onto
-              // the current payload's JSON via fabric's object
-              // merge, then decode back through the polytype RW.
-              // Stripping nulls FIRST is what makes Option-typed
-              // patches express "untouched fields stay" — fabric's
-              // case-class RW emits `None` as JSON `null`, and the
-              // default merge would otherwise overlay those nulls
-              // onto the prior. Apps that need to clear a field to
-              // None pass the full state via [[UpdateViewerState]]
-              // instead.
-              val priorJson = payloadRW.read(prior.payload)
-              val patchJson = stripNulls(payloadRW.read(patch))
-              val merged    = priorJson.merge(patchJson)
-              payloadRW.write(merged)
-          }
-          val record = sigil.viewer.ViewerState(
-            participantId = fromViewer,
-            scope         = scope,
-            payload       = mergedPayload,
-            modified      = lightdb.time.Timestamp(),
-            _id           = recordId
-          )
-          for {
-            _ <- withDB(_.viewerStates.transaction(_.upsert(record)))
-            // Broadcast the delta — peers apply the same patch onto
-            // their existing local state. The originating session
-            // already has its merged copy; the delta is for the
-            // viewer's other tabs / devices.
-            _ <- publishTo(fromViewer, sigil.signal.ViewerStateDelta(scope, patch))
-          } yield ()
-        }
-
-      // -- stored-file vocabulary (BUGS.md #19 part 4) --
-
-      case sigil.signal.RequestStoredFileList(spaces) =>
-        listStoredFiles(fromViewer, spaces).flatMap { summaries =>
-          publishTo(fromViewer, sigil.signal.StoredFileListSnapshot(summaries))
-        }
-
-      case sigil.signal.RequestStoredFile(fileId) =>
-        fetchStoredFile(fileId, List(fromViewer)).flatMap {
-          case None => Task.unit
-          case Some((file, bytes)) =>
-            val payload = sigil.signal.StoredFileContent(
-              file = sigil.signal.StoredFileSummary.fromStoredFile(file),
-              base64Data = java.util.Base64.getEncoder.encodeToString(bytes)
-            )
-            publishTo(fromViewer, payload)
-        }
-
-      case sigil.signal.SaveStoredFile(_, contentType, base64Data, _, _) =>
-        // Default: the framework can't pick a SpaceId on the agent's
-        // behalf without app context, so we resolve through
-        // `externalizationSpaceForViewer(fromViewer)` (defaults to
-        // GlobalSpace). Apps that want per-conversation tenancy
-        // override that hook OR override `handleNotice` to take the
-        // conversationId on the SaveStoredFile into account.
-        externalizationSpaceForViewer(fromViewer).flatMap { space =>
-          val bytes = java.util.Base64.getDecoder.decode(base64Data)
-          storeBytes(space, bytes, contentType).flatMap { stored =>
-            publishTo(fromViewer, sigil.signal.StoredFileCreated(
-              sigil.signal.StoredFileSummary.fromStoredFile(stored)
-            ))
-          }
-        }
-
       // -- tool listing vocabulary (BUGS.md #38) --
 
       case sigil.signal.RequestToolList(spaces, kinds) =>
@@ -2913,32 +2661,14 @@ trait Sigil {
           publishTo(fromViewer, sigil.signal.ToolListSnapshot(summaries))
         }
 
+      // -- viewer-state + stored-file vocabularies --
+      // Handled by the ViewerStateOps mixin. The Notice subtypes there
+      // are disjoint from the framework-level ones above, so dispatch
+      // order is irrelevant.
+      case other if viewerStateNotices.isDefinedAt((other, fromViewer)) =>
+        viewerStateNotices((other, fromViewer))
+
       case _ => Task.unit
-    }
-
-  /** Resolve the [[SpaceId]] used when a viewer pushes a
-    * [[sigil.signal.SaveStoredFile]] without conversation scope.
-    * Default [[GlobalSpace]] — apps tune for per-user / per-tenant. */
-  def externalizationSpaceForViewer(viewer: ParticipantId): Task[SpaceId] =
-    Task.pure(GlobalSpace)
-
-  /** Resolve the list of [[sigil.signal.StoredFileSummary]] visible
-    * to a viewer, optionally filtered to a subset of spaces. Default
-    * walks `SigilDB.storedFiles` and filters by
-    * `accessibleSpaces(List(viewer))`. */
-  def listStoredFiles(viewer: ParticipantId,
-                      spaces: Option[Set[SpaceId]] = None,
-                      categories: Option[Set[sigil.storage.StoredFileCategory]] = None,
-                      includeExpired: Boolean = false): Task[List[sigil.signal.StoredFileSummary]] =
-    accessibleSpaces(List(viewer)).flatMap { authorized =>
-      val effective = spaces.fold(authorized)(_.intersect(authorized))
-      val now = lightdb.time.Timestamp()
-      withDB(_.storedFiles.transaction(_.list)).map(_.toList.collect {
-        case file if effective.contains(file.space)
-                  && categories.forall(_.contains(file.category))
-                  && (includeExpired || !file.isExpired(now)) =>
-          sigil.signal.StoredFileSummary.fromStoredFile(file)
-      })
     }
 
   /** Resolve the list of [[sigil.signal.ToolSummary]] visible to a
@@ -3520,245 +3250,6 @@ trait Sigil {
       indexSummary(stored).map(_ => stored)
     }
 
-  /** Persist a new [[ContextMemory]] and return the stored record.
-    * When vector search is wired, auto-embeds `memory.fact` and
-    * upserts into [[vectorIndex]] with payload
-    * `kind=memory, spaceId=…`.
-    *
-    * Pinned memories (`memory.pinned == true`) pass through the soft
-    * [[validateCoreContextCap]] hook (default no-op — apps that want
-    * hard rejection override and throw their own exception).
-    *
-    * If [[memoryClassifierModel]] is set and the supplied
-    * `memory.keywords` is empty, the framework runs a one-shot LLM
-    * classification (sync) to populate keywords + permanence + space
-    * before the write. The classifier respects caller-set fields:
-    * non-empty keywords skip the call entirely, explicit
-    * `pinned = true` is preserved, and a non-Global caller-set space
-    * is preserved. Apps that want fully manual control supply
-    * non-empty keywords. */
-  def persistMemory(memory: ContextMemory): Task[ContextMemory] =
-    validateCoreContextCap(memory).flatMap { _ =>
-      enrichMemoryClassification(memory, memory.createdBy.toList).flatMap { enriched =>
-        withDB(_.memories.transaction(_.upsert(enriched))).flatMap { stored =>
-          indexMemory(stored).map(_ => stored)
-        }
-      }
-    }
-
-  /**
-   * Upsert a keyed memory with versioning semantics:
-   *   - If no prior memory exists at `(spaceId, key)` → insert with
-   *     `validFrom = now`, return the new record.
-   *   - If the prior memory's `fact` matches → refresh metadata
-   *     (label, summary, tags, memoryType, modified) in place, keep
-   *     same `_id`. Returns the refreshed record.
-   *   - If the prior memory's `fact` differs → archive the prior
-   *     (`validUntil = now`, `supersededBy = new._id`) and insert the
-   *     new memory with `supersedes = prior._id`, `validFrom = now`.
-   *     Returns the new record.
-   *
-   * Empty `key` is rejected — un-keyed memories must use
-   * [[persistMemory]] (the single-shot path; no versioning).
-   */
-  def upsertMemoryByKey(memory: ContextMemory): Task[UpsertMemoryResult] = {
-    if (!memory.key.exists(_.nonEmpty))
-      Task.error(new IllegalArgumentException("upsertMemoryByKey requires Some(non-empty key); use persistMemory for un-keyed inserts"))
-    else validateCoreContextCap(memory).flatMap { _ =>
-      enrichMemoryClassification(memory, memory.createdBy.toList).flatMap(upsertMemoryByKeyImpl)
-    }
-  }
-
-  private def upsertMemoryByKeyImpl(memory: ContextMemory): Task[UpsertMemoryResult] =
-    withDB { db =>
-      db.memories.transaction { tx =>
-        import lightdb.filter.*
-        tx.query
-          .filter(m => (m.spaceIdValue === memory.spaceId.value) && (m.key === memory.key))
-          .toList
-          .flatMap { sameKey =>
-            sameKey.find(_.validUntil.isEmpty) match {
-              case None =>
-                val fresh = memory.copy(validFrom = Some(Timestamp()), modified = Timestamp())
-                tx.upsert(fresh).map(_ => UpsertMemoryResult.Stored(fresh))
-              case Some(prior) if prior.fact == memory.fact =>
-                val refreshed = prior.copy(
-                  label = memory.label,
-                  summary = memory.summary,
-                  keywords = memory.keywords,
-                  memoryType = memory.memoryType,
-                  confidence = memory.confidence,
-                  pinned = memory.pinned,
-                  extraContext = memory.extraContext,
-                  modified = Timestamp()
-                )
-                tx.upsert(refreshed).map(_ => UpsertMemoryResult.Refreshed(refreshed))
-              case Some(prior) =>
-                val now = Timestamp()
-                val fresh = memory.copy(
-                  supersedes = Some(prior._id),
-                  validFrom = Some(now),
-                  modified = now
-                )
-                val archived = prior.copy(
-                  validUntil = Some(now),
-                  supersededBy = Some(fresh._id),
-                  modified = now
-                )
-                tx.upsert(fresh).flatMap(_ => tx.upsert(archived)).map(_ => UpsertMemoryResult.Versioned(fresh, archived))
-            }
-          }
-      }
-    }.flatMap { result =>
-      indexMemory(result.memory).map(_ => result)
-    }
-
-  /**
-   * Convenience overload: persist a memory and auto-fill `createdBy`
-   * + `location` from the active chain. `createdBy` resolves to the
-   * immediate caller (`chain.last` — typically the agent that
-   * authored the memory); `location` resolves via [[locationForChain]]
-   * (walks chain for the user, consults [[locationFor]]). Either
-   * field is preserved when the caller already set it.
-   *
-   * Apps that have a `TurnContext` should prefer this over the bare
-   * [[persistMemory]] — every memory created from inside an agent
-   * turn benefits from auto-attribution + auto-location.
-   */
-  def persistMemoryFor(memory: ContextMemory,
-                       chain: List[sigil.participant.ParticipantId],
-                       conversationId: Id[Conversation]): Task[ContextMemory] =
-    enrich(memory, chain, conversationId).flatMap(persistMemory)
-
-  /** Convenience overload of [[upsertMemoryByKey]] with the same
-    * `createdBy` + `location` auto-fill behavior as [[persistMemoryFor]]. */
-  def upsertMemoryByKeyFor(memory: ContextMemory,
-                           chain: List[sigil.participant.ParticipantId],
-                           conversationId: Id[Conversation]): Task[UpsertMemoryResult] =
-    enrich(memory, chain, conversationId).flatMap(upsertMemoryByKey)
-
-  /**
-   * Seed a [[SpaceId]] with a list of declarative natural-language
-   * statements at account-creation time (or any moment the app has
-   * known facts that haven't yet shown up in conversation):
-   *
-   * {{{
-   *   sigil.initializeMemories(
-   *     space      = UserSpace(userId),
-   *     statements = List(
-   *       "My first name is Matt",
-   *       "My last name is Hicks",
-   *       "My email address is matt@outr.com",
-   *       "I'm 46 years old"
-   *     ),
-   *     modelId    = extractionModelId,
-   *     chain      = List(theUserId, theAgentId)
-   *   )
-   * }}}
-   *
-   * The framework wraps the statements in an extraction prompt and
-   * runs them through [[ExtractMemoriesTool]] via [[ConsultTool]] —
-   * one LLM round-trip per call regardless of statement count, so
-   * the model can disambiguate keys cross-statement (e.g. it
-   * produces `user.first_name` + `user.last_name` rather than
-   * collapsing both into `user.name`).
-   *
-   * Each result becomes a [[ContextMemory]] with
-   * `source = MemorySource.UserInput`, `status = MemoryStatus.Approved`,
-   * and `pinned = pinAll` (default `true` — declarative identity
-   * facts are almost always always-loaded). Keyed entries route
-   * through [[upsertMemoryByKey]] (idempotent — re-running with the
-   * same seeds refreshes rather than duplicates); keyless entries
-   * fall back to [[persistMemory]].
-   *
-   * Apps that want fine-grained per-fact control over pinning skip
-   * this helper and construct [[ContextMemory]] records directly.
-   */
-  def initializeMemories(space: SpaceId,
-                         statements: List[String],
-                         modelId: Id[Model],
-                         chain: List[sigil.participant.ParticipantId],
-                         pinAll: Boolean = true,
-                         systemPrompt: String = Sigil.DefaultInitializationSystemPrompt): Task[List[ContextMemory]] = {
-    val cleaned = statements.iterator.map(_.trim).filter(_.nonEmpty).toList
-    if (cleaned.isEmpty) Task.pure(Nil)
-    else {
-      val numbered = cleaned.iterator.zipWithIndex.map { case (s, i) => s"  ${i + 1}. $s" }.mkString("\n")
-      val userPrompt =
-        s"""Convert each statement below into a durable memory via the `extract_memories` tool.
-           |One memory per statement. Use a stable `key` rooted at the user's identity (e.g.
-           |"user.first_name", "user.email") so future updates can version the slot.
-           |
-           |Statements:
-           |$numbered""".stripMargin
-      sigil.tool.consult.ConsultTool.invoke[sigil.tool.consult.ExtractMemoriesInput](
-        sigil = this,
-        modelId = modelId,
-        chain = chain,
-        systemPrompt = systemPrompt,
-        userPrompt = userPrompt,
-        tool = sigil.tool.consult.ExtractMemoriesTool
-      ).flatMap {
-        case None => Task.pure(Nil)
-        case Some(result) =>
-          val kept = result.memories.filter(_.content.trim.nonEmpty)
-          Task.sequence(kept.map { m =>
-            val mem = ContextMemory(
-              fact       = m.content,
-              label      = if (m.label.trim.nonEmpty) m.label else m.key.getOrElse("memory"),
-              summary    = m.content,
-              source     = MemorySource.UserInput,
-              spaceId    = space,
-              key        = m.key,
-              keywords   = m.tags.toVector,
-              pinned     = pinAll,
-              status     = MemoryStatus.Approved,
-              createdBy  = chain.lastOption
-            )
-            // Seeded outside any conversation, so leave `conversationId`
-            // None and skip the `*For` variants' location lookup.
-            if (m.key.isDefined) upsertMemoryByKey(mem).map(_.memory)
-            else persistMemory(mem)
-          })
-      }
-    }
-  }
-
-  /** Internal helper — fold chain-derived `createdBy` + `location`
-    * onto a memory without overwriting fields the caller already set. */
-  private def enrich(memory: ContextMemory,
-                     chain: List[sigil.participant.ParticipantId],
-                     conversationId: Id[Conversation]): Task[ContextMemory] = {
-    val withCreator =
-      if (memory.createdBy.isDefined) memory
-      else chain.lastOption match {
-        case Some(p) => memory.copy(createdBy = Some(p))
-        case None    => memory
-      }
-    val withConv =
-      if (withCreator.conversationId.isDefined) withCreator
-      else withCreator.copy(conversationId = Some(conversationId))
-    if (withConv.location.isDefined) Task.pure(withConv)
-    else locationForChain(chain, conversationId).map {
-      case Some(place) => withConv.copy(location = Some(place))
-      case None        => withConv
-    }
-  }
-
-  /** Model used by [[persistMemory]] / [[upsertMemoryByKey]] to extract
-    * retrieval keywords for the memory's content (sync — blocks the
-    * write on a one-shot LLM call). When `None` the framework skips
-    * extraction and the memory persists with whatever keywords the
-    * caller supplied (often empty); the lexical retriever then matches
-    * only on label / summary / fact / tags via the existing tokenized
-    * `searchText` field, which works less well for memories whose
-    * surface vocabulary doesn't share tokens with future queries.
-    *
-    * Apps wanting topical retrieval to actually work over their memory
-    * collection set this to a small / fast model — the classification
-    * is a single short-list response per memory, not a reasoning task. */
-  def memoryClassifierModel: Option[Id[Model]] = None
-
   /** Per-conversation cache for non-critical memory retrieval results.
     * Inter-message-stable — populated lazily on first curate-time
     * read for a conversation, invalidated by
@@ -3787,160 +3278,6 @@ trait Sigil {
     * settled events. Idempotent. */
   def invalidateMemoryRetrievalCache(conversationId: Id[Conversation]): Unit =
     memoryRetrievalCache.invalidate(conversationId)
-
-  /** Run [[sigil.tool.consult.ClassifyMemoryTool]] against the memory's
-    * content when [[memoryClassifierModel]] is set and the caller didn't
-    * already supply keywords. Returns the input memory enriched with
-    * keywords + permanence (`pinned`) + space (or unchanged on opt-out
-    * / classification failure — never blocks persist on an LLM hiccup).
-    *
-    * Caller-set fields are respected:
-    *   - `memory.keywords` non-empty → skip the classifier entirely
-    *     (caller has explicit keywords; nothing to enrich).
-    *   - `memory.pinned == true` → keep pinned even if classifier says
-    *     `Once` (caller deliberately pinned).
-    *   - `memory.spaceId` other than [[sigil.GlobalSpace]] → keep the
-    *     caller's explicit space (the classifier's choice only fills
-    *     in when the caller defaulted to global). */
-  private def enrichMemoryClassification(memory: ContextMemory,
-                                          chain: List[sigil.participant.ParticipantId]
-                                         ): Task[ContextMemory] =
-    if (memory.keywords.nonEmpty) Task.pure(memory)
-    else memoryClassifierModel match {
-      case None => Task.pure(memory)
-      case Some(modelId) =>
-        for {
-          accessible <- memory.conversationId match {
-                          case Some(convId) => accessibleSpaces(chain, convId).map(_ + GlobalSpace)
-                          case None         => accessibleSpaces(chain).map(_ + GlobalSpace)
-                        }
-          recentMsg  <- recentUserMessageText(memory.conversationId)
-          enriched   <- runMemoryClassifier(memory, chain, modelId, accessible, recentMsg)
-        } yield enriched
-    }
-
-  private def runMemoryClassifier(memory: ContextMemory,
-                                   chain: List[sigil.participant.ParticipantId],
-                                   modelId: Id[Model],
-                                   accessibleSpaces: Set[SpaceId],
-                                   recentUserMessage: Option[String]): Task[ContextMemory] = {
-    val spaceCatalog =
-      if (accessibleSpaces.isEmpty) "  (none — only global available)"
-      else accessibleSpaces.toList.sortBy(_.value).map { s =>
-        val desc = s.description.fold("")(d => s" — $d")
-        s"  - value=\"${s.value}\" displayName=\"${s.displayName}\"$desc"
-      }.mkString("\n")
-    val rendered = renderMemoryForClassification(memory)
-    val userMsgBlock = recentUserMessage match {
-      case Some(text) => s"\n\nUser's recent message (the trigger for this save):\n$text"
-      case None       => ""
-    }
-    val systemPrompt =
-      """You classify a memory the framework is about to persist. Decide three things in one call:
-        |
-        |1. keywords (5-10 retrieval-shaped tokens)
-        |2. permanence ("Once" or "Always") — based on imperative cues in the user's recent message
-        |3. space (one accessible space `value` or "ambiguous") — most-specific applicable
-        |
-        |See the tool description for the rules. When unsure on permanence, default to "Once".
-        |When unsure on space, output "ambiguous" and supply ambiguityReason.""".stripMargin
-    val userPrompt =
-      s"""Memory to classify:
-         |$rendered
-         |
-         |Accessible spaces:
-         |$spaceCatalog$userMsgBlock
-         |
-         |Return the classification.""".stripMargin
-    val settings = {
-      val base = sigil.provider.GenerationSettings(
-        maxOutputTokens = Some(220),
-        reasoningMode = sigil.provider.ReasoningMode.Off
-      )
-      if (supportsParameter(modelId, "temperature")) base.copy(temperature = Some(0.0))
-      else base
-    }
-    sigil.tool.consult.ConsultTool.invoke[sigil.tool.consult.ClassifyMemoryInput](
-      sigil = this,
-      modelId = modelId,
-      chain = chain,
-      systemPrompt = systemPrompt,
-      userPrompt = userPrompt,
-      tool = sigil.tool.consult.ClassifyMemoryTool,
-      generationSettings = settings
-    ).map {
-      case None => memory
-      case Some(input) => applyClassifierOutput(memory, input, accessibleSpaces)
-    }.handleError { e =>
-      Task {
-        scribe.warn(s"memory classification failed (${e.getClass.getSimpleName}: ${e.getMessage}) — persisting unclassified")
-        memory
-      }
-    }
-  }
-
-  /** Apply classifier output to the memory record, respecting caller-set
-    * fields. Unrecognised permanence falls back to keeping the caller's
-    * value; ambiguous space leaves the caller's space intact and emits
-    * a scribe warning (apps that want to surface ambiguity to the user
-    * subscribe to the warning via their log infra, or pre-classify
-    * explicitly via [[sigil.Sigil.classifyMemoryDecision]]). */
-  private def applyClassifierOutput(memory: ContextMemory,
-                                     input: sigil.tool.consult.ClassifyMemoryInput,
-                                     accessibleSpaces: Set[SpaceId]): ContextMemory = {
-    val cleanedKeywords = input.keywords.iterator.map(_.trim.toLowerCase).filter(_.nonEmpty).toVector.distinct
-    val withKeywords = if (cleanedKeywords.isEmpty) memory else memory.copy(keywords = cleanedKeywords)
-
-    val withPinned = input.permanence match {
-      case sigil.conversation.Permanence.Always => withKeywords.copy(pinned = true)
-      case sigil.conversation.Permanence.Once   => withKeywords  // keep caller's pinned value (default false)
-    }
-
-    val classifierSpace = input.space.trim
-    val withSpace =
-      if (classifierSpace.equalsIgnoreCase("ambiguous")) {
-        val reason = input.ambiguityReason.getOrElse("(no reason supplied by classifier)")
-        val keyOrId = if (memory.key.nonEmpty) memory.key else memory._id.value
-        scribe.warn(
-          s"memory classifier returned 'ambiguous' for memory key='$keyOrId' " +
-            s"(fallback space='${memory.spaceId.value}'); reason: $reason"
-        )
-        withPinned
-      }
-      else if (memory.spaceId != GlobalSpace) withPinned  // caller picked explicitly
-      else accessibleSpaces.find(_.value == classifierSpace) match {
-        case Some(picked) => withPinned.copy(spaceId = picked)
-        case None         => withPinned
-      }
-
-    withSpace
-  }
-
-  /** Look up the most recent non-agent message text in a conversation —
-    * the LLM uses this to detect imperative cues. Returns None when no
-    * conversation context is available. */
-  private def recentUserMessageText(conversationId: Option[Id[Conversation]]): Task[Option[String]] =
-    conversationId match {
-      case None => Task.pure(None)
-      case Some(convId) =>
-        framesFor(convId).map { frames =>
-          frames.reverseIterator.collectFirst {
-            case t: sigil.conversation.ContextFrame.Text
-              if !t.participantId.isInstanceOf[sigil.participant.AgentParticipantId] => t.content
-          }
-        }
-    }
-
-  /** Render a memory in a compact form for the classifier. */
-  private def renderMemoryForClassification(memory: ContextMemory): String = {
-    val sb = new StringBuilder
-    sb.append(s"Label: ${memory.label}\n")
-    memory.key.foreach(k => sb.append(s"Key: $k\n"))
-    sb.append(s"Summary: ${memory.summary}\n")
-    sb.append(s"Fact: ${memory.fact}")
-    if (memory.keywords.nonEmpty) sb.append(s"\nExisting keywords: ${memory.keywords.mkString(", ")}")
-    sb.toString
-  }
 
   /** All versions of a keyed memory in `spaceId`, chronologically
     * (oldest first by `created`). */
@@ -4054,23 +3391,6 @@ trait Sigil {
       ))
     }.handleError { e =>
       Task(scribe.warn(s"Vector index failed for summary ${s._id.value}: ${e.getMessage}"))
-    }
-
-  private final def indexMemory(m: ContextMemory): Task[Unit] =
-    if (!vectorWired || m.fact.isEmpty) Task.unit
-    else embeddingProvider.embed(m.fact).flatMap { vec =>
-      vectorIndex.upsert(VectorPoint(
-        id = VectorPointId(m._id.value),
-        vector = vec,
-        payload = Map(
-          "kind" -> "memory",
-          "memoryId" -> m._id.value,
-          "spaceId" -> m.spaceId.value,
-          sigil.vector.HybridSearch.TextKey -> m.fact
-        )
-      ))
-    }.handleError { e =>
-      Task(scribe.warn(s"Vector index failed for memory ${m._id.value}: ${e.getMessage}"))
     }
 
   // -- search APIs --
@@ -5055,21 +4375,6 @@ trait Sigil {
     }
   }
 
-  /** Recursively drop fields whose value is JSON `null`. Used to
-    * pre-process [[sigil.signal.UpdateViewerStateDelta]] patches —
-    * fabric's case-class RW emits `None` as `null`, and the default
-    * merge would otherwise overlay those nulls onto the prior
-    * payload, defeating the "untouched fields stay" intent.
-    * Non-object JSON values pass through unchanged. */
-  private final def stripNulls(json: fabric.Json): fabric.Json = json match {
-    case obj: fabric.Obj =>
-      val kept = obj.value.iterator.collect {
-        case (k, v) if v != fabric.Null => (k, stripNulls(v))
-      }.toMap
-      fabric.Obj(kept)
-    case other => other
-  }
-
   /**
    * Push a [[sigil.signal.ViewerStateSnapshot]] for every persisted
    * scope the viewer owns. Used by apps from their connection /
@@ -5355,6 +4660,26 @@ trait Sigil {
     // (including self-emitted non-terminal tool results the agent acted on)
     // don't re-appear as triggers next time.
     val thisIterationStart = Timestamp(Nowish())
+    // The cap-hit, no-tool-call, and stall-intervention branches each
+    // recover by running ONE more iteration with `forceResponseSynthesis`
+    // pinning `tool_choice` to the respond family. The recursive call is
+    // identical across all three apart from `forcedReason`; this captures
+    // the common shape so the three sites can't drift.
+    def recurseForced(reason: ForcedSynthesisReason): Task[Unit] =
+      runAgentLoop(
+        agent                     = agent,
+        convId                    = convId,
+        claimed                   = claimed,
+        iteration                 = iteration + 1,
+        sinceTimestamp            = thisIterationStart,
+        greeting                  = false,
+        userVisibleSeen           = userVisibleSeen,
+        turnExtractorFired        = turnExtractorFired,
+        failurePublished          = failurePublished,
+        forceResponseSynthesis    = true,
+        forcedReason              = Some(reason),
+        discoveredCapabilitiesRef = discoveredCapabilitiesRef
+      )
     val stopFlag = Option(stopFlags.get(claimed._id))
     // Bug #74 — flips when a `respond` settles with `endsTurn = false`
     // (a progress / status update). The post-drain decision below
@@ -5564,39 +4889,16 @@ trait Sigil {
                     // run ONE forced-synthesis iteration so the
                     // agent actually responds rather than going
                     // silent. Same shape as #125's cap-hit.
-                    val syntheticInvokeId = Event.id()
-                    val syntheticInvoke = sigil.event.ToolInvoke(
-                      toolName       = sigil.tool.ToolName("_stall_detected"),
-                      participantId  = agent.id,
-                      conversationId = convId,
-                      topicId        = conv.currentTopicId,
-                      _id            = syntheticInvokeId,
-                      state          = EventState.Complete,
-                      internal       = true
-                    )
+                    val syntheticInvoke = sigil.orchestrator.SyntheticDiagnostic
+                      .invoke("_stall_detected", agent.id, convId, conv.currentTopicId)
                     val taggedDirective = intervention.message.copy(
                       role       = MessageRole.Tool,
                       visibility = MessageVisibility.Agents,
-                      origin     = Some(syntheticInvokeId)
+                      origin     = Some(syntheticInvoke._id)
                     )
                     publish(syntheticInvoke)
                       .flatMap(_ => publish(taggedDirective))
-                      .flatMap { _ =>
-                        runAgentLoop(
-                          agent                     = agent,
-                          convId                    = convId,
-                          claimed                   = claimed,
-                          iteration                 = nextIteration,
-                          sinceTimestamp            = thisIterationStart,
-                          greeting                  = false,
-                          userVisibleSeen           = userVisibleSeen,
-                          turnExtractorFired        = turnExtractorFired,
-                          failurePublished          = failurePublished,
-                          forceResponseSynthesis    = true,
-                          forcedReason              = Some(ForcedSynthesisReason.StallIntervention),
-                          discoveredCapabilitiesRef = discoveredCapabilitiesRef
-                        )
-                      }
+                      .flatMap(_ => recurseForced(ForcedSynthesisReason.StallIntervention))
                   case None =>
                     runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart,
                       userVisibleSeen = userVisibleSeen,
@@ -5620,16 +4922,8 @@ trait Sigil {
               // carry origin" invariant. Marked `internal = true` so
               // client UIs filter it out of the user-facing chip
               // stream — this is framework-internal model nudging.
-              val capInvokeId = Event.id()
-              val capInvoke = sigil.event.ToolInvoke(
-                toolName       = sigil.tool.ToolName("_cap_reached"),
-                participantId  = agent.id,
-                conversationId = convId,
-                topicId        = conv.currentTopicId,
-                _id            = capInvokeId,
-                state          = EventState.Complete,
-                internal       = true
-              )
+              val capInvoke = sigil.orchestrator.SyntheticDiagnostic
+                .invoke("_cap_reached", agent.id, convId, conv.currentTopicId)
               val capDiagnostic = Message(
                 participantId  = agent.id,
                 conversationId = convId,
@@ -5642,7 +4936,7 @@ trait Sigil {
                 state          = EventState.Complete,
                 role           = MessageRole.Tool,
                 visibility     = MessageVisibility.Agents,
-                origin         = Some(capInvokeId)
+                origin         = Some(capInvoke._id)
               )
               publish(capInvoke).flatMap(_ => publish(capDiagnostic)).flatMap { _ =>
                 // Bug #128 composition — when `escalateOnCapHit` is on,
@@ -5651,21 +4945,7 @@ trait Sigil {
                 // resolves to whichever model in the chain supports
                 // the elevated tier. No-op when the flag is off.
                 escalateForCapHit(convId).flatMap(_ =>
-                  runAgentLoop(
-                    agent                     = agent,
-                    convId                    = convId,
-                    claimed                   = claimed,
-                    iteration                 = iteration + 1,
-                    sinceTimestamp            = thisIterationStart,
-                    greeting                  = false,
-                    userVisibleSeen           = userVisibleSeen,
-                    turnExtractorFired        = turnExtractorFired,
-                    failurePublished          = failurePublished,
-                    forceResponseSynthesis    = true,
-                    forcedReason              = Some(ForcedSynthesisReason.CapHit),
-                    discoveredCapabilitiesRef = discoveredCapabilitiesRef
-                  )
-                )
+                  recurseForced(ForcedSynthesisReason.CapHit))
               }
             case true =>
               // Cap hit on the forced-synthesis iteration too. The model
@@ -5695,20 +4975,7 @@ trait Sigil {
                   Task.error(buildRunawayException(
                     agent, conv, iteration, maxAgentIterations, forcedReason)))
               else
-                runAgentLoop(
-                  agent                     = agent,
-                  convId                    = convId,
-                  claimed                   = claimed,
-                  iteration                 = iteration + 1,
-                  sinceTimestamp            = thisIterationStart,
-                  greeting                  = false,
-                  userVisibleSeen           = userVisibleSeen,
-                  turnExtractorFired        = turnExtractorFired,
-                  failurePublished          = failurePublished,
-                  forceResponseSynthesis    = true,
-                  forcedReason              = Some(ForcedSynthesisReason.NoToolCall),
-                  discoveredCapabilitiesRef = discoveredCapabilitiesRef
-                )
+                recurseForced(ForcedSynthesisReason.NoToolCall)
             }
           }
         }
@@ -6222,71 +5489,31 @@ trait Sigil {
     }
 
   /** Sigil bug #205 — resolve the model id this turn will route to,
-    * before [[curate]] runs. Mirrors the routing logic in `dispatch`
-    * (mode-overrides-agent work type, strategy chain, classifier
-    * output, candidate selection), but uses a stub TurnContext for
-    * the classifier callbacks since the full one (with curated
-    * turnInput) isn't yet available.
+    * before [[curate]] runs. Delegates to the shared [[resolveRouting]]
+    * helper (same logic `runAgentTurn` uses), but passes a stub
+    * TurnContext for the classifier callbacks since the full one (with
+    * curated turnInput) isn't yet available.
     *
-    * `classifierMemo` keys on the user message id, so the duplicate
-    * classifier call inside `dispatch` later in the turn hits the
-    * cache and adds no LLM round-trip cost. */
+    * `classifyForRoute` memoizes on the user message id, so the
+    * duplicate classifier call inside `runAgentTurn` later in the turn
+    * hits the cache and adds no LLM round-trip cost. */
   private final def resolveRoutedModelId(agent: AgentParticipant,
                                          conv: Conversation,
                                          chain: List[ParticipantId],
                                          claimedId: Id[Event]): Task[Id[Model]] = {
-    val effectiveWorkType: WorkType =
-      conv.currentMode.workType.getOrElse(agent.workType)
-    val strategyTask: Task[Option[ProviderStrategy]] =
-      conv.pinnedModelId match {
-        case Some(pinnedId) => Task.pure(Some(ProviderStrategy.single(pinnedId)))
-        case None =>
-          conv.currentMode.strategyId match {
-            case Some(modeStrategyId) =>
-              withDB(_.providerStrategies.transaction(_.get(modeStrategyId)))
-                .map(_.map(materializeStrategy))
-            case None =>
-              resolveProviderStrategy(conv.space)
-          }
-      }
-    val latestUserMessage: Task[Option[sigil.event.Message]] =
-      withDB(_.events.transaction(_.list)).map { evs =>
-        evs.iterator
-          .collect { case m: sigil.event.Message if m.conversationId == conv._id => m }
-          .filter(m => !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId])
-          .filter(_.role == sigil.event.MessageRole.Standard)
-          .toList
-          .sortBy(-_.timestamp.value)
-          .headOption
-      }.handleError(_ => Task.pure(None))
-    for {
-      strategyOpt <- strategyTask
-      userMsg     <- latestUserMessage
-      modelId     <- strategyOpt match {
-        case None => Task.pure(agent.modelId)
-        case Some(strategy) =>
-          // Stub TurnContext for classifier callbacks. `turnInput` is
-          // empty because curate hasn't run yet — classifiers that
-          // need full context override the strategy's classifier
-          // implementation entirely; the default classifiers only
-          // read userText + the conversation reachable through the
-          // stub.
-          val stubCtx = TurnContext(
-            sigil               = this,
-            chain               = chain,
-            conversation        = conv,
-            turnInput           = sigil.conversation.TurnInput(sigil.conversation.ConversationView(conversationId = conv._id)),
-            currentAgentStateId = Some(claimedId)
-          )
-          classifyForRoute(strategy, effectiveWorkType, conv, userMsg, stubCtx).map {
-            case (wt, complexity) =>
-              val chain = strategy.availableCandidates(wt)
-              chain.find(_.supportedComplexity.contains(complexity))
-                .map(_.modelId)
-                .getOrElse(agent.modelId)
-          }
-      }
-    } yield modelId
+    // Stub TurnContext for classifier callbacks. `turnInput` is empty
+    // because curate hasn't run yet — classifiers that need full
+    // context override the strategy's classifier implementation
+    // entirely; the default classifiers only read userText + the
+    // conversation reachable through the stub.
+    val stubCtx = TurnContext(
+      sigil               = this,
+      chain               = chain,
+      conversation        = conv,
+      turnInput           = sigil.conversation.TurnInput(sigil.conversation.ConversationView(conversationId = conv._id)),
+      currentAgentStateId = Some(claimedId)
+    )
+    resolveRouting(agent, conv, stubCtx).map(_.modelId)
   }
 
   private final def newTriggersExist(agent: AgentParticipant,
