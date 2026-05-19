@@ -7,7 +7,7 @@ import rapid.Task
 import sigil.TurnContext
 import sigil.storage.{FileVersion, WriteResult}
 import sigil.tool.model.{EditAtRangeInput, EditAtRangeOutput}
-import sigil.tool.{ToolExample, ToolName, ToolResult, TypedOutputTool}
+import sigil.tool.{PlaceholderInputDetector, ToolExample, ToolName, ToolResult, TypedOutputTool}
 
 /**
  * Position-based file edit. Replaces the half-open range
@@ -59,7 +59,13 @@ final class EditAtRangeTool(context: FileSystemContext)
 
   override def paginate: Boolean = false
 
-  override protected def executeTypedResult(input: EditAtRangeInput, ctx: TurnContext): Task[ToolResult[EditAtRangeOutput]] = {
+  override protected def executeTypedResult(input: EditAtRangeInput, ctx: TurnContext): Task[ToolResult[EditAtRangeOutput]] =
+    PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {
+      case Some(reason) => Task.pure(ToolResult.failure(message = reason))
+      case None        => runEdit(input, ctx)
+    }
+
+  private def runEdit(input: EditAtRangeInput, ctx: TurnContext): Task[ToolResult[EditAtRangeOutput]] = {
     val argsJson =
       try Some(JsonFormatter.Compact(summon[RW[EditAtRangeInput]].read(input)))
       catch { case _: Throwable => None }

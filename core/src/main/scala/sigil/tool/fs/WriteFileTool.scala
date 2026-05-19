@@ -5,7 +5,7 @@ import rapid.Task
 import sigil.TurnContext
 import sigil.storage.{FileVersion, WriteResult}
 import sigil.tool.model.{WriteFileInput, WriteFileOutput}
-import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
+import sigil.tool.{PlaceholderInputDetector, ToolExample, ToolName, ToolResult, TypedOutputTool}
 
 /**
  * Write `content` (UTF-8) to `filePath`, creating parent directories
@@ -42,7 +42,13 @@ final class WriteFileTool(context: FileSystemContext)
   ) with sigil.tool.DestructiveExternalTool {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: WriteFileInput, ctx: TurnContext): Task[WriteFileOutput] =
+  override protected def executeTypedResult(input: WriteFileInput, ctx: TurnContext): Task[ToolResult[WriteFileOutput]] =
+    PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {
+      case Some(reason) => Task.pure(ToolResult.failure(message = reason))
+      case None        => runWrite(input, ctx).map(ToolResult.success(_))
+    }
+
+  private def runWrite(input: WriteFileInput, ctx: TurnContext): Task[WriteFileOutput] =
     WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>
       input.expectedHash match {
         case None =>

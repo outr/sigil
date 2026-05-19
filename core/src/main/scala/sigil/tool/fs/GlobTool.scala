@@ -4,7 +4,7 @@ import rapid.{Stream, Task}
 import sigil.TurnContext
 import sigil.tool.model.GlobInput
 import sigil.tool.output.{Node, PaginatedTool}
-import sigil.tool.{ToolExample, ToolName}
+import sigil.tool.{PlaceholderInputDetector, ToolExample, ToolName}
 
 /**
  * List files under `basePath` matching a glob pattern. Paginated:
@@ -29,11 +29,16 @@ final class GlobTool(context: FileSystemContext) extends PaginatedTool[GlobInput
   override def preferIfNoBetter: Boolean = true
 
   override protected def executeStream(input: GlobInput, ctx: TurnContext): Stream[Node[GlobEntry]] =
-    Stream.force(
-      WorkspacePathResolver.resolve(ctx, input.basePath).flatMap { base =>
-        context.listFiles(base, input.pattern, input.maxResults).map { paths =>
-          Stream.fromIterator(Task.pure(paths.iterator.map(p => Node.leaf(GlobEntry(p)))))
-        }
-      }
-    )
+    PlaceholderInputDetector.validateNoPlaceholders("basePath" -> input.basePath) match {
+      case Some(reason) =>
+        Stream.force(Task.error(new RuntimeException(reason)))
+      case None =>
+        Stream.force(
+          WorkspacePathResolver.resolve(ctx, input.basePath).flatMap { base =>
+            context.listFiles(base, input.pattern, input.maxResults).map { paths =>
+              Stream.fromIterator(Task.pure(paths.iterator.map(p => Node.leaf(GlobEntry(p)))))
+            }
+          }
+        )
+    }
 }

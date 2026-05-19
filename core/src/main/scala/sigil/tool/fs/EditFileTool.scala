@@ -6,7 +6,7 @@ import lightdb.time.Timestamp
 import rapid.Task
 import sigil.TurnContext
 import sigil.storage.{FileVersion, WriteResult}
-import sigil.tool.{ToolExample, ToolName, ToolResult, TypedOutputTool}
+import sigil.tool.{PlaceholderInputDetector, ToolExample, ToolName, ToolResult, TypedOutputTool}
 import sigil.tool.model.{EditFileInput, EditFileOutput}
 
 import java.util.regex.Pattern
@@ -60,6 +60,12 @@ final class EditFileTool(context: FileSystemContext)
     * whose typed payload the agent might gloss over and incorrectly
     * report as "I edited the file." */
   override protected def executeTypedResult(input: EditFileInput, ctx: TurnContext): Task[ToolResult[EditFileOutput]] =
+    PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {
+      case Some(reason) => Task.pure(ToolResult.failure(message = reason))
+      case None        => runEdit(input, ctx)
+    }
+
+  private def runEdit(input: EditFileInput, ctx: TurnContext): Task[ToolResult[EditFileOutput]] =
     WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>
       context.readFile(resolved).flatMap { content =>
         val pattern = Pattern.quote(input.oldString)

@@ -29,17 +29,31 @@ trait BspToolSupport extends sigil.tool.Tool {
 
   override def toolchain: Option[String] = Some("bsp")
 
+  /** Guard the BSP tool's input against schema-leaked placeholder
+    * values ("projectRoot": "string", etc.) — see
+    * [[sigil.tool.PlaceholderInputDetector]]. Returns a placeholder-
+    * rejection failure when any of `fields` is a recognised
+    * placeholder; returns `None` to let the tool run. Tools call this
+    * in their `executeTyped` prelude before `withSessionTyped`. */
+  protected def validatePlaceholders(fields: (String, String)*): Option[String] =
+    sigil.tool.PlaceholderInputDetector.validateNoPlaceholders(fields*)
+
   protected def withSession(projectRoot: String, context: TurnContext)
                            (body: BspSession => Task[String]): Stream[Event] = {
-    val task = manager.session(projectRoot).flatMap { session =>
-      installProgressCallback(session, context)
-      body(session)
-        .map(text => reply(context, text, isError = false))
-        .guarantee(Task(session.client.setStatusCallback(None)))
-    }.handleError { e =>
-      Task.pure(reply(context, s"BSP error: ${e.getMessage}", isError = true))
+    validatePlaceholders("projectRoot" -> projectRoot) match {
+      case Some(reason) =>
+        Stream.emit(reply(context, reason, isError = true))
+      case None =>
+        val task = manager.session(projectRoot).flatMap { session =>
+          installProgressCallback(session, context)
+          body(session)
+            .map(text => reply(context, text, isError = false))
+            .guarantee(Task(session.client.setStatusCallback(None)))
+        }.handleError { e =>
+          Task.pure(reply(context, s"BSP error: ${e.getMessage}", isError = true))
+        }
+        Stream.force(task.map(Stream.emit))
     }
-    Stream.force(task.map(Stream.emit))
   }
 
   /** Route BSP-server notifications (log lines, taskStart /
@@ -80,8 +94,12 @@ trait BspToolSupport extends sigil.tool.Tool {
                                          context: TurnContext,
                                          onError: String => Output)
                                         (body: BspSession => Task[Output]): Task[Output] =
-    manager.session(projectRoot).flatMap { session =>
-      installProgressCallback(session, context)
-      body(session).guarantee(Task(session.client.setStatusCallback(None)))
-    }.handleError(e => Task.pure(onError(s"BSP error: ${e.getMessage}")))
+    validatePlaceholders("projectRoot" -> projectRoot) match {
+      case Some(reason) => Task.pure(onError(reason))
+      case None =>
+        manager.session(projectRoot).flatMap { session =>
+          installProgressCallback(session, context)
+          body(session).guarantee(Task(session.client.setStatusCallback(None)))
+        }.handleError(e => Task.pure(onError(s"BSP error: ${e.getMessage}")))
+    }
 }

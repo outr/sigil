@@ -128,7 +128,22 @@ final class DispatchWorkersTool(scriptExecutor: Option[ScriptExecutor] = None)
     resolveItems(input.items, ctx).flatMap { items =>
       val totalItems = items.size
       val capExceeded = totalItems > input.maxItems
-      resolveWorkerModelId(input, ctx).flatMap { resolvedModelId =>
+      if (items.isEmpty && input.confirmed) {
+        Task.pure(DispatchWorkersOutput.Dispatched(
+          totalItems      = 0,
+          successCount    = 0,
+          failureCount    = 0,
+          results         = Nil,
+          resolvedModelId = "",
+          abortReason     = Some(
+            "dispatch_workers received an empty items list with confirmed=true. " +
+              "There's nothing to dispatch. If you meant to send specific items, " +
+              "either pass them inline via `items: { type: \"FromList\", items: [...] }` " +
+              "or reference a prior tool's output via `items: { type: \"FromCall\", " +
+              "callId: \"<prior call id>\" }`."
+          )
+        ))
+      } else resolveWorkerModelId(input, ctx).flatMap { resolvedModelId =>
         if (!input.confirmed) {
           val previewLimit = math.min(totalItems, 200)
           val abortReason: Option[String] =

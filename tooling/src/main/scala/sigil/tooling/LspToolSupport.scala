@@ -31,6 +31,16 @@ trait LspToolSupport extends sigil.tool.Tool {
 
   override def toolchain: Option[String] = Some("lsp")
 
+  /** Guard the LSP tool's input against schema-leaked placeholder
+    * values ("filePath": "string", etc.) — see
+    * [[sigil.tool.PlaceholderInputDetector]]. Returns a placeholder-
+    * rejection failure when any of `fields` is a recognised
+    * placeholder; returns `None` to let the tool run. Tools call this
+    * in their `executeTyped` prelude before `withOpenDocumentTyped` /
+    * `withSessionTyped`. */
+  protected def validatePlaceholders(fields: (String, String)*): Option[String] =
+    sigil.tool.PlaceholderInputDetector.validateNoPlaceholders(fields*)
+
   /** Run `body` against a session for `languageId` rooted appropriately
     * for `filePath`. Wraps every error path (no config / spawn failure
     * / RPC error) into a single Stream emission carrying an explanatory
@@ -40,19 +50,24 @@ trait LspToolSupport extends sigil.tool.Tool {
                             filePath: String,
                             context: TurnContext)
                            (body: (LspSession, String, String) => Task[String]): Stream[Event] = {
-    val task = manager.configFor(languageId).flatMap {
+    validatePlaceholders("languageId" -> languageId, "filePath" -> filePath) match {
+      case Some(reason) =>
+        Stream.emit(reply(context, reason, isError = true))
       case None =>
-        Task.pure(reply(context, s"No LspServerConfig persisted for '$languageId'.", isError = true))
-      case Some(config) =>
-        val root = manager.resolveRoot(filePath, config.rootMarkers)
-        val uri = new File(filePath).toURI.toString
-        manager.session(languageId, root).flatMap { session =>
-          body(session, uri, root).map(text => reply(context, text, isError = false))
-        }.handleError { e =>
-          Task.pure(reply(context, s"LSP error: ${e.getMessage}", isError = true))
+        val task = manager.configFor(languageId).flatMap {
+          case None =>
+            Task.pure(reply(context, s"No LspServerConfig persisted for '$languageId'.", isError = true))
+          case Some(config) =>
+            val root = manager.resolveRoot(filePath, config.rootMarkers)
+            val uri = new File(filePath).toURI.toString
+            manager.session(languageId, root).flatMap { session =>
+              body(session, uri, root).map(text => reply(context, text, isError = false))
+            }.handleError { e =>
+              Task.pure(reply(context, s"LSP error: ${e.getMessage}", isError = true))
+            }
         }
+        Stream.force(task.map(Stream.emit))
     }
-    Stream.force(task.map(Stream.emit))
   }
 
   /** Convenience around [[withSession]] that also calls `didOpen` on
@@ -107,6 +122,16 @@ trait LspToolSupport extends sigil.tool.Tool {
                                          context: TurnContext,
                                          onError: String => Output)
                                         (body: (LspSession, String, String) => Task[Output]): Task[Output] =
+    validatePlaceholders("languageId" -> languageId, "filePath" -> filePath) match {
+      case Some(reason) => Task.pure(onError(reason))
+      case None         => withSessionTypedResolved(languageId, filePath, context, onError)(body)
+    }
+
+  private def withSessionTypedResolved[Output](languageId: String,
+                                               filePath: String,
+                                               context: TurnContext,
+                                               onError: String => Output)
+                                              (body: (LspSession, String, String) => Task[Output]): Task[Output] =
     manager.configFor(languageId).flatMap {
       case None => Task.pure(onError(s"No LspServerConfig persisted for '$languageId'."))
       case Some(config) =>
