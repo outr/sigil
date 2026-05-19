@@ -1407,15 +1407,20 @@ object Provider {
 
   /** Render an elapsed-millis interval as a short "ago" string -- `Ns`
     * for seconds, `Nm` for minutes, `Nh` for hours, `Nd` for days.
-    * Used by the prompt's "Recently used tools" + "Repeated tool
-    * calls" sections so the agent reads "30s ago" / "5m ago" without
-    * needing wall-clock math. Inputs below one second collapse to
-    * `0s`. */
+    * Bucketed to coarse stable windows. The agent doesn't need
+    * stopwatch precision for duplicate-call detection; categorical
+    * recency ("just now" vs "earlier today" vs "yesterday") is the
+    * load-bearing signal. Stable bucket strings also keep the
+    * rendered system prompt deterministic across short replay
+    * windows, which lets recorded fixtures match on the second turn
+    * of a multi-turn run. */
   def humanizeAgo(elapsedMs: Long): String = {
     val seconds = math.max(0L, elapsedMs / 1000L)
-    if (seconds < 60) s"${seconds}s ago"
-    else if (seconds < 3600) s"${seconds / 60}m ago"
-    else if (seconds < 86400) s"${seconds / 3600}h ago"
-    else s"${seconds / 86400}d ago"
+    if (seconds < 60) "just now"
+    else if (seconds < 600) "moments ago"
+    else if (seconds < 3600) "recently"
+    else if (seconds < 86400) "earlier today"
+    else if (seconds < 604800) "earlier this week"
+    else "a while ago"
   }
 }

@@ -1,0 +1,41 @@
+{"requestHash":"33ed7b279db06f4cb0142cbf5c2c294b6fb8d9d0b3837c589c09f70e881e8387","recordedAt":1779155183170}
+{"text":"The","type":"ThinkingDelta"}
+{"text":" child","type":"ThinkingDelta"}
+{"text":" worker","type":"ThinkingDelta"}
+{"text":" has","type":"ThinkingDelta"}
+{"text":" been","type":"ThinkingDelta"}
+{"text":" successfully","type":"ThinkingDelta"}
+{"text":" spawned","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":" Now","type":"ThinkingDelta"}
+{"text":" I","type":"ThinkingDelta"}
+{"text":" need","type":"ThinkingDelta"}
+{"text":" to","type":"ThinkingDelta"}
+{"text":" emit","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" confirmation","type":"ThinkingDelta"}
+{"text":" message","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":22,"totalTokens":22,"isEstimated":true},"type":"Usage"}
+{"text":" as","type":"ThinkingDelta"}
+{"text":" instructed","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":"\n","type":"ThinkingDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" child","type":"TextDelta"}
+{"text":"-worker","type":"TextDelta"}
+{"text":" spawned","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" ready","type":"TextDelta"}
+{"text":" to","type":"TextDelta"}
+{"text":" complete","type":"TextDelta"}
+{"text":" its","type":"TextDelta"}
+{"text":" task","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":42,"totalTokens":42,"isEstimated":true},"type":"Usage"}
+{"text":"\n\n","type":"TextDelta"}
+{"callId":"692f78cd5","toolName":"complete_task","type":"ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":42,"totalTokens":42,"isEstimated":true},"type":"Usage"}
+{"callId":"692f78cd5","input":{"summary":"Spawned a child-worker with role \"child-worker\" that was instructed to reply \"Complete: child-done\" and finished immediately. The child worker was created with task ID w9I6XMOumq83HD66Pb81XzNwv4x5NLCb and is now running its assigned task in its own scratchpad conversation.","type":"CompleteTaskInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":1582,"completionTokens":137,"totalTokens":1719,"isEstimated":false},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

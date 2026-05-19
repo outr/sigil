@@ -1,4 +1,4 @@
-{"requestHash":"5d1d7fe8d7593b6fc01089de5b5e15567cc07bb545921ab8feb4f716e537f2df","recordedAt":1779145999963}
+{"requestHash":"5d1d7fe8d7593b6fc01089de5b5e15567cc07bb545921ab8feb4f716e537f2df","recordedAt":1779154927483}
 {"text":"The","type":"ThinkingDelta"}
 {"text":" user","type":"ThinkingDelta"}
 {"text":" wants","type":"ThinkingDelta"}
@@ -6,55 +6,85 @@
 {"text":" to","type":"ThinkingDelta"}
 {"text":" ask","type":"ThinkingDelta"}
 {"text":" them","type":"ThinkingDelta"}
+{"text":" which","type":"ThinkingDelta"}
+{"text":" backend","type":"ThinkingDelta"}
+{"text":" language","type":"ThinkingDelta"}
+{"text":" they","type":"ThinkingDelta"}
+{"text":" want","type":"ThinkingDelta"}
 {"text":" to","type":"ThinkingDelta"}
 {"text":" pick","type":"ThinkingDelta"}
-{"text":" between","type":"ThinkingDelta"}
+{"text":" from","type":"ThinkingDelta"}
 {"text":" Python","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":20,"totalTokens":20,"isEstimated":true},"type":"Usage"}
 {"text":",","type":"ThinkingDelta"}
 {"text":" Node","type":"ThinkingDelta"}
 {"text":".js","type":"ThinkingDelta"}
 {"text":",","type":"ThinkingDelta"}
 {"text":" or","type":"ThinkingDelta"}
-{"usage":{"promptTokens":0,"completionTokens":16,"totalTokens":16,"isEstimated":true},"type":"Usage"}
 {"text":" Go","type":"ThinkingDelta"}
-{"text":" for","type":"ThinkingDelta"}
-{"text":" a","type":"ThinkingDelta"}
-{"text":" backend","type":"ThinkingDelta"}
-{"text":" language","type":"ThinkingDelta"}
 {"text":".","type":"ThinkingDelta"}
 {"text":" This","type":"ThinkingDelta"}
 {"text":" is","type":"ThinkingDelta"}
 {"text":" a","type":"ThinkingDelta"}
+{"text":" simple","type":"ThinkingDelta"}
+{"text":" question","type":"ThinkingDelta"}
+{"text":" that","type":"ThinkingDelta"}
+{"text":" requires","type":"ThinkingDelta"}
+{"text":" me","type":"ThinkingDelta"}
+{"text":" to","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":36,"totalTokens":36,"isEstimated":true},"type":"Usage"}
+{"text":" use","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" respond","type":"ThinkingDelta"}
+{"text":"_options","type":"ThinkingDelta"}
+{"text":" tool","type":"ThinkingDelta"}
+{"text":" to","type":"ThinkingDelta"}
+{"text":" present","type":"ThinkingDelta"}
+{"text":" them","type":"ThinkingDelta"}
+{"text":" with","type":"ThinkingDelta"}
+{"text":" these","type":"ThinkingDelta"}
+{"text":" choices","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":"\n\n","type":"ThinkingDelta"}
+{"text":"This","type":"ThinkingDelta"}
+{"text":" is","type":"ThinkingDelta"}
+{"text":" a","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":55,"totalTokens":55,"isEstimated":true},"type":"Usage"}
 {"text":" straightforward","type":"ThinkingDelta"}
-{"text":" request","type":"ThinkingDelta"}
+{"text":" action","type":"ThinkingDelta"}
+{"text":" -","type":"ThinkingDelta"}
+{"text":" I","type":"ThinkingDelta"}
+{"text":" need","type":"ThinkingDelta"}
 {"text":" to","type":"ThinkingDelta"}
 {"text":" present","type":"ThinkingDelta"}
 {"text":" options","type":"ThinkingDelta"}
 {"text":" to","type":"ThinkingDelta"}
 {"text":" the","type":"ThinkingDelta"}
-{"usage":{"promptTokens":0,"completionTokens":38,"totalTokens":38,"isEstimated":true},"type":"Usage"}
 {"text":" user","type":"ThinkingDelta"}
 {"text":".","type":"ThinkingDelta"}
 {"text":" I","type":"ThinkingDelta"}
 {"text":" should","type":"ThinkingDelta"}
 {"text":" use","type":"ThinkingDelta"}
-{"text":" `","type":"ThinkingDelta"}
-{"text":"respond","type":"ThinkingDelta"}
+{"text":" respond","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":76,"totalTokens":76,"isEstimated":true},"type":"Usage"}
 {"text":"_options","type":"ThinkingDelta"}
-{"text":"`","type":"ThinkingDelta"}
-{"text":" to","type":"ThinkingDelta"}
-{"text":" let","type":"ThinkingDelta"}
+{"text":" since","type":"ThinkingDelta"}
+{"text":" they","type":"ThinkingDelta"}
+{"text":"'re","type":"ThinkingDelta"}
+{"text":" asking","type":"ThinkingDelta"}
 {"text":" them","type":"ThinkingDelta"}
+{"text":" to","type":"ThinkingDelta"}
 {"text":" pick","type":"ThinkingDelta"}
 {"text":" from","type":"ThinkingDelta"}
-{"text":" the","type":"ThinkingDelta"}
-{"text":" three","type":"ThinkingDelta"}
-{"usage":{"promptTokens":0,"completionTokens":55,"totalTokens":55,"isEstimated":true},"type":"Usage"}
-{"text":" options","type":"ThinkingDelta"}
+{"text":" a","type":"ThinkingDelta"}
+{"text":" fixed","type":"ThinkingDelta"}
+{"text":" set","type":"ThinkingDelta"}
+{"text":" of","type":"ThinkingDelta"}
+{"text":" choices","type":"ThinkingDelta"}
 {"text":".","type":"ThinkingDelta"}
 {"text":"\n","type":"ThinkingDelta"}
-{"callId":"3c4f0dd82","toolName":"respond_options","type":"ToolCallStart"}
-{"usage":{"promptTokens":0,"completionTokens":57,"totalTokens":57,"isEstimated":true},"type":"Usage"}
-{"callId":"3c4f0dd82","input":{"prompt":"Which backend language would you like to use for your new web service?","options":[{"label":"Python","value":"python","description":null,"exclusive":false},{"label":"Node.js","value":"nodejs","description":null,"exclusive":false},{"label":"Go","value":"go","description":null,"exclusive":false}],"allowMultiple":false,"type":"RespondOptionsInput"},"type":"ToolCallComplete"}
-{"usage":{"promptTokens":5007,"completionTokens":170,"totalTokens":5177,"isEstimated":false},"type":"Usage"}
+{"usage":{"promptTokens":0,"completionTokens":94,"totalTokens":94,"isEstimated":true},"type":"Usage"}
+{"callId":"21f161ec4","toolName":"respond_options","type":"ToolCallStart"}
+{"callId":"21f161ec4","input":{"prompt":"Which backend language would you like to use for your new web service?","options":[{"label":"Python","value":"python","description":"Great for data-heavy services, rapid development, and AI\/ML integration","exclusive":false},{"label":"Node.js","value":"nodejs","description":"JavaScript runtime, excellent for real-time apps and full-stack JavaScript","exclusive":false},{"label":"Go","value":"go","description":"High performance, concurrency, and simple deployment","exclusive":false}],"allowMultiple":false,"type":"RespondOptionsInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":5007,"completionTokens":249,"totalTokens":5256,"isEstimated":false},"type":"Usage"}
 {"stopReason":"ToolCall","type":"Done"}

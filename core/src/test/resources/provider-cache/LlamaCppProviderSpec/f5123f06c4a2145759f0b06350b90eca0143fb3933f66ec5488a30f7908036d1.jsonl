@@ -1,4 +1,4 @@
-{"requestHash":"f5123f06c4a2145759f0b06350b90eca0143fb3933f66ec5488a30f7908036d1","recordedAt":1779145998724}
+{"requestHash":"f5123f06c4a2145759f0b06350b90eca0143fb3933f66ec5488a30f7908036d1","recordedAt":1779154920149}
 {"text":"The","type":"ThinkingDelta"}
 {"text":" user","type":"ThinkingDelta"}
 {"text":" is","type":"ThinkingDelta"}
@@ -7,16 +7,6 @@
 {"text":" simple","type":"ThinkingDelta"}
 {"text":" math","type":"ThinkingDelta"}
 {"text":" question","type":"ThinkingDelta"}
-{"text":":","type":"ThinkingDelta"}
-{"text":" \"","type":"ThinkingDelta"}
-{"text":"What","type":"ThinkingDelta"}
-{"text":" is","type":"ThinkingDelta"}
-{"text":" ","type":"ThinkingDelta"}
-{"text":"2","type":"ThinkingDelta"}
-{"text":"+","type":"ThinkingDelta"}
-{"text":"2","type":"ThinkingDelta"}
-{"usage":{"promptTokens":0,"completionTokens":13,"totalTokens":13,"isEstimated":true},"type":"Usage"}
-{"text":"?\"","type":"ThinkingDelta"}
 {"text":" and","type":"ThinkingDelta"}
 {"text":" wants","type":"ThinkingDelta"}
 {"text":" just","type":"ThinkingDelta"}
@@ -25,81 +15,35 @@
 {"text":" as","type":"ThinkingDelta"}
 {"text":" a","type":"ThinkingDelta"}
 {"text":" response","type":"ThinkingDelta"}
-{"text":".","type":"ThinkingDelta"}
-{"text":"\n\n","type":"ThinkingDelta"}
-{"text":"This","type":"ThinkingDelta"}
-{"text":" is","type":"ThinkingDelta"}
-{"text":" a","type":"ThinkingDelta"}
-{"text":" knowledge","type":"ThinkingDelta"}
-{"text":" question","type":"ThinkingDelta"}
-{"usage":{"promptTokens":0,"completionTokens":32,"totalTokens":32,"isEstimated":true},"type":"Usage"}
-{"text":",","type":"ThinkingDelta"}
-{"text":" not","type":"ThinkingDelta"}
-{"text":" an","type":"ThinkingDelta"}
-{"text":" action","type":"ThinkingDelta"}
-{"text":" request","type":"ThinkingDelta"}
-{"text":".","type":"ThinkingDelta"}
-{"text":" I","type":"ThinkingDelta"}
-{"text":" should","type":"ThinkingDelta"}
-{"text":" use","type":"ThinkingDelta"}
-{"text":" the","type":"ThinkingDelta"}
-{"text":" `","type":"ThinkingDelta"}
-{"text":"respond","type":"ThinkingDelta"}
-{"text":"`","type":"ThinkingDelta"}
-{"text":" tool","type":"ThinkingDelta"}
-{"text":" to","type":"ThinkingDelta"}
-{"text":" answer","type":"ThinkingDelta"}
-{"usage":{"promptTokens":0,"completionTokens":48,"totalTokens":48,"isEstimated":true},"type":"Usage"}
-{"text":".","type":"ThinkingDelta"}
-{"text":"\n\n","type":"ThinkingDelta"}
-{"text":"Let","type":"ThinkingDelta"}
-{"text":" me","type":"ThinkingDelta"}
-{"text":" check","type":"ThinkingDelta"}
-{"text":" the","type":"ThinkingDelta"}
-{"text":" current","type":"ThinkingDelta"}
-{"text":" mode","type":"ThinkingDelta"}
-{"text":":","type":"ThinkingDelta"}
-{"text":" Conversation","type":"ThinkingDelta"}
-{"text":"Mode","type":"ThinkingDelta"}
-{"text":" -","type":"ThinkingDelta"}
-{"text":" this","type":"ThinkingDelta"}
-{"text":" is","type":"ThinkingDelta"}
-{"text":" the","type":"ThinkingDelta"}
-{"text":" default","type":"ThinkingDelta"}
-{"usage":{"promptTokens":0,"completionTokens":66,"totalTokens":66,"isEstimated":true},"type":"Usage"}
-{"text":" mode","type":"ThinkingDelta"}
-{"text":" for","type":"ThinkingDelta"}
-{"text":" greetings","type":"ThinkingDelta"}
-{"text":",","type":"ThinkingDelta"}
-{"text":" Q","type":"ThinkingDelta"}
-{"text":"&A","type":"ThinkingDelta"}
-{"text":",","type":"ThinkingDelta"}
-{"text":" and","type":"ThinkingDelta"}
-{"text":" single","type":"ThinkingDelta"}
-{"text":"-turn","type":"ThinkingDelta"}
-{"text":" actions","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":20,"totalTokens":20,"isEstimated":true},"type":"Usage"}
 {"text":".","type":"ThinkingDelta"}
 {"text":" This","type":"ThinkingDelta"}
-{"text":" fits","type":"ThinkingDelta"}
-{"text":" perfectly","type":"ThinkingDelta"}
-{"text":".","type":"ThinkingDelta"}
-{"usage":{"promptTokens":0,"completionTokens":84,"totalTokens":84,"isEstimated":true},"type":"Usage"}
-{"text":"\n\n","type":"ThinkingDelta"}
-{"text":"I","type":"ThinkingDelta"}
-{"text":"'ll","type":"ThinkingDelta"}
-{"text":" respond","type":"ThinkingDelta"}
+{"text":" is","type":"ThinkingDelta"}
+{"text":" a","type":"ThinkingDelta"}
+{"text":" straightforward","type":"ThinkingDelta"}
+{"text":" Q","type":"ThinkingDelta"}
+{"text":"&A","type":"ThinkingDelta"}
+{"text":" that","type":"ThinkingDelta"}
+{"text":" doesn","type":"ThinkingDelta"}
+{"text":"'t","type":"ThinkingDelta"}
+{"text":" require","type":"ThinkingDelta"}
+{"text":" any","type":"ThinkingDelta"}
+{"text":" tools","type":"ThinkingDelta"}
+{"text":" -","type":"ThinkingDelta"}
+{"text":" I","type":"ThinkingDelta"}
+{"text":" can","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":37,"totalTokens":37,"isEstimated":true},"type":"Usage"}
+{"text":" answer","type":"ThinkingDelta"}
+{"text":" this","type":"ThinkingDelta"}
+{"text":" directly","type":"ThinkingDelta"}
 {"text":" with","type":"ThinkingDelta"}
-{"text":" just","type":"ThinkingDelta"}
-{"text":" the","type":"ThinkingDelta"}
-{"text":" number","type":"ThinkingDelta"}
-{"text":" ","type":"ThinkingDelta"}
-{"text":"4","type":"ThinkingDelta"}
+{"text":" respond","type":"ThinkingDelta"}
 {"text":".","type":"ThinkingDelta"}
 {"text":"\n","type":"ThinkingDelta"}
-{"callId":"ceb8ae57a","toolName":"respond","type":"ToolCallStart"}
-{"usage":{"promptTokens":0,"completionTokens":94,"totalTokens":94,"isEstimated":true},"type":"Usage"}
-{"callId":"ceb8ae57a","blockType":"Markdown","arg":null,"type":"ContentBlockStart"}
-{"callId":"ceb8ae57a","text":"4","type":"ContentBlockDelta"}
-{"callId":"ceb8ae57a","input":{"topicLabel":"Simple math question","topicSummary":"User asked what 2+2 equals.","content":"4","disposition":"Success","endsTurn":true,"keywords":["math","addition","simple"],"type":"RespondInput"},"type":"ToolCallComplete"}
-{"usage":{"promptTokens":4993,"completionTokens":203,"totalTokens":5196,"isEstimated":false},"type":"Usage"}
+{"callId":"b6df4c369","toolName":"respond","type":"ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":46,"totalTokens":46,"isEstimated":true},"type":"Usage"}
+{"callId":"b6df4c369","blockType":"Markdown","arg":null,"type":"ContentBlockStart"}
+{"callId":"b6df4c369","text":"4","type":"ContentBlockDelta"}
+{"callId":"b6df4c369","input":{"topicLabel":"Math Question","topicSummary":"Simple arithmetic question","content":"4","disposition":"Success","endsTurn":true,"keywords":["math","arithmetic","addition"],"type":"RespondInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":4993,"completionTokens":144,"totalTokens":5137,"isEstimated":false},"type":"Usage"}
 {"stopReason":"ToolCall","type":"Done"}

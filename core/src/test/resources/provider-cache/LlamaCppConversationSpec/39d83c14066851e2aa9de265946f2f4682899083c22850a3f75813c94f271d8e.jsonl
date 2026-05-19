@@ -1,0 +1,5 @@
+{"requestHash":"39d83c14066851e2aa9de265946f2f4682899083c22850a3f75813c94f271d8e","recordedAt":1779155053640}
+{"callId":"276654510","toolName":"classify_topic_shift","type":"ToolCallStart"}
+{"callId":"276654510","input":{"kind":"New","type":"TopicClassifierInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":603,"completionTokens":28,"totalTokens":631,"isEstimated":false},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

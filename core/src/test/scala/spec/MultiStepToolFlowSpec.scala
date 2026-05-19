@@ -48,7 +48,7 @@ class MultiStepToolFlowSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
   override implicit protected val testTimeout: FiniteDuration = 5.minutes
 
   TestSigil.initFor(getClass.getSimpleName)
-  TestSigil.setProvider(LlamaCppProvider(TestSigil, TestSigil.llamaCppHost).singleton)
+  TestSigil.setProvider(CachedProviderFixtures.wrap(this, LlamaCppProvider(TestSigil, TestSigil.llamaCppHost)))
 
   private val modelId: Id[Model] = Model.id("qwen3.5-9b-q4_k_m")
 

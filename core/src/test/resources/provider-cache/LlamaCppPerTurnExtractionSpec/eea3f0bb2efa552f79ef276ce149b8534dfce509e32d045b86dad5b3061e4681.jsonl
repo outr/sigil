@@ -1,5 +1,0 @@
-{"requestHash":"eea3f0bb2efa552f79ef276ce149b8534dfce509e32d045b86dad5b3061e4681","recordedAt":1779146814450}
-{"callId":"6e182ec12","toolName":"extract_memories","type":"ToolCallStart"}
-{"callId":"6e182ec12","input":{"memories":[{"content":"The user's name is Alice.","label":"User Name","key":"user.name","tags":["identity"]},{"content":"The user lives in Brooklyn.","label":"User Location","key":"user.location","tags":["identity","location"]},{"content":"The user prefers dark-mode interfaces.","label":"Preferred Interface Theme","key":"user.preferred_theme","tags":["preference","ui"]},{"content":"The user's preferred programming language is Scala.","label":"Preferred Programming Language","key":"user.preferred_language","tags":["preference","coding"]}],"type":"ExtractMemoriesInput"},"type":"ToolCallComplete"}
-{"usage":{"promptTokens":989,"completionTokens":172,"totalTokens":1161,"isEstimated":false},"type":"Usage"}
-{"stopReason":"ToolCall","type":"Done"}

@@ -32,7 +32,12 @@ import scala.concurrent.duration.*
  */
 class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestWorkflowSigil.initFor(getClass.getSimpleName)
-  TestWorkflowSigil.setProvider(LlamaCppProvider(TestWorkflowSigil, TestSigil.llamaCppHost).singleton)
+  TestWorkflowSigil.setProvider(
+    CachedProviderFixtures.wrapFor(getClass.getSimpleName,
+      LlamaCppProvider(TestWorkflowSigil, TestSigil.llamaCppHost),
+      TestWorkflowSigil
+    )
+  )
 
   // 5-min cap so internal deadlines (pollForQuestionOrTerminal,
   // republishUntilSettled, waitForTerminal) can fire first and
@@ -116,23 +121,13 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     loop()
   }
 
-  private def isReachable: Boolean =
-    scala.util.Try {
-      val url  = java.net.URI.create(TestSigil.llamaCppHost.toString).toURL
-      val conn = url.openConnection().asInstanceOf[java.net.HttpURLConnection]
-      conn.setConnectTimeout(2000)
-      conn.setReadTimeout(2000)
-      conn.setRequestMethod("HEAD")
-      val ok = conn.getResponseCode < 600
-      conn.disconnect()
-      ok
-    }.getOrElse(false)
-
-  if (!isReachable) {
-    "LlamaCppWorkerSpec" should {
-      "skip when llama.cpp is unreachable" in pending
-    }
-  } else {
+  // Reachability check skipped — the spec now runs through
+  // CachedProvider with committed JSONL fixtures, so replay-mode tests
+  // need no network access to the upstream backend. Recording new
+  // fixtures (CACHE_MODE=record) requires a reachable llama.cpp at
+  // TestSigil.llamaCppHost; the underlying provider's first call will
+  // fail loudly if it isn't.
+  locally {
     "AgentDecisionStep against live llama.cpp" should {
       // Architectural property: the worker iterates more than once
       // without ever calling `ask_parent` or any tool — i.e. plain

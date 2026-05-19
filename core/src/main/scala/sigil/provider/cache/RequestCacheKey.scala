@@ -61,7 +61,7 @@ object RequestCacheKey {
     * suitable for hashing. */
   def canonical(call: ProviderCall): RequestCacheKey = {
     val payload = obj(
-      "model"              -> str(call.modelId.value),
+      "model"              -> str(stripProviderPrefix(call.modelId.value)),
       "system"             -> str(call.system),
       "messages"           -> arr(call.messages.toList.map(canonicalizeMessage)*),
       "tools"              -> arr(call.tools.sortBy(_.name.value).toList.map(canonicalizeTool)*),
@@ -181,4 +181,17 @@ object RequestCacheKey {
   private def canonicalizeArgsJson(argsJson: String): Json =
     try fabric.io.JsonParser(argsJson)
     catch { case _: Throwable => str(argsJson) }
+
+  /** Drop any leading `<providerKey>/` namespace from a model id so the
+    * cache key represents the model semantically — the same model
+    * served by two providers (or by a live provider vs a replay stub)
+    * hashes identically. The live provider's model registry adds the
+    * namespace on resolution; the replay stub does no I/O, so its
+    * model ids stay bare. Stripping at the cache boundary papers over
+    * the asymmetry. */
+  private def stripProviderPrefix(modelId: String): String = {
+    val slash = modelId.indexOf('/')
+    if (slash > 0 && slash < modelId.length - 1) modelId.substring(slash + 1)
+    else modelId
+  }
 }

@@ -1,0 +1,2125 @@
+{"requestHash":"4dde0ce442dea51e9e8004ee3a7dff6d9d807bc5dd622c1d23bde7d4ef7d4781","recordedAt":1779155204369}
+{"text":"The","type":"ThinkingDelta"}
+{"text":" user","type":"ThinkingDelta"}
+{"text":" has","type":"ThinkingDelta"}
+{"text":" answered","type":"ThinkingDelta"}
+{"text":" \"","type":"ThinkingDelta"}
+{"text":"blue","type":"ThinkingDelta"}
+{"text":"\"","type":"ThinkingDelta"}
+{"text":" to","type":"ThinkingDelta"}
+{"text":" my","type":"ThinkingDelta"}
+{"text":" question","type":"ThinkingDelta"}
+{"text":" about","type":"ThinkingDelta"}
+{"text":" color","type":"ThinkingDelta"}
+{"text":" preference","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":" Now","type":"ThinkingDelta"}
+{"text":" I","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":18,"totalTokens":18,"isEstimated":true},"type":"Usage"}
+{"text":" need","type":"ThinkingDelta"}
+{"text":" to","type":"ThinkingDelta"}
+{"text":" complete","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" task","type":"ThinkingDelta"}
+{"text":" by","type":"ThinkingDelta"}
+{"text":" confirming","type":"ThinkingDelta"}
+{"text":" that","type":"ThinkingDelta"}
+{"text":" I","type":"ThinkingDelta"}
+{"text":"'ve","type":"ThinkingDelta"}
+{"text":" chosen","type":"ThinkingDelta"}
+{"text":" blue","type":"ThinkingDelta"}
+{"text":" as","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" color","type":"ThinkingDelta"}
+{"text":" for","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":38,"totalTokens":38,"isEstimated":true},"type":"Usage"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" user","type":"ThinkingDelta"}
+{"text":" in","type":"ThinkingDelta"}
+{"text":" a","type":"ThinkingDelta"}
+{"text":" one","type":"ThinkingDelta"}
+{"text":"-","type":"ThinkingDelta"}
+{"text":"paragraph","type":"ThinkingDelta"}
+{"text":" summary","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":"\n","type":"ThinkingDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":54,"totalTokens":54,"isEstimated":true},"type":"Usage"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":78,"totalTokens":78,"isEstimated":true},"type":"Usage"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":97,"totalTokens":97,"isEstimated":true},"type":"Usage"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":117,"totalTokens":117,"isEstimated":true},"type":"Usage"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":139,"totalTokens":139,"isEstimated":true},"type":"Usage"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":158,"totalTokens":158,"isEstimated":true},"type":"Usage"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":181,"totalTokens":181,"isEstimated":true},"type":"Usage"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":201,"totalTokens":201,"isEstimated":true},"type":"Usage"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":221,"totalTokens":221,"isEstimated":true},"type":"Usage"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":243,"totalTokens":243,"isEstimated":true},"type":"Usage"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":262,"totalTokens":262,"isEstimated":true},"type":"Usage"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":284,"totalTokens":284,"isEstimated":true},"type":"Usage"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":304,"totalTokens":304,"isEstimated":true},"type":"Usage"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":325,"totalTokens":325,"isEstimated":true},"type":"Usage"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":349,"totalTokens":349,"isEstimated":true},"type":"Usage"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":366,"totalTokens":366,"isEstimated":true},"type":"Usage"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":388,"totalTokens":388,"isEstimated":true},"type":"Usage"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":409,"totalTokens":409,"isEstimated":true},"type":"Usage"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":431,"totalTokens":431,"isEstimated":true},"type":"Usage"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":451,"totalTokens":451,"isEstimated":true},"type":"Usage"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":471,"totalTokens":471,"isEstimated":true},"type":"Usage"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":493,"totalTokens":493,"isEstimated":true},"type":"Usage"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":512,"totalTokens":512,"isEstimated":true},"type":"Usage"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":536,"totalTokens":536,"isEstimated":true},"type":"Usage"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":555,"totalTokens":555,"isEstimated":true},"type":"Usage"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":575,"totalTokens":575,"isEstimated":true},"type":"Usage"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":597,"totalTokens":597,"isEstimated":true},"type":"Usage"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":617,"totalTokens":617,"isEstimated":true},"type":"Usage"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":639,"totalTokens":639,"isEstimated":true},"type":"Usage"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":658,"totalTokens":658,"isEstimated":true},"type":"Usage"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":679,"totalTokens":679,"isEstimated":true},"type":"Usage"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":702,"totalTokens":702,"isEstimated":true},"type":"Usage"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":720,"totalTokens":720,"isEstimated":true},"type":"Usage"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":742,"totalTokens":742,"isEstimated":true},"type":"Usage"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":763,"totalTokens":763,"isEstimated":true},"type":"Usage"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":784,"totalTokens":784,"isEstimated":true},"type":"Usage"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":806,"totalTokens":806,"isEstimated":true},"type":"Usage"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":824,"totalTokens":824,"isEstimated":true},"type":"Usage"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":846,"totalTokens":846,"isEstimated":true},"type":"Usage"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":866,"totalTokens":866,"isEstimated":true},"type":"Usage"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":890,"totalTokens":890,"isEstimated":true},"type":"Usage"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":909,"totalTokens":909,"isEstimated":true},"type":"Usage"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":929,"totalTokens":929,"isEstimated":true},"type":"Usage"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":951,"totalTokens":951,"isEstimated":true},"type":"Usage"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":970,"totalTokens":970,"isEstimated":true},"type":"Usage"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":993,"totalTokens":993,"isEstimated":true},"type":"Usage"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1013,"totalTokens":1013,"isEstimated":true},"type":"Usage"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1033,"totalTokens":1033,"isEstimated":true},"type":"Usage"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1055,"totalTokens":1055,"isEstimated":true},"type":"Usage"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1074,"totalTokens":1074,"isEstimated":true},"type":"Usage"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1096,"totalTokens":1096,"isEstimated":true},"type":"Usage"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1116,"totalTokens":1116,"isEstimated":true},"type":"Usage"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1137,"totalTokens":1137,"isEstimated":true},"type":"Usage"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1161,"totalTokens":1161,"isEstimated":true},"type":"Usage"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1178,"totalTokens":1178,"isEstimated":true},"type":"Usage"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1200,"totalTokens":1200,"isEstimated":true},"type":"Usage"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1221,"totalTokens":1221,"isEstimated":true},"type":"Usage"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1243,"totalTokens":1243,"isEstimated":true},"type":"Usage"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1263,"totalTokens":1263,"isEstimated":true},"type":"Usage"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1283,"totalTokens":1283,"isEstimated":true},"type":"Usage"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1305,"totalTokens":1305,"isEstimated":true},"type":"Usage"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1324,"totalTokens":1324,"isEstimated":true},"type":"Usage"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1348,"totalTokens":1348,"isEstimated":true},"type":"Usage"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1367,"totalTokens":1367,"isEstimated":true},"type":"Usage"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1387,"totalTokens":1387,"isEstimated":true},"type":"Usage"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1409,"totalTokens":1409,"isEstimated":true},"type":"Usage"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1429,"totalTokens":1429,"isEstimated":true},"type":"Usage"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1451,"totalTokens":1451,"isEstimated":true},"type":"Usage"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1470,"totalTokens":1470,"isEstimated":true},"type":"Usage"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1491,"totalTokens":1491,"isEstimated":true},"type":"Usage"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1514,"totalTokens":1514,"isEstimated":true},"type":"Usage"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1532,"totalTokens":1532,"isEstimated":true},"type":"Usage"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1554,"totalTokens":1554,"isEstimated":true},"type":"Usage"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1575,"totalTokens":1575,"isEstimated":true},"type":"Usage"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1596,"totalTokens":1596,"isEstimated":true},"type":"Usage"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1618,"totalTokens":1618,"isEstimated":true},"type":"Usage"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1636,"totalTokens":1636,"isEstimated":true},"type":"Usage"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1658,"totalTokens":1658,"isEstimated":true},"type":"Usage"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1678,"totalTokens":1678,"isEstimated":true},"type":"Usage"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1702,"totalTokens":1702,"isEstimated":true},"type":"Usage"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1721,"totalTokens":1721,"isEstimated":true},"type":"Usage"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1741,"totalTokens":1741,"isEstimated":true},"type":"Usage"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1763,"totalTokens":1763,"isEstimated":true},"type":"Usage"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1782,"totalTokens":1782,"isEstimated":true},"type":"Usage"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1805,"totalTokens":1805,"isEstimated":true},"type":"Usage"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1825,"totalTokens":1825,"isEstimated":true},"type":"Usage"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1845,"totalTokens":1845,"isEstimated":true},"type":"Usage"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1867,"totalTokens":1867,"isEstimated":true},"type":"Usage"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1886,"totalTokens":1886,"isEstimated":true},"type":"Usage"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1908,"totalTokens":1908,"isEstimated":true},"type":"Usage"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1928,"totalTokens":1928,"isEstimated":true},"type":"Usage"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1949,"totalTokens":1949,"isEstimated":true},"type":"Usage"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1973,"totalTokens":1973,"isEstimated":true},"type":"Usage"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1990,"totalTokens":1990,"isEstimated":true},"type":"Usage"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2012,"totalTokens":2012,"isEstimated":true},"type":"Usage"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2033,"totalTokens":2033,"isEstimated":true},"type":"Usage"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2055,"totalTokens":2055,"isEstimated":true},"type":"Usage"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2075,"totalTokens":2075,"isEstimated":true},"type":"Usage"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2095,"totalTokens":2095,"isEstimated":true},"type":"Usage"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2117,"totalTokens":2117,"isEstimated":true},"type":"Usage"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2136,"totalTokens":2136,"isEstimated":true},"type":"Usage"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2160,"totalTokens":2160,"isEstimated":true},"type":"Usage"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2179,"totalTokens":2179,"isEstimated":true},"type":"Usage"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2199,"totalTokens":2199,"isEstimated":true},"type":"Usage"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2221,"totalTokens":2221,"isEstimated":true},"type":"Usage"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2241,"totalTokens":2241,"isEstimated":true},"type":"Usage"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2263,"totalTokens":2263,"isEstimated":true},"type":"Usage"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2282,"totalTokens":2282,"isEstimated":true},"type":"Usage"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2303,"totalTokens":2303,"isEstimated":true},"type":"Usage"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2326,"totalTokens":2326,"isEstimated":true},"type":"Usage"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2344,"totalTokens":2344,"isEstimated":true},"type":"Usage"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2366,"totalTokens":2366,"isEstimated":true},"type":"Usage"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2387,"totalTokens":2387,"isEstimated":true},"type":"Usage"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2408,"totalTokens":2408,"isEstimated":true},"type":"Usage"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2430,"totalTokens":2430,"isEstimated":true},"type":"Usage"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2448,"totalTokens":2448,"isEstimated":true},"type":"Usage"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2470,"totalTokens":2470,"isEstimated":true},"type":"Usage"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2490,"totalTokens":2490,"isEstimated":true},"type":"Usage"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2514,"totalTokens":2514,"isEstimated":true},"type":"Usage"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2533,"totalTokens":2533,"isEstimated":true},"type":"Usage"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" chosen","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" user","type":"TextDelta"}
+{"text":" after","type":"TextDelta"}
+{"text":" asking","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2553,"totalTokens":2553,"isEstimated":true},"type":"Usage"}
+{"text":" parent","type":"TextDelta"}
+{"text":" agent","type":"TextDelta"}
+{"text":" for","type":"TextDelta"}
+{"text":" their","type":"TextDelta"}
+{"text":" color","type":"TextDelta"}
+{"text":" preference","type":"TextDelta"}
+{"text":" between","type":"TextDelta"}
+{"text":" red","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" parent","type":"TextDelta"}
+{"text":" confirmed","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2575,"totalTokens":2575,"isEstimated":true},"type":"Usage"}
+{"text":" was","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" preferred","type":"TextDelta"}
+{"text":" choice","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"<\/think>","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"Complete","type":"TextDelta"}
+{"text":":","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" selected","type":"TextDelta"}
+{"text":" blue","type":"TextDelta"}
+{"text":" as","type":"TextDelta"}
+{"usage":{"promptTokens":4677,"completionTokens":2000,"totalTokens":6677,"isEstimated":false},"type":"Usage"}
+{"stopReason":"MaxTokens","type":"Done"}
