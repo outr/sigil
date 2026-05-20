@@ -46,7 +46,15 @@ case class AnthropicProvider(apiKey: String,
                                * OpenAI-style `Authorization: Bearer`. The wire
                                * body is identical across both modes — only the
                                * auth + version headers differ. */
-                             authMode: AnthropicAuthMode = AnthropicAuthMode.XApiKey) extends Provider {
+                             authMode: AnthropicAuthMode = AnthropicAuthMode.XApiKey,
+                             /** Emit `cache_control` breakpoints on the stable
+                               * request prefix (tool roster, system prompt, the
+                               * stable span of conversation history) so Anthropic
+                               * serves the unchanged prefix from its prompt cache.
+                               * Default ON — every current Claude model supports
+                               * prompt caching. Set `false` to disable (e.g. for
+                               * a vendor mirror that doesn't honour the field). */
+                             promptCaching: Boolean = true) extends Provider {
   override def `type`: ProviderType = ProviderType.Anthropic
   override val providerKey: String = Anthropic.Provider
   override protected def sigil: Sigil = sigilRef
@@ -85,7 +93,7 @@ case class AnthropicProvider(apiKey: String,
       url = baseUrl.withPath("/v1/messages"),
       content = Some(StringContent(bodyStr, ContentType.`application/json`))
     )
-    authMode match {
+    val authed = authMode match {
       case AnthropicAuthMode.XApiKey =>
         base
           .withHeader("x-api-key", apiKey)
@@ -93,9 +101,21 @@ case class AnthropicProvider(apiKey: String,
       case AnthropicAuthMode.Bearer =>
         base.withHeader("Authorization", s"Bearer $apiKey")
     }
+    // The 1-hour `cache_control` TTL on the tool / system breakpoints
+    // needs the extended-cache-ttl beta opt-in; send it only when
+    // caching is actually engaged for this call.
+    if (cachingEnabledFor(input))
+      authed.withHeader("anthropic-beta", Anthropic.ExtendedCacheTtlBeta)
+    else authed
   }
 
   // ---- request body ----
+
+  /** Whether `cache_control` breakpoints should be emitted for this
+    * call: the provider toggle is on AND the target model supports
+    * prompt caching. */
+  private def cachingEnabledFor(input: ProviderCall): Boolean =
+    promptCaching && Anthropic.supportsPromptCaching(Anthropic.stripProviderPrefix(input.modelId.value))
 
   private def buildBody(input: ProviderCall): Json = {
     val modelName = Anthropic.stripProviderPrefix(input.modelId.value)
@@ -103,8 +123,9 @@ case class AnthropicProvider(apiKey: String,
     // the caller didn't set one.
     val maxTokens = input.generationSettings.maxOutputTokens.getOrElse(4096)
 
-    val messages = renderMessages(input.messages)
-    val toolsArr = renderTools(input)
+    val caching = cachingEnabledFor(input)
+    val messages = renderMessages(input.messages, caching)
+    val toolsArr = renderTools(input, caching)
 
     val base = Vector[(String, Json)](
       "model" -> str(modelName),
@@ -112,8 +133,20 @@ case class AnthropicProvider(apiKey: String,
       "messages" -> arr(messages*),
       "stream" -> bool(true)
     )
+    // The system prompt is the second cache breakpoint. When caching is
+    // on it must be rendered as a content-block array so the trailing
+    // block can carry `cache_control`; the plain-string form has no
+    // slot for the field. Both encodings are wire-equivalent for the
+    // model.
     val systemField: Vector[(String, Json)] =
-      if (input.system.isEmpty) Vector.empty else Vector("system" -> str(input.system))
+      if (input.system.isEmpty) Vector.empty
+      else if (caching)
+        Vector("system" -> arr(obj(
+          "type" -> str("text"),
+          "text" -> str(input.system),
+          "cache_control" -> AnthropicProvider.cacheControl(extendedTtl = true)
+        )))
+      else Vector("system" -> str(input.system))
 
     // Anthropic rejects `tool_choice: any|tool` when thinking is on.
     // Downgrade `Required → Auto` silently so the caller can enable
@@ -174,7 +207,27 @@ case class AnthropicProvider(apiKey: String,
     obj((base ++ systemField ++ toolFields ++ thinkingField ++ genFields)*)
   }
 
-  private def renderMessages(messages: Vector[ProviderMessage]): Vector[Json] =
+  private def renderMessages(messages: Vector[ProviderMessage], caching: Boolean): Vector[Json] = {
+    val rendered = renderMessageBlocks(messages)
+    // Third cache breakpoint: the stable span of conversation history.
+    // The final rendered message is the current turn's volatile tail
+    // (the latest user / tool-result content the agent is reacting to);
+    // everything before it is stable across the next few turns. Anchor
+    // `cache_control` on the last content block of the second-to-last
+    // message so the cached segment runs tools → system → history up to
+    // that point. Skip when there's only the current turn — the tools
+    // and system breakpoints already cover the whole stable prefix.
+    if (caching && rendered.size >= 2) {
+      val breakpointIdx = rendered.size - 2
+      rendered.zipWithIndex.map {
+        case (msg, idx) if idx == breakpointIdx =>
+          AnthropicProvider.withHistoryCacheControl(msg)
+        case (msg, _) => msg
+      }
+    } else rendered
+  }
+
+  private def renderMessageBlocks(messages: Vector[ProviderMessage]): Vector[Json] =
     messages.flatMap {
       case ProviderMessage.System(content) =>
         // Anthropic has no system role mid-conversation. Encode as a
@@ -238,7 +291,7 @@ case class AnthropicProvider(apiKey: String,
         Vector.empty
     }
 
-  private def renderTools(input: ProviderCall): Vector[Json] = {
+  private def renderTools(input: ProviderCall, caching: Boolean): Vector[Json] = {
     val fns = input.tools.map { t =>
       val s = t.schema
       // Anthropic has no `strict` flag for tools — generation isn't
@@ -250,14 +303,23 @@ case class AnthropicProvider(apiKey: String,
       // unrecognized keys, and rely on `ToolInputValidator` (run by the
       // `ToolCallAccumulator` for every provider) to re-check the
       // parsed args against those constraints post-decode.
-      obj(
+      Vector[(String, Json)](
         "name"         -> str(s.name.value),
         "description"  -> str(ToolDescriptionRenderer.render(t, input.currentMode, sigil)),
         "input_schema" -> StrictSchema.forAnthropic(DefinitionToSchema(s.input))
       )
     }
-    val builtIn = input.builtInTools.iterator.flatMap(renderBuiltIn).toVector
-    fns ++ builtIn
+    val builtIn = input.builtInTools.iterator.flatMap(renderBuiltIn).map(_.asObj.value.toVector).toVector
+    val all = fns ++ builtIn
+    // First cache breakpoint: the tool roster. `cache_control` rides on
+    // the final tool object so the whole roster forms one cache
+    // segment. Extended 1-hour TTL: the tool schema is the most stable
+    // part of the request.
+    if (caching && all.nonEmpty) {
+      val withBreakpoint = all.init :+
+        (all.last :+ ("cache_control" -> AnthropicProvider.cacheControl(extendedTtl = true)))
+      withBreakpoint.map(fields => obj(fields*))
+    } else all.map(fields => obj(fields*))
   }
 
   private def renderBuiltIn(tool: BuiltInTool): Option[Json] = tool match {
@@ -384,7 +446,7 @@ case class AnthropicProvider(apiKey: String,
   }
 
   private def parseUsage(json: Json): TokenUsage =
-    TokenUsage.fromJson(json, "input_tokens", "output_tokens")
+    TokenUsage.fromJson(json, "input_tokens", "output_tokens", cacheKeys = CacheKeys.Anthropic)
 
   final private class StreamState(val acc: ToolCallAccumulator) {
     var indexToCallId: Map[Int, CallId] = Map.empty
@@ -399,8 +461,36 @@ case class AnthropicProvider(apiKey: String,
 }
 
 object AnthropicProvider {
+  import fabric.*
+
   /** Construct an AnthropicProvider. Models are read from
     * [[sigil.cache.ModelRegistry]] at access time. */
   def create(sigil: Sigil, apiKey: String, baseUrl: URL = url"https://api.anthropic.com"): Task[AnthropicProvider] =
     Task.pure(AnthropicProvider(apiKey, sigil, baseUrl))
+
+  /** A `cache_control` value. `extendedTtl = true` requests the
+    * 1-hour cache lifetime (used for the tool roster and system
+    * prompt — the most stable request segments); `false` leaves the
+    * default 5-minute ephemeral cache (used for the history
+    * breakpoint, which turns over faster). */
+  private[anthropic] def cacheControl(extendedTtl: Boolean): Json =
+    if (extendedTtl) obj("type" -> str("ephemeral"), "ttl" -> str("1h"))
+    else obj("type" -> str("ephemeral"))
+
+  /** Attach a default-TTL `cache_control` to the last content block of
+    * a rendered message. The message's `content` is always an array of
+    * blocks in this provider's encoding; the breakpoint rides the
+    * trailing block so the cached segment extends through it. A
+    * message with an empty content array is returned unchanged. */
+  private[anthropic] def withHistoryCacheControl(message: Json): Json = {
+    val fields = message.asObj.value
+    fields.get("content").map(_.asVector) match {
+      case Some(blocks) if blocks.nonEmpty =>
+        val lastBlock = blocks.last.asObj.value.toVector :+
+          ("cache_control" -> cacheControl(extendedTtl = false))
+        val rewritten = blocks.init :+ obj(lastBlock*)
+        obj((fields.toVector.filterNot(_._1 == "content") :+ ("content" -> arr(rewritten*)))*)
+      case _ => message
+    }
+  }
 }

@@ -872,11 +872,26 @@ trait Provider extends Service {
     * when its source is empty. Every Model-visible field on `TurnInput`
     * MUST appear here. The companion
     * [[spec.LlamaCppRequestCoverageSpec]] is the regression guard. */
+  /** Compose the system prompt body, stable content first, volatile
+    * content last.
+    *
+    * Section ordering is cache-aware: the prefix sections (tool
+    * framing, mode + topic, instructions, roles, skills, pinned
+    * directives, summaries, referenced content) change rarely across
+    * turns within one conversation, so providers with prompt caching
+    * (Anthropic's `cache_control` breakpoints, OpenAI / DeepSeek's
+    * automatic prefix caches) can serve them from a cache hit. The
+    * tail sections (retrieved non-critical memories, recently used
+    * tools, repeated-call diagnostics, discovered capabilities,
+    * per-turn budget warnings, the greeting hint) shift every turn —
+    * placing them last keeps the cacheable prefix stable. */
   private def renderSystem(c: ConversationRequest,
                            resolved: ResolvedReferences): String = {
     val turn = c.turnInput
     val chain = c.chain
     val sb = new StringBuilder
+
+    // ---- stable prefix (cacheable) ----
 
     if (c.tools.nonEmpty) {
       sb.append(
@@ -921,27 +936,6 @@ trait Provider extends Service {
       else c.instructions.render
     if (instr.nonEmpty) sb.append("\n").append(instr).append("\n")
 
-    if (resolved.criticalMemories.nonEmpty) {
-      sb.append("\n== Pinned directives ==\n")
-      resolved.criticalMemories.foreach(m => sb.append(s"- ${memoryRenderText(m)}\n"))
-    }
-
-    if (resolved.summaries.nonEmpty) {
-      sb.append("\n== Earlier in this conversation ==\n")
-      resolved.summaries.foreach(s => sb.append(s.text).append("\n"))
-    }
-
-    if (resolved.memories.nonEmpty) {
-      sb.append("\n== Memories ==\n")
-      resolved.memories.foreach(m => sb.append(s"- ${memoryRenderText(m)}\n"))
-    }
-
-    if (turn.information.nonEmpty) {
-      sb.append("\n== Referenced content (look up by id) ==\n")
-      turn.information.foreach(i =>
-        sb.append(s"- ${i.id.value} [${i.informationType.name}]: ${i.summary}\n"))
-    }
-
     // Roles render the agent's identity into the system prompt. A single
     // role is shown linearly (one description block); multiple roles get a
     // "You serve the following roles:" preamble + per-role enumeration so
@@ -970,6 +964,29 @@ trait Provider extends Service {
         sb.append(s"- ${s.name}\n")
         if (s.content.nonEmpty) sb.append(s.content).append("\n")
       }
+    }
+
+    if (resolved.criticalMemories.nonEmpty) {
+      sb.append("\n== Pinned directives ==\n")
+      resolved.criticalMemories.foreach(m => sb.append(s"- ${memoryRenderText(m)}\n"))
+    }
+
+    if (resolved.summaries.nonEmpty) {
+      sb.append("\n== Earlier in this conversation ==\n")
+      resolved.summaries.foreach(s => sb.append(s.text).append("\n"))
+    }
+
+    if (turn.information.nonEmpty) {
+      sb.append("\n== Referenced content (look up by id) ==\n")
+      turn.information.foreach(i =>
+        sb.append(s"- ${i.id.value} [${i.informationType.name}]: ${i.summary}\n"))
+    }
+
+    // ---- volatile tail (per-turn, excluded from the cacheable prefix) ----
+
+    if (resolved.memories.nonEmpty) {
+      sb.append("\n== Memories ==\n")
+      resolved.memories.foreach(m => sb.append(s"- ${memoryRenderText(m)}\n"))
     }
 
     val recentInvocations = chain.flatMap(id => turn.projectionFor(id).recentToolInvocations)
