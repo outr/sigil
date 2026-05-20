@@ -3871,27 +3871,28 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // provider layer also filters as a safety net; gating here too
     // means the framework doesn't emit a parameter it knows the
     // model will reject.
-    //
-    // Sigil bug #196 — the safe-default for classifier consults
-    // (bounded output + reasoning off) moved to
-    // [[GenerationSettings.classifierDefault]], which is now the
-    // `ConsultTool.invoke` default parameter. Only override here to
-    // stamp temperature when the model accepts it.
-    val classifierSettings = {
-      val base = GenerationSettings.classifierDefault
-      if (supportsParameter(modelId, "temperature")) base.copy(temperature = Some(0.0))
-      else base
-    }
     val started = System.currentTimeMillis()
-    ConsultTool.invokeRich[sigil.tool.consult.TopicClassifierInput](
-      sigil = this,
-      modelId = modelId,
-      chain = chain,
-      systemPrompt = systemPrompt,
-      userPrompt = userPrompt,
-      tool = tool,
-      generationSettings = classifierSettings
-    ).flatMap {
+    // Classifier consults route through the tool's declared work type
+    // to the cheap classification tier and use its canonical
+    // consultSettings (bounded output + reasoning off); temperature is
+    // stamped when the routed model accepts it for deterministic
+    // classification.
+    routedModelFor(tool.consultWorkType, chain, modelId).flatMap { routedModelId =>
+      val classifierSettings = {
+        val base = ConsultTool.settingsFor(tool)
+        if (supportsParameter(routedModelId, "temperature")) base.copy(temperature = Some(0.0))
+        else base
+      }
+      ConsultTool.invokeRich[sigil.tool.consult.TopicClassifierInput](
+        sigil = this,
+        modelId = routedModelId,
+        chain = chain,
+        systemPrompt = systemPrompt,
+        userPrompt = userPrompt,
+        tool = tool,
+        generationSettings = classifierSettings
+      )
+    }.flatMap {
       case sigil.tool.consult.ConsultOutcome.Parsed(input) => Task.pure(input.kind match {
         case "NoChange" => TopicShiftResult.NoChange
         case "Refine"   => TopicShiftResult.Refine
@@ -5296,18 +5297,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             |current status looks identical to the prior status, set meaningfulProgress = false
             |so the framework can intervene.""".stripMargin
         val userPrompt = renderCheckpointPrompt(ctx, priorStatus, iteration)
-        sigil.tool.consult.ConsultTool.invoke[sigil.tool.consult.ProgressReflectionInput](
-        sigil              = this,
-        modelId            = agent.modelId,
-        chain              = List(agent.id),
-        systemPrompt       = systemPrompt,
-        userPrompt         = userPrompt,
-        tool               = sigil.tool.consult.ProgressReflectionTool,
-        generationSettings = sigil.provider.GenerationSettings(
-          maxOutputTokens = Some(200),
-          reasoningMode = sigil.provider.ReasoningMode.Off
-        )
-      ).flatMap {
+        sigil.tool.consult.ConsultTool.invokeRouted[sigil.tool.consult.ProgressReflectionInput](
+          sigil = this,
+          tool = sigil.tool.consult.ProgressReflectionTool,
+          chain = List(agent.id),
+          fallbackModelId = agent.modelId,
+          systemPrompt = systemPrompt,
+          userPrompt = userPrompt
+        ).flatMap {
         case None         => Task.pure(None)  // checkpoint-call failed; let the loop continue
         case Some(report) =>
           // Persist the checkpoint event so the chain is replayable.
