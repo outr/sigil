@@ -214,7 +214,15 @@ object OpenAIChatCompletions {
       * (ignore-list of Chinese-hosted slugs, sort policy, fallbacks).
       * Default `_ => Vector.empty` is a no-op for every other
       * chat-completions backend. */
-    extraBody: ProviderCall => Vector[(String, Json)] = _ => Vector.empty
+    extraBody: ProviderCall => Vector[(String, Json)] = _ => Vector.empty,
+
+    /** Where this backend reports prompt-caching token counts inside
+      * the `usage` object. Default [[CacheKeys.OpenAIChat]] reads the
+      * OpenAI-canonical `prompt_tokens_details.cached_tokens`; DeepSeek
+      * passes [[CacheKeys.DeepSeek]] for its `prompt_cache_hit_tokens`
+      * / `prompt_cache_miss_tokens` siblings; backends with no cache
+      * accounting pass [[CacheKeys.None]]. */
+    cacheKeys: CacheKeys = CacheKeys.OpenAIChat
   )
 
   /** How Sigil expresses forced-call semantics on a chat-completions
@@ -756,7 +764,7 @@ object OpenAIChatCompletions {
 
     json.get("usage").foreach { u =>
       if (!u.isNull) {
-        val parsed = parseUsage(u)
+        val parsed = parseUsage(u, config)
         // Track the latest usage block so flushDone can detect a
         // no-finish-reason / no-content / no-tool-call degenerate-
         // completion (completion_tokens burned with no useful output)
@@ -796,8 +804,8 @@ object OpenAIChatCompletions {
     ProviderErrorMetadata(errorType = errorType, upstreamProvider = upstreamProvider)
   }
 
-  private def parseUsage(json: Json): TokenUsage =
-    TokenUsage.fromJson(json, "prompt_tokens", "completion_tokens", Some("total_tokens"))
+  private def parseUsage(json: Json, config: Config): TokenUsage =
+    TokenUsage.fromJson(json, "prompt_tokens", "completion_tokens", Some("total_tokens"), config.cacheKeys)
 
   /** Streaming state: pending [[StopReason]] held back until the
     * trailing `usage` chunk (or `[DONE]`) arrives, plus the tool-call

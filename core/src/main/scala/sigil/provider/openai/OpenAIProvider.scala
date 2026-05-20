@@ -783,7 +783,7 @@ case class OpenAIProvider(apiKey: String,
   }
 
   private def parseUsage(json: Json): TokenUsage =
-    TokenUsage.fromJson(json, "input_tokens", "output_tokens", Some("total_tokens"))
+    TokenUsage.fromJson(json, "input_tokens", "output_tokens", Some("total_tokens"), CacheKeys.OpenAIResponses)
 
   /** Per-response state: tracks the active output item (so deltas
     * pair with the right call_id), plus a shared tool-call

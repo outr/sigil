@@ -36,7 +36,8 @@ case class DeepSeekProvider(apiKey: String,
     providerName = "DeepSeek",
     strictModeCapable = true,
     reasoningPolicy = OpenAIChatCompletions.ReasoningPolicy.ReasoningEffortField,
-    multimodalPolicy = OpenAIChatCompletions.MultimodalPolicy.TextOnlyWithWarning
+    multimodalPolicy = OpenAIChatCompletions.MultimodalPolicy.TextOnlyWithWarning,
+    cacheKeys = CacheKeys.DeepSeek
   )
 
   private val bearerAuth: HttpRequest => HttpRequest =

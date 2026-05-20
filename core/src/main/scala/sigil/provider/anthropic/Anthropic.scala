@@ -10,8 +10,20 @@ object Anthropic {
   val Provider: String = "anthropic"
   val ApiVersion: String = "2023-06-01"
 
+  /** Beta header that unlocks the 1-hour `cache_control` TTL on top of
+    * the default 5-minute ephemeral cache. Sent only when prompt
+    * caching is engaged. */
+  val ExtendedCacheTtlBeta: String = "extended-cache-ttl-2025-04-11"
+
   def stripProviderPrefix(sigilModelId: String): String = {
     val prefix = s"$Provider/"
     if (sigilModelId.startsWith(prefix)) sigilModelId.drop(prefix.length) else sigilModelId
   }
+
+  /** Whether a model (post `stripProviderPrefix`) supports prompt
+    * caching. Every Claude model does; the gate keeps `cache_control`
+    * breakpoints off any non-Claude vendor model that happens to be
+    * routed through the Anthropic Messages wire. */
+  def supportsPromptCaching(strippedModelName: String): Boolean =
+    strippedModelName.toLowerCase.contains("claude")
 }
