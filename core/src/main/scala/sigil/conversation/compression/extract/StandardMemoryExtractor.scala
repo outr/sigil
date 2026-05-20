@@ -7,7 +7,7 @@ import sigil.conversation.{ContextMemory, Conversation, MemorySource, MemoryStat
 import sigil.SpaceId
 import sigil.db.Model
 import sigil.participant.ParticipantId
-import sigil.provider.{GenerationSettings, Mode, ReasoningMode}
+import sigil.provider.Mode
 import sigil.tool.consult.{ConsultTool, ExtractMemoriesInput, ExtractMemoriesTool}
 
 /**
@@ -65,23 +65,25 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
         // skeletal records with `key = None` across the board. 1500
         // covers the worst-case thinking budget while staying well
         // under any model's context window.
-        val extractorSettings = {
-          val base = GenerationSettings(
-            maxOutputTokens = Some(1500),
-            reasoningMode = ReasoningMode.Off
+        sigil.routedModelFor(ExtractMemoriesTool.consultWorkType, chain, modelId).flatMap { routedModelId =>
+          // Cap + reasoning-off come from ExtractMemoriesTool's canonical
+          // consultSettings; temperature is stamped per routed model for
+          // deterministic extraction.
+          val extractorSettings = {
+            val base = ConsultTool.settingsFor(ExtractMemoriesTool)
+            if (sigil.supportsParameter(routedModelId, "temperature")) base.copy(temperature = Some(0.0))
+            else base
+          }
+          ConsultTool.invoke[ExtractMemoriesInput](
+            sigil = sigil,
+            modelId = routedModelId,
+            chain = chain,
+            systemPrompt = systemPrompt,
+            userPrompt = userPrompt,
+            tool = ExtractMemoriesTool,
+            generationSettings = extractorSettings
           )
-          if (sigil.supportsParameter(modelId, "temperature")) base.copy(temperature = Some(0.0))
-          else base
-        }
-        ConsultTool.invoke[ExtractMemoriesInput](
-          sigil = sigil,
-          modelId = modelId,
-          chain = chain,
-          systemPrompt = systemPrompt,
-          userPrompt = userPrompt,
-          tool = ExtractMemoriesTool,
-          generationSettings = extractorSettings
-        ).flatMap {
+        }.flatMap {
           case None => Task.pure(Nil)
           case Some(result) =>
             val kept = result.memories.filter(_.content.nonEmpty)
