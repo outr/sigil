@@ -39,20 +39,23 @@ object TokenUsage {
     * (notably Anthropic) don't carry a total field on the wire.
     * Missing fields read as `0`.
     *
-    * Cache accounting is read from one of two layouts the caller
+    * Cache accounting is read from one of three layouts the caller
     * selects via [[CacheKeys]]:
-    *   - [[CacheKeys.Flat]] — sibling keys on the usage object
+    *   - [[CacheKeys.Flat]] — two sibling keys on the usage object
     *     (Anthropic's `cache_read_input_tokens` /
     *     `cache_creation_input_tokens`, DeepSeek's
     *     `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens`).
+    *   - [[CacheKeys.FlatRead]] — one sibling cache-read key on the
+    *     usage object (Google's `cachedContentTokenCount`);
+    *     cache-creation stays `0`.
     *   - [[CacheKeys.Nested]] — a `cached_tokens` int inside a
     *     details object (OpenAI's `prompt_tokens_details` on chat
     *     completions, `input_tokens_details` on the Responses wire).
     *     The Nested layout reports cache reads only; cache-creation
     *     stays `0`.
     *
-    * Pass [[CacheKeys.None]] for providers with no cache accounting
-    * (Google) to leave both cache fields `0`. */
+    * Pass [[CacheKeys.None]] for providers with no cache accounting to
+    * leave both cache fields `0`. */
   def fromJson(json: Json,
                promptKey: String,
                completionKey: String,
@@ -71,6 +74,9 @@ object TokenUsage {
         val read = json.get(readKey).map(_.asInt).getOrElse(0)
         val creation = json.get(creationKey).map(_.asInt).getOrElse(0)
         (read, creation)
+      case CacheKeys.FlatRead(readKey) =>
+        val read = json.get(readKey).map(_.asInt).getOrElse(0)
+        (read, 0)
       case CacheKeys.Nested(detailsKey, cachedKey) =>
         val read = json.get(detailsKey).flatMap(_.get(cachedKey)).map(_.asInt).getOrElse(0)
         (read, 0)
