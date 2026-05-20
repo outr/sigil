@@ -1,6 +1,7 @@
 package sigil.tool.consult
 
 import fabric.define.{DefType, Definition}
+import sigil.provider.{ClassificationWork, GenerationSettings, ReasoningMode, WorkType}
 import sigil.tool.{ToolName, TypedTool}
 
 /**
@@ -17,8 +18,18 @@ class TopicClassifierTool(priorLabels: List[String]) extends TypedTool[TopicClas
       |  - "Refine"   — same subject as Current, but a sharper / more specific label.
       |  - <prior label> — same subject as one of the prior topics; the user is returning.
       |  - "New"      — a subject genuinely different from Current and all priors.""".stripMargin
-) {
+) with FrameworkConsult {
   override def paginate: Boolean = false
+
+  /** Categorical decision — routes through the cheap classification tier. */
+  override def consultWorkType: WorkType = ClassificationWork
+
+  /** Output is a single enum string; 256 tokens covers the structured
+    * payload plus a reasoning-spill margin for thinking-capable models. */
+  override def consultSettings: GenerationSettings = GenerationSettings(
+    maxOutputTokens = Some(256),
+    reasoningMode = ReasoningMode.Off
+  )
 
   /** Override the schema's input definition with one whose `kind` field
     * has a dynamic enum populated from the per-call prior labels. */

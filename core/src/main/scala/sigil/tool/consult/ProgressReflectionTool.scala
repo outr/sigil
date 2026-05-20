@@ -1,5 +1,6 @@
 package sigil.tool.consult
 
+import sigil.provider.{ClassificationWork, GenerationSettings, ReasoningMode, WorkType}
 import sigil.tool.{ToolName, TypedTool}
 
 /**
@@ -24,8 +25,18 @@ case object ProgressReflectionTool extends TypedTool[ProgressReflectionInput](
       |
       |Be honest — if your status looks identical to the prior status or you're cycling through
       |the same searches, say so (`meaningfulProgress = false`) so the framework can intervene.""".stripMargin
-) {
+) with FrameworkConsult {
   override def paginate: Boolean = false
+
+  /** Quick self-assessment — routes through the cheap classification tier. */
+  override def consultWorkType: WorkType = ClassificationWork
+
+  /** Output is five short fields. 256 tokens covers the structured
+    * payload plus the reasoning-spill margin. */
+  override def consultSettings: GenerationSettings = GenerationSettings(
+    maxOutputTokens = Some(256),
+    reasoningMode = ReasoningMode.Off
+  )
 
   override protected def executeTyped(input: ProgressReflectionInput,
                                       context: sigil.TurnContext): rapid.Stream[sigil.event.Event] =

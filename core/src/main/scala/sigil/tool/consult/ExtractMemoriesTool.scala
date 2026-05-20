@@ -3,6 +3,7 @@ package sigil.tool.consult
 import rapid.Stream
 import sigil.TurnContext
 import sigil.event.Event
+import sigil.provider.{GenerationSettings, ReasoningMode, SummarizationWork, WorkType}
 import sigil.tool.{ToolName, TypedTool}
 
 /**
@@ -53,8 +54,21 @@ case object ExtractMemoriesTool extends TypedTool[ExtractMemoriesInput](
       |Do NOT include:
       |  - intermediate reasoning, small-talk, acknowledgements
       |  - content that belongs in a summary (narrative / ongoing context).""".stripMargin
-) {
+) with FrameworkConsult {
   override def paginate: Boolean = false
+
+  /** Fact extraction is condensing work — routes through the cheap
+    * summarization tier. */
+  override def consultWorkType: WorkType = SummarizationWork
+
+  /** Output is a small list of structured facts (typically 1-5
+    * entries). 1500 tokens covers the worst-case list plus the
+    * reasoning-spill margin thinking-capable models burn before
+    * emitting the structured tool call. */
+  override def consultSettings: GenerationSettings = GenerationSettings(
+    maxOutputTokens = Some(1500),
+    reasoningMode = ReasoningMode.Off
+  )
 
   override protected def executeTyped(input: ExtractMemoriesInput, context: TurnContext): Stream[Event] =
     Stream.empty

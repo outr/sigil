@@ -89,18 +89,21 @@ case object ConsultTool extends TypedTool[ConsultInput](
                                        systemPrompt: String,
                                        userPrompt: String,
                                        tool: Tool,
-                                       // Sigil bug #196 — default was `GenerationSettings()`
-                                       // which left `maxOutputTokens = None`. Thinking-mode
-                                       // models (qwen3.5-9b via llama.cpp, DeepSeek-R1, …)
-                                       // burn unbounded `reasoning_content` tokens before
-                                       // the structured tool_call lands. Observed: a single
-                                       // classifier consult ran 227 seconds and emitted
-                                       // 25,252 reasoning tokens with zero tool_calls before
-                                       // hitting `finish_reason: length`. Default flipped to
-                                       // [[GenerationSettings.classifierDefault]] (bounded
-                                       // output + reasoning off) which fits the dominant
-                                       // ConsultTool use case (categorical decision with
-                                       // a single small structured payload). Callers that
+                                       // A bounded `maxOutputTokens` is mandatory:
+                                       // thinking-mode models (qwen via llama.cpp,
+                                       // DeepSeek-R1, …) burn unbounded
+                                       // `reasoning_content` tokens before the
+                                       // structured tool_call lands — an unbounded
+                                       // classifier consult can run for minutes,
+                                       // emit tens of thousands of reasoning tokens,
+                                       // and hit `finish_reason: length` with zero
+                                       // tool_calls. Default is
+                                       // [[GenerationSettings.classifierDefault]]
+                                       // (bounded output + reasoning off). Framework-
+                                       // internal consults declare a per-shape tight
+                                       // cap via [[FrameworkConsult.consultSettings]]
+                                       // — pass [[settingsFor]] (or use
+                                       // [[invokeRouted]]) to apply it. Callers that
                                        // need long-form generation override per call.
                                        generationSettings: GenerationSettings =
                                          GenerationSettings.classifierDefault): Task[Option[I]] =
@@ -174,6 +177,53 @@ case object ConsultTool extends TypedTool[ConsultInput](
     }.handleError { t =>
       Task.pure(ConsultOutcome.Failed(t))
     }
+  }
+
+  /**
+   * Routing-aware [[invoke]]. Resolves the concrete model from the
+   * consult's declared [[FrameworkConsult.consultWorkType]] via
+   * `Sigil.routedModelFor` so the call lands on the cheapest viable
+   * tier for that work category (classification / summarization)
+   * instead of inheriting the calling agent's conversation-tier
+   * model. `fallbackModelId` is used when no
+   * [[sigil.provider.ProviderStrategy]] applies — pass the model the
+   * caller would otherwise have used directly.
+   *
+   * `generationSettings = None` applies the consult's tight
+   * [[FrameworkConsult.consultSettings]] (bounded output +
+   * `ReasoningMode.Off`); callers whose output size is per-call
+   * (summarization) pass an explicit override.
+   *
+   * Use this for every framework-internal consult: it threads both
+   * cost levers — cheap-tier routing and the tight output cap — from
+   * the consult tool's own declaration, so no call site re-specifies
+   * either.
+   */
+  def invokeRouted[I <: ToolInput: ClassTag](sigil: Sigil,
+                                             tool: Tool & FrameworkConsult,
+                                             chain: List[ParticipantId],
+                                             fallbackModelId: Id[Model],
+                                             systemPrompt: String,
+                                             userPrompt: String,
+                                             generationSettings: Option[GenerationSettings] = None): Task[Option[I]] =
+    sigil.routedModelFor(tool.consultWorkType, chain, fallbackModelId).flatMap { modelId =>
+      invoke[I](sigil, modelId, chain, systemPrompt, userPrompt, tool,
+        generationSettings.getOrElse(settingsFor(tool)))
+    }
+
+  /**
+   * Canonical generation settings for a consult call. Framework-
+   * internal consults mix in [[FrameworkConsult]] and declare a tight
+   * `consultSettings` sized to their own output shape (bounded
+   * `maxOutputTokens` + `ReasoningMode.Off`); this returns that value
+   * directly so every call site picks up the per-consult cap without
+   * repeating it. Any other tool falls back to
+   * [[GenerationSettings.classifierDefault]] — the conservative
+   * bounded-output default for narrow structured-payload consults.
+   */
+  def settingsFor(tool: Tool): GenerationSettings = tool match {
+    case fc: FrameworkConsult => fc.consultSettings
+    case _                    => GenerationSettings.classifierDefault
   }
 
   private[consult] def collectText(events: List[ProviderEvent]): String = {
