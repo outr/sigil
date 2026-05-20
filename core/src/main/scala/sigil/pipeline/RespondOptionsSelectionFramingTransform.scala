@@ -80,7 +80,7 @@ object RespondOptionsSelectionFramingTransform extends InboundTransform {
   private def recentOptionsMessage(self: Sigil,
                                    conversationId: Id[Conversation],
                                    incoming: Message): Task[Option[(Message, ResponseContent.Options)]] =
-    self.withDB(_.events.transaction(_.list)).map { events =>
+    self.withDB(_.eventsTransaction(conversationId)(_.list)).map { events =>
       val priorMessages = events.iterator
         .collect { case msg: Message => msg }
         .filter(_.conversationId == conversationId)

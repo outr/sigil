@@ -829,7 +829,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * orchestrator hasn't yet stamped any agent Message (e.g. the
     * agent's only emissions so far are tool results). */
   def lastUsedModel(conversationId: Id[Conversation]): Task[Option[Id[Model]]] =
-    withDB(_.events.transaction(_.list)).map { events =>
+    withDB(_.eventsTransaction(conversationId)(_.list)).map { events =>
       events.iterator
         .collect { case m: sigil.event.Message if m.conversationId == conversationId => m }
         .filter(_.modelId.isDefined)
@@ -1509,7 +1509,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // The latest user-authored Message — classifier input + the
     // debounce anchor for the routing-fallback notice.
     val latestUserMessage: Task[Option[sigil.event.Message]] =
-      withDB(_.events.transaction(_.list)).map { evs =>
+      withDB(_.eventsTransaction(conv._id)(_.list)).map { evs =>
         evs.iterator
           .collect { case m: sigil.event.Message if m.conversationId == conv._id => m }
           .filter(m => !m.participantId.isInstanceOf[sigil.participant.AgentParticipantId])
@@ -1594,7 +1594,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                  if (skipReasons.isEmpty) "(no skip reasons recorded)"
                  else skipReasons.map { case (id, why) => s"  - ${id.value}: $why" }.mkString("\n")
                val alreadyEmittedTask: Task[Boolean] =
-                 withDB(_.events.transaction(_.list)).map { evs =>
+                 withDB(_.eventsTransaction(context.conversation._id)(_.list)).map { evs =>
                    val userTs = userMsg.map(_.timestamp.value).getOrElse(0L)
                    evs.exists {
                      case m: sigil.event.Message =>
@@ -2341,17 +2341,17 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * `event.contextFrame.isDefined` against `db.events` instead of
     * walking a separate frames Vector projection. */
   private final def attachContextFrameOnSettle(signal: Signal): Task[Unit] = {
-    val targetIdOpt: Option[Id[Event]] = signal match {
+    val targetOpt: Option[(Id[Conversation], Id[Event])] = signal match {
       case e: Event if e.state == EventState.Complete =>
-        Some(e._id)
+        Some(e.conversationId -> e._id)
       case d: sigil.signal.Delta =>
-        Some(d.target.asInstanceOf[Id[Event]])
+        Some(d.conversationId -> d.target.asInstanceOf[Id[Event]])
       case _ => None
     }
-    targetIdOpt match {
+    targetOpt match {
       case None => Task.unit
-      case Some(eventId) =>
-        withDB(_.events.transaction { tx =>
+      case Some((conversationId, eventId)) =>
+        withDB(_.eventsTransaction(conversationId) { tx =>
           tx.get(eventId).flatMap {
             case None => Task.unit
             case Some(event) if event.state != EventState.Complete => Task.unit
@@ -2767,7 +2767,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   private final def maybeApplyModeSkill(signal: Signal): Task[Unit] = signal match {
     case mc: ModeChange if mc.state == EventState.Complete => applyModeSkill(mc)
     case d: sigil.signal.Delta =>
-      withDB(_.events.transaction(_.get(d.target.asInstanceOf[Id[Event]]))).flatMap {
+      withDB(_.eventsTransaction(d.conversationId)(_.get(d.target.asInstanceOf[Id[Event]]))).flatMap {
         case Some(mc: ModeChange) if mc.state == EventState.Complete => applyModeSkill(mc)
         case _ => Task.unit
       }
@@ -2834,7 +2834,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     case e: Event if e.state == EventState.Complete =>
       applyParticipantProjectionFor(e)
     case d: sigil.signal.Delta =>
-      withDB(_.events.transaction(_.get(d.target.asInstanceOf[Id[Event]]))).flatMap {
+      withDB(_.eventsTransaction(d.conversationId)(_.get(d.target.asInstanceOf[Id[Event]]))).flatMap {
         case Some(target) if target.state == EventState.Complete => applyParticipantProjectionFor(target)
         case _ => Task.unit
       }
@@ -2959,7 +2959,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * in this conversation?" UX. */
   def latestToolApproval(toolName: sigil.tool.ToolName,
                          conversationId: Id[Conversation]): Task[Option[sigil.event.ToolApproval]] =
-    withDB(_.events.transaction(_.list)).map { events =>
+    withDB(_.eventsTransaction(conversationId)(_.list)).map { events =>
       events.iterator
         .collect { case ta: sigil.event.ToolApproval => ta }
         .filter(_.conversationId == conversationId)
@@ -2979,7 +2979,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def framesFor(conversationId: Id[Conversation]): Task[Vector[ContextFrame]] =
     withDB(_.conversations.transaction(_.get(conversationId))).flatMap { convOpt =>
       val watermark = convOpt.flatMap(_.clearedAt).map(_.value).getOrElse(0L)
-      withDB(_.events.transaction(_.list)).map { all =>
+      withDB(_.eventsTransaction(conversationId)(_.list)).map { all =>
         all.iterator
           .filter(_.conversationId == conversationId)
           .filter(_.timestamp.value > watermark)
@@ -3138,7 +3138,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def markRead(conversationId: Id[Conversation],
                participantId: ParticipantId,
                readThrough: Id[sigil.event.Event]): Task[Unit] =
-    withDB(_.events.transaction(_.get(readThrough))).flatMap {
+    withDB(_.eventsTransaction(conversationId)(_.get(readThrough))).flatMap {
       case None    => Task.unit
       case Some(e) => markRead(conversationId, participantId, e.timestamp)
     }
@@ -3152,7 +3152,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                participantId: ParticipantId,
                lastReadAt: lightdb.time.Timestamp): Task[Unit] = {
     val stateId = sigil.event.ReadState.idFor(conversationId, participantId)
-    withDB(_.events.transaction(_.get(stateId))).flatMap {
+    withDB(_.eventsTransaction(conversationId)(_.get(stateId))).flatMap {
       case Some(_) =>
         publish(sigil.signal.ReadStateDelta(
           target         = stateId,
@@ -3184,7 +3184,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def readStateFor(conversationId: Id[Conversation],
                    participantId: ParticipantId): Task[Option[sigil.event.ReadState]] = {
     val stateId = sigil.event.ReadState.idFor(conversationId, participantId)
-    withDB(_.events.transaction(_.get(stateId))).map {
+    withDB(_.eventsTransaction(conversationId)(_.get(stateId))).map {
       case Some(r: sigil.event.ReadState) => Some(r)
       case _                              => None
     }
@@ -3437,7 +3437,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       vectorIndex.search(vec, limit = limit, filter = filter).flatMap { hits =>
         val ids = hits.flatMap(_.payload.get("eventId")).map(Id[Event](_))
         withDB { db =>
-          db.events.transaction { tx =>
+          db.eventsTransaction(conversationId) { tx =>
             Task.sequence(ids.map(id => tx.get(id))).map(_.flatten)
           }
         }
@@ -3452,7 +3452,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                                        query: String,
                                        topicId: Option[Id[Topic]],
                                        limit: Int): Task[List[Event]] =
-    withDB(_.events.transaction(_.list)).map { all =>
+    withDB(_.eventsTransaction(conversationId)(_.list)).map { all =>
       val needle = query.toLowerCase
       all.filter { e =>
         e.conversationId == conversationId &&
@@ -3493,7 +3493,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     val settled: Task[Option[Event]] = signal match {
       case e: Event if e.state == EventState.Complete => Task.pure(Some(e))
       case d: sigil.signal.Delta =>
-        withDB(_.events.transaction(_.get(d.target.asInstanceOf[Id[Event]])))
+        withDB(_.eventsTransaction(d.conversationId)(_.get(d.target.asInstanceOf[Id[Event]])))
           .map(_.filter(_.state == EventState.Complete))
       case _ => Task.pure(None)
     }
@@ -4195,14 +4195,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    */
   def mergeStagingIntoMain(staging: Id[Conversation],
                            target: Id[Conversation]): Task[Int] = {
-    // Event store has no conversationId index today, so use a
-    // streaming `tx.stream.filter` rather than `tx.query.filter`.
-    // For large event stores this is a full-table scan; the merge
-    // is one-shot per import, so an index could be added later if
-    // profiling shows it's load-bearing.
     val rewriteEvents: Task[Int] = withDB(_.events.transaction { tx =>
-      val rewritten = tx.stream
-        .filter(_.conversationId == staging)
+      val rewritten = tx.query.filter(_.conversationIdIndex === staging.value).stream
         .map(e => e.withConversationId(target))
       tx.upsert(rewritten)
     })
@@ -4242,8 +4236,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     for {
       _ <- withDB { db =>
              db.events.transaction { tx =>
-               // No conversationId index on Event; stream-scan + filter.
-               val ids = tx.stream.filter(_.conversationId == staging).map(_._id)
+               val ids = tx.query.filter(_.conversationIdIndex === staging.value).stream.map(_._id)
                ids.evalMap(id => tx.delete(id)).drain
              }
            }
@@ -4283,10 +4276,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       _ <- withDB(_.conversations.transaction(_.delete(conversationId)))
       _ <- withDB { db =>
              db.events.transaction { tx =>
-               tx.list.flatMap { all =>
-                 val targets = all.filter(_.conversationId == conversationId)
-                 Task.sequence(targets.map(e => tx.delete(e._id))).unit
-               }
+               tx.query.filter(_.conversationIdIndex === conversationId.value).stream
+                 .map(_._id)
+                 .evalMap(id => tx.delete(id))
+                 .drain
              }
            }
       _ <- withDB { db =>
@@ -4693,11 +4686,22 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // of these scribe.debug calls is negligible compared to the
     // turn's actual work; volume is ~3 lines per iteration.
     scribe.info(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration enter")
+    // Batch this iteration's `events` writes into one transaction so
+    // the Lucene-indexed event store commits once per iteration
+    // instead of once per streamed Delta. `iterationStep` is a
+    // `Task[Task[Unit]]`: the outer Task does this iteration's work
+    // (publishes, tool dispatch, terminate) inside the batched
+    // scope; the inner Task it yields is the continuation — the
+    // NEXT iteration's `runAgentLoop` call, or `Task.unit` for a
+    // terminal exit. The continuation runs AFTER `withBatchedEvents`
+    // commits, so iteration N+1's reads see iteration N's committed
+    // data and never join N's transaction.
+    val iterationStep: Task[Task[Unit]] =
     // A Stop may have landed before this iteration even starts; short-
     // circuit if so (graceful = "don't start another iteration"; force
     // = "same, plus the in-flight stream below won't run"). Either way,
     // release and exit.
-    if (stopFlag.exists(_.requested)) terminate()
+    if (stopFlag.exists(_.requested)) terminate().map(_ => Task.unit)
     else
     // Reload the conversation each iteration — materialized projections
     // (currentMode, modified, etc.) update as Events flow through `publish`,
@@ -4706,7 +4710,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       case None =>
         // Conversation deleted mid-turn — release the lock and exit cleanly.
         // Extractor isn't fired here — no conversation = nothing to extract.
-        releaseClaim(claimed)
+        releaseClaim(claimed).map(_ => Task.unit)
       case Some(conv) =>
         // Sigil bug #169 — overlay persists across iterations within the
         // same user turn. Prerequisite calls (`record_consent`, etc.) and
@@ -4805,7 +4809,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           // else — a Stop that fired mid-stream means exit now, don't
           // continue looping even if there are new triggers.
           if (stopFlag.exists(_.requested))
-            terminate()
+            terminate().map(_ => Task.unit)
           else if (forceResponseSynthesis) {
             // Sigil bug #125 — the cap-hit soft-stop ran. With
             // `tool_choice: respond` the model SHOULD have called
@@ -4816,7 +4820,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             // has genuinely exhausted — raise the hard throw so the
             // calling fiber's failure handler sees it.
             if (userVisibleSeen.get())
-              terminate()
+              terminate().map(_ => Task.unit)
             else
               terminate().flatMap(_ =>
                 Task.error(buildRunawayException(
@@ -4876,7 +4880,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                     // publish user-visible and release the claim. The
                     // agent can't make progress without the user's
                     // reply; the next user Message will re-trigger.
-                    publish(intervention.message).flatMap(_ => terminate())
+                    publish(intervention.message).flatMap(_ => terminate()).map(_ => Task.unit)
                   case Some(intervention) =>
                     // Bug #133 — stall / no-progress streak. The
                     // intervention text is a directive to the agent
@@ -4897,13 +4901,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                     )
                     publish(syntheticInvoke)
                       .flatMap(_ => publish(taggedDirective))
-                      .flatMap(_ => recurseForced(ForcedSynthesisReason.StallIntervention))
+                      .map(_ => recurseForced(ForcedSynthesisReason.StallIntervention))
                   case None =>
-                    runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart,
+                    Task.pure(runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart,
                       userVisibleSeen = userVisibleSeen,
                       turnExtractorFired = turnExtractorFired,
                       failurePublished = failurePublished,
-                      discoveredCapabilitiesRef = discoveredCapabilitiesRef)
+                      discoveredCapabilitiesRef = discoveredCapabilitiesRef))
                 }
               }
             case true if !forceResponseSynthesis =>
@@ -4943,7 +4947,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                 // the forced-synthesis turn. The recovery attempt then
                 // resolves to whichever model in the chain supports
                 // the elevated tier. No-op when the flag is off.
-                escalateForCapHit(convId).flatMap(_ =>
+                escalateForCapHit(convId).map(_ =>
                   recurseForced(ForcedSynthesisReason.CapHit))
               }
             case true =>
@@ -4968,13 +4972,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               // above raises AgentRunawayException — model is broken,
               // surface the hard failure instead of papering over it
               // with a fake "(agent completed without a reply)" Message.
-              if (userVisibleSeen.get()) terminate()
+              if (userVisibleSeen.get()) terminate().map(_ => Task.unit)
               else if (forceResponseSynthesis)
                 terminate().flatMap(_ =>
                   Task.error(buildRunawayException(
                     agent, conv, iteration, maxAgentIterations, forcedReason)))
               else
-                recurseForced(ForcedSynthesisReason.NoToolCall)
+                Task.pure(recurseForced(ForcedSynthesisReason.NoToolCall))
             }
           }
         }
@@ -5006,6 +5010,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         .flatMap(_ => terminate().handleError(_ => Task.unit))
         .flatMap(_ => Task.error(t))
     }
+    // Hold one `events` transaction open across this iteration's
+    // work — every `publish` → `apply` and every event read routed
+    // through `eventsTransaction(convId)` joins it — then commit
+    // once at scope exit. `iterationStep` yields the continuation
+    // Task (next iteration or terminal `Task.unit`); running it via
+    // `.flatMap(identity)` AFTER `withBatchedEvents` returns means
+    // the next iteration starts only once this one's writes are
+    // committed, so its independent reads see the durable data.
+    withDB(_.withBatchedEvents(convId)(iterationStep)).flatMap(continuation => continuation)
   }
 
   /** Sigil bug #198 — assemble an [[AgentRunawayException]] whose
@@ -5045,7 +5058,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   private final def firePostTurnExtraction(agent: AgentParticipant,
                                            convId: Id[Conversation],
                                            turnStartTimestamp: Timestamp): Task[Unit] =
-    withDB(_.events.transaction(_.list)).flatMap { all =>
+    withDB(_.eventsTransaction(convId)(_.list)).flatMap { all =>
       val convEvents = all.iterator
         .filter(_.conversationId == convId)
         .filter(_.state == EventState.Complete)
@@ -5233,7 +5246,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * empty context rather than aborting the checkpoint. */
   private final def loadProgressContext(convId: Id[Conversation],
                                         agentId: ParticipantId): Task[ProgressContext] =
-    withDB(_.events.transaction(_.list)).map { all =>
+    withDB(_.eventsTransaction(convId)(_.list)).map { all =>
       val convEvents = all.iterator
         .collect { case e: Event if e.conversationId == convId => e }
         .toList
@@ -5288,7 +5301,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * signal rather than aborting the checkpoint. */
   private final def evaluateStall(convId: Id[Conversation],
                                   agentId: ParticipantId): Task[sigil.conversation.compression.StallDetector.Signal] =
-    withDB(_.events.transaction(_.list)).map { all =>
+    withDB(_.eventsTransaction(convId)(_.list)).map { all =>
       val convEvents = all.iterator
         .collect { case e: Event if e.conversationId == convId => e }
         .toList
@@ -5453,7 +5466,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                                  discoveredCapabilitiesRef: AtomicReference[Map[String, sigil.conversation.DiscoveredCapability]] =
                                    new AtomicReference(Map.empty)): Task[(TurnContext, Stream[Event])] =
     for {
-      triggerEvents <- withDB(_.events.transaction(_.list)).map { all =>
+      triggerEvents <- withDB(_.eventsTransaction(conv._id)(_.list)).map { all =>
         all.view
           .filter(e => e.conversationId == conv._id
                     && e.timestamp.value > sinceTimestamp.value
@@ -5518,7 +5531,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   private final def newTriggersExist(agent: AgentParticipant,
                                      conv: Conversation,
                                      sinceTimestamp: Timestamp): Task[Boolean] =
-    withDB(_.events.transaction(_.list)).map { all =>
+    withDB(_.eventsTransaction(conv._id)(_.list)).map { all =>
       all.exists(e => e.conversationId == conv._id
                    && e.timestamp.value > sinceTimestamp.value
                    && TriggerFilter.isTriggerFor(agent, e))
