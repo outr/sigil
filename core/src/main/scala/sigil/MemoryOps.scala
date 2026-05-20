@@ -81,6 +81,15 @@ trait MemoryOps { this: Sigil =>
   }
 
   private def upsertMemoryByKeyImpl(memory: ContextMemory): Task[UpsertMemoryResult] =
+    upsertMemoryByKeyWrite(memory).flatMap { result =>
+      indexMemory(result.memory).map(_ => result)
+    }
+
+  /** The DB-write half of [[upsertMemoryByKeyImpl]] — applies the
+    * versioning rules and persists, but does NOT index. The single
+    * path re-attaches [[indexMemory]]; the batched path defers to one
+    * [[indexMemoriesBatch]] across every written record. */
+  private def upsertMemoryByKeyWrite(memory: ContextMemory): Task[UpsertMemoryResult] =
     withDB { db =>
       db.memories.transaction { tx =>
         import lightdb.filter.*
@@ -120,8 +129,6 @@ trait MemoryOps { this: Sigil =>
             }
           }
       }
-    }.flatMap { result =>
-      indexMemory(result.memory).map(_ => result)
     }
 
   /**
@@ -213,8 +220,8 @@ trait MemoryOps { this: Sigil =>
         case None => Task.pure(Nil)
         case Some(result) =>
           val kept = result.memories.filter(_.content.trim.nonEmpty)
-          Task.sequence(kept.map { m =>
-            val mem = ContextMemory(
+          val memories = kept.map { m =>
+            ContextMemory(
               fact       = m.content,
               label      = if (m.label.trim.nonEmpty) m.label else m.key.getOrElse("memory"),
               summary    = m.content,
@@ -226,11 +233,11 @@ trait MemoryOps { this: Sigil =>
               status     = MemoryStatus.Approved,
               createdBy  = chain.lastOption
             )
-            // Seeded outside any conversation, so leave `conversationId`
-            // None and skip the `*For` variants' location lookup.
-            if (m.key.isDefined) upsertMemoryByKey(mem).map(_.memory)
-            else persistMemory(mem)
-          })
+          }
+          // Seeded outside any conversation, so leave `conversationId`
+          // None and skip the `*For` variants' location lookup. The
+          // whole seed list shares one batched embedding request.
+          persistMemories(memories)
       }
     }
   }
@@ -437,17 +444,90 @@ trait MemoryOps { this: Sigil =>
   private final def indexMemory(m: ContextMemory): Task[Unit] =
     if (!vectorWired || m.fact.isEmpty) Task.unit
     else embeddingProvider.embed(m.fact).flatMap { vec =>
-      vectorIndex.upsert(VectorPoint(
-        id = VectorPointId(m._id.value),
-        vector = vec,
-        payload = Map(
-          "kind" -> "memory",
-          "memoryId" -> m._id.value,
-          "spaceId" -> m.spaceId.value,
-          sigil.vector.HybridSearch.TextKey -> m.fact
-        )
-      ))
+      vectorIndex.upsert(memoryVectorPoint(m, vec))
     }.handleError { e =>
       Task(scribe.warn(s"Vector index failed for memory ${m._id.value}: ${e.getMessage}"))
     }
+
+  /** Build the [[VectorPoint]] for a memory — shared by the single and
+    * batched index paths so the payload shape stays in one place. */
+  private final def memoryVectorPoint(m: ContextMemory, vec: Vector[Double]): VectorPoint =
+    VectorPoint(
+      id = VectorPointId(m._id.value),
+      vector = vec,
+      payload = Map(
+        "kind" -> "memory",
+        "memoryId" -> m._id.value,
+        "spaceId" -> m.spaceId.value,
+        sigil.vector.HybridSearch.TextKey -> m.fact
+      )
+    )
+
+  /** Embed and index a list of memories with a single batched embedding
+    * request and a single batched vector upsert — the bulk equivalent
+    * of [[indexMemory]]. Memories with an empty `fact` are skipped.
+    * No-op when vector search isn't wired; failures are logged and
+    * swallowed so a bulk persist never fails on an index hiccup. */
+  private final def indexMemoriesBatch(memories: List[ContextMemory]): Task[Unit] = {
+    val indexable = memories.filter(_.fact.nonEmpty)
+    if (!vectorWired || indexable.isEmpty) Task.unit
+    else embeddingProvider.embedBatch(indexable.map(_.fact)).flatMap { vectors =>
+      val points = indexable.iterator.zip(vectors.iterator).map { case (m, vec) =>
+        memoryVectorPoint(m, vec)
+      }.toList
+      vectorIndex.upsertBatch(points)
+    }.handleError { e =>
+      Task(scribe.warn(s"Vector index failed for memory batch (${indexable.size} records): ${e.getMessage}"))
+    }
+  }
+
+  /**
+   * Persist a list of un-keyed memories, embedding every record with a
+   * single batched [[sigil.embedding.EmbeddingProvider.embedBatch]]
+   * call and a single batched [[sigil.vector.VectorIndex.upsertBatch]]
+   * — the bulk-write equivalent of calling [[persistMemory]] N times,
+   * but with one embedding HTTP request instead of N.
+   *
+   * Each record still passes through [[validateCoreContextCap]] and
+   * [[enrichMemoryClassification]] individually (classification is an
+   * LLM call per memory; batching that is out of scope here). Only the
+   * vector-index step is batched. Returns the stored records in input
+   * order.
+   *
+   * Records carrying a non-empty `key` route through the versioned
+   * [[upsertMemoryByKey]] write path per-record; keyless records take
+   * the single-shot insert. Either way the vector-index step is
+   * deferred and batched across the whole list.
+   */
+  def persistMemories(memories: List[ContextMemory]): Task[List[ContextMemory]] =
+    if (memories.isEmpty) Task.pure(Nil)
+    else Task.sequence(memories.map { memory =>
+      validateCoreContextCap(memory).flatMap { _ =>
+        enrichMemoryClassification(memory, memory.createdBy.toList).flatMap { enriched =>
+          if (enriched.key.exists(_.nonEmpty))
+            upsertMemoryByKeyWrite(enriched).map(_.memory)
+          else
+            withDB(_.memories.transaction(_.upsert(enriched)))
+        }
+      }
+    }).flatMap { stored =>
+      indexMemoriesBatch(stored).map(_ => stored)
+    }
+
+  /**
+   * Bulk-persist equivalent of [[persistMemoryFor]] /
+   * [[upsertMemoryByKeyFor]] — chain-enriches every record
+   * (`createdBy` + `location`), then routes through [[persistMemories]]
+   * so the whole list shares a single batched embedding request.
+   *
+   * The framework's per-turn memory extractor and compression-time
+   * extractor use this so a turn that yields N memories costs one
+   * embedding HTTP call, not N.
+   */
+  def persistMemoriesFor(memories: List[ContextMemory],
+                         chain: List[sigil.participant.ParticipantId],
+                         conversationId: Id[Conversation]): Task[List[ContextMemory]] =
+    if (memories.isEmpty) Task.pure(Nil)
+    else Task.sequence(memories.map(m => enrich(m, chain, conversationId)))
+      .flatMap(persistMemories)
 }
