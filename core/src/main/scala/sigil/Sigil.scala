@@ -2720,6 +2720,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * when `releaseClaim` completes (successfully or via error). */
   private final val stopFlags: ConcurrentHashMap[Id[Event], StopFlag] = new ConcurrentHashMap()
 
+  /** In-flight provider HTTP-stream cancel handles, keyed per
+    * (agent, conversation). A [[Provider]] registers its spice
+    * `StreamHandle.cancel` here when an agent turn starts streaming and
+    * deregisters when the stream terminates; [[applyStop]] looks up the
+    * matching handle on a `Stop` and aborts the in-flight call so the
+    * generated-then-discarded output tokens aren't billed. */
+  final val providerStreams: sigil.provider.ProviderStreamRegistry =
+    new sigil.provider.ProviderStreamRegistry
+
   /** Per-claim progress-checkpoint state. Keyed by the AgentState id
     * that owns the claim. Carries the prior checkpoint's `currentStatus`
     * (anchor for the next checkpoint's "did things change?" question)
@@ -2733,33 +2742,44 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
 
   /** On a [[Stop]] event, set the matching flag(s): one specific agent if
     * `targetParticipantId` is set, else every agent in the conversation.
-    * Also logs the stop (with `reason`, if supplied) so operators can see
-    * where stops originate — otherwise `Stop.reason` would be metadata
-    * that only shows up if someone trawls the event log. */
+    * Also aborts any in-flight provider HTTP stream for the matching
+    * agent(s) via [[providerStreams]] so the call doesn't drain to
+    * natural completion (which still bills the discarded output
+    * tokens). Also logs the stop (with `reason`, if supplied) so
+    * operators can see where stops originate — otherwise `Stop.reason`
+    * would be metadata that only shows up if someone trawls the event
+    * log. */
   private final def applyStop(signal: Signal): Task[Unit] = signal match {
-    case s: Stop => Task {
-      val target = s.targetParticipantId.map(_.value).getOrElse("*")
-      val why = s.reason.map(r => s" reason=\"$r\"").getOrElse("")
-      scribe.info(
-        s"Stop received: conversation=${s.conversationId.value} target=$target " +
-          s"force=${s.force} by=${s.participantId.value}$why"
-      )
-      import scala.jdk.CollectionConverters.*
-      stopFlags.entrySet().iterator().asScala.foreach { entry =>
-        val lockId = entry.getKey
-        val flag = entry.getValue
-        // Lock id encodes `agentlock:<agentId>:<convId>`; cheapest match is
-        // on the id suffix for conversation + participant.
-        val matchesConv = lockId.value.endsWith(s":${s.conversationId.value}")
-        val matchesTarget = s.targetParticipantId match {
-          case None     => true
-          case Some(id) => lockId.value == s"agentlock:${id.value}:${s.conversationId.value}"
-        }
-        if (matchesConv && matchesTarget) {
-          if (s.force) flag.force.set(true) else flag.graceful.set(true)
+    case s: Stop =>
+      val setFlags = Task {
+        val target = s.targetParticipantId.map(_.value).getOrElse("*")
+        val why = s.reason.map(r => s" reason=\"$r\"").getOrElse("")
+        scribe.info(
+          s"Stop received: conversation=${s.conversationId.value} target=$target " +
+            s"force=${s.force} by=${s.participantId.value}$why"
+        )
+        import scala.jdk.CollectionConverters.*
+        stopFlags.entrySet().iterator().asScala.foreach { entry =>
+          val lockId = entry.getKey
+          val flag = entry.getValue
+          // Lock id encodes `agentlock:<agentId>:<convId>`; cheapest match is
+          // on the id suffix for conversation + participant.
+          val matchesConv = lockId.value.endsWith(s":${s.conversationId.value}")
+          val matchesTarget = s.targetParticipantId match {
+            case None     => true
+            case Some(id) => lockId.value == s"agentlock:${id.value}:${s.conversationId.value}"
+          }
+          if (matchesConv && matchesTarget) {
+            if (s.force) flag.force.set(true) else flag.graceful.set(true)
+          }
         }
       }
-    }
+      // Abort the in-flight provider HTTP stream(s) for the targeted
+      // agent (or every agent in the conversation when no target is
+      // set). Best-effort — cancel is idempotent and a missing handle
+      // is a no-op, so a Stop arriving between iterations just finds
+      // nothing to cancel.
+      setFlags.flatMap(_ => providerStreams.cancelFor(s.conversationId, s.targetParticipantId))
     case _ => Task.unit
   }
 

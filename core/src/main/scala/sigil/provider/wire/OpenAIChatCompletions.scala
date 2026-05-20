@@ -283,8 +283,11 @@ object OpenAIChatCompletions {
       for {
         raw         <- buildHttpRequest(input, sigil, baseUrl, auth, config)
         intercepted <- sigil.wireInterceptor.before(raw)
-        lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLines()
+        handle      <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLinesHandle()
       } yield {
+        // `track` registers the stream's cancel handle so a `Stop`
+        // aborts the in-flight call mid-flight instead of draining it.
+        val lines = sigil.providerStreams.track(input, handle)
         StreamWireInterceptor.attach(lines, sigil.wireInterceptor, intercepted, sigil.chunkLogger) { line =>
           Stream.emits(parseLine(line, state, config))
         }

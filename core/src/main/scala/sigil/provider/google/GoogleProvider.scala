@@ -42,8 +42,11 @@ case class GoogleProvider(apiKey: String,
       for {
         raw         <- httpRequestFor(input)
         intercepted <- sigilRef.wireInterceptor.before(raw)
-        lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLines()
+        handle      <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLinesHandle()
       } yield {
+        // `track` registers the stream's cancel handle so a `Stop`
+        // aborts the in-flight call mid-flight instead of draining it.
+        val lines = sigilRef.providerStreams.track(input, handle)
         _root_.sigil.provider.debug.StreamWireInterceptor.attach(
           lines, sigilRef.wireInterceptor, intercepted, sigilRef.chunkLogger
         ) { line =>

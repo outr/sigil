@@ -72,11 +72,14 @@ case class AnthropicProvider(apiKey: String,
       for {
         raw         <- httpRequestFor(input)
         intercepted <- sigilRef.wireInterceptor.before(raw)
-        lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLines()
+        handle      <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLinesHandle()
       } yield {
         // okhttp's per-read timeout already catches network stalls
         // (no bytes for the duration); slow-but-working streams keep
-        // going as long as tokens flow.
+        // going as long as tokens flow. `track` registers the
+        // stream's cancel handle so a `Stop` aborts the call
+        // mid-flight instead of draining it to completion.
+        val lines = sigilRef.providerStreams.track(input, handle)
         _root_.sigil.provider.debug.StreamWireInterceptor.attach(
           lines, sigilRef.wireInterceptor, intercepted, sigilRef.chunkLogger
         ) { line =>
