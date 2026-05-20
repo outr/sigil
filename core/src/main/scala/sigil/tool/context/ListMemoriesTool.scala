@@ -1,14 +1,11 @@
 package sigil.tool.context
 
-import fabric.*
-import fabric.io.JsonFormatter
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
 import sigil.conversation.ContextMemory
-import sigil.event.{Event, Message, MessageRole}
 import sigil.tokenize.HeuristicTokenizer
-import sigil.tool.{ToolName, TypedTool}
-import sigil.tool.model.ResponseContent
+import sigil.tool.model.{ListMemoriesOutput, MemoryListEntry, MemoryListPage}
+import sigil.tool.{ToolName, TypedOutputTool}
 
 /**
  * General memory-listing tool. Surfaces every memory the caller's
@@ -16,15 +13,10 @@ import sigil.tool.model.ResponseContent
  * space, pinned status, and substring query, paginated via
  * `offset` + `limit`.
  *
- * Output is a JSON object the agent reads on its next turn:
- * ```json
- * {
- *   "memories": [
- *     { "key", "label", "summary", "tokens", "spaceId", "pinned" }, ...
- *   ],
- *   "page": { "offset", "limit", "returned", "totalMatched", "hasMore" }
- * }
- * ```
+ * Emits a typed [[ListMemoriesOutput]] — `Listed` with a page of
+ * matching memories plus its pagination envelope, or
+ * `NoAccessibleSpaces` when the caller's chain has no accessible
+ * memory space.
  *
  * Use cases:
  *   - "What do you remember about me?" — the agent calls
@@ -40,7 +32,7 @@ import sigil.tool.model.ResponseContent
  * `pin_memory` / `unpin_memory` / `move_memory` / `forget_memory` to
  * act on a selection.
  */
-case object ListMemoriesTool extends TypedTool[ListMemoriesInput](
+case object ListMemoriesTool extends TypedOutputTool[ListMemoriesInput, ListMemoriesOutput](
   name = ToolName("list_memories"),
   description =
     """List memories you can see — pinned and unpinned — with filters and pagination.
@@ -69,22 +61,11 @@ case object ListMemoriesTool extends TypedTool[ListMemoriesInput](
     * the next turn's prompt. */
   private val MaxPageSize: Int = 100
 
-  override protected def executeTyped(input: ListMemoriesInput, context: TurnContext): Stream[Event] =
-    Stream.force(collect(input, context).map { body =>
-      Stream.emits(List[Event](Message(
-        participantId = context.caller,
-        conversationId = context.conversation.id,
-        topicId = context.conversation.currentTopicId,
-        content = Vector(ResponseContent.Text(body)),
-        role = MessageRole.Tool
-      )))
-    })
-
-  private def collect(input: ListMemoriesInput, context: TurnContext): Task[String] =
+  override protected def executeTyped(input: ListMemoriesInput, context: TurnContext): Task[ListMemoriesOutput] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       val effective = if (input.spaces.nonEmpty) input.spaces.intersect(accessible) else accessible
       if (effective.isEmpty)
-        Task.pure("""{"memories":[],"page":{"offset":0,"limit":0,"returned":0,"totalMatched":0,"hasMore":false},"note":"No accessible memory spaces for this chain."}""")
+        Task.pure(ListMemoriesOutput.NoAccessibleSpaces("No accessible memory spaces for this chain."))
       else {
         // pinned-only requests use the Lucene-pushed critical-memory
         // query (O(N_pinned)) instead of pulling every memory and
@@ -96,10 +77,19 @@ case object ListMemoriesTool extends TypedTool[ListMemoriesInput](
         }
         source.map { memories =>
           val filtered = applyFilters(memories, input)
-          val limit = math.max(1, math.min(input.limit, MaxPageSize))
-          val offset = math.max(0, input.offset)
-          val page = filtered.slice(offset, offset + limit)
-          render(page, offset = offset, limit = limit, totalMatched = filtered.size)
+          val limit    = math.max(1, math.min(input.limit, MaxPageSize))
+          val offset   = math.max(0, input.offset)
+          val page     = filtered.slice(offset, offset + limit)
+          ListMemoriesOutput.Listed(
+            memories = page.map(toEntry),
+            page = MemoryListPage(
+              offset       = offset,
+              limit        = limit,
+              returned     = page.size,
+              totalMatched = filtered.size,
+              hasMore      = offset + page.size < filtered.size
+            )
+          )
         }
       }
     }
@@ -127,35 +117,17 @@ case object ListMemoriesTool extends TypedTool[ListMemoriesInput](
     byQuery.sortBy(m => (!m.pinned, -m.lastAccessedAt.value, m._id.value))
   }
 
-  private def render(page: List[ContextMemory], offset: Int, limit: Int, totalMatched: Int): String = {
-    val tokenizer = HeuristicTokenizer
-    val items = page.map { m =>
-      val rendered = if (m.summary.trim.nonEmpty) m.summary else m.fact
-      val justificationJson: fabric.Json = m.justification match {
-        case Some(j) => str(j)
-        case None    => fabric.Null
-      }
-      obj(
-        "key"           -> str(m.key.getOrElse(m._id.value)),
-        "label"         -> str(m.label),
-        "summary"       -> str(m.summary),
-        "tokens"        -> num(tokenizer.count(rendered)),
-        "spaceId"       -> str(m.spaceId.value),
-        "pinned"        -> bool(m.pinned),
-        "confidence"    -> num(m.confidence),
-        "justification" -> justificationJson
-      )
-    }
-    val pageInfo = obj(
-      "offset"       -> num(offset),
-      "limit"        -> num(limit),
-      "returned"     -> num(page.size),
-      "totalMatched" -> num(totalMatched),
-      "hasMore"      -> bool(offset + page.size < totalMatched)
+  private def toEntry(m: ContextMemory): MemoryListEntry = {
+    val rendered = if (m.summary.trim.nonEmpty) m.summary else m.fact
+    MemoryListEntry(
+      key           = m.key.getOrElse(m._id.value),
+      label         = m.label,
+      summary       = m.summary,
+      tokens        = HeuristicTokenizer.count(rendered),
+      spaceId       = m.spaceId.value,
+      pinned        = m.pinned,
+      confidence    = m.confidence,
+      justification = m.justification
     )
-    JsonFormatter.Default(obj(
-      "memories" -> arr(items*),
-      "page"     -> pageInfo
-    ))
   }
 }

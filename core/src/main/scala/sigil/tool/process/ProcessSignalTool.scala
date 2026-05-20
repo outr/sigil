@@ -1,12 +1,9 @@
 package sigil.tool.process
 
-import fabric.{bool, obj, str}
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.fs.FsToolEmit
-import sigil.tool.model.{ProcessSignal, ProcessSignalInput}
-import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.tool.model.{ProcessSignalInput, ProcessSignalOutput}
+import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
 
 /**
  * Send a signal to a registered subprocess. Default `terminate`
@@ -15,28 +12,22 @@ import sigil.tool.{ToolExample, ToolName, TypedTool}
  * SIGKILL.
  */
 final class ProcessSignalTool(registry: ProcessRegistry)
-  extends TypedTool[ProcessSignalInput](
+  extends TypedOutputTool[ProcessSignalInput, ProcessSignalOutput](
     name = ToolName("process_signal"),
     description =
       """Send a signal to a subprocess. `signal` is one of `terminate` (default — graceful SIGTERM
         |then SIGKILL on grace timeout), `interrupt` (SIGINT-equivalent), `kill` (SIGKILL).
-        |Returns `{handle, signal, ok}`.""".stripMargin,
+        |Returns the handle, the delivered signal, and whether delivery succeeded.""".stripMargin,
     examples = List(
       ToolExample("Terminate gracefully",  ProcessSignalInput(handle = "p1")),
-      ToolExample("Force-kill a hung proc", ProcessSignalInput(handle = "p1", signal = ProcessSignal.Kill))
+      ToolExample("Force-kill a hung proc", ProcessSignalInput(handle = "p1", signal = sigil.tool.model.ProcessSignal.Kill))
     ),
     keywords = Set("process", "signal", "terminate", "kill", "stop")
   ) {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: ProcessSignalInput, ctx: TurnContext): Stream[Event] = Stream.force(
-    registry.signal(input.handle, input.signal).map { ok =>
-      val payload = obj(
-        "handle" -> str(input.handle),
-        "signal" -> str(input.signal.toString),
-        "ok"     -> bool(ok)
-      )
-      Stream.emit[Event](FsToolEmit(payload, ctx))
+  override protected def executeTyped(input: ProcessSignalInput, ctx: TurnContext): Task[ProcessSignalOutput] =
+    registry.signal(input.handle, input.signal).map { delivered =>
+      ProcessSignalOutput(handle = input.handle, signal = input.signal, delivered = delivered)
     }
-  )
 }
