@@ -187,5 +187,5 @@ object Event extends JsonConversion[Event] {
    * reads of the event log query this index instead of scanning the
    * whole store, and it gives full-text search a stable scope key.
    */
-  val conversationIdIndex: I[String] = field.index("conversationId", _.conversationId.value)
+  val conversationId: I[String] = field.index("conversationId", _.conversationId.value)
 }
