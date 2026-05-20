@@ -109,12 +109,14 @@ case class OpenAIProvider(apiKey: String,
       for {
         raw         <- httpRequestFor(input)
         intercepted <- sigilRef.wireInterceptor.before(raw)
-        lines       <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLines()
+        handle      <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLinesHandle()
       } yield {
         // okhttp's per-read timeout (configured via HttpClient.timeout)
         // catches genuine network stalls — fires when no bytes arrive
         // for `tokenIdleTimeout`. Slow-but-working streams keep going
-        // as long as their tokens flow.
+        // as long as their tokens flow. `track` registers the stream's
+        // cancel handle so a `Stop` aborts the call mid-flight.
+        val lines = sigilRef.providerStreams.track(input, handle)
         StreamWireInterceptor.attach(lines, sigilRef.wireInterceptor, intercepted, sigilRef.chunkLogger) { line =>
           Stream.emits(parseLine(line, state))
         }
