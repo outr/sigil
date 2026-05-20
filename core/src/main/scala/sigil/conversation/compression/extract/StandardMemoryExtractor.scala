@@ -97,7 +97,7 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
             // bugs/195-extractor-auto-mode-affinity.md for the
             // earlier discussion.
             val knownModes: Set[String] = sigil.availableModes.map(_.name).toSet
-            Task.sequence(kept.map { m =>
+            val memories = kept.map { m =>
               val (modeTagsRaw, otherTags) = m.tags.partition(_.startsWith("mode:"))
               val resolvedModes: Set[Id[Mode]] =
                 modeTagsRaw.iterator.map(_.stripPrefix("mode:").trim).filter(_.nonEmpty).flatMap { name =>
@@ -108,7 +108,7 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
                     None
                   }
                 }.toSet
-              val mem = ContextMemory(
+              ContextMemory(
                 fact           = m.content,
                 label          = m.label,
                 summary        = m.content,
@@ -121,11 +121,8 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
                 conversationId = Some(conversationId),
                 modeAffinity   = resolvedModes
               )
-              if (m.key.isDefined)
-                sigil.upsertMemoryByKeyFor(mem, chain, conversationId).map(_.memory)
-              else
-                sigil.persistMemoryFor(mem, chain, conversationId)
-            })
+            }
+            sigil.persistMemoriesFor(memories, chain, conversationId)
         }.handleError { e =>
           Task(scribe.warn(s"StandardMemoryExtractor: extraction failed for conversation ${conversationId.value}: ${e.getMessage}"))
             .map(_ => Nil)

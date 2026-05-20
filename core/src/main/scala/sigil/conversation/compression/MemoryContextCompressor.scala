@@ -205,10 +205,10 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
     ).flatMap {
       case Some(result) =>
         val kept = result.memories.filter(_.content.trim.length >= minFactChars)
-        Task.sequence(kept.map { m =>
+        val memories = kept.map { m =>
           val label = if (m.label.trim.nonEmpty) m.label
                       else MemoryContextCompressor.synthesizeLabel(m.content)
-          val mem = ContextMemory(
+          ContextMemory(
             fact = m.content,
             label = label,
             summary = m.content,
@@ -218,11 +218,8 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
             keywords = m.tags.toVector,
             conversationId = Some(conversationId)
           )
-          if (m.key.isDefined)
-            sigil.upsertMemoryByKeyFor(mem, chain, conversationId).map(_.memory)
-          else
-            sigil.persistMemoryFor(mem, chain, conversationId)
-        }).unit
+        }
+        sigil.persistMemoriesFor(memories, chain, conversationId).unit
       case None => Task.unit
     }.handleError { e =>
       Task(scribe.warn(s"MemoryContextCompressor: extraction failed for conversation ${conversationId.value}: ${e.getMessage}"))
