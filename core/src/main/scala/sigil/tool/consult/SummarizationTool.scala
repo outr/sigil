@@ -3,6 +3,7 @@ package sigil.tool.consult
 import rapid.Stream
 import sigil.TurnContext
 import sigil.event.Event
+import sigil.provider.{GenerationSettings, ReasoningMode, SummarizationWork, WorkType}
 import sigil.tool.{ToolName, TypedTool}
 
 /**
@@ -20,8 +21,20 @@ case object SummarizationTool extends TypedTool[SummarizationInput](
       |
       |`tokenEstimate` — your best estimate of `summary` length in tokens (~4 chars/token is fine).
       |The framework uses this to budget future turns.""".stripMargin
-) {
+) with FrameworkConsult {
   override def paginate: Boolean = false
+
+  /** Condensing work — routes through the cheap summarization tier. */
+  override def consultWorkType: WorkType = SummarizationWork
+
+  /** Conservative ceiling. Summarization output scales with the
+    * target summary length, so the compressors pass a computed
+    * `maxOutputTokens` per call; this value is the fallback cap when
+    * no override is supplied. `ReasoningMode.Off` always applies. */
+  override def consultSettings: GenerationSettings = GenerationSettings(
+    maxOutputTokens = Some(2048),
+    reasoningMode = ReasoningMode.Off
+  )
 
   override protected def executeTyped(input: SummarizationInput, context: TurnContext): Stream[Event] =
     Stream.empty

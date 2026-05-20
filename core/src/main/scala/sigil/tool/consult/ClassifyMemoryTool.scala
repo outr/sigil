@@ -3,6 +3,7 @@ package sigil.tool.consult
 import rapid.Stream
 import sigil.TurnContext
 import sigil.event.Event
+import sigil.provider.{ClassificationWork, GenerationSettings, ReasoningMode, WorkType}
 import sigil.tool.{ToolName, TypedTool}
 
 /**
@@ -45,8 +46,19 @@ case object ClassifyMemoryTool extends TypedTool[ClassifyMemoryInput](
       |
       |4. `ambiguityReason` — required when `space == "ambiguous"`; one short sentence telling
       |   the user what's unclear ("could apply to user or project; please pick").""".stripMargin
-) {
+) with FrameworkConsult {
   override def paginate: Boolean = false
+
+  /** Categorical decision — routes through the cheap classification tier. */
+  override def consultWorkType: WorkType = ClassificationWork
+
+  /** Output is a short keyword list, an enum, a space token, and an
+    * optional one-sentence reason. 256 tokens covers the payload plus
+    * the reasoning-spill margin. */
+  override def consultSettings: GenerationSettings = GenerationSettings(
+    maxOutputTokens = Some(256),
+    reasoningMode = ReasoningMode.Off
+  )
 
   override protected def executeTyped(input: ClassifyMemoryInput, context: TurnContext): Stream[Event] =
     Stream.empty
