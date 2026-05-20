@@ -1,6 +1,7 @@
 package sigil.tool.output
 
 import fabric.io.JsonFormatter
+import lightdb.filter.FilterExtras
 import lightdb.id.Id
 import rapid.Task
 import sigil.TurnContext
@@ -42,8 +43,9 @@ case object QueryToolOutputTool extends TypedOutputTool[QueryToolOutputInput, Js
     val safePage = math.max(0, input.page)
     val convId   = ctx.conversation.id
 
-    ctx.sigil.withDB(_.toolOutputs.transaction(_.list)).map { all =>
-      val callRows = all.filter(n => n.conversationId == convId && n.callId.value == input.callId)
+    ctx.sigil.withDB(_.toolOutputs.transaction(_.query.filter(n =>
+      n.conversationKey === convId.value && n.callKey === input.callId
+    ).toList)).map { callRows =>
       val filtered = callRows.filter { n =>
         val levelOk = input.level.forall(_ == n.level)
         val textOk  = input.containsText match {
