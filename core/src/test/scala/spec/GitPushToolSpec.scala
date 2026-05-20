@@ -1,26 +1,26 @@
 package spec
 
-import lightdb.id.Id
+import fabric.rw.RW
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
-import sigil.conversation.{Conversation, ContextFrame, ConversationView, Topic, TopicEntry, TurnInput}
-import sigil.event.Message
+import sigil.conversation.{Conversation, ConversationView, TopicEntry, TurnInput}
+import sigil.event.ToolResults
 import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext}
-import sigil.tool.git.{GitCommitTool, GitPushTool}
-import sigil.tool.model.{GitCommitInput, GitPushInput, ResponseContent}
+import sigil.tool.git.GitPushTool
+import sigil.tool.model.{GitPushError, GitPushInput, GitPushOutput}
 
 import java.nio.file.{Files, Path}
 
 import scala.jdk.CollectionConverters.*
 
 /**
- * Coverage for sigil bug #135 — `GitPushTool`. Spec sets up two
- * local git repos: a bare "remote" and a working clone. Drives the
- * push tool against various scenarios (default push, setUpstream
- * first-push, protected-branch force-push gating, structured error
- * classification).
+ * Coverage for `GitPushTool`. Spec sets up two local git repos: a
+ * bare "remote" and a working clone. Drives the push tool against
+ * various scenarios (default push, setUpstream first-push,
+ * protected-branch force-push gating, structured error
+ * classification) and asserts on the typed [[GitPushOutput]].
  */
 class GitPushToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -75,9 +75,12 @@ class GitPushToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     )
   }
 
-  private def extractJson(events: List[sigil.event.Event]): fabric.Json =
-    events.collectFirst { case tr: sigil.event.ToolResults if tr.typed.isDefined => tr.typed.get }
-      .getOrElse(fabric.Obj.empty)
+  /** Decode the `ToolResults.typed` payload back to [[GitPushOutput]]. */
+  private def typed[T](events: List[sigil.event.Event])(using rw: RW[T]): T = {
+    val json = events.collectFirst { case t: ToolResults if t.typed.isDefined => t.typed.get }
+      .getOrElse(fail(s"expected a ToolResults with a typed payload; saw: ${events.map(_.getClass.getSimpleName).mkString(", ")}"))
+    rw.write(json)
+  }
 
   if (!gitOnPath) {
     "GitPushTool" should {
@@ -93,12 +96,9 @@ class GitPushToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
             GitPushInput(workingDir = Some(workDir.toString), setUpstream = true),
             turnContext()
           ).toList
-        } yield {
-          val payload = extractJson(out)
-          withClue(s"payload = $payload: ") {
-            payload.get("pushed").map(_.asBoolean) shouldBe Some(true)
-            payload.get("error") shouldBe None
-          }
+        } yield typed[GitPushOutput](out) match {
+          case _: GitPushOutput.Pushed => succeed
+          case other                   => fail(s"expected Pushed, got $other")
         }
       }
 
@@ -113,9 +113,9 @@ class GitPushToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           _   <- workCtx.executeCommand("git add -- second.txt", Some(workDir.toString))
           _   <- workCtx.executeCommand("git commit -m 'second'", Some(workDir.toString))
           out <- tool.execute(GitPushInput(workingDir = Some(workDir.toString)), turnContext()).toList
-        } yield {
-          val payload = extractJson(out)
-          payload.get("pushed").map(_.asBoolean) shouldBe Some(true)
+        } yield typed[GitPushOutput](out) match {
+          case _: GitPushOutput.Pushed => succeed
+          case other                   => fail(s"expected Pushed, got $other")
         }
       }
 
@@ -130,14 +130,13 @@ class GitPushToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
             ),
             turnContext()
           ).toList
-        } yield {
-          val payload = extractJson(out)
-          payload.get("error").map(_.asString).getOrElse("") should (
-            include("Refusing to force-push") and include("master")
-          )
-          // Tool didn't actually shell out — payload has no `exitCode`,
-          // since the gate short-circuits before invoking git.
-          payload.get("exitCode") shouldBe None
+        } yield typed[GitPushOutput](out) match {
+          case GitPushOutput.Failed(error, detail, exitCode, _) =>
+            error shouldBe GitPushError.ForcePushBlocked
+            detail should (include("Refusing to force-push") and include("master"))
+            // Tool didn't shell out — the gate short-circuits before invoking git.
+            exitCode shouldBe None
+          case other => fail(s"expected Failed(ForcePushBlocked), got $other")
         }
       }
 
@@ -157,15 +156,11 @@ class GitPushToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
             ),
             turnContext()
           ).toList
-        } yield {
-          val payload = extractJson(out)
+        } yield typed[GitPushOutput](out) match {
           // No gate refusal — pushed (possibly a no-op fast-forward).
-          payload.get("error").map(_.asString) match {
-            case Some(err) =>
-              err should not include "Refusing to force-push"
-            case None =>
-              payload.get("pushed").map(_.asBoolean) shouldBe Some(true)
-          }
+          case _: GitPushOutput.Pushed => succeed
+          case GitPushOutput.Failed(error, _, _, _) =>
+            error should not be GitPushError.ForcePushBlocked
         }
       }
 
@@ -175,11 +170,10 @@ class GitPushToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         for {
           _   <- workCtx.executeCommand("git checkout -b feature/unpushed", Some(workDir.toString))
           out <- tool.execute(GitPushInput(workingDir = Some(workDir.toString)), turnContext()).toList
-        } yield {
-          val payload = extractJson(out)
-          payload.get("error").map(_.asString).getOrElse("") should (
-            include("upstream") or include("push failed")
-          )
+        } yield typed[GitPushOutput](out) match {
+          case GitPushOutput.Failed(error, _, _, _) =>
+            error should (be(GitPushError.NoUpstream) or be(GitPushError.Unknown))
+          case other => fail(s"expected Failed, got $other")
         }
       }
     }

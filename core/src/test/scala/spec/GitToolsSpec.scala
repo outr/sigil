@@ -1,15 +1,15 @@
 package spec
 
-import fabric.io.JsonParser
+import fabric.rw.RW
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
-import sigil.event.Message
+import sigil.event.ToolResults
 import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext}
 import sigil.tool.git.{GitBranchTool, GitCommitTool, GitDiffTool, GitLogTool, GitShowTool, GitStatusTool}
-import sigil.tool.model.{GitBranchInput, GitCommitInput, GitDiffFormat, GitDiffInput, GitLogInput, GitShowInput, GitStatusInput, ResponseContent}
+import sigil.tool.model.{GitBranchInput, GitBranchOutput, GitCommitInput, GitCommitOutput, GitDiffFormat, GitDiffInput, GitDiffOutput, GitFileState, GitLogInput, GitLogOutput, GitShowInput, GitShowOutput, GitStatusInput, GitStatusOutput}
 
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
@@ -19,6 +19,10 @@ import scala.jdk.CollectionConverters.*
  * spins up a fresh temp directory, `git init`s it, and exercises
  * one tool against the resulting repo. Skips gracefully when `git`
  * isn't on PATH (CI sandbox without git binary).
+ *
+ * The tools are `TypedOutputTool[Input, Output]` — each test decodes
+ * the `ToolResults.typed` payload back to the typed Output via the
+ * Output type's registered `RW` and asserts on the typed value.
  */
 class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -61,18 +65,13 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     )
   }
 
-  private def extractJson(events: List[sigil.event.Event]): fabric.Json = {
-    // Bug #134 — FsToolEmit now emits ToolResults with the typed
-    // payload in `typed` instead of a Message with JSON-stringified
-    // text. Pull from `typed` first; fall back to the legacy
-    // Message-Text path for any tool still on the old shape.
-    events.collectFirst { case tr: sigil.event.ToolResults if tr.typed.isDefined => tr.typed.get }
-      .orElse(
-        events.collectFirst { case m: Message =>
-          m.content.collectFirst { case ResponseContent.Text(t) => t }
-        }.flatten.map(JsonParser(_))
-      )
-      .getOrElse(fabric.Obj.empty)
+  /** Decode the `ToolResults.typed` payload back to the tool's Output
+    * case class via its registered RW — what apps doing tool-to-tool
+    * composition do via `Tool.invoke`. */
+  private def typed[T](events: List[sigil.event.Event])(using rw: RW[T]): T = {
+    val json = events.collectFirst { case t: ToolResults if t.typed.isDefined => t.typed.get }
+      .getOrElse(fail(s"expected a ToolResults with a typed payload; saw: ${events.map(_.getClass.getSimpleName).mkString(", ")}"))
+    rw.write(json)
   }
 
   private def writeAndCommit(ctx: FileSystemContext, dir: Path, file: String, content: String, message: String): Task[Unit] =
@@ -93,10 +92,11 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         for {
           _   <- writeAndCommit(ctx, dir, "README.md", "hello", "init")
           out <- new GitStatusTool(ctx).execute(GitStatusInput(workingDir = Some(dir.toString)), tc).toList
-        } yield {
-          val payload = extractJson(out)
-          payload.get("branch").map(_.asString) shouldBe Some("master")
-          payload.get("entries").map(_.asVector.toList.size) shouldBe Some(0)
+        } yield typed[GitStatusOutput](out) match {
+          case GitStatusOutput.Reported(branch, _, _, entries) =>
+            branch shouldBe "master"
+            entries shouldBe empty
+          case other => fail(s"expected Reported, got $other")
         }
       }
 
@@ -106,12 +106,12 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           _   <- writeAndCommit(ctx, dir, "f.txt", "v1", "init")
           _   <- ctx.writeFile("f.txt", "v2")
           out <- new GitStatusTool(ctx).execute(GitStatusInput(workingDir = Some(dir.toString)), tc).toList
-        } yield {
-          val payload = extractJson(out)
-          val entries = payload.get("entries").map(_.asVector.toList).getOrElse(Nil)
-          entries.size shouldBe 1
-          entries.head.get("path").map(_.asString) shouldBe Some("f.txt")
-          entries.head.get("workingState").map(_.asString) shouldBe Some("M")
+        } yield typed[GitStatusOutput](out) match {
+          case GitStatusOutput.Reported(_, _, _, entries) =>
+            entries.size shouldBe 1
+            entries.head.path shouldBe "f.txt"
+            entries.head.workingState shouldBe GitFileState.Modified
+          case other => fail(s"expected Reported, got $other")
         }
       }
     }
@@ -123,9 +123,9 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           _   <- writeAndCommit(ctx, dir, "f.txt", "v1\n", "init")
           _   <- ctx.writeFile("f.txt", "v2\n")
           out <- new GitDiffTool(ctx).execute(GitDiffInput(workingDir = Some(dir.toString)), tc).toList
-        } yield {
-          val payload = extractJson(out)
-          payload.get("text").map(_.asString.contains("-v1")).getOrElse(false) shouldBe true
+        } yield typed[GitDiffOutput](out) match {
+          case GitDiffOutput.Text(text) => text should include("-v1")
+          case other                    => fail(s"expected Text, got $other")
         }
       }
 
@@ -135,14 +135,13 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           _   <- writeAndCommit(ctx, dir, "f.txt", "v1\n", "init")
           _   <- ctx.writeFile("f.txt", "v2\n")
           out <- new GitDiffTool(ctx).execute(GitDiffInput(format = GitDiffFormat.Hunks, workingDir = Some(dir.toString)), tc).toList
-        } yield {
-          val payload = extractJson(out)
-          val hunks   = payload.get("hunks").map(_.asVector.toList).getOrElse(Nil)
-          hunks should not be empty
-          val lines = hunks.head.get("lines").map(_.asVector.toList).getOrElse(Nil)
-          val kinds = lines.flatMap(_.get("kind").map(_.asString)).toSet
-          kinds should contain("remove")
-          kinds should contain("add")
+        } yield typed[GitDiffOutput](out) match {
+          case GitDiffOutput.Hunks(hunks) =>
+            hunks should not be empty
+            val kinds = hunks.head.lines.map(_.kind).toSet
+            kinds should contain(sigil.tool.model.GitDiffLineKind.Remove)
+            kinds should contain(sigil.tool.model.GitDiffLineKind.Add)
+          case other => fail(s"expected Hunks, got $other")
         }
       }
     }
@@ -154,12 +153,13 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           _   <- writeAndCommit(ctx, dir, "f.txt", "v1", "first commit")
           _   <- writeAndCommit(ctx, dir, "f.txt", "v2", "second commit")
           out <- new GitLogTool(ctx).execute(GitLogInput(limit = Some(5), workingDir = Some(dir.toString)), tc).toList
-        } yield {
-          val commits = extractJson(out).get("commits").map(_.asVector.toList).getOrElse(Nil)
-          commits.size shouldBe 2
-          commits.head.get("subject").map(_.asString) shouldBe Some("second commit")
-          commits.last.get("subject").map(_.asString) shouldBe Some("first commit")
-          commits.head.get("sha").map(_.asString.length).getOrElse(0) should be > 7
+        } yield typed[GitLogOutput](out) match {
+          case GitLogOutput.Listed(commits) =>
+            commits.size shouldBe 2
+            commits.head.subject shouldBe "second commit"
+            commits.last.subject shouldBe "first commit"
+            commits.head.sha.length should be > 7
+          case other => fail(s"expected Listed, got $other")
         }
       }
     }
@@ -170,11 +170,11 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         for {
           _   <- writeAndCommit(ctx, dir, "f.txt", "v1", "init")
           out <- new GitBranchTool(ctx).execute(GitBranchInput(workingDir = Some(dir.toString)), tc).toList
-        } yield {
-          val payload = extractJson(out)
-          payload.get("current").map(_.asString) shouldBe Some("master")
-          val branches = payload.get("branches").map(_.asVector.toList).getOrElse(Nil)
-          branches.exists(_.get("isCurrent").map(_.asBoolean).contains(true)) shouldBe true
+        } yield typed[GitBranchOutput](out) match {
+          case GitBranchOutput.Listed(current, branches) =>
+            current shouldBe "master"
+            branches.exists(_.isCurrent) shouldBe true
+          case other => fail(s"expected Listed, got $other")
         }
       }
     }
@@ -185,11 +185,12 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         for {
           _   <- writeAndCommit(ctx, dir, "f.txt", "v1", "first commit")
           out <- new GitShowTool(ctx).execute(GitShowInput(sha = "HEAD", workingDir = Some(dir.toString)), tc).toList
-        } yield {
-          val payload = extractJson(out)
-          payload.get("subject").map(_.asString) shouldBe Some("first commit")
-          payload.get("author").map(_.asString) shouldBe Some("Test User")
-          payload.get("sha").map(_.asString.nonEmpty).getOrElse(false) shouldBe true
+        } yield typed[GitShowOutput](out) match {
+          case GitShowOutput.Found(sha, author, _, subject, _, _) =>
+            subject shouldBe "first commit"
+            author shouldBe "Test User"
+            sha should not be empty
+          case other => fail(s"expected Found, got $other")
         }
       }
     }
@@ -202,11 +203,11 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           _   <- ctx.writeFile("new.txt", "fresh")
           _   <- ctx.executeCommand("git add new.txt", Some(dir.toString))
           out <- new GitCommitTool(ctx).execute(GitCommitInput(message = "Add new.txt", workingDir = Some(dir.toString)), tc).toList
-        } yield {
-          val payload = extractJson(out)
-          payload.get("success").map(_.asBoolean) shouldBe Some(true)
-          payload.get("sha").map(_.asString.length).getOrElse(0) should be > 7
-          payload.get("message").map(_.asString) shouldBe Some("Add new.txt")
+        } yield typed[GitCommitOutput](out) match {
+          case GitCommitOutput.Committed(sha, message) =>
+            sha.length should be > 7
+            message shouldBe "Add new.txt"
+          case other => fail(s"expected Committed, got $other")
         }
       }
     }

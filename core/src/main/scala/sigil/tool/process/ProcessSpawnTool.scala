@@ -1,12 +1,10 @@
 package sigil.tool.process
 
-import fabric.{num, obj, str}
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.fs.{FsToolEmit, WorkspacePathResolver}
-import sigil.tool.model.ProcessSpawnInput
-import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.tool.fs.WorkspacePathResolver
+import sigil.tool.model.{ProcessSpawnInput, ProcessSpawnOutput}
+import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
 
 /**
  * Spawn a subprocess and return a handle for later
@@ -16,10 +14,10 @@ import sigil.tool.{ToolExample, ToolName, TypedTool}
  * other commands whose output IS the value.
  */
 final class ProcessSpawnTool(registry: ProcessRegistry)
-  extends TypedTool[ProcessSpawnInput](
+  extends TypedOutputTool[ProcessSpawnInput, ProcessSpawnOutput](
     name = ToolName("process_spawn"),
     description =
-      """Fork a subprocess and detach — call returns immediately with `{handle, pid, startedAt}`.
+      """Fork a subprocess and detach — call returns immediately with the handle, pid, and start time.
         |Read accumulated stdout/stderr or signal the child through the matching process
         |output / signal tools paired by `handle`. Optional `workingDir` overrides the
         |conversation workspace; `env` extra env vars; `stdin` is piped to the child once
@@ -33,7 +31,7 @@ final class ProcessSpawnTool(registry: ProcessRegistry)
   ) {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: ProcessSpawnInput, ctx: TurnContext): Stream[Event] = Stream.force(
+  override protected def executeTyped(input: ProcessSpawnInput, ctx: TurnContext): Task[ProcessSpawnOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       registry.spawn(
         command        = input.command,
@@ -42,13 +40,7 @@ final class ProcessSpawnTool(registry: ProcessRegistry)
         stdin          = input.stdin,
         conversationId = ctx.conversation.id
       ).map { handle =>
-        val payload = obj(
-          "handle"    -> str(handle.id),
-          "pid"       -> num(handle.pid),
-          "startedAt" -> num(handle.startedAt.value)
-        )
-        Stream.emit[Event](FsToolEmit(payload, ctx))
+        ProcessSpawnOutput(handle = handle.id, pid = handle.pid, startedAt = handle.startedAt)
       }
     }
-  )
 }

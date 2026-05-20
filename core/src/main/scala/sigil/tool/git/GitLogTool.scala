@@ -1,26 +1,23 @@
 package sigil.tool.git
 
-import fabric.{num, obj, str}
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.fs.{FileSystemContext, FsToolEmit, WorkspacePathResolver}
-import sigil.tool.model.GitLogInput
-import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.tool.fs.{FileSystemContext, WorkspacePathResolver}
+import sigil.tool.model.{GitLogInput, GitLogOutput}
+import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
 
 /**
  * Read-only `git_log` — runs `git log` with a record-separator
  * pretty-format so subjects / bodies containing newlines or pipes
- * survive parsing. Returns `{commits: [{sha, author, date, subject,
- * body?}]}`.
+ * survive parsing. Returns a typed [[GitLogOutput]].
  */
 final class GitLogTool(context: FileSystemContext)
-  extends TypedTool[GitLogInput](
+  extends TypedOutputTool[GitLogInput, GitLogOutput](
     name = ToolName("git_log"),
     description =
       """Recent commit history. Optional `path` filters to commits touching that path; `since` accepts any
         |git-date expression (`"2 weeks ago"`, `"2026-04-01"`); `limit` defaults to 20. Set `includeBody`
-        |to true for the full commit body. Returns `{commits: [{sha, author, date, subject, body?}]}`.""".stripMargin,
+        |to true for the full commit body. Returns a list of commits (sha, author, date, subject, body?).""".stripMargin,
     examples = List(
       ToolExample("20 most recent commits",     GitLogInput()),
       ToolExample("Last 5 commits on a path",   GitLogInput(path = Some("src/main"), limit = Some(5))),
@@ -30,20 +27,16 @@ final class GitLogTool(context: FileSystemContext)
   ) with sigil.tool.ReadOnlyExternalTool {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: GitLogInput, ctx: TurnContext): Stream[Event] = Stream.force(
+  override protected def executeTyped(input: GitLogInput, ctx: TurnContext): Task[GitLogOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
-      val limit  = input.limit.getOrElse(20)
-      val format = "%H%x00%an%x00%aI%x00%s%x00%b%x1e"
+      val limit    = input.limit.getOrElse(20)
+      val format   = "%H%x00%an%x00%aI%x00%s%x00%b%x1e"
       val sinceArg = input.since.fold("")(s => s" --since=${GitOps.shellQuote(s)}")
       val pathArg  = input.path.fold("")(p => s" -- ${GitOps.shellQuote(p)}")
-      val cmd = s"""git log --pretty=format:$format -n $limit$sinceArg$pathArg"""
+      val cmd      = s"""git log --pretty=format:$format -n $limit$sinceArg$pathArg"""
       context.executeCommand(cmd, dir).map { r =>
-        val payload =
-          if (r.exitCode != 0)
-            obj("error" -> str(r.stderr), "exitCode" -> num(r.exitCode))
-          else GitOps.parseLog(r.stdout, input.includeBody)
-        Stream.emit[Event](FsToolEmit(payload, ctx))
+        if (r.exitCode != 0) GitLogOutput.Failed(r.stderr, r.exitCode)
+        else GitLogOutput.Listed(GitOps.parseLog(r.stdout, input.includeBody))
       }
     }
-  )
 }

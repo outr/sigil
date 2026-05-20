@@ -1,22 +1,17 @@
 package sigil.tool.web
 
-import fabric.{Arr, Json, num, obj, str}
-import fabric.io.JsonFormatter
-import fabric.rw.*
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.{Event, Message, MessageRole}
-import sigil.signal.EventState
-import sigil.tool.model.{ResponseContent, WebSearchInput}
-import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.tool.model.{WebSearchInput, WebSearchOutput, WebSearchResult}
+import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
 
 /**
  * Search the web via the configured [[SearchProvider]] (Tavily,
- * Brave, etc. — provider type is the app's choice). Result event
- * carries an array of `{title, url, snippet, score}`.
+ * Brave, etc. — provider type is the app's choice). Emits a typed
+ * [[WebSearchOutput]] carrying the ranked hit list.
  */
 final class WebSearchTool(provider: SearchProvider, defaultMaxResults: Int = 10)
-  extends TypedTool[WebSearchInput](
+  extends TypedOutputTool[WebSearchInput, WebSearchOutput](
     name = ToolName("web_search"),
     description =
       """Search the web for `query`. Returns up to `maxResults` results (default 10) — each carrying title,
@@ -29,27 +24,17 @@ final class WebSearchTool(provider: SearchProvider, defaultMaxResults: Int = 10)
   ) with sigil.tool.NetworkReadOnlyTool {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: WebSearchInput, ctx: TurnContext): Stream[Event] = Stream.force(
+  override protected def executeTyped(input: WebSearchInput, ctx: TurnContext): Task[WebSearchOutput] =
     provider.search(input.query, input.maxResults.getOrElse(defaultMaxResults)).map { results =>
-      val items = results.toVector.map { r =>
-        val base = Vector[(String, Json)](
-          "title"   -> str(r.title),
-          "url"     -> str(r.url),
-          "snippet" -> str(r.snippet)
+      val items = results.toList.map { r =>
+        WebSearchResult(
+          title      = r.title,
+          url        = r.url,
+          snippet    = r.snippet,
+          score      = r.score,
+          rawContent = r.rawContent
         )
-        val withScore = r.score.fold(base)(s => base :+ ("score" -> num(s)))
-        val withRaw   = r.rawContent.fold(withScore)(c => withScore :+ ("rawContent" -> str(c)))
-        obj(withRaw*)
       }
-      val payload = obj("results" -> Arr(items), "count" -> num(results.size))
-      Stream.emit[Event](Message(
-        participantId  = ctx.caller,
-        conversationId = ctx.conversation.id,
-        topicId        = ctx.conversation.currentTopicId,
-        content        = Vector(ResponseContent.Text(JsonFormatter.Compact(payload))),
-        state          = EventState.Complete,
-        role           = MessageRole.Tool
-      ))
+      WebSearchOutput(results = items, count = items.size)
     }
-  )
 }

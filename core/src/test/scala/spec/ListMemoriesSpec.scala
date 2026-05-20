@@ -1,20 +1,21 @@
 package spec
 
-import fabric.io.JsonParser
+import fabric.rw.RW
 import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.{GlobalSpace, SpaceId, TurnContext}
 import sigil.conversation.{ConversationView, Conversation, ContextMemory, MemorySource, TopicEntry, TurnInput}
-import sigil.event.{Event, Message}
+import sigil.event.ToolResults
 import sigil.tool.context.{ListMemoriesInput, ListMemoriesTool}
-import sigil.tool.model.ResponseContent
+import sigil.tool.model.{ListMemoriesOutput, MemoryListEntry, MemoryListPage}
 
 /**
  * Coverage for [[ListMemoriesTool]] — the general "what do you
- * remember" surface. Filters (space / pinned / query) compose; pagination
- * via offset + limit; the agent reads the JSON output on its next turn.
+ * remember" surface. Filters (space / pinned / query) compose;
+ * pagination via offset + limit; the tool emits a typed
+ * [[ListMemoriesOutput]] the agent reads on its next turn.
  */
 class ListMemoriesSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
@@ -61,12 +62,19 @@ class ListMemoriesSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       pinned = pinned
     ))
 
-  private def runTool(input: ListMemoriesInput, ctx: TurnContext): Task[fabric.Json] =
+  /** Decode the `ToolResults.typed` payload back to [[ListMemoriesOutput]]. */
+  private def runTool(input: ListMemoriesInput, ctx: TurnContext): Task[ListMemoriesOutput] =
     ListMemoriesTool.execute(input, ctx).toList.map { events =>
-      val msg = events.collectFirst { case m: Message => m }.get
-      val text = msg.content.collectFirst { case t: ResponseContent.Text => t.text }.getOrElse("")
-      JsonParser(text)
+      val json = events.collectFirst { case t: ToolResults if t.typed.isDefined => t.typed.get }
+        .getOrElse(fail(s"expected a ToolResults with a typed payload; saw: ${events.map(_.getClass.getSimpleName).mkString(", ")}"))
+      summon[RW[ListMemoriesOutput]].write(json)
     }
+
+  /** Unwrap a `Listed` result or fail the test. */
+  private def listed(out: ListMemoriesOutput): (List[MemoryListEntry], MemoryListPage) = out match {
+    case ListMemoriesOutput.Listed(memories, page) => (memories, page)
+    case other                                     => fail(s"expected Listed, got $other")
+  }
 
   "ListMemoriesTool" should {
     "return every accessible memory by default" in {
@@ -78,13 +86,12 @@ class ListMemoriesSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         _      <- seed("k.c", "Carol prefers red.")
         result <- runTool(ListMemoriesInput(), ctx)
       } yield {
-        val memories = result("memories").asVector
+        val (memories, _) = listed(result)
         memories.size shouldBe 3
-        val keys = memories.map(_("key").asString).toSet
-        keys shouldBe Set("k.a", "k.b", "k.c")
+        memories.map(_.key).toSet shouldBe Set("k.a", "k.b", "k.c")
         // Pinned should sort first.
-        memories.head("pinned").asBoolean shouldBe true
-        memories.head("key").asString shouldBe "k.b"
+        memories.head.pinned shouldBe true
+        memories.head.key shouldBe "k.b"
       }
     }
 
@@ -92,14 +99,14 @@ class ListMemoriesSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       reseed()
       val ctx = makeContext(Conversation.id(s"list-pinned-${rapid.Unique()}"))
       for {
-        _      <- seed("k.unpinned-1", "First.")
-        _      <- seed("k.pinned-1",   "Second.", pinned = true)
-        _      <- seed("k.unpinned-2", "Third.")
-        pinned <- runTool(ListMemoriesInput(pinned = Some(true)), ctx)
+        _        <- seed("k.unpinned-1", "First.")
+        _        <- seed("k.pinned-1",   "Second.", pinned = true)
+        _        <- seed("k.unpinned-2", "Third.")
+        pinned   <- runTool(ListMemoriesInput(pinned = Some(true)), ctx)
         unpinned <- runTool(ListMemoriesInput(pinned = Some(false)), ctx)
       } yield {
-        pinned("memories").asVector.map(_("key").asString) shouldBe Vector("k.pinned-1")
-        unpinned("memories").asVector.map(_("key").asString).toSet shouldBe Set("k.unpinned-1", "k.unpinned-2")
+        listed(pinned)._1.map(_.key) shouldBe List("k.pinned-1")
+        listed(unpinned)._1.map(_.key).toSet shouldBe Set("k.unpinned-1", "k.unpinned-2")
       }
     }
 
@@ -111,10 +118,7 @@ class ListMemoriesSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         _      <- seed("k.test-1",   "Test one.", in = TestSpace)
         _      <- seed("k.test-2",   "Test two.", in = TestSpace)
         result <- runTool(ListMemoriesInput(spaces = Set(TestSpace)), ctx)
-      } yield {
-        val keys = result("memories").asVector.map(_("key").asString).toSet
-        keys shouldBe Set("k.test-1", "k.test-2")
-      }
+      } yield listed(result)._1.map(_.key).toSet shouldBe Set("k.test-1", "k.test-2")
     }
 
     "filter by case-insensitive substring query" in {
@@ -125,10 +129,7 @@ class ListMemoriesSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         _      <- seed("k.python", "User uses Python for data work.")
         _      <- seed("k.colors", "User's favourite colour is blue.", label = "Blue is best")
         result <- runTool(ListMemoriesInput(query = Some("SCALA")), ctx)
-      } yield {
-        val keys = result("memories").asVector.map(_("key").asString).toSet
-        keys shouldBe Set("k.scala")
-      }
+      } yield listed(result)._1.map(_.key).toSet shouldBe Set("k.scala")
     }
 
     "paginate via offset + limit" in {
@@ -136,21 +137,22 @@ class ListMemoriesSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val ctx = makeContext(Conversation.id(s"list-page-${rapid.Unique()}"))
       val seedAll = (1 to 7).map(i => seed(s"k.$i", s"Memory $i."))
       for {
-        _     <- Task.sequence(seedAll.toList).unit
-        pg1   <- runTool(ListMemoriesInput(offset = 0, limit = 3), ctx)
-        pg2   <- runTool(ListMemoriesInput(offset = 3, limit = 3), ctx)
-        pg3   <- runTool(ListMemoriesInput(offset = 6, limit = 3), ctx)
+        _   <- Task.sequence(seedAll.toList).unit
+        pg1 <- runTool(ListMemoriesInput(offset = 0, limit = 3), ctx)
+        pg2 <- runTool(ListMemoriesInput(offset = 3, limit = 3), ctx)
+        pg3 <- runTool(ListMemoriesInput(offset = 6, limit = 3), ctx)
       } yield {
-        pg1("memories").asVector.size shouldBe 3
-        pg2("memories").asVector.size shouldBe 3
-        pg3("memories").asVector.size shouldBe 1
-        pg1("page")("totalMatched").asInt shouldBe 7
-        pg1("page")("hasMore").asBoolean shouldBe true
-        pg3("page")("hasMore").asBoolean shouldBe false
+        val (m1, p1) = listed(pg1)
+        val (m2, _)  = listed(pg2)
+        val (m3, p3) = listed(pg3)
+        m1.size shouldBe 3
+        m2.size shouldBe 3
+        m3.size shouldBe 1
+        p1.totalMatched shouldBe 7
+        p1.hasMore shouldBe true
+        p3.hasMore shouldBe false
         // No overlap across pages
-        val all = (pg1("memories").asVector ++ pg2("memories").asVector ++ pg3("memories").asVector)
-          .map(_("key").asString).toSet
-        all shouldBe (1 to 7).map(i => s"k.$i").toSet
+        (m1 ++ m2 ++ m3).map(_.key).toSet shouldBe (1 to 7).map(i => s"k.$i").toSet
       }
     }
 
@@ -161,19 +163,21 @@ class ListMemoriesSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         _      <- seed("k.only", "Only memory.")
         result <- runTool(ListMemoriesInput(limit = 9999), ctx)
       } yield {
+        val (memories, page) = listed(result)
         // Server clamps the page-info `limit` to the max (100) but the
-        // returned array reflects the actual count.
-        result("page")("limit").asInt should be <= 100
-        result("memories").asVector.size shouldBe 1
+        // returned list reflects the actual count.
+        page.limit should be <= 100
+        memories.size shouldBe 1
       }
     }
 
-    "return an empty list with a note when no spaces are accessible" in {
+    "return NoAccessibleSpaces with a note when no spaces are accessible" in {
       reseed(accessible = Set.empty)
       val ctx = makeContext(Conversation.id(s"list-noaccess-${rapid.Unique()}"))
-      runTool(ListMemoriesInput(), ctx).map { result =>
-        result("memories").asVector shouldBe empty
-        result("note").asString should include("No accessible memory spaces")
+      runTool(ListMemoriesInput(), ctx).map {
+        case ListMemoriesOutput.NoAccessibleSpaces(note) =>
+          note should include("No accessible memory spaces")
+        case other => fail(s"expected NoAccessibleSpaces, got $other")
       }
     }
 
@@ -185,9 +189,7 @@ class ListMemoriesSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         _      <- seed("k.unpinned-scala", "Soft preference: Scala for scripts.")
         _      <- seed("k.pinned-python",  "Always use Python for data.", pinned = true)
         result <- runTool(ListMemoriesInput(pinned = Some(true), query = Some("scala")), ctx)
-      } yield {
-        result("memories").asVector.map(_("key").asString) shouldBe Vector("k.pinned-scala")
-      }
+      } yield listed(result)._1.map(_.key) shouldBe List("k.pinned-scala")
     }
   }
 
