@@ -124,10 +124,26 @@ final class SignalTransport(sigil: Sigil) {
     }
   }
 
+  /**
+   * The single conversation id of `convFilter`, when it scopes to
+   * exactly one. `eventsFor` is a single-conversation read; the
+   * common per-conversation channel resolves here and routes through
+   * it. A `None` filter or a multi-conversation set has no single
+   * id and falls back to the cross-conversation indexed query.
+   */
+  private def singleConversation(convFilter: ConversationFilter): Option[Id[Conversation]] =
+    convFilter match {
+      case Some(cs) if cs.sizeIs == 1 => Some(cs.head)
+      case _                          => None
+    }
+
+  /** Apply visibility + viewer transforms to a replay batch. */
+  private def viewerScoped(events: List[Event], viewer: ParticipantId): List[Signal] =
+    events.filter(e => sigil.canSee(e, viewer)).map(e => sigil.applyViewerTransforms(e, viewer))
+
   private def loadReplay(viewer: ParticipantId,
                          resume: ResumeRequest,
                          convFilter: ConversationFilter): Task[Stream[Signal]] = {
-    import lightdb.filter.*
     val scopeFilter = conversationScopeFilter(convFilter)
     resume match {
       case ResumeRequest.None =>
@@ -137,51 +153,56 @@ final class SignalTransport(sigil: Sigil) {
         Task.pure(Stream.empty)
 
       case ResumeRequest.After(cursor) =>
-        // Indexed timestamp range, returned ascending — no in-memory sort.
-        // Conversation scope (when present) ANDs into the same indexed query.
-        sigil.withDB(_.events.transaction { tx =>
-          val ranged = tx.query
-            .filter(_ => Event.timestamp > cursor)
-            .sort(lightdb.Sort.ByField(Event.timestamp, lightdb.SortDirection.Ascending))
-          val scoped = scopeFilter.fold(ranged)(f => ranged.filter(f))
-          scoped.toList
-        }).map { ordered =>
-          // Visibility is a per-viewer predicate, not an indexed field —
-          // applied in memory over the already-narrowed, already-ordered set.
-          val transformed: List[Signal] =
-            ordered.filter(e => sigil.canSee(e, viewer)).map(e => sigil.applyViewerTransforms(e, viewer))
-          Stream.emits(transformed)
+        singleConversation(convFilter) match {
+          case Some(convId) =>
+            // Per-conversation resume cursor: the canonical paged read
+            // with an exclusive lower timestamp bound and no message
+            // cap returns the whole post-cursor window, oldest-first.
+            sigil.eventsFor(convId, maxMessages = None, minTimestamp = Some(lightdb.time.Timestamp(cursor)))
+              .map(page => Stream.emits(viewerScoped(page.events, viewer)))
+          case None =>
+            // Cross-conversation (or unscoped) resume: a plain indexed
+            // timestamp range, returned ascending — `eventsFor` is a
+            // single-conversation read and does not model this case.
+            sigil.withDB(_.events.transaction { tx =>
+              val ranged = tx.query
+                .filter(_ => Event.timestamp > cursor)
+                .sort(lightdb.Sort.ByField(Event.timestamp, lightdb.SortDirection.Ascending))
+              val scoped = scopeFilter.fold(ranged)(f => ranged.filter(f))
+              scoped.toList
+            }).map(ordered => Stream.emits(viewerScoped(ordered, viewer)))
         }
 
       case ResumeRequest.RecentMessages(max) =>
-        // Walk newest-first off the indexed timestamp order, accumulate, stop
-        // after the `max`th visible Message. The non-Message events trailing
-        // the cutoff Message are already included by virtue of being newer
-        // than (or equal to) it. The "is a Message" check is the polymorphic
-        // Signal discriminator — not an indexed field — so it stays in memory,
-        // but the descending stream lets the walk stop as soon as the budget
-        // is met instead of materialising the whole store.
-        sigil.withDB(_.events.transaction { tx =>
-          val ordered = tx.query
-            .sort(lightdb.Sort.ByField(Event.timestamp, lightdb.SortDirection.Descending))
-          val scoped = scopeFilter.fold(ordered)(f => ordered.filter(f))
-          // Apply visibility BEFORE the count walk so the budget reflects what
-          // the viewer actually receives — an Agents-only message must not
-          // consume a slot despite being filtered.
-          var msgCount = 0
-          scoped.stream
-            .filter(e => sigil.canSee(e, viewer))
-            .takeWhile { e =>
-              if (msgCount < max) {
-                if (e.isInstanceOf[Message]) msgCount += 1
-                true
-              } else false
+        singleConversation(convFilter) match {
+          case Some(convId) =>
+            // Per-conversation recent-messages window: `eventsFor`'s
+            // page 0 IS the message-counting walk — most-recent `max`
+            // Messages plus every interleaved non-Message event.
+            sigil.eventsFor(convId, page = 0, maxMessages = Some(max))
+              .map(page => Stream.emits(viewerScoped(page.events, viewer)))
+          case None =>
+            // Cross-conversation recent-messages: walk newest-first off
+            // the indexed timestamp order, stop after the `max`th
+            // visible Message. `eventsFor` is single-conversation; this
+            // global walk has no single-id mapping.
+            sigil.withDB(_.events.transaction { tx =>
+              val ordered = tx.query
+                .sort(lightdb.Sort.ByField(Event.timestamp, lightdb.SortDirection.Descending))
+              val scoped = scopeFilter.fold(ordered)(f => ordered.filter(f))
+              var msgCount = 0
+              scoped.stream
+                .filter(e => sigil.canSee(e, viewer))
+                .takeWhile { e =>
+                  if (msgCount < max) {
+                    if (e.isInstanceOf[Message]) msgCount += 1
+                    true
+                  } else false
+                }
+                .toList
+            }).map { desc =>
+              Stream.emits(desc.reverse.map(e => sigil.applyViewerTransforms(e, viewer)))
             }
-            .toList
-        }).map { desc =>
-          val transformed: List[Signal] =
-            desc.reverse.map(e => sigil.applyViewerTransforms(e, viewer))
-          Stream.emits(transformed)
         }
     }
   }

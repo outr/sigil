@@ -25,7 +25,7 @@ import sigil.tool.consult.{ConsultTool, TopicClassifierTool}
 import sigil.provider.{GenerationSettings, TokenUsage}
 import sigil.db.{DefaultSigilDB, Model, SigilDB}
 import sigil.dispatcher.{StopFlag, TriggerFilter}
-import sigil.event.{AgentState, CapabilityResults, Event, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, ToolResults, TopicChange, TopicChangeKind}
+import sigil.event.{AgentState, CapabilityResults, Event, EventsPage, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, ToolResults, TopicChange, TopicChangeKind}
 import sigil.role.Role
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{Complexity, ConversationMode, ConversationRequest, Mode, ProviderStrategy, ReasoningMode, ToolPolicy, WorkType}
@@ -2625,43 +2625,26 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           publishTo(fromViewer, sigil.signal.ConversationListSnapshot(conversations))
         }
       case sigil.signal.SwitchConversation(convId, limit) =>
-        import lightdb.filter.*
-        for {
-          sorted <- withDB { db =>
-                      // Indexed conversationId narrowing; the timestamp index
-                      // returns this conversation's events already ascending.
-                      db.events.transaction { tx =>
-                        tx.query
-                          .filter(_ => Event.conversationId === convId.value)
-                          .sort(lightdb.Sort.ByField(Event.timestamp, lightdb.SortDirection.Ascending))
-                          .toList
-                      }
-                    }
-          _      <- {
-                      val cap = math.max(0, limit)
-                      val window = if (sorted.length <= cap) sorted else sorted.drop(sorted.length - cap)
-                      val hasMore = sorted.length > cap
-                      publishTo(fromViewer, sigil.signal.ConversationSnapshot(convId, window.toVector, hasMore))
-                    }
-        } yield ()
+        // Uncapped canonical read returns the conversation's whole
+        // event log oldest-first (the live-edge merge picks up any
+        // in-flight iteration events); the trailing `limit` events
+        // are the most-recent window the snapshot delivers.
+        eventsFor(convId, maxMessages = None).flatMap { page =>
+          val cap = math.max(0, limit)
+          val sorted = page.events
+          val window = if (sorted.length <= cap) sorted else sorted.drop(sorted.length - cap)
+          val hasMore = sorted.length > cap
+          publishTo(fromViewer, sigil.signal.ConversationSnapshot(convId, window.toVector, hasMore))
+        }
 
       case sigil.signal.RequestConversationHistory(convId, beforeMs, limit) =>
-        import lightdb.filter.*
-        withDB { db =>
-          // Fully-indexed compound query: conversationId scopes the
-          // conversation, the timestamp range applies the `beforeMs`
-          // cursor, and the index returns the rows already ascending.
-          db.events.transaction { tx =>
-            tx.query
-              .filter(_ => (Event.conversationId === convId.value) && (Event.timestamp < beforeMs))
-              .sort(lightdb.Sort.ByField(Event.timestamp, lightdb.SortDirection.Ascending))
-              .toList
-          }
-        }.flatMap { sorted =>
+        // Uncapped canonical read with an exclusive upper timestamp
+        // bound returns every event older than the `beforeMs` cursor,
+        // oldest-first; the trailing `limit` of that set is the page
+        // closest to the cursor.
+        eventsFor(convId, maxMessages = None, maxTimestamp = Some(lightdb.time.Timestamp(beforeMs))).flatMap { page =>
           val cap = math.max(0, limit)
-          // Take the trailing `cap` events of everything older than the
-          // cursor — that's the page closest to the cursor. `hasMore` =
-          // true when even older events exist past the page.
+          val sorted = page.events
           val window = if (sorted.length <= cap) sorted else sorted.drop(sorted.length - cap)
           val hasMore = sorted.length > cap
           publishTo(fromViewer, sigil.signal.ConversationHistorySnapshot(convId, window.toVector, hasMore))
@@ -3001,6 +2984,157 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           .sortBy(_.timestamp.value)
           .flatMap(_.contextFrame)
       }
+    }
+
+  /**
+   * Canonical paged read of a conversation's event log.
+   *
+   * The single "load a window of conversation history" API every
+   * cold-path reader funnels through — wire replay, conversation
+   * switch / scroll-back, the durable event-log adapter. Returns an
+   * [[EventsPage]] of [[Event]]s in chronological (oldest-first
+   * within the page) order.
+   *
+   * Paging is message-counted, not event-counted. `maxMessages`
+   * caps the number of [[Message]] events on a page; every
+   * non-Message event (ToolInvoke, ToolResults, ModeChange,
+   * TopicChange, ...) interleaved between those messages is
+   * included for free and does NOT consume budget — a chatty turn
+   * full of tool calls can't crowd Messages out of the page. With
+   * `maxMessages = None` the whole window comes back on `page` 0 in
+   * a single uncapped page.
+   *
+   * Pages run newest-first: `page` 0 is the most recent
+   * `maxMessages` messages, `page` 1 the `maxMessages` before that,
+   * and so on. Within a page the events are still ordered
+   * oldest-first.
+   *
+   *   - `page` 0 carries the live edge — trailing non-Message
+   *     events newer than its newest Message (an in-flight
+   *     ToolInvoke / ToolResults pair) — and merges in the
+   *     conversation's still-uncommitted batched-iteration events
+   *     so a session joining mid-iteration sees the full picture.
+   *   - Interior pages (`page` > 0) are strictly the events between
+   *     that page's first and last Message — no live-edge merge.
+   *
+   * `topicId` restricts the result to a single topic. `minTimestamp`
+   * and `maxTimestamp` bound the window — both EXCLUSIVE (an event
+   * at exactly the bound is not returned), matching the
+   * resume-cursor semantics callers rely on. All three filters
+   * compose with `maxMessages` and `page`.
+   *
+   * No viewer / visibility parameter — this is the raw store read.
+   * [[MessageVisibility]] filtering belongs to the delivery layer
+   * ([[canSee]] / [[viewerTransforms]]); callers that need
+   * viewer-scoping apply it to the returned events.
+   *
+   * `EventsPage.hasMore` is `true` when older messages exist beyond
+   * the returned page.
+   */
+  def eventsFor(conversationId: Id[Conversation],
+                page: Int = 0,
+                maxMessages: Option[Int] = None,
+                topicId: Option[Id[Topic]] = None,
+                minTimestamp: Option[Timestamp] = None,
+                maxTimestamp: Option[Timestamp] = None): Task[EventsPage] = {
+    import lightdb.filter.*
+    val safePage = math.max(0, page)
+
+    // In-memory filters applied identically to the committed DB rows
+    // and to the batched-scope accumulator so both halves of a page-0
+    // merge are narrowed the same way.
+    def passesFilters(e: Event): Boolean =
+      topicId.forall(t => e.topicId == t) &&
+        minTimestamp.forall(min => e.timestamp.value > min.value) &&
+        maxTimestamp.forall(max => e.timestamp.value < max.value)
+
+    // Indexed conversation-scoped query, newest-first. The timestamp
+    // bounds fold into the same indexed query; `topicId` is not an
+    // indexed field, so it is applied in memory over the
+    // conversation-narrowed set.
+    val committed: Task[List[Event]] = withDB(_.events.transaction { tx =>
+      val base = tx.query.filter(_ => Event.conversationId === conversationId.value)
+      val lowered = minTimestamp.fold(base)(min => base.filter(_ => Event.timestamp > min.value))
+      val bounded = maxTimestamp.fold(lowered)(max => lowered.filter(_ => Event.timestamp < max.value))
+      bounded
+        .sort(lightdb.Sort.ByField(Event.timestamp, lightdb.SortDirection.Descending))
+        .toList
+    }).map(_.filter(passesFilters))
+
+    committed.map { committedDesc =>
+      // Page 0 merges the conversation's still-uncommitted
+      // batched-iteration events — broadcast to the hub already but
+      // not yet in the DB. Keyed by id with the accumulator winning,
+      // so an event the current iteration both committed-earlier and
+      // re-deltaed resolves to its latest version.
+      val mergedDesc: List[Event] =
+        if (safePage == 0) {
+          val inFlight = withDBScopeSnapshot(conversationId).filter(passesFilters)
+          if (inFlight.isEmpty) committedDesc
+          else {
+            val byId = scala.collection.mutable.LinkedHashMap.empty[Id[Event], Event]
+            committedDesc.foreach(e => byId.put(e._id, e))
+            inFlight.foreach(e => byId.put(e._id, e))
+            byId.values.toList.sortBy(-_.timestamp.value)
+          }
+        } else committedDesc
+
+      eventsForPage(mergedDesc, safePage, maxMessages)
+    }
+  }
+
+  /**
+   * Snapshot the active batched-event scope's in-flight accumulator
+   * for `conversationId`, or an empty list when no [[sigil.db.SigilDB.withBatchedEvents]]
+   * scope is open. Read by [[eventsFor]] page 0. Synchronous —
+   * `instance` is already resolved by the time any cold-path reader
+   * runs, so this never blocks on DB init.
+   */
+  private def withDBScopeSnapshot(conversationId: Id[Conversation]): List[Event] =
+    startedInstance.get() match {
+      case Some(inst) => inst.db.batchedEventScope(conversationId).map(_.snapshot).getOrElse(Nil)
+      case None       => Nil
+    }
+
+  /**
+   * Carve `page` out of a newest-first event list using
+   * message-counted paging.
+   *
+   *   - `maxMessages = None`: page 0 is the whole list; higher
+   *     pages are empty. `hasMore` always false.
+   *   - page 0: from the newest event through the `maxMessages`-th
+   *     newest Message inclusive (so trailing non-Message events
+   *     newer than the newest Message — the live edge — ride
+   *     along). `hasMore` when more messages exist past it.
+   *   - interior page p: strictly from that page's first (newest)
+   *     Message through its last (oldest) Message.
+   *
+   * Returns the page re-sorted oldest-first.
+   */
+  private def eventsForPage(desc: List[Event], page: Int, maxMessages: Option[Int]): EventsPage =
+    maxMessages match {
+      case None =>
+        if (page == 0) EventsPage(desc.reverse, hasMore = false)
+        else EventsPage(Nil, hasMore = false)
+
+      case Some(cap) if cap <= 0 =>
+        EventsPage(Nil, hasMore = false)
+
+      case Some(cap) =>
+        // Indices of Message events in the newest-first list.
+        val messageIdx: Vector[Int] =
+          desc.iterator.zipWithIndex.collect { case (e, i) if e.isInstanceOf[Message] => i }.toVector
+        val totalMessages = messageIdx.length
+        val firstMsgOrdinal = page * cap
+        if (firstMsgOrdinal >= totalMessages) EventsPage(Nil, hasMore = false)
+        else {
+          val lastMsgOrdinal = math.min(firstMsgOrdinal + cap - 1, totalMessages - 1)
+          val sliceEnd = messageIdx(lastMsgOrdinal)
+          val sliceStart = if (page == 0) 0 else messageIdx(firstMsgOrdinal)
+          val pageDesc = desc.slice(sliceStart, sliceEnd + 1)
+          val hasMore = lastMsgOrdinal + 1 < totalMessages
+          EventsPage(pageDesc.reverse, hasMore = hasMore)
+        }
     }
 
   /**
@@ -5640,6 +5774,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   private val instanceStarted: java.util.concurrent.atomic.AtomicBoolean =
     new java.util.concurrent.atomic.AtomicBoolean(false)
 
+  /** Synchronous handle to the fully-constructed [[SigilInstance]],
+    * set once [[instance]]'s task body completes. Lets hot-path
+    * helpers (notably [[eventsFor]]'s batched-scope snapshot) reach
+    * the live `DB` without re-running the `instance` task or
+    * blocking on its singleton. `None` until the store is open. */
+  private[sigil] val startedInstance: java.util.concurrent.atomic.AtomicReference[Option[SigilInstance]] =
+    new java.util.concurrent.atomic.AtomicReference[Option[SigilInstance]](None)
+
   val instance: Task[SigilInstance] = Task.defer {
     for {
       _ <- polymorphicRegistrations
@@ -5677,10 +5819,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       _ <- startModelRefresh()
       _ <- startExpiredMemorySweep()
       _ <- startMaintenanceTasks()
-    } yield SigilInstance(
-      config = config,
-      db = db
-    )
+      inst = SigilInstance(
+               config = config,
+               db = db
+             )
+      _ = startedInstance.set(Some(inst))
+    } yield inst
   }.singleton
 
   /** Sigil bug #172 — at every boot, reconcile any `Event` left at
@@ -6072,7 +6216,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       else instance.flatMap { sigil =>
         sigil.db.dispose.handleError { t =>
           Task { scribe.warn(s"Sigil shutdown: db.dispose failed: ${t.getMessage}"); () }
-        }
+        }.map(_ => startedInstance.set(None))
       }
     }
   }
