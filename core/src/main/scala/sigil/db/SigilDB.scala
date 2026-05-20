@@ -76,23 +76,116 @@ abstract class SigilDB(override val directory: Option[Path],
   override def upgrades: List[DatabaseUpgrade] = appUpgrades
 
   /**
+   * Conversation-keyed registry of batched `events` transactions.
+   *
+   * The split store fsyncs (`IndexWriter.commit`) once per
+   * transaction. The agent loop publishes one signal per streamed
+   * token, each previously opening its own transaction — hundreds
+   * of commits per turn. [[withBatchedEvents]] opens a single
+   * transaction for one agent-loop iteration and registers it here
+   * keyed by `conversationId`; [[eventsTransaction]] then routes
+   * every `events` read/write for that conversation into the shared
+   * transaction so the whole iteration costs one commit.
+   *
+   * Registry membership is per-conversation: a signal whose
+   * conversation has no batched transaction (every non-loop publish
+   * — user messages, external API calls, tool emissions outside a
+   * loop) falls through to a fresh per-call transaction, byte-
+   * identical to the unbatched path.
+   */
+  private val batchedEventTx: scala.collection.concurrent.TrieMap[Id[Conversation], events.TX] =
+    scala.collection.concurrent.TrieMap.empty
+
+  /**
+   * Counter of write-bearing `events` transactions opened (each
+   * maps 1:1 to a Lucene `IndexWriter.commit` fsync). Incremented
+   * once per [[withBatchedEvents]] scope and once per [[apply]]
+   * call that has no batched scope to join. Read-only routing
+   * through [[eventsTransaction]] does not count — a read
+   * transaction's commit is a near-noop. Diagnostic / spec hook
+   * only.
+   */
+  private val eventsWriteCommitCount: java.util.concurrent.atomic.AtomicLong =
+    new java.util.concurrent.atomic.AtomicLong(0L)
+
+  /** Current value of the [[eventsWriteCommitCount]] commit counter. */
+  def eventsWriteCommits: Long = eventsWriteCommitCount.get()
+
+  /**
+   * Hold a single `events` transaction open for the duration of
+   * `task`, registered under `conversationId`. Every [[apply]] and
+   * every read routed through [[eventsTransaction]] for that
+   * conversation joins the shared transaction; the one commit
+   * happens when the scope exits (success or failure).
+   *
+   * Durability note: events written inside the scope become durable
+   * at scope exit, not per-write. A crash mid-scope loses that
+   * scope's writes — the agent loop wraps one iteration per scope,
+   * so a crash loses at most the in-flight iteration. This is the
+   * intended trade for eliminating per-token commit amplification.
+   */
+  def withBatchedEvents[A](conversationId: Id[Conversation])(task: Task[A]): Task[A] =
+    Task(eventsWriteCommitCount.incrementAndGet()).flatMap { _ =>
+      events.transaction { tx =>
+        batchedEventTx.put(conversationId, tx)
+        task.guarantee(Task {
+          batchedEventTx.remove(conversationId)
+          ()
+        })
+      }
+    }
+
+  /**
+   * Run `f` against the `events` transaction for `conversationId`.
+   * When a [[withBatchedEvents]] scope is active for that
+   * conversation, `f` runs on the shared transaction (no new
+   * transaction, no commit — the scope commits). Otherwise `f` runs
+   * in a fresh per-call transaction exactly as a direct
+   * `events.transaction(f)` would.
+   *
+   * Routing every per-iteration `events` access through this method
+   * keeps reads consistent with batched-but-uncommitted writes: a
+   * read inside the scope sees the scope's own pending inserts /
+   * upserts.
+   */
+  def eventsTransaction[A](conversationId: Id[Conversation])(f: events.TX => Task[A]): Task[A] =
+    batchedEventTx.get(conversationId) match {
+      case Some(tx) => f(tx)
+      case None     => events.transaction(f)
+    }
+
+  /**
    * Apply a [[Signal]] to the events store. Events insert; Deltas
    * upsert a mutated target row; Notices are transient pulses with
    * no persistence — they fall through as a no-op so callers can
    * pipe a raw signal stream straight into `apply` without filtering.
+   *
+   * Both Event and Delta carry `conversationId`, so the signal
+   * routes to the right batched transaction (when one is active)
+   * by conversation id alone — see [[eventsTransaction]].
    */
   def apply(signal: Signal): Task[Unit] = signal match {
     case e: Event =>
-      events.transaction(_.insert(e)).unit
+      countUnbatchedWrite(e.conversationId)
+        .flatMap(_ => eventsTransaction(e.conversationId)(_.insert(e)).unit)
     case d: Delta =>
-      events.transaction { tx =>
+      countUnbatchedWrite(d.conversationId).flatMap(_ => eventsTransaction(d.conversationId) { tx =>
         tx.get(d.target.asInstanceOf[Id[Event]]).flatMap {
           case Some(target) => tx.upsert(d(target)).unit
           case None => Task.unit
         }
-      }
+      })
     case _: sigil.signal.Notice => Task.unit
   }
+
+  /** Tick the write-commit counter for an `apply` that will open
+    * its own fresh transaction (no [[withBatchedEvents]] scope to
+    * join). Batched writes are counted once per scope, not here. */
+  private def countUnbatchedWrite(conversationId: Id[Conversation]): Task[Unit] =
+    Task {
+      if (!batchedEventTx.contains(conversationId)) eventsWriteCommitCount.incrementAndGet()
+      ()
+    }
 }
 
 /**

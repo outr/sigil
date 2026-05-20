@@ -1,6 +1,6 @@
 package sigil.event
 
-import fabric.rw.RW
+import fabric.rw.{RW, stringRW}
 import lightdb.doc.{Document, JsonConversion}
 import lightdb.id.Id
 import lightdb.time.Timestamp
@@ -181,4 +181,11 @@ object Event extends JsonConversion[Event] {
   import Signal.given
 
   implicit override def rw: RW[Event] = summon[RW[Signal]].asInstanceOf[RW[Event]]
+
+  /**
+   * Secondary index on the owning conversation. Conversation-scoped
+   * reads of the event log query this index instead of scanning the
+   * whole store, and it gives full-text search a stable scope key.
+   */
+  val conversationIdIndex: I[String] = field.index("conversationId", _.conversationId.value)
 }

@@ -26,7 +26,7 @@ object MessageIndexingEffect extends SettledEffect {
     else signal match {
       case m: Message if m.state == EventState.Complete => indexMessage(m, self)
       case d: Delta =>
-        self.withDB(_.events.transaction(_.get(d.target.asInstanceOf[Id[Event]]))).flatMap {
+        self.withDB(_.eventsTransaction(d.conversationId)(_.get(d.target.asInstanceOf[Id[Event]]))).flatMap {
           case Some(m: Message) if m.state == EventState.Complete => indexMessage(m, self)
           case _ => Task.unit
         }

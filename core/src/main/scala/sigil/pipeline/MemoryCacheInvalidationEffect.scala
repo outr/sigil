@@ -42,7 +42,7 @@ object MemoryCacheInvalidationEffect extends SettledEffect {
   private def resolveSettledEvent(signal: Signal, self: Sigil): Task[Option[Event]] = signal match {
     case e: Event if e.state == EventState.Complete => Task.pure(Some(e))
     case d: Delta =>
-      self.withDB(_.events.transaction(_.get(d.target.asInstanceOf[Id[Event]])))
+      self.withDB(_.eventsTransaction(d.conversationId)(_.get(d.target.asInstanceOf[Id[Event]])))
         .map(_.filter(_.state == EventState.Complete))
     case _ => Task.pure(None)
   }

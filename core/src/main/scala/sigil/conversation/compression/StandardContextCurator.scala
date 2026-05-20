@@ -267,7 +267,7 @@ case class StandardContextCurator(sigil: Sigil,
                       val shedSlice = frames.dropRight(newerKept.size)
                       val advance: Task[Unit] = shedSlice.lastOption match {
                         case Some(boundary) =>
-                          sigil.withDB(_.events.transaction(_.get(boundary.sourceEventId))).flatMap {
+                          sigil.withDB(_.eventsTransaction(tentative.conversationId)(_.get(boundary.sourceEventId))).flatMap {
                             case Some(ev) =>
                               sigil.advanceClearedAt(tentative.conversationId, ev.timestamp)
                                 .handleError(_ => Task.unit)
