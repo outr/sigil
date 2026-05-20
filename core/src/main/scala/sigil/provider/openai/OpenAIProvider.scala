@@ -564,20 +564,18 @@ case class OpenAIProvider(apiKey: String,
 
       case "response.image_generation_call.partial_image" =>
         val callId = state.activeItemCallId.getOrElse(CallId("responses-image"))
-        val b64 = json.get("partial_image_b64").map(_.asString)
-        val url = json.get("partial_image_url").map(_.asString)
-        val imageRef = url.orElse(b64.map(b => s"data:image/png;base64,$b")).getOrElse("")
-        if (imageRef.isEmpty) Vector.empty
-        else Vector(ProviderEvent.ImageGenerationPartial(callId, imageRef))
+        val raw = json.get("partial_image_url").map(_.asString)
+          .orElse(json.get("partial_image_b64").map(_.asString))
+        raw.flatMap(OpenAIProvider.toProviderImage)
+          .map(img => ProviderEvent.ImageGenerationPartial(callId, img)).toVector
 
       case "response.image_generation_call.completed" =>
         val callId = state.activeItemCallId.getOrElse(CallId("responses-image"))
-        val imageRef = json.get("image_url").map(_.asString)
-          .orElse(json.get("image_b64").map(b => s"data:image/png;base64,${b.asString}"))
-          .getOrElse("")
-        val complete = Vector[ProviderEvent](ProviderEvent.ImageGenerationComplete(callId, imageRef))
-        val serverDone = Vector[ProviderEvent](ProviderEvent.ServerToolComplete(callId, BuiltInTool.ImageGeneration))
-        complete ++ serverDone
+        val raw = json.get("image_url").map(_.asString)
+          .orElse(json.get("image_b64").map(_.asString))
+        val complete = raw.flatMap(OpenAIProvider.toProviderImage)
+          .map(img => ProviderEvent.ImageGenerationComplete(callId, img)).toVector
+        complete :+ ProviderEvent.ServerToolComplete(callId, BuiltInTool.ImageGeneration)
 
       case "response.output_item.done" =>
         // Item completion — if it's a built-in tool call (image_generation_call,
@@ -590,15 +588,15 @@ case class OpenAIProvider(apiKey: String,
         val callId = callIdRaw.map(CallId(_)).getOrElse(state.activeItemCallId.getOrElse(CallId("responses-done")))
         itemType match {
           case "image_generation_call" =>
-            val imageRef = item.get("result").map(_.asString)
+            val raw = item.get("result").map(_.asString)
               .orElse(item.get("image_url").map(_.asString))
-              .map(b => if (b.startsWith("data:") || b.startsWith("http")) b else s"data:image/png;base64,$b")
-              .getOrElse("")
-            if (imageRef.isEmpty) Vector.empty
-            else Vector(
-              ProviderEvent.ImageGenerationComplete(callId, imageRef),
-              ProviderEvent.ServerToolComplete(callId, BuiltInTool.ImageGeneration)
-            )
+            raw.flatMap(OpenAIProvider.toProviderImage) match {
+              case Some(img) => Vector(
+                ProviderEvent.ImageGenerationComplete(callId, img),
+                ProviderEvent.ServerToolComplete(callId, BuiltInTool.ImageGeneration)
+              )
+              case None => Vector.empty
+            }
           case "web_search_call" =>
             Vector(ProviderEvent.ServerToolComplete(callId, BuiltInTool.WebSearch))
           case "reasoning" =>
@@ -702,20 +700,17 @@ case class OpenAIProvider(apiKey: String,
       // the same way regardless of dispatch path.
       case "image_generation.partial_image" =>
         val callId = CallId("openai-image")
-        val b64 = json.get("b64_json").map(_.asString)
-        val url = json.get("url").map(_.asString)
-        val imageRef = url.orElse(b64.map(b => s"data:image/png;base64,$b")).getOrElse("")
-        if (imageRef.isEmpty) Vector.empty
-        else Vector(ProviderEvent.ImageGenerationPartial(callId, imageRef))
+        val raw = json.get("url").map(_.asString)
+          .orElse(json.get("b64_json").map(_.asString))
+        raw.flatMap(OpenAIProvider.toProviderImage)
+          .map(img => ProviderEvent.ImageGenerationPartial(callId, img)).toVector
 
       case "image_generation.completed" =>
         val callId = CallId("openai-image")
-        val imageRef = json.get("url").map(_.asString)
-          .orElse(json.get("b64_json").map(b => s"data:image/png;base64,${b.asString}"))
-          .getOrElse("")
-        val complete: Vector[ProviderEvent] =
-          if (imageRef.isEmpty) Vector.empty
-          else Vector(ProviderEvent.ImageGenerationComplete(callId, imageRef))
+        val raw = json.get("url").map(_.asString)
+          .orElse(json.get("b64_json").map(_.asString))
+        val complete = raw.flatMap(OpenAIProvider.toProviderImage)
+          .map(img => ProviderEvent.ImageGenerationComplete(callId, img)).toVector
         complete :+ ProviderEvent.Done(StopReason.Complete)
 
       case _ => Vector.empty
@@ -856,4 +851,29 @@ object OpenAIProvider {
     * [[sigil.controller.OpenRouter.refreshModels]]). */
   def create(sigil: Sigil, apiKey: String, baseUrl: URL = url"https://api.openai.com"): Task[OpenAIProvider] =
     Task.pure(OpenAIProvider(apiKey, sigil, baseUrl))
+
+  /** Classify a raw image reference from an OpenAI image-generation
+    * event into a typed [[ProviderImage]]: an `http(s)` value is a
+    * [[ProviderImage.Hosted]] URL; a `data:` URL or a bare base64
+    * payload is [[ProviderImage.Inline]] image bytes. Returns `None`
+    * for an empty or unparseable reference — never constructs a
+    * `data:` URL. */
+  private[openai] def toProviderImage(raw: String): Option[ProviderImage] = {
+    val trimmed = raw.trim
+    if (trimmed.isEmpty) None
+    else if (trimmed.startsWith("http://") || trimmed.startsWith("https://"))
+      URL.get(trimmed).toOption.map(ProviderImage.Hosted.apply)
+    else if (trimmed.startsWith("data:")) {
+      val comma = trimmed.indexOf(',')
+      if (comma < 0) None
+      else {
+        val contentType = trimmed.substring(5, comma).takeWhile(_ != ';')
+        Some(ProviderImage.Inline(
+          base64 = trimmed.substring(comma + 1),
+          contentType = if (contentType.nonEmpty) contentType else "image/png"
+        ))
+      }
+    }
+    else Some(ProviderImage.Inline(base64 = trimmed, contentType = "image/png"))
+  }
 }
