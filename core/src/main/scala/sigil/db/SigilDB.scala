@@ -8,6 +8,7 @@ import lightdb.upgrade.DatabaseUpgrade
 import rapid.Task
 import sigil.conversation.{ContextMemory, ContextSummary, Conversation, ConversationToolOverlay, EncodedContext, ParticipantProjection, Topic}
 import sigil.event.Event
+import sigil.information.StoredInformation
 import sigil.signal.{Delta, Signal}
 import sigil.provider.{ProviderConfig, ProviderStrategyRecord, SpaceProviderAssignment}
 import sigil.skill.Skill
@@ -72,6 +73,11 @@ abstract class SigilDB(override val directory: Option[Path],
     * [[sigil.maintenance.ConversationContainerCleanupTask]] reaps
     * rows at the conversation level (age + size). */
   val toolOutputs: S[ToolOutputNode, ToolOutputNode.type] = store(ToolOutputNode)()
+
+  /** Large frame content externalized by block extraction during
+    * curation, resolved back via [[sigil.Sigil.getInformation]]. */
+  val storedInformations: S[StoredInformation, StoredInformation.type] =
+    store(StoredInformation).withCache(CacheConfig.lru(200, 30.minutes))()
 
   override def upgrades: List[DatabaseUpgrade] = appUpgrades
 
