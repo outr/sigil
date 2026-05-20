@@ -4312,8 +4312,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
            }
       _ <- withDB { db =>
              db.toolOutputs.transaction { tx =>
-               tx.list.flatMap { all =>
-                 val targets = all.filter(_.conversationId == conversationId)
+               tx.query.filter(_.conversationKey === conversationId.value).toList.flatMap { targets =>
                  Task.sequence(targets.map(n => tx.delete(n._id))).unit
                }
              }

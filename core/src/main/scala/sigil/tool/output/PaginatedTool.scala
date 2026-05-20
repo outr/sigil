@@ -1,6 +1,7 @@
 package sigil.tool.output
 
 import fabric.rw.*
+import lightdb.filter.FilterExtras
 import lightdb.id.Id
 import rapid.{Stream, Task}
 import sigil.{GlobalSpace, SpaceId, TurnContext}
@@ -203,10 +204,12 @@ object PaginatedTool {
                referenceId: String,
                page: Int,
                pageSize: Int): Task[JsonPagedResult] =
-    host.withDB(_.toolOutputs.transaction(_.list)).map { all =>
-      val matching = all
-        .filter(n => n.conversationId == conversationId && n.callId == callId && n.referenceId == referenceId)
-        .sortBy(_.ordinal)
+    host.withDB(_.toolOutputs.transaction(_.query.filter(n =>
+      n.conversationKey === conversationId.value &&
+        n.callKey === callId.value &&
+        n.referenceKey === referenceId
+    ).toList)).map { matchingRows =>
+      val matching = matchingRows.sortBy(_.ordinal)
       val total = matching.size
       val safePage = math.max(0, page)
       val window = matching.slice(safePage * pageSize, (safePage + 1) * pageSize)

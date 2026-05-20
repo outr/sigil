@@ -43,10 +43,12 @@ case object NextPageTool extends TypedOutputTool[NextPageInput, JsonPagedResult]
   override protected def executeTyped(input: NextPageInput, ctx: TurnContext): Task[JsonPagedResult] = {
     val pageSize = math.max(1, math.min(input.pageSize, maxPageSize))
     val convId   = ctx.conversation.id
-    ctx.sigil.withDB(_.toolOutputs.transaction(_.list)).flatMap { all =>
+    ctx.sigil.withDB(_.toolOutputs.transaction(
+      _.query.filter(_.conversationKey === convId.value).toList
+    )).flatMap { all =>
       // Find any row matching the referenceId in this conversation;
       // its callId is what we filter by.
-      val anyRow = all.find(n => n.conversationId == convId && (n._id.value == input.referenceId || n.referenceId == input.referenceId || n.callId.value == input.referenceId))
+      val anyRow = all.find(n => n._id.value == input.referenceId || n.referenceId == input.referenceId || n.callId.value == input.referenceId)
       anyRow match {
         case None =>
           Task.pure(JsonPagedResult(
