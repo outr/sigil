@@ -1,6 +1,6 @@
 package sigil.event
 
-import fabric.rw.{RW, stringRW}
+import fabric.rw.{RW, longRW, stringRW}
 import lightdb.doc.{Document, JsonConversion}
 import lightdb.id.Id
 import lightdb.time.Timestamp
@@ -188,4 +188,12 @@ object Event extends JsonConversion[Event] {
    * whole store, and it gives full-text search a stable scope key.
    */
   val conversationId: I[String] = field.index("conversationId", _.conversationId.value)
+
+  /**
+   * Secondary index on the event timestamp (epoch millis). Lets
+   * timestamp-range and chronologically-ordered reads run as indexed
+   * queries instead of full-store scans; pairs with `conversationId`
+   * to form a fully-indexed compound conversation-scoped ordered query.
+   */
+  val timestamp: I[Long] = field.index("timestamp", _.timestamp.value)
 }

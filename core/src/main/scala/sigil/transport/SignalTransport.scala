@@ -109,43 +109,82 @@ final class SignalTransport(sigil: Sigil) {
     case _                  => Stream.force(loadReplay(viewer, resume, conversations))
   }
 
+  /**
+   * Optional conversation-scope filter for the indexed event query.
+   * `Some(cs)` with a non-empty set narrows to the `conversationId`
+   * index via an `in` clause; an empty set matches nothing; `None`
+   * spans every conversation.
+   */
+  private def conversationScopeFilter(convFilter: ConversationFilter): Option[Event.type => lightdb.filter.Filter[Event]] = {
+    import lightdb.filter.*
+    convFilter match {
+      case Some(cs) if cs.isEmpty => Some(_ => Filter.In(Event.conversationId.name, Seq.empty[String]))
+      case Some(cs)               => Some(_ => Event.conversationId.in(cs.toSeq.map(_.value)))
+      case None                   => None
+    }
+  }
+
   private def loadReplay(viewer: ParticipantId,
                          resume: ResumeRequest,
-                         convFilter: ConversationFilter): Task[Stream[Signal]] =
-    sigil.withDB(_.events.transaction(_.list)).map { all =>
-      val scoped: List[Event] = convFilter match {
-        case Some(cs) => all.filter(e => cs.contains(e.conversationId))
-        case None     => all
-      }
-      // Apply visibility BEFORE the RecentMessages walk so the count reflects
-      // what the viewer actually receives — otherwise an Agents-only message
-      // would consume budget despite being filtered.
-      val visible: List[Event] = scoped.filter(e => sigil.canSee(e, viewer))
-      val selected: List[Event] = resume match {
-        case ResumeRequest.None =>
-          Nil
-        case ResumeRequest.After(cursor) =>
-          visible.filter(_.timestamp.value > cursor).sortBy(_.timestamp.value)
-        case ResumeRequest.RecentMessages(max) if max <= 0 =>
-          Nil
-        case ResumeRequest.RecentMessages(max) =>
-          // Walk newest-first, accumulate, stop after the `max`th Message.
-          // The non-Message events trailing the cutoff Message are already
-          // included by virtue of being newer than (or equal to) it.
-          val desc = visible.sortBy(-_.timestamp.value)
-          val acc = scala.collection.mutable.ListBuffer.empty[Event]
+                         convFilter: ConversationFilter): Task[Stream[Signal]] = {
+    import lightdb.filter.*
+    val scopeFilter = conversationScopeFilter(convFilter)
+    resume match {
+      case ResumeRequest.None =>
+        Task.pure(Stream.empty)
+
+      case ResumeRequest.RecentMessages(max) if max <= 0 =>
+        Task.pure(Stream.empty)
+
+      case ResumeRequest.After(cursor) =>
+        // Indexed timestamp range, returned ascending — no in-memory sort.
+        // Conversation scope (when present) ANDs into the same indexed query.
+        sigil.withDB(_.events.transaction { tx =>
+          val ranged = tx.query
+            .filter(_ => Event.timestamp > cursor)
+            .sort(lightdb.Sort.ByField(Event.timestamp, lightdb.SortDirection.Ascending))
+          val scoped = scopeFilter.fold(ranged)(f => ranged.filter(f))
+          scoped.toList
+        }).map { ordered =>
+          // Visibility is a per-viewer predicate, not an indexed field —
+          // applied in memory over the already-narrowed, already-ordered set.
+          val transformed: List[Signal] =
+            ordered.filter(e => sigil.canSee(e, viewer)).map(e => sigil.applyViewerTransforms(e, viewer))
+          Stream.emits(transformed)
+        }
+
+      case ResumeRequest.RecentMessages(max) =>
+        // Walk newest-first off the indexed timestamp order, accumulate, stop
+        // after the `max`th visible Message. The non-Message events trailing
+        // the cutoff Message are already included by virtue of being newer
+        // than (or equal to) it. The "is a Message" check is the polymorphic
+        // Signal discriminator — not an indexed field — so it stays in memory,
+        // but the descending stream lets the walk stop as soon as the budget
+        // is met instead of materialising the whole store.
+        sigil.withDB(_.events.transaction { tx =>
+          val ordered = tx.query
+            .sort(lightdb.Sort.ByField(Event.timestamp, lightdb.SortDirection.Descending))
+          val scoped = scopeFilter.fold(ordered)(f => ordered.filter(f))
+          // Apply visibility BEFORE the count walk so the budget reflects what
+          // the viewer actually receives — an Agents-only message must not
+          // consume a slot despite being filtered.
           var msgCount = 0
-          val it = desc.iterator
-          while (it.hasNext && msgCount < max) {
-            val e = it.next()
-            acc += e
-            if (e.isInstanceOf[Message]) msgCount += 1
-          }
-          acc.toList.reverse
-      }
-      val transformed: List[Signal] = selected.map(e => sigil.applyViewerTransforms(e, viewer))
-      Stream.emits(transformed)
+          scoped.stream
+            .filter(e => sigil.canSee(e, viewer))
+            .takeWhile { e =>
+              if (msgCount < max) {
+                if (e.isInstanceOf[Message]) msgCount += 1
+                true
+              } else false
+            }
+            .toList
+        }).map { desc =>
+          val transformed: List[Signal] =
+            desc.reverse.map(e => sigil.applyViewerTransforms(e, viewer))
+          Stream.emits(transformed)
+        }
     }
+  }
 }
 
 /**
