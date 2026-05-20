@@ -90,7 +90,7 @@ class EventCommitBatchingSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         // Indexed read AFTER the scope closed — the events are
         // committed and the conversationId index resolves them.
         indexed <- TestSigil.withDB(_.events.transaction(
-                     _.query.filter(_.conversationIdIndex === convId.value).toList
+                     _.query.filter(_.conversationId === convId.value).toList
                    ))
       } yield {
         indexed.map(_._id).toSet shouldBe messages.map(_._id).toSet

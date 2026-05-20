@@ -4196,7 +4196,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def mergeStagingIntoMain(staging: Id[Conversation],
                            target: Id[Conversation]): Task[Int] = {
     val rewriteEvents: Task[Int] = withDB(_.events.transaction { tx =>
-      val rewritten = tx.query.filter(_.conversationIdIndex === staging.value).stream
+      val rewritten = tx.query.filter(_.conversationId === staging.value).stream
         .map(e => e.withConversationId(target))
       tx.upsert(rewritten)
     })
@@ -4236,7 +4236,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     for {
       _ <- withDB { db =>
              db.events.transaction { tx =>
-               val ids = tx.query.filter(_.conversationIdIndex === staging.value).stream.map(_._id)
+               val ids = tx.query.filter(_.conversationId === staging.value).stream.map(_._id)
                ids.evalMap(id => tx.delete(id)).drain
              }
            }
@@ -4276,7 +4276,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       _ <- withDB(_.conversations.transaction(_.delete(conversationId)))
       _ <- withDB { db =>
              db.events.transaction { tx =>
-               tx.query.filter(_.conversationIdIndex === conversationId.value).stream
+               tx.query.filter(_.conversationId === conversationId.value).stream
                  .map(_._id)
                  .evalMap(id => tx.delete(id))
                  .drain
