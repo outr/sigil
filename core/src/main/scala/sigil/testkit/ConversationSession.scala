@@ -78,16 +78,25 @@ final class ConversationSession(sigil: Sigil,
     ))
 
   private def waitForAgentTurn(after: Long, timeout: FiniteDuration): Task[Message] = {
+    import lightdb.filter.*
     val deadline = System.currentTimeMillis() + timeout.toMillis
-    def loop: Task[Message] = sigil.withDB(_.events.transaction(_.list)).flatMap { all =>
-      val turnEvents = all.filter(e => e.conversationId == convId && e.timestamp.value > after)
+    def loop: Task[Message] = sigil.withDB(_.events.transaction { tx =>
+      // Fully-indexed compound query: conversationId scopes this
+      // session's events, the timestamp range applies the `after`
+      // cursor, and the index returns rows already ascending.
+      tx.query
+        .filter(_ => (Event.conversationId === convId.value) && (Event.timestamp > after))
+        .sort(lightdb.Sort.ByField(Event.timestamp, lightdb.SortDirection.Ascending))
+        .toList
+    }).flatMap { turnEvents =>
       val agentSettled = turnEvents.exists {
         case a: AgentState => a.state == EventState.Complete
         case _ => false
       }
+      // turnEvents already arrives timestamp-ascending from the indexed
+      // query, so `lastOption` is the latest matching agent Message.
       lazy val message = turnEvents.collect { case m: Message => m }
         .filter(m => m.participantId != viewer && m.state == EventState.Complete)
-        .sortBy(_.timestamp.value)
         .lastOption
       if (agentSettled && message.isDefined) Task.pure(message.get)
       else if (System.currentTimeMillis() < deadline) Task.sleep(200.millis).flatMap(_ => loop)

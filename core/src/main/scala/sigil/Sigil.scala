@@ -2625,26 +2625,39 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           publishTo(fromViewer, sigil.signal.ConversationListSnapshot(conversations))
         }
       case sigil.signal.SwitchConversation(convId, limit) =>
+        import lightdb.filter.*
         for {
-          all <- withDB { db =>
-                   db.events.transaction(_.list.map(_.filter(_.conversationId == convId)))
-                 }
-          _   <- {
-                   val sorted = all.sortBy(_.timestamp.value)
-                   val cap = math.max(0, limit)
-                   val window = if (sorted.length <= cap) sorted else sorted.drop(sorted.length - cap)
-                   val hasMore = sorted.length > cap
-                   publishTo(fromViewer, sigil.signal.ConversationSnapshot(convId, window.toVector, hasMore))
-                 }
+          sorted <- withDB { db =>
+                      // Indexed conversationId narrowing; the timestamp index
+                      // returns this conversation's events already ascending.
+                      db.events.transaction { tx =>
+                        tx.query
+                          .filter(_ => Event.conversationId === convId.value)
+                          .sort(lightdb.Sort.ByField(Event.timestamp, lightdb.SortDirection.Ascending))
+                          .toList
+                      }
+                    }
+          _      <- {
+                      val cap = math.max(0, limit)
+                      val window = if (sorted.length <= cap) sorted else sorted.drop(sorted.length - cap)
+                      val hasMore = sorted.length > cap
+                      publishTo(fromViewer, sigil.signal.ConversationSnapshot(convId, window.toVector, hasMore))
+                    }
         } yield ()
 
       case sigil.signal.RequestConversationHistory(convId, beforeMs, limit) =>
+        import lightdb.filter.*
         withDB { db =>
-          db.events.transaction(_.list.map(_.filter(e =>
-            e.conversationId == convId && e.timestamp.value < beforeMs
-          )))
-        }.flatMap { older =>
-          val sorted = older.sortBy(_.timestamp.value)
+          // Fully-indexed compound query: conversationId scopes the
+          // conversation, the timestamp range applies the `beforeMs`
+          // cursor, and the index returns the rows already ascending.
+          db.events.transaction { tx =>
+            tx.query
+              .filter(_ => (Event.conversationId === convId.value) && (Event.timestamp < beforeMs))
+              .sort(lightdb.Sort.ByField(Event.timestamp, lightdb.SortDirection.Ascending))
+              .toList
+          }
+        }.flatMap { sorted =>
           val cap = math.max(0, limit)
           // Take the trailing `cap` events of everything older than the
           // cursor — that's the page closest to the cursor. `hasMore` =

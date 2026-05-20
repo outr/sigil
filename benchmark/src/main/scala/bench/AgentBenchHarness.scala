@@ -135,11 +135,19 @@ final class AgentBenchHarness(sigil: Sigil, viewer: ParticipantId) {
     * another. AgentState=Complete is the only marker that the loop has
     * fully released its claim. */
   private def waitForAgentTurn(convId: Id[Conversation], after: Long, timeout: FiniteDuration): Task[Vector[Event]] = {
+    import lightdb.filter.*
     val deadline = System.currentTimeMillis() + timeout.toMillis
-    def loop: Task[Vector[Event]] = sigil.withDB(_.events.transaction(_.list)).flatMap { all =>
-      val window = all
-        .filter(e => e.conversationId == convId && e.timestamp.value >= after && e.state == EventState.Complete)
-        .sortBy(_.timestamp.value)
+    def loop: Task[Vector[Event]] = sigil.withDB(_.events.transaction { tx =>
+      // Indexed conversationId + timestamp-range compound query, returned
+      // ascending. `state == Complete` is not an indexed field, so it
+      // stays an in-memory filter over the already-narrowed window.
+      tx.query
+        .filter(_ => (Event.conversationId === convId.value) && (Event.timestamp >= after))
+        .sort(lightdb.Sort.ByField(Event.timestamp, lightdb.SortDirection.Ascending))
+        .toList
+    }).flatMap { ordered =>
+      val window = ordered.iterator
+        .filter(_.state == EventState.Complete)
         .toVector
       val agentSettled = window.exists(_.isInstanceOf[AgentState])
       if (agentSettled) Task.pure(window)

@@ -100,10 +100,19 @@ final case class ConversationContainerCleanupTask(interval: FiniteDuration = 1.h
     * yesterday conversation's containers stay. */
   private def mostRecentEventTimestamp(host: Sigil, conversation: Conversation): Task[Long] = {
     val convId = conversation._id
-    host.withDB(_.events.transaction(_.list)).map { allEvents =>
-      val convEvents = allEvents.toList.filter(_.conversationId == convId)
-      if (convEvents.isEmpty) conversation.modified.value
-      else convEvents.map(_.timestamp.value).max
+    import lightdb.filter.*
+    host.withDB(_.events.transaction { tx =>
+      // Indexed conversationId narrowing plus a descending timestamp
+      // sort — the newest event's timestamp is the first (and only)
+      // row read instead of a full-store scan and in-memory max.
+      tx.query
+        .filter(_ => sigil.event.Event.conversationId === convId.value)
+        .sort(lightdb.Sort.ByField(sigil.event.Event.timestamp, lightdb.SortDirection.Descending))
+        .limit(1)
+        .toList
+    }).map {
+      case newest :: _ => newest.timestamp.value
+      case Nil         => conversation.modified.value
     }
   }
 }
