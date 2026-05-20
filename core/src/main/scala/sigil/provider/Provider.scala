@@ -236,9 +236,11 @@ trait Provider extends Service {
         conversationId = convId
       ) { control =>
         rateLimiter.acquire.flatMap { _ =>
-          control.token.checkpoint.flatMap(_ => withCapacity(translate(request))).flatMap { providerCall =>
-            control.step("Validating request size").map(_ => providerCall)
-          }
+          control.token.checkpoint.flatMap(_ => withCapacity(translate(request)))
+            .flatMap(normalizeStoredImages)
+            .flatMap { providerCall =>
+              control.step("Validating request size").map(_ => providerCall)
+            }
         }
       }.map { providerCall =>
         preFlightGate(request, providerCall) match {
@@ -834,6 +836,59 @@ trait Provider extends Service {
       case ResponseContent.Code(c, lang)       => MessageContent.Text(s"```${lang.getOrElse("")}\n$c\n```")
       case other                                => MessageContent.Text(MarkdownRenderer.renderBlock(other))
     }
+
+  /** Materialize internally-stored images for the wire. A
+    * [[MessageContent.Image]] whose URL points at a Sigil
+    * [[sigil.storage.StoredFile]] (path shape `…/storage/<id>`) is
+    * rewritten to [[MessageContent.ImageBytes]] carrying the file's
+    * bytes — the default local-storage URL is not reachable by the
+    * provider's servers, so a fetchable URL can't be assumed.
+    * Genuinely public URLs (signed S3, CDN) — whose path segment does
+    * not resolve to a StoredFile — pass through unchanged. Runs once
+    * over the translated call so every provider benefits. */
+  private[provider] def normalizeStoredImages(call: ProviderCall): Task[ProviderCall] = {
+    def normalizeContent(mc: MessageContent): Task[MessageContent] = mc match {
+      case MessageContent.Image(url, altText) =>
+        storedFileIdFrom(url) match {
+          case None     => Task.pure(mc)
+          case Some(id) =>
+            sigil.withDB(_.storedFiles.transaction(_.get(id))).flatMap {
+              case None       => Task.pure(mc)
+              case Some(file) =>
+                sigil.storageProvider.download(file.path).map {
+                  case Some(bytes) =>
+                    MessageContent.ImageBytes(
+                      mediaType = file.contentType,
+                      base64 = java.util.Base64.getEncoder.encodeToString(bytes),
+                      altText = altText
+                    )
+                  case None => mc
+                }
+            }
+        }
+      case other => Task.pure(other)
+    }
+    Task.sequence(call.messages.toList.map {
+      case ProviderMessage.User(content) =>
+        Task.sequence(content.toList.map(normalizeContent)).map(c => ProviderMessage.User(c.toVector))
+      case other => Task.pure(other)
+    }).map(messages => call.copy(messages = messages.toVector))
+  }
+
+  /** Extract a [[sigil.storage.StoredFile]] id from a URL of shape
+    * `…/storage/<id>` — covers the default `sigil://storage/<id>` and
+    * an app override to an `http(s)://host/storage/<id>` form. `None`
+    * when the URL is not storage-shaped. */
+  private def storedFileIdFrom(url: spice.net.URL): Option[Id[_root_.sigil.storage.StoredFile]] = {
+    val marker = "/storage/"
+    val s = url.toString
+    val idx = s.indexOf(marker)
+    if (idx < 0) None
+    else {
+      val id = s.substring(idx + marker.length).takeWhile(c => c != '/' && c != '?' && c != '#')
+      if (id.isEmpty) None else Some(Id(id))
+    }
+  }
 
   /** Resolve the ids on `TurnInput.criticalMemories` / `.memories` /
     * `.summaries` to full records via the DB. Ids that don't resolve are
