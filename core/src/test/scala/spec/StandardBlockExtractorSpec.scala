@@ -12,7 +12,7 @@ import sigil.information.Information
 
 /**
  * Mechanical coverage of [[StandardBlockExtractor]]. Uses TestSigil's
- * `onPutInformation` hook to capture writes — no real DB, no LLM.
+ * `onPutInformations` hook to capture writes — no real DB, no LLM.
  */
 class StandardBlockExtractorSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -28,7 +28,7 @@ class StandardBlockExtractorSpec extends AsyncWordSpec with AsyncTaskSpec with M
   private def recorder(): () => Vector[Information] = {
     TestSigil.reset()
     val puts = new java.util.concurrent.atomic.AtomicReference(Vector.empty[Information])
-    TestSigil.onPutInformation(info => puts.updateAndGet(_ :+ info))
+    TestSigil.onPutInformations(batch => puts.updateAndGet(_ ++ batch))
     () => puts.get()
   }
 

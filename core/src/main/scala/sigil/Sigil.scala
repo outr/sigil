@@ -149,7 +149,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * subtypes' RW Definitions are eagerly evaluated. Runs inside
     * [[polymorphicRegistrations]] after the framework leaves and before
     * the aggregates (Participant, Tool, Signal). Default `Task.unit`. */
-  protected def mixinPolymorphicRegistrations: rapid.Task[Unit] = rapid.Task.unit
+  protected def mixinPolymorphicRegistrations: rapid.Task[Unit] =
+    rapid.Task(sigil.information.Information.register(summon[RW[sigil.information.StoredInformation]]))
 
   /** Aggregate of framework-shipped + app-registered [[WorkType]] subtypes —
     * symmetric with [[modes]] / [[spaceIds]]. The codegen pipeline iterates
@@ -1203,23 +1204,27 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   // -- information lookup --
 
   /**
-   * Resolve the full content of an [[Information]] catalog entry. Apps
-   * that don't use the Information catalog return `Task.pure(None)`
-   * explicitly.
+   * Resolve an [[Information]] by id. The default reads
+   * [[sigil.information.StoredInformation]] records from
+   * `SigilDB.storedInformations`; apps with a custom Information
+   * catalog override.
    */
-  def getInformation(id: Id[Information]): Task[Option[Information]] = Task.pure(None)
+  def getInformation(id: Id[Information]): Task[Option[Information]] =
+    withDB(_.storedInformations.transaction(_.get(Id[sigil.information.StoredInformation](id.value))))
+      .map(_.map(s => s: Information))
 
   /**
-   * Persist an [[Information]] record so it can be resolved later via
-   * [[getInformation]]. Apps that enable block-extraction on compression
-   * (see [[sigil.conversation.compression.StandardBlockExtractor]]) MUST
-   * implement this — references emitted by the extractor resolve through
-   * [[getInformation]] reading whatever this writes.
-   *
-   * Apps that don't use the Information catalog return `Task.unit`
-   * explicitly.
+   * Persist an [[Information]] record. The default writes
+   * [[sigil.information.StoredInformation]] to
+   * `SigilDB.storedInformations`; other subtypes are ignored. Block
+   * extraction during compression
+   * (see [[sigil.conversation.compression.StandardBlockExtractor]])
+   * resolves back through [[getInformation]].
    */
-  def putInformation(information: Information): Task[Unit] = Task.unit
+  def putInformation(information: Information): Task[Unit] = information match
+    case s: sigil.information.StoredInformation =>
+      withDB(_.storedInformations.transaction(_.upsert(s))).unit
+    case _ => Task.unit
 
   /**
    * Bulk variant of [[putInformation]]. The framework's
@@ -1228,14 +1233,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    * stores (LightDB + Lucene, RocksDB, Postgres) can amortise commit
    * / fsync / segment-flush overhead across the whole batch.
    *
-   * Default = `N` calls to `putInformation` — preserves the
-   * per-record contract for apps that don't override. Apps with a
-   * transactional store override to a single-transaction multi-upsert.
-   * Bulk-import flows (50K+ events) drop from `N` commits to one when
-   * the override lands.
+   * Default: one LightDB transaction across the whole batch of
+   * [[sigil.information.StoredInformation]] records — a bulk import
+   * (50K+ events) costs one commit rather than `N`. Other Information
+   * subtypes are ignored; apps with a custom catalog override.
    */
   def putInformations(informations: Vector[Information]): Task[Unit] =
-    Task.sequence(informations.toList.map(putInformation)).unit
+    val stored = informations.collect { case s: sigil.information.StoredInformation => s }
+    if stored.isEmpty then Task.unit
+    else withDB(_.storedInformations.transaction(tx => Task.sequence(stored.toList.map(s => tx.upsert(s))))).unit
 
   // -- memory --
 

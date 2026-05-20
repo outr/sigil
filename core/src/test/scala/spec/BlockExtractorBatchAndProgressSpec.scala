@@ -8,7 +8,7 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.ContextFrame
 import sigil.conversation.compression.{BlockExtractor, StandardBlockExtractor}
 import sigil.event.{Event, MessageVisibility}
-import sigil.information.Information
+import sigil.information.{Information, StoredInformation}
 
 import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
 
@@ -19,10 +19,9 @@ import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
  * opaque step on a 50K-event import.
  *
  * The fix:
- *   - new `Sigil.putInformations(Vector[Information])` bulk hook
- *     (default = N calls to `putInformation` for backwards
- *     compat); transactional stores override to a single
- *     multi-upsert.
+ *   - new `Sigil.putInformations(Vector[Information])` bulk hook;
+ *     the framework default bulk-writes `StoredInformation` records
+ *     in one transaction, apps with a custom catalog override.
  *   - `StandardBlockExtractor` collects every record in one pass,
  *     then calls `putInformations` exactly once.
  *   - new `progress: BlockExtractor.ProgressCallback` argument
@@ -74,17 +73,22 @@ class BlockExtractorBatchAndProgressSpec extends AsyncWordSpec with AsyncTaskSpe
       }
     }
 
-    "fall back to N putInformation calls when the host does NOT override putInformations" in {
-      // No `onPutInformations` set on TestSigil — the framework
-      // default delegates to N putInformation calls. Existing apps
-      // that haven't migrated stay correct.
+    "persist the batch via the framework-default putInformations when the host does NOT override it" in {
+      // No `onPutInformations` override — the framework default
+      // bulk-writes StoredInformation records to SigilDB.storedInformations.
       TestSigil.reset()
-      val perRecord = new AtomicInteger(0)
-      TestSigil.onPutInformation(_ => perRecord.incrementAndGet())
-
-      extractor.extract(TestSigil, buildFrames(5)).map { result =>
+      val storedExtractor = StandardBlockExtractor(
+        toInformation = (content, id) => StoredInformation.fromInformationId(id, content),
+        minChars = 2000,
+        progressEvery = 4
+      )
+      storedExtractor.extract(TestSigil, buildFrames(5)).flatMap { result =>
         result.information should have size 5
-        perRecord.get() shouldBe 5
+        Task.sequence(result.information.toList.map { summary =>
+          TestSigil.withDB(_.storedInformations.transaction(_.get(Id[StoredInformation](summary.id.value))))
+        }).map { fetched =>
+          fetched.flatten should have size 5
+        }
       }
     }
 
