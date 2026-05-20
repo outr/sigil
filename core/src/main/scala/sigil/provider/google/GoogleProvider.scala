@@ -1,7 +1,7 @@
 package sigil.provider.google
 
 import fabric.*
-import fabric.io.JsonFormatter
+import fabric.io.{JsonFormatter, JsonParser}
 import rapid.{Stream, Task}
 import sigil.Sigil
 import sigil.db.Model
@@ -24,6 +24,15 @@ import scala.util.Success
  * is distinct from OpenAI-style — content blocks with roles
  * `user` / `model`, a separate `systemInstruction`, and
  * `generationConfig` for sampling knobs.
+ *
+ * Explicit context caching: when [[contextCaching]] is on and the
+ * target model supports it, the stable request prefix (system
+ * instruction + tool-schema block) is registered once via
+ * `cachedContents.create` and referenced on subsequent requests via
+ * the `cachedContent` field, which omits the cached content inline and
+ * bills it at a steep discount. Prefixes below
+ * [[contextCacheMinTokens]] are sent inline — Gemini rejects
+ * `cachedContents.create` for content below a minimum token count.
  */
 case class GoogleProvider(apiKey: String,
                           sigilRef: Sigil,
@@ -31,10 +40,40 @@ case class GoogleProvider(apiKey: String,
                           /** Per-read idle timeout for the SSE stream. Fires
                             * only when no bytes arrive for the duration —
                             * slow-but-working streams keep going. */
-                          tokenIdleTimeout: FiniteDuration = 120.seconds) extends Provider {
+                          tokenIdleTimeout: FiniteDuration = 120.seconds,
+                          /** Register the stable request prefix (system
+                            * instruction + tool schemas) as a Gemini
+                            * `cachedContents` resource and reference it on
+                            * subsequent turns so the unchanged prefix bills
+                            * at the cache-hit discount. Default ON — every
+                            * stable Gemini 2.x model supports it. Set
+                            * `false` to disable (e.g. for a vendor mirror
+                            * that doesn't honour the field, or to keep all
+                            * content inline). */
+                          contextCaching: Boolean = true,
+                          /** Time-to-live requested when creating a
+                            * `cachedContents` resource. Gemini lapses the
+                            * resource server-side after this window; the
+                            * next turn re-creates. ~10 minutes balances
+                            * cache-hit reuse against holding stale prefixes
+                            * for conversations that have gone quiet. */
+                          contextCacheTtl: FiniteDuration = 10.minutes,
+                          /** Minimum estimated prefix token count below
+                            * which caching is skipped and the prefix is
+                            * sent inline. Gemini's `cachedContents.create`
+                            * rejects content below a model-dependent
+                            * floor (a few thousand tokens for the 2.x
+                            * families); 4096 stays comfortably above the
+                            * documented minimums across those models. */
+                          contextCacheMinTokens: Int = 4096) extends Provider {
   override def `type`: ProviderType = ProviderType.Google
   override val providerKey: String = Google.Provider
   override protected def sigil: Sigil = sigilRef
+
+  /** Per-provider-instance registry of live `cachedContents`
+    * resources, keyed by stable-prefix hash. Survives across turns for
+    * the lifetime of this provider instance. */
+  private val contextCache: GeminiContextCache = new GeminiContextCache
 
   override def call(input: ProviderCall): Stream[ProviderEvent] = {
     val state = new StreamState(new ToolCallAccumulator(input.tools, providerKey = Google.Provider))
@@ -56,51 +95,83 @@ case class GoogleProvider(apiKey: String,
     )
   }
 
-  override def httpRequestFor(input: ProviderCall): Task[HttpRequest] = Task {
-    val modelName = Google.stripProviderPrefix(input.modelId.value)
-    val bodyStr = JsonFormatter.Compact(buildBody(input))
-    HttpRequest(
-      method = HttpMethod.Post,
-      url = baseUrl.withPath(s"/v1beta/models/$modelName:streamGenerateContent").withParam("alt", "sse"),
-      content = Some(StringContent(bodyStr, ContentType.`application/json`))
-    ).withHeader("x-goog-api-key", apiKey)
-  }
+  override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
+    resolveCachedContent(input).map { cached =>
+      val modelName = Google.stripProviderPrefix(input.modelId.value)
+      val bodyStr = JsonFormatter.Compact(buildBody(input, cached))
+      HttpRequest(
+        method = HttpMethod.Post,
+        url = baseUrl.withPath(s"/v1beta/models/$modelName:streamGenerateContent").withParam("alt", "sse"),
+        content = Some(StringContent(bodyStr, ContentType.`application/json`))
+      ).withHeader("x-goog-api-key", apiKey)
+    }
 
-  private def buildBody(input: ProviderCall): Json = {
-    val systemObj: Vector[(String, Json)] =
-      if (input.system.isEmpty) Vector.empty
-      else Vector("systemInstruction" -> obj("parts" -> arr(obj("text" -> str(input.system)))))
+  /** Render the system-instruction object for the request body — the
+    * stable head of the prefix. Empty when the call carries no system
+    * prompt. */
+  private def systemInstructionObj(input: ProviderCall): Vector[(String, Json)] =
+    if (input.system.isEmpty) Vector.empty
+    else Vector("systemInstruction" -> obj("parts" -> arr(obj("text" -> str(input.system)))))
 
-    val contents = renderContents(input.messages)
-
-    // Custom function tools go in one `functionDeclarations` group;
-    // built-in tools get their own top-level entries in the `tools` array.
+  /** Render the `tools` array — custom function declarations grouped
+    * into one `functionDeclarations` entry, plus a top-level entry per
+    * built-in tool. The function-schema block is part of the stable
+    * cacheable prefix. */
+  private def renderToolsArr(input: ProviderCall): Vector[Json] = {
     val functionTools =
       if (input.tools.isEmpty) Vector.empty
       else Vector(obj("functionDeclarations" -> arr(input.tools.map(t => toFunctionDeclaration(t, input.currentMode))*)))
     val builtInTools = input.builtInTools.iterator.flatMap(renderBuiltIn).toVector
-    val toolsArr = functionTools ++ builtInTools
+    functionTools ++ builtInTools
+  }
 
-    val toolFields: Vector[(String, Json)] =
-      if (toolsArr.isEmpty) Vector.empty
-      else {
-        val functionCallingConfig: Json = input.toolChoice match {
-          case ToolChoice.None     => obj("mode" -> str("NONE"))
-          case ToolChoice.Auto     => obj("mode" -> str("AUTO"))
-          case ToolChoice.Required => obj("mode" -> str("ANY"))
-          case ToolChoice.Specific(name) =>
-            // Gemini: pin to a single function via `mode = "ANY"` +
-            // `allowedFunctionNames` restricting the surface to one.
-            obj(
-              "mode"                 -> str("ANY"),
-              "allowedFunctionNames" -> arr(str(name.value))
-            )
-        }
-        Vector(
-          "tools" -> arr(toolsArr*),
-          "toolConfig" -> obj("functionCallingConfig" -> functionCallingConfig)
+  /** Render the `toolConfig` object derived from the call's
+    * [[ToolChoice]]. Returned separately from the tool schemas because
+    * `toolConfig` is request-specific (it can pin a function on a
+    * given turn) and must stay on the inline request even when the
+    * tool schemas themselves are served from a cached resource. */
+  private def toolConfigField(input: ProviderCall): Vector[(String, Json)] = {
+    val functionCallingConfig: Json = input.toolChoice match {
+      case ToolChoice.None     => obj("mode" -> str("NONE"))
+      case ToolChoice.Auto     => obj("mode" -> str("AUTO"))
+      case ToolChoice.Required => obj("mode" -> str("ANY"))
+      case ToolChoice.Specific(name) =>
+        // Gemini: pin to a single function via `mode = "ANY"` +
+        // `allowedFunctionNames` restricting the surface to one.
+        obj(
+          "mode"                 -> str("ANY"),
+          "allowedFunctionNames" -> arr(str(name.value))
         )
-      }
+    }
+    Vector("toolConfig" -> obj("functionCallingConfig" -> functionCallingConfig))
+  }
+
+  /** Build the request body. When `cached` is set, the system
+    * instruction and tool schemas are omitted from the inline body and
+    * the `cachedContent` field references the resource instead;
+    * `toolConfig` always stays inline because it is request-specific. */
+  private def buildBody(input: ProviderCall, cached: Option[GeminiCachedPrefix]): Json = {
+    val toolsArr = renderToolsArr(input)
+
+    // When a cached-content resource covers the prefix, the system
+    // instruction and tool schemas live in that resource — omit them
+    // here. Otherwise render them inline as before.
+    val prefixFields: Vector[(String, Json)] = cached match {
+      case Some(prefix) =>
+        Vector("cachedContent" -> str(prefix.resourceName))
+      case None =>
+        val toolsField =
+          if (toolsArr.isEmpty) Vector.empty
+          else Vector[(String, Json)]("tools" -> arr(toolsArr*))
+        systemInstructionObj(input) ++ toolsField
+    }
+
+    val contents = renderContents(input.messages)
+
+    // `toolConfig` is request-specific and stays inline regardless of
+    // caching — but only when the call actually advertises tools.
+    val toolConfig: Vector[(String, Json)] =
+      if (toolsArr.isEmpty) Vector.empty else toolConfigField(input)
 
     val gen = input.generationSettings
     val genConfig = Vector.newBuilder[(String, Json)]
@@ -122,8 +193,106 @@ case class GoogleProvider(apiKey: String,
     val genConfigFields: Vector[(String, Json)] =
       Vector("generationConfig" -> obj(genConfig.result()*))
 
-    val base = Vector("contents" -> arr(contents*))
-    obj((base ++ systemObj ++ toolFields ++ genConfigFields)*)
+    val base = Vector[(String, Json)]("contents" -> arr(contents*))
+    obj((base ++ prefixFields ++ toolConfig ++ genConfigFields)*)
+  }
+
+  // ---- explicit context caching ----
+
+  /** Whether explicit context caching is engaged for this call: the
+    * provider toggle is on AND the target model supports it. */
+  private def cachingEnabledFor(input: ProviderCall): Boolean =
+    contextCaching && Google.supportsContextCaching(Google.stripProviderPrefix(input.modelId.value))
+
+  /** Resolve the `cachedContents` resource for this call's stable
+    * prefix, if any.
+    *
+    * Returns `None` — meaning "send the prefix inline" — when caching
+    * is disabled, the model is not cache-capable, the call has nothing
+    * cacheable (no system prompt and no tools), or the estimated
+    * prefix is below [[contextCacheMinTokens]]. Otherwise it consults
+    * the in-process [[contextCache]]: a live entry is reused directly;
+    * a miss triggers a `cachedContents.create` call whose returned
+    * resource name is stored and then referenced.
+    *
+    * A failed create is swallowed — the call falls back to sending the
+    * prefix inline rather than failing the turn, so a transient
+    * cache-API hiccup never blocks a generation. */
+  private def resolveCachedContent(input: ProviderCall): Task[Option[GeminiCachedPrefix]] = {
+    if (!cachingEnabledFor(input)) Task.pure(None)
+    else {
+      val systemObj = systemInstructionObj(input)
+      val toolsArr = renderToolsArr(input)
+      if (systemObj.isEmpty && toolsArr.isEmpty) Task.pure(None)
+      else {
+        // The prefix payload is exactly what would be sent inline —
+        // hash it for the cache key and estimate its token cost.
+        val systemText = if (input.system.isEmpty) "" else input.system
+        val toolsBlock = if (toolsArr.isEmpty) "" else JsonFormatter.Compact(arr(toolsArr*))
+        val estimatedTokens = tokenizer.count(systemText) + tokenizer.count(toolsBlock)
+        if (estimatedTokens < contextCacheMinTokens) Task.pure(None)
+        else {
+          val key = GeminiContextCache.hashOf(systemText, toolsBlock)
+          contextCache.lookup(key) match {
+            case Some(live) => Task.pure(Some(live))
+            case None =>
+              createCachedContent(input, key, systemObj, toolsArr)
+                .map(Some(_))
+                .handleError(_ => Task.pure(None))
+          }
+        }
+      }
+    }
+  }
+
+  /** POST the stable prefix to `cachedContents.create`, store the
+    * returned resource, and yield the new [[GeminiCachedPrefix]]. The
+    * cached resource carries the same `model`, `systemInstruction`,
+    * and `tools` the inline request would otherwise have sent. */
+  private def createCachedContent(input: ProviderCall,
+                                  key: GeminiCacheKey,
+                                  systemObj: Vector[(String, Json)],
+                                  toolsArr: Vector[Json]): Task[GeminiCachedPrefix] = {
+    val modelName = Google.stripProviderPrefix(input.modelId.value)
+    val toolsField: Vector[(String, Json)] =
+      if (toolsArr.isEmpty) Vector.empty else Vector("tools" -> arr(toolsArr*))
+    // Gemini's `cachedContents.create` keys TTL as a duration string
+    // of fractional seconds (e.g. "600s").
+    val ttlSeconds = math.max(1L, contextCacheTtl.toSeconds)
+    val body = obj(
+      (Vector[(String, Json)](
+        "model" -> str(s"models/$modelName"),
+        "ttl"   -> str(s"${ttlSeconds}s")
+      ) ++ systemObj ++ toolsField)*
+    )
+    HttpClient
+      .url(baseUrl.withPath("/v1beta/cachedContents"))
+      .header("x-goog-api-key", apiKey)
+      .noFailOnHttpStatus
+      .post
+      .content(StringContent(JsonFormatter.Compact(body), ContentType.`application/json`))
+      .send()
+      .flatMap { response =>
+        response.content match {
+          case Some(content) =>
+            content.asString.flatMap { raw =>
+              Task {
+                val parsed = JsonParser(raw)
+                val status = response.status.code
+                if (status >= 400 || parsed.get("error").exists(!_.isNull)) {
+                  val msg = parsed.get("error").flatMap(_.get("message")).map(_.asString).getOrElse(raw)
+                  throw new RuntimeException(s"Gemini cachedContents.create failed (HTTP $status): $msg")
+                }
+                val resourceName = parsed.get("name").map(_.asString).getOrElse {
+                  throw new RuntimeException(s"Gemini cachedContents.create returned no resource name: $raw")
+                }
+                contextCache.store(key, resourceName, contextCacheTtl)
+              }
+            }
+          case None =>
+            Task.error(new RuntimeException("Gemini cachedContents.create returned an empty response"))
+        }
+      }
   }
 
   private def renderContents(messages: Vector[ProviderMessage]): Vector[Json] =
@@ -299,8 +468,20 @@ case class GoogleProvider(apiKey: String,
     events.result()
   }
 
+  /** Parse Gemini's `usageMetadata` block. The `cacheKeys` argument
+    * reads `cachedContentTokenCount` — the count of prompt tokens
+    * served from a `cachedContents` resource — into
+    * [[TokenUsage.cacheReadTokens]]. Gemini reports no separate
+    * cache-creation count on a generation response (the create call is
+    * its own request), so `cacheCreationTokens` stays `0`. */
   private def parseUsage(json: Json): TokenUsage =
-    TokenUsage.fromJson(json, "promptTokenCount", "candidatesTokenCount", Some("totalTokenCount"))
+    TokenUsage.fromJson(
+      json,
+      "promptTokenCount",
+      "candidatesTokenCount",
+      Some("totalTokenCount"),
+      CacheKeys.Google
+    )
 
   final private class StreamState(val acc: ToolCallAccumulator) {
     val textCallId: CallId = CallId("g-text")

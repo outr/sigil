@@ -10,7 +10,8 @@ package sigil.provider
  *     keys on the usage object ([[Flat]]).
  *   - OpenAI nests a single `cached_tokens` integer inside a details
  *     sub-object ([[Nested]]).
- *   - Google reports no cache accounting ([[None]]).
+ *   - Google reports a single sibling cache-read integer on the usage
+ *     object and no cache-creation count ([[FlatRead]]).
  */
 enum CacheKeys {
 
@@ -20,6 +21,13 @@ enum CacheKeys {
   /** Two sibling integer keys on the usage object: tokens served
     * from cache and tokens written to cache, respectively. */
   case Flat(readKey: String, creationKey: String)
+
+  /** A single sibling integer key on the usage object reporting cache
+    * reads only; cache-creation stays `0`. Gemini's generation
+    * response carries `cachedContentTokenCount` this way — the
+    * cache-create call is a separate request, so no creation count
+    * rides the generation usage block. */
+  case FlatRead(readKey: String)
 
   /** A `cachedKey` integer nested inside a `detailsKey` sub-object,
     * reporting cache reads only. */
@@ -46,4 +54,10 @@ object CacheKeys {
   /** OpenAI Responses API: `input_tokens_details.cached_tokens`. */
   val OpenAIResponses: CacheKeys =
     CacheKeys.Nested("input_tokens_details", "cached_tokens")
+
+  /** Google Gemini: `cachedContentTokenCount` sibling on
+    * `usageMetadata`, reporting the prompt tokens served from a
+    * `cachedContents` resource. */
+  val Google: CacheKeys =
+    CacheKeys.FlatRead("cachedContentTokenCount")
 }
