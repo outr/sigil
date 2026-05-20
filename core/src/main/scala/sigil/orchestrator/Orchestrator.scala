@@ -7,7 +7,8 @@ import sigil.Sigil
 import sigil.conversation.{ContextFrame, Conversation, Topic, TopicShiftResult}
 import sigil.event.{Event, Message, MessageDisposition, MessageRole, MessageVisibility, Reasoning, TopicChange, TopicChangeKind, ToolInvoke}
 import sigil.participant.ParticipantId
-import sigil.provider.{CallId, ConversationRequest, Provider, ProviderEvent, StopReason, XmlToolCallSanitizer}
+import sigil.provider.{CallId, ConversationRequest, Provider, ProviderEvent, ProviderImage, StopReason, XmlToolCallSanitizer}
+import sigil.storage.StoredFileCategory
 import sigil.signal.{MessageContentDelta, ContentKind, EventState, ImageDelta, MessageDelta, Signal, StateDelta, ThinkingChunk, ToolDelta, XmlToolCallLeak}
 import sigil.tool.core.{CoreTools, FindCapabilityInput}
 import sigil.tool.model.{MarkdownContentParser, RespondInput, ResponseContent}
@@ -1056,16 +1057,18 @@ object Orchestrator {
           visibility       = MessageVisibility.Participants(Set(caller))
         )))
 
-      case ProviderEvent.ImageGenerationPartial(callId, imageUrl) =>
+      case ProviderEvent.ImageGenerationPartial(callId, image) =>
         // First partial creates an Active Message keyed by callId; subsequent
         // partials emit ImageDelta updates so the same Message progressively
         // shows better previews until ImageGenerationComplete settles it.
-        parseImageUrl(imageUrl) match {
-          case None => Stream.empty
-          case Some(url) =>
+        // Inline previews are stored with a short TTL so superseded ones
+        // are reclaimed by StoredFileExpirationSweep.
+        val previewExpiry = Some(lightdb.time.Timestamp(System.currentTimeMillis() + 3600000L))
+        Stream.force(
+          resolveProviderImage(sigil, image, StoredFileCategory.ExternalizedContent, previewExpiry).map { url =>
             state.imageMessageIds.get(callId.value) match {
               case Some(messageId) =>
-                Stream.emits(List(ImageDelta(
+                Stream.emits(List[Signal](ImageDelta(
                   target = messageId,
                   conversationId = convId,
                   url = url
@@ -1083,15 +1086,16 @@ object Orchestrator {
                 state.imageMessageIds = state.imageMessageIds + (callId.value -> message._id)
                 Stream.emits(List[Signal](message))
             }
-        }
+          }
+        )
 
-      case ProviderEvent.ImageGenerationComplete(callId, imageUrl) =>
+      case ProviderEvent.ImageGenerationComplete(callId, image) =>
         // Settle the streaming Message (created on the first partial). When
         // there were no partials — built-in tool path or non-streaming —
-        // synthesize a fresh Complete Message carrying the image.
-        parseImageUrl(imageUrl) match {
-          case None => Stream.empty
-          case Some(url) =>
+        // synthesize a fresh Complete Message carrying the image. The final
+        // image is stored persistently.
+        Stream.force(
+          resolveProviderImage(sigil, image, StoredFileCategory.UserAttachment, None).map { url =>
             state.imageMessageIds.get(callId.value) match {
               case Some(messageId) =>
                 state.imageMessageIds = state.imageMessageIds - callId.value
@@ -1100,7 +1104,7 @@ object Orchestrator {
                   StateDelta(target = messageId, conversationId = convId, state = EventState.Complete)
                 ))
               case None =>
-                Stream.emits(List(
+                Stream.emits(List[Signal](
                   Message(
                     participantId = caller,
                     conversationId = convId,
@@ -1112,7 +1116,8 @@ object Orchestrator {
                   )
                 ))
             }
-        }
+          }
+        )
 
       case ProviderEvent.Done(stopReason)                 =>
         // Settle any in-flight tool call before terminating. If the
@@ -1725,14 +1730,20 @@ object Orchestrator {
     emit.toList
   }
 
-  /** Convert a provider's image-ref string (HTTP URL or `data:` URI) into
-    * a `spice.net.URL`. Bare base64 (no `data:` prefix) is wrapped as
-    * PNG by convention. Returns `None` when the string is empty or
-    * unparseable. */
-  private def parseImageUrl(ref: String): Option[spice.net.URL] = {
-    if (ref.isEmpty) None
-    else spice.net.URL.get(ref)
-      .orElse(spice.net.URL.get(s"data:image/png;base64,$ref"))
-      .toOption
-  }
+  /** Resolve a [[ProviderImage]] to a fetchable URL. A
+    * [[ProviderImage.Hosted]] URL passes through unchanged;
+    * [[ProviderImage.Inline]] bytes are persisted via `storeBytes` so
+    * the multi-megabyte payload never enters conversation history, and
+    * the stored file's URL is returned. */
+  private def resolveProviderImage(sigil: Sigil,
+                                   image: ProviderImage,
+                                   category: StoredFileCategory,
+                                   expiresAt: Option[lightdb.time.Timestamp]): Task[spice.net.URL] =
+    image match {
+      case ProviderImage.Hosted(url) => Task.pure(url)
+      case ProviderImage.Inline(base64, contentType) =>
+        val bytes = java.util.Base64.getDecoder.decode(base64)
+        sigil.storeBytes(_root_.sigil.GlobalSpace, bytes, contentType,
+          category = category, expiresAt = expiresAt).map(sigil.storageUrl)
+    }
 }

@@ -35,15 +35,16 @@ enum ProviderEvent derives RW {
     * logging; most consumers don't need to handle it. */
   case ServerToolComplete(callId: CallId, tool: BuiltInTool)
 
-  /** A streamed partial image (base64 data URL or remote URL). The
-    * provider may emit several of these with progressively higher
-    * quality before the final [[ImageGenerationComplete]]. */
-  case ImageGenerationPartial(callId: CallId, imageUrl: String)
+  /** A streamed partial image — a progressively-improving preview the
+    * provider emits before the final [[ImageGenerationComplete]]. */
+  case ImageGenerationPartial(callId: CallId, image: ProviderImage)
 
-  /** The final, fully-rendered generated image. Consumers typically
-    * materialize this into a [[sigil.tool.model.ResponseContent.Image]]
-    * block on the outgoing [[sigil.event.Message]]. */
-  case ImageGenerationComplete(callId: CallId, imageUrl: String)
+  /** The final, fully-rendered generated image. The orchestrator
+    * materializes this into a [[sigil.tool.model.ResponseContent.Image]]
+    * block on the outgoing [[sigil.event.Message]], persisting any
+    * inline image bytes via storage so they never enter conversation
+    * history. */
+  case ImageGenerationComplete(callId: CallId, image: ProviderImage)
 
   case Usage(usage: TokenUsage)
   case Done(stopReason: StopReason)
@@ -83,8 +84,8 @@ enum ProviderEvent derives RW {
       case ThinkingDelta(text) => s"ThinkingDelta($text)"
       case ServerToolStart(_, tool, q) => s"ServerToolStart($tool${q.fold("")(v => s" $v")})"
       case ServerToolComplete(_, tool) => s"ServerToolComplete($tool)"
-      case ImageGenerationPartial(_, _) => "ImageGenerationPartial"
-      case ImageGenerationComplete(_, url) => s"ImageGenerationComplete($url)"
+      case ImageGenerationPartial(_, img) => s"ImageGenerationPartial(${img.describe})"
+      case ImageGenerationComplete(_, img) => s"ImageGenerationComplete(${img.describe})"
       case Usage(_) => "Usage"
       case Done(stopReason) => s"Done(${stopReason.toString})"
       case Error(message) => s"Error($message)"
