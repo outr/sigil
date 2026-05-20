@@ -76,24 +76,30 @@ abstract class SigilDB(override val directory: Option[Path],
   override def upgrades: List[DatabaseUpgrade] = appUpgrades
 
   /**
-   * Conversation-keyed registry of batched `events` transactions.
+   * Conversation-keyed registry of batched `events` write scopes.
    *
    * The split store fsyncs (`IndexWriter.commit`) once per
    * transaction. The agent loop publishes one signal per streamed
    * token, each previously opening its own transaction — hundreds
    * of commits per turn. [[withBatchedEvents]] opens a single
-   * transaction for one agent-loop iteration and registers it here
-   * keyed by `conversationId`; [[eventsTransaction]] then routes
-   * every `events` read/write for that conversation into the shared
-   * transaction so the whole iteration costs one commit.
+   * transaction for one agent-loop iteration and registers a
+   * [[BatchedEventScope]] here keyed by `conversationId`;
+   * [[eventsTransaction]] then routes every `events` read/write for
+   * that conversation into the shared transaction so the whole
+   * iteration costs one commit.
+   *
+   * Each scope also accumulates the events written this iteration
+   * (see [[BatchedEventScope.inFlight]]) so [[batchedEventScope]]
+   * callers — notably [[sigil.Sigil.eventsFor]] page 0 — can merge
+   * the still-uncommitted live edge into their read.
    *
    * Registry membership is per-conversation: a signal whose
-   * conversation has no batched transaction (every non-loop publish
-   * — user messages, external API calls, tool emissions outside a
-   * loop) falls through to a fresh per-call transaction, byte-
-   * identical to the unbatched path.
+   * conversation has no batched scope (every non-loop publish — user
+   * messages, external API calls, tool emissions outside a loop)
+   * falls through to a fresh per-call transaction, byte-identical to
+   * the unbatched path.
    */
-  private val batchedEventTx: scala.collection.concurrent.TrieMap[Id[Conversation], events.TX] =
+  private val batchedEventTx: scala.collection.concurrent.TrieMap[Id[Conversation], BatchedEventScope[events.TX]] =
     scala.collection.concurrent.TrieMap.empty
 
   /**
@@ -127,13 +133,27 @@ abstract class SigilDB(override val directory: Option[Path],
   def withBatchedEvents[A](conversationId: Id[Conversation])(task: Task[A]): Task[A] =
     Task(eventsWriteCommitCount.incrementAndGet()).flatMap { _ =>
       events.transaction { tx =>
-        batchedEventTx.put(conversationId, tx)
+        batchedEventTx.put(conversationId, new BatchedEventScope[events.TX](tx))
         task.guarantee(Task {
           batchedEventTx.remove(conversationId)
           ()
         })
       }
     }
+
+  /**
+   * The active [[BatchedEventScope]] for `conversationId`, if a
+   * [[withBatchedEvents]] scope is currently open for it.
+   *
+   * Read by [[sigil.Sigil.eventsFor]] page 0 to merge the
+   * iteration's still-uncommitted events with the committed page —
+   * an event published mid-iteration is hub-broadcast immediately
+   * but not yet in the DB, so a session joining the conversation
+   * after the broadcast needs the accumulator to see it. `None`
+   * outside an iteration; the common cold-path read.
+   */
+  def batchedEventScope(conversationId: Id[Conversation]): Option[BatchedEventScope[events.TX]] =
+    batchedEventTx.get(conversationId)
 
   /**
    * Run `f` against the `events` transaction for `conversationId`.
@@ -150,8 +170,8 @@ abstract class SigilDB(override val directory: Option[Path],
    */
   def eventsTransaction[A](conversationId: Id[Conversation])(f: events.TX => Task[A]): Task[A] =
     batchedEventTx.get(conversationId) match {
-      case Some(tx) => f(tx)
-      case None     => events.transaction(f)
+      case Some(scope) => f(scope.transaction)
+      case None        => events.transaction(f)
     }
 
   /**
@@ -163,20 +183,34 @@ abstract class SigilDB(override val directory: Option[Path],
    * Both Event and Delta carry `conversationId`, so the signal
    * routes to the right batched transaction (when one is active)
    * by conversation id alone — see [[eventsTransaction]].
+   *
+   * When a [[withBatchedEvents]] scope is active for the signal's
+   * conversation the written event is also recorded into that
+   * scope's [[BatchedEventScope.inFlight]] accumulator — the
+   * post-delta-applied event for a Delta — so the iteration's
+   * still-uncommitted live edge is visible to [[eventsFor]] page 0.
    */
   def apply(signal: Signal): Task[Unit] = signal match {
     case e: Event =>
       countUnbatchedWrite(e.conversationId)
         .flatMap(_ => eventsTransaction(e.conversationId)(_.insert(e)).unit)
+        .map(_ => recordInFlight(e.conversationId, e))
     case d: Delta =>
       countUnbatchedWrite(d.conversationId).flatMap(_ => eventsTransaction(d.conversationId) { tx =>
         tx.get(d.target.asInstanceOf[Id[Event]]).flatMap {
-          case Some(target) => tx.upsert(d(target)).unit
+          case Some(target) =>
+            val updated = d(target)
+            tx.upsert(updated).map(_ => recordInFlight(d.conversationId, updated))
           case None => Task.unit
         }
       })
     case _: sigil.signal.Notice => Task.unit
   }
+
+  /** Record `event` into the batched scope's accumulator when one
+    * is active for `conversationId`; no-op otherwise. */
+  private def recordInFlight(conversationId: Id[Conversation], event: Event): Unit =
+    batchedEventTx.get(conversationId).foreach(_.record(event))
 
   /** Tick the write-commit counter for an `apply` that will open
     * its own fresh transaction (no [[withBatchedEvents]] scope to

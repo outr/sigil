@@ -58,18 +58,11 @@ final class SigilDbEventLog(sigil: Sigil) extends EventLog[LId[Conversation], Si
     case _        => Task.pure(nextSeq(channelId, System.currentTimeMillis()))
   }
 
-  override def replay(channelId: LId[Conversation], afterSeq: Long): Task[List[(Long, Signal)]] = {
-    import lightdb.filter.*
-    sigil.withDB(_.events.transaction { tx =>
-      // Fully-indexed compound query: conversationId narrows the channel,
-      // the timestamp range applies the resume cursor, and the index
-      // returns the rows already ordered ascending.
-      tx.query
-        .filter(_ => (Event.conversationId === channelId.value) && (Event.timestamp > afterSeq))
-        .sort(lightdb.Sort.ByField(Event.timestamp, lightdb.SortDirection.Ascending))
-        .toList
-    }).map { ordered =>
-      ordered.map(e => (e.timestamp.value, e: Signal))
+  override def replay(channelId: LId[Conversation], afterSeq: Long): Task[List[(Long, Signal)]] =
+    // The canonical paged read: conversationId narrows the channel,
+    // the exclusive lower timestamp bound applies the resume cursor,
+    // no message cap returns the whole post-cursor window oldest-first.
+    sigil.eventsFor(channelId, maxMessages = None, minTimestamp = Some(lightdb.time.Timestamp(afterSeq))).map { page =>
+      page.events.map(e => (e.timestamp.value, e: Signal))
     }
-  }
 }
