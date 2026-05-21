@@ -1,0 +1,88 @@
+{"requestHash":"995c95696cc035d63baa93d6f33e6f6f164b038dde9fd2233b3e4fecfb86be1e","recordedAt":1779236333509}
+{"text":"I","type":"TextDelta"}
+{"text":" see","type":"TextDelta"}
+{"text":" we","type":"TextDelta"}
+{"text":"'ve","type":"TextDelta"}
+{"text":" already","type":"TextDelta"}
+{"text":" switched","type":"TextDelta"}
+{"text":" to","type":"TextDelta"}
+{"text":" coding","type":"TextDelta"}
+{"text":" mode","type":"TextDelta"}
+{"text":" multiple","type":"TextDelta"}
+{"text":" times","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":" Let","type":"TextDelta"}
+{"text":"'s","type":"TextDelta"}
+{"text":" skip","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":18,"totalTokens":18,"isEstimated":true},"type":"Usage"}
+{"text":" redundant","type":"TextDelta"}
+{"text":" switch","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" get","type":"TextDelta"}
+{"text":" straight","type":"TextDelta"}
+{"text":" to","type":"TextDelta"}
+{"text":" work","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"What","type":"TextDelta"}
+{"text":" would","type":"TextDelta"}
+{"text":" you","type":"TextDelta"}
+{"text":" like","type":"TextDelta"}
+{"text":" to","type":"TextDelta"}
+{"text":" design","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":37,"totalTokens":37,"isEstimated":true},"type":"Usage"}
+{"text":" build","type":"TextDelta"}
+{"text":" in","type":"TextDelta"}
+{"text":" Scala","type":"TextDelta"}
+{"text":"?","type":"TextDelta"}
+{"text":" Give","type":"TextDelta"}
+{"text":" me","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" problem","type":"TextDelta"}
+{"text":" statement","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" requirements","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" we","type":"TextDelta"}
+{"text":"'ll","type":"TextDelta"}
+{"text":" start","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":57,"totalTokens":57,"isEstimated":true},"type":"Usage"}
+{"text":" iterating","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"callId":"2d2709c1c","toolName":"respond","type":"ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":60,"totalTokens":60,"isEstimated":true},"type":"Usage"}
+{"callId":"2d2709c1c","blockType":"Markdown","arg":null,"type":"ContentBlockStart"}
+{"callId":"2d2709c1c","text":"Coding","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":" mode","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":" is","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":" already","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":" active","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":".","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":" What","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":" Scala","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":" project","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":" are","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":" we","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":" working","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":" on","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":"?","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":" Give","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":" me","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":" the","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":" problem","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":" statement","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":" or","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":" requirements","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":" and","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":" we","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":"'ll","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":" start","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":" designing","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","text":".","type":"ContentBlockDelta"}
+{"callId":"2d2709c1c","input":{"topicLabel":"Scala project kickoff","topicSummary":"User wants to start a Scala coding session. Coding mode is already active. Ready to begin design phase.","content":"Coding mode is already active. What Scala project are we working on? Give me the problem statement or requirements and we'll start designing.","disposition":"Success","endsTurn":true,"keywords":["coding","scala","project"],"type":"RespondInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":5059,"completionTokens":197,"totalTokens":5256,"isEstimated":false},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

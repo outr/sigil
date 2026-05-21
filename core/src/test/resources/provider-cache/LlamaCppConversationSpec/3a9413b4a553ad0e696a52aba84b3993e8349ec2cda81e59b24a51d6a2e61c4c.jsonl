@@ -1,0 +1,42 @@
+{"requestHash":"3a9413b4a553ad0e696a52aba84b3993e8349ec2cda81e59b24a51d6a2e61c4c","recordedAt":1779236328790}
+{"text":"I","type":"TextDelta"}
+{"text":"'ve","type":"TextDelta"}
+{"text":" already","type":"TextDelta"}
+{"text":" switched","type":"TextDelta"}
+{"text":" to","type":"TextDelta"}
+{"text":" coding","type":"TextDelta"}
+{"text":" mode","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":" What","type":"TextDelta"}
+{"text":" would","type":"TextDelta"}
+{"text":" you","type":"TextDelta"}
+{"text":" like","type":"TextDelta"}
+{"text":" to","type":"TextDelta"}
+{"text":" work","type":"TextDelta"}
+{"text":" on","type":"TextDelta"}
+{"text":" in","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":17,"totalTokens":17,"isEstimated":true},"type":"Usage"}
+{"text":" your","type":"TextDelta"}
+{"text":" Scala","type":"TextDelta"}
+{"text":" project","type":"TextDelta"}
+{"text":"?","type":"TextDelta"}
+{"text":" Let","type":"TextDelta"}
+{"text":"'s","type":"TextDelta"}
+{"text":" start","type":"TextDelta"}
+{"text":" with","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" design","type":"TextDelta"}
+{"text":" phase","type":"TextDelta"}
+{"text":" \u2014","type":"TextDelta"}
+{"text":" what","type":"TextDelta"}
+{"text":" are","type":"TextDelta"}
+{"text":" we","type":"TextDelta"}
+{"text":" building","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":37,"totalTokens":37,"isEstimated":true},"type":"Usage"}
+{"text":"?","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"callId":"f3f7f2c9b","toolName":"change_mode","type":"ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":37,"totalTokens":37,"isEstimated":true},"type":"Usage"}
+{"callId":"f3f7f2c9b","input":{"mode":"coding","reason":"Starting a Scala coding session \u2014 design, write, test","type":"ChangeModeInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":5056,"completionTokens":83,"totalTokens":5139,"isEstimated":false},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

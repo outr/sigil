@@ -1,0 +1,125 @@
+{"requestHash":"4ea35182bbe09c43e178c07bc573cd5c458e3edad0b0ea2352e201fc0686fcd6","recordedAt":1779366931610}
+{"text":"Coding","type":"TextDelta"}
+{"text":" mode","type":"TextDelta"}
+{"text":" is","type":"TextDelta"}
+{"text":" active","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":" What","type":"TextDelta"}
+{"text":" Scala","type":"TextDelta"}
+{"text":" project","type":"TextDelta"}
+{"text":" are","type":"TextDelta"}
+{"text":" we","type":"TextDelta"}
+{"text":" working","type":"TextDelta"}
+{"text":" on","type":"TextDelta"}
+{"text":"?","type":"TextDelta"}
+{"text":" Let","type":"TextDelta"}
+{"text":" me","type":"TextDelta"}
+{"text":" know","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":18,"totalTokens":18,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":":","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"text":"1","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":" **","type":"TextDelta"}
+{"text":"Project","type":"TextDelta"}
+{"text":" context","type":"TextDelta"}
+{"text":"**","type":"TextDelta"}
+{"text":" \u2014","type":"TextDelta"}
+{"text":" what","type":"TextDelta"}
+{"text":" does","type":"TextDelta"}
+{"text":" it","type":"TextDelta"}
+{"text":" do","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" is","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":30,"totalTokens":30,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":" this","type":"TextDelta"}
+{"text":" a","type":"TextDelta"}
+{"text":" new","type":"TextDelta"}
+{"text":" project","type":"TextDelta"}
+{"text":" from","type":"TextDelta"}
+{"text":" scratch","type":"TextDelta"}
+{"text":"?","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"2","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":" **","type":"TextDelta"}
+{"text":"Current","type":"TextDelta"}
+{"text":" state","type":"TextDelta"}
+{"text":"**","type":"TextDelta"}
+{"text":" \u2014","type":"TextDelta"}
+{"text":" do","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":45,"totalTokens":45,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":" you","type":"TextDelta"}
+{"text":" have","type":"TextDelta"}
+{"text":" existing","type":"TextDelta"}
+{"text":" code","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" are","type":"TextDelta"}
+{"text":" we","type":"TextDelta"}
+{"text":" starting","type":"TextDelta"}
+{"text":" blank","type":"TextDelta"}
+{"text":"?","type":"TextDelta"}
+{"text":"\n","type":"TextDelta"}
+{"text":"3","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":" **","type":"TextDelta"}
+{"text":"First","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":60,"totalTokens":60,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":" task","type":"TextDelta"}
+{"text":"**","type":"TextDelta"}
+{"text":" \u2014","type":"TextDelta"}
+{"text":" what","type":"TextDelta"}
+{"text":" would","type":"TextDelta"}
+{"text":" you","type":"TextDelta"}
+{"text":" like","type":"TextDelta"}
+{"text":" to","type":"TextDelta"}
+{"text":" design","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" tackle","type":"TextDelta"}
+{"text":" first","type":"TextDelta"}
+{"text":"?","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":75,"totalTokens":75,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":"If","type":"TextDelta"}
+{"text":" you","type":"TextDelta"}
+{"text":" have","type":"TextDelta"}
+{"text":" a","type":"TextDelta"}
+{"text":" workspace","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" repo","type":"TextDelta"}
+{"text":" loaded","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" can","type":"TextDelta"}
+{"text":" start","type":"TextDelta"}
+{"text":" by","type":"TextDelta"}
+{"text":" exploring","type":"TextDelta"}
+{"text":" the","type":"TextDelta"}
+{"text":" code","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":93,"totalTokens":93,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":"base","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":" Otherwise","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" tell","type":"TextDelta"}
+{"text":" me","type":"TextDelta"}
+{"text":" what","type":"TextDelta"}
+{"text":" you","type":"TextDelta"}
+{"text":" have","type":"TextDelta"}
+{"text":" in","type":"TextDelta"}
+{"text":" mind","type":"TextDelta"}
+{"text":" and","type":"TextDelta"}
+{"text":" we","type":"TextDelta"}
+{"text":"'ll","type":"TextDelta"}
+{"text":" dive","type":"TextDelta"}
+{"text":" in","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":109,"totalTokens":109,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":".","type":"TextDelta"}
+{"text":"\n\n\n","type":"TextDelta"}
+{"callId":"6993c4128","toolName":"change_mode","type":"ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":110,"totalTokens":110,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"callId":"6993c4128","input":{"mode":"coding","reason":"User wants to start a coding session on a Scala project","type":"ChangeModeInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":4961,"completionTokens":161,"totalTokens":5122,"isEstimated":false,"cacheReadTokens":4614,"cacheCreationTokens":0},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}
