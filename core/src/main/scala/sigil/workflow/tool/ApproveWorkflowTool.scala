@@ -51,7 +51,7 @@ final class ApproveWorkflowTool extends TypedTool[ApproveWorkflowInput](
   override protected def executeTyped(input: ApproveWorkflowInput, ctx: TurnContext): Stream[Event] = withHost(ctx) { host =>
     val workflowId = Id[Workflow](input.runId)
     val payload: Json = input.comment.filter(_.nonEmpty).fold[Json](str("approve"))(c => str(s"approve: $c"))
-    host.workflowDb.workflows.transaction(_.get(workflowId)).flatMap {
+    host.withDB(_.workflows.transaction(_.get(workflowId))).flatMap {
       case None => Task.pure(s"Workflow run '${input.runId}' not found.")
       case Some(wf) =>
         authorizeRun(host, wf, ctx.chain).flatMap {

@@ -46,7 +46,7 @@ final class DeclineWorkflowTool extends TypedTool[DeclineWorkflowInput](
   override protected def executeTyped(input: DeclineWorkflowInput, ctx: TurnContext): Stream[Event] = withHost(ctx) { host =>
     val workflowId = Id[Workflow](input.runId)
     val payload: Json = input.reason.filter(_.nonEmpty).fold[Json](str("decline"))(r => str(s"decline: $r"))
-    host.workflowDb.workflows.transaction(_.get(workflowId)).flatMap {
+    host.withDB(_.workflows.transaction(_.get(workflowId))).flatMap {
       case None => Task.pure(s"Workflow run '${input.runId}' not found.")
       case Some(wf) =>
         authorizeRun(host, wf, ctx.chain).flatMap {

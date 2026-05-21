@@ -50,7 +50,7 @@ final class RunWorkflowTool extends TypedTool[RunWorkflowInput](
           case Left(_) => Task.pure(s"Workflow '${input.workflowId}' not found.")
           case Right(_) =>
             val vars: Map[String, fabric.Json] = input.variables.map { case (k, v) => k -> (fabric.str(v): fabric.Json) }
-            WorkflowScheduler.scheduleTemplate(host, host.workflowDb, template, vars, Some(ctx.caller))
+            WorkflowScheduler.scheduleTemplate(host, template, vars, Some(ctx.caller))
               .map(wf => s"Workflow '${template.name}' scheduled (runId=${wf._id.value}).")
               .handleError(e => Task.pure(s"Failed to schedule workflow: ${e.getMessage}"))
         }

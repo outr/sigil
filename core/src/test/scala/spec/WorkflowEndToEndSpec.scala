@@ -82,7 +82,7 @@ class WorkflowEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         _      <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _      <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
         _      <- sigil.workflow.WorkflowScheduler.scheduleTemplate(
-                    TestWorkflowSigil, TestWorkflowSigil.workflowDb, template
+                    TestWorkflowSigil, template
                   )
         _      <- waitForCompletion(recorded, 10.seconds)
       } yield {
