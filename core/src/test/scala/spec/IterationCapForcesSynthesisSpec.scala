@@ -133,32 +133,24 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
       generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
     )
 
-  /** Drive the agent loop to cap-hit. Returns the (recorder,
-    * outcome) — outcome is `Right(())` for a soft-stop success or
-    * `Left(throwable)` for the hard-throw fallback. */
-  private def runScenario(provider: CallRecorder => Provider): Task[(CallRecorder, Either[Throwable, Unit])] = {
-    val recorder = new CallRecorder
-    TestSigil.setProvider(Task.pure(provider(recorder)))
-    val convId = Conversation.id(s"cap-soft-stop-${rapid.Unique()}")
-    val agent  = makeAgent()
-    val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
-    for {
-      _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-      _ <- TestSigil.publish(Message(
-             participantId  = TestUser,
-             conversationId = convId,
-             topicId        = TestTopicEntry.id,
-             content        = Vector(ResponseContent.Text("Do something")),
-             state          = EventState.Complete
-           ))
-      _ <- Task.sleep(2.seconds)
-      // Inspect SigilDB.events to find what landed.
-      _ <- Task.unit
-    } yield (recorder, Right(()))  // The agent loop runs on a background fiber; we observe via events below.
-  }
-
   private def eventsFor(convId: Id[Conversation]): Task[List[sigil.event.Event]] =
     TestSigil.withDB(_.events.transaction(_.list)).map(_.filter(_.conversationId == convId))
+
+  /** Poll `SigilDB.events` for `convId` until `cond` holds — the
+    * background agent loop reached the asserted state — or the
+    * timeout elapses. Replaces a fixed `Task.sleep`, which raced the
+    * loop under concurrent full-suite load: this returns the moment
+    * the loop's terminal event lands, and tolerates a slow loop
+    * without flaking. */
+  private def eventsWhen(convId: Id[Conversation], timeout: FiniteDuration = 30.seconds)
+                        (cond: List[sigil.event.Event] => Boolean): Task[List[sigil.event.Event]] = {
+    def loop(remainingMs: Long): Task[List[sigil.event.Event]] =
+      eventsFor(convId).flatMap { evs =>
+        if (cond(evs) || remainingMs <= 0) Task.pure(evs)
+        else Task.sleep(100.millis).flatMap(_ => loop(remainingMs - 100))
+      }
+    loop(timeout.toMillis)
+  }
 
   "Iteration cap soft-stop (sigil bug #125)" should {
 
@@ -177,8 +169,17 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
                content        = Vector(ResponseContent.Text("Do something")),
                state          = EventState.Complete
              ))
-        _   <- Task.sleep(3.seconds)
-        evs <- eventsFor(convId)
+        evs <- eventsWhen(convId) { events =>
+                 events.exists {
+                   case m: Message if m.participantId == TestAgent =>
+                     m.content.exists {
+                       case ResponseContent.Text(t)     => t.contains("synthesized")
+                       case ResponseContent.Markdown(t) => t.contains("synthesized")
+                       case _                           => false
+                     }
+                   case _ => false
+                 }
+               }
       } yield {
         // The forced-synthesis turn ran exactly one call with the
         // Forced-respond pin: tool_choice: required with c.tools
@@ -216,8 +217,16 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
                  content        = Vector(ResponseContent.Text("Do something")),
                  state          = EventState.Complete
                ))
-        _   <- Task.sleep(3.seconds)
-        evs <- eventsFor(convId)
+        evs <- eventsWhen(convId) { events =>
+                 events.exists {
+                   case m: Message if m.role == MessageRole.Tool =>
+                     m.content.exists {
+                       case ResponseContent.Text(t) => t.contains("iteration cap")
+                       case _                       => false
+                     }
+                   case _ => false
+                 }
+               }
       } yield {
         val capDiagnostics = evs.collect {
           case m: Message if m.role == MessageRole.Tool &&
@@ -245,8 +254,12 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
                  content        = Vector(ResponseContent.Text("Do something")),
                  state          = EventState.Complete
                ))
-        _   <- Task.sleep(3.seconds)
-        evs <- eventsFor(convId)
+        evs <- eventsWhen(convId) { events =>
+                 events.exists {
+                   case m: Message => m.isFailure && m.failureReason.exists(_.contains("AgentRunaway"))
+                   case _          => false
+                 }
+               }
       } yield {
         // Forced-synthesis call DID happen (tool_choice: required with
         // c.tools filtered to the respond family).
