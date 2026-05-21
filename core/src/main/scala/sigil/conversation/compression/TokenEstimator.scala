@@ -18,7 +18,7 @@ object TokenEstimator {
     frames.iterator.map {
       case ContextFrame.Text(c, _, _, _)              => tokenizer.count(c)
       case ContextFrame.ToolCall(_, args, _, _, _, _, _) => tokenizer.count(args)
-      case ContextFrame.ToolResult(_, c, _, _, _)        => tokenizer.count(c)
+      case ContextFrame.ToolResult(_, c, _, _, _, _)     => tokenizer.count(c)
       case ContextFrame.System(c, _, _)               => tokenizer.count(c)
       case ContextFrame.Reasoning(_, summary, _, _, _, _) => tokenizer.count(summary.mkString("\n"))
     }.sum

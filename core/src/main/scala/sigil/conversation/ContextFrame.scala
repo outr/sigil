@@ -5,6 +5,7 @@ import lightdb.id.Id
 import sigil.event.{Event, MessageVisibility}
 import sigil.participant.ParticipantId
 import sigil.tool.ToolName
+import spice.net.URL
 
 /**
  * A render-ready unit of conversation history. Frames are the chunkable,
@@ -87,7 +88,12 @@ enum ContextFrame derives RW {
                     * matches the upstream-emitted id (e.g. OpenAI's
                     * `call_<hash>`). `None` for synthetic / framework-
                     * emitted results. Sigil bug #167 r5. */
-                  wireCallId: Option[String] = None)
+                  wireCallId: Option[String] = None,
+                  /** Image URLs the tool emitted as result content.
+                    * Kept separate from `content` (the text rendered into
+                    * `function_call_output`) so the renderer delivers them
+                    * as real image input rather than a stringified blob. */
+                  images: List[URL] = Nil)
 
   /**
    * Out-of-band framework-authored context — mode transitions, title
