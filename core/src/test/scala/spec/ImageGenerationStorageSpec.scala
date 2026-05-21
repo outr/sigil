@@ -12,7 +12,7 @@ import sigil.provider.{
   CallId, ConversationMode, ConversationRequest, GenerationSettings,
   Instructions, Provider, ProviderCall, ProviderEvent, ProviderImage, ProviderType, StopReason
 }
-import sigil.signal.{ImageDelta, Signal}
+import sigil.signal.{EventState, ImageDelta, Signal, StateDelta}
 import sigil.storage.{StoredFile, StoredFileCategory}
 import sigil.tool.core.CoreTools
 import sigil.tool.model.ResponseContent
@@ -111,6 +111,24 @@ class ImageGenerationStorageSpec extends AsyncWordSpec with AsyncTaskSpec with M
           val finalImage = files.find(_.category == StoredFileCategory.UserAttachment)
           partial.flatMap(_.expiresAt) should not be empty
           finalImage.map(_.expiresAt) shouldBe Some(None)
+        }
+      }
+    }
+
+    "settle a partial-only image message at turn end when no completion event arrives" in {
+      run(List(
+        ProviderEvent.ImageGenerationPartial(CallId("img-orphan"), ProviderImage.Inline(tinyPng, "image/png")),
+        ProviderEvent.Done(StopReason.Complete)
+      )).map { signals =>
+        val imageMessage = signals.collectFirst {
+          case m: Message if m.content.exists { case _: ResponseContent.Image => true; case _ => false } => m
+        }
+        imageMessage should not be empty
+        val settle = signals.collectFirst {
+          case d: StateDelta if d.target == imageMessage.get._id && d.state == EventState.Complete => d
+        }
+        withClue(s"signals: ${signals.map(_.getClass.getSimpleName).mkString(", ")}") {
+          settle should not be empty
         }
       }
     }

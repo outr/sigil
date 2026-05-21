@@ -1212,7 +1212,7 @@ object Orchestrator {
               reason      = reason,
               disposition = MessageDisposition.Failure(recoverable = true))
           } else Nil
-        Stream.emits(closeOrphan ++ plainTextDiagnostic ++ degenerateDiagnostic)
+        Stream.emits(closeOrphan ++ plainTextDiagnostic ++ degenerateDiagnostic ++ settleDanglingImages(state, convId))
       case ProviderEvent.Error(msg)                       =>
         // Bug #50 — surface the provider/validator failure as a
         // Tool-role Message so the agent's next iteration sees a
@@ -1263,8 +1263,22 @@ object Orchestrator {
           visibility     = MessageVisibility.Agents,
           origin         = Some(originId)
         )
-        Stream.emits(orphanSettle ++ orphanMessageSettle ++ preludeSignals :+ (errorMessage: Signal))
+        Stream.emits(orphanSettle ++ orphanMessageSettle ++ preludeSignals ++
+          settleDanglingImages(state, convId) :+ (errorMessage: Signal))
     }
+  }
+
+  /** Settle any image-generation Message left Active — its partial
+    * stream never received a matching ImageGenerationComplete (a
+    * missing or callId-drifted completed event). Runs at every stream
+    * terminator so an image message can't stay in-progress past turn
+    * end. Clears the tracking map. */
+  private def settleDanglingImages(state: State, convId: Id[Conversation]): List[Signal] = {
+    val settles = state.imageMessageIds.values.toList.map { messageId =>
+      StateDelta(target = messageId, conversationId = convId, state = EventState.Complete)
+    }
+    state.imageMessageIds = Map.empty
+    settles
   }
 
   /** Settle every in-flight `ToolInvoke` and pair each with a durable
