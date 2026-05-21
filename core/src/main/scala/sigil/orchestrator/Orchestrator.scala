@@ -134,7 +134,13 @@ object Orchestrator {
       val callerForOrphan = request.chain.lastOption.getOrElse(
         throw new IllegalStateException("ProviderRequest.chain is empty; orchestrator needs at least one participant.")
       )
-      val orphans = settleOrphanToolInvoke(
+      // The streaming Message gets the richer settleOrphanMessage
+      // handling (Failure disposition + context); drop it from the
+      // open-Message registry so the generic sweep skips it. Tool
+      // invokes aren't in the registry (it tracks Messages only) —
+      // settleOrphanToolInvoke owns them.
+      val richlyHandled: List[lightdb.id.Id[Event]] = state.activeMessageId.toList
+      val orphanToolInvokes = settleOrphanToolInvoke(
         state, convId,
         caller = callerForOrphan,
         topicId = request.currentTopic.id,
@@ -144,8 +150,13 @@ object Orchestrator {
             err => s"Tool `${a.toolName}` did not complete: $err"
           ),
         recoverable = true
-      ) ++ (if (errOpt.isDefined) settleOrphanMessage(state, convId, error = errorMsg) else Nil) ++
-        settleDanglingImages(state, convId)
+      )
+      val orphanMessage = if (errOpt.isDefined) settleOrphanMessage(state, convId, error = errorMsg) else Nil
+      richlyHandled.foreach(state.openEvents.remove)
+      // Generic backstop — settle every remaining Active event the
+      // turn opened, whatever its kind; Failed on a turn-error exit.
+      val genericSettles = settleOpenEvents(state, convId, failed = errOpt.isDefined)
+      val orphans = orphanToolInvokes ++ orphanMessage ++ genericSettles
       orphans.foldLeft(Task.unit) { (acc, sig) =>
         acc.flatMap(_ => sigil.publish(sig).handleError(_ => Task.unit))
       }
@@ -153,6 +164,7 @@ object Orchestrator {
 
     provider(request)
       .flatMap(pe => translate(pe, sigil, request, conversation, toolsByName, state))
+      .map { signal => trackOpenEvent(state, signal); signal }
       .onErrorFinalize { t =>
         // Outer-level errors land here. Capture for the guarantee
         // block, which actually does the orphan-settle publish — we
@@ -249,6 +261,18 @@ object Orchestrator {
       * `Complete` settles it via a final `ImageDelta` plus
       * `StateDelta(Complete)`. */
     var imageMessageIds: Map[String, lightdb.id.Id[Event]] = Map.empty
+
+    /** Open-Message registry — every [[Message]] this turn emitted
+      * with `state = Active`. Maintained automatically by
+      * [[Orchestrator.trackOpenEvent]] as signals stream past, and
+      * swept by `reconcileInflight` at turn end so no Active Message
+      * outlives its turn — regardless of which kind of Message, and
+      * with no per-kind wiring to forget. Scoped to Messages: tool
+      * invokes have their own settle path (`settleOrphanToolInvoke`)
+      * and some framework events (e.g. the refusal-challenge invoke)
+      * have deliberate cross-turn lifecycles. */
+    val openEvents: scala.collection.mutable.Set[lightdb.id.Id[Event]] =
+      scala.collection.mutable.Set.empty
 
     /** Bug #75 — track whether the model emitted free-form text
       * (`ProviderEvent.TextDelta`, dispatched by providers when the
@@ -1268,18 +1292,45 @@ object Orchestrator {
     }
   }
 
-  /** Settle any image-generation Message left Active — its partial
-    * stream never received a matching ImageGenerationComplete (a
-    * missing or callId-drifted completed event). Called from the
-    * orchestrator's termination-guarantee block, which fires on every
-    * exit path — clean Done, error, mid-stream abort, cancellation —
-    * so an image message can't stay in-progress past turn end. Clears
-    * the tracking map. */
-  private def settleDanglingImages(state: State, convId: Id[Conversation]): List[Signal] = {
-    val settles = state.imageMessageIds.values.toList.map { messageId =>
-      StateDelta(target = messageId, conversationId = convId, state = EventState.Complete)
+  /** Maintain `state.openEvents` as signals stream past — the
+    * automatic registration that lets the turn-end settle guarantee
+    * cover every kind of Active Message without per-kind wiring. An
+    * Active Message registers; a settling StateDelta / MessageDelta,
+    * or a Message emitted already Complete, deregisters. */
+  private def trackOpenEvent(state: State, signal: Signal): Unit = signal match {
+    case m: Message =>
+      if (m.state == EventState.Active) state.openEvents.add(m._id)
+      else state.openEvents.remove(m._id)
+    case sd: StateDelta if sd.state == EventState.Complete =>
+      state.openEvents.remove(sd.target)
+    case md: MessageDelta if md.state.contains(EventState.Complete) =>
+      state.openEvents.remove(md.target)
+    case _ => ()
+  }
+
+  /** Generic turn-end settle for every Message still registered in
+    * `state.openEvents` — the universal backstop guaranteeing no
+    * Active Message outlives its turn, whatever kind it is (image
+    * messages, and any future kind, are covered with no new code).
+    * Runs from the termination-guarantee block, which fires on every
+    * exit path — clean Done, error, mid-stream abort, cancellation.
+    * Settles with a Failure disposition when the turn ended in error,
+    * else to Complete. The streaming Message is removed from the
+    * registry by `reconcileInflight` before this runs — it gets the
+    * richer `settleOrphanMessage` handling. Clears the registry. */
+  private def settleOpenEvents(state: State, convId: Id[Conversation], failed: Boolean): List[Signal] = {
+    val settles: List[Signal] = state.openEvents.toList.map { id =>
+      if (failed)
+        MessageDelta(
+          target = id,
+          conversationId = convId,
+          state = Some(EventState.Complete),
+          disposition = Some(MessageDisposition.Failure(recoverable = false))
+        )
+      else
+        StateDelta(target = id, conversationId = convId, state = EventState.Complete)
     }
-    state.imageMessageIds = Map.empty
+    state.openEvents.clear()
     settles
   }
 
