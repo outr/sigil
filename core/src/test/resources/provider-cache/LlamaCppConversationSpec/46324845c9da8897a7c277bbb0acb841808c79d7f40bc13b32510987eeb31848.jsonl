@@ -1,0 +1,5 @@
+{"requestHash":"46324845c9da8897a7c277bbb0acb841808c79d7f40bc13b32510987eeb31848","recordedAt":1779236327956}
+{"callId":"38673f38d","toolName":"change_mode","type":"ToolCallStart"}
+{"callId":"38673f38d","input":{"mode":"coding","reason":"Starting a Scala coding session \u2014 design, write, test","type":"ChangeModeInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":5056,"completionTokens":49,"totalTokens":5105,"isEstimated":false},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

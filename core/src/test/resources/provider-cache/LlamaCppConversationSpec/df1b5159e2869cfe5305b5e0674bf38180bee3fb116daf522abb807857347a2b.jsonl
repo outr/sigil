@@ -1,0 +1,148 @@
+{"requestHash":"df1b5159e2869cfe5305b5e0674bf38180bee3fb116daf522abb807857347a2b","recordedAt":1779234987737}
+{"text":"Great","type":"TextDelta"}
+{"text":"!","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":"'m","type":"TextDelta"}
+{"text":" now","type":"TextDelta"}
+{"text":" in","type":"TextDelta"}
+{"text":" coding","type":"TextDelta"}
+{"text":" mode","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":" What","type":"TextDelta"}
+{"text":" Scala","type":"TextDelta"}
+{"text":" project","type":"TextDelta"}
+{"text":" are","type":"TextDelta"}
+{"text":" we","type":"TextDelta"}
+{"text":" working","type":"TextDelta"}
+{"text":" on","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":16,"totalTokens":16,"isEstimated":true},"type":"Usage"}
+{"text":"?","type":"TextDelta"}
+{"text":" Let","type":"TextDelta"}
+{"text":" me","type":"TextDelta"}
+{"text":" know","type":"TextDelta"}
+{"text":" what","type":"TextDelta"}
+{"text":" you","type":"TextDelta"}
+{"text":"'d","type":"TextDelta"}
+{"text":" like","type":"TextDelta"}
+{"text":" to","type":"TextDelta"}
+{"text":" design","type":"TextDelta"}
+{"text":" first","type":"TextDelta"}
+{"text":" \u2014","type":"TextDelta"}
+{"text":" a","type":"TextDelta"}
+{"text":" new","type":"TextDelta"}
+{"text":" feature","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":32,"totalTokens":32,"isEstimated":true},"type":"Usage"}
+{"text":" a","type":"TextDelta"}
+{"text":" module","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" something","type":"TextDelta"}
+{"text":" else","type":"TextDelta"}
+{"text":"?","type":"TextDelta"}
+{"text":" Also","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" if","type":"TextDelta"}
+{"text":" there","type":"TextDelta"}
+{"text":"'s","type":"TextDelta"}
+{"text":" an","type":"TextDelta"}
+{"text":" existing","type":"TextDelta"}
+{"text":" code","type":"TextDelta"}
+{"text":"base","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":49,"totalTokens":49,"isEstimated":true},"type":"Usage"}
+{"text":",","type":"TextDelta"}
+{"text":" let","type":"TextDelta"}
+{"text":" me","type":"TextDelta"}
+{"text":" know","type":"TextDelta"}
+{"text":" where","type":"TextDelta"}
+{"text":" it","type":"TextDelta"}
+{"text":" lives","type":"TextDelta"}
+{"text":" so","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" can","type":"TextDelta"}
+{"text":" explore","type":"TextDelta"}
+{"text":" it","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"callId":"257715fed","toolName":"respond","type":"ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":61,"totalTokens":61,"isEstimated":true},"type":"Usage"}
+{"callId":"257715fed","blockType":"Markdown","arg":null,"type":"ContentBlockStart"}
+{"callId":"257715fed","text":"Ready","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" to","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" go","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":"!","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" What","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" Scala","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" project","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" are","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" we","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" working","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" on","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":"?","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" Let","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" me","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" know","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":":","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":"\n","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":"\n1","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":".","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" **","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":"What","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" are","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" we","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" building","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" or","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" modifying","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":"?**","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" (","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":"new","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" feature","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":",","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" module","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":",","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" fix","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":",","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" etc","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":".)","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":"\n2","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":".","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" **","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":"Is","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" there","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" an","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" existing","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" code","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":"base","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":"?**","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" If","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" so","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":",","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" where","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" is","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" it","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" located","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":"?","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":"\n3","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":".","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" **","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":"Any","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" specific","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" requirements","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" or","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" constraints","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":"?**","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":"\n","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":"\nOnce","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" I","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" know","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" the","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" scope","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":",","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" we","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" can","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" start","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":" designing","type":"ContentBlockDelta"}
+{"callId":"257715fed","text":".","type":"ContentBlockDelta"}
+{"callId":"257715fed","input":{"topicLabel":"Scala project coding session","topicSummary":"Starting a coding session on a Scala project. Waiting for user to describe the project and what to design first.","content":"Ready to go! What Scala project are we working on? Let me know:\n\n1. **What are we building or modifying?** (new feature, module, fix, etc.)\n2. **Is there an existing codebase?** If so, where is it located?\n3. **Any specific requirements or constraints?**\n\nOnce I know the scope, we can start designing.","disposition":"Success","endsTurn":true,"keywords":["coding","scala","project"],"type":"RespondInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":4958,"completionTokens":261,"totalTokens":5219,"isEstimated":false},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

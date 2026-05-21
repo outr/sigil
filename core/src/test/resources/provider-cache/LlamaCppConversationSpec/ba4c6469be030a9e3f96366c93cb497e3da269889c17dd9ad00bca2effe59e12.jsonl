@@ -1,0 +1,5 @@
+{"requestHash":"ba4c6469be030a9e3f96366c93cb497e3da269889c17dd9ad00bca2effe59e12","recordedAt":1779329981765}
+{"callId":"b8c9f6075","toolName":"classify_topic_shift","type":"ToolCallStart"}
+{"callId":"b8c9f6075","input":{"kind":"New","type":"TopicClassifierInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":610,"completionTokens":28,"totalTokens":638,"isEstimated":false,"cacheReadTokens":50,"cacheCreationTokens":0},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

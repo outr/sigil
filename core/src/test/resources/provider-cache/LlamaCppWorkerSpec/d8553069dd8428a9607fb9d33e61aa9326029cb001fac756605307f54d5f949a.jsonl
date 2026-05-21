@@ -1,0 +1,98 @@
+{"requestHash":"d8553069dd8428a9607fb9d33e61aa9326029cb001fac756605307f54d5f949a","recordedAt":1779228031048}
+{"text":"The","type":"ThinkingDelta"}
+{"text":" parent","type":"ThinkingDelta"}
+{"text":" answered","type":"ThinkingDelta"}
+{"text":" \"","type":"ThinkingDelta"}
+{"text":"blue","type":"ThinkingDelta"}
+{"text":"\"","type":"ThinkingDelta"}
+{"text":" to","type":"ThinkingDelta"}
+{"text":" my","type":"ThinkingDelta"}
+{"text":" question","type":"ThinkingDelta"}
+{"text":" asking","type":"ThinkingDelta"}
+{"text":" \"","type":"ThinkingDelta"}
+{"text":"red","type":"ThinkingDelta"}
+{"text":" or","type":"ThinkingDelta"}
+{"text":" blue","type":"ThinkingDelta"}
+{"text":"?\".","type":"ThinkingDelta"}
+{"text":" I","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":16,"totalTokens":16,"isEstimated":true},"type":"Usage"}
+{"text":" now","type":"ThinkingDelta"}
+{"text":" have","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" information","type":"ThinkingDelta"}
+{"text":" needed","type":"ThinkingDelta"}
+{"text":" to","type":"ThinkingDelta"}
+{"text":" complete","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" task","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":"\n\n","type":"ThinkingDelta"}
+{"text":"The","type":"ThinkingDelta"}
+{"text":" task","type":"ThinkingDelta"}
+{"text":" was","type":"ThinkingDelta"}
+{"text":":","type":"ThinkingDelta"}
+{"text":" \"","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":34,"totalTokens":34,"isEstimated":true},"type":"Usage"}
+{"text":"Pick","type":"ThinkingDelta"}
+{"text":" a","type":"ThinkingDelta"}
+{"text":" color","type":"ThinkingDelta"}
+{"text":" for","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" user","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":" Ask","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" parent","type":"ThinkingDelta"}
+{"text":" first","type":"ThinkingDelta"}
+{"text":".\"","type":"ThinkingDelta"}
+{"text":"\n\n","type":"ThinkingDelta"}
+{"text":"I","type":"ThinkingDelta"}
+{"text":" asked","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":49,"totalTokens":49,"isEstimated":true},"type":"Usage"}
+{"text":" parent","type":"ThinkingDelta"}
+{"text":",","type":"ThinkingDelta"}
+{"text":" got","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" answer","type":"ThinkingDelta"}
+{"text":" \"","type":"ThinkingDelta"}
+{"text":"blue","type":"ThinkingDelta"}
+{"text":"\",","type":"ThinkingDelta"}
+{"text":" and","type":"ThinkingDelta"}
+{"text":" now","type":"ThinkingDelta"}
+{"text":" I","type":"ThinkingDelta"}
+{"text":" should","type":"ThinkingDelta"}
+{"text":" report","type":"ThinkingDelta"}
+{"text":" that","type":"ThinkingDelta"}
+{"text":" I","type":"ThinkingDelta"}
+{"text":" picked","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":67,"totalTokens":67,"isEstimated":true},"type":"Usage"}
+{"text":" blue","type":"ThinkingDelta"}
+{"text":" for","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" user","type":"ThinkingDelta"}
+{"text":" and","type":"ThinkingDelta"}
+{"text":" complete","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" task","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":"\n\n","type":"ThinkingDelta"}
+{"text":"I","type":"ThinkingDelta"}
+{"text":" will","type":"ThinkingDelta"}
+{"text":" use","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" `","type":"ThinkingDelta"}
+{"text":"complete","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":83,"totalTokens":83,"isEstimated":true},"type":"Usage"}
+{"text":"_task","type":"ThinkingDelta"}
+{"text":"`","type":"ThinkingDelta"}
+{"text":" tool","type":"ThinkingDelta"}
+{"text":" to","type":"ThinkingDelta"}
+{"text":" finish","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":"\n","type":"ThinkingDelta"}
+{"callId":"a31bb4772","toolName":"complete_task","type":"ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":89,"totalTokens":89,"isEstimated":true},"type":"Usage"}
+{"callId":"a31bb4772","input":{"summary":"I asked the parent for their color preference between red and blue, and they chose blue. I have successfully picked blue for the user.","type":"CompleteTaskInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":4677,"completionTokens":142,"totalTokens":4819,"isEstimated":false},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}
