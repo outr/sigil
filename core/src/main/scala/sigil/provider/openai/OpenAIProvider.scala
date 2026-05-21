@@ -179,6 +179,22 @@ case class OpenAIProvider(apiKey: String,
 
   private def buildBody(input: ProviderCall): Json = {
     val modelName = stripNamespacePrefix(input.modelId.value)
+    // A turn that carries tool outputs must ship the complete,
+    // well-paired transcript. `previousResponseId` trimming drops the
+    // `function_call` (Assistant) from the wire and leaves a bare
+    // `function_call_output`, trusting the prev-id chain to resolve
+    // the call server-side; a stale or broken chain makes that
+    // resolution fail and OpenAI rejects the whole turn ("No tool call
+    // found for function call output ..."). On any tool-output turn,
+    // send the full history (call + output together) and omit
+    // `previous_response_id`. Pure-conversation turns keep the prev-id
+    // size optimization.
+    val carriesToolOutputs = input.messages.exists {
+      case _: ProviderMessage.ToolResult => true
+      case _                             => false
+    }
+    val effectivePreviousResponseId: Option[String] =
+      if (carriesToolOutputs) None else input.previousResponseId
     // When `previousResponseId` is set, the Responses API already has
     // the prior turn's input + outputs server-side. Drop the head of
     // the rendered messages by the message count that was sent the
@@ -186,31 +202,16 @@ case class OpenAIProvider(apiKey: String,
     // input, new function_call_output) needs to ship. The upstream
     // request is dramatically smaller and the model's prefix-cache
     // hit rate jumps because every turn carries only the new tail.
-    val trimmed = input.previousResponseId match {
+    val trimmed = effectivePreviousResponseId match {
       case Some(_) =>
+        // Prev-id covers the prior turn's input + outputs server-side.
+        // Drop the prefix it already holds and keep only User messages
+        // from the tail — Assistant text / tool calls and Reasoning
+        // are server-side too. This branch runs only on turns with no
+        // tool outputs (tool-output turns take the full-render path
+        // above), so there are no ToolResults to preserve here.
         val drop = math.min(input.priorMessageCount.getOrElse(0), input.messages.size)
-        // Drop the leading prefix OpenAI's prev_id state already
-        // covers, then role-filter the tail. The prior turn's
-        // response output items (Assistant w/ tool_calls, Assistant
-        // text, Reasoning) are server-side via prev_id — re-sending
-        // them duplicates or confuses state. Only User messages and
-        // framework-emitted ToolResults (function_call_output items)
-        // need to ship to drive the next turn forward. The filter
-        // also rescues any ToolResult that fell into the dropped
-        // prefix range (framework's tool dispatch emits Tool-role
-        // events mid-stream during the prior response, putting them
-        // at index positions inside the dropped range). Sigil bug
-        // #167 r3.
-        val (dropped, kept) = input.messages.splitAt(drop)
-        val rescuedToolResults = dropped.collect {
-          case tr: ProviderMessage.ToolResult => tr
-        }
-        val filteredTail = kept.filter {
-          case _: ProviderMessage.User       => true
-          case _: ProviderMessage.ToolResult => true
-          case _                              => false
-        }
-        rescuedToolResults ++ filteredTail
+        input.messages.drop(drop).collect { case u: ProviderMessage.User => u }
       case None => input.messages
     }
     val inputItems = renderInput(trimmed)
@@ -220,7 +221,7 @@ case class OpenAIProvider(apiKey: String,
       "model" -> str(modelName),
       "input" -> arr(inputItems*),
       "stream" -> bool(true)
-    ) ++ input.previousResponseId.toVector.map("previous_response_id" -> str(_))
+    ) ++ effectivePreviousResponseId.toVector.map("previous_response_id" -> str(_))
     val instructionsField: Vector[(String, Json)] =
       if (input.system.isEmpty) Vector.empty
       else Vector("instructions" -> str(input.system))
