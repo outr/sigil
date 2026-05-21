@@ -4864,18 +4864,20 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // the Lucene-indexed event store commits once per iteration
     // instead of once per streamed Delta. `iterationStep` is a
     // `Task[Task[Unit]]`: the outer Task does this iteration's work
-    // (publishes, tool dispatch, terminate) inside the batched
-    // scope; the inner Task it yields is the continuation — the
-    // NEXT iteration's `runAgentLoop` call, or `Task.unit` for a
-    // terminal exit. The continuation runs AFTER `withBatchedEvents`
-    // commits, so iteration N+1's reads see iteration N's committed
-    // data and never join N's transaction.
+    // (publishes, tool dispatch) inside the batched scope; the inner
+    // Task it yields is the continuation — the NEXT iteration's
+    // `runAgentLoop` call, or the terminal release (`terminate()`)
+    // for a terminal exit. The continuation runs AFTER
+    // `withBatchedEvents` commits, so iteration N+1's reads see
+    // iteration N's committed data, and the terminal
+    // `AgentStateDelta(Idle, Complete)` is broadcast only once the
+    // turn's events are durable — never racing the commit.
     val iterationStep: Task[Task[Unit]] =
     // A Stop may have landed before this iteration even starts; short-
     // circuit if so (graceful = "don't start another iteration"; force
     // = "same, plus the in-flight stream below won't run"). Either way,
     // release and exit.
-    if (stopFlag.exists(_.requested)) terminate().map(_ => Task.unit)
+    if (stopFlag.exists(_.requested)) Task(terminate())
     else
     // Reload the conversation each iteration — materialized projections
     // (currentMode, modified, etc.) update as Events flow through `publish`,
@@ -4884,7 +4886,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       case None =>
         // Conversation deleted mid-turn — release the lock and exit cleanly.
         // Extractor isn't fired here — no conversation = nothing to extract.
-        releaseClaim(claimed).map(_ => Task.unit)
+        // Yielded as the continuation so the release runs post-commit.
+        Task(releaseClaim(claimed))
       case Some(conv) =>
         // Sigil bug #169 — overlay persists across iterations within the
         // same user turn. Prerequisite calls (`record_consent`, etc.) and
@@ -4983,7 +4986,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           // else — a Stop that fired mid-stream means exit now, don't
           // continue looping even if there are new triggers.
           if (stopFlag.exists(_.requested))
-            terminate().map(_ => Task.unit)
+            Task(terminate())
           else if (forceResponseSynthesis) {
             // Sigil bug #125 — the cap-hit soft-stop ran. With
             // `tool_choice: respond` the model SHOULD have called
@@ -4994,11 +4997,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             // has genuinely exhausted — raise the hard throw so the
             // calling fiber's failure handler sees it.
             if (userVisibleSeen.get())
-              terminate().map(_ => Task.unit)
+              Task(terminate())
             else
-              terminate().flatMap(_ =>
-                Task.error(buildRunawayException(
-                  agent, conv, iteration, maxAgentIterations, forcedReason)))
+              // Routed through the handleError below — it owns the
+              // failure publish + the post-commit terminal release.
+              Task.error(buildRunawayException(
+                agent, conv, iteration, maxAgentIterations, forcedReason))
           }
           else {
             // Bug #74 — `respond(endsTurn = false)` continues the
@@ -5054,7 +5058,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                     // publish user-visible and release the claim. The
                     // agent can't make progress without the user's
                     // reply; the next user Message will re-trigger.
-                    publish(intervention.message).flatMap(_ => terminate()).map(_ => Task.unit)
+                    // intervention.message persists inside the batched
+                    // transaction; terminate() runs as the post-commit
+                    // continuation.
+                    publish(intervention.message).map(_ => terminate())
                   case Some(intervention) =>
                     // Bug #133 — stall / no-progress streak. The
                     // intervention text is a directive to the agent
@@ -5130,9 +5137,10 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               // (very weak / non-instruction-following local models, or
               // a buggy provider). Soft path exhausted — surface the hard
               // failure so the calling fiber's error boundary logs it.
-              terminate().flatMap(_ =>
-                Task.error(buildRunawayException(
-                  agent, conv, iteration, maxAgentIterations, forcedReason)))
+              // Routed through the handleError below for the failure
+              // publish + post-commit terminal release.
+              Task.error(buildRunawayException(
+                agent, conv, iteration, maxAgentIterations, forcedReason))
             case false =>
               // No more triggers to chase, no continue requested. If the
               // agent already spoke this turn we're done. Otherwise the
@@ -5146,11 +5154,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               // above raises AgentRunawayException — model is broken,
               // surface the hard failure instead of papering over it
               // with a fake "(agent completed without a reply)" Message.
-              if (userVisibleSeen.get()) terminate().map(_ => Task.unit)
+              if (userVisibleSeen.get()) Task(terminate())
               else if (forceResponseSynthesis)
-                terminate().flatMap(_ =>
-                  Task.error(buildRunawayException(
-                    agent, conv, iteration, maxAgentIterations, forcedReason)))
+                // Routed through the handleError below for the failure
+                // publish + post-commit terminal release.
+                Task.error(buildRunawayException(
+                  agent, conv, iteration, maxAgentIterations, forcedReason))
               else
                 Task.pure(recurseForced(ForcedSynthesisReason.NoToolCall))
             }
@@ -5180,18 +5189,21 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         if (failurePublished.compareAndSet(false, true))
           publishFailureMessage(agent, convId, t).handleError(_ => Task.unit)
         else Task.unit
-      publishOnce
-        .flatMap(_ => terminate().handleError(_ => Task.unit))
-        .flatMap(_ => Task.error(t))
+      // The Failure Message persists inside the batched transaction;
+      // the terminal release + re-raise run as the post-commit
+      // continuation so the Idle/Complete signal never races the commit.
+      publishOnce.map(_ =>
+        terminate().handleError(_ => Task.unit).flatMap(_ => Task.error(t)))
     }
     // Hold one `events` transaction open across this iteration's
     // work — every `publish` → `apply` and every event read routed
     // through `eventsTransaction(convId)` joins it — then commit
     // once at scope exit. `iterationStep` yields the continuation
-    // Task (next iteration or terminal `Task.unit`); running it via
-    // `.flatMap(identity)` AFTER `withBatchedEvents` returns means
-    // the next iteration starts only once this one's writes are
-    // committed, so its independent reads see the durable data.
+    // Task (the next iteration, or the terminal `terminate()`);
+    // running it AFTER `withBatchedEvents` returns means the next
+    // iteration — or the terminal release — starts only once this
+    // iteration's writes are committed, so independent reads see the
+    // durable data.
     withDB(_.withBatchedEvents(convId)(iterationStep)).flatMap(continuation => continuation)
   }
 
