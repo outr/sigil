@@ -35,6 +35,14 @@ val scalatestVersion: String = "3.2.20"
 
 ThisBuild / versionScheme := Some("early-semver")
 ThisBuild / licenses := Seq("MIT" -> url("https://github.com/outr/sigil/blob/master/LICENSE"))
+
+ThisBuild / resolvers := Seq(
+  Resolver.githubPackages("outr")
+)
+
+ThisBuild / githubOwner := "outr"
+ThisBuild / githubRepository := "sigil"
+
 ThisBuild / scalacOptions ++= Seq(
   "-deprecation",
   "-feature",
