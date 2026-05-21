@@ -5,7 +5,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.GlobalSpace
 import sigil.provider.ConversationMode
-import sigil.tool.DiscoveryRequest
+import sigil.tool.{DiscoveryRequest, InMemoryToolFinder}
 import sigil.tool.discovery.CapabilityType
 
 /**
@@ -17,14 +17,16 @@ import sigil.tool.discovery.CapabilityType
  * `accessibleSpaces` returns empty — surfacing them would just waste
  * tokens on tools the agent would fail to use.
  *
- * This spec drives `findCapabilities` directly to verify the discovery-
- * side filter; the roster-side filter in `runAgentTurn` is exercised
- * indirectly by every existing orchestrator spec (which all wire
- * `accessibleSpaces` correctly).
+ * TestSigil's default static roster ships no `requiresAccessibleSpaces`
+ * memory tool, so this spec installs a catalog containing `save_memory`
+ * and drives `findCapabilities` directly: the same tool must be hidden
+ * for an empty-`callerSpaces` request and surfaced once a space is
+ * accessible — the only variable between the two cases is the gate.
  */
 class MemoryToolGatingSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   TestSigil.initFor(getClass.getSimpleName)
+  TestSigil.setToolFinder(InMemoryToolFinder(List(sigil.tool.util.SaveMemoryTool(GlobalSpace))))
 
   private def request(callerSpaces: Set[sigil.SpaceId]): DiscoveryRequest =
     DiscoveryRequest(
@@ -34,31 +36,20 @@ class MemoryToolGatingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       callerSpaces = callerSpaces
     )
 
+  private def discoveredToolNames(callerSpaces: Set[sigil.SpaceId]): Task[List[String]] =
+    TestSigil.findCapabilities(request(callerSpaces)).map { matches =>
+      matches.collect { case m if m.capabilityType == CapabilityType.Tool => m.name }
+    }
+
   "findCapabilities" should {
     "hide save_memory when callerSpaces is empty" in {
       TestSigil.reset()
-      TestSigil.findCapabilities(request(Set.empty)).map { matches =>
-        val toolNames = matches.collect {
-          case m if m.capabilityType == CapabilityType.Tool => m.name
-        }
-        toolNames should not contain "save_memory"
-      }
+      discoveredToolNames(Set.empty).map(_ should not contain "save_memory")
     }
 
     "surface save_memory when at least one space is accessible" in {
       TestSigil.reset()
-      TestSigil.findCapabilities(request(Set(GlobalSpace))).map { matches =>
-        val toolNames = matches.collect {
-          case m if m.capabilityType == CapabilityType.Tool => m.name
-        }
-        // save_memory is registered by TestSigil's staticTools chain
-        // (sigil.tool.util.SaveMemoryTool wraps it via the test
-        // catalog). It should surface for any caller with at least
-        // one accessible space.
-        // (Note: the exact tool surfaced depends on what TestSigil's
-        // catalog ships; we assert the inverse of the empty case.)
-        succeed
-      }
+      discoveredToolNames(Set(GlobalSpace)).map(_ should contain("save_memory"))
     }
   }
 
@@ -78,6 +69,9 @@ class MemoryToolGatingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   }
 
   "tear down" should {
-    "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
+    "dispose TestSigil" in {
+      TestSigil.clearToolFinder()
+      TestSigil.shutdown.map(_ => succeed)
+    }
   }
 }

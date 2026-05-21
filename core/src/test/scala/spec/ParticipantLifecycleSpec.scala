@@ -13,6 +13,7 @@ import sigil.signal.{ParticipantAdded, ParticipantRemoved, ParticipantUpdated, S
 
 import java.util.concurrent.ConcurrentLinkedQueue
 import scala.concurrent.duration.*
+import scala.jdk.CollectionConverters.*
 
 /**
  * Coverage for [[Sigil.addParticipant]] / `removeParticipant` /
@@ -43,6 +44,9 @@ class ParticipantLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   private def subscribe(): (ConcurrentLinkedQueue[Signal], () => Unit) = {
     val recorded = new ConcurrentLinkedQueue[Signal]()
     @volatile var running = true
+    // SignalHub registers the subscriber eagerly (before `signals`
+    // returns), so any signal published after this call is captured —
+    // no settle delay needed before acting.
     TestSigil.signals
       .takeWhile(_ => running)
       .evalMap(s => Task { recorded.add(s); () })
@@ -51,6 +55,32 @@ class ParticipantLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     (recorded, () => running = false)
   }
 
+  /** Poll `recorded` until at least one matching signal lands (or the
+    * timeout elapses), returning the matches. Replaces fixed-duration
+    * waits for async Notice propagation through the SignalHub. */
+  private def awaitNotices[N <: Signal](recorded: ConcurrentLinkedQueue[Signal],
+                                        timeout: FiniteDuration = 5.seconds)
+                                       (matches: PartialFunction[Signal, N]): Task[List[N]] = {
+    def snapshot: List[N] = recorded.iterator().asScala.collect(matches).toList
+    def loop(remainingMs: Long): Task[List[N]] =
+      if (snapshot.nonEmpty || remainingMs <= 0) Task.pure(snapshot)
+      else Task.sleep(20.millis).flatMap(_ => loop(remainingMs - 20))
+    loop(timeout.toMillis)
+  }
+
+  private def matching[N <: Signal](recorded: ConcurrentLinkedQueue[Signal])
+                                   (matches: PartialFunction[Signal, N]): List[N] =
+    recorded.iterator().asScala.collect(matches).toList
+
+  /** Drive a guaranteed-publishing add on a throwaway conversation —
+    * a FIFO fence. Once its `ParticipantAdded` is observed in
+    * `recorded`, any earlier (wrongly published) Notice would already
+    * be present too, so an idempotent no-op can be proven silent. */
+  private def fenceThenAwait(recorded: ConcurrentLinkedQueue[Signal], fenceConvId: Id[Conversation]): Task[Unit] =
+    TestSigil.addParticipant(fenceConvId, DisplayUser(TestAgent, displayName = "Fence")).flatMap { _ =>
+      awaitNotices(recorded) { case n: ParticipantAdded if n.conversationId == fenceConvId => n }.map(_ => ())
+    }
+
   "Sigil.addParticipant" should {
     "publish ParticipantAdded carrying the full Participant record (display info included)" in {
       val convId = freshConvId("add")
@@ -58,14 +88,11 @@ class ParticipantLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val p = DisplayUser(TestUser, displayName = "Test User", avatarUrl = Some("https://example.invalid/avatar.png"))
       val seed = Conversation(topics = TestTopicStack, _id = convId)
       for {
-        _ <- Task.sleep(100.millis)
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(seed)))
         _ <- TestSigil.addParticipant(convId, p)
-        _ <- Task.sleep(150.millis)
+        notices <- awaitNotices(recorded) { case n: ParticipantAdded if n.conversationId == convId => n }
       } yield {
         stop()
-        import scala.jdk.CollectionConverters.*
-        val notices = recorded.iterator().asScala.collect { case n: ParticipantAdded if n.conversationId == convId => n }.toList
         notices should have size 1
         notices.head.participant.id shouldBe TestUser
         notices.head.participant.displayName shouldBe "Test User"
@@ -75,19 +102,19 @@ class ParticipantLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
     "be silent on a re-add (participant already present)" in {
       val convId = freshConvId("readd")
+      val fenceConvId = freshConvId("readd-fence")
       val p = DisplayUser(TestUser, displayName = "Already There")
       val seed = Conversation(topics = TestTopicStack, participants = List(p), _id = convId)
+      val fenceSeed = Conversation(topics = TestTopicStack, _id = fenceConvId)
       val (recorded, stop) = subscribe()
       for {
-        _ <- Task.sleep(100.millis)
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(seed)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(fenceSeed)))
         _ <- TestSigil.addParticipant(convId, p)
-        _ <- Task.sleep(150.millis)
+        _ <- fenceThenAwait(recorded, fenceConvId)
       } yield {
         stop()
-        import scala.jdk.CollectionConverters.*
-        val notices = recorded.iterator().asScala.collect { case n: ParticipantAdded if n.conversationId == convId => n }.toList
-        notices shouldBe empty
+        matching(recorded) { case n: ParticipantAdded if n.conversationId == convId => n } shouldBe empty
       }
     }
   }
@@ -99,14 +126,11 @@ class ParticipantLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val seed = Conversation(topics = TestTopicStack, participants = List(p), _id = convId)
       val (recorded, stop) = subscribe()
       for {
-        _ <- Task.sleep(100.millis)
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(seed)))
         _ <- TestSigil.removeParticipant(convId, TestUser)
-        _ <- Task.sleep(150.millis)
+        notices <- awaitNotices(recorded) { case n: ParticipantRemoved if n.conversationId == convId => n }
       } yield {
         stop()
-        import scala.jdk.CollectionConverters.*
-        val notices = recorded.iterator().asScala.collect { case n: ParticipantRemoved if n.conversationId == convId => n }.toList
         notices should have size 1
         notices.head.participantId shouldBe TestUser
       }
@@ -114,18 +138,18 @@ class ParticipantLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
     "be silent on a remove-of-absent (idempotent)" in {
       val convId = freshConvId("remove-absent")
+      val fenceConvId = freshConvId("remove-absent-fence")
       val seed = Conversation(topics = TestTopicStack, _id = convId)
+      val fenceSeed = Conversation(topics = TestTopicStack, _id = fenceConvId)
       val (recorded, stop) = subscribe()
       for {
-        _ <- Task.sleep(100.millis)
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(seed)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(fenceSeed)))
         _ <- TestSigil.removeParticipant(convId, TestUser)
-        _ <- Task.sleep(150.millis)
+        _ <- fenceThenAwait(recorded, fenceConvId)
       } yield {
         stop()
-        import scala.jdk.CollectionConverters.*
-        val notices = recorded.iterator().asScala.collect { case n: ParticipantRemoved if n.conversationId == convId => n }.toList
-        notices shouldBe empty
+        matching(recorded) { case n: ParticipantRemoved if n.conversationId == convId => n } shouldBe empty
       }
     }
   }
@@ -138,10 +162,9 @@ class ParticipantLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val seed = Conversation(topics = TestTopicStack, participants = List(before), _id = convId)
       val (recorded, stop) = subscribe()
       for {
-        _ <- Task.sleep(100.millis)
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(seed)))
         updated <- TestSigil.updateParticipant(convId, after)
-        _ <- Task.sleep(150.millis)
+        notices <- awaitNotices(recorded) { case n: ParticipantUpdated if n.conversationId == convId => n }
       } yield {
         stop()
         // DB record reflects the new display info.
@@ -149,8 +172,6 @@ class ParticipantLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         updated.participants.head.displayName shouldBe "New Name"
         updated.participants.head.avatarUrl shouldBe Some("https://example.invalid/v2.png")
         // The Notice carried the new record.
-        import scala.jdk.CollectionConverters.*
-        val notices = recorded.iterator().asScala.collect { case n: ParticipantUpdated if n.conversationId == convId => n }.toList
         notices should have size 1
         notices.head.participant.displayName shouldBe "New Name"
       }
@@ -158,19 +179,19 @@ class ParticipantLifecycleSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
     "be silent when the participant isn't currently in the conversation" in {
       val convId = freshConvId("update-absent")
+      val fenceConvId = freshConvId("update-absent-fence")
       val seed = Conversation(topics = TestTopicStack, _id = convId)
+      val fenceSeed = Conversation(topics = TestTopicStack, _id = fenceConvId)
       val ghost = DisplayUser(TestUser, displayName = "Not Here")
       val (recorded, stop) = subscribe()
       for {
-        _ <- Task.sleep(100.millis)
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(seed)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(fenceSeed)))
         _ <- TestSigil.updateParticipant(convId, ghost)
-        _ <- Task.sleep(150.millis)
+        _ <- fenceThenAwait(recorded, fenceConvId)
       } yield {
         stop()
-        import scala.jdk.CollectionConverters.*
-        val notices = recorded.iterator().asScala.collect { case n: ParticipantUpdated if n.conversationId == convId => n }.toList
-        notices shouldBe empty
+        matching(recorded) { case n: ParticipantUpdated if n.conversationId == convId => n } shouldBe empty
       }
     }
   }

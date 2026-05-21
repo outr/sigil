@@ -13,7 +13,8 @@ import sigil.signal.{ConversationCostUpdated, EventState, Signal}
 import sigil.tool.model.ResponseContent
 
 import java.util.concurrent.ConcurrentLinkedQueue
-import scala.concurrent.duration.DurationInt
+import scala.concurrent.duration.*
+import scala.jdk.CollectionConverters.*
 
 /**
  * Coverage for bug #4 — `Message.modelId` attribution + per-conversation
@@ -92,6 +93,33 @@ class MessageModelIdAndCostSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       state = EventState.Complete
     )
 
+  /** Subscribe to the signal stream — SignalHub registers eagerly, so
+    * signals published after this call are captured. */
+  private def subscribe(): (ConcurrentLinkedQueue[Signal], () => Unit) = {
+    val recorded = new ConcurrentLinkedQueue[Signal]()
+    @volatile var running = true
+    TestSigil.signals
+      .takeWhile(_ => running)
+      .evalMap(s => Task { recorded.add(s); () })
+      .drain
+      .startUnit()
+    (recorded, () => running = false)
+  }
+
+  private def costNotices(recorded: ConcurrentLinkedQueue[Signal], convId: Id[Conversation]): List[ConversationCostUpdated] =
+    recorded.iterator().asScala.collect { case n: ConversationCostUpdated if n.conversationId == convId => n }.toList
+
+  /** Poll until `count` cost notices for `convId` have landed. */
+  private def awaitCostNotices(recorded: ConcurrentLinkedQueue[Signal], convId: Id[Conversation], count: Int,
+                               timeout: FiniteDuration = 5.seconds): Task[List[ConversationCostUpdated]] = {
+    def loop(remainingMs: Long): Task[List[ConversationCostUpdated]] = {
+      val cur = costNotices(recorded, convId)
+      if (cur.size >= count || remainingMs <= 0) Task.pure(cur)
+      else Task.sleep(20.millis).flatMap(_ => loop(remainingMs - 20))
+    }
+    loop(timeout.toMillis)
+  }
+
   "Message.modelId" should {
 
     "round-trip through the event store via Sigil.publish" in {
@@ -120,27 +148,15 @@ class MessageModelIdAndCostSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       val expectedDelta2 = pricing.prompt * 200 + pricing.completion * 75
       val expectedTotal  = expectedDelta1 + expectedDelta2
 
-      val recorded = new ConcurrentLinkedQueue[Signal]()
-      @volatile var running = true
-      TestSigil.signals
-        .takeWhile(_ => running)
-        .evalMap(s => Task { recorded.add(s); () })
-        .drain
-        .startUnit()
-
+      val (recorded, stop) = subscribe()
       for {
-        _ <- Task.sleep(100.millis)  // give the subscriber time to attach
         _ <- seedConversation(convId)
         _ <- TestSigil.publish(m1)
         _ <- TestSigil.publish(m2)
-        _ <- Task.sleep(150.millis)  // drain to the subscriber
+        notices <- awaitCostNotices(recorded, convId, 2)
         loaded <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
       } yield {
-        running = false
-        import scala.jdk.CollectionConverters.*
-        val notices = recorded.iterator().asScala
-          .collect { case n: ConversationCostUpdated if n.conversationId == convId => n }
-          .toList
+        stop()
         loaded.map(_.cost) shouldBe Some(expectedTotal)
         notices should have size 2
         notices.head.delta shouldBe expectedDelta1
@@ -152,30 +168,25 @@ class MessageModelIdAndCostSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
     "leave cost at zero and emit no Notice when modelId is None" in {
       val convId = Conversation.id(s"cost-no-model-${rapid.Unique()}")
+      val fenceConvId = Conversation.id(s"cost-no-model-fence-${rapid.Unique()}")
       val msg = settledMessage(convId, prompt = 50, completion = 25, modelId = None)
+      val fence = settledMessage(fenceConvId, prompt = 1, completion = 1, modelId = Some(pricedModelId))
 
-      val recorded = new ConcurrentLinkedQueue[Signal]()
-      @volatile var running = true
-      TestSigil.signals
-        .takeWhile(_ => running)
-        .evalMap(s => Task { recorded.add(s); () })
-        .drain
-        .startUnit()
-
+      val (recorded, stop) = subscribe()
       for {
-        _ <- Task.sleep(100.millis)
         _ <- seedConversation(convId)
+        _ <- seedConversation(fenceConvId)
         _ <- TestSigil.publish(msg)
-        _ <- Task.sleep(150.millis)
+        // Fence: a priced Message that DOES fire a notice — once it
+        // lands, FIFO ordering guarantees a wrongly-emitted notice for
+        // `convId` would already be present too.
+        _ <- TestSigil.publish(fence)
+        _ <- awaitCostNotices(recorded, fenceConvId, 1)
         loaded <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
       } yield {
-        running = false
-        import scala.jdk.CollectionConverters.*
-        val notices = recorded.iterator().asScala
-          .collect { case n: ConversationCostUpdated if n.conversationId == convId => n }
-          .toList
+        stop()
         loaded.map(_.cost) shouldBe Some(BigDecimal(0))
-        notices shouldBe empty
+        costNotices(recorded, convId) shouldBe empty
       }
     }
 
@@ -189,26 +200,14 @@ class MessageModelIdAndCostSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
       val expectedDelta = pricing.prompt * 80 + pricing.completion * 40
 
-      val recorded = new ConcurrentLinkedQueue[Signal]()
-      @volatile var running = true
-      TestSigil.signals
-        .takeWhile(_ => running)
-        .evalMap(s => Task { recorded.add(s); () })
-        .drain
-        .startUnit()
-
+      val (recorded, stop) = subscribe()
       for {
-        _ <- Task.sleep(100.millis)
         _ <- seedConversation(convId)
         _ <- TestSigil.publish(msg)
-        _ <- Task.sleep(150.millis)
+        notices <- awaitCostNotices(recorded, convId, 1)
         loaded <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
       } yield {
-        running = false
-        import scala.jdk.CollectionConverters.*
-        val notices = recorded.iterator().asScala
-          .collect { case n: ConversationCostUpdated if n.conversationId == convId => n }
-          .toList
+        stop()
         loaded.map(_.cost) shouldBe Some(expectedDelta)
         notices should have size 1
         notices.head.delta shouldBe expectedDelta
@@ -217,31 +216,23 @@ class MessageModelIdAndCostSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
     "leave cost at zero when the model is unknown to the registry" in {
       val convId = Conversation.id(s"cost-unknown-model-${rapid.Unique()}")
+      val fenceConvId = Conversation.id(s"cost-unknown-fence-${rapid.Unique()}")
       val unknown = Model.id("test", "not-in-registry")
       val msg = settledMessage(convId, prompt = 100, completion = 50, modelId = Some(unknown))
+      val fence = settledMessage(fenceConvId, prompt = 1, completion = 1, modelId = Some(pricedModelId))
 
-      val recorded = new ConcurrentLinkedQueue[Signal]()
-      @volatile var running = true
-      TestSigil.signals
-        .takeWhile(_ => running)
-        .evalMap(s => Task { recorded.add(s); () })
-        .drain
-        .startUnit()
-
+      val (recorded, stop) = subscribe()
       for {
-        _ <- Task.sleep(100.millis)
         _ <- seedConversation(convId)
+        _ <- seedConversation(fenceConvId)
         _ <- TestSigil.publish(msg)
-        _ <- Task.sleep(150.millis)
+        _ <- TestSigil.publish(fence)
+        _ <- awaitCostNotices(recorded, fenceConvId, 1)
         loaded <- TestSigil.withDB(_.conversations.transaction(_.get(convId)))
       } yield {
-        running = false
-        import scala.jdk.CollectionConverters.*
-        val notices = recorded.iterator().asScala
-          .collect { case n: ConversationCostUpdated if n.conversationId == convId => n }
-          .toList
+        stop()
         loaded.map(_.cost) shouldBe Some(BigDecimal(0))
-        notices shouldBe empty
+        costNotices(recorded, convId) shouldBe empty
       }
     }
   }
