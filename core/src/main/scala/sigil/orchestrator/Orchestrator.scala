@@ -144,7 +144,8 @@ object Orchestrator {
             err => s"Tool `${a.toolName}` did not complete: $err"
           ),
         recoverable = true
-      ) ++ (if (errOpt.isDefined) settleOrphanMessage(state, convId, error = errorMsg) else Nil)
+      ) ++ (if (errOpt.isDefined) settleOrphanMessage(state, convId, error = errorMsg) else Nil) ++
+        settleDanglingImages(state, convId)
       orphans.foldLeft(Task.unit) { (acc, sig) =>
         acc.flatMap(_ => sigil.publish(sig).handleError(_ => Task.unit))
       }
@@ -1212,7 +1213,7 @@ object Orchestrator {
               reason      = reason,
               disposition = MessageDisposition.Failure(recoverable = true))
           } else Nil
-        Stream.emits(closeOrphan ++ plainTextDiagnostic ++ degenerateDiagnostic ++ settleDanglingImages(state, convId))
+        Stream.emits(closeOrphan ++ plainTextDiagnostic ++ degenerateDiagnostic)
       case ProviderEvent.Error(msg)                       =>
         // Bug #50 — surface the provider/validator failure as a
         // Tool-role Message so the agent's next iteration sees a
@@ -1263,16 +1264,17 @@ object Orchestrator {
           visibility     = MessageVisibility.Agents,
           origin         = Some(originId)
         )
-        Stream.emits(orphanSettle ++ orphanMessageSettle ++ preludeSignals ++
-          settleDanglingImages(state, convId) :+ (errorMessage: Signal))
+        Stream.emits(orphanSettle ++ orphanMessageSettle ++ preludeSignals :+ (errorMessage: Signal))
     }
   }
 
   /** Settle any image-generation Message left Active — its partial
     * stream never received a matching ImageGenerationComplete (a
-    * missing or callId-drifted completed event). Runs at every stream
-    * terminator so an image message can't stay in-progress past turn
-    * end. Clears the tracking map. */
+    * missing or callId-drifted completed event). Called from the
+    * orchestrator's termination-guarantee block, which fires on every
+    * exit path — clean Done, error, mid-stream abort, cancellation —
+    * so an image message can't stay in-progress past turn end. Clears
+    * the tracking map. */
   private def settleDanglingImages(state: State, convId: Id[Conversation]): List[Signal] = {
     val settles = state.imageMessageIds.values.toList.map { messageId =>
       StateDelta(target = messageId, conversationId = convId, state = EventState.Complete)

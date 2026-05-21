@@ -12,7 +12,7 @@ import sigil.provider.{
   CallId, ConversationMode, ConversationRequest, GenerationSettings,
   Instructions, Provider, ProviderCall, ProviderEvent, ProviderImage, ProviderType, StopReason
 }
-import sigil.signal.{EventState, ImageDelta, Signal, StateDelta}
+import sigil.signal.{EventState, ImageDelta, Signal}
 import sigil.storage.{StoredFile, StoredFileCategory}
 import sigil.tool.core.CoreTools
 import sigil.tool.model.ResponseContent
@@ -59,7 +59,12 @@ class ImageGenerationStorageSpec extends AsyncWordSpec with AsyncTaskSpec with M
       tools = CoreTools.all.toVector
     )
     TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-      .flatMap(_ => Orchestrator.process(TestSigil, new ImageProvider(events), request, conv).toList)
+      .flatMap(_ => Orchestrator.process(TestSigil, new ImageProvider(events), request, conv)
+        // Publish each signal as it streams so events exist before the
+        // orchestrator's termination-guarantee block runs — mirrors the
+        // production agent loop.
+        .flatMap(s => Stream.force(TestSigil.publish(s).map(_ => Stream.emits(List(s)))))
+        .toList)
   }
 
   private def imageUrls(signals: List[Signal]): List[spice.net.URL] =
@@ -119,16 +124,17 @@ class ImageGenerationStorageSpec extends AsyncWordSpec with AsyncTaskSpec with M
       run(List(
         ProviderEvent.ImageGenerationPartial(CallId("img-orphan"), ProviderImage.Inline(tinyPng, "image/png")),
         ProviderEvent.Done(StopReason.Complete)
-      )).map { signals =>
+      )).flatMap { signals =>
         val imageMessage = signals.collectFirst {
           case m: Message if m.content.exists { case _: ResponseContent.Image => true; case _ => false } => m
         }
         imageMessage should not be empty
-        val settle = signals.collectFirst {
-          case d: StateDelta if d.target == imageMessage.get._id && d.state == EventState.Complete => d
-        }
-        withClue(s"signals: ${signals.map(_.getClass.getSimpleName).mkString(", ")}") {
-          settle should not be empty
+        // The settle is published by the orchestrator's termination-guarantee
+        // block, not emitted into the returned stream — assert on persisted state.
+        TestSigil.withDB(_.events.transaction(_.get(imageMessage.get._id))).map { persisted =>
+          withClue(s"signals: ${signals.map(_.getClass.getSimpleName).mkString(", ")}") {
+            persisted.map(_.state) shouldBe Some(EventState.Complete)
+          }
         }
       }
     }
