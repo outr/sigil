@@ -10,8 +10,6 @@ import sigil.provider.Mode
 import sigil.signal.Notice
 import sigil.tool.Tool
 
-import java.nio.file.Path
-
 /**
  * Sigil refinement for apps that pull in `sigil-workflow`.
  *
@@ -33,12 +31,13 @@ import java.nio.file.Path
  * Sets [[WorkflowHost]] at trait init so compiled jobs / triggers
  * can reach back to this Sigil instance.
  *
- * Manages a Strider [[SigilWorkflowManager]] over its own LightDB
- * at `<workflowDbDirectory>` (default: a `workflows` sub-directory
- * of the host Sigil's `dbPath`). The manager publishes lifecycle
- * Events into the originating conversation when a run carries a
- * `conversationId` — same `Sigil.publish` path normal events flow
- * through.
+ * Manages a Strider [[SigilWorkflowManager]] over the host
+ * [[SigilDB]]'s `workflows` collection — run-state persists in the
+ * same store as the rest of the framework (Postgres when configured,
+ * RocksDB + Lucene otherwise), durable across redeploys. The manager
+ * publishes lifecycle Events into the originating conversation when a
+ * run carries a `conversationId` — same `Sigil.publish` path normal
+ * events flow through.
  */
 trait WorkflowSigil extends Sigil {
   type DB <: SigilDB & WorkflowCollections
@@ -107,44 +106,26 @@ trait WorkflowSigil extends Sigil {
       }
     }
 
-  /** Override to point the Strider engine at a specific directory.
-    * Default: a `workflows` sub-directory under the host Sigil's
-    * `sigil.dbPath` (read via Profig — same source the framework
-    * itself uses to locate its RocksDB / Lucene paths). Apps using
-    * Postgres / non-disk storage override this to `None` and wire
-    * a custom workflow DB. */
-  protected def workflowDbDirectory: Option[Path] = {
-    val raw = profig.Profig("sigil.dbPath").asOr[String]("db/sigil")
-    Some(java.nio.file.Path.of(raw, "workflows"))
-  }
-
   /** Maximum concurrent workflow runs the manager allows. */
   protected def maxConcurrentWorkflows: Int = 1
-
-  /** The Strider DB this manager persists into. First access also
-    * initializes the underlying LightDB — direct callers (the
-    * scheduler, tests) can use the DB's `transaction` API safely
-    * without separately invoking `workflowManager`. The lazy delay
-    * ensures consumers can configure `sigil.dbPath` (via Profig /
-    * `initFor`) before Strider reads it. */
-  final lazy val workflowDb: SigilWorkflowDB = {
-    val db = new SigilWorkflowDB(workflowDbDirectory)
-    db.init.sync()
-    db
-  }
 
   /** The framework's workflow manager. Lazy-initialized on first
     * access — the engine starts when this is summoned. Runs until
     * [[Sigil.shutdown]] tears it down.
     *
+    * First access opens the host [[SigilDB]] (via `withDB`) and runs
+    * the engine against its `workflows` collection — so workflow
+    * run-state persists into the same store as the rest of the
+    * framework: Postgres when `sigil.postgres.jdbcUrl` is set,
+    * RocksDB + Lucene otherwise. It is durable across redeploys
+    * wherever the rest of Sigil's data is.
+    *
     * Calls the manager's API directly to schedule / cancel /
     * resume runs from app code or tools. */
   final lazy val workflowManager: SigilWorkflowManager = {
-    val manager = new SigilWorkflowManager(
-      this.asInstanceOf[Sigil { type DB <: SigilDB & WorkflowCollections }],
-      workflowDb,
-      maxConcurrentWorkflows
-    )
+    val host = this.asInstanceOf[Sigil { type DB <: SigilDB & WorkflowCollections }]
+    val workflows = host.withDB(db => rapid.Task.pure(db.workflows)).sync()
+    val manager = new SigilWorkflowManager(host, workflows, maxConcurrentWorkflows)
     manager.init().sync()
     _workflowManagerStarted = true
     manager

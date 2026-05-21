@@ -57,7 +57,7 @@ class ActiveTasksSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         // Waiting (still active) or — race-window-permitted — already
         // dropped from the active list.
         _ <- sigil.workflow.WorkflowScheduler.scheduleTemplate(
-          TestWorkflowSigil, TestWorkflowSigil.workflowDb, template
+          TestWorkflowSigil, template
         )
         tasks <- TestWorkflowSigil.activeTasksFor(conv._id)
       } yield {
@@ -85,7 +85,7 @@ class ActiveTasksSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(convB)))
         _ <- TestWorkflowSigil.withDB(_.workflowTemplates.transaction(_.upsert(template)))
         _ <- sigil.workflow.WorkflowScheduler.scheduleTemplate(
-          TestWorkflowSigil, TestWorkflowSigil.workflowDb, template
+          TestWorkflowSigil, template
         )
         tasksForA <- TestWorkflowSigil.activeTasksFor(convA._id)
       } yield {

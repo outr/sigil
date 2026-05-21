@@ -21,10 +21,10 @@ import strider.step.Step
  * lazy val and initialized on first access.
  */
 final class SigilWorkflowManager(host: Sigil { type DB <: sigil.db.SigilDB & WorkflowCollections },
-                                 workflowDb: SigilWorkflowDB,
+                                 workflows: lightdb.store.Collection[Workflow, SigilWorkflowModel.type],
                                  maxConcurrent: Int = 1)
   extends AbstractWorkflowManager[WorkflowParent, SigilWorkflowModel.type](
-    workflowDb.workflows, maxConcurrent
+    workflows, maxConcurrent
   ) {
 
   /** Resolve sourceId to the persisted Sigil-side template. The

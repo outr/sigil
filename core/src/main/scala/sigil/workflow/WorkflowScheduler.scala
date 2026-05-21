@@ -29,7 +29,6 @@ object WorkflowScheduler {
     * inserted `strider.Workflow` row carrying all Sigil-side
     * metadata. */
   def scheduleTemplate(host: Sigil { type DB <: sigil.db.SigilDB & WorkflowCollections } & WorkflowSigil,
-                       workflowDb: SigilWorkflowDB,
                        template: WorkflowTemplate,
                        variables: Map[String, Json] = Map.empty,
                        triggeredBy: Option[ParticipantId] = None): Task[Workflow] = {
@@ -65,6 +64,6 @@ object WorkflowScheduler {
     if (missing.nonEmpty)
       Task.error(new IllegalArgumentException(s"Missing required variables: ${missing.mkString(", ")}"))
     else
-      workflowDb.workflows.transaction(_.insert(workflow))
+      host.withDB(_.workflows.transaction(_.insert(workflow)))
   }
 }

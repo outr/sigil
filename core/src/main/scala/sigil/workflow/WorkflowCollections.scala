@@ -3,18 +3,21 @@ package sigil.workflow
 import sigil.db.SigilDB
 
 /**
- * lightdb collection mix-in that adds the `workflowTemplates` store
- * to a [[SigilDB]] subclass. Apps that pull in `sigil-workflow`
- * declare their concrete DB as
+ * lightdb collection mix-in adding the workflow stores —
+ * `workflowTemplates` (Sigil-side template identity) and `workflows`
+ * (Strider's run-state) — to a [[SigilDB]] subclass. Apps that pull
+ * in `sigil-workflow` declare their concrete DB as
  * `class MyAppDB(...) extends SigilDB(...) with WorkflowCollections`,
  * then refine `type DB = MyAppDB` on their Sigil instance via
  * [[WorkflowSigil]].
  *
- * Strider's own collections (`Workflow`, progress, etc.) live in the
- * Strider-managed LightDB — see [[SigilWorkflowModel]]. We keep templates
- * separate because they're Sigil-side identity (space, createdBy,
- * conversationId) that Strider's engine doesn't model.
+ * Both stores live in the host [[SigilDB]], so they inherit its store
+ * manager — RocksDB + Lucene on disk, or Postgres when
+ * `sigil.postgres.jdbcUrl` is set. The workflow runtime is durable
+ * wherever the rest of the framework's data is durable; Strider only
+ * needs a `Collection[Workflow, AbstractWorkflowModel]` to operate.
  */
 trait WorkflowCollections { self: SigilDB =>
   val workflowTemplates: S[WorkflowTemplate, WorkflowTemplate.type] = store(WorkflowTemplate)()
+  val workflows: S[strider.Workflow, SigilWorkflowModel.type] = store(SigilWorkflowModel)()
 }
