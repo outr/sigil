@@ -1311,7 +1311,7 @@ trait Provider extends Service {
           // ToolCall from someone else — skip (not rendered as a tool call for this agent).
           i += 1
 
-        case ContextFrame.ToolResult(callId, content, _, _, _) =>
+        case ContextFrame.ToolResult(callId, content, _, _, _, images) =>
           // Sigil bug #167 r5 — pair the function_call_output by wire
           // call_id (preferring the upstream provider's id from the
           // matching ContextFrame.ToolCall, captured into
@@ -1330,6 +1330,11 @@ trait Provider extends Service {
           wireCallIdByEvent.get(callId.value) match {
             case Some(wireId) =>
               out += ProviderMessage.ToolResult(toolCallId = wireId, content = content)
+              // Tool-result images ride as a follow-up user message so the
+              // model actually sees them; normalizeStoredImages then inlines
+              // any internal-storage URLs as bytes.
+              if (images.nonEmpty)
+                out += ProviderMessage.User(images.map(u => MessageContent.Image(u)).toVector)
               pendingToolCallIds.remove(wireId)
               resultsSeen.add(wireId)
             case None =>
@@ -1482,14 +1487,17 @@ trait Provider extends Service {
     }
 
     frames.foreach {
-      case curr @ ContextFrame.ToolResult(callId, content, _, _, _) =>
+      case curr @ ContextFrame.ToolResult(callId, content, _, _, _, _) =>
         pending match {
           case Some(prev) if prev.callId == callId =>
             // Same call_id — merge into the pending accumulator.
             // Keep the earliest sourceEventId / visibility (caller can
             // override via dedicated joiner if needed; default is
-            // newline-separated concat).
-            pending = Some(prev.copy(content = prev.content + joiner + content))
+            // newline-separated concat). Images concatenate.
+            pending = Some(prev.copy(
+              content = prev.content + joiner + content,
+              images = prev.images ++ curr.images
+            ))
           case _ =>
             flush()
             pending = Some(curr)

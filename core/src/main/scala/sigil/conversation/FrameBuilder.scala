@@ -39,6 +39,34 @@ import sigil.tool.model.ResponseContent
 object FrameBuilder {
 
   /**
+   * Extract a Tool-role event's render payload: the flattened text the
+   * model reads as the `function_call_output`, and any image URLs the
+   * event carried. Images are kept out of the text — the renderer
+   * delivers them as real image input via the frame's `images` field
+   * rather than a stringified `toString` blob.
+   */
+  private def toolResultPayload(event: Event): (String, List[spice.net.URL]) =
+    event match {
+      case m: Message =>
+        val images = m.content.collect { case ResponseContent.Image(url, _) => url }.toList
+        val text = m.content.collect {
+          case ResponseContent.Text(t)            => t
+          case ResponseContent.Markdown(t)        => t
+          case ResponseContent.Heading(t)         => t
+          case ResponseContent.Code(c, lang)      => s"```${lang.getOrElse("")}\n$c\n```"
+          case ResponseContent.ItemList(items, _) => items.mkString("\n")
+          case ResponseContent.Link(url, label)   => s"$label $url"
+          case img: ResponseContent.Image         => img.altText.map(a => s"[image: $a]").getOrElse("[image]")
+          case other                              => other.toString
+        }.mkString("\n")
+        (text, images)
+      case tr: ToolResults if tr.typed.isDefined =>
+        (JsonFormatter.Compact(tr.typed.get), Nil)
+      case other =>
+        (JsonFormatter.Compact(stripEventBoilerplate(Event.rw.read(other))), Nil)
+    }
+
+  /**
    * Compute the render-ready [[ContextFrame]] for a single Event.
    * `None` for in-flight events and event types that don't produce
    * a frame (`AgentState`, `Stop`, `ControlPlaneEvent`s).
@@ -55,23 +83,7 @@ object FrameBuilder {
     if (event.state != EventState.Complete) return None
 
     if (event.role == MessageRole.Tool) {
-      val content = event match {
-        case m: Message =>
-          m.content.collect {
-            case ResponseContent.Text(t)            => t
-            case ResponseContent.Markdown(t)        => t
-            case ResponseContent.Heading(t)         => t
-            case ResponseContent.Code(c, lang)      => s"```${lang.getOrElse("")}\n$c\n```"
-            case ResponseContent.ItemList(items, _) => items.mkString("\n")
-            case ResponseContent.Link(url, label)   => s"$label $url"
-            case other                              => other.toString
-          }.mkString("\n")
-        case tr: ToolResults if tr.typed.isDefined =>
-          JsonFormatter.Compact(tr.typed.get)
-        case other =>
-          val payload = stripEventBoilerplate(Event.rw.read(other))
-          JsonFormatter.Compact(payload)
-      }
+      val (content, images) = toolResultPayload(event)
       // Bug #64 — recover at read. A Tool-role event without
       // `origin` violates the framework's invariant; the
       // write-side validation gate (Sigil.publish + family)
@@ -89,7 +101,8 @@ object FrameBuilder {
             callId = callId,
             content = content,
             sourceEventId = event._id,
-            visibility = event.visibility
+            visibility = event.visibility,
+            images = images
             // wireCallId stays None — populated by the renderer at
             // wire-render time by looking up the matching
             // ContextFrame.ToolCall.wireCallId. computeFrame is a
@@ -210,36 +223,7 @@ object FrameBuilder {
       // agent wants just the text the tool wrote, not the Message
       // record. Extract the text directly so models see a clean tool
       // result instead of doubly-wrapped JSON.
-      val content = event match {
-        case m: Message =>
-          // Bug #68 — collect every text-bearing content block, not
-          // just `Text`. Tools that emit `Markdown(...)` (like
-          // `list_script_tools`) used to render as the empty string
-          // here because the previous filter dropped Markdown
-          // entirely. Other shapes (`Code`, `Heading`, `ItemList`,
-          // `Link`) fall back to `toString` so the agent sees
-          // *something* — a doubly-formatted blob beats silently
-          // empty content.
-          m.content.collect {
-            case ResponseContent.Text(t)            => t
-            case ResponseContent.Markdown(t)        => t
-            case ResponseContent.Heading(t)         => t
-            case ResponseContent.Code(c, lang)      => s"```${lang.getOrElse("")}\n$c\n```"
-            case ResponseContent.ItemList(items, _) => items.mkString("\n")
-            case ResponseContent.Link(url, label)   => s"$label $url"
-            case other                              => other.toString
-          }.mkString("\n")
-        case tr: ToolResults if tr.typed.isDefined =>
-          // Typed-output tool (TypedOutputTool[I, O]) — fold the
-          // structured JSON directly so the agent's view is the
-          // same shape consuming-side code pattern-matches against
-          // via the tool's outputRW. Strip framework boilerplate
-          // wrappers from the typed payload.
-          JsonFormatter.Compact(tr.typed.get)
-        case other =>
-          val payload = stripEventBoilerplate(Event.rw.read(other))
-          JsonFormatter.Compact(payload)
-      }
+      val (content, images) = toolResultPayload(event)
       // Bug #69 — pair via the explicit `origin` parent pointer the
       // orchestrator stamps onto every tool-emitted event. Multiple
       // Tool events from one `executeTyped` therefore all carry the
@@ -267,7 +251,8 @@ object FrameBuilder {
         callId = callId,
         content = content,
         sourceEventId = event._id,
-        visibility = event.visibility
+        visibility = event.visibility,
+        images = images
       )
     }
 
