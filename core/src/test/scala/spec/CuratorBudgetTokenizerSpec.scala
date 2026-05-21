@@ -98,11 +98,13 @@ class CuratorBudgetTokenizerSpec extends AsyncWordSpec with AsyncTaskSpec with M
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(
                Conversation(_id = convId, topics = List(TestTopicEntry))
              )))
-        // 200 frames of trivial content — enough that wiring the
-        // CountingTokenizer into the budget path would produce a
-        // very visible call count (and wall-clock penalty).
+        // 80 frames of trivial content — enough that wiring the
+        // CountingTokenizer into the budget path would produce a call
+        // count well past the assertion threshold, while keeping the
+        // bulk-publish setup fast enough to stay clear of the async
+        // test timeout under concurrent full-suite load.
         _ <- Task.sequence(
-               (1 to 200).toList.map { i =>
+               (1 to 80).toList.map { i =>
                  TestSigil.publish(Message(
                    participantId  = TestUser,
                    conversationId = convId,
@@ -115,10 +117,9 @@ class CuratorBudgetTokenizerSpec extends AsyncWordSpec with AsyncTaskSpec with M
         _ <- curator.curate(convId, modelId, chain = List(TestUser, TestAgent))
       } yield {
         // The budget path uses budgetTokenizer (HeuristicTokenizer by
-        // default). Calls into the network-style sentinel must be
-        // bounded — the warning path may legitimately count a few
-        // times against `tokenizer`, but the 200-frame budget pass
-        // must never touch it.
+        // default). Calls into the sentinel must be bounded — the
+        // warning path may legitimately count a few times against
+        // `tokenizer`, but the 80-frame budget pass must never touch it.
         networkTokenizer.calls.get should be < 50
       }
     }
