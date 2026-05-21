@@ -94,7 +94,17 @@ class ActiveTasksSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     }
   }
 
+  /** The scheduled no-op workflows settle on background fibers. Wait
+    * for every run to reach a terminal state before disposing the DB,
+    * so a still-running run can't hit a closed Lucene IndexWriter. */
+  private def awaitWorkflowsSettled(remainingMs: Long): Task[Unit] =
+    TestWorkflowSigil.workflowManager.collection.transaction(_.query.toList).flatMap { runs =>
+      if (runs.forall(_.finished) || remainingMs <= 0) Task.unit
+      else Task.sleep(100.millis).flatMap(_ => awaitWorkflowsSettled(remainingMs - 100))
+    }
+
   "tear down" should {
-    "dispose TestWorkflowSigil" in TestWorkflowSigil.shutdown.map(_ => succeed)
+    "dispose TestWorkflowSigil" in
+      awaitWorkflowsSettled(10000).flatMap(_ => TestWorkflowSigil.shutdown).map(_ => succeed)
   }
 }

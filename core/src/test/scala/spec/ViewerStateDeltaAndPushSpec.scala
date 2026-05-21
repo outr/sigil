@@ -12,6 +12,7 @@ import sigil.viewer.ViewerStatePayload
 
 import java.util.concurrent.ConcurrentLinkedQueue
 import scala.concurrent.duration.*
+import scala.jdk.CollectionConverters.*
 
 /**
  * Coverage for bug #43 — partial-update deltas + on-(re)connect
@@ -45,6 +46,8 @@ class ViewerStateDeltaAndPushSpec extends AsyncWordSpec with AsyncTaskSpec with 
   private def subscribe(viewer: sigil.participant.ParticipantId): (ConcurrentLinkedQueue[Signal], () => Unit) = {
     val recorded = new ConcurrentLinkedQueue[Signal]()
     @volatile var running = true
+    // SignalHub registers the subscriber eagerly, so signals published
+    // after this call are captured — no settle delay needed.
     TestSigil.signalsFor(viewer)
       .evalMap(s => Task { recorded.add(s); () })
       .takeWhile(_ => running)
@@ -53,18 +56,21 @@ class ViewerStateDeltaAndPushSpec extends AsyncWordSpec with AsyncTaskSpec with 
     (recorded, () => running = false)
   }
 
-  private def collectDeltas(q: ConcurrentLinkedQueue[Signal], scope: String): List[ViewerStateDelta] = {
-    import scala.jdk.CollectionConverters.*
-    q.iterator().asScala.toList.collect {
-      case d: ViewerStateDelta if d.scope == scope => d
-    }
-  }
+  private def collectDeltas(q: ConcurrentLinkedQueue[Signal], scope: String): List[ViewerStateDelta] =
+    q.iterator().asScala.toList.collect { case d: ViewerStateDelta if d.scope == scope => d }
 
-  private def collectSnapshots(q: ConcurrentLinkedQueue[Signal], scope: String): List[ViewerStateSnapshot] = {
-    import scala.jdk.CollectionConverters.*
-    q.iterator().asScala.toList.collect {
-      case s: ViewerStateSnapshot if s.scope == scope => s
+  private def collectSnapshots(q: ConcurrentLinkedQueue[Signal], scope: String): List[ViewerStateSnapshot] =
+    q.iterator().asScala.toList.collect { case s: ViewerStateSnapshot if s.scope == scope => s }
+
+  /** Poll until `get` satisfies `done` (or the timeout elapses).
+    * Replaces fixed sleeps for async Notice propagation. */
+  private def await[A](timeout: FiniteDuration = 5.seconds)(get: => List[A])(done: List[A] => Boolean): Task[List[A]] = {
+    def loop(remainingMs: Long): Task[List[A]] = {
+      val cur = get
+      if (done(cur) || remainingMs <= 0) Task.pure(cur)
+      else Task.sleep(20.millis).flatMap(_ => loop(remainingMs - 20))
     }
+    loop(timeout.toMillis)
   }
 
   "UpdateViewerStateDelta on a fresh scope" should {
@@ -72,12 +78,10 @@ class ViewerStateDeltaAndPushSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val (recorded, stop) = subscribe(TestUser)
       val patch = DeltaTestState(activeTab = Some("chat"))
       for {
-        _ <- Task.sleep(80.millis)
         _ <- TestSigil.handleNotice(UpdateViewerStateDelta("delta-fresh", patch), TestUser)
-        _ <- Task.sleep(120.millis)
+        deltas <- await()(collectDeltas(recorded, "delta-fresh"))(_.nonEmpty)
       } yield {
         stop()
-        val deltas = collectDeltas(recorded, "delta-fresh")
         deltas should have size 1
         deltas.head.patch shouldBe patch
       }
@@ -90,15 +94,14 @@ class ViewerStateDeltaAndPushSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val initial = DeltaTestState(activeTab = Some("chat"), panelOpen = Some(true), theme = Some("light"))
       val patch   = DeltaTestState(theme = Some("dark"))  // only theme changes
       for {
-        _ <- Task.sleep(80.millis)
         _ <- TestSigil.handleNotice(UpdateViewerState("delta-merge", initial), TestUser)
-        _ <- Task.sleep(80.millis)
+        _ <- await()(collectSnapshots(recorded, "delta-merge"))(_.nonEmpty)
         _ <- TestSigil.handleNotice(UpdateViewerStateDelta("delta-merge", patch), TestUser)
-        _ <- Task.sleep(120.millis)
+        _ <- await()(collectDeltas(recorded, "delta-merge"))(_.nonEmpty)
         // Snapshot the persisted state by issuing a Request — it
         // should reflect the merged result, not just the patch.
         _ <- TestSigil.handleNotice(sigil.signal.RequestViewerState("delta-merge"), TestUser)
-        _ <- Task.sleep(120.millis)
+        _ <- await()(collectSnapshots(recorded, "delta-merge"))(_.size >= 2)
       } yield {
         stop()
         // Deltas: just one (the patch broadcast).
@@ -126,28 +129,24 @@ class ViewerStateDeltaAndPushSpec extends AsyncWordSpec with AsyncTaskSpec with 
       val s1 = DeltaTestState(activeTab = Some("a"))
       val s2 = DeltaTestState(activeTab = Some("b"))
       for {
-        _ <- Task.sleep(80.millis)
         // Seed two scopes for the viewer.
         _ <- TestSigil.handleNotice(UpdateViewerState("push-scope-1", s1), TestUser)
         _ <- TestSigil.handleNotice(UpdateViewerState("push-scope-2", s2), TestUser)
-        _ <- Task.sleep(80.millis)
-        // Drain the recorded queue's history before the push so we
-        // assert only on the snapshots the push generates.
-        _ = {
-          import scala.jdk.CollectionConverters.*
-          recorded.iterator().asScala.toList  // materialize
-          recorded.clear()
-        }
+        // Wait for both seed broadcasts to land, then drain the queue
+        // so we assert only on the snapshots the push generates.
+        _ <- await()(collectSnapshots(recorded, "push-scope-1"))(_.nonEmpty)
+        _ <- await()(collectSnapshots(recorded, "push-scope-2"))(_.nonEmpty)
+        _  = recorded.clear()
         _ <- TestSigil.publishViewerStatesTo(TestUser)
-        _ <- Task.sleep(120.millis)
+        pushed <- await() {
+          recorded.iterator().asScala.toList.collect {
+            case s: ViewerStateSnapshot if s.scope.startsWith("push-scope-") => s.scope
+          }
+        }(scopes => scopes.contains("push-scope-1") && scopes.contains("push-scope-2"))
       } yield {
         stop()
-        import scala.jdk.CollectionConverters.*
-        val pushed = recorded.iterator().asScala.toList.collect {
-          case s: ViewerStateSnapshot if s.scope.startsWith("push-scope-") => s.scope
-        }.toSet
-        pushed should contain("push-scope-1")
-        pushed should contain("push-scope-2")
+        pushed.toSet should contain("push-scope-1")
+        pushed.toSet should contain("push-scope-2")
       }
     }
   }

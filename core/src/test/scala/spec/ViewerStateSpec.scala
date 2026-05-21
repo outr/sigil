@@ -12,6 +12,7 @@ import sigil.viewer.ViewerStatePayload
 
 import java.util.concurrent.ConcurrentLinkedQueue
 import scala.concurrent.duration.*
+import scala.jdk.CollectionConverters.*
 
 /**
  * Regression for bug #35 — typed per-viewer UI state primitive.
@@ -43,11 +44,23 @@ class ViewerStateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     (recorded, () => running = false)
   }
 
-  private def snapshots(q: ConcurrentLinkedQueue[Signal], scope: String): List[ViewerStateSnapshot] = {
-    import scala.jdk.CollectionConverters.*
+  private def snapshots(q: ConcurrentLinkedQueue[Signal], scope: String): List[ViewerStateSnapshot] =
     q.iterator().asScala.toList.collect {
       case s: ViewerStateSnapshot if s.scope == scope => s
     }
+
+  /** Poll until at least `count` snapshots for `scope` have landed (or
+    * the timeout elapses). Replaces fixed sleeps for async Notice
+    * propagation — and, when called between actions, preserves the
+    * arrival ordering the sequential sleeps used to enforce. */
+  private def awaitSnapshots(q: ConcurrentLinkedQueue[Signal], scope: String, count: Int,
+                             timeout: FiniteDuration = 5.seconds): Task[List[ViewerStateSnapshot]] = {
+    def loop(remainingMs: Long): Task[List[ViewerStateSnapshot]] = {
+      val snap = snapshots(q, scope)
+      if (snap.size >= count || remainingMs <= 0) Task.pure(snap)
+      else Task.sleep(20.millis).flatMap(_ => loop(remainingMs - 20))
+    }
+    loop(timeout.toMillis)
   }
 
   "ViewerStatePayload polymorphic registration (regression for bug #36)" should {
@@ -79,10 +92,9 @@ class ViewerStateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val (recorded, stop) = subscribe(TestUser)
       for {
         _ <- TestSigil.handleNotice(RequestViewerState("ui-fresh"), TestUser)
-        _ <- Task.sleep(100.millis)
+        replies <- awaitSnapshots(recorded, "ui-fresh", 1)
       } yield {
         stop()
-        val replies = snapshots(recorded, "ui-fresh")
         replies should have size 1
         replies.head.payload shouldBe None
       }
@@ -95,13 +107,12 @@ class ViewerStateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val payload = TestViewerState(activeTab = "files", panelOpen = true)
       for {
         _ <- TestSigil.handleNotice(UpdateViewerState("ui-update", payload), TestUser)
-        _ <- Task.sleep(100.millis)
+        _ <- awaitSnapshots(recorded, "ui-update", 1)
         // Now ask for it back — should round-trip the typed instance.
         _ <- TestSigil.handleNotice(RequestViewerState("ui-update"), TestUser)
-        _ <- Task.sleep(100.millis)
+        replies <- awaitSnapshots(recorded, "ui-update", 2)
       } yield {
         stop()
-        val replies = snapshots(recorded, "ui-update")
         replies should have size 2
         // Both the broadcast-on-update AND the request reply should
         // carry the payload we wrote.
@@ -121,11 +132,12 @@ class ViewerStateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val payload = TestViewerState(activeTab = "settings", panelOpen = false)
       for {
         _ <- TestSigil.handleNotice(UpdateViewerState("ui-broadcast", payload), TestUser)
-        _ <- Task.sleep(100.millis)
+        a <- awaitSnapshots(qA, "ui-broadcast", 1)
+        b <- awaitSnapshots(qB, "ui-broadcast", 1)
       } yield {
         stopA(); stopB()
-        snapshots(qA, "ui-broadcast").map(_.payload) shouldBe List(Some(payload))
-        snapshots(qB, "ui-broadcast").map(_.payload) shouldBe List(Some(payload))
+        a.map(_.payload) shouldBe List(Some(payload))
+        b.map(_.payload) shouldBe List(Some(payload))
       }
     }
   }
@@ -136,15 +148,14 @@ class ViewerStateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val payload = TestViewerState(activeTab = "tools", panelOpen = true)
       for {
         _ <- TestSigil.handleNotice(UpdateViewerState("ui-delete", payload), TestUser)
-        _ <- Task.sleep(80.millis)
+        _ <- awaitSnapshots(recorded, "ui-delete", 1)
         _ <- TestSigil.handleNotice(DeleteViewerState("ui-delete"), TestUser)
-        _ <- Task.sleep(80.millis)
+        _ <- awaitSnapshots(recorded, "ui-delete", 2)
         // Confirm the row is actually gone — request returns None.
         _ <- TestSigil.handleNotice(RequestViewerState("ui-delete"), TestUser)
-        _ <- Task.sleep(80.millis)
+        replies <- awaitSnapshots(recorded, "ui-delete", 3)
       } yield {
         stop()
-        val replies = snapshots(recorded, "ui-delete")
         // Sequence: update→Some(payload), delete→None, request→None.
         replies.map(_.payload) shouldBe List(Some(payload), None, None)
       }

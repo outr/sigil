@@ -30,9 +30,10 @@ import spice.net.{ContentType, url}
  * call_id from its response and 400s "No tool output found for
  * function call <id>" when the framework's id doesn't match.
  *
- * The spec self-skips when `OPENAI_API_KEY` is unset (the env-var
- * key the framework's `OpenAIProvider` reads). It exercises the real
- * `/v1/responses` API end-to-end:
+ * Gated like every other live OpenAI spec — off unless `SIGIL_LIVE=1`,
+ * then credential-probed — so a plain `sbt test` never makes paid API
+ * calls. When it runs it exercises the real `/v1/responses` API
+ * end-to-end:
  *
  *   1. User message → Orchestrator.process driving the real
  *      OpenAIProvider for Turn 1. The model emits a function_call
@@ -51,10 +52,17 @@ class OpenAICallIdRoundtripSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   TestSigil.initFor(getClass.getSimpleName)
 
   private val apiKey: String = sys.env.getOrElse("OPENAI_API_KEY", "")
-  private val live: Boolean  = apiKey.startsWith("sk-")
 
   private val modelId: Id[Model] = Model.id("openai", "gpt-5-mini")
   private lazy val openai = OpenAIProvider(apiKey, TestSigil, url"https://api.openai.com")
+
+  /** Gate the suite the same way every other live OpenAI spec is gated
+    * — off unless `SIGIL_LIVE=1`, then credential-probed — so a plain
+    * `sbt test` never makes paid API calls. */
+  override def run(testName: Option[String], args: org.scalatest.Args): org.scalatest.Status =
+    OpenAILiveSupport.runGated(this, testName, args) {
+      super.run(testName, args)
+    }
 
   private def turn1Request(convId: Id[Conversation]): ConversationRequest =
     ConversationRequest(
@@ -83,7 +91,6 @@ class OpenAICallIdRoundtripSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   "Live OpenAI Responses call_id roundtrip (Bug #167 r5)" should {
 
     "round-trip the wire call_id so a chained Turn 2 doesn't 400 on the OpenAI Responses API" in {
-      if (!live) cancel("OPENAI_API_KEY not set — skipping live OpenAI spec")
       val convId = Conversation.id(s"live-callid-${rapid.Unique()}")
       val conv = Conversation(topics = TestTopicStack, _id = convId)
 
