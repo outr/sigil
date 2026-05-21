@@ -7,45 +7,27 @@ import rapid.AsyncTaskSpec
 import sigil.conversation.{ContextFrame, Conversation, TopicEntry, TurnInput}
 import sigil.db.Model
 import sigil.event.{Event, MessageVisibility}
-import sigil.provider.{
-  CallId, ConversationMode, ConversationRequest, GenerationSettings, Instructions
-}
+import sigil.provider.{ConversationMode, ConversationRequest, GenerationSettings, Instructions}
 import sigil.tool.ToolName
 import sigil.tool.core.CoreTools
 import spec.{TestAgent, TestSigil, TestUser}
 import spice.net.url
 
 /**
- * Reproduces sigil bug #167 (round 3 — interleaved-tool-result drop).
+ * Coverage for the OpenAI Responses request shape when a turn carries
+ * tool outputs alongside a cached `previous_response_id`.
  *
- * widge-server's failing turn shape:
- *   - Prior turn's request: 1 user message
- *   - Prior turn's response output_items:
- *       function_call(vector_lookup), web_search_call, message-text
- *   - Framework added ProviderMessages in this order:
- *       Assistant(tool_calls=[vector_lookup]) , ToolResult, Assistant(text)
- *   - Round-2 fix: `outputItemCount` skips web_search_call → equals 2
- *       (function_call + message).
- *   - `priorMessageCount = sentMessageCount(1) + outputItemCount(2) = 3`
+ * Trimming the transcript against `previous_response_id` would ship a
+ * bare `function_call_output` and rely on the prev-id chain to resolve
+ * its `function_call` server-side. A stale or broken chain makes that
+ * resolution fail and OpenAI rejects the whole turn ("No tool call
+ * found for function call output ...").
  *
- * Next turn after the user sends a follow-up: 5 ProviderMessages:
- *   [0] User (prior input)
- *   [1] Assistant w/ tool_calls (the vector_lookup function_call)
- *   [2] ToolResult (the vector_lookup output — NEW info OpenAI doesn't have)
- *   [3] Assistant text (the model's reply — OpenAI emitted, already in
- *       its server-side state)
- *   [4] User (new follow-up)
- *
- * Current `messages.drop(3)` keeps only `[Assistant text, User]` —
- * **the ToolResult at position 2 gets dropped**. OpenAI's
- * `previous_response_id` state has the function_call but receives no
- * matching `function_call_output`, so the API 400s with "No tool
- * output found for function call <id>".
- *
- * The correct semantics: when `previous_response_id` is set, the input
- * array should only contain entries OpenAI doesn't already know:
- * `User` messages + `ToolResult`s. Assistant messages and Reasoning
- * items are server-side already.
+ * The request renderer therefore takes the full-render path on any
+ * tool-output turn: it ships the complete, well-paired transcript —
+ * every `function_call` next to its `function_call_output` — and omits
+ * `previous_response_id`. These specs verify both halves of each pair
+ * reach the wire and that the request does not depend on the chain.
  */
 class OpenAIInterleavedToolResultDropSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -54,16 +36,12 @@ class OpenAIInterleavedToolResultDropSpec extends AsyncWordSpec with AsyncTaskSp
   private val modelId: Id[Model] = Model.id("openai", "gpt-5")
   private val vectorLookupCallId = "call_vlu_abc123"
 
-  "OpenAI Responses input rendering for a respond call on prev_id chain (Bug #167 r4)" should {
+  "OpenAI Responses request for a turn carrying a prior respond call" should {
 
-    "include function_call_output for the prior respond call so OpenAI's prev_id state stays paired" in {
+    "ship the function_call paired with its function_call_output and omit previous_response_id" in {
       val convId = Conversation.id(s"respond-pair-${rapid.Unique()}")
       val topic  = TopicEntry(sigil.conversation.Topic.id("t"), label = "t", summary = "t")
-      val priorId    = "resp_prior_respond"
-      // After Turn 1 (model emitted function_call(respond)), the framework's
-      // frame list has: User, ToolCall(respond), Text("hi back"). With the
-      // round-3 messageCount semantics (sentMessageCount only),
-      // priorMessageCount = 1.
+      val priorId = "resp_prior_respond"
       val priorCount = 1
       val respondCallId = "call_resp_abc"
 
@@ -100,6 +78,8 @@ class OpenAIInterleavedToolResultDropSpec extends AsyncWordSpec with AsyncTaskSp
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(Conversation(
                _id = convId, topics = List(topic), participants = Nil
              ))))
+        // Prev-id IS cached, but the turn carries tool outputs — the
+        // renderer must take the full-render path regardless.
         _ <- TestSigil.updateProjection(convId, TestAgent)(_.copy(
                latestProviderResponseId           = Some(priorId),
                latestProviderResponseMessageCount = Some(priorCount)
@@ -122,29 +102,29 @@ class OpenAIInterleavedToolResultDropSpec extends AsyncWordSpec with AsyncTaskSp
           })
         }
       } yield {
-        body should include(priorId)
-        // The empty function_call_output paired with the prior respond
-        // call MUST be present — without it OpenAI's prev_id state has
-        // an unpaired function_call(respond) and 400s.
-        body should include("function_call_output")
+        // Tool-output turn — prev-id omitted, full transcript shipped.
+        body shouldNot include(""""previous_response_id"""")
+        body shouldNot include(priorId)
+        // The respond call AND its function_call_output both reach the
+        // wire — OpenAI sees a well-paired call, never an orphan output.
+        body should include(""""type":"function_call"""")
+        body should include(""""type":"function_call_output"""")
         body should include(respondCallId)
-        // The new user follow-up survives.
         body should include("follow-up")
       }
     }
   }
 
-  "OpenAI Responses input rendering with prev_id (Bug #167 r3)" should {
+  "OpenAI Responses request for a turn with an interleaved tool result" should {
 
-    "include function_call_output for an interleaved ToolResult even when later Assistant text exists" in {
+    "ship the function_call + function_call_output pair and the full transcript" in {
       val convId = Conversation.id(s"interleaved-${rapid.Unique()}")
       val topic  = TopicEntry(sigil.conversation.Topic.id("t"), label = "t", summary = "t")
-      val priorId    = "resp_prior_widge"
-      val priorCount = 3 // sentMessageCount(1) + outputItemCount(2: function_call + message)
+      val priorId = "resp_prior_widge"
+      val priorCount = 3
 
-      // Frames in chronological order — mirrors what widge-server's
-      // conversation has after the model's mixed-output response and
-      // a fresh user follow-up.
+      // Chronological frames: a tool call, its result, the model's
+      // reply, then a fresh user follow-up.
       val frames = Vector[ContextFrame](
         ContextFrame.Text(
           content = "Find info on RD2500",
@@ -206,23 +186,19 @@ class OpenAIInterleavedToolResultDropSpec extends AsyncWordSpec with AsyncTaskSp
           })
         }
       } yield {
-        // prev_id is carried — confirms we're on the chained path.
-        body should include(priorId)
-        // The function_call_output for vector_lookup MUST be present.
-        // Without the bug fix the ToolResult gets dropped along with
-        // the prior user message + assistant turn, and OpenAI 400s.
-        body should include("function_call_output")
+        // Tool-output turn — prev-id omitted; the call resolution can
+        // never depend on a possibly-stale chain.
+        body shouldNot include(""""previous_response_id"""")
+        body shouldNot include(priorId)
+        // The vector_lookup call + its output both reach the wire.
+        body should include(""""type":"function_call"""")
+        body should include(""""type":"function_call_output"""")
         body should include(vectorLookupCallId)
-        // The new user follow-up must survive too.
+        // Full render — the complete transcript ships, including the
+        // prior user message and the model's reply.
+        body should include("Find info on RD2500")
+        body should include("Found the RD2500")
         body should include("RD5000")
-        // The prior user msg + prior assistant text are server-side
-        // via prev_id and must NOT be re-shipped on this request.
-        // (The ToolResult's `output` field legitimately contains the
-        // RD2500 spec excerpt — that's the function_call_output the
-        // wire SHOULD carry. The exclusions below cover only the
-        // OpenAI-emitted artifacts the role filter drops.)
-        body shouldNot include("Found the RD2500")
-        body shouldNot include("Find info on RD2500")
       }
     }
   }
