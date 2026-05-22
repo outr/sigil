@@ -23,7 +23,6 @@ final class DeleteFileTool(context: FileSystemContext)
     ToolExample("Remove a temp file", DeleteFileInput(filePath = "/tmp/scratch.txt"))
   )
   override val keywords = Set("file", "delete", "remove", "rm", "unlink")
-  override def paginate: Boolean = false
 
   override def executeResult(input: DeleteFileInput, ctx: TurnContext): Task[ToolResult[DeleteFileOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {

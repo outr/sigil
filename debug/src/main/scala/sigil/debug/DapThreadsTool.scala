@@ -29,7 +29,6 @@ final class DapThreadsTool(val manager: DapManager) extends Tool with DapToolSup
       DapThreadsInput(sessionId = "demo-session")
     )
   )
-  override def paginate: Boolean = false
 
   override def executeResult(input: DapThreadsInput, context: TurnContext): Task[ToolResult[DapThreadsOutput]] =
     withSession(input.sessionId, context) { session =>

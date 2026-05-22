@@ -31,7 +31,6 @@ final class LspCodeLensTool(val manager: LspManager) extends Tool
       |Returns each lens's position, optional title, and whether it carries a runnable command.""".stripMargin
   override val keywords = Set("lsp", "code lens", "lens", "inline action", "above-line action")
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: LspCodeLensInput, context: TurnContext): Task[LspCodeLensResult] =
     withOpenDocumentOrThrow[LspCodeLensResult](

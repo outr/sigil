@@ -25,7 +25,6 @@ final class SendMoneyTool(state: AtomicReference[BankingEnvironment]) extends To
   val name: ToolName = ToolName("send_money")
   val description: String = "Sends a transaction to the recipient."
 
-  override def paginate: Boolean = false
 
   override def executeResult(input: SendMoneyInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
     state.updateAndGet { env =>

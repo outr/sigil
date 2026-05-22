@@ -36,7 +36,6 @@ final class ReadFileTool(context: FileSystemContext)
     "contents", "source", "examine", "inspect", "load", "show",
     "code", "text", "lines", "display", "fetch", "look"
   )
-  override def paginate: Boolean = false
 
   // Generic primitive: ranks below domain-specific tools when both match a query.
   override def preferIfNoBetter: Boolean = true

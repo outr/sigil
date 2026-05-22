@@ -28,7 +28,6 @@ final class BspReloadTool(val manager: BspManager) extends Tool
       |`projectRoot` selects the persisted BspBuildConfig.""".stripMargin
   override val keywords = Set("bsp", "reload", "refresh", "rebuild", "reinitialise", "rescan")
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: BspReloadInput, context: TurnContext): Task[BspReloadResult] =
     withSessionTyped[BspReloadResult](

@@ -60,7 +60,6 @@ final class DapLaunchTool(val manager: DapManager) extends Tool with DapToolSupp
       )
     )
   )
-  override def paginate: Boolean = false
 
   override def executeResult(input: DapLaunchInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
     manager.spawn(input.languageId, input.sessionId).flatMap { session =>

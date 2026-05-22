@@ -45,7 +45,6 @@ final class LspRenameTool(val manager: LspManager) extends Tool
     "identifier", "symbol", "change name", "modify name", "replace name", "update name"
   )
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: LspRenameInput, context: TurnContext): Task[LspRenameResult] =
     withOpenDocumentOrThrow[LspRenameResult](

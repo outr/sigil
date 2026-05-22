@@ -44,7 +44,6 @@ final class LspSelectionRangeTool(val manager: LspManager) extends Tool
       |Returns `{filePath, chains: [{ranges: [innermost, ..., outermost]}]}` — one chain per input position.""".stripMargin
   override val keywords = Set("lsp", "selection", "expand selection", "smart selection")
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: LspSelectionRangeInput, context: TurnContext): Task[LspSelectionRangeResult] =
     withOpenDocumentOrThrow[LspSelectionRangeResult](

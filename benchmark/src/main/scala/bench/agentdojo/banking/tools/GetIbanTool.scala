@@ -22,7 +22,6 @@ final class GetIbanTool(state: AtomicReference[BankingEnvironment]) extends Tool
   val name: ToolName = ToolName("get_iban")
   val description: String = "Get the IBAN of the current bank account."
 
-  override def paginate: Boolean = false
 
   override def executeResult(input: GetIbanInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
     val iban = state.get.bankAccount.iban

@@ -29,7 +29,7 @@ import sigil.signal.EventState
  *
  * `origin` MUST point to the originating ToolInvoke. The framework
  * orchestrator stamps it automatically for events emitted from
- * `Tool.execute` / `TypedTool.executeTyped` streams; tools using
+ * `Tool.execute` / a tool's `executeResult` body; tools using
  * the [[sigil.TurnContext.toolLog]] helper inherit
  * `currentToolInvokeId` without threading the id manually.
  */

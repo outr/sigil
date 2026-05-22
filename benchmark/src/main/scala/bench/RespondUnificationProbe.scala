@@ -95,7 +95,6 @@ object RespondUnificationProbe {
         |  - `{"type": "Failure", "reason": "<short>", "recoverable": true|false}` when the task can't be completed
         |  - `{"type": "Field", "label": "<l>", "value": "<v>", "icon": null}` for a single labeled key/value
         |  - `{"type": "Options", "prompt": "<q>", "options": [{"label": "...", "value": "...", "description": null, "exclusive": false}, ...], "allowMultiple": false}` for a structured choice""".stripMargin
-    override def paginate: Boolean = false
     override def executeResult(input: UnifiedRespondInput, ctx: sigil.TurnContext): rapid.Task[ToolResult[TextToolOutput]] =
       rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
   }
@@ -107,7 +106,6 @@ object RespondUnificationProbe {
     val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
     val name: ToolName = ToolName("respond")
     val description: String = "Emit a plain text / markdown reply to the user."
-    override def paginate: Boolean = false
     override def executeResult(input: BaselineRespondInput, ctx: sigil.TurnContext): rapid.Task[ToolResult[TextToolOutput]] =
       rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
   }
@@ -119,7 +117,6 @@ object RespondUnificationProbe {
     val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
     val name: ToolName = ToolName("respond_failure")
     val description: String = "Signal that the agent cannot complete the requested task."
-    override def paginate: Boolean = false
     override def executeResult(input: BaselineRespondFailureInput, ctx: sigil.TurnContext): rapid.Task[ToolResult[TextToolOutput]] =
       rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
   }
@@ -131,7 +128,6 @@ object RespondUnificationProbe {
     val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
     val name: ToolName = ToolName("respond_field")
     val description: String = "Emit a single labeled key/value field."
-    override def paginate: Boolean = false
     override def executeResult(input: BaselineRespondFieldInput, ctx: sigil.TurnContext): rapid.Task[ToolResult[TextToolOutput]] =
       rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
   }
@@ -143,7 +139,6 @@ object RespondUnificationProbe {
     val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
     val name: ToolName = ToolName("respond_options")
     val description: String = "Ask the user to pick from a fixed set of choices."
-    override def paginate: Boolean = false
     override def executeResult(input: BaselineRespondOptionsInput, ctx: sigil.TurnContext): rapid.Task[ToolResult[TextToolOutput]] =
       rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
   }

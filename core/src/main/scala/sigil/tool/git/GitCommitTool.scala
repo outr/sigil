@@ -30,7 +30,6 @@ final class GitCommitTool(context: FileSystemContext)
     ToolExample("Commit specific paths",      GitCommitInput(message = "Add config", paths = Some(List("config/app.yaml"))))
   )
   override val keywords = Set("git", "commit", "save", "checkpoint")
-  override def paginate: Boolean = false
 
   override def executeOutput(input: GitCommitInput, ctx: TurnContext): Task[GitCommitOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>

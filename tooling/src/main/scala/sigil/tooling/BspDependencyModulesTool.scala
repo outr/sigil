@@ -38,7 +38,6 @@ final class BspDependencyModulesTool(val manager: BspManager) extends Tool
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin
   override val keywords = Set("bsp", "dependencies", "deps", "modules", "library deps")
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: BspDependencyModulesInput,
                              context: TurnContext): Task[BspDependencyModulesResult] = {

@@ -38,7 +38,6 @@ final class DapSessionStatusTool(val manager: DapManager) extends Tool with DapT
       DapSessionStatusInput(sessionId = "demo-session", waitForStopMs = 5000)
     )
   )
-  override def paginate: Boolean = false
 
   override def executeResult(input: DapSessionStatusInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
     withSession(input.sessionId, context) { session =>

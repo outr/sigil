@@ -27,7 +27,6 @@ final class GitShowTool(context: FileSystemContext)
     ToolExample("Show a specific sha", GitShowInput(sha = "abc1234"))
   )
   override val keywords = Set("git", "show", "commit", "inspect")
-  override def paginate: Boolean = false
 
   override def executeOutput(input: GitShowInput, ctx: TurnContext): Task[GitShowOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>

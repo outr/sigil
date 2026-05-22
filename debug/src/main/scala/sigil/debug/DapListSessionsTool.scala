@@ -25,7 +25,6 @@ final class DapListSessionsTool(val manager: DapManager) extends Tool with DapTo
       DapListSessionsInput()
     )
   )
-  override def paginate: Boolean = false
 
   override def executeResult(input: DapListSessionsInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
     Task {

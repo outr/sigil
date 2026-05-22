@@ -26,7 +26,6 @@ final class GetBalanceTool(state: AtomicReference[BankingEnvironment]) extends T
   val name: ToolName = ToolName("get_balance")
   val description: String = "Get the balance of the account."
 
-  override def paginate: Boolean = false
 
   override def executeResult(input: GetBalanceInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
     val balance = state.get.bankAccount.balance

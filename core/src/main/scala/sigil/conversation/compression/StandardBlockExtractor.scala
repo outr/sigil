@@ -15,7 +15,7 @@ import sigil.information.{Information, InformationSummary}
  * with a placeholder reference.
  *
  * **Tool results are out of scope.** Per the tool contract, what
- * `executeTyped` emits is what the agent sees on its next iteration
+ * `executeResult` emits is what the agent sees on its next iteration
  * — the framework must not silently substitute a placeholder for
  * arbitrary tool output (sigil bug #201). Tools whose output exceeds
  * a single-shot consumable size must declare
@@ -73,7 +73,7 @@ case class StandardBlockExtractor(toInformation: (String, Id[Information]) => In
             val (f, s, i) = buildExtraction(t.content, replacement => t.copy(content = replacement))
             (f, Some(s), Some(i))
           // Tool-result frames are NOT eligible for extraction (sigil
-          // bug #201). What `executeTyped` emits is what the agent
+          // bug #201). What `executeResult` emits is what the agent
           // sees on its next iteration — the framework must not
           // silently substitute a placeholder for tool output. Tools
           // whose output exceeds a single-shot consumable size

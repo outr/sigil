@@ -37,7 +37,6 @@ final class LspTypeDefinitionTool(val manager: LspManager) extends Tool
       |Returns `[{uri, filePath, range}]`.""".stripMargin
   override val keywords = Set("lsp", "type definition", "type", "where defined", "type declaration", "examine", "inspect")
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: LspTypeDefinitionInput, context: TurnContext): Task[LspLocationsResult] =
     withOpenDocumentOrThrow[LspLocationsResult](

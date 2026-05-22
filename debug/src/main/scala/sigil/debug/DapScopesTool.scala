@@ -31,7 +31,6 @@ final class DapScopesTool(val manager: DapManager) extends Tool with DapToolSupp
       DapScopesInput(sessionId = "demo-session", frameId = 1000)
     )
   )
-  override def paginate: Boolean = false
 
   override def executeResult(input: DapScopesInput, context: TurnContext): Task[ToolResult[DapScopesOutput]] =
     withSession(input.sessionId, context) { session =>

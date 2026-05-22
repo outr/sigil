@@ -54,7 +54,6 @@ final class GitPushTool(context: FileSystemContext)
     ToolExample("Explicit remote and branch",          GitPushInput(remote = Some("upstream"), branch = Some("feature/x")))
   )
   override val keywords = Set("git", "push", "publish", "upload", "remote", "upstream", "deploy", "sync")
-  override def paginate: Boolean = false
 
   override def executeOutput(input: GitPushInput, ctx: TurnContext): Task[GitPushOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>

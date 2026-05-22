@@ -110,7 +110,7 @@ trait Event extends Signal with Document[Event] {
    * their originating [[ToolInvoke]]. [[sigil.conversation.FrameBuilder]]
    * uses this to pair the event with its call_id directly, replacing
    * the older "most-recent unresolved" scan. Multiple Tool events
-   * from one `executeTyped` therefore all pair to the same call;
+   * from one `executeResult` therefore all pair to the same call;
    * `Provider.renderFrames` merges them into a single wire-level
    * `function_call_output`.
    *

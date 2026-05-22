@@ -29,7 +29,6 @@ final class GitStatusTool(context: FileSystemContext)
     ToolExample("Status of a specific repo", GitStatusInput(workingDir = Some("/abs/path/to/repo")))
   )
   override val keywords = Set("git", "status", "changes", "diff", "porcelain", "uncommitted")
-  override def paginate: Boolean = false
 
   override def executeOutput(input: GitStatusInput, ctx: TurnContext): Task[GitStatusOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>

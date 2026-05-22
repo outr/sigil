@@ -23,7 +23,6 @@ final class UpdatePasswordTool(state: AtomicReference[BankingEnvironment]) exten
   val name: ToolName = ToolName("update_password")
   val description: String = "Update the user password."
 
-  override def paginate: Boolean = false
 
   override def executeResult(input: UpdatePasswordInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
     state.updateAndGet(env => env.copy(userAccount = env.userAccount.copy(password = input.password)))

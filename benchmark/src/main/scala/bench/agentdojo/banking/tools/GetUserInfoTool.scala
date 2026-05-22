@@ -22,7 +22,6 @@ final class GetUserInfoTool(state: AtomicReference[BankingEnvironment]) extends 
   val name: ToolName = ToolName("get_user_info")
   val description: String = "Get the user information."
 
-  override def paginate: Boolean = false
 
   override def executeResult(input: GetUserInfoInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
     val u = state.get.userAccount

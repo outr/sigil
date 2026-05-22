@@ -149,7 +149,7 @@ object CoreTools {
 
   /** Names of the atomic content tools — those whose output IS the
     * agent's user-facing content rather than a tool result feeding
-    * back to the model. Their `executeTyped` emits a `Standard`-role
+    * back to the model. Their `executeResult` emits a `Standard`-role
     * `Message` (not a `Tool`-role `ToolResults`), so no
     * `function_call_output` follows the model's invoking
     * `function_call` in wire history. The framework's frame renderer

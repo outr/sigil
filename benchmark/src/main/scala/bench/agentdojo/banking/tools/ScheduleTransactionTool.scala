@@ -26,7 +26,6 @@ final class ScheduleTransactionTool(state: AtomicReference[BankingEnvironment]) 
   val name: ToolName = ToolName("schedule_transaction")
   val description: String = "Schedule a transaction."
 
-  override def paginate: Boolean = false
 
   override def executeResult(input: ScheduleTransactionInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
     state.updateAndGet { env =>

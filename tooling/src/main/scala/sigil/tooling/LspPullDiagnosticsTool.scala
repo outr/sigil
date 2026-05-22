@@ -48,7 +48,6 @@ final class LspPullDiagnosticsTool(val manager: LspManager) extends Tool
     "scala", "type", "fix", "code", "language"
   )
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: LspPullDiagnosticsInput, context: TurnContext): Task[LspDiagnosticsResult] =
     withOpenDocumentOrThrow[LspDiagnosticsResult](

@@ -26,7 +26,6 @@ case object PinContainerTool extends Tool {
       |already-pinned container reports zero rows affected.""".stripMargin
   override val keywords = Set("pin", "container", "preserve", "keep", "retain", "no gc")
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: PinContainerInput,
                              ctx: TurnContext): Task[PinContainerOutput] =

@@ -41,7 +41,6 @@ final class LspDidChangeTool(val manager: LspManager) extends Tool
       |the document version is bumped.""".stripMargin
   override val keywords = Set("lsp", "did change", "edit", "change", "modify", "document update", "notify edit")
 
-  override def paginate: Boolean = false
 
   override def executeResult(input: LspDidChangeInput,
                              context: TurnContext): Task[ToolResult[LspDidChangeResult]] = {

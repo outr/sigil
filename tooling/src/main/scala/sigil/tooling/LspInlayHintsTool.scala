@@ -41,7 +41,6 @@ final class LspInlayHintsTool(val manager: LspManager) extends Tool
       |Each item: `{kind, position, label}` where kind is `type` / `param` / `hint`.""".stripMargin
   override val keywords = Set("lsp", "inlay", "hints", "type annotation", "parameter hint", "type hint")
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: LspInlayHintsInput, context: TurnContext): Task[LspInlayHintsResult] =
     withOpenDocumentOrThrow[LspInlayHintsResult](

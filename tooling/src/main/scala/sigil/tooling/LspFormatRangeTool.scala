@@ -42,7 +42,6 @@ final class LspFormatRangeTool(val manager: LspManager) extends Tool
       |Writes the formatted result back to disk; returns `{filePath, editsApplied}`.""".stripMargin
   override val keywords = Set("lsp", "format", "format range", "prettify", "indent", "beautify", "selection")
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: LspFormatRangeInput, context: TurnContext): Task[LspFormatResult] =
     withOpenDocumentOrThrow[LspFormatResult](

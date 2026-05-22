@@ -37,7 +37,6 @@ final class DapVariablesTool(val manager: DapManager) extends Tool with DapToolS
       DapVariablesInput(sessionId = "demo-session", variablesReference = 1001)
     )
   )
-  override def paginate: Boolean = false
 
   override def executeResult(input: DapVariablesInput, context: TurnContext): Task[ToolResult[DapVariablesOutput]] =
     withSession(input.sessionId, context) { session =>

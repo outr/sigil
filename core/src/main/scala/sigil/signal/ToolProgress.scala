@@ -11,11 +11,11 @@ import sigil.tool.ToolName
  * render a live status line under the tool's `ToolInvoke` chip
  * ("Imported 500 / 7,300 events", "Compiling step 3/7") rather than
  * staring at an indeterminate spinner while the tool's
- * `executeTyped` blocks.
+ * `executeResult` blocks.
  *
  * Tools opt in by calling `TurnContext.reportProgress(message,
  * percent?)`; the framework stamps `currentToolInvokeId` on the
- * context before dispatching `executeTyped`, so the helper has the
+ * context before dispatching `executeResult`, so the helper has the
  * correlation id without the tool author having to thread it through.
  *
  * `invokeId` points at the [[sigil.event.ToolInvoke]] this progress

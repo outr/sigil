@@ -12,11 +12,11 @@ package sigil.tool
  * to be asymmetric: success types or thrown exceptions only. Now
  * Sigil-as-author speaks the same shape as Sigil-as-client.
  *
- * Sealed sum so callers pattern-match exhaustively. Tools opt into
- * the envelope by overriding [[TypedOutputTool.executeTypedResult]];
- * existing tools that only override the legacy `executeTyped` get a
- * default wrap (success → Success; thrown error → Failure with the
- * exception message + JSON-serialised input as args).
+ * Sealed sum so callers pattern-match exhaustively. Tools produce
+ * the envelope by overriding [[Tool.executeResult]]; tools that
+ * override the simpler [[Tool.executeOutput]] get a default wrap
+ * (success → Success; thrown error → Failure with the exception
+ * message + JSON-serialised input as args).
  *
  * `Failure.hint` is the high-leverage field — it teaches the agent
  * what to do next ("if you wanted to read a file, call read_file

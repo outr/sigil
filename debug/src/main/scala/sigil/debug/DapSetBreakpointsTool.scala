@@ -35,7 +35,6 @@ final class DapSetBreakpointsTool(val manager: DapManager) extends Tool with Dap
       DapSetBreakpointsInput(sessionId = "demo-session", filePath = "/abs/path/Foo.scala", lines = List(15, 32))
     )
   )
-  override def paginate: Boolean = false
 
   override def executeResult(input: DapSetBreakpointsInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
     withSession(input.sessionId, context) { session =>

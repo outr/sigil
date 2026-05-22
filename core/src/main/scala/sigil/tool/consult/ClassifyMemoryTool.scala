@@ -52,7 +52,6 @@ case object ClassifyMemoryTool extends Tool with FrameworkConsult {
       |4. `ambiguityReason` — required when `space == "ambiguous"`; one short sentence telling
       |   the user what's unclear ("could apply to user or project; please pick").""".stripMargin
 
-  override def paginate: Boolean = false
 
   /** Categorical decision — routes through the cheap classification tier. */
   override def consultWorkType: WorkType = ClassificationWork

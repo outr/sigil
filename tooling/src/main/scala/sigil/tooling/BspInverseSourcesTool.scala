@@ -32,7 +32,6 @@ final class BspInverseSourcesTool(val manager: BspManager) extends Tool
       |`filePath` is the absolute source path.""".stripMargin
   override val keywords = Set("bsp", "inverse sources", "target for file", "which target", "owning target")
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: BspInverseSourcesInput,
                              context: TurnContext): Task[BspInverseSourcesResult] =

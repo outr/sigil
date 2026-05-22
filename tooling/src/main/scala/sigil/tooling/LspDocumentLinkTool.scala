@@ -31,7 +31,6 @@ final class LspDocumentLinkTool(val manager: LspManager) extends Tool
       |Each entry shows the link's start position and target URI (when resolved).""".stripMargin
   override val keywords = Set("lsp", "links", "document link", "hyperlink", "navigate")
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: LspDocumentLinkInput, context: TurnContext): Task[LspDocumentLinkResult] =
     withOpenDocumentOrThrow[LspDocumentLinkResult](

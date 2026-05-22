@@ -30,7 +30,6 @@ final class DapContinueTool(val manager: DapManager) extends Tool with DapToolSu
       DapContinueInput(sessionId = "demo-session", threadId = 1)
     )
   )
-  override def paginate: Boolean = false
 
   override def executeResult(input: DapContinueInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
     withSession(input.sessionId, context) { session =>

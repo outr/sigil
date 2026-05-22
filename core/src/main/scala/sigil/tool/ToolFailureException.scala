@@ -1,7 +1,7 @@
 package sigil.tool
 
 /**
- * Raised by [[TypedOutputTool.invoke]] when the called tool emits
+ * Raised by [[Tool.invoke]] when the called tool produces
  * [[ToolResult.Failure]]. Lets one tool's body call another tool
  * via `invoke` and either pattern-match on `handleError` to recover,
  * or let the failure propagate to its own caller (which sees the
@@ -9,10 +9,10 @@ package sigil.tool
  *
  * Carries the originating tool's name + the structured failure
  * fields so the propagated error is debuggable and machine-readable.
- * Distinct from a thrown exception inside an `executeTyped` body —
+ * Distinct from a thrown exception inside an `executeOutput` body —
  * those auto-convert to `ToolResult.Failure(message = e.getMessage)`
- * via [[TypedOutputTool.executeTypedResult]]'s default wrap. This
- * exception is the *re-raised* form of an already-structured Failure.
+ * via [[Tool.executeResult]]'s default wrap. This exception is the
+ * *re-raised* form of an already-structured Failure.
  */
 final class ToolFailureException(val toolName: ToolName,
                                  val failureMessage: String,

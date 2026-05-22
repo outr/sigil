@@ -18,7 +18,7 @@ package sigil.provider
  * the two leak shapes, replace each matched span with a single-line
  * placeholder, and return the cleaned content alongside the list of
  * removed spans. Call sites that publish a Message (the orchestrator's
- * atomic-respond settle path + `RespondTool.executeTyped`) apply
+ * atomic-respond settle path + `RespondTool.executeResult`) apply
  * this before parsing the content into ResponseContent blocks.
  */
 object XmlToolCallSanitizer {

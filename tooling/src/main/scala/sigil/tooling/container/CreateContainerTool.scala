@@ -31,7 +31,6 @@ case object CreateContainerTool extends Tool {
     "materialize", "from list", "from items"
   )
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: CreateContainerInput,
                              ctx: TurnContext): Task[CreateContainerOutput] =

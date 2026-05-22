@@ -31,7 +31,6 @@ final class BspScalaMainClassesTool(val manager: BspManager) extends Tool with B
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin
   override val keywords = Set("bsp", "main classes", "main", "entry points", "scala", "runnable")
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: BspScalaMainClassesInput,
                              context: TurnContext): Task[BspMainClassesResult] =

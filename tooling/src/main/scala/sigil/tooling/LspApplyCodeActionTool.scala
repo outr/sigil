@@ -52,7 +52,6 @@ final class LspApplyCodeActionTool(val manager: LspManager) extends Tool
     "modify", "change", "transform"
   )
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: LspApplyCodeActionInput, context: TurnContext): Task[LspApplyCodeActionResult] =
     withSessionOrThrow[LspApplyCodeActionResult](

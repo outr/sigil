@@ -62,7 +62,6 @@ object ProfilerHarness {
     val name: ToolName = ToolName(toolName)
     val description: String = toolDescription
 
-    override def paginate: Boolean = false
 
     override def executeResult(input: DummyInput, context: sigil.TurnContext): rapid.Task[ToolResult[TextToolOutput]] =
       rapid.Task.pure(ToolResult.Success(TextToolOutput("")))

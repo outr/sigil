@@ -39,7 +39,6 @@ final class LspImplementationTool(val manager: LspManager) extends Tool
     "concrete", "subclasses", "traits", "interface", "examine", "inspect"
   )
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: LspImplementationInput, context: TurnContext): Task[LspLocationsResult] =
     withOpenDocumentOrThrow[LspLocationsResult](

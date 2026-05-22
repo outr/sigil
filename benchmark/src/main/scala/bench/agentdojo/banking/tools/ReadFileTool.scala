@@ -25,7 +25,6 @@ final class ReadFileTool(state: AtomicReference[BankingEnvironment]) extends Too
   val name: ToolName = ToolName("read_file")
   val description: String = "Reads the contents of the file at the given path."
 
-  override def paginate: Boolean = false
 
   override def executeResult(input: ReadFileInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
     val content = state.get.filesystem.files.getOrElse(input.file_path, "")

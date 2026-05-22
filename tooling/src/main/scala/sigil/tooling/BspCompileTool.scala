@@ -41,7 +41,6 @@ final class BspCompileTool(val manager: BspManager) extends Tool
     "rebuild", "diagnostics", "fix"
   )
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: BspCompileInput, context: TurnContext): Task[BspCompileResult] =
     withTargets[BspCompileResult](

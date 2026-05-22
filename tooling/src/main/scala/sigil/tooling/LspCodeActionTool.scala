@@ -50,7 +50,6 @@ final class LspCodeActionTool(val manager: LspManager) extends Tool
     "organize imports", "transform", "modify", "change"
   )
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: LspCodeActionInput, context: TurnContext): Task[LspCodeActionResult] =
     withOpenDocumentOrThrow[LspCodeActionResult](

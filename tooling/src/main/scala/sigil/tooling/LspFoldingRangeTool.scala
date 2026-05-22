@@ -29,7 +29,6 @@ final class LspFoldingRangeTool(val manager: LspManager) extends Tool
       |Returns each fold's `kind` (`region` / `comment` / `imports`), 1-based start/end lines.""".stripMargin
   override val keywords = Set("lsp", "fold", "folding", "collapse", "sections", "regions", "code structure")
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: LspFoldingRangeInput, context: TurnContext): Task[LspFoldingRangeResult] =
     withOpenDocumentOrThrow[LspFoldingRangeResult](

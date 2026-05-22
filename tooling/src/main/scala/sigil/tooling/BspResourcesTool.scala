@@ -32,7 +32,6 @@ final class BspResourcesTool(val manager: BspManager) extends Tool
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin
   override val keywords = Set("bsp", "resources", "target resources", "list resources")
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: BspResourcesInput, context: TurnContext): Task[BspResourcesResult] =
     withTargets[BspResourcesResult](

@@ -40,7 +40,6 @@ final class BspTestTool(val manager: BspManager) extends Tool
     "scala", "sbt", "project", "targets", "validate"
   )
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: BspTestInput, context: TurnContext): Task[BspExecResult] =
     withSessionTyped[BspExecResult](

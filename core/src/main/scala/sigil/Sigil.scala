@@ -2945,7 +2945,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         }
       case cr: CapabilityResults =>
         // Sigil bug #226 — the per-loop `find_capability` cache is no
-        // longer persisted; `FindCapabilityTool.executeTyped` records
+        // longer persisted; `FindCapabilityTool.executeResult` records
         // matches directly onto `TurnContext.discoveredCapabilities`
         // so the cache dies with the agent loop instead of polluting
         // every subsequent turn. The projection update here keeps the
@@ -3993,7 +3993,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    *     respond's content streamed live via ContentBlockDeltas — the
    *     orchestrator wraps the result as `Signal` and emits before
    *     the Message-settle delta).
-   *   - [[sigil.tool.core.RespondTool.executeTyped]] for atomic
+   *   - [[sigil.tool.core.RespondTool.executeResult]] for atomic
    *     respond calls (llama.cpp grammar-constrained, OpenAI strict-
    *     mode, Anthropic, Google — every provider whose respond
    *     materialises as a function call). The tool's stream emits the

@@ -28,7 +28,6 @@ final class UpdateScheduledTransactionTool(state: AtomicReference[BankingEnviron
   val name: ToolName = ToolName("update_scheduled_transaction")
   val description: String = "Update a scheduled transaction."
 
-  override def paginate: Boolean = false
 
   override def executeResult(input: UpdateScheduledTransactionInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
     val before = state.get

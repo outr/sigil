@@ -60,7 +60,6 @@ final class LspRenameSymbolTool(val manager: LspManager) extends Tool
     "update symbol name", "global rename", "search rename"
   )
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: LspRenameSymbolInput,
                              context: TurnContext): Task[LspRenameSymbolOutput] = {

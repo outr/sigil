@@ -1230,7 +1230,7 @@ trait Provider extends Service {
     // Walk with explicit index so we can consume the optional
     // adjacent `Text` frame that follows an atomic-content
     // `ToolCall` (the respond family's
-    // `RespondTool.executeTyped` Message). Sigil bug #210 —
+    // `RespondTool.executeResult` Message). Sigil bug #210 —
     // pre-fix the two were emitted as separate consecutive
     // assistant messages, doubling per-call context cost and
     // reinforcing respond-loop patterns; merged here into a single
@@ -1432,7 +1432,7 @@ trait Provider extends Service {
     * Only **adjacent** ToolResult frames merge — interleaved frames
     * (a Text frame between two ToolResults sharing a callId) are kept
     * separate since the textual ordering is meaningful. In practice
-    * orchestrator-stamped events from a single `executeTyped` arrive
+    * orchestrator-stamped events from a single `executeResult` arrive
     * contiguously, so adjacency tracks the actual "all from one tool
     * call" boundary. */
   private def mergeAdjacentToolResults(frames: Vector[ContextFrame]): Vector[ContextFrame] = {

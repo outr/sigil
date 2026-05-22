@@ -226,7 +226,7 @@ object FrameBuilder {
       val (content, images) = toolResultPayload(event)
       // Bug #69 — pair via the explicit `origin` parent pointer the
       // orchestrator stamps onto every tool-emitted event. Multiple
-      // Tool events from one `executeTyped` therefore all carry the
+      // Tool events from one `executeResult` therefore all carry the
       // same origin and all pair to the same call_id; no orphan-
       // frame fall-through, no ambiguity from "most-recent
       // unresolved" scanning, no temporal heuristics that break under
@@ -235,7 +235,7 @@ object FrameBuilder {
       // A `MessageRole.Tool` event with `origin = None` is a
       // programmer error — the framework throws rather than rendering
       // a degraded "additional tool output" placeholder. Tool authors
-      // emit Tool-role events from `executeTyped` (where the
+      // emit Tool-role events from `executeResult` (where the
       // orchestrator stamps origin automatically); slash-command /
       // workflow / programmatic dispatch sites set `origin` at the
       // emission point. Anything else is a category error caught at

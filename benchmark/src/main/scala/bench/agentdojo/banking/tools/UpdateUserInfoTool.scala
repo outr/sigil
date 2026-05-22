@@ -26,7 +26,6 @@ final class UpdateUserInfoTool(state: AtomicReference[BankingEnvironment]) exten
   val name: ToolName = ToolName("update_user_info")
   val description: String = "Update the user information."
 
-  override def paginate: Boolean = false
 
   override def executeResult(input: UpdateUserInfoInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
     val updated = state.updateAndGet { env =>

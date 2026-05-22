@@ -41,7 +41,6 @@ final class DapEvaluateTool(val manager: DapManager) extends Tool with DapToolSu
       DapEvaluateInput(sessionId = "demo-session", expression = "myList.size", frameId = Some(1000))
     )
   )
-  override def paginate: Boolean = false
 
   override def executeResult(input: DapEvaluateInput, context: TurnContext): Task[ToolResult[DapEvaluateOutput]] =
     withSession(input.sessionId, context) { session =>

@@ -61,7 +61,6 @@ final class EditAtRangeTool(context: FileSystemContext)
   override val keywords =
     Set("file", "edit", "range", "position", "line", "column", "replace", "modify", "rewrite", "patch", "refactor")
 
-  override def paginate: Boolean = false
 
   override def executeResult(input: EditAtRangeInput, ctx: TurnContext): Task[ToolResult[EditAtRangeOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {

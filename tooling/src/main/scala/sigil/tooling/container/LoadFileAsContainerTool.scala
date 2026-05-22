@@ -41,7 +41,6 @@ final class LoadFileAsContainerTool(fileSystemContext: FileSystemContext) extend
     "lines", "split", "from file"
   )
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: LoadFileAsContainerInput,
                              ctx: TurnContext): Task[CreateContainerOutput] =

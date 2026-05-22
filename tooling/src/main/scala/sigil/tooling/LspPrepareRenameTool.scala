@@ -34,7 +34,6 @@ final class LspPrepareRenameTool(val manager: LspManager) extends Tool
       |Returns `Renameable(range)` when yes, `NotRenameable` when no.""".stripMargin
   override val keywords = Set("lsp", "rename", "refactor", "can rename", "renameable", "prepare")
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: LspPrepareRenameInput, context: TurnContext): Task[LspPrepareRenameResult] =
     withOpenDocumentOrThrow[LspPrepareRenameResult](

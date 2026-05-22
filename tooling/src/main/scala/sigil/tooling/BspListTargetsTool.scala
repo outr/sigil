@@ -32,7 +32,6 @@ final class BspListTargetsTool(val manager: BspManager) extends Tool
     "examine", "inspect", "scala", "sbt", "project", "build"
   )
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: BspListTargetsInput, context: TurnContext): Task[BspListTargetsResult] =
     withSessionTyped[BspListTargetsResult](

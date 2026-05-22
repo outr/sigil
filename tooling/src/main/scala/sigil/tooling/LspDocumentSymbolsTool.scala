@@ -44,7 +44,6 @@ final class LspDocumentSymbolsTool(val manager: LspManager) extends Tool
     "code", "semantic", "scala", "language", "navigate"
   )
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: LspDocumentSymbolsInput,
                              context: TurnContext): Task[LspDocumentSymbolsResult] =

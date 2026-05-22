@@ -36,7 +36,6 @@ final class BspScalaTestClassesTool(val manager: BspManager) extends Tool with B
       |Returns each target's test framework + class names.""".stripMargin
   override val keywords = Set("bsp", "test classes", "tests", "scala", "find tests", "test suite")
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: BspScalaTestClassesInput,
                              context: TurnContext): Task[BspTestClassesResult] =

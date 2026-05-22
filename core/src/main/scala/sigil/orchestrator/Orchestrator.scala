@@ -241,7 +241,7 @@ object Orchestrator {
       * target when [[ProviderEvent.Usage]] arrives but no streaming
       * `activeMessageId` exists — for tool-call-only models (llama.cpp
       * grammar-constrained `respond` invocations) the agent's
-      * user-visible Message is built inside the tool's `executeTyped`,
+      * user-visible Message is built inside the tool's `executeResult`,
       * so the streaming-text path never fires. Without this fallback
       * the per-turn token usage would land nowhere and clients render
       * `usage = (0,0,0)` on the agent's bubble. */
@@ -560,7 +560,7 @@ object Orchestrator {
                 // Topic resolution + keyword update used to live inline
                 // here. Lifted to `Sigil.resolveTopicShift` /
                 // `Sigil.updateConversationKeywords` so the atomic-
-                // respond path (via `RespondTool.executeTyped`) fires
+                // respond path (via `RespondTool.executeResult`) fires
                 // the same logic. We still emit from the streaming
                 // branch — the streaming Message is being settled by
                 // `MessageDelta` rather than created by the tool's
@@ -895,7 +895,7 @@ object Orchestrator {
         // no streaming activeMessageId exists. Tool-call-only models
         // (llama.cpp's grammar-constrained respond invocations) build
         // the agent's user-visible Message inside the tool's
-        // `executeTyped`, so the streaming-text path never fires; this
+        // `executeResult`, so the streaming-text path never fires; this
         // fallback lets per-turn token usage land on that Message.
         // Use `activeMessageId` only when a Message has actually been
         // emitted (`activeMessageCreated`); otherwise the id may be
@@ -1069,7 +1069,7 @@ object Orchestrator {
         // the paired Failure message can name it. Without this snapshot
         // the diagnostic loses the tool name (settleOrphan clears
         // activeCalls) and the frame renderer surfaces the misleading
-        // "tool's executeTyped — please report it" framework error
+        // "tool's executeResult — please report it" framework error
         // instead.
         val orphanedCalls = state.activeCalls.values.toList
         val reasonFor: ActiveCall => String = stopReason match {
@@ -1526,7 +1526,7 @@ object Orchestrator {
     // default). The framework's invariant is "every MessageRole.Tool
     // event carries `origin` pointing to its parent ToolInvoke" so
     // FrameBuilder pairs by parent rather than by scan, and multiple
-    // Tool events from one executeTyped all pair to the same call.
+    // Tool events from one executeResult all pair to the same call.
     //
     // Fast path: tools without preconditions / consent declared can
     // construct their stream synchronously — preserves bug #49's

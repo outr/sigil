@@ -85,7 +85,7 @@ object PlaceholderInputDetector {
    * `"input rejected: "` and suffixed with a hint pointing the agent
    * at sources of real values.
    *
-   * Tools call this in their `executeTyped` / `executeTypedResult` /
+   * Tools call this in their `executeResult` / `executeOutput` /
    * `executeStream` prelude — on `Some(reason)`, short-circuit with a
    * structured failure carrying that text; on `None`, run the actual
    * work.

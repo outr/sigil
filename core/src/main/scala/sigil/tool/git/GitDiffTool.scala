@@ -29,7 +29,6 @@ final class GitDiffTool(context: FileSystemContext)
     ToolExample("Structured hunks", GitDiffInput(format = GitDiffFormat.Hunks))
   )
   override val keywords = Set("git", "diff", "changes", "patch", "hunk")
-  override def paginate: Boolean = false
 
   override def executeOutput(input: GitDiffInput, ctx: TurnContext): Task[GitDiffOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>

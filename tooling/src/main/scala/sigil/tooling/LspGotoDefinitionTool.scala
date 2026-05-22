@@ -46,7 +46,6 @@ final class LspGotoDefinitionTool(val manager: LspManager) extends Tool
     "scala", "language", "code"
   )
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: LspGotoDefinitionInput, context: TurnContext): Task[LspLocationsResult] =
     withOpenDocumentOrThrow[LspLocationsResult](

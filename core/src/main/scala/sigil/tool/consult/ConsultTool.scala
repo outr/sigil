@@ -59,7 +59,6 @@ case object ConsultTool extends Tool {
     )
   )
 
-  override def paginate: Boolean = false
 
   override def executeResult(input: ConsultInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.providerFor(input.modelId, context.chain).flatMap { provider =>

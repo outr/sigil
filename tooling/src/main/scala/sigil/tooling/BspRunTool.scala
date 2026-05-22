@@ -38,7 +38,6 @@ final class BspRunTool(val manager: BspManager) extends Tool
       |Returns `{status, targetCount: 1, stdout, stderr}` where status is `OK` / `ERROR` / `CANCELLED`.""".stripMargin
   override val keywords = Set("bsp", "run", "execute", "main", "launch", "start")
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: BspRunInput, context: TurnContext): Task[BspExecResult] =
     withSessionTyped[BspExecResult](

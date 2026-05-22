@@ -39,7 +39,6 @@ final class LspHoverTool(val manager: LspManager) extends Tool
       |Returns `Option[{contents, kind, range?}]` — `None` if the server has no hover info there.""".stripMargin
   override val keywords = Set("lsp", "hover", "type", "type info", "info", "what is", "signature", "docs", "documentation", "explain")
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: LspHoverInput, context: TurnContext): Task[LspHoverResult] =
     withOpenDocumentOrThrow[LspHoverResult](

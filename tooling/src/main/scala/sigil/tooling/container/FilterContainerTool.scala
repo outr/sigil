@@ -36,7 +36,6 @@ case object FilterContainerTool extends Tool {
     "predicate", "match", "search"
   )
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: FilterContainerInput,
                              ctx: TurnContext): Task[CreateContainerOutput] =

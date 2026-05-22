@@ -27,7 +27,6 @@ final class GitBranchTool(context: FileSystemContext)
     ToolExample("Local + remote-tracking", GitBranchInput(includeRemotes = true))
   )
   override val keywords = Set("git", "branch", "branches", "checkout")
-  override def paginate: Boolean = false
 
   override def executeOutput(input: GitBranchInput, ctx: TurnContext): Task[GitBranchOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>

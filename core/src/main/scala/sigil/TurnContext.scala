@@ -59,7 +59,7 @@ import java.util.concurrent.atomic.AtomicReference
  * @param currentToolInvokeId the id of the [[sigil.event.ToolInvoke]] this
  *                            execution belongs to — set by the
  *                            orchestrator when dispatching to
- *                            `executeTyped` so tools can publish
+ *                            `executeResult` so tools can publish
  *                            mid-execution [[sigil.signal.ToolProgress]]
  *                            pulses via [[reportProgress]] without
  *                            threading the id manually. `None` outside a
@@ -260,14 +260,12 @@ case class TurnContext(sigil: Sigil,
    * Typical lifecycle:
    *
    * {{{
-   *   override def executeTyped(input: GrepInput, ctx: TurnContext): Stream[Event] = {
-   *     Stream.force(ctx.setSummary(s"Searching '${input.pattern}'").map { _ =>
-   *       Stream.eval(searchAsync(input)).flatMap { results =>
-   *         Stream.force(ctx.setSummary(s"${results.matchCount} matches across ${results.fileCount} files")
-   *           .map(_ => Stream.emits(buildResultEvents(results))))
-   *       }
-   *     })
-   *   }
+   *   override def executeOutput(input: GrepInput, ctx: TurnContext): Task[GrepOutput] =
+   *     for {
+   *       _       <- ctx.setSummary(s"Searching '${input.pattern}'")
+   *       results <- searchAsync(input)
+   *       _       <- ctx.setSummary(s"${results.matchCount} matches across ${results.fileCount} files")
+   *     } yield results
    * }}}
    *
    * No-op outside a tool dispatch — no [[sigil.event.ToolInvoke]] to

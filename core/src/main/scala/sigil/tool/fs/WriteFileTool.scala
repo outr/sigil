@@ -44,7 +44,6 @@ final class WriteFileTool(context: FileSystemContext)
     )
   )
   override val keywords = Set("file", "write", "save", "create", "output")
-  override def paginate: Boolean = false
 
   override def executeResult(input: WriteFileInput, ctx: TurnContext): Task[ToolResult[WriteFileOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {

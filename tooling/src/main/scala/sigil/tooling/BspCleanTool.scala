@@ -29,7 +29,6 @@ final class BspCleanTool(val manager: BspManager) extends Tool
       |`targets` (optional) is the list of target URIs; empty cleans every workspace target.""".stripMargin
   override val keywords = Set("bsp", "clean", "clean cache", "clear build", "wipe build", "reset")
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: BspCleanInput, context: TurnContext): Task[BspCleanResult] =
     withTargets[BspCleanResult](

@@ -34,7 +34,6 @@ case object ProgressReflectionTool extends Tool with FrameworkConsult {
       |Be honest — if your status looks identical to the prior status or you're cycling through
       |the same searches, say so (`meaningfulProgress = false`) so the framework can intervene.""".stripMargin
 
-  override def paginate: Boolean = false
 
   /** Quick self-assessment — routes through the cheap classification tier. */
   override def consultWorkType: WorkType = ClassificationWork

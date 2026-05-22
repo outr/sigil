@@ -32,7 +32,6 @@ final class BspOutputPathsTool(val manager: BspManager) extends Tool
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin
   override val keywords = Set("bsp", "output", "output paths", "classpath", "build output")
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: BspOutputPathsInput,
                              context: TurnContext): Task[BspOutputPathsResult] =

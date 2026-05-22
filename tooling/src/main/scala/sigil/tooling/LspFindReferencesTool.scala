@@ -51,7 +51,6 @@ final class LspFindReferencesTool(val manager: LspManager) extends Tool
     "scala", "language", "code", "navigate"
   )
 
-  override def paginate: Boolean = false
 
   // Bug #230 — usage lists are the canonical input to
   // `dispatch_workers` (one item per reference site → per-callsite

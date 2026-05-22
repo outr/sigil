@@ -35,7 +35,6 @@ final class DapDisconnectTool(val manager: DapManager) extends Tool with DapTool
       DapDisconnectInput(sessionId = "demo-session", terminateDebuggee = true)
     )
   )
-  override def paginate: Boolean = false
 
   override def executeResult(input: DapDisconnectInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
     withSession(input.sessionId, context) { session =>

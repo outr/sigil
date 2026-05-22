@@ -31,7 +31,6 @@ final class BspScalacOptionsTool(val manager: BspManager) extends Tool with BspT
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin
   override val keywords = Set("bsp", "scalac", "scalac options", "compiler options", "compile flags", "scala")
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: BspScalacOptionsInput,
                              context: TurnContext): Task[BspScalacOptionsResult] =

@@ -27,7 +27,6 @@ class TopicClassifierTool(priorLabels: List[String]) extends Tool with Framework
       |  - <prior label> — same subject as one of the prior topics; the user is returning.
       |  - "New"      — a subject genuinely different from Current and all priors.""".stripMargin
 
-  override def paginate: Boolean = false
 
   /** Categorical decision — routes through the cheap classification tier. */
   override def consultWorkType: WorkType = ClassificationWork

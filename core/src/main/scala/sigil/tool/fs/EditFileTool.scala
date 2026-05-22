@@ -52,7 +52,6 @@ final class EditFileTool(context: FileSystemContext)
     )
   )
   override val keywords = Set("file", "edit", "modify", "replace", "rewrite", "patch")
-  override def paginate: Boolean = false
 
   /** Non-Success EditFileOutputs (NotFound, NotUnique, Stale, FileNotFound)
     * are logical failures of the EDIT operation, not failures of the tool

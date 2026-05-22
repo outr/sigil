@@ -35,7 +35,6 @@ final class DapSetExceptionBreakpointsTool(val manager: DapManager) extends Tool
       DapSetExceptionBreakpointsInput(sessionId = "demo-session", filters = List("uncaught"))
     )
   )
-  override def paginate: Boolean = false
 
   override def executeResult(input: DapSetExceptionBreakpointsInput,
                              context: TurnContext): Task[ToolResult[TextToolOutput]] =

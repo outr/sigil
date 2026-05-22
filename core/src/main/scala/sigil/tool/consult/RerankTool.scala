@@ -27,7 +27,6 @@ case object RerankTool extends Tool with FrameworkConsult {
       |from the output are treated as least-relevant (appended at the end in their original
       |order); ids not in the candidate set are ignored.""".stripMargin
 
-  override def paginate: Boolean = false
 
   /** Relevance scoring — routes through the cheap classification tier. */
   override def consultWorkType: WorkType = ClassificationWork

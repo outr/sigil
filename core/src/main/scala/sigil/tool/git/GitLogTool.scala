@@ -29,7 +29,6 @@ final class GitLogTool(context: FileSystemContext)
     ToolExample("Commits since last Friday", GitLogInput(since = Some("last friday"), includeBody = true))
   )
   override val keywords = Set("git", "log", "history", "commits", "blame")
-  override def paginate: Boolean = false
 
   override def executeOutput(input: GitLogInput, ctx: TurnContext): Task[GitLogOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>

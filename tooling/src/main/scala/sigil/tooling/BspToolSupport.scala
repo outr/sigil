@@ -34,7 +34,7 @@ trait BspToolSupport extends sigil.tool.Tool {
     * [[sigil.tool.PlaceholderInputDetector]]. Returns a placeholder-
     * rejection failure when any of `fields` is a recognised
     * placeholder; returns `None` to let the tool run. Tools call this
-    * in their `executeTyped` prelude before `withSessionTyped`. */
+    * in their `executeResult` prelude before `withSessionTyped`. */
   protected def validatePlaceholders(fields: (String, String)*): Option[String] =
     sigil.tool.PlaceholderInputDetector.validateNoPlaceholders(fields*)
 
@@ -70,8 +70,9 @@ trait BspToolSupport extends sigil.tool.Tool {
       visibility = MessageVisibility.All
     )
 
-  /** Typed variant for tools extending `TypedOutputTool[I, O]`. Runs
-    * `body` against a session and returns its typed `Output`. Errors
+  /** Typed variant for tools whose `executeResult` returns a typed
+    * `Output`. Runs `body` against a session and returns its typed
+    * `Output`. Errors
     * (config / spawn / RPC failures) get routed to the caller's
     * `onError` mapping — typically a sentinel variant on the tool's
     * Output type. */

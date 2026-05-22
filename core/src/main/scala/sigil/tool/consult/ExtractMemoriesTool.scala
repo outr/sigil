@@ -60,7 +60,6 @@ case object ExtractMemoriesTool extends Tool with FrameworkConsult {
       |  - intermediate reasoning, small-talk, acknowledgements
       |  - content that belongs in a summary (narrative / ongoing context).""".stripMargin
 
-  override def paginate: Boolean = false
 
   /** Fact extraction is condensing work — routes through the cheap
     * summarization tier. */

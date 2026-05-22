@@ -105,7 +105,6 @@ final class DispatchWorkersTool(scriptExecutor: Option[ScriptExecutor] = None) e
     )
   )
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: DispatchWorkersInput,
                              ctx: TurnContext): Task[DispatchWorkersOutput] = {

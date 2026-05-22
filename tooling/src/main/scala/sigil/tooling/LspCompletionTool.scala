@@ -40,7 +40,6 @@ final class LspCompletionTool(val manager: LspManager) extends Tool
       |Returns `{filePath, items: [{label, kind, detail}], totalCount, truncated}`.""".stripMargin
   override val keywords = Set("lsp", "completion", "complete", "autocomplete", "suggest", "suggestion", "intellisense")
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: LspCompletionInput, context: TurnContext): Task[LspCompletionResult] =
     withOpenDocumentOrThrow[LspCompletionResult](

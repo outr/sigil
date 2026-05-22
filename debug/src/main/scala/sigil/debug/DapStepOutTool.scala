@@ -29,7 +29,6 @@ final class DapStepOutTool(val manager: DapManager) extends Tool with DapToolSup
       DapStepOutInput(sessionId = "demo-session", threadId = 1)
     )
   )
-  override def paginate: Boolean = false
 
   override def executeResult(input: DapStepOutInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
     withSession(input.sessionId, context) { session =>

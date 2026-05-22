@@ -41,7 +41,6 @@ final class LspSignatureHelpTool(val manager: LspManager) extends Tool
       |`activeParameter` is `-1` when no parameter is active or signatures is empty.""".stripMargin
   override val keywords = Set("lsp", "signature", "parameters", "args", "arguments", "what does take", "function signature")
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: LspSignatureHelpInput, context: TurnContext): Task[LspSignatureHelpResult] =
     withOpenDocumentOrThrow[LspSignatureHelpResult](

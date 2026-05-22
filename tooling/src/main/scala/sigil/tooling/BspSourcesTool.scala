@@ -34,7 +34,6 @@ final class BspSourcesTool(val manager: BspManager) extends Tool with BspToolSup
     "scala", "sbt", "project", "files", "code", "examine", "inspect"
   )
 
-  override def paginate: Boolean = false
 
   override def executeOutput(input: BspSourcesInput, context: TurnContext): Task[BspSourcesResult] =
     withTargets[BspSourcesResult](

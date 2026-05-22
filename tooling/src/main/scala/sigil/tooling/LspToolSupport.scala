@@ -34,7 +34,7 @@ trait LspToolSupport extends sigil.tool.Tool {
     * [[sigil.tool.PlaceholderInputDetector]]. Returns a placeholder-
     * rejection failure when any of `fields` is a recognised
     * placeholder; returns `None` to let the tool run. Tools call this
-    * in their `executeTyped` prelude before `withOpenDocumentTyped` /
+    * in their `executeResult` prelude before `withOpenDocumentTyped` /
     * `withSessionTyped`. */
   protected def validatePlaceholders(fields: (String, String)*): Option[String] =
     sigil.tool.PlaceholderInputDetector.validateNoPlaceholders(fields*)
@@ -50,8 +50,8 @@ trait LspToolSupport extends sigil.tool.Tool {
       visibility = MessageVisibility.All
     )
 
-  /** Typed-session entrypoint for tools that extend
-    * `TypedOutputTool[I, O]`. Runs `body` against an open session
+  /** Typed-session entrypoint for tools whose `executeResult`
+    * returns a typed `Output`. Runs `body` against an open session
     * and returns its typed `Output`. Error paths (no config / spawn
     * failure / RPC error) get routed to the caller's `onError`
     * mapping — typically a sentinel variant on the tool's Output
@@ -95,9 +95,9 @@ trait LspToolSupport extends sigil.tool.Tool {
         }.handleError(e => Task.pure(onError(s"LSP error: ${e.getMessage}")))
     }
 
-  /** Open-document variant of [[withSessionTyped]] for
-    * `TypedOutputTool[I, O]` tools. Calls `didOpen` on the target
-    * file before running `body`. */
+  /** Open-document variant of [[withSessionTyped]] for tools whose
+    * `executeResult` returns a typed `Output`. Calls `didOpen` on the
+    * target file before running `body`. */
   protected def withOpenDocumentTyped[Output](languageId: String,
                                               filePath: String,
                                               context: TurnContext,

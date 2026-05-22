@@ -83,13 +83,11 @@ abstract class PaginatedTool[In <: ToolInput, A](
 
   /** Drains the typed stream into the DB and resolves to the
     * first-page [[JsonPagedResult]]; [[Tool.execute]] emits the
-    * standard `ToolResults` event from it. */
+    * standard `ToolResults` event from it. A drain-time crash maps to
+    * a recoverable [[ToolResult.Failure]] via [[Tool]]'s framework
+    * error path — no per-tool `handleError` needed. */
   override def executeResult(input: In, context: TurnContext): Task[ToolResult[JsonPagedResult]] =
-    drainAndFirstPage(input, context)
-      .map(page => ToolResult.success(page))
-      .handleError(t => Task.pure(ToolResult.failure(
-        message = s"${name.value} failed: ${t.getClass.getSimpleName}: ${Option(t.getMessage).getOrElse("(no message)")}"
-      )))
+    drainAndFirstPage(input, context).map(ToolResult.success)
 
   /** Drain the stream into `db.toolOutputs`, then return the
     * first page. Rows are keyed by

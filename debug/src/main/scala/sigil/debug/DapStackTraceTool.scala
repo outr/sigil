@@ -36,7 +36,6 @@ final class DapStackTraceTool(val manager: DapManager) extends Tool with DapTool
       DapStackTraceInput(sessionId = "demo-session", threadId = 1)
     )
   )
-  override def paginate: Boolean = false
 
   override def executeResult(input: DapStackTraceInput, context: TurnContext): Task[ToolResult[DapStackTraceOutput]] =
     withSession(input.sessionId, context) { session =>

@@ -23,7 +23,6 @@ final class GetMostRecentTransactionsTool(state: AtomicReference[BankingEnvironm
   val name: ToolName = ToolName("get_most_recent_transactions")
   val description: String = "Get the list of the most recent transactions, e.g. to summarize the last n transactions."
 
-  override def paginate: Boolean = false
 
   override def executeResult(input: GetMostRecentTransactionsInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
     val transactions = state.get.bankAccount.transactions.takeRight(input.n)
