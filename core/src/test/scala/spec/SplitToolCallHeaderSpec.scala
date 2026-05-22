@@ -5,9 +5,10 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.{GlobalSpace, SpaceId, TurnContext}
 import lightdb.id.Id
+import rapid.Task
 import sigil.event.Event
 import sigil.provider.{CallId, ProviderEvent, ToolCallAccumulator}
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 /**
  * Regression for Sigil audit H8 — `ToolCallAccumulator.observeHeader`
@@ -29,13 +30,16 @@ class SplitToolCallHeaderSpec extends AnyWordSpec with Matchers {
   case class Args(value: String) extends ToolInput derives RW
 
   private object Foo extends Tool {
-  override def paginate: Boolean = false
-    override val name: ToolName = ToolName("foo")
-    override def description: String = "test"
-    override def inputRW: RW[? <: ToolInput] = summon[RW[Args]].asInstanceOf[RW[ToolInput]]
+    type Input  = Args
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[Args]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name: ToolName = ToolName("foo")
+    val description: String = "test"
     override def space: SpaceId = GlobalSpace
-    override def execute(input: ToolInput, context: TurnContext): rapid.Stream[Event] = rapid.Stream.empty
     override def _id: Id[Tool] = Id[Tool](name.value)
+    override def executeResult(input: Args, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.Success(TextToolOutput(input.value)))
   }
 
   private def newAcc: ToolCallAccumulator = new ToolCallAccumulator(Vector(Foo))

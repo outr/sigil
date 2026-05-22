@@ -1,20 +1,15 @@
 package spec
 
-import fabric.Json
+import fabric.*
 import fabric.io.JsonFormatter
 import fabric.rw.*
-import lightdb.id.Id
-import lightdb.time.Timestamp
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
-import rapid.{AsyncTaskSpec, Stream}
+import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
-import sigil.conversation.{ConversationView, Conversation, Topic}
-import sigil.event.{Event, Message, MessageVisibility, MessageRole}
-import sigil.participant.ParticipantId
-import sigil.signal.EventState
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
-import sigil.tool.model.ResponseContent
+import sigil.conversation.Conversation
+import sigil.event.ToolResults
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import sigil.tool.proxy.{ProxyTool, ToolProxyTransport}
 
 import java.util.concurrent.atomic.{AtomicReference, AtomicInteger}
@@ -22,7 +17,7 @@ import java.util.concurrent.atomic.{AtomicReference, AtomicInteger}
 /**
  * Coverage for [[ProxyTool]] — verifies that the wrapper preserves
  * the wrapped tool's surface (name, description, schema, modes,
- * spaces, keywords, examples) and routes `execute` through the
+ * spaces, keywords, examples) and routes its resolution through the
  * supplied [[ToolProxyTransport]] with the typed input rendered to
  * fabric `Json`.
  */
@@ -34,24 +29,20 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   case class FakeToolInput(value: Int) extends ToolInput derives RW
 
-  private case object FakeWrappedTool
-    extends TypedTool[FakeToolInput](
-      name = ToolName("fake_tool"),
-      description = "Fake tool for proxy tests",
-      examples = List(
-        ToolExample("doubles its input", FakeToolInput(value = 5))
-      )
-    ) {
-  override def paginate: Boolean = false
+  private case object FakeWrappedTool extends Tool {
+    type Input  = FakeToolInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[FakeToolInput]]
+    val outputRW = summon[RW[TextToolOutput]]
 
-    override protected def executeTyped(input: FakeToolInput, context: TurnContext): Stream[Event] =
-      Stream.emit(Message(
-        participantId = context.caller,
-        conversationId = context.conversation.id,
-        topicId = context.conversation.currentTopicId,
-        content = Vector(ResponseContent.Text(s"local: ${input.value * 2}")),
-        state = EventState.Complete
-      ))
+    val name        = ToolName("fake_tool")
+    val description = "Fake tool for proxy tests"
+    override val examples: List[ToolExample] = List(
+      ToolExample("doubles its input", FakeToolInput(value = 5))
+    )
+
+    override def executeOutput(input: FakeToolInput, context: TurnContext): Task[TextToolOutput] =
+      Task.pure(TextToolOutput(s"local: ${input.value * 2}"))
   }
 
   "ProxyTool" should {
@@ -69,22 +60,19 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val transport = new RecordingTransport
       val proxy     = new ProxyTool(FakeWrappedTool, transport)
       val ctx       = makeContext()
-      val resultMessage = Message(
-        participantId = TestUser,
-        conversationId = convId,
-        topicId = topicId,
-        content = Vector(ResponseContent.Text("remote-ok")),
-        state = EventState.Complete
-      )
-      transport.respondWith(Stream.emit(resultMessage))
+      // The transport's remote side returns a typed result as Json —
+      // here a TextToolOutput-shaped payload.
+      transport.respondWith(ToolResult.Success(obj("text" -> str("remote-ok"))))
 
       proxy.execute(FakeToolInput(value = 7), ctx).toList.map { events =>
-        // Transport saw the typed input as Json
+        // Transport saw the typed input as Json.
         val (_, capturedJson, _) = transport.lastCall.get()
         JsonFormatter.Compact(capturedJson) should include("\"value\":7")
-        // Returned the transport's events unchanged
-        events should have size 1
-        events.head shouldBe resultMessage
+        // The framework built exactly one ToolResults event from the
+        // transport's resolution, carrying the decoded payload.
+        val results = events.collect { case tr: ToolResults => tr }
+        results should have size 1
+        results.head.typed.flatMap(_.get("text")).map(_.asString) shouldBe Some("remote-ok")
       }
     }
 
@@ -92,7 +80,7 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val transport = new RecordingTransport
       val proxy     = new ProxyTool(FakeWrappedTool, transport)
       val ctx       = makeContext()
-      transport.respondWith(Stream.empty)
+      transport.respondWith(ToolResult.Success(obj("text" -> str("ok"))))
 
       proxy.execute(FakeToolInput(value = 1), ctx).toList.map { _ =>
         val (capturedName, _, _) = transport.lastCall.get()
@@ -103,7 +91,7 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   private def makeContext(): TurnContext = {
     // Lightweight context — we don't run the agent loop, just hand the proxy
-    // something with a conversation/topic for the events it emits.
+    // something with a conversation/topic for the result event it builds.
     val conv = Conversation(
       topics = List(sigil.conversation.TopicEntry(topicId, "test", "test")),
       _id = convId
@@ -116,19 +104,19 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     )
   }
 
-  /** Test transport — records each dispatch call, replays a configured stream. */
+  /** Test transport — records each dispatch call, replays a configured result. */
   private class RecordingTransport extends ToolProxyTransport {
-    private val response = new AtomicReference[Stream[Event]](Stream.empty)
+    private val response = new AtomicReference[ToolResult[Json]](ToolResult.Success(obj()))
     val lastCall: AtomicReference[(ToolName, Json, TurnContext)] =
       new AtomicReference[(ToolName, Json, TurnContext)]()
     val callCount = new AtomicInteger(0)
 
-    def respondWith(s: Stream[Event]): Unit = response.set(s)
+    def respondWith(r: ToolResult[Json]): Unit = response.set(r)
 
-    override def dispatch(toolName: ToolName, inputJson: Json, context: TurnContext): Stream[Event] = {
+    override def dispatch(toolName: ToolName, inputJson: Json, context: TurnContext): Task[ToolResult[Json]] = {
       callCount.incrementAndGet()
       lastCall.set((toolName, inputJson, context))
-      response.get()
+      Task.pure(response.get())
     }
   }
 

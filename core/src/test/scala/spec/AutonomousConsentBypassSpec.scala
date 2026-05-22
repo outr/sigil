@@ -3,16 +3,15 @@ package spec
 import fabric.rw.*
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
-import rapid.{AsyncTaskSpec, Stream, Task}
+import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, TopicEntry, TurnInput}
-import sigil.event.{Event, Message, MessageRole}
+import sigil.event.{Message, MessageRole, ToolResults}
 import sigil.orchestrator.Orchestrator
 import sigil.participant.DefaultAgentParticipant
 import sigil.provider.{GenerationSettings, Instructions, SafetyPosture}
-import sigil.signal.{EventState, Signal}
-import sigil.tool.{ToolInput, ToolName, TypedTool}
-import sigil.tool.model.ResponseContent
+import sigil.signal.Signal
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 /**
  * Coverage for sigil bug #160 (Problem B) — when the caller agent's
@@ -31,24 +30,21 @@ class AutonomousConsentBypassSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   private val ranCount = new java.util.concurrent.atomic.AtomicInteger(0)
 
-  case object ConsentGatedTool extends TypedTool[BypassInput](
-    name        = ToolName("bypass_demo_tool"),
-    description = "A consent-gated demo tool used by the bypass spec."
-  ) {
-  override def paginate: Boolean = false
+  case object ConsentGatedTool extends Tool {
+    type Input  = BypassInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[BypassInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name = ToolName("bypass_demo_tool")
+    val description = "A consent-gated demo tool used by the bypass spec."
 
     override def requiresUserConsent: Boolean = true
-    override protected def executeTyped(input: BypassInput, ctx: TurnContext): Stream[Event] = {
-      ranCount.incrementAndGet()
-      Stream.emit[Event](Message(
-        participantId  = ctx.caller,
-        conversationId = ctx.conversation.id,
-        topicId        = ctx.conversation.currentTopicId,
-        content        = Vector(ResponseContent.Text(s"executed with ${input.payload}")),
-        role           = MessageRole.Tool,
-        state          = EventState.Complete
-      ))
-    }
+
+    override def executeResult(input: BypassInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task {
+        ranCount.incrementAndGet()
+        ToolResult.Success(TextToolOutput(s"executed with ${input.payload}"))
+      }
   }
 
   ToolInput.register(RW.static(BypassInput("")))
@@ -84,6 +80,12 @@ class AutonomousConsentBypassSpec extends AsyncWordSpec with AsyncTaskSpec with 
     Orchestrator.dispatchAtomic(ConsentGatedTool, input, ctx, invokeId).toList
   }
 
+  /** Text payloads carried by `ToolResults.typed` ({"text": "…"}). */
+  private def resultTexts(signals: List[Signal]): List[String] =
+    signals.collect {
+      case tr: ToolResults => tr.typed.flatMap(_.get("text")).map(_.asString)
+    }.flatten
+
   "consent gate" should {
 
     "BYPASS the requiresUserConsent check when the caller agent's posture is Autonomous" in {
@@ -97,16 +99,11 @@ class AutonomousConsentBypassSpec extends AsyncWordSpec with AsyncTaskSpec with 
         // No Failure with "requires user consent" surfaces — the
         // tool executed directly.
         val failures = evs.collect {
-          case m: Message if m.role == MessageRole.Tool =>
-            m.failureReason.toVector
+          case m: Message if m.role == MessageRole.Tool => m.failureReason.toVector
         }.flatten
         failures.exists(_.toLowerCase.contains("requires user consent")) shouldBe false
-        // The tool's own output Message is present.
-        val ranMessages = evs.collect {
-          case m: Message =>
-            m.content.collect { case ResponseContent.Text(t) => t }
-        }.flatten
-        ranMessages.exists(_.contains("executed with auth-ok")) shouldBe true
+        // The tool's typed result is present.
+        resultTexts(evs).exists(_.contains("executed with auth-ok")) shouldBe true
       }
     }
 
@@ -120,8 +117,7 @@ class AutonomousConsentBypassSpec extends AsyncWordSpec with AsyncTaskSpec with 
         // Default posture → gate fires → tool does NOT run.
         ranCount.get() shouldBe 0
         val failures = evs.collect {
-          case m: Message if m.role == MessageRole.Tool =>
-            m.failureReason.toVector
+          case m: Message if m.role == MessageRole.Tool => m.failureReason.toVector
         }.flatten
         failures.exists(_.toLowerCase.contains("requires user consent")) shouldBe true
       }
@@ -136,11 +132,7 @@ class AutonomousConsentBypassSpec extends AsyncWordSpec with AsyncTaskSpec with 
         evs  <- dispatch(BypassInput("hand-built"), ctx)
       } yield {
         ranCount.get() shouldBe 1
-        val ranMessages = evs.collect {
-          case m: Message =>
-            m.content.collect { case ResponseContent.Text(t) => t }
-        }.flatten
-        ranMessages.exists(_.contains("hand-built")) shouldBe true
+        resultTexts(evs).exists(_.contains("hand-built")) shouldBe true
       }
     }
   }

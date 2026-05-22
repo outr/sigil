@@ -3,10 +3,9 @@ package bench
 import fabric.Json
 import fabric.define.{DefType, Definition}
 import fabric.rw.*
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{Tool, ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 /**
  * Tool input that carries arbitrary JSON args without a compile-time
@@ -26,15 +25,21 @@ object DynamicToolInput {
 
 /**
  * Sigil [[Tool]] with a user-supplied schema instead of one derived
- * from a compile-time `RW[Input]`. `execute` is a no-op — dynamic tools
+ * from a compile-time `RW[Input]`. Execution is a no-op — dynamic tools
  * are only used for the "what would the model call here?" measurement.
  */
 case class DynamicTool(toolName: String,
                        toolDescription: String,
-                       paramsDefinition: Definition) extends TypedTool[DynamicToolInput](
-  name = ToolName(toolName),
-  description = toolDescription
-) {
+                       paramsDefinition: Definition) extends Tool {
+  type Input = DynamicToolInput
+  type Output = TextToolOutput
+
+  val inputRW: RW[DynamicToolInput] = summon[RW[DynamicToolInput]]
+  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+
+  val name: ToolName = ToolName(toolName)
+  val description: String = toolDescription
+
   override def paginate: Boolean = false
 
   /** Override the schema's input definition with the hand-built one
@@ -42,5 +47,6 @@ case class DynamicTool(toolName: String,
     * JSON via DynamicToolInput.rw regardless). */
   override def inputDefinition: Definition = paramsDefinition
 
-  override protected def executeTyped(input: DynamicToolInput, context: TurnContext): Stream[Event] = Stream.empty
+  override def executeResult(input: DynamicToolInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    Task.pure(ToolResult.Success(TextToolOutput("")))
 }

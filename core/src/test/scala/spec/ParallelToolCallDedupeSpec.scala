@@ -8,15 +8,15 @@ import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.Model
-import sigil.event.{Event, Message, MessageRole, ToolInvoke}
+import sigil.event.{Message, MessageRole, ToolInvoke, ToolResults}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{
   CallId, ConversationMode, ConversationRequest, GenerationSettings,
   Instructions, Provider, ProviderCall, ProviderEvent, ProviderType,
   StopReason
 }
-import sigil.signal.{EventState, Signal}
-import sigil.tool.{Tool, ToolInput, ToolName, TypedTool}
+import sigil.signal.Signal
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 import sigil.tool.model.ResponseContent
 import spice.http.HttpRequest
 
@@ -34,29 +34,25 @@ import scala.concurrent.duration.*
 class ParallelToolCallDedupeSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  // -- a tool that records every executeTyped invocation --
+  // -- a tool that records every execution --
 
   case class CountingInput(payload: String) extends ToolInput derives RW
 
   private val invocations = new AtomicInteger(0)
 
-  case object CountingTool extends TypedTool[CountingInput](
-    name        = ToolName("counting_tool"),
-    description = "Records every executeTyped invocation."
-  ) {
-  override def paginate: Boolean = false
+  case object CountingTool extends Tool {
+    type Input  = CountingInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[CountingInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name        = ToolName("counting_tool")
+    val description = "Records every execution."
 
-    override protected def executeTyped(input: CountingInput, ctx: TurnContext): Stream[Event] = {
-      invocations.incrementAndGet()
-      Stream.emit[Event](Message(
-        participantId  = ctx.caller,
-        conversationId = ctx.conversation.id,
-        topicId        = ctx.conversation.currentTopicId,
-        content        = Vector(ResponseContent.Text(s"ran with ${input.payload}")),
-        role           = MessageRole.Tool,
-        state          = EventState.Complete
-      ))
-    }
+    override def executeResult(input: CountingInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task {
+        invocations.incrementAndGet()
+        ToolResult.Success(TextToolOutput(s"ran with ${input.payload}"))
+      }
   }
 
   ToolInput.register(RW.static(CountingInput("")))
@@ -115,14 +111,23 @@ class ParallelToolCallDedupeSpec extends AsyncWordSpec with AsyncTaskSpec with M
         invokes should have size 2
 
         // Tool-role results paired to BOTH invokes — wire pairing
-        // satisfied. Both should carry inlined content from the
-        // original execution, NOT a "see that result" pointer text.
+        // satisfied. The genuine execution produces one `ToolResults`
+        // event carrying the typed payload; the deduplicated call gets
+        // a Tool-role Message inlining that same result content.
+        val toolResults = signals.collect { case tr: ToolResults => tr }
         val toolMessages = signals.collect {
           case m: Message if m.role == MessageRole.Tool => m
         }
-        toolMessages.size should be >= 2
+        // One typed result for the genuine execution + one inlined
+        // dupe Message — both invokes are paired.
+        (toolResults.size + toolMessages.size) should be >= 2
 
-        val rendered = toolMessages.flatMap(_.content).collect { case ResponseContent.Text(t) => t }
+        // Result text — from the genuine ToolResults' typed payload
+        // and from the dupe Message's inlined content. Both carry the
+        // original execution's output, NOT a "see that result" pointer.
+        val rendered =
+          toolResults.flatMap(_.typed.flatMap(_.get("text").map(_.asString))) ++
+            toolMessages.flatMap(_.content).collect { case ResponseContent.Text(t) => t }
         // The genuine result text appears at least once (the original execution).
         rendered.exists(_.contains("ran with hedged")) shouldBe true
         // No call_id reference text leaks into the agent's context.

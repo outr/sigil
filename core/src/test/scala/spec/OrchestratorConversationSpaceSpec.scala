@@ -1,21 +1,18 @@
 package spec
 
 import fabric.rw.*
-import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.{SpaceId, TurnContext}
 import sigil.conversation.{ConversationView, Conversation, TurnInput}
 import sigil.db.Model
-import sigil.event.{Event, Message}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{
   CallId, ConversationMode, ConversationRequest, GenerationSettings,
   Instructions, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
-import sigil.signal.EventState
-import sigil.tool.{ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.AtomicReference
@@ -47,16 +44,18 @@ class OrchestratorConversationSpaceSpec extends AsyncWordSpec with AsyncTaskSpec
 
   case class CaptureInput() extends ToolInput derives RW
 
-  case object CaptureTool extends TypedTool[CaptureInput](
-    name = ToolName("capture"),
-    description = "test-only — captures the TurnContext's conversation"
-  ) {
-  override def paginate: Boolean = false
-
-    override protected def executeTyped(input: CaptureInput, ctx: TurnContext): Stream[Event] = {
-      captured.set(Some(ctx.conversation))
-      Stream.empty
-    }
+  case object CaptureTool extends Tool {
+    type Input  = CaptureInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[CaptureInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name        = ToolName("capture")
+    val description = "test-only — captures the TurnContext's conversation"
+    override def executeResult(input: CaptureInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task {
+        captured.set(Some(ctx.conversation))
+        ToolResult.Success(TextToolOutput("captured"))
+      }
   }
   ToolInput.register(summon[RW[CaptureInput]])
   sigil.tool.Tool.register(fabric.rw.RW.static(CaptureTool))

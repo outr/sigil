@@ -75,7 +75,7 @@ final class BrowserScreenshotTool extends Tool {
                     ))
     } yield ToolResult.Success(BrowserScreenshotOutput(
       fileId  = stored._id.value,
-      url     = ctx.sigil.storageUrl(stored),
+      url     = ctx.sigil.storageUrl(stored).toString,
       altText = s"Browser screenshot at ${java.time.Instant.now}"
     ))
 }

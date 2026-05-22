@@ -1,10 +1,9 @@
 package sigil.tool.proxy
 
 import fabric.Json
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.ToolName
+import sigil.tool.{ToolName, ToolResult}
 
 /**
  * Abstract dispatch boundary for [[ProxyTool]] — decouples the
@@ -26,28 +25,27 @@ import sigil.tool.ToolName
  *     typically derived from the [[TurnContext]] (e.g. "the user
  *     in the chain", "the load-balanced executor pool", a fixed
  *     host).
- *   - **Streaming.** The returned `Stream[Event]` may emit a single
- *     terminal event (sync request/response) or stream partial
- *     results as the remote produces them. The proxy passes the
- *     stream through unchanged.
  *   - **Failure / timeout.** If the remote fails, disconnects, or
- *     times out, the transport emits whichever event(s) the app's
- *     error model expects (a `MessageRole.Tool` event with an error
- *     payload is the conventional shape).
+ *     times out, the transport resolves to a [[ToolResult.Failure]]
+ *     describing the wire-level error.
  *
- * The framework does not interpret the events the transport emits —
- * they flow into the agent's signal stream as-is, treated like any
- * other tool result.
+ * The remote side runs the wrapped tool and ships back its typed
+ * resolution; the transport carries the success payload as fabric
+ * `Json` (rendered through the remote tool's `outputRW`). [[ProxyTool]]
+ * decodes it back to the wrapped tool's `Output` and the framework
+ * builds the standard paired result event — so call/result pairing,
+ * visibility, replay, and persistence all work exactly as they would
+ * for a local tool.
  */
 trait ToolProxyTransport {
 
   /**
-   * Dispatch a remote tool invocation and return the resulting
-   * event stream. The proxy calls this from inside its `execute`
-   * body; the orchestrator consumes the stream as if it were a
-   * local tool's output.
+   * Dispatch a remote tool invocation and return its resolution. The
+   * proxy calls this from inside its `executeResult` body; the
+   * framework turns the returned [[ToolResult]] into the paired
+   * result event.
    */
   def dispatch(toolName: ToolName,
                inputJson: Json,
-               context: TurnContext): Stream[Event]
+               context: TurnContext): Task[ToolResult[Json]]
 }

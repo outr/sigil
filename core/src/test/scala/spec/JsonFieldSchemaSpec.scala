@@ -9,7 +9,8 @@ import sigil.conversation.TurnInput
 import sigil.db.Model
 import sigil.provider.{ConversationMode, ConversationRequest, GenerationSettings, Instructions, ProviderRequest}
 import sigil.provider.openai.OpenAIProvider
-import sigil.tool.{DefinitionToSchema, Tool, ToolExample, ToolInput, ToolName, TypedTool}
+import rapid.Task
+import sigil.tool.{DefinitionToSchema, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import sigil.tool.core.CoreTools
 
 /**
@@ -66,24 +67,27 @@ class JsonFieldSchemaSpec extends AnyWordSpec with Matchers {
                             count: Int = 0,
                             enabled: Boolean = true) extends ToolInput derives RW
 
-  private object TypedOnlyTool extends TypedTool[TypedOnlyInput](
-    name = ToolName("typed_only_test_tool"),
-    description = "All-typed input — should ship with strict: true."
-  ) {
-  override def paginate: Boolean = false
-
-    override protected def executeTyped(input: TypedOnlyInput, context: sigil.TurnContext): rapid.Stream[sigil.event.Event] =
-      rapid.Stream.empty
+  private object TypedOnlyTool extends Tool {
+    type Input  = TypedOnlyInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[TypedOnlyInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name        = ToolName("typed_only_test_tool")
+    val description = "All-typed input — should ship with strict: true."
+    override def executeResult(input: TypedOnlyInput, context: sigil.TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
 
   /** Tool with an `Option[Json]` field — should drop to strict: false. */
-  private object JsonFieldTool extends TypedTool[JsonFieldInput](
-    name = ToolName("json_field_test_tool"),
-    description = "Has Option[Json] — should ship with strict: false."
-  ) {
-  override def paginate: Boolean = false
-    override protected def executeTyped(input: JsonFieldInput, context: sigil.TurnContext): rapid.Stream[sigil.event.Event] =
-      rapid.Stream.empty
+  private object JsonFieldTool extends Tool {
+    type Input  = JsonFieldInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[JsonFieldInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name        = ToolName("json_field_test_tool")
+    val description = "Has Option[Json] — should ship with strict: false."
+    override def executeResult(input: JsonFieldInput, context: sigil.TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
 
   TestSigil.initFor(getClass.getSimpleName)

@@ -690,50 +690,42 @@ object Orchestrator {
                 case None =>
                   state.dispatchedKeys(argsKey) = invokeId
               }
-              //
-              // Bug #49 — wrap stream construction in `Task(...).handleError`
-              // so a tool that throws during `tool.execute` (synchronously,
-              // at stream construction OR on first pull) surfaces as a
-              // failure Message instead of tearing down the surrounding
-              // stream. Without the wrap, the throw propagated through
-              // `++ executed` and dropped BOTH the toolDelta AND any
-              // ToolResults — agent saw the user's tool chip stuck at
-              // "input pending" with no follow-up. `Stream.force` defers
-              // stream materialization to Task evaluation, where
-              // `handleError` can catch and substitute.
+              // `tool.execute` is total: the framework runs the tool's
+              // resolution (mapping any crash to a Failure) and emits
+              // exactly one origin-stamped paired result event — a
+              // `ToolResults` on success, a Tool-role Failure `Message`
+              // on logical failure. The call/result pairing invariant
+              // holds by construction; no synth / drain-and-guarantee
+              // apparatus is needed.
               val tool = toolsByName.get(active.toolName)
+              val context = TurnContext(
+                sigil = sigil,
+                chain = request.chain,
+                conversation = conversation,
+                turnInput = request.turnInput,
+                // Bug #7 — stamp the dispatching tool's invoke id + name
+                // so `TurnContext.reportProgress` can publish ToolProgress
+                // pulses without threading the correlation id manually.
+                currentToolInvokeId = Some(invokeId),
+                currentToolName     = tool.map(_.name),
+                // Bug #55 — atomic content tools stamp `Message.modelId`
+                // from here so per-message metadata shows which model
+                // produced the response.
+                modelId             = Some(request.modelId),
+                // Thread the thinking-reserved Message id (if a prior
+                // `ThinkingDelta` allocated one) so atomic content tools
+                // can adopt it as `Message._id`.
+                currentMessageId    = if (state.activeMessageCreated) None else state.activeMessageId
+              )
+              // The `Task(...).handleError` wrap is cheap insurance
+              // against a throw while *constructing* the dispatch stream
+              // (a precondition / consent check in `executeAtomic`) —
+              // `tool.execute` itself is total.
               val executed: Stream[Signal] = tool match {
                 case Some(t) =>
                   Stream.force(
-                    Task(executeAtomic(t, input, TurnContext(
-                      sigil = sigil,
-                      chain = request.chain,
-                      conversation = conversation,
-                      turnInput = request.turnInput,
-                      // Bug #7 — stamp the dispatching tool's invoke id +
-                      // name so `TurnContext.reportProgress` can publish
-                      // ToolProgress pulses without the tool author
-                      // having to thread the correlation id manually.
-                      currentToolInvokeId = Some(invokeId),
-                      currentToolName     = Some(t.name),
-                      // Bug #55 — atomic content tools (respond,
-                      // respond_options, …) stamp `Message.modelId` from
-                      // here so per-message metadata strips show which
-                      // model produced the response. Without this, agent
-                      // Messages from tool-call-only models (llama.cpp's
-                      // grammar-constrained respond invocations) carried
-                      // `modelId = None` because no streaming
-                      // ContentBlockDelta path fired to attach it.
-                      modelId             = Some(request.modelId),
-                      // Thread the thinking-reserved Message id (if a
-                      // prior `ThinkingDelta` allocated one) so atomic
-                      // content tools can adopt it as `Message._id`,
-                      // making `ThinkingChunk.target` match the eventual
-                      // settled Message even on tool-call-only respond
-                      // paths.
-                      currentMessageId    = if (state.activeMessageCreated) None else state.activeMessageId
-                    ), invokeId)).handleError { err =>
-                      scribe.error(s"Atomic tool '$toolName' threw during execution", err)
+                    Task(executeAtomic(t, input, context, invokeId)).handleError { err =>
+                      scribe.error(s"Atomic tool '$toolName' threw while building its dispatch", err)
                       Task.pure(Stream.emit[Signal](Message(
                         participantId  = caller,
                         conversationId = convId,
@@ -743,22 +735,18 @@ object Orchestrator {
                           s"Tool '$toolName' execution failed: ${err.getClass.getSimpleName}: ${err.getMessage}"
                         )),
                         state          = EventState.Complete,
+                        disposition    = MessageDisposition.Failure(recoverable = true),
                         visibility     = MessageVisibility.Agents,
-                        // Bug #69 — Tool-role events MUST carry origin.
                         origin         = Some(invokeId)
                       )))
                     }
                   )
                 case None =>
-                  // Bug #167 — model invoked a tool name not in this turn's
-                  // roster (hallucination, or tool renamed/removed mid-flow).
-                  // Without a Tool-role event paired to this invoke, the frame
-                  // builder produces a ContextFrame.ToolCall with no matching
-                  // ContextFrame.ToolResult, and OpenAI's Responses API 400s
-                  // on the next request ("No tool output found for function
-                  // call <id>"). Surface to the agent as a recoverable Tool-
-                  // role Failure so the call_id stays paired and the agent
-                  // self-corrects on its next iteration.
+                  // Bug #167 — model invoked a tool name not in this
+                  // turn's roster (hallucination, or tool renamed /
+                  // removed mid-flow). Surface a recoverable Tool-role
+                  // Failure paired to this invoke so the call stays
+                  // well-formed and the agent self-corrects next turn.
                   Stream.emit[Signal](Message(
                     participantId  = caller,
                     conversationId = convId,
@@ -775,157 +763,59 @@ object Orchestrator {
                     origin         = Some(invokeId)
                   ))
               }
-              // Bug #55 — record user-visible Message ids the atomic
-              // tool emitted so the orchestrator's Usage handler has a
-              // target when no streaming activeMessageId exists.
-              val tracked = executed.evalMap { sig =>
-                sig match {
-                  case m: Message if m.role != MessageRole.Tool =>
-                    Task { state.lastUserVisibleMessageId = Some(m._id); sig }
-                  case m: Message if m.role == MessageRole.Tool && m.origin.contains(invokeId) =>
-                    Task {
-                      state.dispatchedResultContent(invokeId) = m.content
-                      sig
-                    }
-                  case tr: _root_.sigil.event.ToolResults if tr.origin.contains(invokeId) =>
-                    Task {
-                      val rendered = tr.summary.orElse(tr.typed.map(j => fabric.io.JsonFormatter.Default(j))).getOrElse("")
+              // Drain the result stream so we can (1) capture the result
+              // content for #87's duplicate-call inlining and (2) read
+              // `context.emittedEvents` — the ancillary events (e.g. a
+              // `respond`'s user-visible Message) the tool published via
+              // `ctx.emit`, which bypass this stream — to stamp
+              // `lastUserVisibleMessageId` for the `Usage` handler. The
+              // `handleError` keeps the corruption-resistance invariant
+              // if `executeAtomic`'s consent / precondition stream
+              // errors mid-pull.
+              val finalStream: Stream[Signal] = Stream.force(
+                executed.toList.handleError { err =>
+                  scribe.error(
+                    s"orchestrator: tool '${active.toolName}' (invokeId=${invokeId.value}) stream " +
+                      s"errored mid-dispatch (${err.getClass.getSimpleName}: ${err.getMessage}). " +
+                      "Pairing the invoke with a Failure result.",
+                    err
+                  )
+                  Task.pure(List[Signal](Message(
+                    participantId  = caller,
+                    conversationId = convId,
+                    topicId        = topicId,
+                    role           = MessageRole.Tool,
+                    content        = Vector(ResponseContent.Text(
+                      s"Tool `${active.toolName}` failed during execution: " +
+                        s"${err.getClass.getSimpleName}: ${Option(err.getMessage).getOrElse("(no message)")}."
+                    )),
+                    state          = EventState.Complete,
+                    disposition    = MessageDisposition.Failure(recoverable = true),
+                    visibility     = MessageVisibility.Agents,
+                    origin         = Some(invokeId)
+                  )))
+                }.map { collected =>
+                  collected.foreach {
+                    case tr: _root_.sigil.event.ToolResults if tr.origin.contains(invokeId) =>
+                      val rendered = tr.summary
+                        .orElse(tr.typed.map(j => fabric.io.JsonFormatter.Default(j)))
+                        .getOrElse("")
                       if (rendered.nonEmpty)
                         state.dispatchedResultContent(invokeId) = Vector(ResponseContent.Text(rendered))
-                      sig
-                    }
-                  case _ =>
-                    Task.pure(sig)
-                }
-              }
-              // Sigil bug #174 (durable fix) — guarantee every atomic-
-              // content tool call (`respond`, `respond_options`, …) is
-              // followed by a Tool-role completion event in the durable
-              // event log. Without this, the conversation's frame trail
-              // can end on an assistant Text frame (the respond's
-              // user-visible Message), and chat templates that interpret
-              // trailing-assistant as response prefill (Qwen3.6 with
-              // `enable_thinking: true`) HTTP 400 the next call. Prior
-              // to this fix, the wire layer synthesized an empty
-              // function_call_output inline (Provider.renderInput) to
-              // satisfy OpenAI's pairing requirement — that synthesis is
-              // wire-side only and doesn't appear in subsequent contexts
-              // as a trailing Tool frame.
-              //
-              // The synthetic Message:
-              //   - `MessageRole.Tool` → produces ContextFrame.ToolResult
-              //   - empty content → renders as empty function_call_output
-              //   - `origin = invokeId` → satisfies #69 origin-stamp invariant
-              //   - `Agents` visibility → never surfaces in user UIs
-              //
-              // Bug #167 — guarantee at least one result-shaped event
-              // (`role == MessageRole.Tool`) is emitted for non-atomic-
-              // content tools. Every other tool is expected to produce
-              // a `Tool`-role Message or `ToolResults` event; if the
-              // tool's executeTyped path returned a stream that
-              // completed without emitting any result-shaped event
-              // (silent-failure path that swallowed an error into
-              // `Task.unit`, or a transform that filtered results out),
-              // inject a synthetic Tool-role Failure so the wire's
-              // function_call ↔ function_call_output pairing stays valid.
-              val isAtomic = CoreTools.atomicContentToolNames.contains(ToolName(active.toolName))
-              // Drain the tool's stream into a list, recovering from
-              // mid-stream errors (Bug #49 / #190). The construction-time
-              // `Task(executeAtomic(…)).handleError` above catches
-              // synchronous throws WHILE building the stream value;
-              // errors raised DURING stream evaluation (e.g.
-              // `Stream.force(Task.error(…))` in the tool body, fiber
-              // cancellation, a stream-internal HTTP read failure)
-              // propagate past that wrap and would otherwise leave the
-              // ToolInvoke without a paired result event. Capturing the
-              // throwable here means the synth paths below always run
-              // against a known-good `collected` list and can pair the
-              // invoke even if the tool's stream blew up mid-pull.
-              val drained: Task[(List[Signal], Option[Throwable])] =
-                tracked.toList.map(events => (events, Option.empty[Throwable]))
-                  .handleError { err =>
-                    scribe.error(
-                      s"orchestrator: tool '${active.toolName}' (invokeId=${invokeId.value}) " +
-                        s"stream errored mid-dispatch (${err.getClass.getSimpleName}: ${err.getMessage}). " +
-                        "Pairing the invoke with a typed Failure result so the agent's frame trail stays " +
-                        "well-formed.",
-                      err
-                    )
-                    Task.pure((List.empty[Signal], Some(err)))
+                    case m: Message if m.role == MessageRole.Tool && m.origin.contains(invokeId) =>
+                      state.dispatchedResultContent(invokeId) = m.content
+                    case _ =>
                   }
-              // Drain the tool's stream and guarantee a result-shaped
-              // (`role == MessageRole.Tool`) event is paired to the
-              // invoke. Atomic-content tools and other tools differ
-              // only in the `hasResult` predicate's strictness and in
-              // the synthetic failure's wording / disposition; the
-              // drain + empty-path-synthesis skeleton is shared.
-              val guarded: Stream[Signal] = Stream.force(drained.map { case (collected, errOpt) =>
-                // Atomic-content tools (e.g. app-specific tools that
-                // handle their own pairing) require the result event to
-                // be origin-linked to THIS invoke; other tools accept
-                // any Tool-role event as the produced result.
-                val hasResult = collected.exists {
-                  case e: Event if e.role == MessageRole.Tool && (!isAtomic || e.origin.contains(invokeId)) => true
-                  case _ => false
+                  // `respond` publishes its user-visible Message via
+                  // `ctx.emit`, so it bypasses `executed`; recover its
+                  // id here for the Usage handler's fallback target.
+                  context.emittedEvents.reverseIterator.collectFirst {
+                    case m: Message if m.role != MessageRole.Tool => m._id
+                  }.foreach(id => state.lastUserVisibleMessageId = Some(id))
+                  Stream.emits(collected)
                 }
-                if (hasResult) Stream.emits(collected)
-                else if (isAtomic) {
-                  val (content, disposition) = errOpt match {
-                    case None      => (Vector.empty[ResponseContent], MessageDisposition.Success)
-                    case Some(err) =>
-                      (Vector[ResponseContent](ResponseContent.Text(
-                        s"Tool `${active.toolName}` failed during execution: " +
-                          s"${err.getClass.getSimpleName}: ${Option(err.getMessage).getOrElse("(no message)")}"
-                      )), MessageDisposition.Failure(recoverable = true))
-                  }
-                  val synth = Message(
-                    participantId  = caller,
-                    conversationId = convId,
-                    topicId        = topicId,
-                    role           = MessageRole.Tool,
-                    content        = content,
-                    state          = EventState.Complete,
-                    disposition    = disposition,
-                    visibility     = MessageVisibility.Agents,
-                    origin         = Some(invokeId)
-                  )
-                  // Capture so a subsequent duplicate-call dispatch
-                  // can inline this content rather than fall back to
-                  // a generic prose directive. See sigil bug #189.
-                  state.dispatchedResultContent(invokeId) = synth.content
-                  Stream.emits(collected :+ synth)
-                } else {
-                  val argsText = canonicalArgsKey(active.toolName, input)
-                    .stripPrefix(s"${active.toolName}:")
-                    .take(200)
-                  val contentText = errOpt match {
-                    case None =>
-                      scribe.warn(
-                        s"orchestrator: tool '${active.toolName}' (invokeId=${invokeId.value}) completed " +
-                          "without emitting a MessageRole.Tool event — likely a sync throw escaping its " +
-                          "executeTyped handleError. Emitting a typed Failure result to keep the wire paired."
-                      )
-                      s"Tool `${active.toolName}` failed internally. Args: $argsText. " +
-                        "Pick a different tool or refine the approach."
-                    case Some(err) =>
-                      s"Tool `${active.toolName}` failed during execution: " +
-                        s"${err.getClass.getSimpleName}: ${Option(err.getMessage).getOrElse("(no message)")}. " +
-                        s"Args: $argsText. Pick a different tool or refine the approach."
-                  }
-                  Stream.emits(collected :+ Message(
-                    participantId  = caller,
-                    conversationId = convId,
-                    topicId        = topicId,
-                    role           = MessageRole.Tool,
-                    content        = Vector(ResponseContent.Text(contentText)),
-                    state          = EventState.Complete,
-                    disposition    = MessageDisposition.Failure(recoverable = errOpt.isDefined),
-                    visibility     = MessageVisibility.Agents,
-                    origin         = Some(invokeId)
-                  ))
-                }
-              })
-              Stream.emits(toolDeltaPrefix) ++ guarded
+              )
+              Stream.emits(toolDeltaPrefix) ++ finalStream
             }
 
             if (active.toolName == "respond") {

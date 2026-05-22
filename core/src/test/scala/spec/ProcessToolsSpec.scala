@@ -17,8 +17,9 @@ import sigil.tool.process.{ProcessListTool, ProcessOutputTool, ProcessRegistry, 
  * bleed across tests, and tears it down via `terminateAll()` in a
  * `guarantee` block.
  *
- * The tools are `TypedOutputTool[Input, Output]`; each test decodes
- * the `ToolResults.typed` payload back to the typed Output via its
+ * Each process tool declares a typed `Output`; the framework emits
+ * it as a `ToolResults` event, and each test decodes the
+ * `ToolResults.typed` payload back to the typed Output via its
  * registered `RW`.
  */
 class ProcessToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {

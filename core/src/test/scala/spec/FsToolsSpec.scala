@@ -51,9 +51,9 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   }
 
   private def extractJson(events: List[sigil.event.Event]): fabric.Json = {
-    // Prefer the typed payload from a ToolResults (the new
-    // TypedOutputTool emission path); fall back to a Tool-role
-    // Message's Text content for legacy untyped tools.
+    // Prefer the typed payload from a ToolResults (the framework's
+    // success-path emission); fall back to a Tool-role Message's
+    // Text content for a logical-failure result.
     val fromTypedResults = events.collectFirst {
       case t: ToolResults if t.typed.isDefined => t.typed.get
     }

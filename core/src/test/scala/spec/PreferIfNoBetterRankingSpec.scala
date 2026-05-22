@@ -6,8 +6,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.GlobalSpace
 import sigil.conversation.Conversation
-import sigil.event.Event
-import sigil.tool.{DiscoveryRequest, InMemoryToolFinder, ToolFinder, ToolInput, ToolName, TypedTool}
+import sigil.tool.{DiscoveryRequest, InMemoryToolFinder, TextToolOutput, Tool, ToolFinder, ToolInput, ToolName, ToolResult}
 import sigil.TurnContext
 
 /**
@@ -29,27 +28,30 @@ class PreferIfNoBetterRankingSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   case class GenericInput(payload: String) extends ToolInput derives RW
 
-  case object GrepLikeTool extends TypedTool[GenericInput](
-    name        = ToolName("grep_like"),
-    description = "Search files by regex.",
-    keywords    = Set("grep", "search", "regex", "find", "match", "lines")
-  ) {
-  override def paginate: Boolean = false
-
+  case object GrepLikeTool extends Tool {
+    type Input  = GenericInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[GenericInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name        = ToolName("grep_like")
+    val description = "Search files by regex."
+    override val keywords: Set[String] = Set("grep", "search", "regex", "find", "match", "lines")
     override def preferIfNoBetter: Boolean = true
-    override protected def executeTyped(input: GenericInput, ctx: TurnContext): rapid.Stream[Event] =
-      rapid.Stream.empty
+    override def executeResult(input: GenericInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
 
-  case object ReadFileLikeTool extends TypedTool[GenericInput](
-    name        = ToolName("read_file_like"),
-    description = "Read a file's contents.",
-    keywords    = Set("read", "file", "open", "load")
-  ) {
-  override def paginate: Boolean = false
+  case object ReadFileLikeTool extends Tool {
+    type Input  = GenericInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[GenericInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name        = ToolName("read_file_like")
+    val description = "Read a file's contents."
+    override val keywords: Set[String] = Set("read", "file", "open", "load")
     override def preferIfNoBetter: Boolean = true
-    override protected def executeTyped(input: GenericInput, ctx: TurnContext): rapid.Stream[Event] =
-      rapid.Stream.empty
+    override def executeResult(input: GenericInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
 
   ToolInput.register(RW.static(GenericInput("")))

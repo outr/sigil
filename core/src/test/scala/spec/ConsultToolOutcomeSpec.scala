@@ -11,7 +11,7 @@ import sigil.provider.{
   ProviderType, ReasoningMode, StopReason, TokenUsage
 }
 import sigil.tool.consult.{ConsultOutcome, ConsultTool}
-import sigil.tool.{ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 import spice.http.HttpRequest
 
 /**
@@ -37,14 +37,16 @@ class ConsultToolOutcomeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   case class ProbeInput(answer: String = "") extends ToolInput derives RW
   ToolInput.register(RW.static(ProbeInput()))
 
-  private case object ProbeTool extends TypedTool[ProbeInput](
-    name        = ToolName("consult_probe"),
-    description = "Probe target for ConsultTool outcome tests."
-  ) {
-  override def paginate: Boolean = false
+  private case object ProbeTool extends Tool {
+    type Input  = ProbeInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[ProbeInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name = ToolName("consult_probe")
+    val description = "Probe target for ConsultTool outcome tests."
 
-    override protected def executeTyped(input: ProbeInput, ctx: sigil.TurnContext): Stream[sigil.event.Event] =
-      Stream.empty
+    override def executeResult(input: ProbeInput, ctx: sigil.TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.Success(TextToolOutput(input.answer)))
   }
 
   /** Build a fake provider that yields the supplied event stream

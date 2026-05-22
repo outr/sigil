@@ -133,7 +133,7 @@ class DiscoveredCapabilitiesLifetimeSpec extends AsyncWordSpec with AsyncTaskSpe
         ctx <- buildCtx(convId)
         _ = ctx.recordDiscovery("start metals lsp bsp", List(ToolName("lsp_goto_definition"), ToolName("lsp_find_references")))
         // Simulate the terminal respond — same hook the framework
-        // wires in `RespondTool.executeTyped` when `endsTurn = true`.
+        // wires in `RespondTool` when `endsTurn = true`.
         _ = ctx.clearDiscoveredCapabilities()
         // The next loop's request snapshots whatever's now in the
         // cache — which should be empty.

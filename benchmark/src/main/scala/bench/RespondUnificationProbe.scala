@@ -10,7 +10,7 @@ import sigil.provider.{
 }
 import sigil.provider.llamacpp.LlamaCppProvider
 import sigil.tool.model.SelectOption
-import sigil.tool.{ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 /**
  * Empirical probe — sigil bug #157 unification design decision.
@@ -84,54 +84,68 @@ object RespondUnificationProbe {
 
   // ---- Probe tools (just metadata; we never execute) ----
 
-  object UnifiedRespondTool extends TypedTool[UnifiedRespondInput](
-    name = ToolName("respond"),
-    description = """Emit the agent's reply to the user. The `content` field is a tagged union: pick one of
+  object UnifiedRespondTool extends Tool {
+    type Input = UnifiedRespondInput
+    type Output = TextToolOutput
+    val inputRW: RW[UnifiedRespondInput] = summon[RW[UnifiedRespondInput]]
+    val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+    val name: ToolName = ToolName("respond")
+    val description: String = """Emit the agent's reply to the user. The `content` field is a tagged union: pick one of
         |  - `{"type": "Text", "content": "<markdown>"}` for plain text / markdown replies
         |  - `{"type": "Failure", "reason": "<short>", "recoverable": true|false}` when the task can't be completed
         |  - `{"type": "Field", "label": "<l>", "value": "<v>", "icon": null}` for a single labeled key/value
         |  - `{"type": "Options", "prompt": "<q>", "options": [{"label": "...", "value": "...", "description": null, "exclusive": false}, ...], "allowMultiple": false}` for a structured choice""".stripMargin
-  ) {
-  override def paginate: Boolean = false
-
-    override protected def executeTyped(input: UnifiedRespondInput, ctx: sigil.TurnContext): rapid.Stream[sigil.event.Event] =
-      rapid.Stream.empty
+    override def paginate: Boolean = false
+    override def executeResult(input: UnifiedRespondInput, ctx: sigil.TurnContext): rapid.Task[ToolResult[TextToolOutput]] =
+      rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 
-  object BaselineRespondTool extends TypedTool[BaselineRespondInput](
-    name = ToolName("respond"),
-    description = "Emit a plain text / markdown reply to the user."
-  ) {
+  object BaselineRespondTool extends Tool {
+    type Input = BaselineRespondInput
+    type Output = TextToolOutput
+    val inputRW: RW[BaselineRespondInput] = summon[RW[BaselineRespondInput]]
+    val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+    val name: ToolName = ToolName("respond")
+    val description: String = "Emit a plain text / markdown reply to the user."
     override def paginate: Boolean = false
-    override protected def executeTyped(input: BaselineRespondInput, ctx: sigil.TurnContext): rapid.Stream[sigil.event.Event] =
-      rapid.Stream.empty
+    override def executeResult(input: BaselineRespondInput, ctx: sigil.TurnContext): rapid.Task[ToolResult[TextToolOutput]] =
+      rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 
-  object BaselineRespondFailureTool extends TypedTool[BaselineRespondFailureInput](
-    name = ToolName("respond_failure"),
-    description = "Signal that the agent cannot complete the requested task."
-  ) {
+  object BaselineRespondFailureTool extends Tool {
+    type Input = BaselineRespondFailureInput
+    type Output = TextToolOutput
+    val inputRW: RW[BaselineRespondFailureInput] = summon[RW[BaselineRespondFailureInput]]
+    val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+    val name: ToolName = ToolName("respond_failure")
+    val description: String = "Signal that the agent cannot complete the requested task."
     override def paginate: Boolean = false
-    override protected def executeTyped(input: BaselineRespondFailureInput, ctx: sigil.TurnContext): rapid.Stream[sigil.event.Event] =
-      rapid.Stream.empty
+    override def executeResult(input: BaselineRespondFailureInput, ctx: sigil.TurnContext): rapid.Task[ToolResult[TextToolOutput]] =
+      rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 
-  object BaselineRespondFieldTool extends TypedTool[BaselineRespondFieldInput](
-    name = ToolName("respond_field"),
-    description = "Emit a single labeled key/value field."
-  ) {
+  object BaselineRespondFieldTool extends Tool {
+    type Input = BaselineRespondFieldInput
+    type Output = TextToolOutput
+    val inputRW: RW[BaselineRespondFieldInput] = summon[RW[BaselineRespondFieldInput]]
+    val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+    val name: ToolName = ToolName("respond_field")
+    val description: String = "Emit a single labeled key/value field."
     override def paginate: Boolean = false
-    override protected def executeTyped(input: BaselineRespondFieldInput, ctx: sigil.TurnContext): rapid.Stream[sigil.event.Event] =
-      rapid.Stream.empty
+    override def executeResult(input: BaselineRespondFieldInput, ctx: sigil.TurnContext): rapid.Task[ToolResult[TextToolOutput]] =
+      rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 
-  object BaselineRespondOptionsTool extends TypedTool[BaselineRespondOptionsInput](
-    name = ToolName("respond_options"),
-    description = "Ask the user to pick from a fixed set of choices."
-  ) {
+  object BaselineRespondOptionsTool extends Tool {
+    type Input = BaselineRespondOptionsInput
+    type Output = TextToolOutput
+    val inputRW: RW[BaselineRespondOptionsInput] = summon[RW[BaselineRespondOptionsInput]]
+    val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+    val name: ToolName = ToolName("respond_options")
+    val description: String = "Ask the user to pick from a fixed set of choices."
     override def paginate: Boolean = false
-    override protected def executeTyped(input: BaselineRespondOptionsInput, ctx: sigil.TurnContext): rapid.Stream[sigil.event.Event] =
-      rapid.Stream.empty
+    override def executeResult(input: BaselineRespondOptionsInput, ctx: sigil.TurnContext): rapid.Task[ToolResult[TextToolOutput]] =
+      rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 
   // ---- Probe scenarios ----

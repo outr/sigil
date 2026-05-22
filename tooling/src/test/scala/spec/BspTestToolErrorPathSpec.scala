@@ -18,7 +18,7 @@ import java.nio.file.Files
  * target whose `canTest = false`), the resulting exception is
  * supposed to surface as a typed `BspExecResult` with `status =
  * "ERROR"` so the agent's next turn sees a normal tool-result
- * Failure. Pre-fix the exception escaped `executeTyped` and
+ * Failure. Pre-fix the exception escaped `executeOutput` and
  * unwound up to `runAgentLoop`, terminating the conversation.
  *
  * This spec validates the error path WITHOUT a real BSP server:
@@ -26,7 +26,7 @@ import java.nio.file.Files
  * a synthetic projectRoot with no `.bsp/<server>.json` file
  * raises an `IllegalStateException` from `manager.session`. That
  * is the same shape the agent loop must tolerate — the tool's
- * executeTyped MUST translate it into a typed `BspExecResult`
+ * executeOutput MUST translate it into a typed `BspExecResult`
  * sentinel rather than letting the throw escape.
  */
 class BspTestToolErrorPathSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {

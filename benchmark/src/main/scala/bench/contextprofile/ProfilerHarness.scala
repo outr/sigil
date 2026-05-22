@@ -16,7 +16,7 @@ import sigil.provider.{
   ConversationMode, GenerationSettings, Instructions, Mode, ResolvedReferences
 }
 import sigil.role.Role
-import sigil.tool.{Tool, ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 import sigil.tokenize.{JtokkitTokenizer, Tokenizer}
 
 /**
@@ -52,14 +52,20 @@ object ProfilerHarness {
   /** Synthetic Tool with caller-supplied name + description. Static
     * description (no `descriptionFor` override), so the profiler
     * doesn't need a Sigil reference for these. */
-  class FakeTool(toolName: String, toolDescription: String) extends TypedTool[DummyInput](
-    name = ToolName(toolName),
-    description = toolDescription
-  ) {
-  override def paginate: Boolean = false
+  class FakeTool(toolName: String, toolDescription: String) extends Tool {
+    type Input = DummyInput
+    type Output = TextToolOutput
 
-    override protected def executeTyped(input: DummyInput, context: sigil.TurnContext): rapid.Stream[Event] =
-      rapid.Stream.empty
+    val inputRW: RW[DummyInput] = summon[RW[DummyInput]]
+    val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+
+    val name: ToolName = ToolName(toolName)
+    val description: String = toolDescription
+
+    override def paginate: Boolean = false
+
+    override def executeResult(input: DummyInput, context: sigil.TurnContext): rapid.Task[ToolResult[TextToolOutput]] =
+      rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 
   // ---- frame builders ----

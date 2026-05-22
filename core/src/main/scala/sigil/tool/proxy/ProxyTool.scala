@@ -3,20 +3,20 @@ package sigil.tool.proxy
 import fabric.rw.*
 import lightdb.id.Id
 import lightdb.time.Timestamp
-import rapid.Stream
+import rapid.Task
 import sigil.{SpaceId, TurnContext}
-import sigil.event.Event
 import sigil.participant.ParticipantId
 import sigil.provider.Mode
-import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolSchema}
+import sigil.tool.{Tool, ToolExample, ToolName, ToolResult, ToolSchema}
 
 /**
  * Wraps an existing [[Tool]] so its execution is dispatched through
  * a [[ToolProxyTransport]] instead of running locally. The proxy
  * mimics the wrapped tool's surface — same name, description, input
  * schema, modes, spaces, keywords, examples — so the LLM sees an
- * identical tool. Only `execute` differs: it serializes the typed
- * input to JSON and hands it to the transport.
+ * identical tool. Only the resolution differs: it serializes the
+ * typed input to JSON, hands it to the transport, and decodes the
+ * returned [[ToolResult]] back to the wrapped tool's `Output`.
  *
  * Apps wire remote-execution by registering ProxyTools instead of
  * the local versions:
@@ -31,32 +31,39 @@ import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolSchema}
  * }}}
  *
  * The framework intentionally has no opinion on the wire — the
- * transport decides routing, framing, streaming, timeouts, and
- * failure semantics. The events emitted by the transport flow
- * through Sigil's normal event pipeline, so visibility, replay,
- * agent re-trigger, and persistence all work the same way they
- * would for a local tool.
+ * transport decides routing, framing, timeouts, and failure
+ * semantics. The framework builds the paired result event from the
+ * decoded resolution, so visibility, replay, agent re-trigger, and
+ * persistence all work the same way they would for a local tool.
  */
-class ProxyTool(wrapped: Tool, transport: ToolProxyTransport) extends Tool {
-  override def paginate: Boolean = false
+class ProxyTool(val wrapped: Tool, transport: ToolProxyTransport) extends Tool {
+  type Input  = wrapped.Input
+  type Output = wrapped.Output
 
-  override def name: ToolName                         = wrapped.name
-  override def description: String                    = wrapped.description
-  override def inputRW: RW[? <: ToolInput]            = wrapped.inputRW
+  def inputRW: RW[Input]   = wrapped.inputRW
+  def outputRW: RW[Output] = wrapped.outputRW
+
+  def name: ToolName      = wrapped.name
+  def description: String = wrapped.description
+
+  override def paginate: Boolean = wrapped.paginate
   override def inputDefinition: fabric.define.Definition = wrapped.inputDefinition
-  override def modes: Set[Id[Mode]]                   = wrapped.modes
-  override def space: SpaceId                         = wrapped.space
-  override def keywords: Set[String]                  = wrapped.keywords
-  override def examples: List[ToolExample]            = wrapped.examples
-  override def createdBy: Option[ParticipantId]       = wrapped.createdBy
-  override def _id: Id[Tool]                          = wrapped._id
-  override def created: Timestamp                     = wrapped.created
-  override def modified: Timestamp                    = wrapped.modified
-  override lazy val schema: ToolSchema                = wrapped.schema
+  override def outputDefinition: Option[fabric.define.Definition] = wrapped.outputDefinition
+  override def modes: Set[Id[Mode]]             = wrapped.modes
+  override def space: SpaceId                   = wrapped.space
+  override def keywords: Set[String]            = wrapped.keywords
+  override def examples: List[ToolExample]      = wrapped.examples
+  override def createdBy: Option[ParticipantId] = wrapped.createdBy
+  override def _id: Id[Tool]                    = wrapped._id
+  override def created: Timestamp               = wrapped.created
+  override def modified: Timestamp              = wrapped.modified
+  override lazy val schema: ToolSchema          = wrapped.schema
 
-  override def execute(input: ToolInput, context: TurnContext): Stream[Event] = {
-    val rw       = wrapped.inputRW.asInstanceOf[RW[ToolInput]]
-    val rendered = rw.read(input)
-    transport.dispatch(wrapped.name, rendered, context)
+  override def executeResult(input: Input, context: TurnContext): Task[ToolResult[Output]] = {
+    val rendered = inputRW.read(input)
+    transport.dispatch(wrapped.name, rendered, context).map {
+      case ToolResult.Success(json)   => ToolResult.Success(outputRW.write(json))
+      case failure: ToolResult.Failure => failure
+    }
   }
 }

@@ -7,14 +7,14 @@ import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.{GlobalSpace, SpaceId, TurnContext}
 import sigil.conversation.{ConversationView, Conversation, TurnInput}
 import sigil.db.Model
-import sigil.event.{Event, Message, MessageRole, ToolInvoke}
+import sigil.event.{Event, Message, MessageRole, ToolInvoke, ToolResults}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{
   CallId, ConversationMode, ConversationRequest, GenerationSettings,
   Instructions, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
 import sigil.signal.{EventState, Signal}
-import sigil.tool.{Tool, ToolInput, ToolName, ToolPrecondition, ToolPreconditionResult}
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolPrecondition, ToolPreconditionResult, ToolResult}
 import sigil.tool.model.{NoResponseInput, ResponseContent}
 import spice.http.HttpRequest
 import fabric.rw.*
@@ -41,47 +41,37 @@ class ToolPreconditionSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   }
 
   private object SatisfiedTool extends Tool {
-  override def paginate: Boolean = false
-    override val name: ToolName = ToolName("gate_satisfied")
-    override def description: String = "tool whose preconditions pass"
-    override def inputRW: RW[? <: ToolInput] = summon[RW[NoResponseInput]]
+    type Input  = NoResponseInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[NoResponseInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name: ToolName = ToolName("gate_satisfied")
+    val description: String = "tool whose preconditions pass"
     override def space: SpaceId = GlobalSpace
+    override def _id: Id[Tool] = Id[Tool](name.value)
     override def preconditions: List[ToolPrecondition] = List(
       StaticPrecondition("ok-1", ToolPreconditionResult.Satisfied),
       StaticPrecondition("ok-2", ToolPreconditionResult.Satisfied)
     )
-    override def execute(input: ToolInput, context: TurnContext): Stream[Event] =
-      Stream.emit(Message(
-        participantId = context.caller,
-        conversationId = context.conversation.id,
-        topicId = context.conversation.currentTopicId,
-        content = Vector(ResponseContent.Text("RAN")),
-        state = EventState.Complete,
-        role = MessageRole.Tool
-      ))
-    override def _id: Id[Tool] = Id[Tool](name.value)
+    override def executeResult(input: NoResponseInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.Success(TextToolOutput("RAN")))
   }
 
   private object BlockedTool extends Tool {
-  override def paginate: Boolean = false
-    override val name: ToolName = ToolName("gate_blocked")
-    override def description: String = "tool with one unsatisfied precondition"
-    override def inputRW: RW[? <: ToolInput] = summon[RW[NoResponseInput]]
+    type Input  = NoResponseInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[NoResponseInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name: ToolName = ToolName("gate_blocked")
+    val description: String = "tool with one unsatisfied precondition"
     override def space: SpaceId = GlobalSpace
+    override def _id: Id[Tool] = Id[Tool](name.value)
     override def preconditions: List[ToolPrecondition] = List(
       StaticPrecondition("oauth", ToolPreconditionResult.Satisfied),
       StaticPrecondition("rate-limit", ToolPreconditionResult.Unsatisfied("daily quota exceeded", suggestedFix = Some("upgrade_plan")))
     )
-    override def execute(input: ToolInput, context: TurnContext): Stream[Event] =
-      Stream.emit(Message(
-        participantId = context.caller,
-        conversationId = context.conversation.id,
-        topicId = context.conversation.currentTopicId,
-        content = Vector(ResponseContent.Text("SHOULD_NOT_RUN")),
-        state = EventState.Complete,
-        role = MessageRole.Tool
-      ))
-    override def _id: Id[Tool] = Id[Tool](name.value)
+    override def executeResult(input: NoResponseInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.Success(TextToolOutput("SHOULD_NOT_RUN")))
   }
 
   private class StubProvider(toolName: String, callIdValue: String) extends Provider {
@@ -123,10 +113,13 @@ class ToolPreconditionSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   "Orchestrator + Tool.preconditions" should {
     "let a tool run when all preconditions return Satisfied" in {
       runWith(new StubProvider(SatisfiedTool.name.value, "ok-call"), Vector(SatisfiedTool), "ok").map { signals =>
+        // A satisfied tool runs and emits a ToolResults event carrying
+        // its typed payload — no precondition-blocked Failure Message.
         val toolMsgs = signals.collect { case m: Message if m.role == MessageRole.Tool => m }
-        toolMsgs should have size 1
-        val texts = toolMsgs.head.content.collect { case ResponseContent.Text(t) => t }
-        texts shouldBe Vector("RAN")
+        toolMsgs shouldBe empty
+        val results = signals.collect { case tr: ToolResults => tr }
+        results should have size 1
+        results.head.typed.flatMap(_.get("text")).map(_.asString) shouldBe Some("RAN")
       }
     }
 

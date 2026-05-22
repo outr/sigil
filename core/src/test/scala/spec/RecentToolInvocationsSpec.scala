@@ -11,15 +11,15 @@ import sigil.conversation.{
   Conversation, ParticipantProjection, RecentToolInvocation, TurnInput
 }
 import sigil.db.Model
-import sigil.event.{Event, Message, MessageDisposition, MessageRole}
+import sigil.event.{Message, MessageDisposition, MessageRole}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{
   CallId, ConversationMode, ConversationRequest, GenerationSettings, Instructions,
   Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
 import sigil.provider.llamacpp.LlamaCppProvider
-import sigil.signal.{EventState, Signal}
-import sigil.tool.{InMemoryToolFinder, ToolInput, ToolInputCanonicalizer, ToolName, TypedTool}
+import sigil.signal.Signal
+import sigil.tool.{InMemoryToolFinder, TextToolOutput, ToolInput, ToolInputCanonicalizer, ToolName}
 import sigil.tool.core.{CoreTools, NoResponseTool, RespondTool}
 import sigil.tool.model.ResponseContent
 import spice.http.HttpRequest
@@ -50,21 +50,18 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     * assert "the third call did NOT run." */
   private val searchInvocations = new java.util.concurrent.atomic.AtomicInteger(0)
 
-  case object SearchTool extends TypedTool[SearchInput](
-    name        = ToolName("recent_search_tool"),
-    description = "Synthetic search tool used by RecentToolInvocationsSpec."
-  ) {
-    override def paginate: Boolean = false
-    override protected def executeTyped(input: SearchInput, ctx: TurnContext): Stream[Event] = {
+  case object SearchTool extends sigil.tool.Tool {
+    type Input  = SearchInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[SearchInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+
+    val name        = ToolName("recent_search_tool")
+    val description = "Synthetic search tool used by RecentToolInvocationsSpec."
+
+    override def executeOutput(input: SearchInput, ctx: TurnContext): Task[TextToolOutput] = Task {
       searchInvocations.incrementAndGet()
-      Stream.emit[Event](Message(
-        participantId  = ctx.caller,
-        conversationId = ctx.conversation.id,
-        topicId        = ctx.conversation.currentTopicId,
-        content        = Vector(ResponseContent.Text(s"matched ${input.pattern} in ${input.glob}")),
-        role           = MessageRole.Tool,
-        state          = EventState.Complete
-      ))
+      TextToolOutput(s"matched ${input.pattern} in ${input.glob}")
     }
   }
 

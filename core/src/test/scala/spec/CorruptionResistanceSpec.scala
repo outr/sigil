@@ -16,7 +16,7 @@ import sigil.provider.{
 }
 import sigil.signal.{EventState, Signal}
 import sigil.tool.core.CoreTools
-import sigil.tool.{ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 import spice.http.HttpRequest
 
 /**
@@ -48,45 +48,50 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   ToolInput.register(RW.static(AnotherInput()))
   ToolInput.register(RW.static(ThirdInput()))
 
-  /** Tool whose `execute` returns an empty Stream — never emits any
-    * paired result. Pre-fix, the dispatch wrapper relied on the
-    * atomic-synth path to fire, but the non-atomic synth path could
-    * miss this case under certain conditions. */
-  private case object SilentTool extends TypedTool[AdversarialInput](
-    name = ToolName("adversarial_silent"),
-    description = "Adversarial tool: returns empty stream."
-  ) {
-  override def paginate: Boolean = false
+  /** Tool whose resolution resolves a benign success. Under the new
+    * `Tool` contract `execute` is final and always builds exactly one
+    * paired result event — "silent no-op" is unrepresentable. The
+    * invariant must still hold for an ordinary success. */
+  private case object SilentTool extends Tool {
+    type Input  = AdversarialInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[AdversarialInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name = ToolName("adversarial_silent")
+    val description = "Adversarial tool: resolves a benign success."
 
-    override protected def executeTyped(input: AdversarialInput, context: TurnContext): Stream[Event] =
-      Stream.empty
+    override def executeResult(input: AdversarialInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 
-  /** Tool whose `execute` synchronously throws at stream
-    * construction time. The framework's existing handleError wrap
-    * catches this — verify it persists a paired Failure result. */
-  private case object SyncThrowTool extends TypedTool[AnotherInput](
-    name = ToolName("adversarial_sync_throw"),
-    description = "Adversarial tool: throws at construction."
-  ) {
-  override def paginate: Boolean = false
-    override protected def executeTyped(input: AnotherInput, context: TurnContext): Stream[Event] =
+  /** Tool whose resolution synchronously throws while building the
+    * `Task`. The framework's `runResolution` handleError catches this
+    * — verify it persists a paired Failure result. */
+  private case object SyncThrowTool extends Tool {
+    type Input  = AnotherInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[AnotherInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name = ToolName("adversarial_sync_throw")
+    val description = "Adversarial tool: throws while constructing the Task."
+
+    override def executeResult(input: AnotherInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
       throw new RuntimeException("adversarial: sync construction throw")
   }
 
-  /** Tool whose `execute` returns a Stream that errors on first pull.
-    * The construction-time handleError CAN'T catch this — the throw
-    * happens during stream evaluation, after `Task(...)` returned a
-    * Stream value successfully. Pre-fix, this could let the
-    * surrounding evaluation propagate the error and leave the
-    * ToolInvoke at state=Active forever. */
-  private case object MidStreamErrorTool extends TypedTool[ThirdInput](
-    name = ToolName("adversarial_mid_stream_error"),
-    description = "Adversarial tool: errors on first stream pull."
-  ) {
-  override def paginate: Boolean = false
-    override protected def executeTyped(input: ThirdInput, context: TurnContext): Stream[Event] =
-      Stream.force[Event](Task.error(new RuntimeException("adversarial: mid-stream throw")))
+  /** Tool whose resolution `Task` errors when evaluated. The
+    * framework's `runResolution` handleError maps the thrown error to
+    * a recoverable Failure so the ToolInvoke still pairs cleanly. */
+  private case object MidStreamErrorTool extends Tool {
+    type Input  = ThirdInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[ThirdInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name = ToolName("adversarial_mid_stream_error")
+    val description = "Adversarial tool: errors when the resolution Task is evaluated."
+
+    override def executeResult(input: ThirdInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.error(new RuntimeException("adversarial: mid-stream throw"))
   }
 
   private def buildRequest(convId: Id[Conversation],

@@ -4,10 +4,9 @@ import fabric.rw.*
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import rapid.{Stream, Task}
-import sigil.event.Event
 import sigil.provider.{Provider, ProviderCall, ProviderType}
 import sigil.tokenize.Tokenizer
-import sigil.tool.{ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -26,14 +25,16 @@ class EstimateToolBytesCallCountSpec extends AnyWordSpec with Matchers {
                        field03: String = "",
                        field04: String = "") extends ToolInput derives RW
 
-  case object WideTool extends TypedTool[WideInput](
-    name        = ToolName("wide_tool"),
-    description = "A short description.",
-    keywords    = Set.empty
-  ) {
-  override def paginate: Boolean = false
+  case object WideTool extends Tool {
+    type Input  = WideInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[WideInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name = ToolName("wide_tool")
+    val description = "A short description."
 
-    override protected def executeTyped(input: WideInput, context: sigil.TurnContext): Stream[Event] = Stream.empty
+    override def executeResult(input: WideInput, context: sigil.TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 
   // Counting tokenizer that records every call.

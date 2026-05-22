@@ -5,7 +5,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, Topic, TopicEntry, TurnInput}
-import sigil.event.{Message, Stop}
+import sigil.event.{Event, Message, Stop}
 import sigil.tool.core.CancelTool
 import sigil.tool.model.{CancelInput, ResponseContent}
 
@@ -13,12 +13,12 @@ import sigil.tool.model.{CancelInput, ResponseContent}
  * Coverage for [[CancelTool]]'s reason validation. Reasons that
  * read as turn-flow transitions ("starting metals", "need to read
  * grep output", "wait for results", "next step") cause the tool to
- * emit a `Failure`-block Message instead of the [[Stop]] event,
+ * resolve a `Failure` block instead of emitting the [[Stop]] event,
  * pushing the agent back to picking `respond` / `no_response` /
  * the actual next tool on its next turn.
  *
  * Legitimate cancel reasons (user halted, unrecoverable failure)
- * pass through and emit the Stop event as usual.
+ * pass through and emit the Stop event as an ancillary durable event.
  */
 class CancelToolValidationSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -49,10 +49,19 @@ class CancelToolValidationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       turnInput    = TurnInput(conversationId = conv.id)
     )
 
-  private def runCancel(conv: Conversation, reason: String): Task[List[sigil.event.Event]] =
+  /** Run `cancel` and return the framework result event(s) the tool's
+    * `execute` stream emits — a failure Message on a refused reason. */
+  private def runCancel(conv: Conversation, reason: String): Task[List[Event]] =
     CancelTool.execute(CancelInput(force = true, reason = Some(reason)), ctx(conv)).toList
 
-  private def failureText(events: List[sigil.event.Event]): Option[String] =
+  /** The Stop event `cancel` emits ancillary-style via `ctx.emit` lands
+    * in `db.events` through the normal publish pipeline. */
+  private def persistedStops(conv: Conversation): Task[List[Stop]] =
+    TestSigil.withDB(_.events.transaction(_.list)).map { evs =>
+      evs.collect { case s: Stop if s.conversationId == conv.id => s }
+    }
+
+  private def failureText(events: List[Event]): Option[String] =
     events.collectFirst { case m: Message if m.isFailure => m.failureReason }.flatten
 
   // --- detectTransition (heuristic in isolation) ---------------------------
@@ -82,7 +91,7 @@ class CancelToolValidationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     }
   }
 
-  // --- end-to-end through executeTyped --------------------------------------
+  // --- end-to-end through execute -------------------------------------------
 
   "CancelTool.execute" should {
 
@@ -90,13 +99,11 @@ class CancelToolValidationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       for {
         conv   <- freshConversation("refuse-start")
         events <- runCancel(conv, "Starting Metals server — user requested it")
+        stops  <- persistedStops(conv)
       } yield {
         events.size shouldBe 1
         events.head shouldBe a [Message]
-        events.exists {
-          case _: Stop => true
-          case _       => false
-        } shouldBe false
+        stops shouldBe empty
         val text = failureText(events).getOrElse("")
         text should include ("refused")
         text should include ("start")
@@ -107,8 +114,10 @@ class CancelToolValidationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       for {
         conv   <- freshConversation("refuse-need-to-read")
         events <- runCancel(conv, "Need to read grep output")
+        stops  <- persistedStops(conv)
       } yield {
         events.size shouldBe 1
+        stops shouldBe empty
         failureText(events).getOrElse("") should include ("need-to")
       }
     }
@@ -116,32 +125,32 @@ class CancelToolValidationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "emit a Stop event for a legitimate user-halt reason" in {
       for {
         conv   <- freshConversation("legit-halt")
-        events <- runCancel(conv, "User requested halt via Stop button")
+        _      <- runCancel(conv, "User requested halt via Stop button")
+        stops  <- persistedStops(conv)
       } yield {
-        events.size shouldBe 1
-        events.head shouldBe a [Stop]
-        events.head.asInstanceOf[Stop].force shouldBe true
-        events.head.asInstanceOf[Stop].reason shouldBe Some("User requested halt via Stop button")
+        stops.size shouldBe 1
+        stops.head.force shouldBe true
+        stops.head.reason shouldBe Some("User requested halt via Stop button")
       }
     }
 
     "emit a Stop event for an unrecoverable-failure reason" in {
       for {
         conv   <- freshConversation("legit-failure")
-        events <- runCancel(conv, "Unrecoverable failure: provider returned 500 on retry 3")
+        _      <- runCancel(conv, "Unrecoverable failure: provider returned 500 on retry 3")
+        stops  <- persistedStops(conv)
       } yield {
-        events.size shouldBe 1
-        events.head shouldBe a [Stop]
+        stops.size shouldBe 1
       }
     }
 
     "emit a Stop event when no reason is supplied" in {
       for {
         conv   <- freshConversation("no-reason")
-        events <- CancelTool.execute(CancelInput(), ctx(conv)).toList
+        _      <- CancelTool.execute(CancelInput(), ctx(conv)).toList
+        stops  <- persistedStops(conv)
       } yield {
-        events.size shouldBe 1
-        events.head shouldBe a [Stop]
+        stops.size shouldBe 1
       }
     }
   }

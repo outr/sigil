@@ -335,7 +335,7 @@ object BrowserScript {
       }
 
       // Resolve controller, run every step, build the final result.
-      bs.browserController(context.conversation.id, context.caller, context.chain).map { controller =>
+      bs.browserController(context.conversation.id, context.caller, context.chain).flatMap { controller =>
         Task.sequence(script.steps.map(stepTask(controller, _))).map { _ =>
           val payload = fabric.obj(
             "script"  -> str(script.name.value),
@@ -344,7 +344,7 @@ object BrowserScript {
           )
           ToolResult.Success(TextToolOutput(JsonFormatter.Compact(payload)))
         }
-      }.flatten
+      }
 
     case _ =>
       Task.pure(ToolResult.failure(

@@ -1,16 +1,15 @@
 package spec
 
 import fabric.rw.*
-import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
-import rapid.{AsyncTaskSpec, Stream, Task}
+import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, TopicEntry, TurnInput}
-import sigil.event.{Event, Message, MessageRole, ToolApproval, ToolInvoke}
+import sigil.event.{Event, Message, MessageRole, ToolResults}
 import sigil.orchestrator.Orchestrator
-import sigil.signal.{EventState, Signal}
-import sigil.tool.{InMemoryToolFinder, ToolInput, ToolName, TypedTool}
+import sigil.signal.Signal
+import sigil.tool.{InMemoryToolFinder, TextToolOutput, ToolInput, ToolName}
 import sigil.tool.core.RecordConsentTool
 import sigil.tool.model.{RecordConsentInput, ResponseContent}
 
@@ -23,7 +22,7 @@ import sigil.tool.model.{RecordConsentInput, ResponseContent}
  * Verifies:
  *   1. No record exists → tool is REFUSED with a Tool-role
  *      Failure Message instructing the agent to call
- *      `record_consent`. Tool's `executeTyped` does NOT run.
+ *      `record_consent`. Tool's `executeOutput` does NOT run.
  *   2. `record_consent(approved=true)` records an approved
  *      ToolApproval; subsequent dispatch proceeds.
  *   3. `record_consent(approved=false)` records a declined
@@ -43,43 +42,36 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     * can assert "the tool didn't run when refused." */
   private val invocations = new java.util.concurrent.atomic.AtomicInteger(0)
 
-  case object GatedTool extends TypedTool[GatedInput](
-    name        = ToolName("gated_demo_tool"),
-    description = "A consent-gated demo tool used by the spec."
-  ) {
-  override def paginate: Boolean = false
+  case object GatedTool extends sigil.tool.Tool {
+    type Input  = GatedInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[GatedInput]]
+    val outputRW = summon[RW[TextToolOutput]]
 
+    val name        = ToolName("gated_demo_tool")
+    val description = "A consent-gated demo tool used by the spec."
     override def requiresUserConsent: Boolean = true
-    override protected def executeTyped(input: GatedInput, ctx: TurnContext): Stream[Event] = {
+
+    override def executeOutput(input: GatedInput, ctx: TurnContext): Task[TextToolOutput] = Task {
       invocations.incrementAndGet()
-      Stream.emit[Event](Message(
-        participantId  = ctx.caller,
-        conversationId = ctx.conversation.id,
-        topicId        = ctx.conversation.currentTopicId,
-        content        = Vector(ResponseContent.Text(s"ran with ${input.payload}")),
-        role           = MessageRole.Tool,
-        state          = EventState.Complete
-      ))
+      TextToolOutput(s"ran with ${input.payload}")
     }
   }
 
   // No-consent tool — exercises the fast path.
   case class FreeInput(payload: String) extends ToolInput derives RW
 
-  case object FreeTool extends TypedTool[FreeInput](
-    name        = ToolName("free_demo_tool"),
-    description = "A no-consent demo tool — should always dispatch."
-  ) {
-  override def paginate: Boolean = false
-    override protected def executeTyped(input: FreeInput, ctx: TurnContext): Stream[Event] =
-      Stream.emit[Event](Message(
-        participantId  = ctx.caller,
-        conversationId = ctx.conversation.id,
-        topicId        = ctx.conversation.currentTopicId,
-        content        = Vector(ResponseContent.Text(s"free ran with ${input.payload}")),
-        role           = MessageRole.Tool,
-        state          = EventState.Complete
-      ))
+  case object FreeTool extends sigil.tool.Tool {
+    type Input  = FreeInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[FreeInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+
+    val name        = ToolName("free_demo_tool")
+    val description = "A no-consent demo tool — should always dispatch."
+
+    override def executeOutput(input: FreeInput, ctx: TurnContext): Task[TextToolOutput] =
+      Task.pure(TextToolOutput(s"free ran with ${input.payload}"))
   }
 
   ToolInput.register(RW.static(GatedInput("")), RW.static(FreeInput("")))
@@ -157,10 +149,12 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         signals <- dispatch(GatedTool, GatedInput("hello"), ctx)
       } yield {
         invocations.get() shouldBe 1
-        val msg = signals.collectFirst {
-          case m: Message => m
-        }.getOrElse(fail("expected Message"))
-        val text = msg.content.collect { case ResponseContent.Text(t) => t }.mkString
+        // A successful tool emits a ToolResults event carrying the
+        // typed TextToolOutput payload ({"text": "..."}).
+        val result = signals.collectFirst {
+          case tr: ToolResults => tr
+        }.getOrElse(fail("expected ToolResults"))
+        val text = result.typed.flatMap(_.get("text")).map(_.asString).getOrElse("")
         text should include("ran with hello")
       }
     }
@@ -194,8 +188,10 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         ctx = turnContextFor(conv)
         signals <- dispatch(FreeTool, FreeInput("ok"), ctx)
       } yield {
-        val msg = signals.collectFirst { case m: Message => m }.getOrElse(fail("expected Message"))
-        val text = msg.content.collect { case ResponseContent.Text(t) => t }.mkString
+        val result = signals.collectFirst {
+          case tr: ToolResults => tr
+        }.getOrElse(fail("expected ToolResults"))
+        val text = result.typed.flatMap(_.get("text")).map(_.asString).getOrElse("")
         text should include("free ran with ok")
       }
     }

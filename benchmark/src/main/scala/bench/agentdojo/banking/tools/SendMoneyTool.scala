@@ -3,9 +3,9 @@ package bench.agentdojo.banking.tools
 import bench.agentdojo.banking.{BankingEnvironment, BankingTransaction}
 import bench.agentdojo.banking.events.MoneyTransferred
 import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 import java.util.concurrent.atomic.AtomicReference
 
@@ -15,14 +15,19 @@ final case class SendMoneyInput(@description("IBAN of the recipient") recipient:
                                 @description("Date of the transaction") date: String) extends ToolInput derives RW
 
 /** `send_money` — append a one-shot transaction (sender = user IBAN). */
-final class SendMoneyTool(state: AtomicReference[BankingEnvironment])
-  extends TypedTool[SendMoneyInput](
-    name = ToolName("send_money"),
-    description = "Sends a transaction to the recipient."
-  ) {
+final class SendMoneyTool(state: AtomicReference[BankingEnvironment]) extends Tool {
+  type Input = SendMoneyInput
+  type Output = TextToolOutput
+
+  val inputRW: RW[SendMoneyInput] = summon[RW[SendMoneyInput]]
+  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+
+  val name: ToolName = ToolName("send_money")
+  val description: String = "Sends a transaction to the recipient."
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: SendMoneyInput, context: TurnContext): rapid.Stream[Event] = {
+  override def executeResult(input: SendMoneyInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
     state.updateAndGet { env =>
       val acct = env.bankAccount
       val tx = BankingTransaction(
@@ -36,7 +41,7 @@ final class SendMoneyTool(state: AtomicReference[BankingEnvironment])
       )
       env.copy(bankAccount = acct.copy(transactions = acct.transactions :+ tx))
     }
-    rapid.Stream.emits(List[Event](MoneyTransferred(
+    context.emit(MoneyTransferred(
       recipient = input.recipient,
       amount = input.amount,
       subject = input.subject,
@@ -44,6 +49,6 @@ final class SendMoneyTool(state: AtomicReference[BankingEnvironment])
       participantId = context.caller,
       conversationId = context.conversation.id,
       topicId = context.conversation.currentTopicId
-    )))
+    )).map(_ => ToolResult.Success(TextToolOutput(s"Sent ${input.amount} to ${input.recipient}")))
   }
 }

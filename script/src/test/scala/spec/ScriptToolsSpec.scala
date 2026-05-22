@@ -7,7 +7,7 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, TurnInput}
 import sigil.script.ScriptTools
-import sigil.tool.{InMemoryToolFinder, ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{InMemoryToolFinder, Tool, ToolExample, ToolInput, ToolName, ToolOutput}
 
 class ScriptToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   ScriptToolsTestSigil.initFor(getClass.getSimpleName)
@@ -87,16 +87,19 @@ class ScriptToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 }
 
 case class EchoInput(text: String) extends ToolInput derives RW
-case class EchoOutput(echoed: String, length: Int) derives RW
+case class EchoOutput(echoed: String, length: Int) extends ToolOutput derives RW
 
-case object EchoTool extends TypedOutputTool[EchoInput, EchoOutput](
-  name = ToolName("echo"),
-  description = "Echo the input text back with its length.",
-  examples = List(ToolExample("echo a string", EchoInput("hello")))
-) {
-  override def paginate: Boolean = false
+case object EchoTool extends Tool {
+  type Input  = EchoInput
+  type Output = EchoOutput
+  val inputRW  = summon[RW[EchoInput]]
+  val outputRW = summon[RW[EchoOutput]]
 
-  override protected def executeTyped(input: EchoInput, ctx: TurnContext): Task[EchoOutput] =
+  val name        = ToolName("echo")
+  val description = "Echo the input text back with its length."
+  override val examples: List[ToolExample] = List(ToolExample("echo a string", EchoInput("hello")))
+
+  override def executeOutput(input: EchoInput, ctx: TurnContext): Task[EchoOutput] =
     Task.pure(EchoOutput(echoed = input.text, length = input.text.length))
 }
 

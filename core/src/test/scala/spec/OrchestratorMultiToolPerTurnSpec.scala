@@ -14,7 +14,7 @@ import sigil.provider.{
   Instructions, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
 import sigil.signal.{EventState, Signal, ToolDelta}
-import sigil.tool.{JsonInput, Tool, ToolInput, ToolName}
+import sigil.tool.{JsonInput, TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 import sigil.tool.core.{NoResponseTool, RespondTool}
 import sigil.tool.model.NoResponseInput
 import spice.http.HttpRequest
@@ -35,16 +35,19 @@ class OrchestratorMultiToolPerTurnSpec extends AsyncWordSpec with AsyncTaskSpec 
 
   private val modelId: Id[Model] = Model.id("test", "model")
 
-  /** Atomic tool that throws synchronously inside `execute`. */
+  /** Atomic tool whose resolution errors — the framework maps the
+    * thrown error to a recoverable Tool-role Failure Message. */
   private object ThrowingTool extends Tool {
-  override def paginate: Boolean = false
-    override val name: ToolName = ToolName("throw_atomic")
-    override def description: String = "Always throws on execute."
-    override def inputRW: RW[? <: ToolInput] = summon[RW[NoResponseInput]]
+    type Input  = NoResponseInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[NoResponseInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name: ToolName = ToolName("throw_atomic")
+    val description: String = "Always throws on execute."
     override def space: SpaceId = GlobalSpace
-    override def execute(input: ToolInput, context: TurnContext): Stream[Event] =
-      throw new RuntimeException("synthetic atomic-tool failure")
     override def _id: Id[Tool] = Id[Tool](name.value)
+    override def executeResult(input: NoResponseInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.error(new RuntimeException("synthetic atomic-tool failure"))
   }
 
   /** Provider that emits two tool calls back-to-back (no respond
@@ -112,13 +115,18 @@ class OrchestratorMultiToolPerTurnSpec extends AsyncWordSpec with AsyncTaskSpec 
         val targets = deltas.map(_.target).toSet
         targets shouldBe invokes.map(_._id).toSet
 
-        // The thrown failure surfaces as a Tool-role Message rather
+        // The errored resolution surfaces as a recoverable Tool-role
+        // Failure Message (carrying the exception's message) rather
         // than tearing down the whole stream.
-        val toolMessages = signals.collect { case m: Message => m }
-        toolMessages.exists(_.content.exists {
-          case sigil.tool.model.ResponseContent.Text(t) => t.contains("execution failed")
-          case _                                        => false
-        }) shouldBe true
+        val toolMessages = signals.collect {
+          case m: Message if m.role == sigil.event.MessageRole.Tool => m
+        }
+        toolMessages.exists { m =>
+          m.isFailure && m.content.exists {
+            case sigil.tool.model.ResponseContent.Text(t) => t.contains("synthetic atomic-tool failure")
+            case _                                        => false
+          }
+        } shouldBe true
       }
     }
   }

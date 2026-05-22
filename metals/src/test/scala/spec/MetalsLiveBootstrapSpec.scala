@@ -213,7 +213,7 @@ class MetalsLiveBootstrapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     }
 
     /** Drive the agent-facing `lsp_workspace_symbols` tool through
-      * its real executeTyped path (rather than calling the
+      * its real `invokeFirstPage` path (rather than calling the
       * underlying [[LspSession.workspaceSymbols]] directly). This
       * exercises the full chain that hangs in production:
       *

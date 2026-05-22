@@ -3,27 +3,34 @@ package bench.agentdojo.banking.tools
 import bench.agentdojo.banking.BankingEnvironment
 import bench.agentdojo.banking.events.ScheduledTransactionsRead
 import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 import java.util.concurrent.atomic.AtomicReference
 
 final case class GetScheduledTransactionsInput() extends ToolInput derives RW
 
 /** `get_scheduled_transactions` — return the scheduled-transaction list. */
-final class GetScheduledTransactionsTool(state: AtomicReference[BankingEnvironment])
-  extends TypedTool[GetScheduledTransactionsInput](
-    name = ToolName("get_scheduled_transactions"),
-    description = "Get the list of scheduled transactions."
-  ) {
+final class GetScheduledTransactionsTool(state: AtomicReference[BankingEnvironment]) extends Tool {
+  type Input = GetScheduledTransactionsInput
+  type Output = TextToolOutput
+
+  val inputRW: RW[GetScheduledTransactionsInput] = summon[RW[GetScheduledTransactionsInput]]
+  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+
+  val name: ToolName = ToolName("get_scheduled_transactions")
+  val description: String = "Get the list of scheduled transactions."
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: GetScheduledTransactionsInput, context: TurnContext): rapid.Stream[Event] =
-    rapid.Stream.emits(List[Event](ScheduledTransactionsRead(
-      transactions = state.get.bankAccount.scheduledTransactions,
+  override def executeResult(input: GetScheduledTransactionsInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
+    val transactions = state.get.bankAccount.scheduledTransactions
+    context.emit(ScheduledTransactionsRead(
+      transactions = transactions,
       participantId = context.caller,
       conversationId = context.conversation.id,
       topicId = context.conversation.currentTopicId
-    )))
+    )).map(_ => ToolResult.Success(TextToolOutput(s"${transactions.size} scheduled transaction(s)")))
+  }
 }

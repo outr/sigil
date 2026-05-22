@@ -10,7 +10,7 @@ import sigil.provider.{
   CachedProvider, GenerationSettings, OneShotRequest, Provider, ProviderCall,
   ProviderEvent, ProviderType, StopReason
 }
-import sigil.tool.{Tool, ToolName}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tool.core.RespondTool
 import spice.http.HttpRequest
 
@@ -227,11 +227,16 @@ class CachedProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
   /** Wraps an existing [[Tool]] but overrides its `description`. Lets
     * us assert that a description-only change perturbs the cache hash
     * without faking out a new schema. */
-  private class ProxyToolWithDescription(delegate: Tool, override val description: String) extends Tool {
-    override def name: ToolName = delegate.name
-    override def inputRW: fabric.rw.RW[? <: sigil.tool.ToolInput] = delegate.inputRW
-    override def execute(input: sigil.tool.ToolInput,
-                         context: sigil.TurnContext): rapid.Stream[sigil.event.Event] = delegate.execute(input, context)
+  private class ProxyToolWithDescription(delegate: Tool, descriptionText: String) extends Tool {
+    type Input  = ToolInput
+    type Output = sigil.tool.TextToolOutput
+    val inputRW: fabric.rw.RW[ToolInput] = delegate.inputRW.asInstanceOf[fabric.rw.RW[ToolInput]]
+    val outputRW = summon[fabric.rw.RW[sigil.tool.TextToolOutput]]
+    val name: ToolName = delegate.name
+    val description: String = descriptionText
+    override def executeResult(input: ToolInput,
+                               context: sigil.TurnContext): Task[sigil.tool.ToolResult[sigil.tool.TextToolOutput]] =
+      Task.pure(sigil.tool.ToolResult.Success(sigil.tool.TextToolOutput("")))
     override def paginate: Boolean = delegate.paginate
     override def inputDefinition: fabric.define.Definition = delegate.inputDefinition
   }

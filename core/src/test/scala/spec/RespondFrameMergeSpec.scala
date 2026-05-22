@@ -11,8 +11,8 @@ import _root_.sigil.tool.core.RespondTool
 /**
  * Coverage for sigil bug #210 — `respond` (and respond-family)
  * emissions render as TWO adjacent assistant messages in the prompt
- * (one plain text from `RespondTool.executeTyped`'s Message event,
- * one tool_call from the framework's `ToolInvoke` event), doubling
+ * (one plain text from `RespondTool`'s reply Message event, one
+ * tool_call from the framework's `ToolInvoke` event), doubling
  * per-call context cost and reinforcing respond-loop patterns.
  *
  * The OpenAI / Anthropic protocols permit a single assistant message

@@ -5,9 +5,10 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.{GlobalSpace, SpaceId, TurnContext}
 import lightdb.id.Id
+import rapid.Task
 import sigil.event.Event
 import sigil.provider.{CallId, ProviderEvent, ProviderStreamException, ToolCallAccumulator}
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 /**
  * Regression for sigil bug #171 part B — when the model emits a JSON
@@ -30,14 +31,16 @@ class MalformedToolArgsDetectionSpec extends AnyWordSpec with Matchers {
   case class RespondLike(topicLabel: String, content: String) extends ToolInput derives RW
 
   private object RespondTool extends Tool {
-  override def paginate: Boolean = false
-    override val name: ToolName = ToolName("respond")
-    override def description: String = "Object-rooted respond schema."
-    override def inputRW: RW[? <: ToolInput] = summon[RW[RespondLike]].asInstanceOf[RW[ToolInput]]
+    type Input  = RespondLike
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[RespondLike]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name: ToolName = ToolName("respond")
+    val description: String = "Object-rooted respond schema."
     override def space: SpaceId = GlobalSpace
-    override def execute(input: ToolInput, context: TurnContext): rapid.Stream[Event] =
-      rapid.Stream.empty
     override def _id: Id[Tool] = Id[Tool](name.value)
+    override def executeResult(input: RespondLike, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.Success(TextToolOutput(input.content)))
   }
 
   private def feed(acc: ToolCallAccumulator, args: String): Unit = {

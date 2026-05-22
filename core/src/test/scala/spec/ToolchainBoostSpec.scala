@@ -1,14 +1,12 @@
 package spec
 
 import fabric.rw.*
-import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.GlobalSpace
 import sigil.conversation.Conversation
-import sigil.event.Event
-import sigil.tool.{DiscoveryRequest, InMemoryToolFinder, Tool, ToolFinder, ToolInput, ToolName, TypedTool}
+import sigil.tool.{DiscoveryRequest, InMemoryToolFinder, TextToolOutput, Tool, ToolFinder, ToolInput, ToolName}
 import sigil.TurnContext
 
 /**
@@ -34,27 +32,34 @@ class ToolchainBoostSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
   case class GenericInput(payload: String) extends ToolInput derives RW
 
   /** "Generic" tool — no toolchain, scores by keyword match. */
-  case object GrepLikeTool extends TypedTool[GenericInput](
-    name        = ToolName("grep_like"),
-    description = "Generic search.",
-    keywords    = Set("grep", "search", "examine", "inspect", "code")
-  ) {
-  override def paginate: Boolean = false
+  case object GrepLikeTool extends Tool {
+    type Input  = GenericInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[GenericInput]]
+    val outputRW = summon[RW[TextToolOutput]]
 
-    override protected def executeTyped(input: GenericInput, ctx: TurnContext): rapid.Stream[Event] =
-      rapid.Stream.empty
+    val name        = ToolName("grep_like")
+    val description = "Generic search."
+    override val keywords = Set("grep", "search", "examine", "inspect", "code")
+
+    override def executeOutput(input: GenericInput, ctx: TurnContext): Task[TextToolOutput] =
+      Task.pure(TextToolOutput(""))
   }
 
   /** Tagged with `lsp` toolchain. Same keyword set as the generic. */
-  case object LspLikeTool extends TypedTool[GenericInput](
-    name        = ToolName("lsp_like_diagnostics"),
-    description = "LSP-backed inspection.",
-    keywords    = Set("lsp", "examine", "inspect", "analyze")
-  ) {
-  override def paginate: Boolean = false
+  case object LspLikeTool extends Tool {
+    type Input  = GenericInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[GenericInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+
+    val name        = ToolName("lsp_like_diagnostics")
+    val description = "LSP-backed inspection."
+    override val keywords = Set("lsp", "examine", "inspect", "analyze")
     override def toolchain: Option[String] = Some("lsp")
-    override protected def executeTyped(input: GenericInput, ctx: TurnContext): rapid.Stream[Event] =
-      rapid.Stream.empty
+
+    override def executeOutput(input: GenericInput, ctx: TurnContext): Task[TextToolOutput] =
+      Task.pure(TextToolOutput(""))
   }
 
   ToolInput.register(RW.static(GenericInput("")))

@@ -11,7 +11,6 @@ import sigil.SpaceId
 import sigil.conversation.compression.extract.{MemoryExtractor, StandardMemoryExtractor}
 import sigil.db.Model
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
-import sigil.event.Event
 import sigil.information.{InMemoryInformation, Information}
 import sigil.participant.{AgentParticipantId, Participant, ParticipantId}
 import sigil.provider.{Mode, Provider}
@@ -436,18 +435,24 @@ object TestSigil extends Sigil {
 
 /**
  * Synthetic tool exposed through [[TestSigil.findTools]]. Exists so the
- * `find_capability` flow has a real catalog entry to surface; its
- * `execute` returns no events because tests never actually invoke it.
+ * `find_capability` flow has a real catalog entry to surface; tests
+ * never actually invoke it, so its result is a trivial confirmation.
  */
 case class SendSlackMessageInput(channel: String, text: String) extends ToolInput derives RW
 
-case object SendSlackMessageTool extends sigil.tool.TypedTool[SendSlackMessageInput](
-  name = sigil.tool.ToolName("send_slack_message"),
-  description = "Send a message to a Slack channel on behalf of the user. Takes a channel name and the message text.",
-  keywords = Set("slack", "message", "channel")
-) {
-  override def paginate: Boolean = false
-  override protected def executeTyped(input: SendSlackMessageInput, context: TurnContext): rapid.Stream[Event] = rapid.Stream.empty
+case object SendSlackMessageTool extends sigil.tool.Tool {
+  type Input  = SendSlackMessageInput
+  type Output = sigil.tool.TextToolOutput
+  val inputRW  = summon[RW[SendSlackMessageInput]]
+  val outputRW = summon[RW[sigil.tool.TextToolOutput]]
+
+  val name = sigil.tool.ToolName("send_slack_message")
+  val description =
+    "Send a message to a Slack channel on behalf of the user. Takes a channel name and the message text."
+  override val keywords = Set("slack", "message", "channel")
+
+  override def executeOutput(input: SendSlackMessageInput, context: TurnContext): rapid.Task[sigil.tool.TextToolOutput] =
+    rapid.Task.pure(sigil.tool.TextToolOutput(s"Sent to ${input.channel}: ${input.text}"))
 }
 
 /**

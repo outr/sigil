@@ -7,14 +7,14 @@ import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.{GlobalSpace, SpaceId, TurnContext}
 import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.Model
-import sigil.event.{Event, Message, MessageRole, ToolInvoke}
+import sigil.event.{Event, Message, MessageRole, ToolInvoke, ToolResults}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{
   CallId, ConversationMode, ConversationRequest, GenerationSettings,
   Instructions, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
 import sigil.signal.{EventState, Signal}
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 import sigil.tool.core.NoResponseTool
 import sigil.tool.model.{NoResponseInput, ResponseContent}
 import spice.http.HttpRequest
@@ -42,28 +42,20 @@ class ContextPoisoningGuardsSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
   case class EchoInput(text: String) extends ToolInput derives RW
 
-  /** Tool that emits a Tool-role result Message whose content is the
-    * input text. Lets the test verify the duplicate inlines that
-    * exact text rather than a reference. */
+  /** Tool that produces a typed text result echoing the input text.
+    * Lets the test verify the duplicate inlines that exact text
+    * rather than a reference. */
   private final class EchoTool(toolName: ToolName) extends Tool {
-  override def paginate: Boolean = false
-    override def description: String = "Echo input"
-    override def inputRW: RW[? <: ToolInput] = summon[RW[EchoInput]].asInstanceOf[RW[ToolInput]]
+    type Input  = EchoInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[EchoInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name: ToolName = toolName
+    val description: String = "Echo input"
     override def space: SpaceId = GlobalSpace
-    override val name: ToolName = toolName
-    override def execute(input: ToolInput, context: TurnContext): Stream[Event] = {
-      val text = input.asInstanceOf[EchoInput].text
-      Stream.emits(List(Message(
-        participantId  = context.caller,
-        conversationId = context.conversation._id,
-        topicId        = context.conversation.currentTopicId,
-        role           = MessageRole.Tool,
-        content        = Vector(ResponseContent.Text(s"echoed: $text")),
-        state          = EventState.Complete,
-        visibility     = sigil.event.MessageVisibility.Agents
-      )))
-    }
     override def _id: Id[Tool] = Id[Tool](name.value)
+    override def executeResult(input: EchoInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.Success(TextToolOutput(s"echoed: ${input.text}")))
   }
 
   /** Provider that emits TWO identical tool calls back-to-back so
@@ -113,18 +105,27 @@ class ContextPoisoningGuardsSpec extends AsyncWordSpec with AsyncTaskSpec with M
         val invokes = signals.collect { case t: ToolInvoke => t }
         invokes should have size 2
 
-        // Both invokes have paired Tool-role Messages.
+        // The original invoke's result is now a ToolResults event
+        // carrying the typed payload `{"text":"echoed: hello"}`.
+        val toolResults = signals.collect {
+          case tr: ToolResults if tr.conversationId == convId => tr
+        }
+        toolResults should not be empty
+        val resultTexts = toolResults.flatMap(_.typed).flatMap(_.get("text")).map(_.asString)
+        resultTexts.exists(_.contains("echoed: hello")) shouldBe true
+
+        // The dedup path emits one Tool-role Message for the duplicate
+        // invoke; it INLINES the original call's rendered result rather
+        // than referencing it by call_id.
         val toolMessages = signals.collect {
           case m: Message if m.role == MessageRole.Tool && m.conversationId == convId => m
         }
-        // The dedup path emits one Tool-role Message for the duplicate
-        // invoke (the first invoke's result is the tool's own emission).
-        // Both should have echo content, NOT a "see that result" pointer.
         val rendered = toolMessages.flatMap(_.content).collect { case ResponseContent.Text(t) => t }
         rendered should not be empty
         all(rendered) should not include "see that result"
         all(rendered) should not include "(deduplicated:"
-        // The original content "echoed: hello" should appear at least once.
+        // The original content "echoed: hello" should appear inlined in
+        // the duplicate's paired Message.
         rendered.exists(_.contains("echoed: hello")) shouldBe true
       }
     }

@@ -21,9 +21,10 @@ class FindCapabilityNormalisationSpec extends AnyWordSpec with Matchers {
   // The helper is package-private to `sigil.tool.core`; reach it via
   // a thin public surface in the tool to keep this test focused.
   private def normalise(s: String): String = {
-    // Mirror what `executeTyped` does — same logic via reflection
-    // would be brittle; just exercise via the tool's behavior in
-    // an integration test if normalisation gets tested elsewhere.
+    // Mirror what the tool's normalisation does — same logic via
+    // reflection would be brittle; just exercise via the tool's
+    // behavior in an integration test if normalisation gets tested
+    // elsewhere.
     val withCamelSplit = s.replaceAll("([a-z0-9])([A-Z])", "$1 $2")
     withCamelSplit.toLowerCase.replaceAll("[^a-z0-9]+", " ").trim
   }

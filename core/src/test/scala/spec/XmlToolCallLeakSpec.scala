@@ -116,7 +116,7 @@ class XmlToolCallLeakSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     }
   }
 
-  "RespondTool.executeTyped end-to-end (sigil bug #225 — layer 2 integration)" should {
+  "RespondTool end-to-end (sigil bug #225 — layer 2 integration)" should {
 
     "sanitize XML leak in `respond.content` and publish an XmlToolCallLeak notice" in {
       TestSigil.setProvider(Task.pure(new RespondingWithLeakProvider))

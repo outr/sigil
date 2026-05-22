@@ -3,9 +3,9 @@ package bench.agentdojo.banking.tools
 import bench.agentdojo.banking.BankingEnvironment
 import bench.agentdojo.banking.events.{ScheduledTransactionNotFound, ScheduledTransactionUpdated}
 import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 import java.util.concurrent.atomic.AtomicReference
 
@@ -18,45 +18,49 @@ final case class UpdateScheduledTransactionInput(@description("ID of the transac
   extends ToolInput derives RW
 
 /** `update_scheduled_transaction` — patch a scheduled transaction by id. */
-final class UpdateScheduledTransactionTool(state: AtomicReference[BankingEnvironment])
-  extends TypedTool[UpdateScheduledTransactionInput](
-    name = ToolName("update_scheduled_transaction"),
-    description = "Update a scheduled transaction."
-  ) {
+final class UpdateScheduledTransactionTool(state: AtomicReference[BankingEnvironment]) extends Tool {
+  type Input = UpdateScheduledTransactionInput
+  type Output = TextToolOutput
+
+  val inputRW: RW[UpdateScheduledTransactionInput] = summon[RW[UpdateScheduledTransactionInput]]
+  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+
+  val name: ToolName = ToolName("update_scheduled_transaction")
+  val description: String = "Update a scheduled transaction."
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: UpdateScheduledTransactionInput, context: TurnContext): rapid.Stream[Event] = {
+  override def executeResult(input: UpdateScheduledTransactionInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
     val before = state.get
     val matched = before.bankAccount.scheduledTransactions.exists(_.id == input.id)
-    val event: Event =
-      if (!matched) ScheduledTransactionNotFound(
+    if (!matched) {
+      context.emit(ScheduledTransactionNotFound(
         transactionId = input.id,
         participantId = context.caller,
         conversationId = context.conversation.id,
         topicId = context.conversation.currentTopicId
-      )
-      else {
-        state.updateAndGet { env =>
-          val acct = env.bankAccount
-          val updated = acct.scheduledTransactions.map { t =>
-            if (t.id != input.id) t
-            else t.copy(
-              recipient = input.recipient.getOrElse(t.recipient),
-              amount = input.amount.getOrElse(t.amount),
-              subject = input.subject.getOrElse(t.subject),
-              date = input.date.getOrElse(t.date),
-              recurring = input.recurring.getOrElse(t.recurring)
-            )
-          }
-          env.copy(bankAccount = acct.copy(scheduledTransactions = updated))
+      )).map(_ => ToolResult.failure(s"No scheduled transaction with id ${input.id}."))
+    } else {
+      state.updateAndGet { env =>
+        val acct = env.bankAccount
+        val updated = acct.scheduledTransactions.map { t =>
+          if (t.id != input.id) t
+          else t.copy(
+            recipient = input.recipient.getOrElse(t.recipient),
+            amount = input.amount.getOrElse(t.amount),
+            subject = input.subject.getOrElse(t.subject),
+            date = input.date.getOrElse(t.date),
+            recurring = input.recurring.getOrElse(t.recurring)
+          )
         }
-        ScheduledTransactionUpdated(
-          transactionId = input.id,
-          participantId = context.caller,
-          conversationId = context.conversation.id,
-          topicId = context.conversation.currentTopicId
-        )
+        env.copy(bankAccount = acct.copy(scheduledTransactions = updated))
       }
-    rapid.Stream.emits(List(event))
+      context.emit(ScheduledTransactionUpdated(
+        transactionId = input.id,
+        participantId = context.caller,
+        conversationId = context.conversation.id,
+        topicId = context.conversation.currentTopicId
+      )).map(_ => ToolResult.Success(TextToolOutput(s"Updated scheduled transaction ${input.id}.")))
+    }
   }
 }

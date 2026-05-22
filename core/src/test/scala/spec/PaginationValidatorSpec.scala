@@ -3,10 +3,9 @@ package spec
 import fabric.rw.*
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{PaginationValidator, ToolInput, ToolName, TypedTool}
+import sigil.tool.{PaginationValidator, TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 /**
  * Coverage for [[PaginationValidator]] (sigil bug #201). Every Tool
@@ -19,45 +18,57 @@ class PaginationValidatorSpec extends AnyWordSpec with Matchers {
   // ---- single-shot input (no pagination fields) ----
   case class PlainInput(query: String) extends ToolInput derives RW
 
-  case object PlainSingleShotTool extends TypedTool[PlainInput](
-    name = ToolName("plain_single_shot"),
-    description = "A single-shot tool with no pagination fields."
-  ) {
+  case object PlainSingleShotTool extends Tool {
+    type Input  = PlainInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[PlainInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name        = ToolName("plain_single_shot")
+    val description = "A single-shot tool with no pagination fields."
     override def paginate: Boolean = false
-    override protected def executeTyped(input: PlainInput, context: TurnContext): Stream[Event] =
-      Stream.empty
+    override def executeResult(input: PlainInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
 
-  case object PlainButClaimsPaginatedTool extends TypedTool[PlainInput](
-    name = ToolName("plain_claims_paginated"),
-    description = "Claims paginate=true but exposes no pagination field — invalid."
-  ) {
+  case object PlainButClaimsPaginatedTool extends Tool {
+    type Input  = PlainInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[PlainInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name        = ToolName("plain_claims_paginated")
+    val description = "Claims paginate=true but exposes no pagination field — invalid."
     override def paginate: Boolean = true
-    override protected def executeTyped(input: PlainInput, context: TurnContext): Stream[Event] =
-      Stream.empty
+    override def executeResult(input: PlainInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
 
   // ---- paginated input ----
   case class PagedInput(query: String, offset: Option[Int] = None, limit: Option[Int] = None) extends ToolInput derives RW
 
-  case object PagedTool extends TypedTool[PagedInput](
-    name = ToolName("paged_tool"),
-    description = "Exposes offset / limit; valid paginate=true."
-  ) {
+  case object PagedTool extends Tool {
+    type Input  = PagedInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[PagedInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name        = ToolName("paged_tool")
+    val description = "Exposes offset / limit; valid paginate=true."
     override def paginate: Boolean = true
-    override protected def executeTyped(input: PagedInput, context: TurnContext): Stream[Event] =
-      Stream.empty
+    override def executeResult(input: PagedInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
 
   case class CursorInput(cursor: Option[String] = None) extends ToolInput derives RW
 
-  case object CursorTool extends TypedTool[CursorInput](
-    name = ToolName("cursor_tool"),
-    description = "Uses a single cursor field; valid paginate=true."
-  ) {
+  case object CursorTool extends Tool {
+    type Input  = CursorInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[CursorInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name        = ToolName("cursor_tool")
+    val description = "Uses a single cursor field; valid paginate=true."
     override def paginate: Boolean = true
-    override protected def executeTyped(input: CursorInput, context: TurnContext): Stream[Event] =
-      Stream.empty
+    override def executeResult(input: CursorInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
 
   "PaginationValidator" should {

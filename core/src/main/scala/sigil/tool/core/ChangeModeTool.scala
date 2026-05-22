@@ -45,7 +45,8 @@ case object ChangeModeTool extends Tool {
       |
       |`mode` is the target's stable name from the available-modes list below.
       |After change_mode succeeds, the new mode's tools are directly callable
-      |on the next turn.""".stripMargin,
+      |on the next turn.""".stripMargin
+
   // Curated keyword surface for discovery ranking. Tight on what
   // `change_mode` actually does — switch the agent's operating
   // posture / toolset — without leaking into adjacent intents like

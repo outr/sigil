@@ -6,12 +6,12 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.conversation.{Conversation, ConversationToolOverlay}
-import sigil.event.Event
 import sigil.participant.AgentParticipant
 import sigil.provider.{ConversationMode, ToolPolicy}
 import sigil.role.GeneralistRole
-import sigil.tool.{ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 import sigil.TurnContext
+import rapid.Task
 
 /**
  * Coverage for sigil bug #97 — `ConversationToolOverlay` lets tools
@@ -27,23 +27,28 @@ class ConversationToolOverlaySpec extends AsyncWordSpec with AsyncTaskSpec with 
 
   case class StubInput(text: String = "") extends ToolInput derives RW
 
-  case object PinnedToolA extends TypedTool[StubInput](
-    name        = ToolName("pinned_tool_a"),
-    description = "Stub pinned by overlay"
-  ) {
-  override def paginate: Boolean = false
+  case object PinnedToolA extends Tool {
+    type Input  = StubInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[StubInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name = ToolName("pinned_tool_a")
+    val description = "Stub pinned by overlay"
 
-    override protected def executeTyped(input: StubInput, context: TurnContext): rapid.Stream[Event] =
-      rapid.Stream.empty
+    override def executeResult(input: StubInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.Success(TextToolOutput(input.text)))
   }
 
-  case object PinnedToolB extends TypedTool[StubInput](
-    name        = ToolName("pinned_tool_b"),
-    description = "Stub pinned by overlay"
-  ) {
-  override def paginate: Boolean = false
-    override protected def executeTyped(input: StubInput, context: TurnContext): rapid.Stream[Event] =
-      rapid.Stream.empty
+  case object PinnedToolB extends Tool {
+    type Input  = StubInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[StubInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name = ToolName("pinned_tool_b")
+    val description = "Stub pinned by overlay"
+
+    override def executeResult(input: StubInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.Success(TextToolOutput(input.text)))
   }
 
   ToolInput.register(RW.static(StubInput("")))

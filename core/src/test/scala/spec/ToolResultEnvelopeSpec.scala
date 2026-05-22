@@ -5,14 +5,10 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.{AnyWordSpec, AsyncWordSpec}
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
-import sigil.conversation.{Conversation, TurnInput}
+import sigil.conversation.Conversation
 import sigil.event.{Message, MessageRole, MessageVisibility, ToolResults}
-import sigil.signal.EventState
 import sigil.tool.core.{NoResponseTool, RespondCardTool, RespondCardsTool, RespondFailureTool, RespondFieldTool, RespondOptionsTool, RespondTool}
-import sigil.tool.model.ResponseContent
-import sigil.tool.{ToolFailureException, ToolInput, ToolName, ToolResult, TypedOutputTool}
-
-import scala.concurrent.duration.*
+import sigil.tool.{TextToolOutput, Tool, ToolFailureException, ToolInput, ToolName, ToolOutput, ToolResult}
 
 /** Shared ad-hoc input for synchronous annotation tests. */
 private case class PlainInput() extends ToolInput derives RW
@@ -20,10 +16,10 @@ private case class PlainInput() extends ToolInput derives RW
 /**
  * Coverage for sigil bug #131 — Sigil-native tools adopt the MCP
  * `CallToolResult` convention: `ToolResult[O] = Success(value) |
- * Failure(message, hint, args)`. `TypedOutputTool` default-wraps
- * legacy `executeTyped` (success → Success; thrown error →
- * Failure(message=e.getMessage, args=input.toJson)). New tools opt
- * into the envelope by overriding `executeTypedResult` directly.
+ * Failure(message, hint, args)`. A tool's simple `executeOutput`
+ * path auto-wraps (success → Success; thrown error → Failure with
+ * the exception message + JSON-serialised input as args); tools
+ * needing explicit logical-failure control override `executeResult`.
  *
  * Plus annotation surface: `Tool` exposes `readOnly`, `destructive`,
  * `idempotent`, `openWorld` defaults; the respond-family tools set
@@ -34,34 +30,40 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   TestSigil.initFor(getClass.getSimpleName)
 
   private case class EchoInput(payload: String = "") extends ToolInput derives RW
-  private case class EchoOutput(echoed: String) derives RW
+  private case class EchoOutput(echoed: String) extends ToolOutput derives RW
 
   ToolInput.register(RW.static(EchoInput()))
 
-  /** Legacy-shaped tool — overrides only `executeTyped`. Drives the
+  /** Simple-path tool — overrides only `executeOutput`. Drives the
     * default-wrap path: success → Success; throw → Failure. */
-  private final class LegacyEchoTool(throwOn: Option[String] = None)
-    extends TypedOutputTool[EchoInput, EchoOutput](
-      name = ToolName("legacy_echo"),
-      description = "Echoes the payload."
-    ) {
-  override def paginate: Boolean = false
+  private final class LegacyEchoTool(throwOn: Option[String] = None) extends Tool {
+    type Input  = EchoInput
+    type Output = EchoOutput
+    val inputRW  = summon[RW[EchoInput]]
+    val outputRW = summon[RW[EchoOutput]]
 
-    override protected def executeTyped(input: EchoInput, context: TurnContext): Task[EchoOutput] =
+    val name        = ToolName("legacy_echo")
+    val description = "Echoes the payload."
+
+    override def executeOutput(input: EchoInput, context: TurnContext): Task[EchoOutput] =
       throwOn match {
         case Some(msg) => Task.error(new RuntimeException(msg))
         case None      => Task.pure(EchoOutput(input.payload))
       }
   }
 
-  /** Envelope-aware tool — overrides `executeTypedResult` directly.
+  /** Envelope-aware tool — overrides `executeResult` directly.
     * Drives the explicit-Failure path. */
-  private final class EnvelopeEchoTool extends TypedOutputTool[EchoInput, EchoOutput](
-    name = ToolName("envelope_echo"),
-    description = "Echoes the payload via the envelope."
-  ) {
-  override def paginate: Boolean = false
-    override protected def executeTypedResult(input: EchoInput, context: TurnContext): Task[ToolResult[EchoOutput]] =
+  private final class EnvelopeEchoTool extends Tool {
+    type Input  = EchoInput
+    type Output = EchoOutput
+    val inputRW  = summon[RW[EchoInput]]
+    val outputRW = summon[RW[EchoOutput]]
+
+    val name        = ToolName("envelope_echo")
+    val description = "Echoes the payload via the envelope."
+
+    override def executeResult(input: EchoInput, context: TurnContext): Task[ToolResult[EchoOutput]] =
       if (input.payload.isEmpty)
         Task.pure(ToolResult.failure(
           message = "payload must not be empty",
@@ -81,9 +83,9 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       )
     }
 
-  "TypedOutputTool default wrap" should {
+  "Tool default wrap (executeOutput)" should {
 
-    "produce ToolResult.Success carrying the typed payload when executeTyped succeeds" in {
+    "produce ToolResult.Success carrying the typed payload when executeOutput succeeds" in {
       val tool = new LegacyEchoTool()
       turnContext().flatMap { ctx =>
         tool.invoke(EchoInput("hello"), ctx).map { out =>
@@ -92,27 +94,32 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       }
     }
 
-    "auto-convert a thrown Task.error to ToolResult.Failure (raised as ToolFailureException by invoke)" in {
+    "auto-convert a thrown Task.error to a recoverable Failure Message on the execute path" in {
+      // A crash inside `executeOutput` is caught by the framework's
+      // `execute` resolution and surfaced as a Tool-role Failure
+      // Message — the exception message becomes the failure reason
+      // and the failing input is rendered into the args block.
       val tool = new LegacyEchoTool(throwOn = Some("kaboom"))
       turnContext().flatMap { ctx =>
-        tool.invoke(EchoInput("hello"), ctx)
-          .map(_ => fail("expected ToolFailureException"))
-          .handleError { err =>
-            err shouldBe a [ToolFailureException]
-            val tfe = err.asInstanceOf[ToolFailureException]
-            tfe.toolName shouldBe ToolName("legacy_echo")
-            tfe.failureMessage shouldBe "kaboom"
-            // Failing input is captured as JSON args.
-            tfe.args.get should include("hello")
-            Task.pure(succeed)
-          }
+        tool.execute(EchoInput("hello"), ctx).toList.map { evs =>
+          val msgs = evs.collect { case m: Message => m }
+          msgs should have size 1
+          msgs.head.role shouldBe MessageRole.Tool
+          msgs.head.isFailure shouldBe true
+          val body = (msgs.head.failureReason.toVector ++ msgs.head.content.collect {
+            case sigil.tool.model.ResponseContent.Text(t) => t
+          }).mkString("\n")
+          body should include("kaboom")
+          // Failing input is captured as JSON args.
+          body should include("hello")
+        }
       }
     }
   }
 
-  "TypedOutputTool envelope-aware tools" should {
+  "Envelope-aware tools (executeResult)" should {
 
-    "return ToolResult.Failure with hint when executeTypedResult emits it explicitly" in {
+    "return ToolResult.Failure with hint when executeResult emits it explicitly" in {
       val tool = new EnvelopeEchoTool
       turnContext().flatMap { ctx =>
         tool.invoke(EchoInput(""), ctx)
@@ -174,11 +181,14 @@ class ToolAnnotationsSpec extends AnyWordSpec with Matchers {
       // base trait — every annotation must read as `false` so apps
       // that don't opt in get no behavior change.
       val noop = new sigil.tool.Tool {
-  override def paginate: Boolean = false
+        type Input  = PlainInput
+        type Output = TextToolOutput
         override def name = ToolName("plain")
         override def description = "noop"
-        override def inputRW = summon[fabric.rw.RW[PlainInput]]
-        override def execute(input: ToolInput, context: TurnContext) = rapid.Stream.empty
+        override def inputRW = summon[RW[PlainInput]]
+        override def outputRW = summon[RW[TextToolOutput]]
+        override def executeOutput(input: PlainInput, context: TurnContext): rapid.Task[TextToolOutput] =
+          rapid.Task.pure(TextToolOutput(""))
       }
       noop.readOnly shouldBe false
       noop.destructive shouldBe false

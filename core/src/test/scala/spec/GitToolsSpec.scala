@@ -20,8 +20,8 @@ import scala.jdk.CollectionConverters.*
  * one tool against the resulting repo. Skips gracefully when `git`
  * isn't on PATH (CI sandbox without git binary).
  *
- * The tools are `TypedOutputTool[Input, Output]` — each test decodes
- * the `ToolResults.typed` payload back to the typed Output via the
+ * The tools declare a typed `Output` — each test decodes the
+ * `ToolResults.typed` payload back to the typed Output via the
  * Output type's registered `RW` and asserts on the typed value.
  */
 class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {

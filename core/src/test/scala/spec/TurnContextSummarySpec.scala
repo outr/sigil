@@ -4,13 +4,13 @@ import fabric.rw.*
 import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
-import rapid.{AsyncTaskSpec, Stream, Task}
+import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, TurnInput}
-import sigil.event.{Event, ToolInvoke}
+import sigil.event.ToolInvoke
 import sigil.participant.ParticipantId
 import sigil.signal.{EventState, ToolDelta}
-import sigil.tool.{ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName}
 
 /**
  * Regression for sigil bug #191 — `TurnContext.setSummary(value)`
@@ -27,22 +27,24 @@ class TurnContextSummarySpec extends AsyncWordSpec with AsyncTaskSpec with Match
   ToolInput.register(RW.static(SummaryProbeInput()))
 
   /** Tool that calls `ctx.setSummary` three times across its execution
-    * (start / mid / end) and emits no Events of its own. Surfaces the
-    * full delta sequence + the persisted invoke state for assertions. */
-  private case object SummaryProbeTool extends TypedTool[SummaryProbeInput](
-    name        = ToolName("summary_probe"),
-    description = "Drives ctx.setSummary three times across execution."
-  ) {
-  override def paginate: Boolean = false
+    * (start / mid / end). Its result is a trivial confirmation — the
+    * work is the summary side effects. Surfaces the full delta
+    * sequence + the persisted invoke state for assertions. */
+  private case object SummaryProbeTool extends Tool {
+    type Input  = SummaryProbeInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[SummaryProbeInput]]
+    val outputRW = summon[RW[TextToolOutput]]
 
-    override protected def executeTyped(input: SummaryProbeInput, ctx: TurnContext): Stream[Event] =
-      Stream.force[Event](
-        ctx.setSummary("Searching ...").flatMap { _ =>
-          ctx.setSummary("Searched 12 files, 7 matches so far").flatMap { _ =>
-            ctx.setSummary("12 matches across 31 files")
-          }
-        }.map(_ => Stream.empty[Event])
-      )
+    val name        = ToolName("summary_probe")
+    val description = "Drives ctx.setSummary three times across execution."
+
+    override def executeOutput(input: SummaryProbeInput, ctx: TurnContext): Task[TextToolOutput] =
+      ctx.setSummary("Searching ...").flatMap { _ =>
+        ctx.setSummary("Searched 12 files, 7 matches so far").flatMap { _ =>
+          ctx.setSummary("12 matches across 31 files")
+        }
+      }.map(_ => TextToolOutput("done"))
   }
 
   private val convId = Conversation.id(s"summary-probe-${rapid.Unique()}")

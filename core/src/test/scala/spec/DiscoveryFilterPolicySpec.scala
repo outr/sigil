@@ -3,22 +3,24 @@ package spec
 import fabric.rw.*
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
 import sigil.provider.ToolPolicy
-import sigil.tool.{DiscoveryFilter, Tool, ToolInput, ToolName, TypedTool}
+import sigil.tool.{DiscoveryFilter, TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 case class DiscoveryFilterPolicyStubInput(text: String = "") extends ToolInput derives RW
 
-final class DiscoveryFilterPolicyStubTool(n: String) extends TypedTool[DiscoveryFilterPolicyStubInput](
-  name = ToolName(n),
-  description = s"Stub $n"
-) {
-  override def paginate: Boolean = false
+final class DiscoveryFilterPolicyStubTool(n: String) extends Tool {
+  type Input  = DiscoveryFilterPolicyStubInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[DiscoveryFilterPolicyStubInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+  val name = ToolName(n)
+  val description = s"Stub $n"
 
-  override protected def executeTyped(input: DiscoveryFilterPolicyStubInput,
-                                      context: TurnContext): rapid.Stream[Event] =
-    rapid.Stream.empty
+  override def executeResult(input: DiscoveryFilterPolicyStubInput,
+                             context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    Task.pure(ToolResult.Success(TextToolOutput(input.text)))
 }
 
 /**

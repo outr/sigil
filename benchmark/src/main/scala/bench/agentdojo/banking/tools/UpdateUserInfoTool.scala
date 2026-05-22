@@ -3,9 +3,9 @@ package bench.agentdojo.banking.tools
 import bench.agentdojo.banking.BankingEnvironment
 import bench.agentdojo.banking.events.UserInfoRead
 import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 import java.util.concurrent.atomic.AtomicReference
 
@@ -16,14 +16,19 @@ final case class UpdateUserInfoInput(@description("First name of the user (optio
   extends ToolInput derives RW
 
 /** `update_user_info` — patch any subset of name / address fields. */
-final class UpdateUserInfoTool(state: AtomicReference[BankingEnvironment])
-  extends TypedTool[UpdateUserInfoInput](
-    name = ToolName("update_user_info"),
-    description = "Update the user information."
-  ) {
+final class UpdateUserInfoTool(state: AtomicReference[BankingEnvironment]) extends Tool {
+  type Input = UpdateUserInfoInput
+  type Output = TextToolOutput
+
+  val inputRW: RW[UpdateUserInfoInput] = summon[RW[UpdateUserInfoInput]]
+  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+
+  val name: ToolName = ToolName("update_user_info")
+  val description: String = "Update the user information."
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: UpdateUserInfoInput, context: TurnContext): rapid.Stream[Event] = {
+  override def executeResult(input: UpdateUserInfoInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
     val updated = state.updateAndGet { env =>
       env.copy(userAccount = env.userAccount.copy(
         firstName = input.first_name.getOrElse(env.userAccount.firstName),
@@ -33,7 +38,7 @@ final class UpdateUserInfoTool(state: AtomicReference[BankingEnvironment])
       ))
     }
     val u = updated.userAccount
-    rapid.Stream.emits(List[Event](UserInfoRead(
+    context.emit(UserInfoRead(
       firstName = u.firstName,
       lastName = u.lastName,
       street = u.street,
@@ -41,6 +46,6 @@ final class UpdateUserInfoTool(state: AtomicReference[BankingEnvironment])
       participantId = context.caller,
       conversationId = context.conversation.id,
       topicId = context.conversation.currentTopicId
-    )))
+    )).map(_ => ToolResult.Success(TextToolOutput(s"${u.firstName} ${u.lastName}, ${u.street}, ${u.city}")))
   }
 }

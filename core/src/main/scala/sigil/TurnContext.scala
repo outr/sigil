@@ -131,7 +131,18 @@ case class TurnContext(sigil: Sigil,
                          * from a prior task surfaced on every subsequent
                          * turn. */
                        discoveredCapabilitiesRef: AtomicReference[Map[String, DiscoveredCapability]] =
-                         new AtomicReference(Map.empty[String, DiscoveredCapability])) {
+                         new AtomicReference(Map.empty[String, DiscoveredCapability]),
+                       /** Durable [[Event]]s emitted by the dispatching tool via
+                         * [[emit]] during this turn — the ancillary events that
+                         * are NOT the tool's framework-built result (a
+                         * `change_mode`'s `ModeChange`, a `respond`'s user-visible
+                         * reply `Message`, …). Accumulated as `emit` is called;
+                         * the orchestrator reads it after dispatch to recover,
+                         * e.g., the user-visible Message id for `Usage`
+                         * attribution on tool-call-only respond paths. Not
+                         * persisted; fresh per `TurnContext`. */
+                       emittedEventsRef: AtomicReference[Vector[Event]] =
+                         new AtomicReference(Vector.empty[Event])) {
 
   /**
    * The participant currently acting — `chain.last`.
@@ -219,7 +230,14 @@ case class TurnContext(sigil: Sigil,
    * result event, not to these.
    */
   def emit(event: Event): rapid.Task[Unit] =
-    sigil.publish(event).map(_ => ())
+    sigil.publish(event).map { _ =>
+      val _ = emittedEventsRef.updateAndGet(_ :+ event)
+      ()
+    }
+
+  /** Snapshot of the ancillary durable events this turn's tool emitted
+    * via [[emit]], in emission order. */
+  def emittedEvents: List[Event] = emittedEventsRef.get().toList
 
   /**
    * Update the inline tool-call chip summary across the dispatching

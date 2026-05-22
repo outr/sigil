@@ -1,17 +1,18 @@
 package spec
 
 import fabric.Json
+import fabric.rw.*
 import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.db.Model
-import sigil.event.Event
 import sigil.provider.{
   ConversationMode, GenerationSettings, ProviderCall, ProviderMessage, StrictSchema, ToolChoice
 }
 import sigil.provider.wire.OpenAIChatCompletions
-import sigil.tool.{JsonInput, ToolName, TypedTool}
+import sigil.tool.{JsonInput, TextToolOutput, Tool, ToolName, ToolResult}
 import sigil.tool.model.RespondInput
+import rapid.Task
 
 /**
  * Coverage for `OpenAIChatCompletions.renderTools` per-tool strict-mode
@@ -42,14 +43,15 @@ class OpenAIChatCompletionsStrictDispatchSpec extends AnyWordSpec with Matchers 
   /** A tool whose input is the framework's `JsonInput` carrier — its
     * schema is `DefType.Json` at the root, so `containsJson` returns
     * true and strict mode opts out. */
-  private object JsonyTool extends TypedTool[JsonInput](
-    name = ToolName("test_json_tool"),
-    description = "Test tool with a Json root input."
-  ) {
-  override def paginate: Boolean = false
-
-    override protected def executeTyped(input: JsonInput, context: sigil.TurnContext): rapid.Stream[Event] =
-      rapid.Stream.empty
+  private object JsonyTool extends Tool {
+    type Input  = JsonInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[JsonInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name        = ToolName("test_json_tool")
+    val description = "Test tool with a Json root input."
+    override def executeResult(input: JsonInput, context: sigil.TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
 
   private val call: ProviderCall = ProviderCall(

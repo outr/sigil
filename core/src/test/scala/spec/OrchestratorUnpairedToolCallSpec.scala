@@ -8,14 +8,14 @@ import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.Model
-import sigil.event.{Event, Message, MessageDisposition, MessageRole}
+import sigil.event.{Message, MessageDisposition, MessageRole}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{
   CallId, ConversationMode, ConversationRequest, GenerationSettings,
   Instructions, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
 import sigil.signal.Signal
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 import spice.http.HttpRequest
 
 /**
@@ -38,14 +38,19 @@ class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
 
   case class EmptyToolInput() extends ToolInput derives RW
 
-  /** Tool whose execute returns Stream.empty — simulates a tool whose
-    * executeTyped path swallowed an error or filtered everything out. */
+  /** Tool whose resolution is a logical failure — simulates a tool
+    * that ran but couldn't produce a useful result. The framework
+    * builds the paired Tool-role Failure Message from the returned
+    * [[ToolResult.Failure]]. */
   private object SilentTool extends Tool {
-  override def paginate: Boolean = false
-    override def name: ToolName = ToolName("silent_tool")
-    override def description: String = "Returns nothing."
-    override def inputRW: RW[? <: ToolInput] = summon[RW[EmptyToolInput]]
-    override def execute(input: ToolInput, context: TurnContext): Stream[Event] = Stream.empty
+    type Input  = EmptyToolInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[EmptyToolInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name        = ToolName("silent_tool")
+    val description = "Returns nothing useful."
+    override def executeResult(input: EmptyToolInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.failure("Tool 'silent_tool' failed internally — it produced no usable result."))
   }
 
   private val modelId: Id[Model] = Model.id("test", "model")
@@ -106,9 +111,9 @@ class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
     }
   }
 
-  "Orchestrator (Bug #167) for a registered tool whose execute is silent" should {
+  "Orchestrator (Bug #167) for a registered tool that produces no usable result" should {
 
-    "append a synthetic Tool-role Failure when the tool's execute returns Stream.empty" in {
+    "emit a paired Tool-role Failure Message when the tool resolves to ToolResult.Failure" in {
       runWith(new FakeProvider("silent_tool"), tools = Vector(SilentTool), "silent").map { signals =>
         val toolMessages = signals.collect {
           case m: Message if m.role == MessageRole.Tool => m
@@ -118,6 +123,7 @@ class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
         msg.disposition shouldBe a [MessageDisposition.Failure]
         msg.failureReason.getOrElse("") should include ("failed internally")
         msg.failureReason.getOrElse("") should include ("silent_tool")
+        msg.origin shouldBe defined
       }
     }
   }

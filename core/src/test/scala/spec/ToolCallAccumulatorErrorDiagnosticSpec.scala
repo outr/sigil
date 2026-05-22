@@ -6,10 +6,11 @@ import fabric.rw.*
 import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
+import rapid.Task
 import sigil.{GlobalSpace, SpaceId, TurnContext}
 import sigil.event.Event
 import sigil.provider.{CallId, ProviderEvent, ToolCallAccumulator}
-import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 /**
  * Regression coverage for bug #72 — when `tool.inputRW.write(json)`
@@ -59,25 +60,29 @@ class ToolCallAccumulatorErrorDiagnosticSpec extends AnyWordSpec with Matchers {
   }
 
   private object StubTool extends Tool {
-  override def paginate: Boolean = false
-    override val name: ToolName = ToolName("throwing_tool")
-    override def description: String = "Always throws on inputRW.write."
-    override def inputRW: RW[? <: ToolInput] = throwingRW
+    type Input  = ToolInput
+    type Output = TextToolOutput
+    val inputRW  = throwingRW
+    val outputRW = summon[RW[TextToolOutput]]
+    val name: ToolName = ToolName("throwing_tool")
+    val description: String = "Always throws on inputRW.write."
     override def space: SpaceId = GlobalSpace
-    override def execute(input: ToolInput, context: TurnContext): rapid.Stream[Event] =
-      rapid.Stream.empty
     override def _id: Id[Tool] = Id[Tool](name.value)
+    override def executeResult(input: ToolInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 
   private object ValidTool extends Tool {
-  override def paginate: Boolean = false
-    override val name: ToolName = ToolName("valid_tool")
-    override def description: String = "Round-trips ValidInput cleanly."
-    override def inputRW: RW[? <: ToolInput] = summon[RW[ValidInput]].asInstanceOf[RW[ToolInput]]
+    type Input  = ValidInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[ValidInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name: ToolName = ToolName("valid_tool")
+    val description: String = "Round-trips ValidInput cleanly."
     override def space: SpaceId = GlobalSpace
-    override def execute(input: ToolInput, context: TurnContext): rapid.Stream[Event] =
-      rapid.Stream.empty
     override def _id: Id[Tool] = Id[Tool](name.value)
+    override def executeResult(input: ValidInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.Success(TextToolOutput(input.name)))
   }
 
   // -- helpers --
@@ -158,13 +163,16 @@ class ToolCallAccumulatorErrorDiagnosticSpec extends AnyWordSpec with Matchers {
         override def definition: Definition = baseDef
       }
       object WithOptTool extends Tool {
-  override def paginate: Boolean = false
-        override val name: ToolName = ToolName("with_opt_tool")
-        override def description: String = "Tool with required + optional fields."
-        override def inputRW: RW[? <: ToolInput] = throwingOptRW
+        type Input  = ToolInput
+        type Output = TextToolOutput
+        val inputRW  = throwingOptRW
+        val outputRW = summon[RW[TextToolOutput]]
+        val name: ToolName = ToolName("with_opt_tool")
+        val description: String = "Tool with required + optional fields."
         override def space: SpaceId = GlobalSpace
-        override def execute(input: ToolInput, context: TurnContext): rapid.Stream[Event] = rapid.Stream.empty
         override def _id: Id[Tool] = Id[Tool](name.value)
+        override def executeResult(input: ToolInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+          Task.pure(ToolResult.Success(TextToolOutput("")))
       }
       val msg = errorMessage(runComplete(WithOptTool, """{"req":"x"}"""))
       msg should include ("required: [req: string]")

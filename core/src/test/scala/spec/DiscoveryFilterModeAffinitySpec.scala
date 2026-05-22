@@ -3,10 +3,11 @@ package spec
 import fabric.rw.*
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
+import lightdb.id.Id
+import rapid.Task
 import sigil.{GlobalSpace, TurnContext}
-import sigil.event.Event
 import sigil.provider.{ConversationMode, Mode}
-import sigil.tool.{DiscoveryFilter, DiscoveryRequest, Tool, ToolInput, ToolName, TypedTool}
+import sigil.tool.{DiscoveryFilter, DiscoveryRequest, TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 /**
  * Coverage for sigil bug #95 — `tool.modes.isEmpty` means "no
@@ -28,27 +29,32 @@ class DiscoveryFilterModeAffinitySpec extends AnyWordSpec with Matchers {
 
   /** Tool that doesn't restrict its modes — should be discoverable
     * everywhere post-#95. */
-  private final class UnrestrictedTool(n: String) extends TypedTool[StubInput](
-    name        = ToolName(n),
-    description = s"Stub $n",
-    modes       = Set.empty
-  ) {
-  override def paginate: Boolean = false
+  private final class UnrestrictedTool(n: String) extends Tool {
+    type Input  = StubInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[StubInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name = ToolName(n)
+    val description = s"Stub $n"
+    override val modes: Set[Id[Mode]] = Set.empty
 
-    override protected def executeTyped(input: StubInput, context: TurnContext): rapid.Stream[Event] =
-      rapid.Stream.empty
+    override def executeResult(input: StubInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.Success(TextToolOutput(input.text)))
   }
 
   /** Tool that explicitly opts into one mode — discoverable only
     * under that mode (the existing gating behaviour). */
-  private final class ModeRestrictedTool(n: String, restrictTo: Mode) extends TypedTool[StubInput](
-    name        = ToolName(n),
-    description = s"Stub $n",
-    modes       = Set(restrictTo.id)
-  ) {
-  override def paginate: Boolean = false
-    override protected def executeTyped(input: StubInput, context: TurnContext): rapid.Stream[Event] =
-      rapid.Stream.empty
+  private final class ModeRestrictedTool(n: String, restrictTo: Mode) extends Tool {
+    type Input  = StubInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[StubInput]]
+    val outputRW = summon[RW[TextToolOutput]]
+    val name = ToolName(n)
+    val description = s"Stub $n"
+    override val modes: Set[Id[Mode]] = Set(restrictTo.id)
+
+    override def executeResult(input: StubInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+      Task.pure(ToolResult.Success(TextToolOutput(input.text)))
   }
 
   private val unrestricted: Tool          = new UnrestrictedTool("unrestricted_tool")

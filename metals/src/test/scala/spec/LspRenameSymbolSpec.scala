@@ -18,7 +18,7 @@ import scala.concurrent.duration.*
  * End-to-end coverage for [[LspRenameSymbolTool]] against a real
  * Metals subprocess. Materializes a minimal sbt workspace with
  * synthetic Scala sources, lets Metals index it, then drives the
- * high-level rename through the tool's `executeTyped` path.
+ * high-level rename through the tool's `invoke` path.
  *
  * Self-skips when the `metals` binary isn't on PATH.
  */

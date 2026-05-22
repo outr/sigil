@@ -6,11 +6,10 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.{GlobalSpace, TurnContext}
 import sigil.conversation.Conversation
-import sigil.event.Event
 import sigil.provider.{ConversationMode, Mode}
 import sigil.tool.{
-  DiscoveryFilter, DiscoveryRequest, InMemoryToolFinder, Tool, ToolFinder,
-  ToolInput, ToolName, TypedTool
+  DiscoveryFilter, DiscoveryRequest, InMemoryToolFinder, TextToolOutput, Tool, ToolFinder,
+  ToolInput, ToolName
 }
 import sigil.tool.discovery.CapabilityType
 import sigil.tool.fs.{GlobTool, GrepTool, LocalFileSystemContext, ReadFileTool}
@@ -25,9 +24,9 @@ import sigil.tool.fs.{GlobTool, GrepTool, LocalFileSystemContext, ReadFileTool}
  *
  * The four layers progressively pin down the contract:
  *
- *   1. The trait default itself is `Set.empty` — vanilla Tool /
- *      TypedTool authors get universal discoverability without
- *      knowing about modes at all.
+ *   1. The trait default itself is `Set.empty` — vanilla Tool
+ *      authors get universal discoverability without knowing
+ *      about modes at all.
  *   2. `DiscoveryFilter.passesAffinity` honors empty as universal
  *      regardless of which Mode the request is in.
  *   3. `Sigil.findCapabilities` surfaces empty-modes tools across
@@ -44,16 +43,19 @@ class ToolModesDefaultRegressionSpec extends AsyncWordSpec with AsyncTaskSpec wi
   private case class StubInput(text: String = "") extends ToolInput derives RW
   ToolInput.register(RW.static(StubInput()))
 
-  /** Vanilla TypedTool authoring — no `modes` override. The default
+  /** Vanilla Tool authoring — no `modes` override. The default
     * must be empty for universal discoverability to hold. */
-  private object VanillaTool extends TypedTool[StubInput](
-    name        = ToolName("vanilla_default_tool"),
-    description = "A test tool that doesn't override modes."
-  ) {
-  override def paginate: Boolean = false
+  private object VanillaTool extends Tool {
+    type Input  = StubInput
+    type Output = TextToolOutput
+    val inputRW  = summon[RW[StubInput]]
+    val outputRW = summon[RW[TextToolOutput]]
 
-    override protected def executeTyped(input: StubInput, context: TurnContext): rapid.Stream[Event] =
-      rapid.Stream.empty
+    val name        = ToolName("vanilla_default_tool")
+    val description = "A test tool that doesn't override modes."
+
+    override def executeOutput(input: StubInput, context: TurnContext): rapid.Task[TextToolOutput] =
+      rapid.Task.pure(TextToolOutput(""))
   }
 
   private val fs                          = LocalFileSystemContext(basePath = None)

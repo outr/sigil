@@ -15,10 +15,9 @@ import sigil.tool.model.ResponseContent
  *
  *   - **Tool-result pairing** ([[FrameBuilder]] looks up `event.origin`
  *     instead of scanning for "most-recent unresolved" ToolCall).
- *   - **Multi-event tool emissions** (multiple Tool-role events from
- *     one `executeTyped` all share the same origin and pair to the
- *     same call_id; `Provider.renderFrames` merges them into one
- *     wire-level result).
+ *   - **Multi-event tool emissions** (multiple Tool-role events that
+ *     share the same origin pair to the same call_id;
+ *     `Provider.renderFrames` merges them into one wire-level result).
  *   - **Cross-turn delivery** (origin is position-independent — an
  *     event with origin pointing to a long-finished call still pairs
  *     correctly).
@@ -105,7 +104,7 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
 
   // ---- multi-event tool emit: all share one origin ----
 
-  "Multiple Tool-role events from one executeTyped (bug #69 structural fix)" should {
+  "Multiple Tool-role events sharing one origin (bug #69 structural fix)" should {
     "all pair to the same call_id when sharing the same origin" in {
       // Tool authors emit ack + suggestion + diagnostic, all
       // MessageRole.Tool, all stamped with the same origin by the
