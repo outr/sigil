@@ -257,6 +257,26 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def streamingSilenceTimeoutMs: Long = 60000L
 
   /**
+   * Sigil #258 — streaming-silence budget (ms) applied while a stream
+   * has NOT yet produced any meaningful content: a "dead on arrival"
+   * upstream that emitted only keepalive chunks since it opened. A
+   * dead upstream is obvious well before the full
+   * [[streamingSilenceTimeoutMs]], so this shorter budget abandons it
+   * fast and lets the framework's transient-retry path try a fresh
+   * connection (OpenRouter frequently re-routes to a healthy upstream
+   * on a retry). Once a stream has produced meaningful content — text,
+   * a tool call, OR reasoning — the full `streamingSilenceTimeoutMs`
+   * applies instead: a stall after committed work is not retried
+   * aggressively.
+   *
+   * Default `20_000` (20 s). `0` disables the dead-on-arrival budget
+   * (the full `streamingSilenceTimeoutMs` then applies throughout).
+   * The master switch is `streamingSilenceTimeoutMs` — setting THAT
+   * to `0` turns off silence detection entirely, this budget included.
+   */
+  def streamingDeadOnArrivalTimeoutMs: Long = 20000L
+
+  /**
    * Threshold at which the curator emits
    * [[sigil.signal.PinnedMemoryBudgetWarning]] — pinned memories +
    * static system-prompt overhead occupying more than this fraction of

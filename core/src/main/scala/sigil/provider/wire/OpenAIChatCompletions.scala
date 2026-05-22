@@ -277,7 +277,8 @@ object OpenAIChatCompletions {
     val state = new StreamState(
       acc = new ToolCallAccumulator(input.tools, providerKey = config.providerName),
       responseFormatMode = rfMode,
-      streamingSilenceTimeoutMs = sigil.streamingSilenceTimeoutMs
+      streamingSilenceTimeoutMs = sigil.streamingSilenceTimeoutMs,
+      streamingDeadOnArrivalTimeoutMs = sigil.streamingDeadOnArrivalTimeoutMs
     )
     Stream.force(
       for {
@@ -832,7 +833,14 @@ object OpenAIChatCompletions {
                             * reasoning / image / response-state event; pure
                             * session-start chunks and SSE comment keepalives
                             * count as silence. `0` disables the check. */
-                          val streamingSilenceTimeoutMs: Long = 0L) {
+                          val streamingSilenceTimeoutMs: Long = 0L,
+                          /** Sigil #258 — shorter silence budget (ms)
+                            * applied before the stream has produced any
+                            * meaningful event (a dead-on-arrival
+                            * upstream emitting only keepalives). Once
+                            * content appears, [[streamingSilenceTimeoutMs]]
+                            * applies. `0` disables this shorter budget. */
+                          val streamingDeadOnArrivalTimeoutMs: Long = 0L) {
     var pendingDone: Option[StopReason] = None
     val responseFormatBuf: StringBuilder = new StringBuilder
 
@@ -886,11 +894,17 @@ object OpenAIChatCompletions {
       * yet". */
     var lastMeaningfulNanos: Long = -1L
 
+    /** Sigil #258 — flips `true` the first time the stream produces a
+      * meaningful event. While `false`, [[checkStreamingSilence]] uses
+      * the shorter [[streamingDeadOnArrivalTimeoutMs]] budget. */
+    var sawMeaningfulContent: Boolean = false
+
     /** Called by [[parseChunk]] when a chunk produced at least one
       * meaningful event (text / tool / reasoning / image /
       * response-state). Resets the silence anchor. */
     def markMeaningfulProgress(): Unit = {
       lastMeaningfulNanos = nowNanos()
+      sawMeaningfulContent = true
     }
 
     /** Called by [[parseLine]] at the top of every SSE line. Raises a
@@ -899,20 +913,29 @@ object OpenAIChatCompletions {
       * Comment-only keepalives advance through this check; the next
       * keepalive after the threshold fires the throw. */
     def checkStreamingSilence(config: Config): Unit = {
+      // `streamingSilenceTimeoutMs` is the master switch — `0` turns
+      // silence detection off entirely. Sigil #258: until the stream
+      // produces its first meaningful event the shorter
+      // dead-on-arrival budget applies, so a dead upstream is
+      // abandoned fast and the transient-retry path can try a fresh
+      // connection; once content has flowed the full budget applies.
       if (streamingSilenceTimeoutMs <= 0L) return
+      val budget =
+        if (sawMeaningfulContent || streamingDeadOnArrivalTimeoutMs <= 0L) streamingSilenceTimeoutMs
+        else streamingDeadOnArrivalTimeoutMs
       val now = nowNanos()
       if (lastMeaningfulNanos < 0L) {
         lastMeaningfulNanos = now
         return
       }
       val elapsedMs = (now - lastMeaningfulNanos) / 1000000L
-      if (elapsedMs > streamingSilenceTimeoutMs) {
+      if (elapsedMs > budget) {
         throw new ProviderStreamException(
           providerKey = config.providerNamespace,
           code = 0,
           typ = "upstream_silent",
           message_ = s"${config.providerName} emitted only keepalive chunks for ${elapsedMs}ms " +
-            s"(threshold ${streamingSilenceTimeoutMs}ms) — upstream is unresponsive.",
+            s"(threshold ${budget}ms) — upstream is unresponsive.",
           status = None,
           errorMetadata = Some(ProviderErrorMetadata(errorType = Some("upstream_silent")))
         )

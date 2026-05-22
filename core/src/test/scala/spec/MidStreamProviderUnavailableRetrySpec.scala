@@ -33,7 +33,11 @@ import java.util.concurrent.atomic.{AtomicInteger, AtomicLong, AtomicReference}
  *      heartbeats for longer than the configured budget — raises a
  *      typed `upstream_silent` exception the classifier treats as
  *      retryable.
- *   4. Non-transient failures (401 unauthorized) propagate without
+ *   4. Sigil #258 — a dead-on-arrival upstream (no meaningful content
+ *      ever) fires `upstream_silent` on the shorter
+ *      `streamingDeadOnArrivalTimeoutMs` budget; once content has
+ *      flowed, the full `streamingSilenceTimeoutMs` budget governs.
+ *   5. Non-transient failures (401 unauthorized) propagate without
  *      retry.
  */
 class MidStreamProviderUnavailableRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
@@ -209,6 +213,64 @@ class MidStreamProviderUnavailableRetrySpec extends AsyncWordSpec with AsyncTask
       // Another 25s of keepalives after the bump — still under budget, no throw.
       now.set(53000L * 1000000L)
       OpenAIChatCompletions.parseLine(": OPENROUTER PROCESSING", state, cfg) shouldBe empty
+      Task.unit.map(_ => succeed)
+    }
+
+    "a dead-on-arrival upstream (no content yet) fires upstream_silent on the shorter budget (#258)" in {
+      val now = new AtomicLong(0L)
+      val state = new StreamState(
+        acc                             = new ToolCallAccumulator(Vector.empty, providerKey = "openrouter"),
+        nowNanos                        = () => now.get(),
+        streamingSilenceTimeoutMs       = 60000L,
+        streamingDeadOnArrivalTimeoutMs = 20000L
+      )
+      val cfg = Config(providerNamespace = OpenRouter.Provider, providerName = "OpenRouter")
+
+      // Arm the silence anchor at t=0.
+      OpenAIChatCompletions.parseLine(": OPENROUTER PROCESSING", state, cfg) shouldBe empty
+      // 15s elapsed — under the 20s dead-on-arrival budget, no throw.
+      now.set(15000L * 1000000L)
+      OpenAIChatCompletions.parseLine(": OPENROUTER PROCESSING", state, cfg) shouldBe empty
+      // 21s elapsed — past the 20s dead-on-arrival budget. The full
+      // 60s budget has NOT elapsed, but a stream that produced nothing
+      // at all is abandoned early so the transient-retry path can try
+      // a fresh connection.
+      now.set(21000L * 1000000L)
+      val ex = intercept[ProviderStreamException] {
+        OpenAIChatCompletions.parseLine(": OPENROUTER PROCESSING", state, cfg)
+      }
+      ex.typ shouldBe "upstream_silent"
+      ErrorClassifier.Default.classify(ex) shouldBe ErrorClassification.Retry
+      Task.unit.map(_ => succeed)
+    }
+
+    "the full silence budget applies once meaningful content has flowed, not the dead-on-arrival one (#258)" in {
+      val now = new AtomicLong(0L)
+      val state = new StreamState(
+        acc                             = new ToolCallAccumulator(Vector.empty, providerKey = "openrouter"),
+        nowNanos                        = () => now.get(),
+        streamingSilenceTimeoutMs       = 60000L,
+        streamingDeadOnArrivalTimeoutMs = 20000L
+      )
+      val cfg = Config(providerNamespace = OpenRouter.Provider, providerName = "OpenRouter")
+
+      // Arm, then a real content chunk at t=5s — the stream is no
+      // longer "dead on arrival".
+      OpenAIChatCompletions.parseLine(": OPENROUTER PROCESSING", state, cfg) shouldBe empty
+      now.set(5000L * 1000000L)
+      val contentChunk = """data: {"choices":[{"delta":{"content":"first token"}}]}"""
+      OpenAIChatCompletions.parseLine(contentChunk, state, cfg)
+        .exists { case _: ProviderEvent.TextDelta => true; case _ => false } shouldBe true
+      // 30s after the content chunk — well past the 20s dead-on-arrival
+      // budget, but the full 60s budget now governs, so no throw.
+      now.set(35000L * 1000000L)
+      OpenAIChatCompletions.parseLine(": OPENROUTER PROCESSING", state, cfg) shouldBe empty
+      // 66s after the content chunk — past the full 60s budget; throws.
+      now.set(71000L * 1000000L)
+      val ex = intercept[ProviderStreamException] {
+        OpenAIChatCompletions.parseLine(": OPENROUTER PROCESSING", state, cfg)
+      }
+      ex.typ shouldBe "upstream_silent"
       Task.unit.map(_ => succeed)
     }
 

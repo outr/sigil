@@ -255,7 +255,8 @@ trait Provider extends Service {
     * transient provider errors. The framework already classifies
     * network timeouts / 502 / 503 / rate-limits as `Retry`
     * (see [[ErrorClassifier.Default]]); this method ACTS on that
-    * classification by re-attempting the wire call once before
+    * classification by re-attempting the wire call (up to
+    * [[providerRetryAttempts]] times) before
     * propagating, so a single TLS handshake hiccup / OpenRouter
     * edge RST / brief rate-limit spike doesn't terminate the user's
     * turn.
@@ -284,7 +285,7 @@ trait Provider extends Service {
     *
     * Apps that prefer streaming over retry-correctness override
     * [[providerRetryAttempts]] to `0` to disable. */
-  protected def providerRetryAttempts: Int = 1
+  protected def providerRetryAttempts: Int = 3
 
   /** Per-retry backoff. Transient transport flakes typically
     * resolve in < 1 s; longer waits delay the user without
