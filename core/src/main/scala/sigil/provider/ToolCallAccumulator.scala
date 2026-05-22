@@ -139,7 +139,22 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
       toolsByName.get(s.toolName) match {
         case Some(tool) =>
           try {
-            val rawJson = JsonParser(s.buf.toString)
+            // Sigil #260 — a tool call that streamed no argument JSON
+            // leaves the buffer empty. A zero-parameter tool has
+            // nothing to emit, and Anthropic sends the `tool_use` with
+            // no `input_json_delta` events at all (OpenAI sends the
+            // literal `"{}"`, which is why it escaped this). An empty
+            // buffer parsed by `JsonParser` yields `Json.Null`, which
+            // cannot decode into the typed input — a no-args call has
+            // empty-OBJECT arguments, not null. Normalise it to `{}`.
+            // A tool that genuinely needed args still fails downstream
+            // at `inputRW.write` with an actionable "missing field"
+            // diagnostic rather than the opaque "Unsupported token:
+            // null".
+            val argsText = s.buf.toString
+            val rawJson  =
+              if (argsText.trim.isEmpty) fabric.Obj.empty
+              else JsonParser(argsText)
             // Bug #58 — coerce `""` → `Null` for `Option[String]`
             // fields before fabric's RW materialises the typed
             // input. Without this, models that emit `""` as their

@@ -337,7 +337,10 @@ case class AnthropicProvider(apiKey: String,
 
   // ---- response parsing ----
 
-  private def parseLine(line: String, state: StreamState): Vector[ProviderEvent] =
+  // `private[anthropic]` rather than `private` so canned-SSE decode
+  // specs in this package can drive the streaming parser without a
+  // live Anthropic round-trip.
+  private[anthropic] def parseLine(line: String, state: StreamState): Vector[ProviderEvent] =
     SSELineParser.dispatch(line)(
       onData = json => parseEvent(json, state),
       onDone = state.flushDone()
@@ -451,7 +454,7 @@ case class AnthropicProvider(apiKey: String,
   private def parseUsage(json: Json): TokenUsage =
     TokenUsage.fromJson(json, "input_tokens", "output_tokens", cacheKeys = CacheKeys.Anthropic)
 
-  final private class StreamState(val acc: ToolCallAccumulator) {
+  final private[anthropic] class StreamState(val acc: ToolCallAccumulator) {
     var indexToCallId: Map[Int, CallId] = Map.empty
     var pendingDone: Option[StopReason] = None
     var sawFunctionCall: Boolean = false
