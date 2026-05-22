@@ -1,10 +1,9 @@
 package sigil.metals
 
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class StartMetalsInput() extends ToolInput derives RW
 
@@ -22,36 +21,37 @@ case class StartMetalsInput() extends ToolInput derives RW
  * agent doesn't call them through this tool — it discovers them on
  * the next `find_capability` keyed against whatever it needs.
  */
-final class StartMetalsTool extends TypedTool[StartMetalsInput](
-  name = ToolName("start_metals"),
-  description =
+final class StartMetalsTool extends Tool {
+  type Input  = StartMetalsInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[StartMetalsInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("start_metals")
+  val description =
     """Start the Metals (Scala LSP) MCP server for this conversation's workspace. Once running,
       |Metals' tools (find-symbol, compile, test, etc.) become discoverable via find_capability.
-      |Idempotent — calling a second time just keeps the existing subprocess alive.""".stripMargin,
-  examples = List(ToolExample("start metals here", StartMetalsInput())),
-  keywords = Set(
+      |Idempotent — calling a second time just keeps the existing subprocess alive.""".stripMargin
+  override val examples = List(ToolExample("start metals here", StartMetalsInput()))
+  override val keywords = Set(
     "metals", "start", "scala", "lsp", "language",
     "compile", "indexing", "spawn", "boot", "enable",
     "code", "tooling", "ide"
   )
-) {
-  override def paginate: Boolean = false
 
   import MetalsToolSupport.*
 
-  override protected def executeTyped(input: StartMetalsInput, context: TurnContext): Stream[Event] = {
+  override def executeResult(input: StartMetalsInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
     val sigil = context.sigil
-    Stream.force(workspaceFor(sigil, context).flatMap {
+    workspaceFor(sigil, context).flatMap {
       case Left(msg) =>
-        Task.pure(Stream.emit[Event](reply(context, msg, isError = true)))
+        Task.pure(ToolResult.failure(msg))
       case Right(workspace) =>
         manager(sigil) match {
           case None =>
-            Task.pure(Stream.emit[Event](reply(
-              context,
-              "start_metals: this Sigil instance doesn't include sigil-metals — mix in MetalsSigil to enable.",
-              isError = true
-            )))
+            Task.pure(ToolResult.failure(
+              "start_metals: this Sigil instance doesn't include sigil-metals — mix in MetalsSigil to enable."
+            ))
           case Some(mm) =>
             // Bug #69 — fan Metals' stdout into the chat chip via
             // `ToolLog` events. The callback runs on the drainer
@@ -95,20 +95,15 @@ final class StartMetalsTool extends TypedTool[StartMetalsInput](
               }
               lspConfigWrite
                 .flatMap(_ => overlayInstall)
-                .map(_ => Stream.emit[Event](reply(
-                  context,
+                .map(_ => ToolResult.Success(TextToolOutput(
                   s"Metals running for $workspace (server name: $name)"
                 )))
             }.handleError { t =>
-              Task.pure(Stream.emit[Event](reply(
-                context,
-                s"start_metals failed: ${t.getMessage}",
-                isError = true
-              )))
+              Task.pure(ToolResult.failure(s"start_metals failed: ${t.getMessage}"))
             }
             }
         }
-    })
+    }
   }
 
   /** Returns the [[MetalsSigil]] handle when the host mixes it in. */

@@ -1,8 +1,9 @@
 package sigil.tool.random
 
+import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolExample, ToolName}
 import sigil.tool.model.{RandomDoubleInput, RandomDoubleOutput}
 
 /**
@@ -10,22 +11,25 @@ import sigil.tool.model.{RandomDoubleInput, RandomDoubleOutput}
  * range, matching `scala.util.Random.between` semantics. Defaults to
  * `[0.0, 1.0)` when `min` / `max` are omitted.
  */
-case object RandomDoubleTool extends TypedOutputTool[RandomDoubleInput, RandomDoubleOutput](
-  name = ToolName("random_double"),
-  description =
+case object RandomDoubleTool extends Tool {
+  type Input  = RandomDoubleInput
+  type Output = RandomDoubleOutput
+  val inputRW  = summon[RW[RandomDoubleInput]]
+  val outputRW = summon[RW[RandomDoubleOutput]]
+
+  val name = ToolName("random_double")
+  val description =
     """Generate a uniformly random double in `[min, max)` — half-open (max exclusive).
       |
       |Defaults to the unit interval `[0.0, 1.0)`. Optional `seed` for reproducibility.
-      |Returns `{value, min, max, seed}`.""".stripMargin,
-  examples = List(
+      |Returns `{value, min, max, seed}`.""".stripMargin
+  override val examples = List(
     ToolExample("unit-interval draw", RandomDoubleInput()),
     ToolExample("ranged seeded draw", RandomDoubleInput(min = -1.0, max = 1.0, seed = Some(7L)))
-  ),
-  keywords = Set("random", "rand", "double", "float", "decimal", "number", "rng")
-) {
-  override def paginate: Boolean = false
+  )
+  override val keywords = Set("random", "rand", "double", "float", "decimal", "number", "rng")
 
-  override protected def executeTyped(input: RandomDoubleInput, context: TurnContext): Task[RandomDoubleOutput] = Task {
+  override def executeOutput(input: RandomDoubleInput, context: TurnContext): Task[RandomDoubleOutput] = Task {
     require(input.min < input.max, s"random_double: min (${input.min}) must be < max (${input.max})")
     val rng = input.seed.map(s => new scala.util.Random(s)).getOrElse(scala.util.Random)
     RandomDoubleOutput(

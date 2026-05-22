@@ -10,4 +10,4 @@ import fabric.rw.*
  */
 case class ProcessSignalOutput(handle: String,
                                signal: ProcessSignal,
-                               delivered: Boolean) derives RW
+                               delivered: Boolean) extends sigil.tool.ToolOutput derives RW

@@ -19,7 +19,7 @@ import fabric.rw.*
  *   - `FileNotFound` — safe-edit attempted on a file that no
  *     longer exists.
  */
-enum EditFileOutput derives RW {
+enum EditFileOutput extends sigil.tool.ToolOutput derives RW {
   case Success(replacements: Int, hash: Option[String])
   case NotFound
   case NotUnique(occurrences: Int)

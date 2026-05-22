@@ -1,9 +1,11 @@
 package sigil.tool.core
 
+import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.{Event, Message}
+import sigil.event.Message
 import sigil.signal.EventState
-import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, ToolName, ToolResult}
 import sigil.tool.model.{RespondFieldInput, ResponseContent}
 
 /**
@@ -17,24 +19,26 @@ import sigil.tool.model.{RespondFieldInput, ResponseContent}
  * [[sigil.tool.model.MarkdownContentParser]]. This standalone tool
  * stays in core for apps that prefer typed-emission paths.
  */
-case object RespondFieldTool extends TypedTool[RespondFieldInput](
-  name = ToolName("respond_field"),
-  description =
-    """Emit a labeled key/value field — for compact metadata (status, source, timestamp). `icon`
-      |is an optional semantic hint.""".stripMargin,
-  examples = Nil
-) with RespondFamilyTool {
-  override def paginate: Boolean = false
+case object RespondFieldTool extends RespondFamilyTool {
+  type Input  = RespondFieldInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[RespondFieldInput]]
+  val outputRW = summon[RW[TextToolOutput]]
 
-  override protected def executeTyped(input: RespondFieldInput, context: TurnContext): rapid.Stream[Event] = {
+  val name = ToolName("respond_field")
+  val description =
+    """Emit a labeled key/value field — for compact metadata (status, source, timestamp). `icon`
+      |is an optional semantic hint.""".stripMargin
+
+  override def executeResult(input: RespondFieldInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
     val block = ResponseContent.Field(label = input.label, value = input.value, icon = input.icon)
-    rapid.Stream.emits(List(Message(
+    context.emit(Message(
       participantId = context.caller,
       conversationId = context.conversation.id,
       topicId = context.conversation.currentTopicId,
       content = Vector(block),
       state = EventState.Complete,
       modelId = context.modelId
-    )))
+    )).map(_ => ToolResult.Success(TextToolOutput("")))
   }
 }

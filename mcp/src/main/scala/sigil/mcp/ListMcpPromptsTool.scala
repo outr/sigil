@@ -1,24 +1,24 @@
 package sigil.mcp
 
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.{Event, Message, MessageVisibility, MessageRole}
-import sigil.signal.EventState
-import sigil.tool.{ToolInput, ToolName, TypedTool}
-import sigil.tool.model.ResponseContent
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 case class ListMcpPromptsInput(server: String) extends ToolInput derives RW
 
 /** List the prompt templates advertised by a registered MCP server. */
-final class ListMcpPromptsTool(manager: McpManager) extends TypedTool[ListMcpPromptsInput](
-  name = ToolName("list_mcp_prompts"),
-  description = "List the prompt templates advertised by a registered MCP server, including their argument names."
-) {
-  override def paginate: Boolean = false
+final class ListMcpPromptsTool(manager: McpManager) extends Tool {
+  type Input  = ListMcpPromptsInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[ListMcpPromptsInput]]
+  val outputRW = summon[RW[TextToolOutput]]
 
-  override protected def executeTyped(input: ListMcpPromptsInput, context: TurnContext): Stream[Event] =
-    Stream.force(manager.listPrompts(input.server).map { prompts =>
+  val name = ToolName("list_mcp_prompts")
+  val description = "List the prompt templates advertised by a registered MCP server, including their argument names."
+
+  override def executeResult(input: ListMcpPromptsInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    manager.listPrompts(input.server).map { prompts =>
       val text = if (prompts.isEmpty) "(no prompts advertised)"
       else prompts.map { p =>
         val args = if (p.arguments.isEmpty) "" else p.arguments.map { a =>
@@ -28,24 +28,8 @@ final class ListMcpPromptsTool(manager: McpManager) extends TypedTool[ListMcpPro
         val desc = p.description.map(d => s" — $d").getOrElse("")
         s"- ${p.name}$args$desc"
       }.mkString("\n")
-      Stream.emit[Event](Message(
-        participantId = context.caller,
-        conversationId = context.conversation.id,
-        topicId = context.conversation.currentTopicId,
-        content = Vector(ResponseContent.Text(text)),
-        state = EventState.Complete,
-        role = MessageRole.Tool,
-        visibility = MessageVisibility.All
-      ))
+      ToolResult.Success(TextToolOutput(text))
     }.handleError { e =>
-      Task.pure(Stream.emit[Event](Message(
-        participantId = context.caller,
-        conversationId = context.conversation.id,
-        topicId = context.conversation.currentTopicId,
-        content = Vector(ResponseContent.Text(s"List prompts failed: ${e.getMessage}")),
-        state = EventState.Complete,
-        role = MessageRole.Tool,
-        visibility = MessageVisibility.All
-      )))
-    })
+      Task.pure(ToolResult.failure(s"List prompts failed: ${e.getMessage}"))
+    }
 }

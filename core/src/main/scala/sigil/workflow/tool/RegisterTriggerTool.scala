@@ -3,10 +3,9 @@ package sigil.workflow.tool
 import fabric.rw.*
 import lightdb.id.Id
 import lightdb.time.Timestamp
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import sigil.workflow.{WorkflowTemplate, WorkflowTrigger}
 
 case class RegisterTriggerInput(workflowId: String,
@@ -21,15 +20,19 @@ case class RegisterTriggerInput(workflowId: String,
  * (Sage's downstream additions) work the same as the framework's
  * baseline four.
  */
-final class RegisterTriggerTool extends TypedTool[RegisterTriggerInput](
-  name = ToolName("register_trigger"),
-  description =
+final class RegisterTriggerTool extends Tool with WorkflowToolSupport {
+  type Input  = RegisterTriggerInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[RegisterTriggerInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+  val name = ToolName("register_trigger")
+  val description =
     """Add a typed WorkflowTrigger to a workflow template.
       |
       |`workflowId` is the template id. `trigger` is the typed trigger shape — pick
       |from the available subtypes (ConversationMessageTrigger, TimeTrigger, WebhookTrigger,
-      |WorkflowEventTrigger, plus app-defined ones).""".stripMargin,
-  examples = List(
+      |WorkflowEventTrigger, plus app-defined ones).""".stripMargin
+  override val examples = List(
     ToolExample(
       "fire on a daily 9am cron",
       RegisterTriggerInput(
@@ -37,12 +40,10 @@ final class RegisterTriggerTool extends TypedTool[RegisterTriggerInput](
         trigger = sigil.workflow.trigger.TimeTrigger(cron = Some("0 9 * * *"))
       )
     )
-  ),
-  keywords = Set("workflow", "trigger", "schedule", "register")
-) with WorkflowToolSupport {
-  override def paginate: Boolean = false
+  )
+  override val keywords = Set("workflow", "trigger", "schedule", "register")
 
-  override protected def executeTyped(input: RegisterTriggerInput, ctx: TurnContext): Stream[Event] = withHost(ctx) { host =>
+  override def executeResult(input: RegisterTriggerInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
     val id = Id[WorkflowTemplate](input.workflowId)
     host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
       case None => Task.pure(s"Workflow '${input.workflowId}' not found.")

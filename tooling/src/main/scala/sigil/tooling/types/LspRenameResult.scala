@@ -6,7 +6,7 @@ import fabric.rw.*
   * `filesChanged` files; `PartialFailure` means the server returned
   * edits but at least one file's apply failed; `NoEdits` is the
   * server's "I have no rename for this position" answer. */
-enum LspRenameResult derives RW {
+enum LspRenameResult extends sigil.tool.ToolOutput derives RW {
   case Applied(newName: String, filesChanged: Int)
   case PartialFailure(newName: String, filesChanged: Int)
   case NoEdits

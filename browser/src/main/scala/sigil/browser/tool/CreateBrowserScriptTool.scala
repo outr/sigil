@@ -1,15 +1,13 @@
 package sigil.browser.tool
 
 import fabric.io.JsonFormatter
+import fabric.rw.*
 import lightdb.id.Id
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
 import sigil.browser.WebBrowserMode
 import sigil.browser.{BrowserScript, BrowserSigil, CookieJar}
-import sigil.event.{Event, Message, MessageRole, MessageVisibility}
-import sigil.signal.EventState
-import sigil.tool.model.ResponseContent
-import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, ToolExample, ToolName, TypedTool}
+import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, TextToolOutput, Tool, ToolName, ToolResult}
 
 /**
  * Persist a new [[BrowserScript]] under the framework's policy-
@@ -19,14 +17,18 @@ import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, ToolExample, Tool
  * it to `SigilDB.tools` so future turns can `find_capability` and
  * invoke it like any other tool.
  *
- * **Suggestion cascade** — emits a [[ToolResults]] whose `schemas`
- * include `update_browser_script`, `delete_browser_script`, and the
- * just-created script's own schema, so the agent can demo / tweak
- * the script on the next turn (one-turn decay).
+ * The result text confirms the persisted script and carries its
+ * invocation schema so the agent can call it back without an extra
+ * `find_capability` round-trip.
  */
-case object CreateBrowserScriptTool extends TypedTool[CreateBrowserScriptInput](
-  name = ToolName("create_browser_script"),
-  description =
+case object CreateBrowserScriptTool extends Tool {
+  type Input  = CreateBrowserScriptInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[CreateBrowserScriptInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("create_browser_script")
+  val description =
     """Persist a new browser-script tool the agent (or another agent in scope) can later invoke
       |through `find_capability`. The script's `steps` run against the per-conversation browser
       |controller — same surface as the primitive `browser_*` tools — so any sequence the agent can
@@ -37,68 +39,40 @@ case object CreateBrowserScriptTool extends TypedTool[CreateBrowserScriptInput](
       |`${outputs.<name>}` placeholders. `cookieJarId` references a previously-saved CookieJar so
       |replays restore logged-in state. `space` is an optional string hint asking the framework to
       |pin the tool under a specific space — the active Sigil's `browserScriptSpace` policy
-      |decides whether to honor it.""".stripMargin,
-  examples = Nil,
-  modes = Set(WebBrowserMode.id),
-  keywords = Set("create", "browser", "script", "automate", "record", "save", "replay")
-) {
-  override def paginate: Boolean = false
+      |decides whether to honor it.""".stripMargin
+  override val modes = Set(WebBrowserMode.id)
+  override val keywords = Set("create", "browser", "script", "automate", "record", "save", "replay")
 
-
-  override protected def executeTyped(input: CreateBrowserScriptInput,
-                                      ctx: TurnContext): Stream[Event] = ctx.sigil match {
+  override def executeResult(input: CreateBrowserScriptInput,
+                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] = ctx.sigil match {
     case bs: BrowserSigil =>
-      Stream.force(
-        bs.browserScriptSpace(ctx.chain, input.space).flatMap { resolvedSpace =>
-          val script = BrowserScript(
-            name        = ToolName(input.name),
-            description = input.description,
-            parameters  = JsonSchemaToDefinition(input.parameters),
-            steps       = input.steps,
-            space       = resolvedSpace,
-            cookieJarId = input.cookieJarId.map(s => Id[CookieJar](s)),
-            keywords    = input.keywords,
-            createdBy   = Some(ctx.caller)
-          )
-          ctx.sigil.createTool(script).map { stored =>
-            // Bug #69 — single Message(Tool) carrying the
-            // confirmation, schema, and invocation hint. Replaces the
-            // [ack, ToolResults] cascade whose ToolResults event
-            // landed orphan-framed.
-            val schemaJson = JsonFormatter.Default(DefinitionToSchema(stored.schema.input))
-            val text = new StringBuilder
-            text.append(s"Persisted browser script '${stored.name.value}' under space '${resolvedSpace.value}' ")
-            text.append(s"(${input.steps.size} steps).\n\n")
-            text.append("To invoke on a subsequent turn, emit a tool_call with:\n")
-            text.append(s"  name: ${stored.name.value}\n")
-            text.append(s"  arguments matching this schema:\n")
-            text.append(schemaJson).append("\n\n")
-            text.append("Authoring follow-ups: update_browser_script, delete_browser_script.\n")
-            val ack = Message(
-              participantId  = ctx.caller,
-              conversationId = ctx.conversation.id,
-              topicId        = ctx.conversation.currentTopicId,
-              content        = Vector(ResponseContent.Text(text.toString)),
-              state          = EventState.Complete,
-              role           = MessageRole.Tool,
-              visibility     = MessageVisibility.Agents
-            )
-            Stream.emit[Event](ack)
-          }
-        }.handleError(t => Task.pure(Stream.emit[Event](errorReply(ctx,
-          s"Failed to create browser script: ${t.getMessage}"))))
-      )
+      bs.browserScriptSpace(ctx.chain, input.space).flatMap { resolvedSpace =>
+        val script = BrowserScript(
+          name        = ToolName(input.name),
+          description = input.description,
+          parameters  = JsonSchemaToDefinition(input.parameters),
+          steps       = input.steps,
+          space       = resolvedSpace,
+          cookieJarId = input.cookieJarId.map(s => Id[CookieJar](s)),
+          keywords    = input.keywords,
+          createdBy   = Some(ctx.caller)
+        )
+        ctx.sigil.createTool(script).map { stored =>
+          val schemaJson = JsonFormatter.Default(DefinitionToSchema(stored.schema.input))
+          val text = new StringBuilder
+          text.append(s"Persisted browser script '${stored.name.value}' under space '${resolvedSpace.value}' ")
+          text.append(s"(${input.steps.size} steps).\n\n")
+          text.append("To invoke on a subsequent turn, emit a tool_call with:\n")
+          text.append(s"  name: ${stored.name.value}\n")
+          text.append(s"  arguments matching this schema:\n")
+          text.append(schemaJson).append("\n\n")
+          text.append("Authoring follow-ups: update_browser_script, delete_browser_script.\n")
+          ToolResult.Success(TextToolOutput(text.toString))
+        }
+      }.handleError(t => Task.pure(ToolResult.failure(
+        s"Failed to create browser script: ${t.getMessage}")))
     case _ =>
-      Stream.emit(errorReply(ctx, "Sigil instance does not mix in BrowserSigil; cannot create browser scripts."))
+      Task.pure(ToolResult.failure(
+        "Sigil instance does not mix in BrowserSigil; cannot create browser scripts."))
   }
-
-  private def errorReply(ctx: TurnContext, text: String): Event = Message(
-    participantId  = ctx.caller,
-    conversationId = ctx.conversation.id,
-    topicId        = ctx.conversation.currentTopicId,
-    content        = Vector(ResponseContent.Text(text)),
-    state          = EventState.Complete,
-    role           = MessageRole.Tool,
-    visibility     = MessageVisibility.Agents
-  )
 }

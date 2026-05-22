@@ -4,20 +4,17 @@ import fabric.Json
 import fabric.io.JsonFormatter
 import rapid.Task
 import sigil.TurnContext
-import sigil.browser.{BrowserController, BrowserSigil, BrowserStateDelta}
-import sigil.event.{Event, Message, MessageRole}
-import sigil.signal.EventState
-import sigil.tool.model.ResponseContent
+import sigil.browser.{BrowserController, BrowserSigil}
+import sigil.tool.TextToolOutput
 
 /**
  * Shared helpers for the `sigil.browser.tool` family. Each browser
  * tool resolves the per-conversation [[BrowserController]] through
- * [[resolveController]], drives the action, then emits one
- * `Message(role = Tool)` carrying the tool's JSON output and one
- * [[BrowserStateDelta]] reflecting the URL/title/loading transition.
- *
- * Tools that don't change page state (e.g. a future
- * `browser_get_cookies`) skip the delta and emit only the tool result.
+ * [[resolveController]], drives the action, then resolves to a
+ * [[TextToolOutput]] carrying the tool's JSON payload — the framework
+ * builds the paired result event. Page-state transitions
+ * (URL/title/loading) are published separately as
+ * [[sigil.browser.BrowserStateDelta]]s.
  */
 private[tool] object BrowserToolBase {
 
@@ -34,16 +31,8 @@ private[tool] object BrowserToolBase {
           "Browser tools require BrowserSigil — mix `BrowserSigil` into your Sigil class."))
     }
 
-  /** Build a `Message(role = Tool)` carrying the tool's JSON
-    * payload as a single Text content block. Mirrors the
-    * `FsToolEmit` shape used by `sigil.tool.fs` so all tool
-    * results render uniformly. */
-  def toolResult(payload: Json, ctx: TurnContext): Message = Message(
-    participantId  = ctx.caller,
-    conversationId = ctx.conversation.id,
-    topicId        = ctx.conversation.currentTopicId,
-    content        = Vector(ResponseContent.Text(JsonFormatter.Compact(payload))),
-    state          = EventState.Complete,
-    role           = MessageRole.Tool
-  )
+  /** Wrap a JSON payload as a [[TextToolOutput]] — the browser
+    * family's result is the compact-rendered JSON the agent reads. */
+  def toolResult(payload: Json): TextToolOutput =
+    TextToolOutput(JsonFormatter.Compact(payload))
 }

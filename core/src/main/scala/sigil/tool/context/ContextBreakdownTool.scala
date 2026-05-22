@@ -1,11 +1,12 @@
 package sigil.tool.context
 
+import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
 import sigil.conversation.{ContextFrame, ContextMemory}
 import sigil.tokenize.HeuristicTokenizer
 import sigil.tool.model.{ContextBreakdownOutput, ContextSectionBreakdown, ContextSectionKind}
-import sigil.tool.{ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolName}
 
 /**
  * Returns a breakdown of how the current turn's context is being
@@ -20,22 +21,24 @@ import sigil.tool.{ToolName, TypedOutputTool}
  *
  * Emits a typed [[ContextBreakdownOutput]].
  */
-case object ContextBreakdownTool extends TypedOutputTool[ContextBreakdownInput, ContextBreakdownOutput](
-  name = ToolName("context_breakdown"),
-  description =
+case object ContextBreakdownTool extends Tool {
+  type Input  = ContextBreakdownInput
+  type Output = ContextBreakdownOutput
+  val inputRW  = summon[RW[ContextBreakdownInput]]
+  val outputRW = summon[RW[ContextBreakdownOutput]]
+  val name = ToolName("context_breakdown")
+  val description =
     """Return a section-by-section breakdown of where your context window is being spent
       |this turn — frames, critical memories, retrieved memories, active skills, etc.
       |Use this when the user asks "what's in your context?" / "why is my context full?".
       |
       |For details on specific pinned items, use the memory-listing and memory-unpinning
-      |tools available in this conversation.""".stripMargin,
-  keywords = Set("context", "breakdown", "tokens", "usage", "share", "where", "why")
-) {
-  override def paginate: Boolean = false
+      |tools available in this conversation.""".stripMargin
+  override val keywords = Set("context", "breakdown", "tokens", "usage", "share", "where", "why")
 
   override def resultTtl: Option[Int] = Some(0)
 
-  override protected def executeTyped(input: ContextBreakdownInput, context: TurnContext): Task[ContextBreakdownOutput] =
+  override def executeOutput(input: ContextBreakdownInput, context: TurnContext): Task[ContextBreakdownOutput] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { spaces =>
       val critTask = if (spaces.isEmpty) Task.pure(List.empty[ContextMemory])
                      else context.sigil.findCriticalMemories(spaces)

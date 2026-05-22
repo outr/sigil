@@ -5,12 +5,11 @@ import fabric.rw.*
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import lightdb.util.Nowish
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.{SpaceId, TurnContext}
-import sigil.event.Event
 import sigil.participant.ParticipantId
 import sigil.provider.Mode
-import sigil.tool.{JsonInput, Tool, ToolExample, ToolInput, ToolName}
+import sigil.tool.{JsonInput, Tool, ToolExample, ToolResult, ToolName}
 
 /**
  * Persisted tool whose execution path is a stored script, created at
@@ -58,77 +57,53 @@ case class ScriptTool(name: ToolName,
 
   override def kind: sigil.tool.ToolKind = ScriptKind
 
+  type Input  = JsonInput
+  type Output = ScriptToolOutput
   override val inputRW: RW[JsonInput] = summon[RW[JsonInput]]
+  override val outputRW: RW[ScriptToolOutput] = summon[RW[ScriptToolOutput]]
 
   override def inputDefinition: Definition = parameters
 
-  override def execute(input: ToolInput, context: TurnContext): Stream[Event] = {
-    val args = input match {
-      case j: JsonInput => j.json
-      case other        => summon[RW[ToolInput]].read(other)
-    }
+  override def executeResult(input: JsonInput,
+                             context: TurnContext): Task[ToolResult[ScriptToolOutput]] =
     context.sigil match {
-      case s: ScriptSigil => runOnExecutor(s.scriptExecutor, args, context)
-      case _              => Stream.emit[Event](errorResult(
-        context,
-        durationMs = 0L,
-        message = "Sigil instance does not mix in ScriptSigil; cannot execute script tool."
-      ))
+      case s: ScriptSigil => runOnExecutor(s.scriptExecutor, input.json, context)
+      case _              => Task.pure(ToolResult.Success(ScriptToolOutput(
+        error = Some("Sigil instance does not mix in ScriptSigil; cannot execute script tool."),
+        durationMs = 0L
+      )))
     }
-  }
 
   private def runOnExecutor(executor: ScriptExecutor,
                             args: fabric.Json,
-                            context: TurnContext): Stream[Event] = {
+                            context: TurnContext): Task[ToolResult[ScriptToolOutput]] = {
     val bindings = ScriptTools.defaultBindings(context) ++ Map("args" -> args, "context" -> context)
     val started  = System.currentTimeMillis()
     // Bug #67 — wrap the construction in `Task.defer` so synchronous
     // throws during executor.execute argument evaluation surface as a
-    // ScriptResult error rather than escaping to the orchestrator's
-    // dangling-tool-call fallback. Mirror of ExecuteScriptTool's fix.
-    Stream.force(
-      Task.defer {
-        executor.execute(code, bindings)
-          .map { output =>
-            Stream.emit[Event](ScriptResult(
-              participantId  = context.caller,
-              conversationId = context.conversation.id,
-              topicId        = context.conversation.currentTopicId,
-              output         = Some(output),
-              durationMs     = System.currentTimeMillis() - started
-            ))
-          }
-          .handleError { t =>
-            Task.pure(Stream.emit[Event](errorResult(context, started, t)))
-          }
-      }.handleError { t =>
-        Task.pure(Stream.emit[Event](errorResult(context, started, t)))
-      }
-    )
+    // populated ScriptToolOutput.error. Mirror of ExecuteScriptTool's fix.
+    Task.defer {
+      executor.execute(code, bindings)
+        .map { output =>
+          ToolResult.Success(ScriptToolOutput(
+            output     = Some(output),
+            durationMs = System.currentTimeMillis() - started
+          ))
+        }
+        .handleError(t => Task.pure(errorResult(started, t)))
+    }.handleError(t => Task.pure(errorResult(started, t)))
   }
 
-  private def errorResult(context: TurnContext, started: Long, t: Throwable): ScriptResult =
-    ScriptResult(
-      participantId  = context.caller,
-      conversationId = context.conversation.id,
-      topicId        = context.conversation.currentTopicId,
+  private def errorResult(started: Long, t: Throwable): ToolResult[ScriptToolOutput] =
+    ToolResult.Success(ScriptToolOutput(
       // Bug #67 — include the abbreviated stack trace, not just
       // `getMessage`. Wrapped exceptions (RuntimeException carrying
       // an InvocationTargetException carrying a NoSuchMethodError,
       // common in reflective script paths) need the root cause to
       // be useful for the agent.
-      error          = Some(ExecuteScriptTool.formatThrowable(t)),
-      durationMs     = System.currentTimeMillis() - started
-    )
-
-  private def errorResult(context: TurnContext, durationMs: Long, message: String): ScriptResult =
-    ScriptResult(
-      participantId  = context.caller,
-      conversationId = context.conversation.id,
-      topicId        = context.conversation.currentTopicId,
-      error          = Some(message),
-      durationMs     = durationMs
-    )
+      error      = Some(ExecuteScriptTool.formatThrowable(t)),
+      durationMs = System.currentTimeMillis() - started
+    ))
 }
 
 object ScriptTool {

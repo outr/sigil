@@ -1,10 +1,10 @@
 package sigil.tool.consult
 
-import rapid.Stream
+import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
 import sigil.provider.{GenerationSettings, ReasoningMode, SummarizationWork, WorkType}
-import sigil.tool.{ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 /**
  * Internal tool invoked by both
@@ -20,9 +20,14 @@ import sigil.tool.{ToolName, TypedTool}
  * new row every time the same fact shows up. Omit the key for
  * one-shot facts that don't represent a durable identity slot.
  */
-case object ExtractMemoriesTool extends TypedTool[ExtractMemoriesInput](
-  name = ToolName("extract_memories"),
-  description =
+case object ExtractMemoriesTool extends Tool with FrameworkConsult {
+  type Input  = ExtractMemoriesInput
+  type Output = TextToolOutput
+  val inputRW: RW[ExtractMemoriesInput] = summon[RW[ExtractMemoriesInput]]
+  val outputRW: RW[TextToolOutput]      = summon[RW[TextToolOutput]]
+
+  val name: ToolName = ToolName("extract_memories")
+  val description: String =
     """Extract durable facts from a conversation excerpt. Each fact must be self-contained
       |(a reader seeing the fact alone must still be able to act on it).
       |
@@ -54,7 +59,7 @@ case object ExtractMemoriesTool extends TypedTool[ExtractMemoriesInput](
       |Do NOT include:
       |  - intermediate reasoning, small-talk, acknowledgements
       |  - content that belongs in a summary (narrative / ongoing context).""".stripMargin
-) with FrameworkConsult {
+
   override def paginate: Boolean = false
 
   /** Fact extraction is condensing work — routes through the cheap
@@ -70,6 +75,8 @@ case object ExtractMemoriesTool extends TypedTool[ExtractMemoriesInput](
     reasoningMode = ReasoningMode.Off
   )
 
-  override protected def executeTyped(input: ExtractMemoriesInput, context: TurnContext): Stream[Event] =
-    Stream.empty
+  /** Never executed — the framework reads the typed input directly via
+    * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
+  override def executeResult(input: ExtractMemoriesInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    Task.pure(ToolResult.success(TextToolOutput("")))
 }

@@ -1,16 +1,14 @@
 package sigil.browser.tool
 
 import fabric.io.JsonFormatter
+import fabric.rw.*
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import lightdb.util.Nowish
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.browser.WebBrowserMode
 import sigil.browser.{BrowserScript, CookieJar}
-import sigil.event.{Event, Message, MessageRole, MessageVisibility}
-import sigil.signal.EventState
-import sigil.tool.model.ResponseContent
-import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, ToolName, TypedTool}
+import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, TextToolOutput, Tool, ToolName, ToolResult}
 import sigil.{GlobalSpace, TurnContext}
 
 /**
@@ -19,28 +17,31 @@ import sigil.{GlobalSpace, TurnContext}
  * `space` is fixed at creation — to expose under a different space,
  * copy the script via `create_browser_script`.
  */
-case object UpdateBrowserScriptTool extends TypedTool[UpdateBrowserScriptInput](
-  name = ToolName("update_browser_script"),
-  description =
+case object UpdateBrowserScriptTool extends Tool {
+  type Input  = UpdateBrowserScriptInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[UpdateBrowserScriptInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("update_browser_script")
+  val description =
     """Update an existing browser-script tool's description, parameters, steps, keywords, or
       |cookie-jar reference. Identified by `name`; omitted fields keep their stored value.
-      |The tool's space is fixed at creation.""".stripMargin,
-  modes = Set(WebBrowserMode.id),
-  keywords = Set("update", "edit", "modify", "browser", "script")
-) {
-  override def paginate: Boolean = false
+      |The tool's space is fixed at creation.""".stripMargin
+  override val modes = Set(WebBrowserMode.id)
+  override val keywords = Set("update", "edit", "modify", "browser", "script")
 
-  override protected def executeTyped(input: UpdateBrowserScriptInput,
-                                      ctx: TurnContext): Stream[Event] = Stream.force(
+  override def executeResult(input: UpdateBrowserScriptInput,
+                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
     ctx.sigil.accessibleSpaces(ctx.chain).flatMap { accessible =>
       ctx.sigil.withDB(_.tools.transaction { tx =>
         tx.query.filter(_.toolName === input.name).toList.map(_.headOption).flatMap {
           case None =>
-            Task.pure(Stream.emit[Event](errorReply(ctx, s"No browser script named '${input.name}'.")))
+            Task.pure(ToolResult.failure(s"No browser script named '${input.name}'."))
           case Some(existing: BrowserScript) =>
             if (existing.space != GlobalSpace && !accessible.contains(existing.space))
-              Task.pure(Stream.emit[Event](errorReply(ctx,
-                s"Browser script '${input.name}' is not accessible to this caller.")))
+              Task.pure(ToolResult.failure(
+                s"Browser script '${input.name}' is not accessible to this caller."))
             else {
               val updated = existing.copy(
                 description = input.description.getOrElse(existing.description),
@@ -51,8 +52,6 @@ case object UpdateBrowserScriptTool extends TypedTool[UpdateBrowserScriptInput](
                 modified    = Timestamp(Nowish())
               )
               tx.upsert(updated).map { stored =>
-                // Bug #69 — single Message(Tool) carrying the
-                // confirmation + (possibly-updated) schema.
                 val schemaJson = JsonFormatter.Default(DefinitionToSchema(stored.schema.input))
                 val text = new StringBuilder
                 text.append(s"Updated browser script '${stored.name.value}'.\n\n")
@@ -60,34 +59,14 @@ case object UpdateBrowserScriptTool extends TypedTool[UpdateBrowserScriptInput](
                 text.append(s"  name: ${stored.name.value}\n")
                 text.append(s"  arguments matching this schema:\n")
                 text.append(schemaJson).append("\n")
-                val ack = Message(
-                  participantId  = ctx.caller,
-                  conversationId = ctx.conversation.id,
-                  topicId        = ctx.conversation.currentTopicId,
-                  content        = Vector(ResponseContent.Text(text.toString)),
-                  state          = EventState.Complete,
-                  role           = MessageRole.Tool,
-                  visibility     = MessageVisibility.Agents
-                )
-                Stream.emit[Event](ack)
+                ToolResult.Success(TextToolOutput(text.toString))
               }
             }
           case Some(_) =>
-            Task.pure(Stream.emit[Event](errorReply(ctx,
-              s"Tool '${input.name}' exists but is not a browser script.")))
+            Task.pure(ToolResult.failure(
+              s"Tool '${input.name}' exists but is not a browser script."))
         }
       })
-    }.handleError(t => Task.pure(Stream.emit[Event](errorReply(ctx,
-      s"Failed to update browser script: ${t.getMessage}"))))
-  )
-
-  private def errorReply(ctx: TurnContext, text: String): Event = Message(
-    participantId  = ctx.caller,
-    conversationId = ctx.conversation.id,
-    topicId        = ctx.conversation.currentTopicId,
-    content        = Vector(ResponseContent.Text(text)),
-    state          = EventState.Complete,
-    role           = MessageRole.Tool,
-    visibility     = MessageVisibility.Agents
-  )
+    }.handleError(t => Task.pure(ToolResult.failure(
+      s"Failed to update browser script: ${t.getMessage}")))
 }

@@ -1,10 +1,9 @@
 package sigil.debug
 
 import fabric.rw.*
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class DapSetExceptionBreakpointsInput(sessionId: String,
                                            filters: List[String]) extends ToolInput derives RW
@@ -18,28 +17,34 @@ case class DapSetExceptionBreakpointsInput(sessionId: String,
  * supports `"raised"`, `"uncaught"`, `"userUnhandled"`. Empty list
  * disables exception breakpoints entirely.
  */
-final class DapSetExceptionBreakpointsTool(val manager: DapManager) extends TypedTool[DapSetExceptionBreakpointsInput](
-  name = ToolName("dap_set_exception_breakpoints"),
-  description =
+final class DapSetExceptionBreakpointsTool(val manager: DapManager) extends Tool with DapToolSupport {
+  type Input = DapSetExceptionBreakpointsInput
+  type Output = TextToolOutput
+  val inputRW = summon[RW[DapSetExceptionBreakpointsInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+  val name = ToolName("dap_set_exception_breakpoints")
+  val description =
     """Configure exception breakpoint filters in an active debug session.
       |
       |`sessionId` selects the active session.
       |`filters` is a list of adapter-defined filter ids (e.g. "uncaught", "all", "raised").
-      |Empty list disables exception breakpoints.""".stripMargin,
-  examples = List(
+      |Empty list disables exception breakpoints.""".stripMargin
+  override val examples = List(
     ToolExample(
       "break on uncaught exceptions",
       DapSetExceptionBreakpointsInput(sessionId = "demo-session", filters = List("uncaught"))
     )
   )
-) with DapToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: DapSetExceptionBreakpointsInput, context: TurnContext): Stream[Event] =
+  override def executeResult(input: DapSetExceptionBreakpointsInput,
+                             context: TurnContext): Task[ToolResult[TextToolOutput]] =
     withSession(input.sessionId, context) { session =>
       session.setExceptionBreakpoints(input.filters).map { bps =>
-        if (input.filters.isEmpty) "Cleared exception breakpoints."
-        else s"Exception breakpoints set: ${input.filters.mkString(", ")} (${bps.size} state entries returned)."
+        val text =
+          if (input.filters.isEmpty) "Cleared exception breakpoints."
+          else s"Exception breakpoints set: ${input.filters.mkString(", ")} (${bps.size} state entries returned)."
+        ToolResult.success(TextToolOutput(text))
       }
     }
 }

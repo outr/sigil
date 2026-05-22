@@ -1,8 +1,11 @@
 package sigil.tool.consult
 
 import fabric.define.{DefType, Definition}
+import fabric.rw.*
+import rapid.Task
+import sigil.TurnContext
 import sigil.provider.{ClassificationWork, GenerationSettings, ReasoningMode, WorkType}
-import sigil.tool.{ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 /**
  * Internal-only tool used by [[sigil.Sigil.classifyTopicShift]] to drive
@@ -10,15 +13,20 @@ import sigil.tool.{ToolName, TypedTool}
  * the conversation's current prior-topic labels so the grammar-enforced
  * enum constrains the LLM to a valid choice.
  */
-class TopicClassifierTool(priorLabels: List[String]) extends TypedTool[TopicClassifierInput](
-  name = ToolName("classify_topic_shift"),
-  description =
+class TopicClassifierTool(priorLabels: List[String]) extends Tool with FrameworkConsult {
+  type Input  = TopicClassifierInput
+  type Output = TextToolOutput
+  val inputRW: RW[TopicClassifierInput] = summon[RW[TopicClassifierInput]]
+  val outputRW: RW[TextToolOutput]      = summon[RW[TextToolOutput]]
+
+  val name: ToolName = ToolName("classify_topic_shift")
+  val description: String =
     """Classify the proposed topic relative to the current and prior topics. Pick exactly one:
       |  - "NoChange" — same subject as the Current topic; nothing to relabel.
       |  - "Refine"   — same subject as Current, but a sharper / more specific label.
       |  - <prior label> — same subject as one of the prior topics; the user is returning.
       |  - "New"      — a subject genuinely different from Current and all priors.""".stripMargin
-) with FrameworkConsult {
+
   override def paginate: Boolean = false
 
   /** Categorical decision — routes through the cheap classification tier. */
@@ -42,6 +50,8 @@ class TopicClassifierTool(priorLabels: List[String]) extends TypedTool[TopicClas
     )))
   }
 
-  override protected def executeTyped(input: TopicClassifierInput, context: sigil.TurnContext): rapid.Stream[sigil.event.Event] =
-    rapid.Stream.empty
+  /** Never executed — the framework reads the typed input directly via
+    * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
+  override def executeResult(input: TopicClassifierInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    Task.pure(ToolResult.success(TextToolOutput("")))
 }

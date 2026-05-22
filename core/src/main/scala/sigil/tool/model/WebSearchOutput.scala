@@ -7,4 +7,4 @@ import fabric.rw.*
  * ranked hit list (capped by the caller's `maxResults`); `count` is
  * its size, surfaced as a top-level field for convenience.
  */
-case class WebSearchOutput(results: List[WebSearchResult], count: Int) derives RW
+case class WebSearchOutput(results: List[WebSearchResult], count: Int) extends sigil.tool.ToolOutput derives RW

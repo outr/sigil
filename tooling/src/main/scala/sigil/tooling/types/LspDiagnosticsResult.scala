@@ -12,4 +12,4 @@ import fabric.rw.*
   * distinct from a server error (those propagate as a tool-level
   * error message via [[sigil.tooling.LspToolSupport.reply]]). */
 case class LspDiagnosticsResult(filePath: String,
-                                diagnostics: List[LspDiagnostic]) derives RW
+                                diagnostics: List[LspDiagnostic]) extends sigil.tool.ToolOutput derives RW

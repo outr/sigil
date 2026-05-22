@@ -1,10 +1,9 @@
 package sigil.debug
 
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class DapSessionStatusInput(sessionId: String,
                                  waitForStopMs: Long = 0L,
@@ -21,24 +20,27 @@ case class DapSessionStatusInput(sessionId: String,
  * (default) consumes the queued output lines so subsequent calls
  * see only fresh output.
  */
-final class DapSessionStatusTool(val manager: DapManager) extends TypedTool[DapSessionStatusInput](
-  name = ToolName("dap_session_status"),
-  description =
+final class DapSessionStatusTool(val manager: DapManager) extends Tool with DapToolSupport {
+  type Input = DapSessionStatusInput
+  type Output = TextToolOutput
+  val inputRW = summon[RW[DapSessionStatusInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+  val name = ToolName("dap_session_status")
+  val description =
     """Snapshot a debug session's state — running / stopped / terminated, output, etc.
       |
       |`sessionId` selects the active session.
       |`waitForStopMs` (default 0) — when > 0, blocks until the next stop event or timeout.
-      |`drainOutput` (default true) — consume captured stdout/stderr (so next call sees only new output).""".stripMargin,
-  examples = List(
+      |`drainOutput` (default true) — consume captured stdout/stderr (so next call sees only new output).""".stripMargin
+  override val examples = List(
     ToolExample(
       "wait up to 5 seconds for the next stop event",
       DapSessionStatusInput(sessionId = "demo-session", waitForStopMs = 5000)
     )
   )
-) with DapToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: DapSessionStatusInput, context: TurnContext): Stream[Event] =
+  override def executeResult(input: DapSessionStatusInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
     withSession(input.sessionId, context) { session =>
       val waitTask =
         if (input.waitForStopMs <= 0) Task.unit
@@ -76,7 +78,7 @@ final class DapSessionStatusTool(val manager: DapManager) extends TypedTool[DapS
             }
           }
         }
-        sb.toString
+        ToolResult.success(TextToolOutput(sb.toString))
       }
     }
 

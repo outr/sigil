@@ -1,10 +1,11 @@
 package sigil.tool.fs
 
+import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
 import sigil.storage.FileVersion
 import sigil.tool.model.{ReadFileInput, ReadFileOutput}
-import sigil.tool.{PlaceholderInputDetector, ToolExample, ToolName, ToolResult, TypedOutputTool}
+import sigil.tool.{PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolResult}
 
 /**
  * Read a file from the [[FileSystemContext]]. Optional offset/limit
@@ -16,29 +17,31 @@ import sigil.tool.{PlaceholderInputDetector, ToolExample, ToolName, ToolResult, 
  * remote execution wraps this tool in [[sigil.tool.proxy.ProxyTool]].
  */
 final class ReadFileTool(context: FileSystemContext)
-  extends TypedOutputTool[ReadFileInput, ReadFileOutput](
-    name = ToolName("read_file"),
-    description =
-      """Read the contents of a file. Use `offset` (0-indexed line) and `limit` to read a window of large files.
-        |Returns `{content, totalLines, linesRead, hash?}`. `hash` is populated only on unwindowed reads.""".stripMargin,
-    examples = List(
-      ToolExample("Read entire file", ReadFileInput(filePath = "README.md")),
-      ToolExample("Read first 100 lines", ReadFileInput(filePath = "data.log", limit = Some(100))),
-      ToolExample("Read lines 200-300", ReadFileInput(filePath = "data.log", offset = Some(200), limit = Some(100)))
-    ),
-    keywords = Set(
-      "file", "read", "open", "cat", "view",
-      "contents", "source", "examine", "inspect", "load", "show",
-      "code", "text", "lines", "display", "fetch", "look"
-    )
-  ) with sigil.tool.ReadOnlyExternalTool {
+  extends Tool with sigil.tool.ReadOnlyExternalTool {
+  type Input  = ReadFileInput
+  type Output = ReadFileOutput
+  val inputRW  = summon[RW[ReadFileInput]]
+  val outputRW = summon[RW[ReadFileOutput]]
+  val name = ToolName("read_file")
+  val description =
+    """Read the contents of a file. Use `offset` (0-indexed line) and `limit` to read a window of large files.
+      |Returns `{content, totalLines, linesRead, hash?}`. `hash` is populated only on unwindowed reads.""".stripMargin
+  override val examples = List(
+    ToolExample("Read entire file", ReadFileInput(filePath = "README.md")),
+    ToolExample("Read first 100 lines", ReadFileInput(filePath = "data.log", limit = Some(100))),
+    ToolExample("Read lines 200-300", ReadFileInput(filePath = "data.log", offset = Some(200), limit = Some(100)))
+  )
+  override val keywords = Set(
+    "file", "read", "open", "cat", "view",
+    "contents", "source", "examine", "inspect", "load", "show",
+    "code", "text", "lines", "display", "fetch", "look"
+  )
   override def paginate: Boolean = false
 
-  // Bug #86 — generic primitive: ranks below domain-specific
-  // tools when both match a query.
+  // Generic primitive: ranks below domain-specific tools when both match a query.
   override def preferIfNoBetter: Boolean = true
 
-  override protected def executeTypedResult(input: ReadFileInput, ctx: TurnContext): Task[ToolResult[ReadFileOutput]] =
+  override def executeResult(input: ReadFileInput, ctx: TurnContext): Task[ToolResult[ReadFileOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
       case None        =>

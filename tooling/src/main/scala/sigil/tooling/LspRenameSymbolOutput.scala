@@ -21,7 +21,7 @@ import sigil.tooling.types.LspWorkspaceSymbol
  *                      `lsp_rename` reported no edits / partial
  *                      failure.
  */
-enum LspRenameSymbolOutput derives RW {
+enum LspRenameSymbolOutput extends sigil.tool.ToolOutput derives RW {
   case Renamed(symbolName: String, newName: String, filesChanged: Int)
   case Ambiguous(symbolName: String, matches: List[LspWorkspaceSymbol])
   case NotFound(symbolName: String, reason: String)

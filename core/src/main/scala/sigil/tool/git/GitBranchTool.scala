@@ -1,10 +1,11 @@
 package sigil.tool.git
 
+import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
 import sigil.tool.fs.{FileSystemContext, WorkspacePathResolver}
 import sigil.tool.model.{GitBranchInput, GitBranchOutput}
-import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolExample, ToolName}
 
 /**
  * Read-only `git_branch` — list local (and optionally remote)
@@ -12,20 +13,23 @@ import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
  * [[GitBranchOutput]].
  */
 final class GitBranchTool(context: FileSystemContext)
-  extends TypedOutputTool[GitBranchInput, GitBranchOutput](
-    name = ToolName("git_branch"),
-    description =
-      """List branches. `includeRemotes` extends the listing with remote-tracking refs. Returns the
-        |current branch name plus every branch (name, sha, isCurrent, isRemote, tracking?).""".stripMargin,
-    examples = List(
-      ToolExample("Local branches",            GitBranchInput()),
-      ToolExample("Local + remote-tracking",   GitBranchInput(includeRemotes = true))
-    ),
-    keywords = Set("git", "branch", "branches", "checkout")
-  ) with sigil.tool.ReadOnlyExternalTool {
+  extends Tool with sigil.tool.ReadOnlyExternalTool {
+  type Input  = GitBranchInput
+  type Output = GitBranchOutput
+  val inputRW  = summon[RW[GitBranchInput]]
+  val outputRW = summon[RW[GitBranchOutput]]
+  val name = ToolName("git_branch")
+  val description =
+    """List branches. `includeRemotes` extends the listing with remote-tracking refs. Returns the
+      |current branch name plus every branch (name, sha, isCurrent, isRemote, tracking?).""".stripMargin
+  override val examples = List(
+    ToolExample("Local branches",          GitBranchInput()),
+    ToolExample("Local + remote-tracking", GitBranchInput(includeRemotes = true))
+  )
+  override val keywords = Set("git", "branch", "branches", "checkout")
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: GitBranchInput, ctx: TurnContext): Task[GitBranchOutput] =
+  override def executeOutput(input: GitBranchInput, ctx: TurnContext): Task[GitBranchOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val flag = if (input.includeRemotes) "-a" else ""
       for {

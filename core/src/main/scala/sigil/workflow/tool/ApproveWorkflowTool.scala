@@ -3,10 +3,9 @@ package sigil.workflow.tool
 import fabric.{Json, str}
 import fabric.rw.*
 import lightdb.id.Id
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import strider.Workflow
 import strider.step.Step
 
@@ -30,25 +29,27 @@ case class ApproveWorkflowInput(runId: String,
  * — Strider's `resume` returns an error which surfaces in the
  * tool's reply text.
  */
-final class ApproveWorkflowTool extends TypedTool[ApproveWorkflowInput](
-  name = ToolName("approve_workflow"),
-  description =
+final class ApproveWorkflowTool extends Tool with WorkflowToolSupport {
+  type Input  = ApproveWorkflowInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[ApproveWorkflowInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+  val name = ToolName("approve_workflow")
+  val description =
     """Approve a workflow run paused on an approval step.
       |
       |`runId` is the run id; `stepId` is the id of the waiting approval step (visible
       |from the workflow's lifecycle Events). `comment` is optional free-form text —
-      |passed through as the resume payload so the workflow's branching can match on it.""".stripMargin,
-  examples = List(
+      |passed through as the resume payload so the workflow's branching can match on it.""".stripMargin
+  override val examples = List(
     ToolExample("Approve a pending review",
       ApproveWorkflowInput(runId = "run-abc", stepId = "review")),
     ToolExample("Approve with a reason note",
       ApproveWorkflowInput(runId = "run-abc", stepId = "review", comment = Some("looks correct after manual check")))
-  ),
-  keywords = Set("workflow", "approve", "ok", "yes", "continue")
-) with WorkflowToolSupport {
-  override def paginate: Boolean = false
+  )
+  override val keywords = Set("workflow", "approve", "ok", "yes", "continue")
 
-  override protected def executeTyped(input: ApproveWorkflowInput, ctx: TurnContext): Stream[Event] = withHost(ctx) { host =>
+  override def executeResult(input: ApproveWorkflowInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
     val workflowId = Id[Workflow](input.runId)
     val payload: Json = input.comment.filter(_.nonEmpty).fold[Json](str("approve"))(c => str(s"approve: $c"))
     host.withDB(_.workflows.transaction(_.get(workflowId))).flatMap {

@@ -1,9 +1,10 @@
 package sigil.tool.fs
 
+import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
 import sigil.tool.model.{DeleteFileInput, DeleteFileOutput}
-import sigil.tool.{PlaceholderInputDetector, ToolExample, ToolName, ToolResult, TypedOutputTool}
+import sigil.tool.{PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolResult}
 
 /**
  * Delete a file. Emits a typed [[DeleteFileOutput]] reporting
@@ -11,17 +12,20 @@ import sigil.tool.{PlaceholderInputDetector, ToolExample, ToolName, ToolResult, 
  * actually removed, `false` if the path did not exist).
  */
 final class DeleteFileTool(context: FileSystemContext)
-  extends TypedOutputTool[DeleteFileInput, DeleteFileOutput](
-    name = ToolName("delete_file"),
-    description = "Delete a file. Returns `{deleted: Boolean}` — true when the file existed and was removed; false when it did not exist.",
-    examples = List(
-      ToolExample("Remove a temp file", DeleteFileInput(filePath = "/tmp/scratch.txt"))
-    ),
-    keywords = Set("file", "delete", "remove", "rm", "unlink")
-  ) with sigil.tool.DestructiveExternalTool {
+  extends Tool with sigil.tool.DestructiveExternalTool {
+  type Input  = DeleteFileInput
+  type Output = DeleteFileOutput
+  val inputRW  = summon[RW[DeleteFileInput]]
+  val outputRW = summon[RW[DeleteFileOutput]]
+  val name        = ToolName("delete_file")
+  val description = "Delete a file. Returns `{deleted: Boolean}` — true when the file existed and was removed; false when it did not exist."
+  override val examples = List(
+    ToolExample("Remove a temp file", DeleteFileInput(filePath = "/tmp/scratch.txt"))
+  )
+  override val keywords = Set("file", "delete", "remove", "rm", "unlink")
   override def paginate: Boolean = false
 
-  override protected def executeTypedResult(input: DeleteFileInput, ctx: TurnContext): Task[ToolResult[DeleteFileOutput]] =
+  override def executeResult(input: DeleteFileInput, ctx: TurnContext): Task[ToolResult[DeleteFileOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
       case None =>

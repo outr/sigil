@@ -1,10 +1,9 @@
 package sigil.script
 
+import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.{Event, Message, MessageRole, MessageVisibility}
-import sigil.signal.EventState
-import sigil.tool.{ToolName, TypedTool}
-import sigil.tool.model.ResponseContent
+import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 import java.io.{ByteArrayOutputStream, File, InputStream}
 import java.net.URLClassLoader
@@ -30,25 +29,28 @@ import scala.util.boundary.break
  * (or `.java`). Methods inside the file aren't separately extractable
  * without a parser; the agent reads the whole class.
  */
-case object ReadSourceTool extends TypedTool[ReadSourceInput](
-  name = ToolName("read_source"),
-  description =
+case object ReadSourceTool extends Tool {
+  type Input  = ReadSourceInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[ReadSourceInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("read_source")
+  val description =
     """Return the source code for a fully-qualified class. Falls back to `(source not available)`
       |when no `-sources.jar` on the classpath ships the symbol.
       |
       |Use this when [[ClassSignaturesTool]]'s parameter-type listing isn't enough to figure
       |out semantics — e.g. understanding what a builder method actually configures, or how
-      |a polymorphic API dispatches.""".stripMargin,
-  modes = Set(ScriptAuthoringMode.id),
-  keywords = Set("source", "code", "read", "scaladoc", "implementation", "introspect")
-) {
-  override def paginate: Boolean = false
+      |a polymorphic API dispatches.""".stripMargin
+  override val modes = Set(ScriptAuthoringMode.id)
+  override val keywords = Set("source", "code", "read", "scaladoc", "implementation", "introspect")
 
-
-  override protected def executeTyped(input: ReadSourceInput, context: TurnContext): rapid.Stream[Event] = {
+  override def executeResult(input: ReadSourceInput,
+                             context: TurnContext): Task[ToolResult[TextToolOutput]] = Task {
     val text = try render(input.fqn)
     catch { case e: Throwable => s"(read_source failed: ${e.getClass.getSimpleName}: ${e.getMessage})" }
-    rapid.Stream.emit(reply(context, text))
+    ToolResult.Success(TextToolOutput(text))
   }
 
   private def render(fqn: String): String = {
@@ -113,15 +115,4 @@ case object ReadSourceTool extends TypedTool[ReadSourceInput](
       } else None
     }.nextOption()
   }
-
-  private def reply(context: TurnContext, text: String): Message =
-    Message(
-      participantId  = context.caller,
-      conversationId = context.conversation.id,
-      topicId        = context.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete,
-      role           = MessageRole.Tool,
-      visibility     = MessageVisibility.Agents
-    )
 }

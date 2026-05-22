@@ -1,19 +1,27 @@
 package sigil.tool.consult
 
+import fabric.rw.*
+import rapid.Task
+import sigil.TurnContext
 import sigil.provider.{ClassificationWork, GenerationSettings, ReasoningMode, WorkType}
-import sigil.tool.{ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 /**
  * Internal-only tool the framework forces the agent to call as
  * part of a periodic progress checkpoint. The tool's typed input
  * IS the checkpoint payload — the framework reads it directly
- * (no `execute` body), persists a [[sigil.event.ProgressCheckpoint]]
+ * (no `executeResult` body), persists a [[sigil.event.ProgressCheckpoint]]
  * Event, and decides whether to continue the agent loop or to
  * intervene.
  */
-case object ProgressReflectionTool extends TypedTool[ProgressReflectionInput](
-  name = ToolName("report_progress"),
-  description =
+case object ProgressReflectionTool extends Tool with FrameworkConsult {
+  type Input  = ProgressReflectionInput
+  type Output = TextToolOutput
+  val inputRW: RW[ProgressReflectionInput] = summon[RW[ProgressReflectionInput]]
+  val outputRW: RW[TextToolOutput]         = summon[RW[TextToolOutput]]
+
+  val name: ToolName = ToolName("report_progress")
+  val description: String =
     """Report your progress checkpoint relative to the prior status anchor in the system prompt.
       |
       |Pick a `currentStatus` (one line summary of where things stand RIGHT NOW), set
@@ -25,7 +33,7 @@ case object ProgressReflectionTool extends TypedTool[ProgressReflectionInput](
       |
       |Be honest — if your status looks identical to the prior status or you're cycling through
       |the same searches, say so (`meaningfulProgress = false`) so the framework can intervene.""".stripMargin
-) with FrameworkConsult {
+
   override def paginate: Boolean = false
 
   /** Quick self-assessment — routes through the cheap classification tier. */
@@ -38,7 +46,8 @@ case object ProgressReflectionTool extends TypedTool[ProgressReflectionInput](
     reasoningMode = ReasoningMode.Off
   )
 
-  override protected def executeTyped(input: ProgressReflectionInput,
-                                      context: sigil.TurnContext): rapid.Stream[sigil.event.Event] =
-    rapid.Stream.empty
+  /** Never executed — the framework reads the typed input directly via
+    * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
+  override def executeResult(input: ProgressReflectionInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    Task.pure(ToolResult.success(TextToolOutput("")))
 }

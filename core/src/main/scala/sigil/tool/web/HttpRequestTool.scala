@@ -1,9 +1,10 @@
 package sigil.tool.web
 
+import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
 import sigil.tool.model.{HttpRequestInput, HttpRequestMethod, HttpRequestOutput}
-import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolExample, ToolName}
 import spice.http.HttpMethod
 import spice.http.content.Content
 import spice.net.{ContentType, URL}
@@ -21,9 +22,13 @@ import scala.concurrent.duration.*
  * UTF-8 and truncated to `maxResponseBytes` so a large response
  * doesn't blow the agent's context window.
  */
-case object HttpRequestTool extends TypedOutputTool[HttpRequestInput, HttpRequestOutput](
-  name = ToolName("http_request"),
-  description =
+case object HttpRequestTool extends Tool {
+  type Input  = HttpRequestInput
+  type Output = HttpRequestOutput
+  val inputRW  = summon[RW[HttpRequestInput]]
+  val outputRW = summon[RW[HttpRequestOutput]]
+  val name = ToolName("http_request")
+  val description =
     """Issue an HTTP request to an arbitrary URL.
       |
       |`url` is the target. `method` is `GET` (default) / `POST` / `PUT` / `PATCH` / `DELETE` /
@@ -34,8 +39,8 @@ case object HttpRequestTool extends TypedOutputTool[HttpRequestInput, HttpReques
       |caps the captured response body — larger payloads are truncated and `bodyTruncated`
       |is set in the result.
       |
-      |Returns `{status, statusText, headers, body, bodyTruncated, contentType}`.""".stripMargin,
-  examples = List(
+      |Returns `{status, statusText, headers, body, bodyTruncated, contentType}`.""".stripMargin
+  override val examples = List(
     ToolExample(
       "GET a JSON endpoint",
       HttpRequestInput(url = "https://api.example.com/v1/status")
@@ -49,12 +54,10 @@ case object HttpRequestTool extends TypedOutputTool[HttpRequestInput, HttpReques
         body    = Some("""{"name":"thing"}""")
       )
     )
-  ),
-  keywords = Set("http", "request", "api", "rest", "fetch", "curl", "post", "put", "patch", "delete")
-) {
-  override def paginate: Boolean = false
+  )
+  override val keywords = Set("http", "request", "api", "rest", "fetch", "curl", "post", "put", "patch", "delete")
 
-  override protected def executeTyped(input: HttpRequestInput, context: TurnContext): Task[HttpRequestOutput] = Task.defer {
+  override def executeOutput(input: HttpRequestInput, context: TurnContext): Task[HttpRequestOutput] = Task.defer {
     val timeout = input.timeoutMs.millis
     val parsedUrl = URL.parse(input.url)
     val httpMethod = methodFor(input.method)

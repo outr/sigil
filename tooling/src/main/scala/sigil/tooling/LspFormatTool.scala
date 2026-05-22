@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.FormattingOptions
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.LspFormatResult
 
 import java.nio.file.{Files, Paths, StandardOpenOption}
@@ -24,21 +24,26 @@ case class LspFormatInput(languageId: String,
  * Rust, etc.). Servers that don't have formatting support return an
  * empty edit list — the file is unchanged.
  */
-final class LspFormatTool(val manager: LspManager) extends TypedOutputTool[LspFormatInput, LspFormatResult](
-  name = ToolName("lsp_format"),
-  description =
+final class LspFormatTool(val manager: LspManager) extends Tool
+  with sigil.tool.DestructiveExternalTool with LspToolSupport {
+  type Input  = LspFormatInput
+  type Output = LspFormatResult
+  val inputRW  = summon[RW[LspFormatInput]]
+  val outputRW = summon[RW[LspFormatResult]]
+  val name = ToolName("lsp_format")
+  val description =
     """Format a file via the language server's formatting provider.
       |
       |`languageId` + `filePath` identify the document.
       |`tabSize` (default 2) and `insertSpaces` (default true) are passed as
       |FormattingOptions to the server; many servers honor only the project's
       |configured formatter and ignore these.
-      |Writes the formatted result back to disk; returns `{filePath, editsApplied}`.""".stripMargin,
-  keywords = Set("lsp", "format", "prettify", "indent", "beautify", "reformat", "style")
-) with sigil.tool.DestructiveExternalTool with LspToolSupport {
+      |Writes the formatted result back to disk; returns `{filePath, editsApplied}`.""".stripMargin
+  override val keywords = Set("lsp", "format", "prettify", "indent", "beautify", "reformat", "style")
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: LspFormatInput, context: TurnContext): Task[LspFormatResult] =
+  override def executeOutput(input: LspFormatInput, context: TurnContext): Task[LspFormatResult] =
     withOpenDocumentOrThrow[LspFormatResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

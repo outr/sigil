@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{BspDependencyModule, BspDependencyModulesResult, BspTargetDependencyModules}
 
 import java.nio.file.{Files, Paths}
@@ -23,19 +23,25 @@ case class BspDependencyModulesInput(projectRoot: String,
  * paths; this returns the coordinates the build references. Useful
  * for "what version of X does this project pull in?"
  */
-final class BspDependencyModulesTool(val manager: BspManager) extends TypedOutputTool[BspDependencyModulesInput, BspDependencyModulesResult](
-  name = ToolName("bsp_dependency_modules"),
-  description =
+final class BspDependencyModulesTool(val manager: BspManager) extends Tool
+  with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  type Input  = BspDependencyModulesInput
+  type Output = BspDependencyModulesResult
+  val inputRW  = summon[RW[BspDependencyModulesInput]]
+  val outputRW = summon[RW[BspDependencyModulesResult]]
+
+  val name = ToolName("bsp_dependency_modules")
+  val description =
     """List each target's library dependencies as module coordinates (groupId:artifactId, version).
       |
       |`projectRoot` selects the persisted BspBuildConfig.
-      |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin,
-  keywords = Set("bsp", "dependencies", "deps", "modules", "library deps")
-) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+      |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin
+  override val keywords = Set("bsp", "dependencies", "deps", "modules", "library deps")
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: BspDependencyModulesInput,
-                                      context: TurnContext): Task[BspDependencyModulesResult] = {
+  override def executeOutput(input: BspDependencyModulesInput,
+                             context: TurnContext): Task[BspDependencyModulesResult] = {
     val cacheKey = BspDependencyModulesTool.cacheKeyFor(input.projectRoot, input.targets)
     cacheKey.flatMap {
       case Some(key) =>

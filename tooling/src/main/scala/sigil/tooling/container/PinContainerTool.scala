@@ -1,8 +1,9 @@
 package sigil.tooling.container
 
+import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolName}
 
 /**
  * Mark every row of a container as pinned. The conversation-level
@@ -11,19 +12,24 @@ import sigil.tool.{ToolName, TypedOutputTool}
  * for unusually long workflows (a conversation paused for a week,
  * a reference list curated by the user).
  */
-case object PinContainerTool extends TypedOutputTool[PinContainerInput, PinContainerOutput](
-  name = ToolName("pin_container"),
-  description =
+case object PinContainerTool extends Tool {
+  type Input  = PinContainerInput
+  type Output = PinContainerOutput
+  val inputRW  = summon[RW[PinContainerInput]]
+  val outputRW = summon[RW[PinContainerOutput]]
+
+  val name = ToolName("pin_container")
+  val description =
     """Mark a container's rows as pinned so the conversation-level cleanup skips them.
       |Use when the container is worth keeping across long idle windows (a conversation
       |paused for a week, a curated reference list). Idempotent — re-pinning an
-      |already-pinned container reports zero rows affected.""".stripMargin,
-  keywords = Set("pin", "container", "preserve", "keep", "retain", "no gc")
-) {
+      |already-pinned container reports zero rows affected.""".stripMargin
+  override val keywords = Set("pin", "container", "preserve", "keep", "retain", "no gc")
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: PinContainerInput,
-                                      ctx: TurnContext): Task[PinContainerOutput] =
+  override def executeOutput(input: PinContainerInput,
+                             ctx: TurnContext): Task[PinContainerOutput] =
     ContainerSupport.readItems(ctx.sigil, ctx.conversation.id, input.itemsId).flatMap { rows =>
       val needsUpdate = rows.filterNot(_.pinned)
       if (needsUpdate.isEmpty) Task.pure(PinContainerOutput(itemsId = input.itemsId, rowsAffected = 0))

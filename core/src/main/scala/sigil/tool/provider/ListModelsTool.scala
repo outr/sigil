@@ -1,8 +1,9 @@
 package sigil.tool.provider
 
+import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolName}
 
 /**
  * Read-only catalog listing — surfaces every model registered with
@@ -15,9 +16,14 @@ import sigil.tool.{ToolName, TypedOutputTool}
  * alternatives Y, Z, …".
  *
  * **Not auto-registered.** Apps add to `staticTools` to expose. */
-case object ListModelsTool extends TypedOutputTool[ListModelsInput, ListModelsOutput](
-  name = ToolName("list_models"),
-  description =
+case object ListModelsTool extends Tool {
+  type Input  = ListModelsInput
+  type Output = ListModelsOutput
+  val inputRW  = summon[RW[ListModelsInput]]
+  val outputRW = summon[RW[ListModelsOutput]]
+
+  val name = ToolName("list_models")
+  val description =
     """List models registered with this Sigil instance. Optionally filter by
       |provider (e.g., "openai", "anthropic", "local") or `query` for a
       |substring match against id / name / description.
@@ -28,16 +34,13 @@ case object ListModelsTool extends TypedOutputTool[ListModelsInput, ListModelsOu
       |
       |Use when the user asks "what models can I pin to?" or to disambiguate
       |a friendly name like "local" or "gpt" against the actual registry
-      |before calling pin_model / switch_model.""".stripMargin,
-  keywords = Set(
+      |before calling pin_model / switch_model.""".stripMargin
+  override val keywords = Set(
     "list", "models", "available", "provider", "options",
     "switch", "pin", "alternatives", "what", "which", "catalog"
   )
-) {
-  override def paginate: Boolean = false
 
-
-  override protected def executeTyped(input: ListModelsInput, ctx: TurnContext): Task[ListModelsOutput] = Task {
+  override def executeOutput(input: ListModelsInput, ctx: TurnContext): Task[ListModelsOutput] = Task {
     val all = ctx.sigil.cache.find(provider = input.provider, model = None)
     val q = input.query.map(_.toLowerCase.trim).filter(_.nonEmpty)
     val filtered = q match {

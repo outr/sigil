@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.CodeLens
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspCodeLensItem, LspCodeLensResult, LspPosition}
 
 case class LspCodeLensInput(languageId: String,
@@ -17,18 +17,23 @@ case class LspCodeLensInput(languageId: String,
  * via `lsp_apply_code_lens` (TBD — currently just listed; the
  * command-runner path is out of scope for the proof-of-concept).
  */
-final class LspCodeLensTool(val manager: LspManager) extends TypedOutputTool[LspCodeLensInput, LspCodeLensResult](
-  name = ToolName("lsp_code_lens"),
-  description =
+final class LspCodeLensTool(val manager: LspManager) extends Tool
+  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input  = LspCodeLensInput
+  type Output = LspCodeLensResult
+  val inputRW  = summon[RW[LspCodeLensInput]]
+  val outputRW = summon[RW[LspCodeLensResult]]
+  val name = ToolName("lsp_code_lens")
+  val description =
     """List code lenses in a file (run / debug / N-references / etc. annotations).
       |
       |`languageId` + `filePath` identify the document.
-      |Returns each lens's position, optional title, and whether it carries a runnable command.""".stripMargin,
-  keywords = Set("lsp", "code lens", "lens", "inline action", "above-line action")
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+      |Returns each lens's position, optional title, and whether it carries a runnable command.""".stripMargin
+  override val keywords = Set("lsp", "code lens", "lens", "inline action", "above-line action")
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: LspCodeLensInput, context: TurnContext): Task[LspCodeLensResult] =
+  override def executeOutput(input: LspCodeLensInput, context: TurnContext): Task[LspCodeLensResult] =
     withOpenDocumentOrThrow[LspCodeLensResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

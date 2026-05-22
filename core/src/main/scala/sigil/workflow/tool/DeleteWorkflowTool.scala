@@ -2,10 +2,9 @@ package sigil.workflow.tool
 
 import fabric.rw.*
 import lightdb.id.Id
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import sigil.workflow.WorkflowTemplate
 
 case class DeleteWorkflowInput(workflowId: String) extends ToolInput derives RW
@@ -20,19 +19,21 @@ case class DeleteWorkflowInput(workflowId: String) extends ToolInput derives RW
  * will fail to schedule. Apps that want strict cancellation cancel
  * runs first via `cancel_workflow`.
  */
-final class DeleteWorkflowTool extends TypedTool[DeleteWorkflowInput](
-  name = ToolName("delete_workflow"),
-  description =
+final class DeleteWorkflowTool extends Tool with WorkflowToolSupport {
+  type Input  = DeleteWorkflowInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[DeleteWorkflowInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+  val name = ToolName("delete_workflow")
+  val description =
     """Delete a workflow template by id.
       |
       |`workflowId` is the template's id. Returns whether the deletion happened.
-      |Active runs continue; future runs will fail to schedule.""".stripMargin,
-  examples = List(ToolExample("delete by id", DeleteWorkflowInput(workflowId = "wf-abc"))),
-  keywords = Set("workflow", "delete", "remove")
-) with WorkflowToolSupport {
-  override def paginate: Boolean = false
+      |Active runs continue; future runs will fail to schedule.""".stripMargin
+  override val examples = List(ToolExample("delete by id", DeleteWorkflowInput(workflowId = "wf-abc")))
+  override val keywords = Set("workflow", "delete", "remove")
 
-  override protected def executeTyped(input: DeleteWorkflowInput, ctx: TurnContext): Stream[Event] = withHost(ctx) { host =>
+  override def executeResult(input: DeleteWorkflowInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
     val id = Id[WorkflowTemplate](input.workflowId)
     host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
       case None => Task.pure(s"Workflow '${input.workflowId}' not found.")

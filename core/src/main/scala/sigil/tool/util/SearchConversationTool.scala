@@ -1,10 +1,11 @@
 package sigil.tool.util
 
+import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
 import sigil.event.{Event, Message, TopicChange}
 import sigil.tool.model.{ResponseContent, SearchConversationHit, SearchConversationInput, SearchConversationOutput}
-import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolExample, ToolName}
 
 /**
  * Opt-in util-tier tool: retrieves historical events from the persistent
@@ -14,9 +15,13 @@ import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
  *
  * Emits a typed [[SearchConversationOutput]] (`query`, `hits: List[SearchConversationHit]`, `count`).
  */
-case object SearchConversationTool extends TypedOutputTool[SearchConversationInput, SearchConversationOutput](
-  name = ToolName("search_conversation"),
-  description =
+case object SearchConversationTool extends Tool with sigil.tool.ReadOnlyInternalTool {
+  type Input  = SearchConversationInput
+  type Output = SearchConversationOutput
+  val inputRW  = summon[RW[SearchConversationInput]]
+  val outputRW = summon[RW[SearchConversationOutput]]
+  val name = ToolName("search_conversation")
+  val description =
     """Search the persistent log of the current conversation for earlier events that match a query.
       |
       |Use this when:
@@ -34,18 +39,16 @@ case object SearchConversationTool extends TypedOutputTool[SearchConversationInp
       |
       |`limit` — max results (default 10).
       |
-      |Returns `{query, hits: [{eventId, timestamp, participantId, topicId, eventType, snippet}], count}`.""".stripMargin,
-  examples = List(
+      |Returns `{query, hits: [{eventId, timestamp, participantId, topicId, eventType, snippet}], count}`.""".stripMargin
+  override val examples = List(
     ToolExample(
       "Find earlier exchanges mentioning the Qdrant deployment",
       SearchConversationInput(query = "Qdrant deployment")
     )
-  ),
-  keywords = Set("search", "conversation", "history", "find", "recall")
-) with sigil.tool.ReadOnlyInternalTool {
-  override def paginate: Boolean = false
+  )
+  override val keywords = Set("search", "conversation", "history", "find", "recall")
 
-  override protected def executeTyped(input: SearchConversationInput, context: TurnContext): Task[SearchConversationOutput] =
+  override def executeOutput(input: SearchConversationInput, context: TurnContext): Task[SearchConversationOutput] =
     context.sigil
       .searchConversationEvents(
         conversationId = context.conversation.id,

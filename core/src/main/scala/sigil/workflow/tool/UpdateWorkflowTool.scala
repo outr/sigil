@@ -3,10 +3,9 @@ package sigil.workflow.tool
 import fabric.rw.*
 import lightdb.id.Id
 import lightdb.time.Timestamp
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import sigil.workflow.{WorkflowStepInput, WorkflowTemplate, WorkflowTrigger}
 
 case class UpdateWorkflowInput(workflowId: String,
@@ -26,25 +25,27 @@ case class UpdateWorkflowInput(workflowId: String,
  * In-flight runs are unaffected; the update lands for the next
  * scheduling.
  */
-final class UpdateWorkflowTool extends TypedTool[UpdateWorkflowInput](
-  name = ToolName("update_workflow"),
-  description =
+final class UpdateWorkflowTool extends Tool with WorkflowToolSupport {
+  type Input  = UpdateWorkflowInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[UpdateWorkflowInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+  val name = ToolName("update_workflow")
+  val description =
     """Update a workflow template's fields. Only set fields are overwritten.
       |
       |Useful for incremental editing — e.g. add a step without resending the full step list.
       |For step-list edits, fetch the current template first, modify, then pass the full
-      |updated list here.""".stripMargin,
-  examples = List(
+      |updated list here.""".stripMargin
+  override val examples = List(
     ToolExample(
       "disable a workflow",
       UpdateWorkflowInput(workflowId = "wf-abc", enabled = Some(false))
     )
-  ),
-  keywords = Set("workflow", "update", "edit", "modify")
-) with WorkflowToolSupport {
-  override def paginate: Boolean = false
+  )
+  override val keywords = Set("workflow", "update", "edit", "modify")
 
-  override protected def executeTyped(input: UpdateWorkflowInput, ctx: TurnContext): Stream[Event] = withHost(ctx) { host =>
+  override def executeResult(input: UpdateWorkflowInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
     val id = Id[WorkflowTemplate](input.workflowId)
     host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
       case None => Task.pure(s"Workflow '${input.workflowId}' not found.")

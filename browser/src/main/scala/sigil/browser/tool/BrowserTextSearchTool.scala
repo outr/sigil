@@ -1,16 +1,16 @@
 package sigil.browser.tool
 
+import fabric.rw.*
 import fabric.{Json, arr, num, obj, str}
 import lightdb.id.Id
 import org.jsoup.Jsoup
 import org.jsoup.nodes.{Element, TextNode}
 import org.jsoup.select.{NodeTraversor, NodeVisitor}
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
 import sigil.browser.WebBrowserMode
-import sigil.event.Event
 import sigil.storage.StoredFile
-import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 
 import scala.collection.mutable
 import scala.jdk.CollectionConverters.*
@@ -26,13 +26,18 @@ import scala.jdk.CollectionConverters.*
  * `maxResults` caps the returned matches; `totalCount` reports the
  * unbounded count.
  */
-final class BrowserTextSearchTool extends TypedTool[BrowserTextSearchInput](
-  name = ToolName("browser_text_search"),
-  description =
+final class BrowserTextSearchTool extends Tool {
+  type Input  = BrowserTextSearchInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[BrowserTextSearchInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("browser_text_search")
+  val description =
     """Substring-search the visible text of an HTML file saved earlier (use the `htmlFileId` from `browser_save_html`).
       |Each match returns surrounding context plus the containing element's xpath, so you can pivot to
-      |`browser_xpath_query` to extract structure around the hit. Default case-insensitive.""".stripMargin,
-  examples = List(
+      |`browser_xpath_query` to extract structure around the hit. Default case-insensitive.""".stripMargin
+  override val examples = List(
     ToolExample(
       "Find every occurrence of a person's name",
       BrowserTextSearchInput(htmlFileId = "abc123", query = "Alice")
@@ -41,26 +46,15 @@ final class BrowserTextSearchTool extends TypedTool[BrowserTextSearchInput](
       "Find a specific phrase, more context per hit",
       BrowserTextSearchInput(htmlFileId = "abc123", query = "Section 3.2", contextChars = 200)
     )
-  ),
-  modes = Set(WebBrowserMode.id),
-  keywords = Set("browser", "text", "search", "find", "substring", "query")
-) {
-  override def paginate: Boolean = false
+  )
+  override val modes = Set(WebBrowserMode.id)
+  override val keywords = Set("browser", "text", "search", "find", "substring", "query")
 
-
-  override protected def executeTyped(input: BrowserTextSearchInput, ctx: TurnContext): Stream[Event] =
-    Stream.force(
-      ctx.sigil.fetchStoredFile(Id[StoredFile](input.htmlFileId), ctx.chain).map {
+  override def executeResult(input: BrowserTextSearchInput,
+                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+    ctx.sigil.fetchStoredFile(Id[StoredFile](input.htmlFileId), ctx.chain).map {
         case None =>
-          Stream.emit[Event](BrowserToolBase.toolResult(
-            obj(
-              "error"      -> str(s"htmlFileId '${input.htmlFileId}' not found or not authorized"),
-              "matches"    -> arr(),
-              "totalCount" -> num(0),
-              "returned"   -> num(0)
-            ),
-            ctx
-          ))
+          ToolResult.failure(s"htmlFileId '${input.htmlFileId}' not found or not authorized")
         case Some((_, bytes)) =>
           val html = new String(bytes, java.nio.charset.StandardCharsets.UTF_8)
           val doc  = Jsoup.parse(html)
@@ -140,16 +134,14 @@ final class BrowserTextSearchTool extends TypedTool[BrowserTextSearchInput](
             )
           }
 
-          Stream.emit[Event](BrowserToolBase.toolResult(
+          ToolResult.Success(BrowserToolBase.toolResult(
             obj(
               "htmlFileId" -> str(input.htmlFileId),
               "query"      -> str(needle),
               "matches"    -> arr(matches*),
               "totalCount" -> num(totalCount),
               "returned"   -> num(limited.size)
-            ),
-            ctx
+            )
           ))
-      }
-    )
+    }
 }

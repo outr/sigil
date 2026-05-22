@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.{Position, SelectionRange}
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspRange, LspSelectionRangeChain, LspSelectionRangeResult}
 
 case class LspSelectionRangeInput(languageId: String,
@@ -27,20 +27,26 @@ object LspSelectionRangeInput {
  * essential when the agent is reasoning about "the entire surrounding
  * context" for an edit.
  */
-final class LspSelectionRangeTool(val manager: LspManager) extends TypedOutputTool[LspSelectionRangeInput, LspSelectionRangeResult](
-  name = ToolName("lsp_selection_range"),
-  description =
+final class LspSelectionRangeTool(val manager: LspManager) extends Tool
+  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input  = LspSelectionRangeInput
+  type Output = LspSelectionRangeResult
+  val inputRW  = summon[RW[LspSelectionRangeInput]]
+  val outputRW = summon[RW[LspSelectionRangeResult]]
+
+  val name = ToolName("lsp_selection_range")
+  val description =
     """For each input cursor position, return the chain of progressively-larger semantic
       |regions enclosing it (identifier → expression → statement → method → class …).
       |
       |`languageId` + `filePath` identify the document.
       |`positions` is the list of (line, character) pairs (0-based).
-      |Returns `{filePath, chains: [{ranges: [innermost, ..., outermost]}]}` — one chain per input position.""".stripMargin,
-  keywords = Set("lsp", "selection", "expand selection", "smart selection")
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+      |Returns `{filePath, chains: [{ranges: [innermost, ..., outermost]}]}` — one chain per input position.""".stripMargin
+  override val keywords = Set("lsp", "selection", "expand selection", "smart selection")
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: LspSelectionRangeInput, context: TurnContext): Task[LspSelectionRangeResult] =
+  override def executeOutput(input: LspSelectionRangeInput, context: TurnContext): Task[LspSelectionRangeResult] =
     withOpenDocumentOrThrow[LspSelectionRangeResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

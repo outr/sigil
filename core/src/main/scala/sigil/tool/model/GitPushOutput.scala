@@ -13,7 +13,7 @@ import fabric.rw.*
  *     message, `exitCode` git's exit code when the push shelled out
  *     (`None` when the force-push gate short-circuited).
  */
-enum GitPushOutput derives RW {
+enum GitPushOutput extends sigil.tool.ToolOutput derives RW {
 
   case Pushed(output: String, stderr: String)
 

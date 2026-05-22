@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.DocumentLink
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspDocumentLinkItem, LspDocumentLinkResult, LspPosition}
 
 case class LspDocumentLinkInput(languageId: String,
@@ -17,18 +17,23 @@ case class LspDocumentLinkInput(languageId: String,
  * servers) provide rich link metadata; servers that don't return
  * an empty list.
  */
-final class LspDocumentLinkTool(val manager: LspManager) extends TypedOutputTool[LspDocumentLinkInput, LspDocumentLinkResult](
-  name = ToolName("lsp_document_links"),
-  description =
+final class LspDocumentLinkTool(val manager: LspManager) extends Tool
+  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input  = LspDocumentLinkInput
+  type Output = LspDocumentLinkResult
+  val inputRW  = summon[RW[LspDocumentLinkInput]]
+  val outputRW = summon[RW[LspDocumentLinkResult]]
+  val name = ToolName("lsp_document_links")
+  val description =
     """List the document links the language server has identified in a file.
       |
       |`languageId` + `filePath` identify the document.
-      |Each entry shows the link's start position and target URI (when resolved).""".stripMargin,
-  keywords = Set("lsp", "links", "document link", "hyperlink", "navigate")
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+      |Each entry shows the link's start position and target URI (when resolved).""".stripMargin
+  override val keywords = Set("lsp", "links", "document link", "hyperlink", "navigate")
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: LspDocumentLinkInput, context: TurnContext): Task[LspDocumentLinkResult] =
+  override def executeOutput(input: LspDocumentLinkInput, context: TurnContext): Task[LspDocumentLinkResult] =
     withOpenDocumentOrThrow[LspDocumentLinkResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

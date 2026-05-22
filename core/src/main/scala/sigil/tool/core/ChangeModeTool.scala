@@ -1,9 +1,11 @@
 package sigil.tool.core
 
+import fabric.rw.*
+import rapid.Task
 import sigil.{Sigil, TurnContext}
-import sigil.event.{Event, ModeChange, MessageRole}
+import sigil.event.{ModeChange, MessageRole}
 import sigil.provider.Mode
-import sigil.tool.{ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 import sigil.tool.model.ChangeModeInput
 
 /**
@@ -22,9 +24,14 @@ import sigil.tool.model.ChangeModeInput
  * directly in the tool's documentation — no separate "Other modes
  * available" prompt block needed.
  */
-case object ChangeModeTool extends TypedTool[ChangeModeInput](
-  name = ToolName("change_mode"),
-  description =
+case object ChangeModeTool extends Tool {
+  type Input  = ChangeModeInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[ChangeModeInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("change_mode")
+  val description =
     """Switch to a mode whose domain matches the user's current task. Each
       |listed mode below describes the work it handles (writing code, web
       |research, etc.); when the user's request lands in that domain — even
@@ -47,12 +54,10 @@ case object ChangeModeTool extends TypedTool[ChangeModeInput](
   // BM25 ranker would score `change_mode` purely on its description
   // prose and accidentally match tier-shaped queries (sigil bug
   // #158).
-  keywords = Set(
+  override val keywords: Set[String] = Set(
     "mode", "modes", "switch", "change", "transition",
     "operating", "posture", "kit", "toolset", "tools"
   )
-) {
-  override def paginate: Boolean = false
 
   // ModeChange Events update Conversation.currentMode and the system
   // prompt's "Current mode" line. The verbose ToolResults pair is
@@ -60,22 +65,23 @@ case object ChangeModeTool extends TypedTool[ChangeModeInput](
   // it from future turns.
   override def resultTtl: Option[Int] = Some(0)
 
-  override protected def executeTyped(input: ChangeModeInput, context: TurnContext): rapid.Stream[Event] =
+  override def executeResult(input: ChangeModeInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.modeByName(input.mode) match {
       case Some(mode) =>
-        rapid.Stream.emits(List(
-          ModeChange(
-            mode = mode,
-            reason = input.reason,
-            participantId = context.caller,
-            conversationId = context.conversation.id,
-            topicId = context.conversation.currentTopicId,
-            role = MessageRole.Tool
-          )
-        ))
+        context.emit(ModeChange(
+          mode = mode,
+          reason = input.reason,
+          participantId = context.caller,
+          conversationId = context.conversation.id,
+          topicId = context.conversation.currentTopicId,
+          role = MessageRole.Tool
+        )).map(_ => ToolResult.Success(TextToolOutput(s"Switched to mode '${mode.name}'.")))
       case None =>
         scribe.warn(s"change_mode called with unknown mode name: ${input.mode}")
-        rapid.Stream.empty
+        Task.pure(ToolResult.failure(
+          message = s"Unknown mode '${input.mode}'.",
+          hint = Some("Use the stable name of one of the modes listed in the tool description.")
+        ))
     }
 
   /** Append the live set of switchable modes to the static

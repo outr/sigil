@@ -1,10 +1,9 @@
 package sigil.debug
 
 import fabric.rw.*
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class DapScopesInput(sessionId: String, frameId: Int) extends ToolInput derives RW
 
@@ -14,31 +13,38 @@ case class DapScopesInput(sessionId: String, frameId: Int) extends ToolInput der
  * `variablesReference` the agent passes to `dap_variables` to
  * actually fetch the named bindings.
  */
-final class DapScopesTool(val manager: DapManager) extends TypedTool[DapScopesInput](
-  name = ToolName("dap_scopes"),
-  description =
+final class DapScopesTool(val manager: DapManager) extends Tool with DapToolSupport {
+  type Input = DapScopesInput
+  type Output = DapScopesOutput
+  val inputRW = summon[RW[DapScopesInput]]
+  val outputRW = summon[RW[DapScopesOutput]]
+  val name = ToolName("dap_scopes")
+  val description =
     """Fetch the variable scopes (Locals / Arguments / Globals / etc.) for a frame.
       |
       |`sessionId` selects the active session.
       |`frameId` is from the most-recent `dap_stack_trace` for the stopped thread.
-      |Returns each scope's name and `variablesReference` for the next call.""".stripMargin,
-  examples = List(
+      |Returns each scope's name and `variablesReference` for the next call.""".stripMargin
+  override val examples = List(
     ToolExample(
       "fetch scopes for the top frame",
       DapScopesInput(sessionId = "demo-session", frameId = 1000)
     )
   )
-) with DapToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: DapScopesInput, context: TurnContext): Stream[Event] =
+  override def executeResult(input: DapScopesInput, context: TurnContext): Task[ToolResult[DapScopesOutput]] =
     withSession(input.sessionId, context) { session =>
       session.scopes(input.frameId).map { scopes =>
-        if (scopes.isEmpty) "No scopes."
-        else scopes.map { s =>
-          val expensive = if (s.isExpensive) " (expensive)" else ""
-          s"  [${s.getVariablesReference}] ${s.getName}$expensive"
-        }.mkString("\n")
+        ToolResult.success(DapScopesOutput(
+          scopes.map { s =>
+            DapScopeInfo(
+              name = s.getName,
+              variablesReference = s.getVariablesReference,
+              expensive = s.isExpensive
+            )
+          }
+        ))
       }
     }
 }

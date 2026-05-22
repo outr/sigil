@@ -1,11 +1,9 @@
 package sigil.script
 
-import rapid.{Stream, Task}
+import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.{Event, Message, MessageVisibility, MessageRole}
-import sigil.signal.EventState
-import sigil.tool.{ToolName, TypedTool}
-import sigil.tool.model.ResponseContent
+import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 /**
  * Remove an existing [[ScriptTool]]. Looks the record up by `name`;
@@ -14,48 +12,39 @@ import sigil.tool.model.ResponseContent
  * [[sigil.GlobalSpace]]). No suggestion cascade — once a tool is
  * deleted there's nothing to act on.
  */
-case object DeleteScriptToolTool extends TypedTool[DeleteScriptToolInput](
-  name = ToolName("delete_script_tool"),
-  description =
-    """Remove a previously created script-backed tool. Identified by `name`. Permission is
-      |denied if the caller doesn't have access to the tool's space.""".stripMargin,
-  modes = Set(ScriptAuthoringMode.id),
-  keywords = Set("delete", "remove", "tool", "script", "drop")
-) {
-  override def paginate: Boolean = false
+case object DeleteScriptToolTool extends Tool {
+  type Input  = DeleteScriptToolInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[DeleteScriptToolInput]]
+  val outputRW = summon[RW[TextToolOutput]]
 
-  override protected def executeTyped(input: DeleteScriptToolInput,
-                                      context: TurnContext): Stream[Event] = Stream.force(
+  val name = ToolName("delete_script_tool")
+  val description =
+    """Remove a previously created script-backed tool. Identified by `name`. Permission is
+      |denied if the caller doesn't have access to the tool's space.""".stripMargin
+  override val modes = Set(ScriptAuthoringMode.id)
+  override val keywords = Set("delete", "remove", "tool", "script", "drop")
+
+  override def executeResult(input: DeleteScriptToolInput,
+                             context: TurnContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       context.sigil.withDB(_.tools.transaction { tx =>
         tx.query.filter(_.toolName === input.name).toList.map(_.headOption).flatMap {
           case None =>
-            Task.pure(reply(context, s"No script tool named '${input.name}' found."))
+            Task.pure(ToolResult.failure(s"No script tool named '${input.name}' found."))
           case Some(existing: ScriptTool) =>
             if (existing.space != sigil.GlobalSpace && !accessible.contains(existing.space)) {
-              Task.pure(reply(context, s"Tool '${input.name}' is not accessible to this caller."))
+              Task.pure(ToolResult.failure(s"Tool '${input.name}' is not accessible to this caller."))
             } else {
               tx.delete(existing._id).map { _ =>
-                reply(context, s"Deleted tool '${existing.name.value}'.")
+                ToolResult.Success(TextToolOutput(s"Deleted tool '${existing.name.value}'."))
               }
             }
           case Some(_) =>
-            Task.pure(reply(context, s"Tool '${input.name}' exists but is not a script tool."))
+            Task.pure(ToolResult.failure(s"Tool '${input.name}' exists but is not a script tool."))
         }
       })
     }.handleError { e =>
-      Task.pure(reply(context, s"Failed to delete tool: ${e.getMessage}"))
+      Task.pure(ToolResult.failure(s"Failed to delete tool: ${e.getMessage}"))
     }
-  )
-
-  private def reply(context: TurnContext, text: String): Stream[Event] =
-    Stream.emit(Message(
-      participantId  = context.caller,
-      conversationId = context.conversation.id,
-      topicId        = context.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete,
-      role           = MessageRole.Tool,
-      visibility     = MessageVisibility.Agents
-    ))
 }

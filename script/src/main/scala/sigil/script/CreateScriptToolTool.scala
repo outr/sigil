@@ -1,13 +1,12 @@
 package sigil.script
 
 import fabric.io.JsonFormatter
-import rapid.{Stream, Task}
+import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.{Event, Message, MessageRole, MessageVisibility, ModeChange}
+import sigil.event.{MessageRole, ModeChange}
 import sigil.provider.ConversationMode
-import sigil.signal.EventState
-import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, ToolExample, ToolName, TypedTool}
-import sigil.tool.model.ResponseContent
+import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 
 /**
  * Persist a new [[ScriptTool]]. The agent describes the tool's
@@ -17,17 +16,21 @@ import sigil.tool.model.ResponseContent
  * [[ScriptSigil.scriptToolSpace]], and writes it to
  * `SigilDB.tools` so future turns can `find_capability` it.
  *
- * **Suggestion cascade.** After persisting, this tool emits a
- * [[ToolResults]] event whose `schemas` include
- * [[UpdateScriptToolTool]], [[DeleteScriptToolTool]], and the
- * just-created [[ScriptTool]] itself. The framework's existing
- * suggestedTools machinery surfaces these on the agent's next turn
- * with the standard one-turn decay — the natural "build → demo →
- * tweak" rhythm without sticky surface bloat.
+ * After persisting, the tool is pinned to the conversation as
+ * `Active` (so the agent's next turn's roster includes it without a
+ * `find_capability` round-trip), the result text carries the
+ * just-created tool's invocation schema, and an auto-pop
+ * [[ModeChange]] back to `conversation` mode is emitted as an
+ * ancillary event.
  */
-case object CreateScriptToolTool extends TypedTool[CreateScriptToolInput](
-  name = ToolName("create_script_tool"),
-  description =
+case object CreateScriptToolTool extends Tool {
+  type Input  = CreateScriptToolInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[CreateScriptToolInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("create_script_tool")
+  val description =
     """Persist a new script-backed tool the agent (or any other agent in scope) can later invoke
       |through `find_capability`. The script body sees `args: fabric.Json` (matching the declared
       |`parameters` schema) and `context: TurnContext` in scope; its return value is stringified
@@ -37,9 +40,9 @@ case object CreateScriptToolTool extends TypedTool[CreateScriptToolInput](
       |(`{"type":"object","properties":{...}}`); leave empty to accept any JSON. `space` is an
       |optional hint asking the framework to pin the tool to a specific space — the active
       |Sigil's `scriptToolSpace` policy may honor, ignore, or validate the request per
-      |app-level policy.""".stripMargin,
-  modes = Set(ScriptAuthoringMode.id),
-  examples = List(
+      |app-level policy.""".stripMargin
+  override val modes = Set(ScriptAuthoringMode.id)
+  override val examples = List(
     ToolExample(
       "Persist a small derived-value computer",
       CreateScriptToolInput(
@@ -58,10 +61,8 @@ case object CreateScriptToolTool extends TypedTool[CreateScriptToolInput](
         )
       )
     )
-  ),
-  keywords = Set("create", "tool", "script", "build", "author", "register", "new")
-) {
-  override def paginate: Boolean = false
+  )
+  override val keywords = Set("create", "tool", "script", "build", "author", "register", "new")
 
   /** Append the active executor's advertised surface (Bug #54) so the
     * LLM knows which library identifiers are pre-imported and which
@@ -79,43 +80,50 @@ case object CreateScriptToolTool extends TypedTool[CreateScriptToolInput](
       case _ => description
     }
 
-  override protected def executeTyped(input: CreateScriptToolInput,
-                                      context: TurnContext): Stream[Event] = context.sigil match {
+  override def executeResult(input: CreateScriptToolInput,
+                             context: TurnContext): Task[ToolResult[TextToolOutput]] = context.sigil match {
     case s: ScriptSigil =>
-      Stream.force(
-        s.scriptToolSpace(context.chain, input.space).flatMap { resolvedSpace =>
-          val tool = ScriptTool(
-            name        = ToolName(input.name),
-            description = input.description,
-            code        = input.code,
-            parameters  = JsonSchemaToDefinition(input.parameters),
-            space       = resolvedSpace,
-            keywords    = input.keywords,
-            createdBy   = Some(context.caller)
+      s.scriptToolSpace(context.chain, input.space).flatMap { resolvedSpace =>
+        val tool = ScriptTool(
+          name        = ToolName(input.name),
+          description = input.description,
+          code        = input.code,
+          parameters  = JsonSchemaToDefinition(input.parameters),
+          space       = resolvedSpace,
+          keywords    = input.keywords,
+          createdBy   = Some(context.caller)
+        )
+        context.sigil.createTool(tool).flatMap { stored =>
+          // Pin the just-created tool to this conversation as
+          // Active so the agent's next turn's roster includes it
+          // directly — no find_capability round-trip needed.
+          val overlayTask = context.sigil.addConversationToolOverlay(
+            _root_.sigil.conversation.ConversationToolOverlay(
+              conversationId = context.conversation.id,
+              source         = s"create_script_tool:${stored.name.value}",
+              policy         = _root_.sigil.provider.ToolPolicy.Active(List(stored.name))
+            )
+          ).handleError { t =>
+            Task(scribe.warn(s"create_script_tool: ConversationToolOverlay install failed: ${t.getMessage}"))
+          }
+          // Auto-pop back to conversation mode after a successful
+          // create — the agent's intent in script-authoring was to
+          // build the tool, and the user typically wants to use it
+          // back in conversation. Emitted as an ancillary event;
+          // it is not this tool's result.
+          val modePop = ModeChange(
+            mode           = ConversationMode,
+            reason         = Some(s"auto-pop after create_script_tool '${stored.name.value}'"),
+            participantId  = context.caller,
+            conversationId = context.conversation.id,
+            topicId        = context.conversation.currentTopicId,
+            role           = MessageRole.Standard
           )
-          context.sigil.createTool(tool).flatMap { stored =>
-            // Pin the just-created tool to this conversation as
-            // Active so the agent's next turn's roster includes it
-            // directly — no find_capability round-trip needed.
-            val overlayTask = context.sigil.addConversationToolOverlay(
-              _root_.sigil.conversation.ConversationToolOverlay(
-                conversationId = context.conversation.id,
-                source         = s"create_script_tool:${stored.name.value}",
-                policy         = _root_.sigil.provider.ToolPolicy.Active(List(stored.name))
-              )
-            ).handleError { t =>
-              Task(scribe.warn(s"create_script_tool: ConversationToolOverlay install failed: ${t.getMessage}"))
-            }
-            overlayTask.map { _ =>
-            // Bugs #68 / #69 — emit ONE Message(Tool) carrying the
-            // confirmation, the schema, and a literal invocation hint
-            // so the agent can call the tool back without an extra
-            // round-trip through `find_capability`. Previously this
-            // tool emitted [ack, ToolResults]: two MessageRole.Tool
-            // events, only the first paired with the call_id; the
-            // second became a `[system: Tool result (orphan): …]`
-            // frame the LLM read as ambient noise rather than as the
-            // useful schema dump it actually was.
+          overlayTask.flatMap(_ => context.emit(modePop)).map { _ =>
+            // The result text carries the confirmation, the schema,
+            // and a literal invocation hint so the agent can call
+            // the tool back without an extra `find_capability`
+            // round-trip.
             val schemaJson = JsonFormatter.Default(DefinitionToSchema(stored.schema.input))
             val text = new StringBuilder
             text.append(s"Persisted tool '${stored.name.value}' under space '${resolvedSpace.value}'.\n\n")
@@ -129,52 +137,16 @@ case object CreateScriptToolTool extends TypedTool[CreateScriptToolInput](
             text.append("Authoring follow-ups (available in `script-authoring` mode):\n")
             text.append("  - update_script_tool — modify code, description, or parameters\n")
             text.append("  - delete_script_tool — remove the tool\n")
-            val ack = Message(
-              participantId  = context.caller,
-              conversationId = context.conversation.id,
-              topicId        = context.conversation.currentTopicId,
-              content        = Vector(ResponseContent.Text(text.toString)),
-              state          = EventState.Complete,
-              role           = MessageRole.Tool,
-              visibility     = MessageVisibility.Agents
-            )
-            // Auto-pop back to conversation mode after a successful
-            // create — the agent's intent in script-authoring was to
-            // build the tool, and the user typically wants to use it
-            // back in conversation. Emitted as MessageRole.Standard
-            // so it doesn't compete with `ack` for the tool-result
-            // pairing slot.
-            val modePop = ModeChange(
-              mode           = ConversationMode,
-              reason         = Some(s"auto-pop after create_script_tool '${stored.name.value}'"),
-              participantId  = context.caller,
-              conversationId = context.conversation.id,
-              topicId        = context.conversation.currentTopicId,
-              role           = MessageRole.Standard
-            )
-            Stream.emits[Event](List(ack, modePop))
-            }
+            ToolResult.Success(TextToolOutput(text.toString))
           }
-        }.handleError { e =>
-          Task.pure(Stream.emit[Event](errorReply(context, s"Failed to create tool: ${e.getMessage}")))
         }
-      )
+      }.handleError { e =>
+        Task.pure(ToolResult.failure(s"Failed to create tool: ${e.getMessage}"))
+      }
     case _ =>
-      Stream.emit(errorReply(
-        context,
+      Task.pure(ToolResult.failure(
         "Sigil instance does not mix in ScriptSigil; cannot create script tools."
       ))
   }
-
-  private def errorReply(context: TurnContext, text: String): Event =
-    Message(
-      participantId  = context.caller,
-      conversationId = context.conversation.id,
-      topicId        = context.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete,
-      role           = MessageRole.Tool,
-      visibility     = MessageVisibility.Agents
-    )
 }
 

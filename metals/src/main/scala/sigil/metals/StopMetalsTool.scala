@@ -1,10 +1,9 @@
 package sigil.metals
 
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class StopMetalsInput() extends ToolInput derives RW
 
@@ -17,35 +16,36 @@ case class StopMetalsInput() extends ToolInput derives RW
  * No-op when no Metals is running for the workspace. Use
  * `metals_status` first to see what's live.
  */
-final class StopMetalsTool extends TypedTool[StopMetalsInput](
-  name = ToolName("stop_metals"),
-  description =
+final class StopMetalsTool extends Tool {
+  type Input  = StopMetalsInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[StopMetalsInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("stop_metals")
+  val description =
     """Stop the Metals (Scala LSP) MCP server for this conversation's workspace.
       |Tears down the subprocess and removes its McpServerConfig.
-      |No-op if Metals isn't running for the workspace.""".stripMargin,
-  examples = List(ToolExample("stop metals", StopMetalsInput())),
-  keywords = Set(
+      |No-op if Metals isn't running for the workspace.""".stripMargin
+  override val examples = List(ToolExample("stop metals", StopMetalsInput()))
+  override val keywords = Set(
     "metals", "stop", "scala", "lsp", "shutdown",
     "kill", "terminate", "disable", "teardown", "tooling"
   )
-) {
-  override def paginate: Boolean = false
 
   import MetalsToolSupport.*
 
-  override protected def executeTyped(input: StopMetalsInput, context: TurnContext): Stream[Event] = {
+  override def executeResult(input: StopMetalsInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
     val sigil = context.sigil
-    Stream.force(workspaceFor(sigil, context).flatMap {
+    workspaceFor(sigil, context).flatMap {
       case Left(msg) =>
-        Task.pure(Stream.emit[Event](reply(context, msg, isError = true)))
+        Task.pure(ToolResult.failure(msg))
       case Right(workspace) =>
         manager(sigil) match {
           case None =>
-            Task.pure(Stream.emit[Event](reply(
-              context,
-              "stop_metals: this Sigil instance doesn't include sigil-metals.",
-              isError = true
-            )))
+            Task.pure(ToolResult.failure(
+              "stop_metals: this Sigil instance doesn't include sigil-metals."
+            ))
           case Some(mm) =>
             mm.stop(workspace).flatMap { stopped =>
               // Bug #97 — symmetric remove of the conversation
@@ -60,10 +60,10 @@ final class StopMetalsTool extends TypedTool[StopMetalsInput](
                 val msg =
                   if (stopped) s"Metals stopped for $workspace."
                   else s"No Metals running for $workspace — nothing to stop."
-                Stream.emit[Event](reply(context, msg))
+                ToolResult.Success(TextToolOutput(msg))
               }
             }
         }
-    })
+    }
   }
 }

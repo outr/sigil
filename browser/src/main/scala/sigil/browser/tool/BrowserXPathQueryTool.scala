@@ -1,14 +1,14 @@
 package sigil.browser.tool
 
+import fabric.rw.*
 import fabric.{Json, arr, num, obj, str}
 import lightdb.id.Id
 import org.jsoup.Jsoup
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
 import sigil.browser.WebBrowserMode
-import sigil.event.Event
 import sigil.storage.StoredFile
-import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 
 import scala.jdk.CollectionConverters.*
 
@@ -23,13 +23,18 @@ import scala.jdk.CollectionConverters.*
  * matches; `totalCount` reports the unbounded match count so the
  * agent knows whether to refine the query.
  */
-final class BrowserXPathQueryTool extends TypedTool[BrowserXPathQueryInput](
-  name = ToolName("browser_xpath_query"),
-  description =
+final class BrowserXPathQueryTool extends Tool {
+  type Input  = BrowserXPathQueryInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[BrowserXPathQueryInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("browser_xpath_query")
+  val description =
     """Run an XPath query against an HTML file saved earlier (use the `htmlFileId` from `browser_save_html`).
       |Returns matched nodes as `{tag, text, attributes}`. Set `includeOuterHtml=true` only when you need raw markup —
-      |it can be large. Use the overview's `headings`, `landmarks`, and `linkClusters` xpaths as starting points.""".stripMargin,
-  examples = List(
+      |it can be large. Use the overview's `headings`, `landmarks`, and `linkClusters` xpaths as starting points.""".stripMargin
+  override val examples = List(
     ToolExample(
       "Pull all article links from a list",
       BrowserXPathQueryInput(htmlFileId = "abc123", xpath = "//main//a[@href]", maxResults = 50)
@@ -38,26 +43,15 @@ final class BrowserXPathQueryTool extends TypedTool[BrowserXPathQueryInput](
       "Get the page's main heading element with markup",
       BrowserXPathQueryInput(htmlFileId = "abc123", xpath = "//h1[1]", includeOuterHtml = true)
     )
-  ),
-  modes = Set(WebBrowserMode.id),
-  keywords = Set("browser", "xpath", "query", "extract", "html", "structure")
-) {
-  override def paginate: Boolean = false
+  )
+  override val modes = Set(WebBrowserMode.id)
+  override val keywords = Set("browser", "xpath", "query", "extract", "html", "structure")
 
-
-  override protected def executeTyped(input: BrowserXPathQueryInput, ctx: TurnContext): Stream[Event] =
-    Stream.force(
-      ctx.sigil.fetchStoredFile(Id[StoredFile](input.htmlFileId), ctx.chain).map {
+  override def executeResult(input: BrowserXPathQueryInput,
+                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+    ctx.sigil.fetchStoredFile(Id[StoredFile](input.htmlFileId), ctx.chain).map {
         case None =>
-          Stream.emit[Event](BrowserToolBase.toolResult(
-            obj(
-              "error"      -> str(s"htmlFileId '${input.htmlFileId}' not found or not authorized"),
-              "matches"    -> arr(),
-              "totalCount" -> num(0),
-              "returned"   -> num(0)
-            ),
-            ctx
-          ))
+          ToolResult.failure(s"htmlFileId '${input.htmlFileId}' not found or not authorized")
         case Some((_, bytes)) =>
           val html = new String(bytes, java.nio.charset.StandardCharsets.UTF_8)
           val doc  = Jsoup.parse(html)
@@ -81,16 +75,14 @@ final class BrowserXPathQueryTool extends TypedTool[BrowserXPathQueryInput](
             obj(full*)
           }
 
-          Stream.emit[Event](BrowserToolBase.toolResult(
+          ToolResult.Success(BrowserToolBase.toolResult(
             obj(
               "htmlFileId" -> str(input.htmlFileId),
               "xpath"      -> str(input.xpath),
               "matches"    -> arr(matches*),
               "totalCount" -> num(totalCount),
               "returned"   -> num(limited.size)
-            ),
-            ctx
+            )
           ))
-      }
-    )
+    }
 }

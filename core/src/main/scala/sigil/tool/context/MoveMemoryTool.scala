@@ -1,12 +1,11 @@
 package sigil.tool.context
 
+import fabric.rw.*
 import lightdb.id.Id
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.{SpaceId, TurnContext}
 import sigil.conversation.ContextMemory
-import sigil.event.{Event, Message, MessageRole}
-import sigil.tool.{ToolName, TypedTool}
-import sigil.tool.model.ResponseContent
+import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 /**
  * Re-scope an existing memory to a different accessible
@@ -25,9 +24,14 @@ import sigil.tool.model.ResponseContent
  * `modified` change. Versioning is preserved; pinned status is
  * preserved.
  */
-case object MoveMemoryTool extends TypedTool[MoveMemoryInput](
-  name = ToolName("move_memory"),
-  description =
+case object MoveMemoryTool extends Tool {
+  type Input  = MoveMemoryInput
+  type Output = TextToolOutput
+  val inputRW: RW[MoveMemoryInput]  = summon[RW[MoveMemoryInput]]
+  val outputRW: RW[TextToolOutput]  = summon[RW[TextToolOutput]]
+
+  val name: ToolName = ToolName("move_memory")
+  val description: String =
     """Re-scope a memory to a different accessible space — useful when a memory was classified
       |into the wrong space ("oh, this isn't a project rule, it's a personal preference") or
       |when scope changes ("this used to be project-A only; it now applies to me across projects").
@@ -36,24 +40,14 @@ case object MoveMemoryTool extends TypedTool[MoveMemoryInput](
       |- `newSpace`  — the target space (must be in your accessible spaces).
       |- `fromSpace` — optional disambiguator when the same key exists in multiple spaces.
       |
-      |The record's id, key, and pinned status are preserved.""".stripMargin,
-  keywords = Set("move", "rescope", "memory", "space", "transfer")
-) {
-  override def paginate: Boolean = false
+      |The record's id, key, and pinned status are preserved.""".stripMargin
+  override val keywords: Set[String] = Set("move", "rescope", "memory", "space", "transfer")
 
   override def resultTtl: Option[Int] = Some(0)
   override val requiresAccessibleSpaces: Boolean = true
 
-  override protected def executeTyped(input: MoveMemoryInput, context: TurnContext): Stream[Event] =
-    Stream.force(move(input, context).map { messageText =>
-      Stream.emits(List[Event](Message(
-        participantId = context.caller,
-        conversationId = context.conversation.id,
-        topicId = context.conversation.currentTopicId,
-        content = Vector(ResponseContent.Text(messageText)),
-        role = MessageRole.Tool
-      )))
-    })
+  override def executeResult(input: MoveMemoryInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    move(input, context).map(text => ToolResult.Success(TextToolOutput(text)))
 
   private def move(input: MoveMemoryInput, context: TurnContext): Task[String] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>

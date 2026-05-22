@@ -1,16 +1,20 @@
 package sigil.tool.util
 
-import fabric.{obj, str}
+import fabric.rw.*
 import lightdb.id.Id as LId
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.{Event, Message, MessageRole}
-import sigil.signal.EventState
-import sigil.tool.model.{DelegateTaskInput, ResponseContent}
-import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.tool.model.DelegateTaskInput
+import sigil.tool.{Tool, ToolExample, ToolName, ToolOutput, ToolResult}
 import sigil.workflow.{AgentDecisionStepInput, WorkflowSigil, WorkflowStepInputCompiler}
 import sigil.workflow.SigilWorkflowModel.stepRW
 import strider.WorkflowParent
+
+/** Typed result of [[DelegateTaskTool]] — the handle the caller
+  * uses to track / drill into the spawned worker's run. */
+case class DelegateTaskOutput(taskId: String,
+                              workerConvId: String,
+                              role: String) extends ToolOutput derives RW
 
 /**
  * `delegate_task` — spawn a worker. Creates a scratchpad
@@ -22,8 +26,8 @@ import strider.WorkflowParent
  *
  * Requires the host Sigil to mix in [[WorkflowSigil]] — the tool
  * looks up the framework's `workflowManager` to schedule the run.
- * Apps that don't have the workflow runtime active see a tool
- * error message rather than a crash.
+ * Apps that don't have the workflow runtime active see a logical
+ * failure rather than a crash.
  *
  * v1 ships single-iteration workers (the AgentDecisionStep runs
  * once and the run completes). Multi-iteration ReAct (where the
@@ -31,47 +35,46 @@ import strider.WorkflowParent
  * the phase 2 follow-on; this tool's wire shape doesn't change
  * when that lands.
  */
-case object DelegateTaskTool
-  extends TypedTool[DelegateTaskInput](
-    name = ToolName("delegate_task"),
-    description =
-      """Spawn a worker for long-running or specialized work. Worker runs in its own scratchpad
-        |conversation linked to this conversation. Requires `role` (worker's identity + workType),
-        |`brief` (the directive), `modelId` (the resolved model). Returns the worker's task/run id.
-        |Use for "research X", "build Y", "analyze Z" — anything you'd rather hand off than
-        |answer inline.""".stripMargin,
-    examples = List(
-      ToolExample(
-        "Delegate a research task",
-        DelegateTaskInput(
-          role = sigil.role.Role(
-            name = "researcher",
-            description = "You are a research agent. Find relevant sources, synthesize, and report.",
-            workType = sigil.provider.AnalysisWork
-          ),
-          brief = "Find recent papers on retrieval-augmented generation in 2026.",
-          modelId = "anthropic/claude-sonnet-4-6"
-        )
+case object DelegateTaskTool extends Tool {
+  type Input  = DelegateTaskInput
+  type Output = DelegateTaskOutput
+  val inputRW  = summon[RW[DelegateTaskInput]]
+  val outputRW = summon[RW[DelegateTaskOutput]]
+  val name = ToolName("delegate_task")
+  val description =
+    """Spawn a worker for long-running or specialized work. Worker runs in its own scratchpad
+      |conversation linked to this conversation. Requires `role` (worker's identity + workType),
+      |`brief` (the directive), `modelId` (the resolved model). Returns the worker's task/run id.
+      |Use for "research X", "build Y", "analyze Z" — anything you'd rather hand off than
+      |answer inline.""".stripMargin
+  override val examples = List(
+    ToolExample(
+      "Delegate a research task",
+      DelegateTaskInput(
+        role = sigil.role.Role(
+          name = "researcher",
+          description = "You are a research agent. Find relevant sources, synthesize, and report.",
+          workType = sigil.provider.AnalysisWork
+        ),
+        brief = "Find recent papers on retrieval-augmented generation in 2026.",
+        modelId = "anthropic/claude-sonnet-4-6"
       )
-    ),
-    keywords = Set("delegate", "worker", "spawn", "task", "research", "background", "subagent")
-  ) {
-  override def paginate: Boolean = false
+    )
+  )
+  override val keywords = Set("delegate", "worker", "spawn", "task", "research", "background", "subagent")
 
-
-  override protected def executeTyped(input: DelegateTaskInput, ctx: TurnContext): Stream[Event] = Stream.force {
+  override def executeResult(input: DelegateTaskInput,
+                             ctx: TurnContext): Task[ToolResult[DelegateTaskOutput]] =
     ctx.sigil match {
-      case ws: WorkflowSigil =>
-        spawnWorker(ws, input, ctx)
+      case ws: WorkflowSigil => spawnWorker(ws, input, ctx)
       case _ =>
-        Task.pure(emit(ctx, obj(
-          "ok"    -> str("false"),
-          "error" -> str("delegate_task requires the host Sigil to mix in WorkflowSigil; the workflow runtime is not active.")
-        )))
+        Task.pure(ToolResult.failure(
+          "delegate_task requires the host Sigil to mix in WorkflowSigil; the workflow runtime is not active."))
     }
-  }
 
-  private def spawnWorker(ws: WorkflowSigil & sigil.Sigil, input: DelegateTaskInput, ctx: TurnContext): Task[Stream[Event]] = {
+  private def spawnWorker(ws: WorkflowSigil & sigil.Sigil,
+                          input: DelegateTaskInput,
+                          ctx: TurnContext): Task[ToolResult[DelegateTaskOutput]] = {
     val workerLabel  = s"Worker: ${input.role.name}"
     val parentConvId = ctx.conversation.id
 
@@ -110,21 +113,10 @@ case object DelegateTaskTool
         sourceId        = sourceId,
         conversationId  = Some(workerConv._id.value)
       )
-    } yield emit(ctx, obj(
-      "ok"            -> str("true"),
-      "taskId"        -> str(run._id.value),
-      "workerConvId"  -> str(workerConv._id.value),
-      "role"          -> str(input.role.name)
+    } yield ToolResult.Success(DelegateTaskOutput(
+      taskId       = run._id.value,
+      workerConvId = workerConv._id.value,
+      role         = input.role.name
     ))
   }
-
-  private def emit(ctx: TurnContext, payload: fabric.Json): Stream[Event] =
-    Stream.emit[Event](Message(
-      participantId  = ctx.caller,
-      conversationId = ctx.conversation.id,
-      topicId        = ctx.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Text(fabric.io.JsonFormatter.Compact(payload))),
-      state          = EventState.Complete,
-      role           = MessageRole.Tool
-    ))
 }

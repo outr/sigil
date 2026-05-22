@@ -1,9 +1,11 @@
 package sigil.tool.core
 
+import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.{Event, Message}
+import sigil.event.Message
 import sigil.signal.EventState
-import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, ToolExample, ToolName, ToolResult}
 import sigil.tool.model.{RespondOptionsInput, ResponseContent, SelectOption}
 
 /**
@@ -16,9 +18,14 @@ import sigil.tool.model.{RespondOptionsInput, ResponseContent, SelectOption}
  * or by replying in natural language — both flow back through the
  * normal Message channel.
  */
-case object RespondOptionsTool extends TypedTool[RespondOptionsInput](
-  name = ToolName("respond_options"),
-  description =
+case object RespondOptionsTool extends RespondFamilyTool {
+  type Input  = RespondOptionsInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[RespondOptionsInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("respond_options")
+  val description =
     """Ask the user to pick from a closed set of options. Options render as clickable controls
       |(buttons / radio / checkboxes); markdown bullets in `respond.content` do not.
       |
@@ -37,8 +44,9 @@ case object RespondOptionsTool extends TypedTool[RespondOptionsInput](
       |can still pick exactly one, but can't escape a forced single-select if multi was correct.
       |
       |An option with `exclusive = true` (multi-select only) cannot be combined with others (e.g. a
-      |"None of these" escape hatch).""".stripMargin,
-  examples = List(
+      |"None of these" escape hatch).""".stripMargin
+
+  override val examples: List[ToolExample] = List(
     ToolExample(
       "single-select — forced choice between mutually-exclusive options",
       RespondOptionsInput(
@@ -60,22 +68,20 @@ case object RespondOptionsTool extends TypedTool[RespondOptionsInput](
       )
     )
   )
-) with RespondFamilyTool {
-  override def paginate: Boolean = false
 
-  override protected def executeTyped(input: RespondOptionsInput, context: TurnContext): rapid.Stream[Event] = {
+  override def executeResult(input: RespondOptionsInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
     val block = ResponseContent.Options(
       prompt = input.prompt,
       options = input.options,
       allowMultiple = input.allowMultiple
     )
-    rapid.Stream.emits(List(Message(
+    context.emit(Message(
       participantId = context.caller,
       conversationId = context.conversation.id,
       topicId = context.conversation.currentTopicId,
       content = Vector(block),
       state = EventState.Complete,
       modelId = context.modelId
-    )))
+    )).map(_ => ToolResult.Success(TextToolOutput("")))
   }
 }

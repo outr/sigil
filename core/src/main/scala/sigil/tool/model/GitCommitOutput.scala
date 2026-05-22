@@ -10,7 +10,7 @@ import fabric.rw.*
  *   - [[GitCommitOutput.Failed]] — staging or committing exited
  *     non-zero (nothing to commit, hook rejection, etc.).
  */
-enum GitCommitOutput derives RW {
+enum GitCommitOutput extends sigil.tool.ToolOutput derives RW {
 
   case Committed(sha: String, message: String)
 

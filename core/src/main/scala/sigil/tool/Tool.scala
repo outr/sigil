@@ -1,13 +1,17 @@
 package sigil.tool
 
+import fabric.io.JsonFormatter
 import fabric.rw.*
 import lightdb.doc.{JsonConversion, RecordDocument, RecordDocumentModel}
 import lightdb.id.Id
 import lightdb.time.Timestamp
+import rapid.{Stream, Task}
 import sigil.{GlobalSpace, Sigil, SpaceId, TurnContext}
-import sigil.event.Event
+import sigil.event.{Event, Message, MessageDisposition, MessageRole, MessageVisibility, ToolOutcome, ToolResults}
 import sigil.participant.ParticipantId
 import sigil.provider.Mode
+import sigil.signal.EventState
+import sigil.tool.model.ResponseContent
 
 /**
  * A capability available to agents at runtime. Persisted in
@@ -15,50 +19,158 @@ import sigil.provider.Mode
  * (user-created) tools share one collection, one query path, and one
  * polymorphic RW.
  *
- * Two authoring shapes:
- *   - **Static singleton**: typically authored via [[TypedTool]] for
- *     ergonomics; persisted via `RW.static`.
- *   - **Dynamic record**: `case class ScriptTool(...) extends Tool derives RW`
- *     constructed at runtime by app flows and persisted via
- *     `Sigil.createTool`.
+ * **Authoring contract.** A tool declares a typed [[Input]] and a typed
+ * [[Output]] (abstract type members) and implements `executeOutput` (or,
+ * for explicit success-vs-logical-failure control, `executeResult`).
+ * `execute` — the `Stream[Event]` surface the orchestrator drives — is
+ * `final`: the framework runs the tool's resolution and builds exactly
+ * one paired result event from it. A tool cannot emit a free-form,
+ * possibly-result-less event stream; the call/result pairing invariant
+ * holds by construction.
  *
- * `inputRW` declares the [[ToolInput]] subclass this tool consumes.
- * The provider stack parses LLM-supplied tool-call arguments through
- * that RW directly — no raw JSON crosses the dispatch boundary.
+ * Durable events that are not the tool's result (a `change_mode`'s
+ * `ModeChange`, a `respond`'s user-visible Message) are emitted via
+ * `ctx.emit` during execution — see [[TurnContext]].
+ *
+ * `Tool` itself is monomorphic — the typing is carried by the `Input` /
+ * `Output` type members, not type parameters — so `RecordDocument[Tool]`,
+ * the polymorphic `RW[Tool]`, and the DB collection are all unparameterised.
  */
 trait Tool extends RecordDocument[Tool] {
   // ---- abstract ----
 
   def name: ToolName
   def description: String
-  def inputRW: RW[? <: ToolInput]
-  def execute(input: ToolInput, context: TurnContext): rapid.Stream[Event]
 
-  /** Whether this tool returns paginated output. **Required — no
-    * default.** Every Tool author must explicitly declare which
-    * output shape their tool implements (sigil bug #201).
+  /** The typed argument shape this tool consumes. */
+  type Input <: ToolInput
+
+  /** The typed result payload this tool produces. */
+  type Output <: ToolOutput
+
+  def inputRW: RW[Input]
+  def outputRW: RW[Output]
+
+  /** Simple authoring entry — return the typed [[Output]]. A thrown
+    * error (`Task.error`) is caught by the framework and surfaced as a
+    * recoverable [[ToolResult.Failure]]. Override this OR [[executeResult]]. */
+  def executeOutput(input: Input, context: TurnContext): Task[Output] =
+    Task.error(new NotImplementedError(
+      s"Tool '${name.value}' must override `executeOutput` or `executeResult`."
+    ))
+
+  /** Explicit authoring entry — full control over success vs. logical
+    * failure (file not found, validator rejection, missing precondition).
+    * Defaults to wrapping [[executeOutput]] in [[ToolResult.Success]].
     *
-    *   - `false` — the tool guarantees its result is self-limited
-    *     to a size the agent can consume in one shot
-    *     ([[sigil.tool.core.FindCapabilityTool]]'s ranked shortlist,
-    *     `lsp_goto_definition`'s single location,
-    *     [[sigil.tool.core.RecordConsentTool]]'s ack).
-    *   - `true` — the tool's output is potentially unbounded; the
-    *     input schema MUST expose pagination fields (offset / limit /
-    *     cursor / pageSize / pageToken) and the agent is responsible
-    *     for re-calling with subsequent pages
-    *     ([[sigil.tool.fs.GrepTool]], [[sigil.tool.fs.BashTool]],
-    *     [[sigil.tool.output.PaginatedTool]] subclasses generally).
-    *
-    * There is no third option. Tools whose output might exceed the
-    * agent's context window without pagination must add pagination;
-    * the framework will NOT silently compress tool output
-    * ([[sigil.conversation.compression.StandardBlockExtractor]] no
-    * longer touches ToolResult frames).
+    * The returned `Task` is **total**: it resolves to a [[ToolResult]],
+    * or it errors (a crash) and the framework maps that to an
+    * unrecoverable failure. Either way the framework constructs exactly
+    * one paired result event — "tool emitted no result" is unrepresentable. */
+  def executeResult(input: Input, context: TurnContext): Task[ToolResult[Output]] =
+    executeOutput(input, context).map(ToolResult.success)
+
+  /** Whether this tool returns paginated output. Defaults to `false` —
+    * a plain `Tool`'s [[Output]] is bounded by its type. Tools whose
+    * output is potentially unbounded extend
+    * [[sigil.tool.output.PaginatedTool]], which overrides this to `true`
+    * and exposes the pagination input fields.
     *
     * Surfaced in [[sigil.event.CapabilityMatch]] so the agent learns
     * from discovery whether a tool is one-shot or iterative. */
-  def paginate: Boolean
+  def paginate: Boolean = false
+
+  // ---- framework glue (final) ----
+
+  /** The `Stream[Event]` surface the orchestrator drives. **Final** —
+    * tools author via [[executeResult]] / [[executeOutput]] instead.
+    *
+    * Runs the tool's resolution (mapping any crash to a failure),
+    * builds exactly one paired result event — a `ToolResults` carrying
+    * the typed payload on success, a Tool-role failure `Message` on
+    * failure — stamps `origin` from the dispatching invoke, and emits
+    * it as the single-element stream. */
+  final def execute(input: ToolInput, context: TurnContext): Stream[Event] =
+    Stream.force(
+      runResolution(input, context).map(res => Stream.emit[Event](buildResultEvent(res, context)))
+    )
+
+  /** Run [[executeResult]] against a defensively-cast input, mapping any
+    * throwable (including a `ClassCastException` from a mismatched input)
+    * to a recoverable [[ToolResult.Failure]]. Total — never errors. */
+  private def runResolution(input: ToolInput, context: TurnContext): Task[ToolResult[Output]] =
+    Task(input.asInstanceOf[Input])
+      .flatMap(typed => executeResult(typed, context))
+      .handleError { err =>
+        Task.pure(ToolResult.failure(
+          message = Option(err.getMessage).getOrElse(err.getClass.getSimpleName),
+          args    = renderInputArgs(input)
+        ))
+      }
+
+  /** Build the single paired result event from a resolution. */
+  private def buildResultEvent(result: ToolResult[Output], context: TurnContext): Event = result match {
+    case ToolResult.Success(value) =>
+      val typedJson = outputRW.read(value)
+      val rendered  = JsonFormatter.Compact(typedJson)
+      val threshold = context.sigil.inlineContentThreshold
+      val summaryOpt =
+        if (rendered.length.toLong <= threshold) None
+        else Some(
+          summarize(value, rendered) + "\n\n" +
+            s"${name.value}: result is ${rendered.length} bytes (threshold $threshold), truncated inline. " +
+            "Refine inputs to narrow the output, or — for naturally-large bulk output — use PaginatedTool."
+        )
+      ToolResults(
+        schemas        = Nil,
+        participantId  = context.caller,
+        conversationId = context.conversation.id,
+        topicId        = context.conversation.currentTopicId,
+        outcome        = ToolOutcome.Success,
+        typed          = Some(typedJson),
+        summary        = summaryOpt,
+        state          = EventState.Complete,
+        role           = MessageRole.Tool,
+        origin         = context.currentToolInvokeId
+      )
+    case ToolResult.Failure(message, hint, args) =>
+      val body = (List(message) ++ hint.toList.map(h => s"\n\nHint: $h") ++
+        args.toList.map(a => s"\n\nFailing args: $a")).mkString
+      Message(
+        participantId  = context.caller,
+        conversationId = context.conversation.id,
+        topicId        = context.conversation.currentTopicId,
+        role           = MessageRole.Tool,
+        content        = Vector(ResponseContent.Text(body)),
+        disposition    = MessageDisposition.Failure(recoverable = true),
+        state          = EventState.Complete,
+        visibility     = MessageVisibility.Agents,
+        origin         = context.currentToolInvokeId
+      )
+  }
+
+  /** Inline summary text rendered when the typed payload exceeds
+    * `inlineContentThreshold`. Default: truncate the JSON at 200 chars.
+    * Tools with richer summary semantics override. */
+  protected def summarize(output: Output, jsonRendered: String): String =
+    if (jsonRendered.length <= 200) jsonRendered else jsonRendered.take(200) + " …"
+
+  /** Render the failing input to compact JSON for a [[ToolResult.Failure]]'s
+    * `args`. Best-effort — never a hard failure of the error path. */
+  private def renderInputArgs(input: ToolInput): Option[String] =
+    try Some(JsonFormatter.Compact(inputRW.read(input.asInstanceOf[Input])))
+    catch { case _: Throwable => None }
+
+  /** Public composition entry. Another tool's `executeResult` body calls
+    * this to invoke a tool and receive its typed [[Output]] directly —
+    * no JSON parsing. A [[ToolResult.Failure]] raises a
+    * [[ToolFailureException]] so the caller can `handleError` or let it
+    * propagate. */
+  def invoke(input: Input, context: TurnContext): Task[Output] =
+    executeResult(input, context).flatMap {
+      case ToolResult.Success(value)           => Task.pure(value)
+      case ToolResult.Failure(msg, hint, args) => Task.error(new ToolFailureException(name, msg, hint, args))
+    }
 
   // ---- defaults ----
 
@@ -102,12 +214,10 @@ trait Tool extends RecordDocument[Tool] {
     * runtime config) override this. */
   def inputDefinition: fabric.define.Definition = inputRW.definition
 
-  /** The schema's output definition — present for tools that declare
-    * a typed `Output` shape via [[TypedOutputTool]], `None` for legacy
-    * tools that emit free-form Tool-role Messages. Surfaced in
-    * `find_capability` results so agents can reason about the result
-    * shape before calling. */
-  def outputDefinition: Option[fabric.define.Definition] = None
+  /** The schema's output definition — the declared typed [[Output]]
+    * shape. Surfaced in `find_capability` results so agents (and UIs)
+    * can reason about the result shape before calling. */
+  def outputDefinition: Option[fabric.define.Definition] = Some(outputRW.definition)
 
   /** Pre-execution gates the orchestrator runs before
     * [[execute]]. Each [[ToolPrecondition]] returns either

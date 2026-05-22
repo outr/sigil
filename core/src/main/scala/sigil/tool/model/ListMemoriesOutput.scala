@@ -10,7 +10,7 @@ import fabric.rw.*
  *   - [[ListMemoriesOutput.NoAccessibleSpaces]] — the caller's chain
  *     has no accessible memory space, so there is nothing to list.
  */
-enum ListMemoriesOutput derives RW {
+enum ListMemoriesOutput extends sigil.tool.ToolOutput derives RW {
 
   case Listed(memories: List[MemoryListEntry], page: MemoryListPage)
 

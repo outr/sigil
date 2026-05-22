@@ -11,4 +11,5 @@ import sigil.tool.output.ToolOutputNode
  *   - `rowsAffected` — number of rows whose flag flipped.
  */
 case class PinContainerOutput(itemsId: Id[ToolOutputNode],
-                              rowsAffected: Int) derives RW
+                              rowsAffected: Int)
+  extends sigil.tool.ToolOutput derives RW

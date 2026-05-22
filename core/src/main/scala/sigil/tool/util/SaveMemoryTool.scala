@@ -1,12 +1,13 @@
 package sigil.tool.util
 
+import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
 import sigil.{SpaceId, TurnContext}
 import sigil.conversation.{ContextMemory, MemorySource, UpsertMemoryResult}
 import sigil.provider.Mode
 import sigil.tool.model.{MemoryWriteOutcome, SaveMemoryInput, SaveMemoryOutput}
-import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolExample, ToolName}
 
 /**
  * Surface [[sigil.Sigil.upsertMemoryByKey]] (or `persistMemory` when
@@ -22,39 +23,40 @@ import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
  */
 final class SaveMemoryTool(space: SpaceId,
                            source: MemorySource = MemorySource.Explicit)
-  extends TypedOutputTool[SaveMemoryInput, SaveMemoryOutput](
-    name = ToolName("save_memory"),
-    description =
-      """Persist a fact for later retrieval. Required: `fact` + `label` (short title) + `summary`
-        |(one-line gist). Pass `key` to overwrite a previously-saved memory under that key (versioned
-        |upsert); omit `key` to append a new memory. Returns `{outcome, memoryId}`.""".stripMargin,
-    examples = List(
-      ToolExample(
-        "Save a user preference",
-        SaveMemoryInput(
-          fact = "User prefers metric units across all generated documents.",
-          label = "Unit preference",
-          summary = "User prefers metric units.",
-          key = Some("user.units")
-        )
-      ),
-      ToolExample(
-        "Append a new fact",
-        SaveMemoryInput(
-          fact = "Project deadline is 2026-05-15.",
-          label = "Project deadline",
-          summary = "Deadline 2026-05-15."
-        )
+  extends Tool with sigil.tool.DestructiveInternalTool {
+  type Input  = SaveMemoryInput
+  type Output = SaveMemoryOutput
+  val inputRW  = summon[RW[SaveMemoryInput]]
+  val outputRW = summon[RW[SaveMemoryOutput]]
+  val name = ToolName("save_memory")
+  val description =
+    """Persist a fact for later retrieval. Required: `fact` + `label` (short title) + `summary`
+      |(one-line gist). Pass `key` to overwrite a previously-saved memory under that key (versioned
+      |upsert); omit `key` to append a new memory. Returns `{outcome, memoryId}`.""".stripMargin
+  override val examples = List(
+    ToolExample(
+      "Save a user preference",
+      SaveMemoryInput(
+        fact = "User prefers metric units across all generated documents.",
+        label = "Unit preference",
+        summary = "User prefers metric units.",
+        key = Some("user.units")
       )
     ),
-    keywords = Set("memory", "save", "remember", "store", "persist", "fact")
-  ) with sigil.tool.DestructiveInternalTool {
-  override def paginate: Boolean = false
-
+    ToolExample(
+      "Append a new fact",
+      SaveMemoryInput(
+        fact = "Project deadline is 2026-05-15.",
+        label = "Project deadline",
+        summary = "Deadline 2026-05-15."
+      )
+    )
+  )
+  override val keywords = Set("memory", "save", "remember", "store", "persist", "fact")
 
   override val requiresAccessibleSpaces: Boolean = true
 
-  override protected def executeTyped(input: SaveMemoryInput, ctx: TurnContext): Task[SaveMemoryOutput] =
+  override def executeOutput(input: SaveMemoryInput, ctx: TurnContext): Task[SaveMemoryOutput] =
     resolveSpace(input.space, ctx).flatMap { resolvedSpace =>
       val mem = ContextMemory(
         fact         = input.fact,

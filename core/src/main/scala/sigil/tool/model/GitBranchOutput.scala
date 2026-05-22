@@ -10,7 +10,7 @@ import fabric.rw.*
  *     remote-tracking) ref.
  *   - [[GitBranchOutput.Failed]] — a `git` invocation exited non-zero.
  */
-enum GitBranchOutput derives RW {
+enum GitBranchOutput extends sigil.tool.ToolOutput derives RW {
 
   case Listed(current: String, branches: List[GitBranchEntry])
 

@@ -7,4 +7,4 @@ import fabric.rw.*
   * (new), `Refreshed` (key existed, content unchanged apart from
   * timestamp), `Versioned` (prior version archived). Unkeyed appends
   * report `Stored`. `memoryId` is the persisted record's id. */
-case class SaveMemoryOutput(outcome: MemoryWriteOutcome, memoryId: String) derives RW
+case class SaveMemoryOutput(outcome: MemoryWriteOutcome, memoryId: String) extends sigil.tool.ToolOutput derives RW

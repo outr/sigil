@@ -3,8 +3,8 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
-import sigil.tooling.types.LspLocation
+import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tooling.types.{LspLocation, LspLocationsResult}
 
 case class LspImplementationInput(languageId: String,
                                   filePath: String,
@@ -18,27 +18,34 @@ case class LspImplementationInput(languageId: String,
  * lands on the abstract method, `implementation` lands on each
  * subclass's override.
  *
- * Emits `List[LspLocation]`; empty when no implementations.
+ * Emits `LspLocationsResult`; empty when no implementations.
  */
-final class LspImplementationTool(val manager: LspManager) extends TypedOutputTool[LspImplementationInput, List[LspLocation]](
-  name = ToolName("lsp_implementation"),
-  description =
+final class LspImplementationTool(val manager: LspManager) extends Tool
+  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input  = LspImplementationInput
+  type Output = LspLocationsResult
+  val inputRW  = summon[RW[LspImplementationInput]]
+  val outputRW = summon[RW[LspLocationsResult]]
+
+  val name = ToolName("lsp_implementation")
+  val description =
     """List concrete implementations of an abstract symbol (trait method, interface method, abstract def).
       |
       |`languageId` + `filePath` identify the source document.
       |`line` + `character` (0-based) point at the abstract symbol.
-      |Returns `[{uri, filePath, range}]`.""".stripMargin,
-  keywords = Set(
+      |Returns `[{uri, filePath, range}]`.""".stripMargin
+  override val keywords = Set(
     "lsp", "implementation", "implementations", "who implements", "implementors",
     "concrete", "subclasses", "traits", "interface", "examine", "inspect"
   )
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: LspImplementationInput, context: TurnContext): Task[List[LspLocation]] =
-    withOpenDocumentOrThrow[List[LspLocation]](
+  override def executeOutput(input: LspImplementationInput, context: TurnContext): Task[LspLocationsResult] =
+    withOpenDocumentOrThrow[LspLocationsResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>
-      session.implementation(uri, input.line, input.character).map(_.map(LspLocation.fromLsp4j))
+      session.implementation(uri, input.line, input.character)
+        .map(locs => LspLocationsResult(locs.map(LspLocation.fromLsp4j)))
     }
 }

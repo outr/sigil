@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.CodeAction
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.LspApplyCodeActionResult
 
 import scala.jdk.CollectionConverters.*
@@ -32,24 +32,29 @@ case class LspApplyCodeActionInput(languageId: String,
  * Either way, the agent's job is "pick by index"; the wire details
  * are framework-hidden.
  */
-final class LspApplyCodeActionTool(val manager: LspManager) extends TypedOutputTool[LspApplyCodeActionInput, LspApplyCodeActionResult](
-  name = ToolName("lsp_apply_code_action"),
-  description =
+final class LspApplyCodeActionTool(val manager: LspManager) extends Tool
+  with sigil.tool.DestructiveExternalTool with LspToolSupport {
+  type Input  = LspApplyCodeActionInput
+  type Output = LspApplyCodeActionResult
+  val inputRW  = summon[RW[LspApplyCodeActionInput]]
+  val outputRW = summon[RW[LspApplyCodeActionResult]]
+  val name = ToolName("lsp_apply_code_action")
+  val description =
     """Apply a code action by index from the most-recently-cached code-action listing for
       |a given (languageId, filePath) pair.
       |
       |`languageId` + `filePath` identify the cached action set.
       |`index` is the 0-based position in the prior listing.
-      |Returns one of `Applied` / `CommandExecuted` / `Failed` / `CacheEmpty` / `OutOfRange`.""".stripMargin,
-  keywords = Set(
+      |Returns one of `Applied` / `CommandExecuted` / `Failed` / `CacheEmpty` / `OutOfRange`.""".stripMargin
+  override val keywords = Set(
     "lsp", "apply", "fix", "quickfix", "refactor", "refactoring", "code action", "execute fix",
     "extract method", "extract variable", "organize imports", "missing imports",
     "modify", "change", "transform"
   )
-) with sigil.tool.DestructiveExternalTool with LspToolSupport {
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: LspApplyCodeActionInput, context: TurnContext): Task[LspApplyCodeActionResult] =
+  override def executeOutput(input: LspApplyCodeActionInput, context: TurnContext): Task[LspApplyCodeActionResult] =
     withSessionOrThrow[LspApplyCodeActionResult](
       input.languageId, input.filePath, context
     ) { (session, uri, _) =>

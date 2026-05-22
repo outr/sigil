@@ -1,8 +1,9 @@
 package sigil.tooling
 
-import rapid.{Stream, Task}
+import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolName}
 import sigil.tooling.types.LspWorkspaceSymbol
 
 import scala.jdk.CollectionConverters.*
@@ -28,37 +29,41 @@ import scala.jdk.CollectionConverters.*
  *
  * Sigil bug #212.
  */
-final class LspRenameSymbolTool(val manager: LspManager)
-  extends TypedOutputTool[LspRenameSymbolInput, LspRenameSymbolOutput](
-    name = ToolName("lsp_rename_symbol"),
-    description =
-      """Rename a symbol across the workspace by name (high-level, no position required).
-        |
-        |Wraps the lookup + rename dance into one call:
-        |  - Searches the workspace for symbols matching `symbolName` (exact match by default,
-        |    substring when `fuzzy = true`).
-        |  - Filters by `kindHint` when set (`"class"`, `"method"`, etc.).
-        |  - On a single hit, renames via LSP across the workspace; on multiple hits returns
-        |    the candidates so you can pass a `kindHint` or a more specific `symbolName`.
-        |
-        |Use this when you know the symbol's name but not the file / line / column. For
-        |position-driven renames (you already have a cursor location), call the
-        |position-based LSP rename tool directly.""".stripMargin,
-    keywords = Set(
-      "lsp", "rename", "refactor", "symbol", "by name", "high-level",
-      "semantic", "identifier", "across project", "workspace", "change name",
-      // Discoverability: surface via find-and-replace queries when the
-      // intent is a semantic rename, and via navigation queries that
-      // are actually rename intents in disguise.
-      "find", "find symbol", "replace name", "change identifier",
-      "update symbol name", "global rename", "search rename"
-    )
-  ) with sigil.tool.DestructiveExternalTool with LspToolSupport {
+final class LspRenameSymbolTool(val manager: LspManager) extends Tool
+  with sigil.tool.DestructiveExternalTool with LspToolSupport {
+  type Input  = LspRenameSymbolInput
+  type Output = LspRenameSymbolOutput
+  val inputRW  = summon[RW[LspRenameSymbolInput]]
+  val outputRW = summon[RW[LspRenameSymbolOutput]]
+
+  val name = ToolName("lsp_rename_symbol")
+  val description =
+    """Rename a symbol across the workspace by name (high-level, no position required).
+      |
+      |Wraps the lookup + rename dance into one call:
+      |  - Searches the workspace for symbols matching `symbolName` (exact match by default,
+      |    substring when `fuzzy = true`).
+      |  - Filters by `kindHint` when set (`"class"`, `"method"`, etc.).
+      |  - On a single hit, renames via LSP across the workspace; on multiple hits returns
+      |    the candidates so you can pass a `kindHint` or a more specific `symbolName`.
+      |
+      |Use this when you know the symbol's name but not the file / line / column. For
+      |position-driven renames (you already have a cursor location), call the
+      |position-based LSP rename tool directly.""".stripMargin
+  override val keywords = Set(
+    "lsp", "rename", "refactor", "symbol", "by name", "high-level",
+    "semantic", "identifier", "across project", "workspace", "change name",
+    // Discoverability: surface via find-and-replace queries when the
+    // intent is a semantic rename, and via navigation queries that
+    // are actually rename intents in disguise.
+    "find", "find symbol", "replace name", "change identifier",
+    "update symbol name", "global rename", "search rename"
+  )
 
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: LspRenameSymbolInput,
-                                      context: TurnContext): Task[LspRenameSymbolOutput] = {
+  override def executeOutput(input: LspRenameSymbolInput,
+                             context: TurnContext): Task[LspRenameSymbolOutput] = {
     withSessionTyped[LspRenameSymbolOutput](
       input.languageId, input.projectRoot, context,
       onError = msg => LspRenameSymbolOutput.Failed(input.symbolName, msg)

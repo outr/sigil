@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.Diagnostic
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspDiagnostic, LspDiagnosticsResult}
 
 case class LspDiagnosticsInput(languageId: String,
@@ -29,9 +29,14 @@ case class LspDiagnosticsInput(languageId: String,
  * the typed list and pattern-match on severity instead of regex-
  * parsing rendered strings.
  */
-final class LspDiagnosticsTool(val manager: LspManager) extends TypedOutputTool[LspDiagnosticsInput, LspDiagnosticsResult](
-  name = ToolName("lsp_diagnostics"),
-  description =
+final class LspDiagnosticsTool(val manager: LspManager) extends Tool
+  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input  = LspDiagnosticsInput
+  type Output = LspDiagnosticsResult
+  val inputRW  = summon[RW[LspDiagnosticsInput]]
+  val outputRW = summon[RW[LspDiagnosticsResult]]
+  val name = ToolName("lsp_diagnostics")
+  val description =
     """Fetch the language server's diagnostics for a file (errors, warnings, hints).
       |
       |`languageId` selects the persisted LspServerConfig (e.g. "scala", "rust", "python").
@@ -40,17 +45,17 @@ final class LspDiagnosticsTool(val manager: LspManager) extends TypedOutputTool[
       |`waitMs` (default 1500) is how long to wait for the server to finish publishing
       |diagnostics after opening the file. Pass 0 to read the existing snapshot only.
       |
-      |Returns `{filePath, diagnostics: [{range:{start, end}, severity, message, code, source}]}`.""".stripMargin,
-  keywords = Set(
+      |Returns `{filePath, diagnostics: [{range:{start, end}, severity, message, code, source}]}`.""".stripMargin
+  override val keywords = Set(
     "lsp", "language", "diagnostics", "errors", "warnings", "problems",
     "lint", "compile-check", "analyze", "examine", "inspect", "review",
     "evaluate", "what's broken", "issues", "semantic",
     "scala", "type", "fix", "code"
   )
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: LspDiagnosticsInput, context: TurnContext): Task[LspDiagnosticsResult] =
+  override def executeOutput(input: LspDiagnosticsInput, context: TurnContext): Task[LspDiagnosticsResult] =
     withOpenDocumentOrThrow[LspDiagnosticsResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

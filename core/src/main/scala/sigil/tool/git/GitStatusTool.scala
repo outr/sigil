@@ -1,10 +1,11 @@
 package sigil.tool.git
 
+import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
 import sigil.tool.fs.{FileSystemContext, WorkspacePathResolver}
 import sigil.tool.model.{GitStatusInput, GitStatusOutput}
-import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolExample, ToolName}
 
 /**
  * Read-only `git_status` — runs `git status --porcelain=v1
@@ -13,21 +14,24 @@ import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
  * agent's previous "shell out and regex `M  path`" workflow.
  */
 final class GitStatusTool(context: FileSystemContext)
-  extends TypedOutputTool[GitStatusInput, GitStatusOutput](
-    name = ToolName("git_status"),
-    description =
-      """Show working-tree status as a branch summary plus a list of changed entries.
-        |Index/working state codes follow git porcelain (unmodified, modified, added, deleted,
-        |renamed, copied, unmerged, untracked, ignored).""".stripMargin,
-    examples = List(
-      ToolExample("Status of the conversation workspace", GitStatusInput()),
-      ToolExample("Status of a specific repo", GitStatusInput(workingDir = Some("/abs/path/to/repo")))
-    ),
-    keywords = Set("git", "status", "changes", "diff", "porcelain", "uncommitted")
-  ) with sigil.tool.ReadOnlyExternalTool {
+  extends Tool with sigil.tool.ReadOnlyExternalTool {
+  type Input  = GitStatusInput
+  type Output = GitStatusOutput
+  val inputRW  = summon[RW[GitStatusInput]]
+  val outputRW = summon[RW[GitStatusOutput]]
+  val name = ToolName("git_status")
+  val description =
+    """Show working-tree status as a branch summary plus a list of changed entries.
+      |Index/working state codes follow git porcelain (unmodified, modified, added, deleted,
+      |renamed, copied, unmerged, untracked, ignored).""".stripMargin
+  override val examples = List(
+    ToolExample("Status of the conversation workspace", GitStatusInput()),
+    ToolExample("Status of a specific repo", GitStatusInput(workingDir = Some("/abs/path/to/repo")))
+  )
+  override val keywords = Set("git", "status", "changes", "diff", "porcelain", "uncommitted")
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: GitStatusInput, ctx: TurnContext): Task[GitStatusOutput] =
+  override def executeOutput(input: GitStatusInput, ctx: TurnContext): Task[GitStatusOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       context.executeCommand("git status --porcelain=v1 --branch", dir).map { r =>
         if (r.exitCode != 0) GitStatusOutput.Failed(r.stderr, r.exitCode)

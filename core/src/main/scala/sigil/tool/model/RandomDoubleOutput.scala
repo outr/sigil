@@ -5,4 +5,4 @@ import fabric.rw.*
 case class RandomDoubleOutput(value: Double,
                                min: Double,
                                max: Double,
-                               seed: Option[Long]) derives RW
+                               seed: Option[Long]) extends sigil.tool.ToolOutput derives RW

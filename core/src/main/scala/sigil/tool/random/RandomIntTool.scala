@@ -1,8 +1,9 @@
 package sigil.tool.random
 
+import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolExample, ToolName}
 import sigil.tool.model.{RandomIntInput, RandomIntOutput}
 
 /**
@@ -18,24 +19,27 @@ import sigil.tool.model.{RandomIntInput, RandomIntOutput}
  * across machines. Useful for replayable simulations, deterministic
  * tests, or seeding sub-runs.
  */
-case object RandomIntTool extends TypedOutputTool[RandomIntInput, RandomIntOutput](
-  name = ToolName("random_int"),
-  description =
+case object RandomIntTool extends Tool {
+  type Input  = RandomIntInput
+  type Output = RandomIntOutput
+  val inputRW  = summon[RW[RandomIntInput]]
+  val outputRW = summon[RW[RandomIntOutput]]
+
+  val name = ToolName("random_int")
+  val description =
     """Generate a uniformly random integer in `[min, max]` (inclusive on both ends).
       |
       |Optional `seed` makes the draw reproducible — same seed yields the same value
       |across calls and machines. Omit `seed` for genuine entropy.
       |
-      |Errors if `min > max`. Returns `{value, min, max, seed}`.""".stripMargin,
-  examples = List(
+      |Errors if `min > max`. Returns `{value, min, max, seed}`.""".stripMargin
+  override val examples = List(
     ToolExample("d20 dice roll", RandomIntInput(min = 1, max = 20)),
     ToolExample("seeded coin flip (reproducible)", RandomIntInput(min = 0, max = 1, seed = Some(42L)))
-  ),
-  keywords = Set("random", "rand", "int", "integer", "number", "rng", "dice", "roll")
-) {
-  override def paginate: Boolean = false
+  )
+  override val keywords = Set("random", "rand", "int", "integer", "number", "rng", "dice", "roll")
 
-  override protected def executeTyped(input: RandomIntInput, context: TurnContext): Task[RandomIntOutput] = Task {
+  override def executeOutput(input: RandomIntInput, context: TurnContext): Task[RandomIntOutput] = Task {
     require(input.min <= input.max, s"random_int: min (${input.min}) must be <= max (${input.max})")
     val rng   = input.seed.map(s => new scala.util.Random(s)).getOrElse(scala.util.Random)
     val span  = BigInt(input.max) - BigInt(input.min) + 1

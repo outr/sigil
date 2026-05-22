@@ -9,7 +9,7 @@ import sigil.information.Information
 import sigil.information.Information.given
 import sigil.skill.Skill
 import sigil.tool.discovery.CapabilityType
-import sigil.tool.{ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolName}
 import sigil.tool.model.{LookupInput, LookupOutput}
 
 /**
@@ -32,9 +32,13 @@ import sigil.tool.model.{LookupInput, LookupOutput}
  * matched record's JSON for the caller to deserialize against
  * whichever shape matches `capabilityType`.
  */
-case object LookupTool extends TypedOutputTool[LookupInput, LookupOutput](
-  name = ToolName("lookup"),
-  description =
+case object LookupTool extends Tool with sigil.tool.ReadOnlyInternalTool {
+  type Input  = LookupInput
+  type Output = LookupOutput
+  val inputRW  = summon[RW[LookupInput]]
+  val outputRW = summon[RW[LookupOutput]]
+  val name = ToolName("lookup")
+  val description =
     """Resolve a capability match (from `find_capability`) to its full record. Use this when
       |you need the details behind a memory's summary, the body of a referenced Information
       |record, or any other discovered capability with stored content.
@@ -45,12 +49,10 @@ case object LookupTool extends TypedOutputTool[LookupInput, LookupOutput](
       |
       |Tools and modes are not retrievable — call tools directly; switch modes via `change_mode`.
       |Returns `Found(capabilityType, name, payload)`, `NotFound(capabilityType, name)`, or
-      |`NotRetrievable(capabilityType, name, hint)`.""".stripMargin,
-  keywords = Set("lookup", "fetch", "retrieve", "resolve", "details", "full", "expand")
-) with sigil.tool.ReadOnlyInternalTool {
-  override def paginate: Boolean = false
+      |`NotRetrievable(capabilityType, name, hint)`.""".stripMargin
+  override val keywords = Set("lookup", "fetch", "retrieve", "resolve", "details", "full", "expand")
 
-  override protected def executeTyped(input: LookupInput, context: TurnContext): Task[LookupOutput] = {
+  override def executeOutput(input: LookupInput, context: TurnContext): Task[LookupOutput] = {
     val typeName = input.capabilityType.toString
     input.capabilityType match {
       case CapabilityType.Memory      => resolveMemory(input.name, typeName, context)

@@ -16,4 +16,5 @@ import sigil.tool.output.ToolOutputNode
  *   - `itemCount` — total number of rows the call materialised.
  */
 case class CreateContainerOutput(itemsId: Id[ToolOutputNode],
-                                 itemCount: Int) derives RW
+                                 itemCount: Int)
+  extends sigil.tool.ToolOutput derives RW

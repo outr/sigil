@@ -1,9 +1,11 @@
 package sigil.tool.core
 
+import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.{Event, Message}
+import sigil.event.Message
 import sigil.signal.EventState
-import sigil.tool.{ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, ToolName, ToolResult}
 import sigil.tool.model.{NoResponseInput, ResponseContent}
 
 /**
@@ -19,9 +21,14 @@ import sigil.tool.model.{NoResponseInput, ResponseContent}
  * the user-directed prose. The agent's intent stays delivered; the user
  * doesn't get silence after the model produced a deliverable message.
  */
-case object NoResponseTool extends TypedTool[NoResponseInput](
-  name = ToolName("no_response"),
-  description =
+case object NoResponseTool extends RespondFamilyTool {
+  type Input  = NoResponseInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[NoResponseInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("no_response")
+  val description =
     """Decline to respond — when the message isn't for you, or no reply is warranted. Cleaner than
       |`respond` with filler like "nothing to add".
       |
@@ -30,24 +37,22 @@ case object NoResponseTool extends TypedTool[NoResponseInput](
       |agent"). If you have something to SAY to the user — even a refusal or apology — call
       |`respond` instead; user-directed prose stuffed into `reason` is auto-promoted to a
       |respond and will trigger a warning.""".stripMargin
-) with RespondFamilyTool {
-  override def paginate: Boolean = false
 
-  override protected def executeTyped(input: NoResponseInput, context: TurnContext): rapid.Stream[Event] =
+  override def executeResult(input: NoResponseInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
     input.reason match {
       case Some(reason) if isUserDirectedProse(reason) =>
         scribe.warn(s"NoResponseTool: auto-promoting prose-shaped reason to a respond Message — " +
           s"the agent should call respond directly for user-directed text. Reason: ${reason.take(80)}…")
-        rapid.Stream.emit[Event](Message(
+        context.emit(Message(
           participantId  = context.caller,
           conversationId = context.conversation.id,
           topicId        = context.conversation.currentTopicId,
           content        = Vector(ResponseContent.Markdown(reason)),
           state          = EventState.Complete,
           modelId        = context.modelId
-        ))
+        )).map(_ => ToolResult.Success(TextToolOutput(reason)))
       case _ =>
-        rapid.Stream.empty
+        Task.pure(ToolResult.Success(TextToolOutput("")))
     }
 
   /** Heuristic: a `reason` with any of the following looks like

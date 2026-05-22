@@ -2,10 +2,9 @@ package sigil.workflow.tool
 
 import fabric.rw.*
 import lightdb.id.Id
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import sigil.workflow.{WorkflowScheduler, WorkflowTemplate}
 
 case class RunWorkflowInput(workflowId: String,
@@ -23,25 +22,27 @@ case class RunWorkflowInput(workflowId: String,
  * subsequent calls (`cancel_workflow`, `resume_workflow`,
  * etc.) to refer to a specific run.
  */
-final class RunWorkflowTool extends TypedTool[RunWorkflowInput](
-  name = ToolName("run_workflow"),
-  description =
+final class RunWorkflowTool extends Tool with WorkflowToolSupport {
+  type Input  = RunWorkflowInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[RunWorkflowInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+  val name = ToolName("run_workflow")
+  val description =
     """Schedule a run of a persisted workflow template.
       |
       |`workflowId` is the template id. `variables` (optional) overrides the template's
       |variable defaults — pass any inputs the workflow's `variableDefs` declare.
-      |Returns the run id for cancel / resume / inspection.""".stripMargin,
-  examples = List(
+      |Returns the run id for cancel / resume / inspection.""".stripMargin
+  override val examples = List(
     ToolExample(
       "run a template with one input",
       RunWorkflowInput(workflowId = "wf-abc", variables = Map("input" -> "today's events"))
     )
-  ),
-  keywords = Set("workflow", "run", "schedule", "execute", "trigger")
-) with WorkflowToolSupport {
-  override def paginate: Boolean = false
+  )
+  override val keywords = Set("workflow", "run", "schedule", "execute", "trigger")
 
-  override protected def executeTyped(input: RunWorkflowInput, ctx: TurnContext): Stream[Event] = withHost(ctx) { host =>
+  override def executeResult(input: RunWorkflowInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
     val id = Id[WorkflowTemplate](input.workflowId)
     host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
       case None => Task.pure(s"Workflow '${input.workflowId}' not found.")

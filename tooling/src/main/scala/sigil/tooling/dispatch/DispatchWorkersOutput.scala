@@ -15,7 +15,7 @@ import sigil.script.CompileError
  *  - [[DispatchResult]] — the `confirmed = true` reply: one
  *    [[WorkerOutcome]] per worker group.
  */
-sealed trait DispatchWorkersOutput derives RW
+sealed trait DispatchWorkersOutput extends sigil.tool.ToolOutput derives RW
 
 object DispatchWorkersOutput {
 

@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspFoldingRangeItem, LspFoldingRangeResult}
 
 case class LspFoldingRangeInput(languageId: String,
@@ -15,18 +15,23 @@ case class LspFoldingRangeInput(languageId: String,
  * compress a long file into a navigable outline before zooming in:
  * "what major sections does this file have, and where do they live?"
  */
-final class LspFoldingRangeTool(val manager: LspManager) extends TypedOutputTool[LspFoldingRangeInput, LspFoldingRangeResult](
-  name = ToolName("lsp_folding_range"),
-  description =
+final class LspFoldingRangeTool(val manager: LspManager) extends Tool
+  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input  = LspFoldingRangeInput
+  type Output = LspFoldingRangeResult
+  val inputRW  = summon[RW[LspFoldingRangeInput]]
+  val outputRW = summon[RW[LspFoldingRangeResult]]
+  val name = ToolName("lsp_folding_range")
+  val description =
     """List foldable regions in a file (class bodies, methods, import blocks, etc.).
       |
       |`languageId` + `filePath` identify the document.
-      |Returns each fold's `kind` (`region` / `comment` / `imports`), 1-based start/end lines.""".stripMargin,
-  keywords = Set("lsp", "fold", "folding", "collapse", "sections", "regions", "code structure")
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+      |Returns each fold's `kind` (`region` / `comment` / `imports`), 1-based start/end lines.""".stripMargin
+  override val keywords = Set("lsp", "fold", "folding", "collapse", "sections", "regions", "code structure")
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: LspFoldingRangeInput, context: TurnContext): Task[LspFoldingRangeResult] =
+  override def executeOutput(input: LspFoldingRangeInput, context: TurnContext): Task[LspFoldingRangeResult] =
     withOpenDocumentOrThrow[LspFoldingRangeResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

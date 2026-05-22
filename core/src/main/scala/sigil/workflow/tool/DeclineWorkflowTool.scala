@@ -3,10 +3,9 @@ package sigil.workflow.tool
 import fabric.{Json, str}
 import fabric.rw.*
 import lightdb.id.Id
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import strider.Workflow
 import strider.step.Step
 
@@ -25,25 +24,27 @@ case class DeclineWorkflowInput(runId: String,
  * (rollback, compensation, alternate path, immediate failure).
  * Idempotent against an already-resumed run.
  */
-final class DeclineWorkflowTool extends TypedTool[DeclineWorkflowInput](
-  name = ToolName("decline_workflow"),
-  description =
+final class DeclineWorkflowTool extends Tool with WorkflowToolSupport {
+  type Input  = DeclineWorkflowInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[DeclineWorkflowInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+  val name = ToolName("decline_workflow")
+  val description =
     """Decline a workflow run paused on an approval step.
       |
       |`runId` is the run id; `stepId` is the id of the waiting approval step. `reason` is
       |optional free-form text — appended to the resume payload so the workflow's
-      |branching can match on it.""".stripMargin,
-  examples = List(
+      |branching can match on it.""".stripMargin
+  override val examples = List(
     ToolExample("Decline a deploy approval",
       DeclineWorkflowInput(runId = "run-abc", stepId = "deploy-gate")),
     ToolExample("Decline with a reason",
       DeclineWorkflowInput(runId = "run-abc", stepId = "deploy-gate", reason = Some("staging tests failing")))
-  ),
-  keywords = Set("workflow", "decline", "reject", "no", "deny", "refuse")
-) with WorkflowToolSupport {
-  override def paginate: Boolean = false
+  )
+  override val keywords = Set("workflow", "decline", "reject", "no", "deny", "refuse")
 
-  override protected def executeTyped(input: DeclineWorkflowInput, ctx: TurnContext): Stream[Event] = withHost(ctx) { host =>
+  override def executeResult(input: DeclineWorkflowInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
     val workflowId = Id[Workflow](input.runId)
     val payload: Json = input.reason.filter(_.nonEmpty).fold[Json](str("decline"))(r => str(s"decline: $r"))
     host.withDB(_.workflows.transaction(_.get(workflowId))).flatMap {

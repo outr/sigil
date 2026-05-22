@@ -1,11 +1,11 @@
 package sigil.tool.core
 
-import rapid.Stream
+import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.{Event, Message, MessageRole, ToolApproval}
-import sigil.signal.EventState
-import sigil.tool.{ToolExample, ToolName, TypedTool}
-import sigil.tool.model.{RecordConsentInput, ResponseContent}
+import sigil.event.ToolApproval
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.model.RecordConsentInput
 
 /**
  * Records the user's consent decision for a `requiresUserConsent`
@@ -33,9 +33,14 @@ import sigil.tool.model.{RecordConsentInput, ResponseContent}
  * is sticky — flip the decision by recording a fresh
  * `approved=true`.
  */
-case object RecordConsentTool extends TypedTool[RecordConsentInput](
-  name = ToolName("record_consent"),
-  description =
+case object RecordConsentTool extends Tool {
+  type Input  = RecordConsentInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[RecordConsentInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("record_consent")
+  val description =
     """Record the user's consent decision for a `requiresUserConsent` tool. Call AFTER the
       |user has answered an approval prompt (typically via a structured-options reply).
       |The framework refuses to dispatch consent-gated tools until an approval record exists.
@@ -46,8 +51,9 @@ case object RecordConsentTool extends TypedTool[RecordConsentInput](
       |- `reason` — optional narrative; renders in the refusal Tool-result for future agents.
       |
       |Record `approved=false` for declined options too, so a later iteration doesn't revisit
-      |them.""".stripMargin,
-  examples = List(
+      |them.""".stripMargin
+
+  override val examples: List[ToolExample] = List(
     ToolExample(
       "user picked Metals from setup options",
       RecordConsentInput(toolName = "start_metals", approved = true,
@@ -59,71 +65,49 @@ case object RecordConsentTool extends TypedTool[RecordConsentInput](
         reason = Some("user did not select Claude state in setup options"))
     )
   )
-) {
-  override def paginate: Boolean = false
 
-  override protected def executeTyped(input: RecordConsentInput, ctx: TurnContext): Stream[Event] = {
+  override def executeResult(input: RecordConsentInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] = {
     val targetName = ToolName(input.toolName)
-    Stream.force(
-      ctx.sigil.findTools.byName(targetName).map {
-        case None =>
-          // Bug #160 — refuse to persist `ToolApproval` for a
-          // toolName that isn't in the registry. Agents that
-          // fabricate names (the wire-log case: a non-existent
-          // `start_coding` invented to clear a gate that didn't
-          // need clearing) used to land a useless `ToolApproval`
-          // row that polluted the audit log AND silently failed
-          // the gate forever (the row matches the fabricated
-          // name, not any real tool). Emit a Tool-role Failure
-          // instead so the agent reads "unknown tool" + the
-          // hint to call `find_capability` first.
-          val failureBody =
-            s"record_consent: unknown tool '${input.toolName}'. " +
-              "Call `find_capability` to discover the correct tool name before recording consent. " +
+    ctx.sigil.findTools.byName(targetName).flatMap {
+      case None =>
+        // Bug #160 — refuse to persist `ToolApproval` for a
+        // toolName that isn't in the registry. Agents that
+        // fabricate names (the wire-log case: a non-existent
+        // `start_coding` invented to clear a gate that didn't
+        // need clearing) used to land a useless `ToolApproval`
+        // row that polluted the audit log AND silently failed
+        // the gate forever (the row matches the fabricated
+        // name, not any real tool). Resolve a logical Failure
+        // instead so the agent reads "unknown tool" + the hint
+        // to call `find_capability` first.
+        Task.pure(ToolResult.failure(
+          message = s"record_consent: unknown tool '${input.toolName}'.",
+          hint = Some(
+            "Call `find_capability` to discover the correct tool name before recording consent. " +
               "Don't fabricate names — the framework refuses to persist approvals for tools that " +
-              "aren't in the registry."
-          val failure = Message(
-            participantId  = ctx.caller,
-            conversationId = ctx.conversation.id,
-            topicId        = ctx.conversation.currentTopicId,
-            content        = Vector(ResponseContent.Text(failureBody)),
-            disposition    = sigil.event.MessageDisposition.Failure(recoverable = true),
-            role           = MessageRole.Tool,
-            state          = EventState.Complete
-          )
-          Stream.emit[Event](failure)
+              "aren't in the registry.")
+        ))
 
-        case Some(_) =>
-          val approval = ToolApproval(
-            toolName       = targetName,
-            approved       = input.approved,
-            reason         = input.reason,
-            participantId  = ctx.caller,
-            conversationId = ctx.conversation.id,
-            topicId        = ctx.conversation.currentTopicId
-          )
-          // Bug #84 — emit a Tool-role confirmation Message
-          // alongside the durable ToolApproval so the orchestrator's
-          // function_call ↔ function_call_output pairing stays
-          // intact. ToolApproval alone is a ControlPlaneEvent —
-          // durable but doesn't render to a ToolResult frame.
-          val verdict = if (input.approved) "approved" else "declined"
-          val confirmationText = input.reason match {
-            case Some(reason) if reason.nonEmpty =>
-              s"Consent recorded: `${input.toolName}` $verdict — $reason"
-            case _ =>
-              s"Consent recorded: `${input.toolName}` $verdict"
-          }
-          val confirmation = Message(
-            participantId  = ctx.caller,
-            conversationId = ctx.conversation.id,
-            topicId        = ctx.conversation.currentTopicId,
-            content        = Vector(ResponseContent.Text(confirmationText)),
-            role           = MessageRole.Tool,
-            state          = EventState.Complete
-          )
-          Stream.emits(List[Event](approval, confirmation))
-      }
-    )
+      case Some(_) =>
+        // ToolApproval is the durable, ancillary effect of this tool —
+        // emit it via `ctx.emit`. The tool's own result is the
+        // confirmation text the framework pairs to the invoke.
+        val approval = ToolApproval(
+          toolName       = targetName,
+          approved       = input.approved,
+          reason         = input.reason,
+          participantId  = ctx.caller,
+          conversationId = ctx.conversation.id,
+          topicId        = ctx.conversation.currentTopicId
+        )
+        val verdict = if (input.approved) "approved" else "declined"
+        val confirmationText = input.reason match {
+          case Some(reason) if reason.nonEmpty =>
+            s"Consent recorded: `${input.toolName}` $verdict — $reason"
+          case _ =>
+            s"Consent recorded: `${input.toolName}` $verdict"
+        }
+        ctx.emit(approval).map(_ => ToolResult.Success(TextToolOutput(confirmationText)))
+    }
   }
 }

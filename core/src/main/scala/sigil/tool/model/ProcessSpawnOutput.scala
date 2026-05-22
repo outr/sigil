@@ -10,4 +10,4 @@ import lightdb.time.Timestamp
  */
 case class ProcessSpawnOutput(handle: String,
                               pid: Long,
-                              startedAt: Timestamp) derives RW
+                              startedAt: Timestamp) extends sigil.tool.ToolOutput derives RW

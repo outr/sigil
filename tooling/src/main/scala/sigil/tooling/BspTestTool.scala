@@ -4,7 +4,7 @@ import ch.epfl.scala.bsp4j.StatusCode
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.BspExecResult
 
 case class BspTestInput(projectRoot: String,
@@ -20,23 +20,29 @@ case class BspTestInput(projectRoot: String,
  * like `-z 'substring of test name'`, etc.). Empty `targets` means
  * "every workspace target that supports test".
  */
-final class BspTestTool(val manager: BspManager) extends TypedOutputTool[BspTestInput, BspExecResult](
-  name = ToolName("bsp_test"),
-  description =
+final class BspTestTool(val manager: BspManager) extends Tool
+  with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  type Input  = BspTestInput
+  type Output = BspExecResult
+  val inputRW  = summon[RW[BspTestInput]]
+  val outputRW = summon[RW[BspExecResult]]
+
+  val name = ToolName("bsp_test")
+  val description =
     """Run tests for build targets via the BSP server.
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty tests every target with the test capability.
       |`arguments` (optional) flows through to the test runner.
-      |Returns `{status, targetCount, stdout, stderr}` where status is `OK` / `ERROR` / `CANCELLED` / `NO_TARGETS`.""".stripMargin,
-  keywords = Set(
+      |Returns `{status, targetCount, stdout, stderr}` where status is `OK` / `ERROR` / `CANCELLED` / `NO_TARGETS`.""".stripMargin
+  override val keywords = Set(
     "bsp", "test", "run tests", "unit test", "execute tests", "verify",
     "scala", "sbt", "project", "targets", "validate"
   )
-) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: BspTestInput, context: TurnContext): Task[BspExecResult] =
+  override def executeOutput(input: BspTestInput, context: TurnContext): Task[BspExecResult] =
     withSessionTyped[BspExecResult](
       input.projectRoot, context,
       onError = msg => BspExecResult(input.projectRoot, "ERROR", 0, "", msg)

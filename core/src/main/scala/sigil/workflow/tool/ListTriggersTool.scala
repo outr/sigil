@@ -3,10 +3,9 @@ package sigil.workflow.tool
 import fabric.io.JsonFormatter
 import fabric.rw.*
 import lightdb.id.Id
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import sigil.workflow.{WorkflowTemplate, WorkflowTrigger}
 
 case class ListTriggersInput(workflowId: String) extends ToolInput derives RW
@@ -17,20 +16,22 @@ case class ListTriggersInput(workflowId: String) extends ToolInput derives RW
  * `unregister_trigger`), its `kind` discriminator, and its typed
  * field values (compact JSON of the trigger's case-class shape).
  */
-final class ListTriggersTool extends TypedTool[ListTriggersInput](
-  name = ToolName("list_triggers"),
-  description =
+final class ListTriggersTool extends Tool with WorkflowToolSupport {
+  type Input  = ListTriggersInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[ListTriggersInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+  val name = ToolName("list_triggers")
+  val description =
     """List the triggers registered on a workflow template.
       |
       |`workflowId` is the template id. Returns each trigger's index, kind, and typed
       |field values — useful before unregistering a trigger by index, or when reviewing
-      |what events fire a workflow.""".stripMargin,
-  examples = List(ToolExample("list triggers on a template", ListTriggersInput(workflowId = "wf-abc"))),
-  keywords = Set("workflow", "trigger", "list")
-) with WorkflowToolSupport {
-  override def paginate: Boolean = false
+      |what events fire a workflow.""".stripMargin
+  override val examples = List(ToolExample("list triggers on a template", ListTriggersInput(workflowId = "wf-abc")))
+  override val keywords = Set("workflow", "trigger", "list")
 
-  override protected def executeTyped(input: ListTriggersInput, ctx: TurnContext): Stream[Event] = withHost(ctx) { host =>
+  override def executeResult(input: ListTriggersInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
     val id = Id[WorkflowTemplate](input.workflowId)
     host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
       case None => Task.pure(s"Workflow '${input.workflowId}' not found.")

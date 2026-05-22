@@ -26,7 +26,7 @@ import fabric.rw.*
 case class CurrentModelOutput(pinned: Option[ModelReference],
                               assignedStrategy: Option[AssignedStrategySummary],
                               lastUsed: Option[ModelReference],
-                              resolved: Option[ModelReference]) derives RW
+                              resolved: Option[ModelReference]) extends sigil.tool.ToolOutput derives RW
 
 /**
  * Pointer to a model id alongside the registry record (when one

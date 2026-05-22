@@ -1,10 +1,12 @@
 package sigil.tool.fs
 
+import fabric.io.JsonFormatter
+import fabric.rw.*
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.TurnContext
 import sigil.storage.{FileVersion, WriteResult}
-import sigil.tool.{PlaceholderInputDetector, ToolExample, ToolName, ToolResult, TypedOutputTool}
+import sigil.tool.{PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolResult}
 import sigil.tool.model.{EditFileInput, EditFileOutput}
 
 import java.util.regex.Pattern
@@ -26,42 +28,48 @@ import java.util.regex.Pattern
  * `Success`, `NotFound`, `NotUnique`, `Stale`, `FileNotFound`.
  */
 final class EditFileTool(context: FileSystemContext)
-  extends TypedOutputTool[EditFileInput, EditFileOutput](
-    name = ToolName("edit_file"),
-    description =
-      """Find and replace text in a file. By default replaces the first occurrence; pass `replaceAll = true`
-        |to replace every occurrence. Use literal strings — they are escaped before matching.
-        |
-        |Pass `expectedHash` (SHA-256 of the file when you last read it) to enable safe-edit: the change
-        |commits only if no other writer has modified the file since. On mismatch, the tool returns the
-        |file's current contents so you can re-evaluate the edit against the new state.
-        |
-        |Output: `Success(replacements, hash?) | NotFound | NotUnique(occurrences) | Stale(currentHash, currentContent) | FileNotFound`.""".stripMargin,
-    examples = List(
-      ToolExample("Update a single line", EditFileInput(filePath = "config.toml", oldString = "log_level = \"info\"", newString = "log_level = \"debug\"")),
-      ToolExample("Rename a symbol", EditFileInput(filePath = "src/main.rs", oldString = "old_name", newString = "new_name", replaceAll = true)),
-      ToolExample(
-        "Edit safely against a known hash",
-        EditFileInput(filePath = "config.toml", oldString = "x = 1", newString = "x = 2", expectedHash = Some("abc123..."))
-      )
-    ),
-    keywords = Set("file", "edit", "modify", "replace", "rewrite", "patch")
-  ) with sigil.tool.DestructiveExternalTool {
+  extends Tool with sigil.tool.DestructiveExternalTool {
+  type Input  = EditFileInput
+  type Output = EditFileOutput
+  val inputRW  = summon[RW[EditFileInput]]
+  val outputRW = summon[RW[EditFileOutput]]
+  val name = ToolName("edit_file")
+  val description =
+    """Find and replace text in a file. By default replaces the first occurrence; pass `replaceAll = true`
+      |to replace every occurrence. Use literal strings — they are escaped before matching.
+      |
+      |Pass `expectedHash` (SHA-256 of the file when you last read it) to enable safe-edit: the change
+      |commits only if no other writer has modified the file since. On mismatch, the tool returns the
+      |file's current contents so you can re-evaluate the edit against the new state.
+      |
+      |Output: `Success(replacements, hash?) | NotFound | NotUnique(occurrences) | Stale(currentHash, currentContent) | FileNotFound`.""".stripMargin
+  override val examples = List(
+    ToolExample("Update a single line", EditFileInput(filePath = "config.toml", oldString = "log_level = \"info\"", newString = "log_level = \"debug\"")),
+    ToolExample("Rename a symbol", EditFileInput(filePath = "src/main.rs", oldString = "old_name", newString = "new_name", replaceAll = true)),
+    ToolExample(
+      "Edit safely against a known hash",
+      EditFileInput(filePath = "config.toml", oldString = "x = 1", newString = "x = 2", expectedHash = Some("abc123..."))
+    )
+  )
+  override val keywords = Set("file", "edit", "modify", "replace", "rewrite", "patch")
   override def paginate: Boolean = false
-
 
   /** Non-Success EditFileOutputs (NotFound, NotUnique, Stale, FileNotFound)
     * are logical failures of the EDIT operation, not failures of the tool
-    * to execute. Surfacing them through `executeTypedResult` lets the
+    * to execute. Surfacing them through `executeResult` lets the
     * agent's frame projection render them as Tool-role Failure Messages
     * with actionable hints — instead of a Success-shaped `ToolResults`
     * whose typed payload the agent might gloss over and incorrectly
     * report as "I edited the file." */
-  override protected def executeTypedResult(input: EditFileInput, ctx: TurnContext): Task[ToolResult[EditFileOutput]] =
+  override def executeResult(input: EditFileInput, ctx: TurnContext): Task[ToolResult[EditFileOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
       case None        => runEdit(input, ctx)
     }
+
+  private def renderInputArgs(input: EditFileInput): Option[String] =
+    try Some(JsonFormatter.Compact(inputRW.read(input)))
+    catch { case _: Throwable => None }
 
   private def runEdit(input: EditFileInput, ctx: TurnContext): Task[ToolResult[EditFileOutput]] =
     WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>

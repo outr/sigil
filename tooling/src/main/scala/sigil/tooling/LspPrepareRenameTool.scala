@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspPrepareRenameResult, LspRange}
 
 case class LspPrepareRenameInput(languageId: String,
@@ -18,19 +18,25 @@ case class LspPrepareRenameInput(languageId: String,
  * this thing" attempts on positions that aren't valid symbols
  * (whitespace, keywords, etc.).
  */
-final class LspPrepareRenameTool(val manager: LspManager) extends TypedOutputTool[LspPrepareRenameInput, LspPrepareRenameResult](
-  name = ToolName("lsp_prepare_rename"),
-  description =
+final class LspPrepareRenameTool(val manager: LspManager) extends Tool
+  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input  = LspPrepareRenameInput
+  type Output = LspPrepareRenameResult
+  val inputRW  = summon[RW[LspPrepareRenameInput]]
+  val outputRW = summon[RW[LspPrepareRenameResult]]
+
+  val name = ToolName("lsp_prepare_rename")
+  val description =
     """Check whether a symbol at a position is renameable.
       |
       |`languageId` + `filePath` identify the document.
       |`line` + `character` (0-based) point at the candidate symbol.
-      |Returns `Renameable(range)` when yes, `NotRenameable` when no.""".stripMargin,
-  keywords = Set("lsp", "rename", "refactor", "can rename", "renameable", "prepare")
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+      |Returns `Renameable(range)` when yes, `NotRenameable` when no.""".stripMargin
+  override val keywords = Set("lsp", "rename", "refactor", "can rename", "renameable", "prepare")
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: LspPrepareRenameInput, context: TurnContext): Task[LspPrepareRenameResult] =
+  override def executeOutput(input: LspPrepareRenameInput, context: TurnContext): Task[LspPrepareRenameResult] =
     withOpenDocumentOrThrow[LspPrepareRenameResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

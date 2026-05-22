@@ -16,4 +16,4 @@ case class SearchConversationHit(eventId: String,
 /** Typed result for [[sigil.tool.util.SearchConversationTool]]. */
 case class SearchConversationOutput(query: String,
                                     hits: List[SearchConversationHit],
-                                    count: Int) derives RW
+                                    count: Int) extends sigil.tool.ToolOutput derives RW

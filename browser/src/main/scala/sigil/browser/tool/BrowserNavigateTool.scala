@@ -1,12 +1,12 @@
 package sigil.browser.tool
 
+import fabric.rw.*
 import fabric.{num, obj, str}
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
 import sigil.browser.BrowserStateDelta
 import sigil.browser.WebBrowserMode
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 
 import scala.concurrent.duration.*
 
@@ -20,56 +20,57 @@ import scala.concurrent.duration.*
  * separately as a [[BrowserStateDelta]] via `Sigil.publish` so
  * streaming subscribers see the page state update without polling.
  */
-final class BrowserNavigateTool extends TypedTool[BrowserNavigateInput](
-  name = ToolName("browser_navigate"),
-  description =
+final class BrowserNavigateTool extends Tool {
+  type Input  = BrowserNavigateInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[BrowserNavigateInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("browser_navigate")
+  val description =
     """Navigate the headless browser to a URL. Waits for the page's load event, then runs RoboBrowser's
       |shadow-DOM fix so subsequent XPath queries see content inside web components.
       |Returns the final URL and `<title>` so the agent knows what's on screen.
       |Use as the first action in any browser task; follow with `browser_save_html` to persist the page
-      |for structural querying via `browser_xpath_query` / `browser_text_search`.""".stripMargin,
-  examples = List(
+      |for structural querying via `browser_xpath_query` / `browser_text_search`.""".stripMargin
+  override val examples = List(
     ToolExample("Open a homepage", BrowserNavigateInput(url = "https://example.com/")),
     ToolExample("Open with a longer wait for slow pages",
       BrowserNavigateInput(url = "https://news.example/", waitForLoadSeconds = 30))
-  ),
-  modes = Set(WebBrowserMode.id),
-  keywords = Set("browser", "navigate", "open", "goto", "load", "url")
-) {
-  override def paginate: Boolean = false
+  )
+  override val modes = Set(WebBrowserMode.id)
+  override val keywords = Set("browser", "navigate", "open", "goto", "load", "url")
 
-
-  override protected def executeTyped(input: BrowserNavigateInput, ctx: TurnContext): Stream[Event] =
-    Stream.force(
-      for {
-        controller <- BrowserToolBase.resolveController(ctx)
-        title      <- controller.run { browser =>
-                        for {
-                          _ <- browser.navigate(input.url)
-                          _ <- browser.waitForLoaded(timeout = input.waitForLoadSeconds.seconds)
-                          // Pierce shadow DOMs so XPath queries see web-component content.
-                          // Failures are non-fatal — pages without shadow roots simply no-op.
-                          _ <- browser.shadowDOMFix().handleError(_ => rapid.Task.unit)
-                          t <- browser.title
-                        } yield t
-                      }
-        // Publish the BrowserStateDelta as a side effect — the framework
-        // routes it through the signal hub + persists the mutation
-        // against the controller's BrowserState target.
-        _          <- ctx.sigil.publish(BrowserStateDelta(
-                        target         = controller.stateId,
-                        conversationId = ctx.conversation.id,
-                        url            = Some(input.url),
-                        title          = Some(title),
-                        loading        = Some(false)
-                      ))
-      } yield {
-        val payload = obj(
-          "url"   -> str(input.url),
-          "title" -> str(title),
-          "wait"  -> num(input.waitForLoadSeconds)
-        )
-        Stream.emit[Event](BrowserToolBase.toolResult(payload, ctx))
-      }
-    )
+  override def executeResult(input: BrowserNavigateInput,
+                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+    for {
+      controller <- BrowserToolBase.resolveController(ctx)
+      title      <- controller.run { browser =>
+                      for {
+                        _ <- browser.navigate(input.url)
+                        _ <- browser.waitForLoaded(timeout = input.waitForLoadSeconds.seconds)
+                        // Pierce shadow DOMs so XPath queries see web-component content.
+                        // Failures are non-fatal — pages without shadow roots simply no-op.
+                        _ <- browser.shadowDOMFix().handleError(_ => rapid.Task.unit)
+                        t <- browser.title
+                      } yield t
+                    }
+      // Publish the BrowserStateDelta as a side effect — the framework
+      // routes it through the signal hub + persists the mutation
+      // against the controller's BrowserState target.
+      _          <- ctx.sigil.publish(BrowserStateDelta(
+                      target         = controller.stateId,
+                      conversationId = ctx.conversation.id,
+                      url            = Some(input.url),
+                      title          = Some(title),
+                      loading        = Some(false)
+                    ))
+    } yield {
+      val payload = obj(
+        "url"   -> str(input.url),
+        "title" -> str(title),
+        "wait"  -> num(input.waitForLoadSeconds)
+      )
+      ToolResult.Success(BrowserToolBase.toolResult(payload))
+    }
 }

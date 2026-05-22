@@ -1,19 +1,24 @@
 package sigil.tool.consult
 
-import rapid.Stream
+import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
 import sigil.provider.{ClassificationWork, GenerationSettings, ReasoningMode, WorkType}
-import sigil.tool.{ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 /**
  * Internal tool invoked by [[sigil.vector.LLMReranker]]. Never registered
  * on any agent's roster — the reranker calls it via `ConsultTool.invoke`
  * with `tool_choice = required`.
  */
-case object RerankTool extends TypedTool[RerankInput](
-  name = ToolName("rerank_candidates"),
-  description =
+case object RerankTool extends Tool with FrameworkConsult {
+  type Input  = RerankInput
+  type Output = TextToolOutput
+  val inputRW: RW[RerankInput]     = summon[RW[RerankInput]]
+  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+
+  val name: ToolName = ToolName("rerank_candidates")
+  val description: String =
     """Re-rank a list of candidate snippets by relevance to a query. Return the candidate ids
       |in order from most-relevant to least-relevant.
       |
@@ -21,7 +26,7 @@ case object RerankTool extends TypedTool[RerankInput](
       |exactly once. The first id is the most relevant, the last is the least. Ids missing
       |from the output are treated as least-relevant (appended at the end in their original
       |order); ids not in the candidate set are ignored.""".stripMargin
-) with FrameworkConsult {
+
   override def paginate: Boolean = false
 
   /** Relevance scoring — routes through the cheap classification tier. */
@@ -35,5 +40,8 @@ case object RerankTool extends TypedTool[RerankInput](
     reasoningMode = ReasoningMode.Off
   )
 
-  override protected def executeTyped(input: RerankInput, context: TurnContext): Stream[Event] = Stream.empty
+  /** Never executed — the framework reads the typed input directly via
+    * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
+  override def executeResult(input: RerankInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    Task.pure(ToolResult.success(TextToolOutput("")))
 }

@@ -2,10 +2,9 @@ package sigil.debug
 
 import fabric.Json
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 import scala.jdk.CollectionConverters.*
 
@@ -34,9 +33,13 @@ case class DapLaunchInput(languageId: String,
  * breakpoint / exception. The agent polls `dap_session_status` for
  * the next stop event.
  */
-final class DapLaunchTool(val manager: DapManager) extends TypedTool[DapLaunchInput](
-  name = ToolName("dap_launch"),
-  description =
+final class DapLaunchTool(val manager: DapManager) extends Tool with DapToolSupport {
+  type Input = DapLaunchInput
+  type Output = TextToolOutput
+  val inputRW = summon[RW[DapLaunchInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+  val name = ToolName("dap_launch")
+  val description =
     """Spawn a debug adapter and launch a fresh program for debugging.
       |
       |`languageId` selects the persisted DebugAdapterConfig.
@@ -45,8 +48,8 @@ final class DapLaunchTool(val manager: DapManager) extends TypedTool[DapLaunchIn
       |`launchArguments` is the adapter-specific payload (program path, cwd, env, etc.).
       |`breakpointsByFile` (optional) is a map of source path → line numbers for initial breakpoints.
       |`exceptionFilters` (optional) is a list of adapter-defined filter ids (e.g. "uncaught", "all").
-      |Returns the resulting session id and any breakpoints that failed to verify.""".stripMargin,
-  examples = List(
+      |Returns the resulting session id and any breakpoints that failed to verify.""".stripMargin
+  override val examples = List(
     ToolExample(
       "launch a sbt main class with one breakpoint",
       DapLaunchInput(
@@ -57,14 +60,11 @@ final class DapLaunchTool(val manager: DapManager) extends TypedTool[DapLaunchIn
       )
     )
   )
-) with DapToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: DapLaunchInput, context: TurnContext): Stream[Event] = {
-    val task = manager.spawn(input.languageId, input.sessionId).flatMap { session =>
-      val args = input.launchArguments.map { case (k, v) =>
-        k -> jsonToObject(v)
-      }.asJava
+  override def executeResult(input: DapLaunchInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    manager.spawn(input.languageId, input.sessionId).flatMap { session =>
+      val args = input.launchArguments.map { case (k, v) => k -> jsonToObject(v) }.asJava
 
       for {
         _    <- session.launch(args)
@@ -82,12 +82,10 @@ final class DapLaunchTool(val manager: DapManager) extends TypedTool[DapLaunchIn
           s"  $path: ${verified}/${set.size} verified"
         }.mkString("\n")
         val header = s"Debug session '${input.sessionId}' launched (language=${input.languageId})."
-        if (bpReport.isEmpty) header else s"$header\nBreakpoints:\n$bpReport"
+        val text = if (bpReport.isEmpty) header else s"$header\nBreakpoints:\n$bpReport"
+        ToolResult.success(TextToolOutput(text))
       }
-    }.map(text => reply(context, text, isError = false))
-      .handleError(e => Task.pure(reply(context, s"DAP launch failed: ${e.getMessage}", isError = true)))
-    Stream.force(task.map(Stream.emit))
-  }
+    }.handleError(e => Task.pure(ToolResult.failure(s"DAP launch failed: ${e.getMessage}")))
 
   /** Translate fabric `Json` into the boxed Java types lsp4j-debug
     * expects in the launch arguments map. Values that don't fit a

@@ -1,12 +1,11 @@
 package sigil.tool.skill
 
-import rapid.{Stream, Task}
+import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
 import sigil.conversation.{ActiveSkillSlot, SkillSource}
-import sigil.event.{Event, Message, MessageRole}
 import sigil.skill.Skill
-import sigil.tool.{ToolName, TypedTool}
-import sigil.tool.model.ResponseContent
+import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 /**
  * Loads a [[sigil.skill.Skill]] into the agent's
@@ -29,9 +28,14 @@ import sigil.tool.model.ResponseContent
  * tool emits a not-supported message rather than activating
  * silently.
  */
-case object ActivateSkillTool extends TypedTool[ActivateSkillInput](
-  name = ToolName("activate_skill"),
-  description =
+case object ActivateSkillTool extends Tool {
+  type Input  = ActivateSkillInput
+  type Output = TextToolOutput
+  val inputRW: RW[ActivateSkillInput] = summon[RW[ActivateSkillInput]]
+  val outputRW: RW[TextToolOutput]    = summon[RW[TextToolOutput]]
+
+  val name: ToolName = ToolName("activate_skill")
+  val description: String =
     """Activate a discovered Skill — a system-prompt overlay that specializes you for a focused
       |task. Pass the skill's `name` (returned by capability discovery).
       |
@@ -41,21 +45,11 @@ case object ActivateSkillTool extends TypedTool[ActivateSkillInput](
       |survives detours.
       |
       |If the skill isn't found OR isn't available in the current mode, this tool reports
-      |the failure and changes nothing.""".stripMargin,
-  keywords = Set("activate", "skill", "load", "enable", "use")
-) {
-  override def paginate: Boolean = false
+      |the failure and changes nothing.""".stripMargin
+  override val keywords: Set[String] = Set("activate", "skill", "load", "enable", "use")
 
-  override protected def executeTyped(input: ActivateSkillInput, context: TurnContext): Stream[Event] =
-    Stream.force(activate(input, context).map { messageText =>
-      Stream.emits(List[Event](Message(
-        participantId = context.caller,
-        conversationId = context.conversation.id,
-        topicId = context.conversation.currentTopicId,
-        content = Vector(ResponseContent.Text(messageText)),
-        role = MessageRole.Tool
-      )))
-    })
+  override def executeResult(input: ActivateSkillInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    activate(input, context).map(text => ToolResult.Success(TextToolOutput(text)))
 
   private def activate(input: ActivateSkillInput, context: TurnContext): Task[String] =
     context.sigil.withDB(_.skills.transaction(_.get(lightdb.id.Id[Skill](input.name)))).flatMap {

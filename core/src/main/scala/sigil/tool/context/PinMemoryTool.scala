@@ -1,12 +1,11 @@
 package sigil.tool.context
 
+import fabric.rw.*
 import lightdb.id.Id
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
 import sigil.conversation.ContextMemory
-import sigil.event.{Event, Message, MessageRole}
-import sigil.tool.{ToolName, TypedTool}
-import sigil.tool.model.ResponseContent
+import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 /**
  * Pin a previously-saved memory so it starts rendering every turn.
@@ -25,9 +24,14 @@ import sigil.tool.model.ResponseContent
  * as a warning, not an error. Apps that want hard rejection override
  * [[sigil.Sigil.validateCoreContextCap]].
  */
-case object PinMemoryTool extends TypedTool[PinMemoryInput](
-  name = ToolName("pin_memory"),
-  description =
+case object PinMemoryTool extends Tool {
+  type Input  = PinMemoryInput
+  type Output = TextToolOutput
+  val inputRW: RW[PinMemoryInput]  = summon[RW[PinMemoryInput]]
+  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+
+  val name: ToolName = ToolName("pin_memory")
+  val description: String =
     """Pin a previously-saved memory so it renders every turn — useful when an existing fact
       |turns out to be a hard rule the agent should always follow ("from now on, always do X
       |whenever Y").
@@ -35,24 +39,14 @@ case object PinMemoryTool extends TypedTool[PinMemoryInput](
       |- `key`   — the memory's stable key (preferred) or `_id` value if no key.
       |- `space` — optional disambiguator when the same key exists in multiple accessible spaces.
       |
-      |Reversible via `unpin_memory(key)`.""".stripMargin,
-  keywords = Set("pin", "promote", "memory", "directive", "always", "permanent")
-) {
-  override def paginate: Boolean = false
+      |Reversible via `unpin_memory(key)`.""".stripMargin
+  override val keywords: Set[String] = Set("pin", "promote", "memory", "directive", "always", "permanent")
 
   override def resultTtl: Option[Int] = Some(0)
   override val requiresAccessibleSpaces: Boolean = true
 
-  override protected def executeTyped(input: PinMemoryInput, context: TurnContext): Stream[Event] =
-    Stream.force(pin(input, context).map { messageText =>
-      Stream.emits(List[Event](Message(
-        participantId = context.caller,
-        conversationId = context.conversation.id,
-        topicId = context.conversation.currentTopicId,
-        content = Vector(ResponseContent.Text(messageText)),
-        role = MessageRole.Tool
-      )))
-    })
+  override def executeResult(input: PinMemoryInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    pin(input, context).map(text => ToolResult.Success(TextToolOutput(text)))
 
   private def pin(input: PinMemoryInput, context: TurnContext): Task[String] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>

@@ -9,4 +9,4 @@ case class BspExecResult(projectRoot: String,
                           status: String,
                           targetCount: Int,
                           stdout: String,
-                          stderr: String) derives RW
+                          stderr: String) extends sigil.tool.ToolOutput derives RW

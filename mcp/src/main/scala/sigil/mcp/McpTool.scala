@@ -1,26 +1,23 @@
 package sigil.mcp
 
-import fabric.{Json, Obj}
+import fabric.Json
 import fabric.define.Definition
 import fabric.rw.*
 import lightdb.id.Id
 import lightdb.time.Timestamp
-import rapid.Stream
+import rapid.Task
 import sigil.{SpaceId, TurnContext}
-import sigil.event.{Event, Message, MessageVisibility, MessageRole}
 import sigil.participant.{AgentParticipantId, ParticipantId}
 import sigil.provider.Mode
-import sigil.signal.EventState
-import sigil.tool.{JsonInput, JsonSchemaToDefinition, Tool, ToolExample, ToolInput, ToolName, ToolSchema}
-import sigil.tool.model.ResponseContent
+import sigil.tool.{JsonInput, JsonSchemaToDefinition, TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 
 /**
  * Sigil [[Tool]] backed by an MCP-server-side tool. The wire schema
  * advertised by the server is surfaced directly to the LLM via
  * `inputDefinition` — Sigil generates none of its own. The LLM's
  * arguments arrive as fabric `Json` (wrapped in [[JsonInput]]); the
- * call body fans them out via [[McpManager.callTool]] and translates
- * the server's `CallToolResult` into one or more `Message` events.
+ * call body fans them out via [[McpManager.callTool]] and renders
+ * the server's `CallToolResult` into a [[TextToolOutput]].
  *
  * The display name in `name` includes the server's `prefix` (so two
  * servers can both expose `read_file` without collision).
@@ -28,12 +25,13 @@ import sigil.tool.model.ResponseContent
 final class McpTool(manager: McpManager,
                     serverConfig: McpServerConfig,
                     definition: McpToolDefinition) extends Tool {
-  override def paginate: Boolean = false
-
+  type Input  = JsonInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[JsonInput]]
+  val outputRW = summon[RW[TextToolOutput]]
 
   override val name: ToolName = ToolName(serverConfig.prefix.getOrElse("") + definition.name)
   override val description: String = definition.description.getOrElse("")
-  override val inputRW: RW[JsonInput] = summon[RW[JsonInput]]
 
   override def inputDefinition: Definition =
     JsonSchemaToDefinition(definition.inputSchema)
@@ -48,63 +46,34 @@ final class McpTool(manager: McpManager,
   override val created: Timestamp = Tool.Epoch
   override val modified: Timestamp = Tool.Epoch
 
-  override def execute(input: ToolInput, context: TurnContext): Stream[Event] = {
-    val args = input match {
-      case j: JsonInput => j.json
-      case other => summon[RW[ToolInput]].read(other)
-    }
+  override def executeResult(input: JsonInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
     val agentId = context.chain.collectFirst { case a: AgentParticipantId => a }
       .getOrElse(context.caller)
-    Stream.force(
-      manager.callTool(serverConfig.name, definition.name, args, agentId).map { result =>
-        Stream.emits(translate(result, context))
-      }.handleError { t =>
-        rapid.Task {
-          Stream.emit[Event](errorMessage(t.getMessage, context))
-        }
-      }
-    )
+    manager.callTool(serverConfig.name, definition.name, input.json, agentId).map { result =>
+      val isError = result.get("isError").exists(_.asBoolean)
+      val rendered = renderResult(result)
+      if (isError) ToolResult.failure(if (rendered.isEmpty) "(empty error)" else rendered)
+      else ToolResult.Success(TextToolOutput(rendered))
+    }.handleError { t =>
+      Task.pure(ToolResult.failure(s"MCP tool error: ${t.getMessage}"))
+    }
   }
 
   /**
-   * Translate an MCP `CallToolResult` (`{ content: [...], isError }`)
-   * into Sigil events. Each content block becomes its own Message
-   * carrying the appropriate ResponseContent. Errors emit a single
-   * Message with the error string.
+   * Render an MCP `CallToolResult` (`{ content: [...], isError }`)
+   * into a single text string. Each content block is rendered to
+   * text; text blocks pass through, other blocks serialise to JSON.
    */
-  private def translate(result: Json, context: TurnContext): List[Event] = {
-    val isError = result.get("isError").exists(_.asBoolean)
+  private def renderResult(result: Json): String = {
     val blocks = result.get("content").map(_.asVector.toList).getOrElse(Nil)
-    val rendered = blocks.flatMap(blockToContent)
-    val content = if (rendered.isEmpty) Vector(ResponseContent.Text(if (isError) "(empty error)" else "")) else rendered.toVector
-    List(Message(
-      participantId = context.caller,
-      conversationId = context.conversation.id,
-      topicId = context.conversation.currentTopicId,
-      content = content,
-      state = EventState.Complete,
-      role = MessageRole.Tool,
-      visibility = MessageVisibility.All
-    ))
+    blocks.flatMap(blockToText).mkString("\n")
   }
 
-  private def blockToContent(block: Json): Option[ResponseContent] = {
+  private def blockToText(block: Json): Option[String] = {
     val t = block.get("type").map(_.asString).getOrElse("")
     t match {
-      case "text" => block.get("text").map(j => ResponseContent.Text(j.asString))
-      case _ =>
-        val asJson = fabric.io.JsonFormatter.Compact(block)
-        Some(ResponseContent.Text(asJson))
+      case "text" => block.get("text").map(_.asString)
+      case _      => Some(fabric.io.JsonFormatter.Compact(block))
     }
   }
-
-  private def errorMessage(msg: String, context: TurnContext): Message =
-    Message(
-      participantId = context.caller,
-      conversationId = context.conversation.id,
-      topicId = context.conversation.currentTopicId,
-      content = Vector(ResponseContent.Text(s"MCP tool error: $msg")),
-      state = EventState.Complete,
-      role = MessageRole.Tool
-    )
 }

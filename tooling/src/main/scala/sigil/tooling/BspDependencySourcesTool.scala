@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{BspDependencySourcesResult, BspTargetDependencySources}
 
 import scala.jdk.CollectionConverters.*
@@ -17,19 +17,25 @@ case class BspDependencySourcesInput(projectRoot: String,
  * doesn't answer the question — equivalent to "navigate into
  * source jar" in an IDE.
  */
-final class BspDependencySourcesTool(val manager: BspManager) extends TypedOutputTool[BspDependencySourcesInput, BspDependencySourcesResult](
-  name = ToolName("bsp_dependency_sources"),
-  description =
+final class BspDependencySourcesTool(val manager: BspManager) extends Tool
+  with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  type Input  = BspDependencySourcesInput
+  type Output = BspDependencySourcesResult
+  val inputRW  = summon[RW[BspDependencySourcesInput]]
+  val outputRW = summon[RW[BspDependencySourcesResult]]
+
+  val name = ToolName("bsp_dependency_sources")
+  val description =
     """List the source jars for each target's library dependencies.
       |
       |`projectRoot` selects the persisted BspBuildConfig.
-      |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin,
-  keywords = Set("bsp", "dependency sources", "library sources", "deps source", "external sources")
-) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+      |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin
+  override val keywords = Set("bsp", "dependency sources", "library sources", "deps source", "external sources")
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: BspDependencySourcesInput,
-                                      context: TurnContext): Task[BspDependencySourcesResult] =
+  override def executeOutput(input: BspDependencySourcesInput,
+                             context: TurnContext): Task[BspDependencySourcesResult] =
     withTargets[BspDependencySourcesResult](
       input.projectRoot, context, input.targets,
       onError = _ => BspDependencySourcesResult(input.projectRoot, Nil),

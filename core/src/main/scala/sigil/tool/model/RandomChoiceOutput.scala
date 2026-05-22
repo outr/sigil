@@ -9,4 +9,4 @@ import fabric.rw.*
 case class RandomChoiceOutput(chosen: String,
                                index: Int,
                                itemCount: Int,
-                               seed: Option[Long]) derives RW
+                               seed: Option[Long]) extends sigil.tool.ToolOutput derives RW

@@ -1,10 +1,10 @@
 package sigil.tool.consult
 
-import rapid.Stream
+import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
 import sigil.provider.{ClassificationWork, GenerationSettings, ReasoningMode, WorkType}
-import sigil.tool.{ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 /**
  * Internal-only one-shot tool. Invoked by [[sigil.Sigil.persistMemory]]
@@ -15,9 +15,14 @@ import sigil.tool.{ToolName, TypedTool}
  * Never registered on any agent's roster — the framework calls it via
  * [[ConsultTool.invoke]] with `tool_choice = required`.
  */
-case object ClassifyMemoryTool extends TypedTool[ClassifyMemoryInput](
-  name = ToolName("classify_memory"),
-  description =
+case object ClassifyMemoryTool extends Tool with FrameworkConsult {
+  type Input  = ClassifyMemoryInput
+  type Output = TextToolOutput
+  val inputRW: RW[ClassifyMemoryInput] = summon[RW[ClassifyMemoryInput]]
+  val outputRW: RW[TextToolOutput]     = summon[RW[TextToolOutput]]
+
+  val name: ToolName = ToolName("classify_memory")
+  val description: String =
     """Classify a memory the framework is about to persist. Produce three decisions in one call:
       |
       |1. `keywords` — 5–10 retrieval-shaped tokens for this memory. Pick terms a future query
@@ -46,7 +51,7 @@ case object ClassifyMemoryTool extends TypedTool[ClassifyMemoryInput](
       |
       |4. `ambiguityReason` — required when `space == "ambiguous"`; one short sentence telling
       |   the user what's unclear ("could apply to user or project; please pick").""".stripMargin
-) with FrameworkConsult {
+
   override def paginate: Boolean = false
 
   /** Categorical decision — routes through the cheap classification tier. */
@@ -60,6 +65,8 @@ case object ClassifyMemoryTool extends TypedTool[ClassifyMemoryInput](
     reasoningMode = ReasoningMode.Off
   )
 
-  override protected def executeTyped(input: ClassifyMemoryInput, context: TurnContext): Stream[Event] =
-    Stream.empty
+  /** Never executed — the framework reads the typed input directly via
+    * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
+  override def executeResult(input: ClassifyMemoryInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    Task.pure(ToolResult.success(TextToolOutput("")))
 }

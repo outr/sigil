@@ -12,4 +12,4 @@ import fabric.rw.*
  */
 case class ListModelsOutput(total: Int,
                             returned: Int,
-                            models: List[ModelSummary]) derives RW
+                            models: List[ModelSummary]) extends sigil.tool.ToolOutput derives RW

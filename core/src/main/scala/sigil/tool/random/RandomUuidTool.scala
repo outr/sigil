@@ -1,8 +1,9 @@
 package sigil.tool.random
 
+import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolExample, ToolName}
 import sigil.tool.model.{RandomUuidInput, RandomUuidOutput}
 
 /**
@@ -14,14 +15,17 @@ import sigil.tool.model.{RandomUuidInput, RandomUuidOutput}
  * `SecureRandom` under the hood; safe for token-style use cases
  * where guessability matters.
  */
-case object RandomUuidTool extends TypedOutputTool[RandomUuidInput, RandomUuidOutput](
-  name = ToolName("random_uuid"),
-  description = "Generate a v4 (random) UUID. Returns `{uuid}`.",
-  examples = List(ToolExample("fresh uuid", RandomUuidInput())),
-  keywords = Set("uuid", "guid", "random", "id", "identifier", "token")
-) {
-  override def paginate: Boolean = false
+case object RandomUuidTool extends Tool {
+  type Input  = RandomUuidInput
+  type Output = RandomUuidOutput
+  val inputRW  = summon[RW[RandomUuidInput]]
+  val outputRW = summon[RW[RandomUuidOutput]]
 
-  override protected def executeTyped(input: RandomUuidInput, context: TurnContext): Task[RandomUuidOutput] =
+  val name = ToolName("random_uuid")
+  val description = "Generate a v4 (random) UUID. Returns `{uuid}`."
+  override val examples = List(ToolExample("fresh uuid", RandomUuidInput()))
+  override val keywords = Set("uuid", "guid", "random", "id", "identifier", "token")
+
+  override def executeOutput(input: RandomUuidInput, context: TurnContext): Task[RandomUuidOutput] =
     Task(RandomUuidOutput(uuid = java.util.UUID.randomUUID().toString))
 }

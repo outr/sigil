@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{BspResourcesResult, BspTargetResources}
 
 import scala.jdk.CollectionConverters.*
@@ -17,18 +17,24 @@ case class BspResourcesInput(projectRoot: String,
  * Distinct from sources: resources don't compile, they're packaged
  * verbatim.
  */
-final class BspResourcesTool(val manager: BspManager) extends TypedOutputTool[BspResourcesInput, BspResourcesResult](
-  name = ToolName("bsp_resources"),
-  description =
+final class BspResourcesTool(val manager: BspManager) extends Tool
+  with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  type Input  = BspResourcesInput
+  type Output = BspResourcesResult
+  val inputRW  = summon[RW[BspResourcesInput]]
+  val outputRW = summon[RW[BspResourcesResult]]
+
+  val name = ToolName("bsp_resources")
+  val description =
     """List resource directories / files for the given build targets.
       |
       |`projectRoot` selects the persisted BspBuildConfig.
-      |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin,
-  keywords = Set("bsp", "resources", "target resources", "list resources")
-) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+      |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin
+  override val keywords = Set("bsp", "resources", "target resources", "list resources")
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: BspResourcesInput, context: TurnContext): Task[BspResourcesResult] =
+  override def executeOutput(input: BspResourcesInput, context: TurnContext): Task[BspResourcesResult] =
     withTargets[BspResourcesResult](
       input.projectRoot, context, input.targets,
       onError = _ => BspResourcesResult(input.projectRoot, Nil),

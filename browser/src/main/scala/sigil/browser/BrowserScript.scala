@@ -7,15 +7,12 @@ import fabric.{Json, Obj, str}
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import lightdb.util.Nowish
-import rapid.{Stream, Task, Unique}
+import rapid.{Task, Unique}
 import sigil.{GlobalSpace, SpaceId, TurnContext}
-import sigil.event.{Event, Message, MessageRole}
 import sigil.participant.ParticipantId
-import sigil.provider.{ConversationMode, Mode}
-import sigil.signal.EventState
+import sigil.provider.Mode
 import sigil.storage.StoredFile
-import sigil.tool.model.ResponseContent
-import sigil.tool.{JsonInput, Tool, ToolExample, ToolInput, ToolName}
+import sigil.tool.{JsonInput, TextToolOutput, Tool, ToolExample, ToolResult, ToolName}
 
 import scala.concurrent.duration.*
 
@@ -39,12 +36,12 @@ import scala.concurrent.duration.*
  *     the resume.
  *   - **`space`** follows the framework single-assignment rule.
  *
- * Replay semantics: the script's `execute` runs every step in order
- * through the same [[BrowserController]] the primitive tools use, so
- * the persistent browser session and live `BrowserStateDelta` flow
- * are identical to a hand-driven session. The terminal tool result
- * is a single `Message(role = Tool)` whose JSON payload aggregates
- * the per-step outputs.
+ * Replay semantics: the script's `executeResult` runs every step in
+ * order through the same [[BrowserController]] the primitive tools
+ * use, so the persistent browser session and live `BrowserStateDelta`
+ * flow are identical to a hand-driven session. The tool result is a
+ * [[TextToolOutput]] whose JSON payload aggregates the per-step
+ * outputs.
  */
 case class BrowserScript(name: ToolName,
                          description: String,
@@ -62,27 +59,26 @@ case class BrowserScript(name: ToolName,
   override def paginate: Boolean = false
 
 
+  type Input  = JsonInput
+  type Output = TextToolOutput
   override val inputRW: RW[JsonInput] = summon[RW[JsonInput]]
+  override val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
 
   override def inputDefinition: Definition = parameters
 
-  override def execute(input: ToolInput, context: TurnContext): Stream[Event] = {
-    val args = input match {
-      case j: JsonInput => j.json
-      case other        => summon[RW[ToolInput]].read(other)
-    }
-    Stream.force(BrowserScript.runSteps(this, args, context))
-  }
+  override def executeResult(input: JsonInput,
+                             context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    BrowserScript.runSteps(this, input.json, context)
 }
 
 object BrowserScript {
 
   /** Run every step in order against the conversation's
-    * [[BrowserController]]. Returns a single tool-result Message
-    * aggregating per-step outputs. */
+    * [[BrowserController]]. Resolves to a [[TextToolOutput]] whose
+    * JSON payload aggregates the per-step outputs. */
   private[browser] def runSteps(script: BrowserScript,
                                 args: Json,
-                                context: TurnContext): Task[Stream[Event]] = context.sigil match {
+                                context: TurnContext): Task[ToolResult[TextToolOutput]] = context.sigil match {
     case bs: BrowserSigil =>
       val outputs = scala.collection.mutable.LinkedHashMap.empty[String, String]
       val log     = scala.collection.mutable.ListBuffer.empty[Json]
@@ -338,36 +334,21 @@ object BrowserScript {
           }
       }
 
-      // Resolve controller, run every step, build the final message.
-      bs.browserController(context.conversation.id, context.caller, context.chain).flatMap { controller =>
+      // Resolve controller, run every step, build the final result.
+      bs.browserController(context.conversation.id, context.caller, context.chain).map { controller =>
         Task.sequence(script.steps.map(stepTask(controller, _))).map { _ =>
           val payload = fabric.obj(
             "script"  -> str(script.name.value),
             "steps"   -> fabric.arr(log.toList*),
             "outputs" -> fabric.obj(outputs.map { case (k, v) => k -> str(v) }.toList*)
           )
-          Stream.emit[Event](Message(
-            participantId  = context.caller,
-            conversationId = context.conversation.id,
-            topicId        = context.conversation.currentTopicId,
-            content        = Vector(ResponseContent.Text(JsonFormatter.Compact(payload))),
-            state          = EventState.Complete,
-            role           = MessageRole.Tool
-          ))
+          ToolResult.Success(TextToolOutput(JsonFormatter.Compact(payload)))
         }
-      }
+      }.flatten
 
     case _ =>
-      Task.pure(Stream.emit[Event](Message(
-        participantId  = context.caller,
-        conversationId = context.conversation.id,
-        topicId        = context.conversation.currentTopicId,
-        content        = Vector(ResponseContent.Text(
-          "Sigil instance does not mix in BrowserSigil; cannot execute browser script."
-        )),
-        state          = EventState.Complete,
-        role           = MessageRole.Tool
-      )))
+      Task.pure(ToolResult.failure(
+        "Sigil instance does not mix in BrowserSigil; cannot execute browser script."))
   }
 
   /** Simple `${arg.path}` and `${outputs.name}` template resolver.

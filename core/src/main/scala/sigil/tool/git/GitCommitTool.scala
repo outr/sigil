@@ -1,10 +1,11 @@
 package sigil.tool.git
 
+import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
 import sigil.tool.fs.{FileSystemContext, WorkspacePathResolver}
 import sigil.tool.model.{GitCommitInput, GitCommitOutput}
-import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolExample, ToolName}
 
 /**
  * `git_commit` — stage `paths` (or every tracked change when
@@ -14,21 +15,24 @@ import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
  * register an instance explicitly.
  */
 final class GitCommitTool(context: FileSystemContext)
-  extends TypedOutputTool[GitCommitInput, GitCommitOutput](
-    name = ToolName("git_commit"),
-    description =
-      """Stage `paths` (or all tracked changes when omitted) and create a commit. Returns the new
-        |commit sha on success or a structured failure. WRITES — apps that want this exposed
-        |register it on top of `AllShippedTools`.""".stripMargin,
-    examples = List(
-      ToolExample("Commit all tracked changes", GitCommitInput(message = "Fix typo")),
-      ToolExample("Commit specific paths",      GitCommitInput(message = "Add config", paths = Some(List("config/app.yaml"))))
-    ),
-    keywords = Set("git", "commit", "save", "checkpoint")
-  ) with sigil.tool.DestructiveExternalTool {
+  extends Tool with sigil.tool.DestructiveExternalTool {
+  type Input  = GitCommitInput
+  type Output = GitCommitOutput
+  val inputRW  = summon[RW[GitCommitInput]]
+  val outputRW = summon[RW[GitCommitOutput]]
+  val name = ToolName("git_commit")
+  val description =
+    """Stage `paths` (or all tracked changes when omitted) and create a commit. Returns the new
+      |commit sha on success or a structured failure. WRITES — apps that want this exposed
+      |register it on top of `AllShippedTools`.""".stripMargin
+  override val examples = List(
+    ToolExample("Commit all tracked changes", GitCommitInput(message = "Fix typo")),
+    ToolExample("Commit specific paths",      GitCommitInput(message = "Add config", paths = Some(List("config/app.yaml"))))
+  )
+  override val keywords = Set("git", "commit", "save", "checkpoint")
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: GitCommitInput, ctx: TurnContext): Task[GitCommitOutput] =
+  override def executeOutput(input: GitCommitInput, ctx: TurnContext): Task[GitCommitOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val pathsToStage = input.paths.getOrElse(Nil)
       val addCmd = pathsToStage match {

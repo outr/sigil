@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.BspInverseSourcesResult
 
 import java.io.File
@@ -17,19 +17,25 @@ case class BspInverseSourcesInput(projectRoot: String,
  * hand and wants to know "which target should I compile/test to
  * pick up this change?"
  */
-final class BspInverseSourcesTool(val manager: BspManager) extends TypedOutputTool[BspInverseSourcesInput, BspInverseSourcesResult](
-  name = ToolName("bsp_inverse_sources"),
-  description =
+final class BspInverseSourcesTool(val manager: BspManager) extends Tool
+  with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  type Input  = BspInverseSourcesInput
+  type Output = BspInverseSourcesResult
+  val inputRW  = summon[RW[BspInverseSourcesInput]]
+  val outputRW = summon[RW[BspInverseSourcesResult]]
+
+  val name = ToolName("bsp_inverse_sources")
+  val description =
     """For a source file, return the build targets that own it.
       |
       |`projectRoot` selects the persisted BspBuildConfig.
-      |`filePath` is the absolute source path.""".stripMargin,
-  keywords = Set("bsp", "inverse sources", "target for file", "which target", "owning target")
-) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+      |`filePath` is the absolute source path.""".stripMargin
+  override val keywords = Set("bsp", "inverse sources", "target for file", "which target", "owning target")
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: BspInverseSourcesInput,
-                                      context: TurnContext): Task[BspInverseSourcesResult] =
+  override def executeOutput(input: BspInverseSourcesInput,
+                             context: TurnContext): Task[BspInverseSourcesResult] =
     withSessionTyped[BspInverseSourcesResult](
       input.projectRoot, context,
       onError = _ => BspInverseSourcesResult(input.projectRoot, input.filePath, Nil)

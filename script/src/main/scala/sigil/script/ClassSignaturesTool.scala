@@ -1,10 +1,9 @@
 package sigil.script
 
+import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.{Event, Message, MessageRole, MessageVisibility}
-import sigil.signal.EventState
-import sigil.tool.{ToolName, TypedTool}
-import sigil.tool.model.ResponseContent
+import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 import java.lang.reflect.{Constructor, Field, Method, Modifier}
 
@@ -21,30 +20,33 @@ import java.lang.reflect.{Constructor, Field, Method, Modifier}
  * scaladoc; those would require Scala 3 TASTy or the `-sources.jar`
  * (see [[ReadSourceTool]]).
  */
-case object ClassSignaturesTool extends TypedTool[ClassSignaturesInput](
-  name = ToolName("class_signatures"),
-  description =
+case object ClassSignaturesTool extends Tool {
+  type Input  = ClassSignaturesInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[ClassSignaturesInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("class_signatures")
+  val description =
     """Return the constructors, public methods, and public fields of a known fully-qualified class.
       |Use after `library_lookup` resolves a symbol to its FQN — e.g. lookup `HttpClient` →
       |`spice.http.client.HttpClient`, then `class_signatures("spice.http.client.HttpClient")`
       |to see what methods you can call.
       |
       |The trailing `$` for Scala objects is optional. Output is plain text formatted as
-      |Scala-style method signatures.""".stripMargin,
-  modes = Set(ScriptAuthoringMode.id),
-  keywords = Set("class", "signature", "method", "introspect", "lookup", "api")
-) {
-  override def paginate: Boolean = false
+      |Scala-style method signatures.""".stripMargin
+  override val modes = Set(ScriptAuthoringMode.id)
+  override val keywords = Set("class", "signature", "method", "introspect", "lookup", "api")
 
-
-  override protected def executeTyped(input: ClassSignaturesInput, context: TurnContext): rapid.Stream[Event] = {
+  override def executeResult(input: ClassSignaturesInput,
+                             context: TurnContext): Task[ToolResult[TextToolOutput]] = Task {
     val text =
       try render(loadClass(input.fqn))
       catch {
         case _: ClassNotFoundException => s"(class not found on classpath: ${input.fqn})"
         case e: Throwable               => s"(introspection failed: ${e.getClass.getSimpleName}: ${e.getMessage})"
       }
-    rapid.Stream.emit(reply(context, text))
+    ToolResult.Success(TextToolOutput(text))
   }
 
   /** Resolve `fqn` to a `Class[_]`. For Scala objects, callers may pass
@@ -104,15 +106,4 @@ case object ClassSignaturesTool extends TypedTool[ClassSignaturesInput](
     val short = n.substring(n.lastIndexOf('.') + 1).replace('$', '.')
     if (t.isArray) s"Array[${simple(t.getComponentType)}]" else short
   }
-
-  private def reply(context: TurnContext, text: String): Message =
-    Message(
-      participantId  = context.caller,
-      conversationId = context.conversation.id,
-      topicId        = context.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete,
-      role           = MessageRole.Tool,
-      visibility     = MessageVisibility.Agents
-    )
 }

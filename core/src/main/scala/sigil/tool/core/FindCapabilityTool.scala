@@ -1,21 +1,27 @@
 package sigil.tool.core
 
+import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.{CapabilityResults, Event}
-import sigil.tool.{DiscoveryRequest, ToolExample, ToolName, TypedTool}
+import sigil.tool.{DiscoveryRequest, Tool, ToolExample, ToolName, ToolResult}
 
 /**
  * Discovery tool. The agent calls `find_capability` when it needs to
  * check what capabilities exist to satisfy the current request.
- * Emits a [[CapabilityResults]] event carrying matches across every
+ * Resolves a [[FindCapabilityOutput]] carrying matches across every
  * category the framework surfaces (tools, modes, skills) so the LLM
  * has both the discovery (what exists) and the actionable next call
  * (`change_mode("…")` for a Mode, the tool name for a Tool) on its
  * next turn. Bug #66.
  */
-case object FindCapabilityTool extends TypedTool[FindCapabilityInput](
-  name = ToolName("find_capability"),
-  description =
+case object FindCapabilityTool extends Tool {
+  type Input  = FindCapabilityInput
+  type Output = FindCapabilityOutput
+  val inputRW  = summon[RW[FindCapabilityInput]]
+  val outputRW = summon[RW[FindCapabilityOutput]]
+
+  val name = ToolName("find_capability")
+  val description =
     """Search the capability catalog for a tool, mode, or skill that fits the user's task.
       |Call when no listed mode obviously matches (otherwise switch to a matching mode
       |first — modes are pre-curated and more precise than a free-form search).
@@ -32,14 +38,13 @@ case object FindCapabilityTool extends TypedTool[FindCapabilityInput](
       |
       |`keywords` — space-separated lowercase terms describing the action SHAPE (verb +
       |category), not project content. See the system prompt's "Discovery-query patterns"
-      |section for template queries by intent.""".stripMargin,
-  examples = List(
+      |section for template queries by intent.""".stripMargin
+
+  override val examples: List[ToolExample] = List(
     ToolExample("Send a message",          FindCapabilityInput("send slack channel message")),
     ToolExample("Pause / wait / sleep",    FindCapabilityInput("sleep wait delay pause")),
     ToolExample("Look up by concept",      FindCapabilityInput("billing invoice payment charge"))
   )
-) {
-  override def paginate: Boolean = false
 
   // The discovery results are delivered into the caller's
   // ParticipantProjection.suggestedTools and rendered into the
@@ -50,36 +55,28 @@ case object FindCapabilityTool extends TypedTool[FindCapabilityInput](
   // thousand tokens of stale schemas.
   override def resultTtl: Option[Int] = Some(0)
 
-  override protected def executeTyped(input: FindCapabilityInput, context: TurnContext): rapid.Stream[Event] =
-    rapid.Stream.force(
-      context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { spaces =>
-        val request = DiscoveryRequest(
-          keywords = FindCapabilityTool.normaliseKeywords(input.keywords),
-          chain = context.chain,
-          mode = context.conversation.currentMode,
-          callerSpaces = spaces,
-          conversationId = Some(context.conversation.id)
-        )
-        context.sigil.findCapabilities(request).map { matches =>
-          // Sigil bug #226 — record matches against the per-agent-loop
-          // cache on the TurnContext. Replaces the prior projection
-          // write path so the cache dies with the loop instead of
-          // leaking into the next turn's system prompt.
-          val toolNames = matches.collect {
-            case m if m.capabilityType == sigil.tool.discovery.CapabilityType.Tool => sigil.tool.ToolName(m.name)
-          }
-          context.recordDiscovery(request.keywords, toolNames)
-          val results = CapabilityResults(
-            matches        = matches,
-            participantId  = context.caller,
-            conversationId = context.conversation.id,
-            topicId        = context.conversation.currentTopicId,
-            query          = request.keywords
-          )
-          rapid.Stream.emits(List(results))
+  override def executeResult(input: FindCapabilityInput,
+                             context: TurnContext): Task[ToolResult[FindCapabilityOutput]] =
+    context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { spaces =>
+      val request = DiscoveryRequest(
+        keywords = FindCapabilityTool.normaliseKeywords(input.keywords),
+        chain = context.chain,
+        mode = context.conversation.currentMode,
+        callerSpaces = spaces,
+        conversationId = Some(context.conversation.id)
+      )
+      context.sigil.findCapabilities(request).map { matches =>
+        // Sigil bug #226 — record matches against the per-agent-loop
+        // cache on the TurnContext. Replaces the prior projection
+        // write path so the cache dies with the loop instead of
+        // leaking into the next turn's system prompt.
+        val toolNames = matches.collect {
+          case m if m.capabilityType == sigil.tool.discovery.CapabilityType.Tool => sigil.tool.ToolName(m.name)
         }
+        context.recordDiscovery(request.keywords, toolNames)
+        ToolResult.Success(FindCapabilityOutput(query = request.keywords, matches = matches))
       }
-    )
+    }
 
   /** Normalise a keywords string into the lowercase, space-separated
     * form `findTools` expects: drop punctuation, split snake_case /

@@ -2,10 +2,9 @@ package sigil.debug
 
 import fabric.Json
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 import scala.jdk.CollectionConverters.*
 
@@ -18,15 +17,19 @@ case class DapAttachInput(languageId: String,
  * `attachArguments` payload is adapter-specific — typically `pid`
  * for native debuggers, `host`/`port` for network adapters, etc.
  */
-final class DapAttachTool(val manager: DapManager) extends TypedTool[DapAttachInput](
-  name = ToolName("dap_attach"),
-  description =
+final class DapAttachTool(val manager: DapManager) extends Tool with DapToolSupport {
+  type Input = DapAttachInput
+  type Output = TextToolOutput
+  val inputRW = summon[RW[DapAttachInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+  val name = ToolName("dap_attach")
+  val description =
     """Attach a debug adapter to a running process.
       |
       |`languageId` selects the persisted DebugAdapterConfig.
       |`sessionId` is the opaque id for subsequent dap_* calls.
-      |`attachArguments` is the adapter-specific payload (pid, host/port, etc.).""".stripMargin,
-  examples = List(
+      |`attachArguments` is the adapter-specific payload (pid, host/port, etc.).""".stripMargin
+  override val examples = List(
     ToolExample(
       "attach to a running JVM by port",
       DapAttachInput(
@@ -36,21 +39,16 @@ final class DapAttachTool(val manager: DapManager) extends TypedTool[DapAttachIn
       )
     )
   )
-) with DapToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: DapAttachInput, context: TurnContext): Stream[Event] = {
-    val task = manager.spawn(input.languageId, input.sessionId).flatMap { session =>
-      val args = input.attachArguments.map { case (k, v) =>
-        k -> jsonToObject(v)
-      }.asJava
+  override def executeResult(input: DapAttachInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    manager.spawn(input.languageId, input.sessionId).flatMap { session =>
+      val args = input.attachArguments.map { case (k, v) => k -> jsonToObject(v) }.asJava
       session.attach(args).flatMap(_ => session.configurationDone()).map { _ =>
-        s"Debug session '${input.sessionId}' attached (language=${input.languageId})."
+        ToolResult.success(TextToolOutput(
+          s"Debug session '${input.sessionId}' attached (language=${input.languageId})."))
       }
-    }.map(text => reply(context, text, isError = false))
-      .handleError(e => Task.pure(reply(context, s"DAP attach failed: ${e.getMessage}", isError = true)))
-    Stream.force(task.map(Stream.emit))
-  }
+    }.handleError(e => Task.pure(ToolResult.failure(s"DAP attach failed: ${e.getMessage}")))
 
   private def jsonToObject(j: Json): Object = j match {
     case fabric.Str(s, _)   => s

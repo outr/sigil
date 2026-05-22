@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.CompletionItem
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspCompletionItem, LspCompletionResult}
 
 case class LspCompletionInput(languageId: String,
@@ -24,20 +24,25 @@ case class LspCompletionInput(languageId: String,
  * pressing Ctrl-Space. Far higher signal than scanning files for
  * naming conventions.
  */
-final class LspCompletionTool(val manager: LspManager) extends TypedOutputTool[LspCompletionInput, LspCompletionResult](
-  name = ToolName("lsp_completion"),
-  description =
+final class LspCompletionTool(val manager: LspManager) extends Tool
+  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input  = LspCompletionInput
+  type Output = LspCompletionResult
+  val inputRW  = summon[RW[LspCompletionInput]]
+  val outputRW = summon[RW[LspCompletionResult]]
+  val name = ToolName("lsp_completion")
+  val description =
     """Get completion candidates at a position.
       |
       |`languageId` selects the persisted LspServerConfig.
       |`filePath` + `line` + `character` (0-based) point at the cursor location.
       |`maxResults` (default 50) caps the response so large catalogs don't flood context.
-      |Returns `{filePath, items: [{label, kind, detail}], totalCount, truncated}`.""".stripMargin,
-  keywords = Set("lsp", "completion", "complete", "autocomplete", "suggest", "suggestion", "intellisense")
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+      |Returns `{filePath, items: [{label, kind, detail}], totalCount, truncated}`.""".stripMargin
+  override val keywords = Set("lsp", "completion", "complete", "autocomplete", "suggest", "suggestion", "intellisense")
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: LspCompletionInput, context: TurnContext): Task[LspCompletionResult] =
+  override def executeOutput(input: LspCompletionInput, context: TurnContext): Task[LspCompletionResult] =
     withOpenDocumentOrThrow[LspCompletionResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

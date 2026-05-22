@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{BspTargetTestClasses, BspTestClassesResult}
 
 import scala.jdk.CollectionConverters.*
@@ -21,20 +21,25 @@ case class BspScalaTestClassesInput(projectRoot: String,
  * BSP in favor of `buildTarget/jvmTestEnvironment`, but still
  * shipped by sbt and Bloop).
  */
-final class BspScalaTestClassesTool(val manager: BspManager) extends TypedOutputTool[BspScalaTestClassesInput, BspTestClassesResult](
-  name = ToolName("bsp_scala_test_classes"),
-  description =
+final class BspScalaTestClassesTool(val manager: BspManager) extends Tool with BspToolSupport {
+  type Input  = BspScalaTestClassesInput
+  type Output = BspTestClassesResult
+  val inputRW  = summon[RW[BspScalaTestClassesInput]]
+  val outputRW = summon[RW[BspTestClassesResult]]
+
+  val name = ToolName("bsp_scala_test_classes")
+  val description =
     """List discovered Scala test classes for each target.
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is the list of target URIs; empty queries every workspace target.
-      |Returns each target's test framework + class names.""".stripMargin,
-  keywords = Set("bsp", "test classes", "tests", "scala", "find tests", "test suite")
-) with BspToolSupport {
+      |Returns each target's test framework + class names.""".stripMargin
+  override val keywords = Set("bsp", "test classes", "tests", "scala", "find tests", "test suite")
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: BspScalaTestClassesInput,
-                                      context: TurnContext): Task[BspTestClassesResult] =
+  override def executeOutput(input: BspScalaTestClassesInput,
+                             context: TurnContext): Task[BspTestClassesResult] =
     withTargets[BspTestClassesResult](
       input.projectRoot, context, input.targets,
       onError = _ => BspTestClassesResult(input.projectRoot, Nil),

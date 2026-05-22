@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.{MarkupContent, SignatureHelp, SignatureInformation}
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspSignature, LspSignatureHelpResult, LspSignatureParam}
 
 import scala.jdk.CollectionConverters.*
@@ -23,21 +23,27 @@ case class LspSignatureHelpInput(languageId: String,
  * The agent uses this to ground argument names + types when calling
  * a method whose signature isn't obvious from context.
  */
-final class LspSignatureHelpTool(val manager: LspManager) extends TypedOutputTool[LspSignatureHelpInput, LspSignatureHelpResult](
-  name = ToolName("lsp_signature_help"),
-  description =
+final class LspSignatureHelpTool(val manager: LspManager) extends Tool
+  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input  = LspSignatureHelpInput
+  type Output = LspSignatureHelpResult
+  val inputRW  = summon[RW[LspSignatureHelpInput]]
+  val outputRW = summon[RW[LspSignatureHelpResult]]
+
+  val name = ToolName("lsp_signature_help")
+  val description =
     """Get function-call signature help at a position.
       |
       |`languageId` selects the persisted LspServerConfig.
       |`filePath` + `line` + `character` (0-based) point at the call-site cursor (typically
       |inside the parens of a function call).
       |Returns `{signatures: [{label, documentation, parameters}], activeSignature, activeParameter}`.
-      |`activeParameter` is `-1` when no parameter is active or signatures is empty.""".stripMargin,
-  keywords = Set("lsp", "signature", "parameters", "args", "arguments", "what does take", "function signature")
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+      |`activeParameter` is `-1` when no parameter is active or signatures is empty.""".stripMargin
+  override val keywords = Set("lsp", "signature", "parameters", "args", "arguments", "what does take", "function signature")
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: LspSignatureHelpInput, context: TurnContext): Task[LspSignatureHelpResult] =
+  override def executeOutput(input: LspSignatureHelpInput, context: TurnContext): Task[LspSignatureHelpResult] =
     withOpenDocumentOrThrow[LspSignatureHelpResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

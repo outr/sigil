@@ -5,7 +5,7 @@ import org.eclipse.lsp4j.{CodeAction, Command, Position, Range}
 import org.eclipse.lsp4j.jsonrpc.messages.{Either => LspEither}
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspCodeActionItem, LspCodeActionResult}
 
 case class LspCodeActionInput(languageId: String,
@@ -27,9 +27,14 @@ case class LspCodeActionInput(languageId: String,
  * `["quickfix"]`, `["refactor.extract"]`, `["source.organizeImports"]`
  * — defined in the spec under "CodeActionKind".
  */
-final class LspCodeActionTool(val manager: LspManager) extends TypedOutputTool[LspCodeActionInput, LspCodeActionResult](
-  name = ToolName("lsp_code_action"),
-  description =
+final class LspCodeActionTool(val manager: LspManager) extends Tool
+  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input  = LspCodeActionInput
+  type Output = LspCodeActionResult
+  val inputRW  = summon[RW[LspCodeActionInput]]
+  val outputRW = summon[RW[LspCodeActionResult]]
+  val name = ToolName("lsp_code_action")
+  val description =
     """List code actions (quick fixes / refactors) available for a range.
       |
       |`languageId` + `filePath` identify the document.
@@ -38,16 +43,16 @@ final class LspCodeActionTool(val manager: LspManager) extends TypedOutputTool[L
       |`onlyKinds` (optional) filters by LSP code-action kind ("quickfix", "refactor.extract",
       |"source.organizeImports", etc.).
       |Returns `{filePath, items: [{index, kind, title}]}`. The listing is cached for a
-      |separate apply-by-index tool.""".stripMargin,
-  keywords = Set(
+      |separate apply-by-index tool.""".stripMargin
+  override val keywords = Set(
     "lsp", "code action", "fix", "quickfix", "refactor", "refactoring", "suggestion",
     "quick fix", "auto fix", "improve", "extract method", "extract variable",
     "organize imports", "transform", "modify", "change"
   )
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: LspCodeActionInput, context: TurnContext): Task[LspCodeActionResult] =
+  override def executeOutput(input: LspCodeActionInput, context: TurnContext): Task[LspCodeActionResult] =
     withOpenDocumentOrThrow[LspCodeActionResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

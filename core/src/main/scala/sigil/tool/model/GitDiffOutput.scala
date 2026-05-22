@@ -11,7 +11,7 @@ import fabric.rw.*
  *     via `format = GitDiffFormat.Hunks`).
  *   - [[GitDiffOutput.Failed]] — `git diff` exited non-zero.
  */
-enum GitDiffOutput derives RW {
+enum GitDiffOutput extends sigil.tool.ToolOutput derives RW {
 
   case Text(text: String)
 

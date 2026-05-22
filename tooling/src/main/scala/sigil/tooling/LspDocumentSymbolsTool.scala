@@ -5,7 +5,7 @@ import org.eclipse.lsp4j.{DocumentSymbol, SymbolInformation}
 import org.eclipse.lsp4j.jsonrpc.messages.{Either => LspEither}
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspDocumentSymbolEntry, LspDocumentSymbolsResult, LspPosition}
 
 import scala.jdk.CollectionConverters.*
@@ -25,24 +25,29 @@ case class LspDocumentSymbolsInput(languageId: String,
  * Output flattens hierarchy into a depth-indexed list so consumers
  * walk one stream and re-render indentation from `depth`.
  */
-final class LspDocumentSymbolsTool(val manager: LspManager) extends TypedOutputTool[LspDocumentSymbolsInput, LspDocumentSymbolsResult](
-  name = ToolName("lsp_document_symbols"),
-  description =
+final class LspDocumentSymbolsTool(val manager: LspManager) extends Tool
+  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input  = LspDocumentSymbolsInput
+  type Output = LspDocumentSymbolsResult
+  val inputRW  = summon[RW[LspDocumentSymbolsInput]]
+  val outputRW = summon[RW[LspDocumentSymbolsResult]]
+  val name = ToolName("lsp_document_symbols")
+  val description =
     """List the symbols (classes / methods / fields / etc.) defined in a file.
       |
       |`languageId` + `filePath` identify the document.
-      |Returns `{filePath, entries: [{kind, name, position, depth}]}` — `depth = 0` is top-level.""".stripMargin,
-  keywords = Set(
+      |Returns `{filePath, entries: [{kind, name, position, depth}]}` — `depth = 0` is top-level.""".stripMargin
+  override val keywords = Set(
     "lsp", "document", "symbols", "symbol", "outline", "structure",
     "what's in this file", "classes", "methods", "members",
     "examine", "inspect", "analyze", "review", "explore",
     "code", "semantic", "scala", "language", "navigate"
   )
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: LspDocumentSymbolsInput,
-                                      context: TurnContext): Task[LspDocumentSymbolsResult] =
+  override def executeOutput(input: LspDocumentSymbolsInput,
+                             context: TurnContext): Task[LspDocumentSymbolsResult] =
     withOpenDocumentOrThrow[LspDocumentSymbolsResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

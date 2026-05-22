@@ -1,31 +1,34 @@
 package sigil.tool.process
 
+import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
 import sigil.tool.model.{ProcessListEntry, ProcessListInput, ProcessListOutput, ProcessListScope}
-import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolExample, ToolName}
 
 /**
  * List registered subprocesses. `scope = "current"` (default)
  * restricts to the spawning conversation; `scope = "all"` returns
  * every entry.
  */
-final class ProcessListTool(registry: ProcessRegistry)
-  extends TypedOutputTool[ProcessListInput, ProcessListOutput](
-    name = ToolName("process_list"),
-    description =
-      """List subprocesses registered with the framework. `scope = "current"` (default) restricts
-        |to processes spawned by this conversation; `scope = "all"` returns every entry. Each
-        |handle includes its id, pid, start time, and command.""".stripMargin,
-    examples = List(
-      ToolExample("Processes spawned by this conversation", ProcessListInput()),
-      ToolExample("Every registered process",                ProcessListInput(scope = ProcessListScope.All))
-    ),
-    keywords = Set("process", "list", "running", "background")
-  ) {
-  override def paginate: Boolean = false
+final class ProcessListTool(registry: ProcessRegistry) extends Tool {
+  type Input  = ProcessListInput
+  type Output = ProcessListOutput
+  val inputRW  = summon[RW[ProcessListInput]]
+  val outputRW = summon[RW[ProcessListOutput]]
 
-  override protected def executeTyped(input: ProcessListInput, ctx: TurnContext): Task[ProcessListOutput] =
+  val name = ToolName("process_list")
+  val description =
+    """List subprocesses registered with the framework. `scope = "current"` (default) restricts
+      |to processes spawned by this conversation; `scope = "all"` returns every entry. Each
+      |handle includes its id, pid, start time, and command.""".stripMargin
+  override val examples = List(
+    ToolExample("Processes spawned by this conversation", ProcessListInput()),
+    ToolExample("Every registered process",                ProcessListInput(scope = ProcessListScope.All))
+  )
+  override val keywords = Set("process", "list", "running", "background")
+
+  override def executeOutput(input: ProcessListInput, ctx: TurnContext): Task[ProcessListOutput] =
     registry.list(filterByConversation = input.scope match {
       case ProcessListScope.All     => None
       case ProcessListScope.Current => Some(ctx.conversation.id)

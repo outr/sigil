@@ -19,4 +19,4 @@ case class HttpRequestOutput(status: Int,
                               headers: Map[String, String],
                               body: String,
                               bodyTruncated: Boolean,
-                              contentType: Option[String]) derives RW
+                              contentType: Option[String]) extends sigil.tool.ToolOutput derives RW

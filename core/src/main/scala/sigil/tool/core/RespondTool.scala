@@ -1,12 +1,14 @@
 package sigil.tool.core
 
+import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
 import sigil.conversation.ContextFrame
 import sigil.event.{Event, Message, MessageDisposition}
 import sigil.provider.XmlToolCallSanitizer
-import sigil.signal.{EventState, XmlToolCallLeak}
-import sigil.tool.{ToolExample, ToolName, TypedTool}
-import sigil.tool.model.{MarkdownContentParser, RespondInput, ResponseContent, ResponseDisposition}
+import sigil.signal.XmlToolCallLeak
+import sigil.tool.{TextToolOutput, ToolName, ToolResult}
+import sigil.tool.model.{MarkdownContentParser, RespondInput, ResponseDisposition}
 
 /**
  * The respond tool — every user-facing reply goes through here. The
@@ -28,9 +30,14 @@ import sigil.tool.model.{MarkdownContentParser, RespondInput, ResponseContent, R
  * via [[sigil.Sigil.classifyTopicShift]] so every provider (streaming
  * and tool-call-only) produces the same TopicChange shape.
  */
-case object RespondTool extends TypedTool[RespondInput](
-  name = ToolName("respond"),
-  description =
+case object RespondTool extends RespondFamilyTool {
+  type Input  = RespondInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[RespondInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("respond")
+  val description =
     """Deliver text to the user. Use ONLY when:
       |  (a) the user is chatting or asking a question you can answer from your own knowledge, OR
       |  (b) you've already executed the requested action via another tool and are reporting the outcome.
@@ -68,13 +75,9 @@ case object RespondTool extends TypedTool[RespondInput](
       |  work (out of scope, missing capability, a tool failed and you're reporting that). The
       |  framework stamps the resulting Message's disposition accordingly.
       |- `endsTurn` — `true` when this respond is your COMPLETE reply for this turn. Set `false`
-      |  for in-flight status pulses you intend to follow up on the same turn.""".stripMargin,
-  examples = Nil
-) with RespondFamilyTool {
-  override def paginate: Boolean = false
+      |  for in-flight status pulses you intend to follow up on the same turn.""".stripMargin
 
-
-  override protected def executeTyped(input: RespondInput, context: TurnContext): rapid.Stream[Event] = {
+  override def executeResult(input: RespondInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
     // Sigil bug #226 — `endsTurn = true` is the explicit "this agent
     // loop is done" signal. Drop the per-loop `find_capability` cache
     // here so the trace is visible at the call site; the natural
@@ -124,34 +127,40 @@ case object RespondTool extends TypedTool[RespondInput](
           modelId        = context.modelId
         )
     }
+    // The user-visible reply Message and any TopicChange events are
+    // ancillary — they are NOT this tool's result. Emit them via
+    // `ctx.emit`; the framework builds the paired tool-result event
+    // from the returned `ToolResult`.
+    //
     // Topic resolution + keyword update fire here so the atomic-respond
     // path (every provider whose `respond` materialises as a function
     // call: llama.cpp grammar-constrained, OpenAI strict-mode,
     // Anthropic tool_use, Google functionCall) produces the same
     // TopicChange shape as the streaming-respond branch.
-    context.modelId match {
+    val emitAncillary: Task[Unit] = context.modelId match {
       case None =>
-        rapid.Stream.emits(List[Event](message))
+        context.emit(message)
       case Some(modelId) =>
         val userMessage = context.turnInput.frames.reverseIterator.collectFirst {
           case t: ContextFrame.Text if t.participantId != context.caller => t.content
         }.getOrElse("")
-        rapid.Stream.force(
-          for {
-            topicEvents <- context.sigil.resolveTopicShift(
-              proposedLabel   = input.topicLabel,
-              proposedSummary = input.topicSummary,
-              caller          = context.caller,
-              conversation    = context.conversation,
-              currentTopic    = context.conversation.currentTopic,
-              previousTopics  = context.conversation.previousTopics,
-              modelId         = modelId,
-              chain           = context.chain,
-              userMessage     = userMessage
-            )
-            _ <- context.sigil.updateConversationKeywords(context.conversation.id, input.keywords)
-          } yield rapid.Stream.emits[Event](topicEvents :+ message)
-        )
+        for {
+          topicEvents <- context.sigil.resolveTopicShift(
+            proposedLabel   = input.topicLabel,
+            proposedSummary = input.topicSummary,
+            caller          = context.caller,
+            conversation    = context.conversation,
+            currentTopic    = context.conversation.currentTopic,
+            previousTopics  = context.conversation.previousTopics,
+            modelId         = modelId,
+            chain           = context.chain,
+            userMessage     = userMessage
+          )
+          _ <- context.sigil.updateConversationKeywords(context.conversation.id, input.keywords)
+          _ <- topicEvents.foldLeft(Task.unit)((acc, e) => acc.flatMap(_ => context.emit(e)))
+          _ <- context.emit(message)
+        } yield ()
     }
+    emitAncillary.map(_ => ToolResult.Success(TextToolOutput("")))
   }
 }

@@ -1,10 +1,11 @@
 package sigil.tool.core
 
+import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.{Event, Message, MessageRole, MessageVisibility, Stop}
-import sigil.signal.EventState
-import sigil.tool.model.{CancelInput, ResponseContent}
-import sigil.tool.{ToolName, TypedTool}
+import sigil.event.{MessageRole, Stop}
+import sigil.tool.model.CancelInput
+import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 /**
  * Cancel the current agent turn immediately — equivalent to the
@@ -40,13 +41,19 @@ import sigil.tool.{ToolName, TypedTool}
  * message instead of emitting the Stop event — the agent reads
  * the refusal and picks the correct tool on its next turn.
  *
- * Atomic in the success path: emits a single Complete [[Stop]]
- * event. In the refused path: emits a single tool-role
- * [[Message]] carrying a `Failure` block.
+ * In the success path emits a single Complete [[Stop]] event as an
+ * ancillary event. In the refused path resolves to a
+ * [[ToolResult.Failure]] carrying the guidance text — the framework
+ * builds the paired tool-role failure Message.
  */
-case object CancelTool extends TypedTool[CancelInput](
-  name = ToolName("cancel"),
-  description =
+case object CancelTool extends Tool {
+  type Input  = CancelInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[CancelInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("cancel")
+  val description =
     """Cancel the current agent turn immediately. Use ONLY when:
       |  - The user explicitly halted the conversation (took over via the chat).
       |  - You've encountered an unrecoverable failure and continuing would waste effort.
@@ -58,11 +65,8 @@ case object CancelTool extends TypedTool[CancelInput](
       |  - Transition between phases — just continue with the next action.
       |
       |Omit `targetParticipantId` to cancel ALL agents. `force=true` interrupts an
-      |in-flight call (use for monitor-agent intercepts).""".stripMargin,
-  keywords = Set("cancel", "halt", "abort", "user-stop", "interrupt", "stop")
-) {
-  override def paginate: Boolean = false
-
+      |in-flight call (use for monitor-agent intercepts).""".stripMargin
+  override val keywords: Set[String] = Set("cancel", "halt", "abort", "user-stop", "interrupt", "stop")
 
   /** Patterns that signal the caller meant a turn-flow operation
     * (start something, fetch results, wait, advance to the next
@@ -93,13 +97,13 @@ case object CancelTool extends TypedTool[CancelInput](
       case (name, pat) if pat.findFirstIn(reason).isDefined => name
     }
 
-  override protected def executeTyped(input: CancelInput, context: TurnContext): rapid.Stream[Event] = {
+  override def executeResult(input: CancelInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
     val reasonText = input.reason.getOrElse("")
     detectTransition(reasonText) match {
       case Some(matchedPattern) =>
-        rapid.Stream.emit[Event](refuse(input, matchedPattern, context))
+        Task.pure(refuse(input, matchedPattern))
       case None =>
-        rapid.Stream.emit[Event](Stop(
+        context.emit(Stop(
           participantId       = context.caller,
           conversationId      = context.conversation.id,
           topicId             = context.conversation.currentTopicId,
@@ -107,11 +111,11 @@ case object CancelTool extends TypedTool[CancelInput](
           force               = input.force,
           reason              = input.reason,
           role                = MessageRole.Tool
-        ))
+        )).map(_ => ToolResult.Success(TextToolOutput("Cancellation requested.")))
     }
   }
 
-  private def refuse(input: CancelInput, matchedPattern: String, context: TurnContext): Message = {
+  private def refuse(input: CancelInput, matchedPattern: String): ToolResult[TextToolOutput] = {
     val reason = input.reason.getOrElse("")
     val guidance =
       s"cancel refused: reason '$reason' reads as a transition or wait " +
@@ -123,15 +127,6 @@ case object CancelTool extends TypedTool[CancelInput](
         "a step), just call that tool directly — there is no pause between tool calls.\n\n" +
         "If you genuinely meant to cancel, rephrase the reason (e.g. 'user requested halt', " +
         "'unrecoverable failure: ...')."
-    Message(
-      participantId  = context.caller,
-      conversationId = context.conversation.id,
-      topicId        = context.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Text(guidance)),
-      disposition    = sigil.event.MessageDisposition.Failure(recoverable = true),
-      state          = EventState.Complete,
-      role           = MessageRole.Tool,
-      visibility     = MessageVisibility.Agents
-    )
+    ToolResult.failure(message = guidance)
   }
 }

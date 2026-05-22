@@ -10,7 +10,7 @@ import fabric.rw.*
  *   - [[GitShowOutput.Failed]] — `git show` exited non-zero (unknown
  *     revision, ambiguous spec, not a repo).
  */
-enum GitShowOutput derives RW {
+enum GitShowOutput extends sigil.tool.ToolOutput derives RW {
 
   case Found(sha: String,
              author: String,

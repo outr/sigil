@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.LspLocation
 
 case class LspFindReferencesInput(languageId: String,
@@ -17,7 +17,7 @@ case class LspFindReferencesInput(languageId: String,
   * when the server returned more locations than `maxResults`; the
   * `locations` list reflects the post-cap slice. */
 case class LspFindReferencesOutput(locations: List[LspLocation],
-                                   truncated: Boolean) derives RW
+                                   truncated: Boolean) extends sigil.tool.ToolOutput derives RW
 
 /**
  * Find every usage of a symbol across the workspace. The server
@@ -28,9 +28,14 @@ case class LspFindReferencesOutput(locations: List[LspLocation],
  * Capped at `maxResults` to keep huge codebases from blowing the
  * agent's context. `truncated` is true when the cap fired.
  */
-final class LspFindReferencesTool(val manager: LspManager) extends TypedOutputTool[LspFindReferencesInput, LspFindReferencesOutput](
-  name = ToolName("lsp_find_references"),
-  description =
+final class LspFindReferencesTool(val manager: LspManager) extends Tool
+  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input  = LspFindReferencesInput
+  type Output = LspFindReferencesOutput
+  val inputRW  = summon[RW[LspFindReferencesInput]]
+  val outputRW = summon[RW[LspFindReferencesOutput]]
+  val name = ToolName("lsp_find_references")
+  val description =
     """Find every usage of a symbol across the workspace.
       |
       |`languageId` + `filePath` identify the source document.
@@ -38,14 +43,14 @@ final class LspFindReferencesTool(val manager: LspManager) extends TypedOutputTo
       |`includeDeclaration` (default true) — whether to include the symbol's own definition.
       |`maxResults` (default 200) — caps the response.
       |
-      |Returns `{locations: [{uri, filePath, range}], truncated}`.""".stripMargin,
-  keywords = Set(
+      |Returns `{locations: [{uri, filePath, range}], truncated}`.""".stripMargin
+  override val keywords = Set(
     "lsp", "references", "usages", "callers", "who calls", "find usage", "find all",
     "occurrences", "examine", "inspect", "analyze", "review", "uses",
     "where used", "find symbol", "semantic",
     "scala", "language", "code", "navigate"
   )
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+
   override def paginate: Boolean = false
 
   // Bug #230 — usage lists are the canonical input to
@@ -54,7 +59,7 @@ final class LspFindReferencesTool(val manager: LspManager) extends TypedOutputTo
   // sees the natural follow-up.
   override def suggestedNextTools: List[ToolName] = List(ToolName("dispatch_workers"))
 
-  override protected def executeTyped(input: LspFindReferencesInput, context: TurnContext): Task[LspFindReferencesOutput] =
+  override def executeOutput(input: LspFindReferencesInput, context: TurnContext): Task[LspFindReferencesOutput] =
     withOpenDocumentOrThrow[LspFindReferencesOutput](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

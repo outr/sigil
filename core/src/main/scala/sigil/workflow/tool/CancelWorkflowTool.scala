@@ -2,10 +2,9 @@ package sigil.workflow.tool
 
 import fabric.rw.*
 import lightdb.id.Id
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import strider.Workflow
 
 case class CancelWorkflowInput(runId: String) extends ToolInput derives RW
@@ -18,19 +17,21 @@ case class CancelWorkflowInput(runId: String) extends ToolInput derives RW
  * clear message — idempotent semantics match Strider's
  * underlying `cancel` API.
  */
-final class CancelWorkflowTool extends TypedTool[CancelWorkflowInput](
-  name = ToolName("cancel_workflow"),
-  description =
+final class CancelWorkflowTool extends Tool with WorkflowToolSupport {
+  type Input  = CancelWorkflowInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[CancelWorkflowInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+  val name = ToolName("cancel_workflow")
+  val description =
     """Cancel a running or scheduled workflow run.
       |
       |`runId` is the run id. The run's current step finishes if mid-execution, then
-      |no further steps run. Idempotent — cancelling a finished run is a no-op.""".stripMargin,
-  examples = List(ToolExample("cancel by run id", CancelWorkflowInput(runId = "run-abc"))),
-  keywords = Set("workflow", "cancel", "stop", "abort")
-) with WorkflowToolSupport {
-  override def paginate: Boolean = false
+      |no further steps run. Idempotent — cancelling a finished run is a no-op.""".stripMargin
+  override val examples = List(ToolExample("cancel by run id", CancelWorkflowInput(runId = "run-abc")))
+  override val keywords = Set("workflow", "cancel", "stop", "abort")
 
-  override protected def executeTyped(input: CancelWorkflowInput, ctx: TurnContext): Stream[Event] = withHost(ctx) { host =>
+  override def executeResult(input: CancelWorkflowInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
     val workflowId = Id[Workflow](input.runId)
     host.withDB(_.workflows.transaction(_.get(workflowId))).flatMap {
       case None => Task.pure(s"Workflow run '${input.runId}' not found.")

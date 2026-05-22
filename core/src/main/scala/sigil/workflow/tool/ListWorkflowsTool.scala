@@ -1,11 +1,9 @@
 package sigil.workflow.tool
 
 import fabric.rw.*
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
-import sigil.workflow.WorkflowTemplate
+import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class ListWorkflowsInput(tag: Option[String] = None) extends ToolInput derives RW
 
@@ -14,35 +12,42 @@ case class ListWorkflowsInput(tag: Option[String] = None) extends ToolInput deri
  * `accessibleSpaces` so cross-tenant isolation holds. `tag`
  * (optional) narrows to templates carrying a matching tag.
  */
-final class ListWorkflowsTool extends TypedTool[ListWorkflowsInput](
-  name = ToolName("list_workflows"),
-  description =
+final class ListWorkflowsTool extends Tool with WorkflowToolSupport {
+  type Input  = ListWorkflowsInput
+  type Output = ListWorkflowsOutput
+  val inputRW  = summon[RW[ListWorkflowsInput]]
+  val outputRW = summon[RW[ListWorkflowsOutput]]
+  val name = ToolName("list_workflows")
+  val description =
     """List the workflow templates visible to the caller (filtered by accessible spaces).
       |
       |`tag` (optional) restricts the result to templates carrying that tag.
-      |Returns each template's id, name, description, step count, and whether it's enabled.""".stripMargin,
-  examples = List(
+      |Returns each template's id, name, description, step count, and whether it's enabled.""".stripMargin
+  override val examples = List(
     ToolExample("list every visible workflow", ListWorkflowsInput()),
     ToolExample("filter by tag", ListWorkflowsInput(tag = Some("nightly")))
-  ),
-  keywords = Set("workflow", "list", "find")
-) with WorkflowToolSupport {
-  override def paginate: Boolean = false
+  )
+  override val keywords = Set("workflow", "list", "find")
 
-  override protected def executeTyped(input: ListWorkflowsInput, ctx: TurnContext): Stream[Event] = withHost(ctx) { host =>
-    for {
-      allowed <- host.accessibleSpaces(ctx.chain)
-      all <- host.withDB(_.workflowTemplates.transaction(_.list))
-      allowedSpaceValues = allowed.map(_.value) + sigil.GlobalSpace.value
-      filtered = all.toList
-        .filter(t => allowedSpaceValues.contains(t.space.value))
-        .filter(t => input.tag.forall(t.tags.contains))
-    } yield {
-      if (filtered.isEmpty) "No workflows visible."
-      else filtered.map { t =>
-        val flags = if (t.enabled) "" else " [disabled]"
-        s"  [${t._id.value}] ${t.name}$flags — ${t.steps.size} step(s) — ${t.description}"
-      }.mkString("\n")
+  override def executeResult(input: ListWorkflowsInput, ctx: TurnContext): Task[ToolResult[ListWorkflowsOutput]] =
+    workflowHost(ctx) match {
+      case Left(err) => Task.pure(ToolResult.failure(err))
+      case Right(host) =>
+        for {
+          allowed <- host.accessibleSpaces(ctx.chain)
+          all <- host.withDB(_.workflowTemplates.transaction(_.list))
+          allowedSpaceValues = allowed.map(_.value) + sigil.GlobalSpace.value
+          filtered = all.toList
+            .filter(t => allowedSpaceValues.contains(t.space.value))
+            .filter(t => input.tag.forall(t.tags.contains))
+        } yield ToolResult.success(ListWorkflowsOutput(filtered.map { t =>
+          WorkflowSummary(
+            workflowId  = t._id.value,
+            name        = t.name,
+            enabled     = t.enabled,
+            stepCount   = t.steps.size,
+            description = t.description
+          )
+        }))
     }
-  }
 }

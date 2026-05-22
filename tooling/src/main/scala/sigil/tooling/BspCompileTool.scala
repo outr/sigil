@@ -4,7 +4,7 @@ import ch.epfl.scala.bsp4j.StatusCode
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{BspCompileResult, BspDiagnostic}
 
 case class BspCompileInput(projectRoot: String,
@@ -19,25 +19,31 @@ case class BspCompileInput(projectRoot: String,
  * ERROR / CANCELLED / NO_TARGETS) and any diagnostics the server
  * published.
  */
-final class BspCompileTool(val manager: BspManager) extends TypedOutputTool[BspCompileInput, BspCompileResult](
-  name = ToolName("bsp_compile"),
-  description =
+final class BspCompileTool(val manager: BspManager) extends Tool
+  with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  type Input  = BspCompileInput
+  type Output = BspCompileResult
+  val inputRW  = summon[RW[BspCompileInput]]
+  val outputRW = summon[RW[BspCompileResult]]
+
+  val name = ToolName("bsp_compile")
+  val description =
     """Compile build targets via the project's BSP server (sbt or Bloop).
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`targets` (optional) is a list of target URIs; empty compiles every workspace target.
-      |Returns `{projectRoot, status, targetCount, diagnostics: [{filePath, range, severity, message, code, source}]}`.""".stripMargin,
-  keywords = Set(
+      |Returns `{projectRoot, status, targetCount, diagnostics: [{filePath, range, severity, message, code, source}]}`.""".stripMargin
+  override val keywords = Set(
     "bsp", "compile", "build", "type-check", "verify",
     "errors", "warnings", "compile-check", "examine", "inspect",
     "analyze", "review",
     "scala", "sbt", "project", "targets", "evaluate", "validate",
     "rebuild", "diagnostics", "fix"
   )
-) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: BspCompileInput, context: TurnContext): Task[BspCompileResult] =
+  override def executeOutput(input: BspCompileInput, context: TurnContext): Task[BspCompileResult] =
     withTargets[BspCompileResult](
       input.projectRoot, context, input.targets,
       onError = _ => BspCompileResult(input.projectRoot, "ERROR", 0, Nil),

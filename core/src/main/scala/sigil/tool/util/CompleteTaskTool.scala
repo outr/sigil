@@ -1,10 +1,10 @@
 package sigil.tool.util
 
-import rapid.Stream
+import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
 import sigil.tool.model.CompleteTaskInput
-import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 
 /**
  * `complete_task` — the worker's typed terminator. Workers call
@@ -19,29 +19,30 @@ import sigil.tool.{ToolExample, ToolName, TypedTool}
  * shape going forward — typed args, schema-validated, no
  * LLM-format-drift risk.
  *
- * Doesn't have an `executeTyped` body of consequence — the
- * agent-loop step intercepts the tool call from the provider
- * event stream BEFORE the orchestrator dispatches; if for some
- * reason the orchestrator does dispatch (e.g., the tool was
- * registered globally and called from outside an
- * AgentDecisionStep context), the execute is a no-op so the call
- * surfaces cleanly without a synthetic result.
+ * The agent-loop step intercepts the tool call from the provider
+ * event stream BEFORE the orchestrator dispatches; `executeResult`
+ * is reached only if the tool was registered globally and called
+ * from outside an AgentDecisionStep context. In that case it
+ * resolves a benign acknowledgement so the call still pairs cleanly.
  */
-case object CompleteTaskTool
-  extends TypedTool[CompleteTaskInput](
-    name = ToolName("complete_task"),
-    description =
-      """Worker terminator: call this when you've finished the work the user briefed you on.
-        |Pass a one-paragraph `summary` describing what you did and what the result is.
-        |The framework settles your run; the parent agent picks up the summary from the
-        |TaskExecuted event and decides how to surface it to the user.""".stripMargin,
-    examples = List(
-      ToolExample("Worker reports a research result",
-        CompleteTaskInput(summary = "Found 3 RAG papers from 2026; cited the strongest 2 in /tmp/papers.md."))
-    ),
-    keywords = Set("complete", "done", "finish", "terminate", "settle", "result")
-  ) {
-  override def paginate: Boolean = false
+case object CompleteTaskTool extends Tool {
+  type Input  = CompleteTaskInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[CompleteTaskInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+  val name = ToolName("complete_task")
+  val description =
+    """Worker terminator: call this when you've finished the work the user briefed you on.
+      |Pass a one-paragraph `summary` describing what you did and what the result is.
+      |The framework settles your run; the parent agent picks up the summary from the
+      |TaskExecuted event and decides how to surface it to the user.""".stripMargin
+  override val examples = List(
+    ToolExample("Worker reports a research result",
+      CompleteTaskInput(summary = "Found 3 RAG papers from 2026; cited the strongest 2 in /tmp/papers.md."))
+  )
+  override val keywords = Set("complete", "done", "finish", "terminate", "settle", "result")
 
-  override protected def executeTyped(input: CompleteTaskInput, ctx: TurnContext): Stream[Event] = Stream.empty
+  override def executeResult(input: CompleteTaskInput,
+                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+    Task.pure(ToolResult.Success(TextToolOutput(input.summary)))
 }

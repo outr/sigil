@@ -24,4 +24,4 @@ case class SemanticSearchHit(memoryId: String,
   * detecting truncation compare against the input's `limit`. */
 case class SemanticSearchOutput(query: String,
                                 memories: List[SemanticSearchHit],
-                                count: Int) derives RW
+                                count: Int) extends sigil.tool.ToolOutput derives RW

@@ -3,10 +3,9 @@ package sigil.workflow.tool
 import fabric.rw.*
 import lightdb.id.Id
 import lightdb.time.Timestamp
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import sigil.workflow.WorkflowTemplate
 
 case class UnregisterTriggerInput(workflowId: String,
@@ -23,21 +22,23 @@ case class UnregisterTriggerInput(workflowId: String,
  * values, not records). Apps that want id-based addressing wrap
  * triggers in a record with `Id[…]` before persisting.
  */
-final class UnregisterTriggerTool extends TypedTool[UnregisterTriggerInput](
-  name = ToolName("unregister_trigger"),
-  description =
+final class UnregisterTriggerTool extends Tool with WorkflowToolSupport {
+  type Input  = UnregisterTriggerInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[UnregisterTriggerInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+  val name = ToolName("unregister_trigger")
+  val description =
     """Remove a trigger from a workflow template by its 0-based index.
       |
       |`workflowId` is the template id; `index` is the position in the template's
-      |`triggers` list. Out-of-bounds indices are a clear error.""".stripMargin,
-  examples = List(
+      |`triggers` list. Out-of-bounds indices are a clear error.""".stripMargin
+  override val examples = List(
     ToolExample("remove the first trigger", UnregisterTriggerInput(workflowId = "wf-abc", index = 0))
-  ),
-  keywords = Set("workflow", "trigger", "remove", "unregister")
-) with WorkflowToolSupport {
-  override def paginate: Boolean = false
+  )
+  override val keywords = Set("workflow", "trigger", "remove", "unregister")
 
-  override protected def executeTyped(input: UnregisterTriggerInput, ctx: TurnContext): Stream[Event] = withHost(ctx) { host =>
+  override def executeResult(input: UnregisterTriggerInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
     val id = Id[WorkflowTemplate](input.workflowId)
     host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
       case None => Task.pure(s"Workflow '${input.workflowId}' not found.")

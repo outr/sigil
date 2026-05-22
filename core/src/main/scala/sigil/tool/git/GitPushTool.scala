@@ -1,10 +1,11 @@
 package sigil.tool.git
 
+import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
 import sigil.tool.fs.{FileSystemContext, WorkspacePathResolver}
 import sigil.tool.model.{GitPushError, GitPushInput, GitPushOutput}
-import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolExample, ToolName}
 
 /**
  * `git_push` — push committed changes to a remote. WRITES external
@@ -27,32 +28,35 @@ import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
  * pattern-match without parsing raw stderr.
  */
 final class GitPushTool(context: FileSystemContext)
-  extends TypedOutputTool[GitPushInput, GitPushOutput](
-    name = ToolName("git_push"),
-    description =
-      """Push committed changes to a remote. Defaults push the current branch to its tracked
-        |upstream; pass `remote` / `branch` for explicit targets, `setUpstream` on a new
-        |branch's first push, `forceWithLease` for safer force-pushes.
-        |
-        |Force-push is gated: `force` / `forceWithLease` on a protected branch (main, master,
-        |develop) requires `confirmForcePush = true`. Prefer `forceWithLease` over `force` —
-        |it refuses to clobber upstream commits you haven't seen.
-        |
-        |Returns the push outcome — `Pushed` on success, or `Failed` with a classified error
-        |(non-fast-forward / rejected / no upstream / auth-failed / force-push-blocked /
-        |unknown) so the agent can react programmatically without parsing raw stderr.""".stripMargin,
-    examples = List(
-      ToolExample("Push current branch to its upstream", GitPushInput()),
-      ToolExample("First push of a feature branch",      GitPushInput(setUpstream = true)),
-      ToolExample("Push tags too",                       GitPushInput(tags = true)),
-      ToolExample("Force-with-lease (safer force)",      GitPushInput(forceWithLease = true)),
-      ToolExample("Explicit remote and branch",          GitPushInput(remote = Some("upstream"), branch = Some("feature/x")))
-    ),
-    keywords = Set("git", "push", "publish", "upload", "remote", "upstream", "deploy", "sync")
-  ) with sigil.tool.DestructiveExternalTool {
+  extends Tool with sigil.tool.DestructiveExternalTool {
+  type Input  = GitPushInput
+  type Output = GitPushOutput
+  val inputRW  = summon[RW[GitPushInput]]
+  val outputRW = summon[RW[GitPushOutput]]
+  val name = ToolName("git_push")
+  val description =
+    """Push committed changes to a remote. Defaults push the current branch to its tracked
+      |upstream; pass `remote` / `branch` for explicit targets, `setUpstream` on a new
+      |branch's first push, `forceWithLease` for safer force-pushes.
+      |
+      |Force-push is gated: `force` / `forceWithLease` on a protected branch (main, master,
+      |develop) requires `confirmForcePush = true`. Prefer `forceWithLease` over `force` —
+      |it refuses to clobber upstream commits you haven't seen.
+      |
+      |Returns the push outcome — `Pushed` on success, or `Failed` with a classified error
+      |(non-fast-forward / rejected / no upstream / auth-failed / force-push-blocked /
+      |unknown) so the agent can react programmatically without parsing raw stderr.""".stripMargin
+  override val examples = List(
+    ToolExample("Push current branch to its upstream", GitPushInput()),
+    ToolExample("First push of a feature branch",      GitPushInput(setUpstream = true)),
+    ToolExample("Push tags too",                       GitPushInput(tags = true)),
+    ToolExample("Force-with-lease (safer force)",      GitPushInput(forceWithLease = true)),
+    ToolExample("Explicit remote and branch",          GitPushInput(remote = Some("upstream"), branch = Some("feature/x")))
+  )
+  override val keywords = Set("git", "push", "publish", "upload", "remote", "upstream", "deploy", "sync")
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: GitPushInput, ctx: TurnContext): Task[GitPushOutput] =
+  override def executeOutput(input: GitPushInput, ctx: TurnContext): Task[GitPushOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       validateForcePushGate(input) match {
         case Some(reason) =>

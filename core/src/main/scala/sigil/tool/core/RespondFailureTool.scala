@@ -1,9 +1,11 @@
 package sigil.tool.core
 
+import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.{Event, Message, MessageDisposition}
+import sigil.event.{Message, MessageDisposition}
 import sigil.signal.EventState
-import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, ToolName, ToolResult}
 import sigil.tool.model.{RespondFailureInput, ResponseContent}
 
 /**
@@ -18,17 +20,19 @@ import sigil.tool.model.{RespondFailureInput, ResponseContent}
  * Message. This tool is kept in core for apps that prefer the
  * named-tool dispatch path.
  */
-case object RespondFailureTool extends TypedTool[RespondFailureInput](
-  name = ToolName("respond_failure"),
-  description =
-    """Signal that you can't complete the task. `recoverable` = true if a retry might succeed
-      |(transient: rate limits, network); false if permanent (missing permissions, unsupported input).""".stripMargin,
-  examples = Nil
-) with RespondFamilyTool {
-  override def paginate: Boolean = false
+case object RespondFailureTool extends RespondFamilyTool {
+  type Input  = RespondFailureInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[RespondFailureInput]]
+  val outputRW = summon[RW[TextToolOutput]]
 
-  override protected def executeTyped(input: RespondFailureInput, context: TurnContext): rapid.Stream[Event] = {
-    rapid.Stream.emits(List(Message(
+  val name = ToolName("respond_failure")
+  val description =
+    """Signal that you can't complete the task. `recoverable` = true if a retry might succeed
+      |(transient: rate limits, network); false if permanent (missing permissions, unsupported input).""".stripMargin
+
+  override def executeResult(input: RespondFailureInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    context.emit(Message(
       participantId  = context.caller,
       conversationId = context.conversation.id,
       topicId        = context.conversation.currentTopicId,
@@ -36,6 +40,5 @@ case object RespondFailureTool extends TypedTool[RespondFailureInput](
       disposition    = MessageDisposition.Failure(recoverable = input.recoverable),
       state          = EventState.Complete,
       modelId        = context.modelId
-    )))
-  }
+    )).map(_ => ToolResult.Success(TextToolOutput("")))
 }

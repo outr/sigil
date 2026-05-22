@@ -1,18 +1,14 @@
 package sigil.workflow.tool
 
-import lightdb.id.Id
-import rapid.{Stream, Task}
-import sigil.{Sigil, SpaceId, TurnContext}
-import sigil.event.{Event, Message, MessageRole, MessageVisibility}
-import sigil.signal.EventState
-import sigil.tool.model.ResponseContent
+import rapid.Task
+import sigil.{Sigil, TurnContext}
+import sigil.tool.{TextToolOutput, ToolResult}
 import sigil.workflow.{WorkflowSigil, WorkflowTemplate}
 
 /**
  * Shared plumbing for the agent-facing workflow management tools.
  * Resolves the host [[WorkflowSigil]] from the [[TurnContext]] and
- * provides the `accessibleSpaces` authz check + a `reply` helper
- * that emits the result as a `Role.Tool` Message.
+ * provides the `accessibleSpaces` authz checks.
  */
 trait WorkflowToolSupport {
   /** Cast the turn's host Sigil to its WorkflowSigil mixin. Tools
@@ -23,15 +19,15 @@ trait WorkflowToolSupport {
       case _ => Left("Workflow tools require the host Sigil to mix in WorkflowSigil.")
     }
 
-  /** Resolve the host [[WorkflowSigil]], run `body` against it, and
-    * emit the resulting text as a `Role.Tool` Message. When the host
-    * isn't a `WorkflowSigil` the error is emitted directly. Absorbs
-    * the host-unwrap + error-reply boilerplate shared by every
-    * workflow management tool. */
-  protected def withHost(ctx: TurnContext)(body: WorkflowSigil => Task[String]): Stream[Event] =
+  /** Resolve the host [[WorkflowSigil]] and run `body` against it,
+    * yielding a text [[ToolResult]]. When the host isn't a
+    * `WorkflowSigil` the resolution is a [[ToolResult.Failure]].
+    * Absorbs the host-unwrap boilerplate shared by every workflow
+    * management tool. */
+  protected def withHostResult(ctx: TurnContext)(body: WorkflowSigil => Task[String]): Task[ToolResult[TextToolOutput]] =
     workflowHost(ctx) match {
-      case Left(err)   => reply(ctx, err, isError = true)
-      case Right(host) => Stream.force(body(host).map(text => reply(ctx, text)))
+      case Left(err)   => Task.pure(ToolResult.failure(err))
+      case Right(host) => body(host).map(text => ToolResult.success(TextToolOutput(text)))
     }
 
   /** Authz check: confirm the caller's chain has access to the
@@ -59,15 +55,4 @@ trait WorkflowToolSupport {
           else Left(s"Workflow run lives in space $spaceValue — caller's chain isn't authorized.")
         }
     }
-
-  protected def reply(ctx: TurnContext, text: String, isError: Boolean = false): Stream[Event] =
-    Stream.emit[Event](Message(
-      participantId = ctx.caller,
-      conversationId = ctx.conversation.id,
-      topicId = ctx.conversation.currentTopicId,
-      content = Vector(ResponseContent.Text(text)),
-      state = EventState.Complete,
-      role = MessageRole.Tool,
-      visibility = MessageVisibility.All
-    ))
 }

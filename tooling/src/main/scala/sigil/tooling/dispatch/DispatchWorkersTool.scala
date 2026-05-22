@@ -1,11 +1,12 @@
 package sigil.tooling.dispatch
 
 import fabric.Json
+import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
 import sigil.script.{CompiledScript, ScriptBinding, ScriptExecutor}
 import sigil.tool.output.ToolOutputNode
-import sigil.tool.{ToolExample, TypedOutputTool, ToolName}
+import sigil.tool.{Tool, ToolExample, ToolName}
 import sigil.tooling.container.ContainerSupport
 
 /**
@@ -37,73 +38,77 @@ import sigil.tooling.container.ContainerSupport
  * mixes in `ScriptSigil`). When no executor is available the tool
  * surfaces a structured abort.
  */
-final class DispatchWorkersTool(scriptExecutor: Option[ScriptExecutor] = None)
-  extends TypedOutputTool[DispatchWorkersInput, DispatchWorkersOutput](
-    name = ToolName("dispatch_workers"),
-    description =
-      """Run an adhoc Scala `action` script over a container of items in parallel. The dispatcher
-        |compiles the action once, then runs it as N parallel workers. Composable with grep / LSP /
-        |any tool whose output is a paginated list, plus inline / file / filter containers via the
-        |producer tools.
-        |
-        |Two-phase confirm. First call with `confirmed = false` (the default): the action is
-        |compiled and a ScopePreview is returned without dispatching any worker. If the action does
-        |not compile, a CompileFailure with typed line / column / message errors is returned and no
-        |worker runs. Read the preview's `confirmCall` directive; re-invoke with `confirmed = true`
-        |to run.
-        |
-        |The `action` script is Scala 3, same evaluator and surface as `execute_script`. Per worker
-        |it has `items: List[Json]` (the group's item payloads — one element with the default
-        |groupSize=1) and `context: TurnContext` in scope. The script's trailing expression is the
-        |per-group worker result. Runtime errors in one worker are isolated — other workers still
-        |run.
-        |
-        |Items come from any container. Producers:
-        |  - Any paginated tool (grep, lsp_find_references, lsp_workspace_symbols, ...) — pass its
-        |    `callId` as `itemsId`.
-        |  - `create_container([items])` — assemble a container from an inline list.
-        |  - `load_file_as_container(path, parser)` — read a file into a container.
-        |  - `filter_container(sourceId, predicate)` — narrow an existing container.
-        |
-        |Required: `itemsId` (container reference), `action` (the per-group script). `groupSize`
-        |(default 1) batches items into one worker invocation — the action handles batching
-        |internally. `itemsAt` (default 0) picks the tree level to dispatch over. `itemsLimit` caps
-        |the count consumed without modifying the source. `maxParallel` (default 5) caps concurrent
-        |worker invocations; `maxItems` (default 10000) caps the total item count to avoid runaway
-        |work.""".stripMargin,
-    keywords = Set(
-      "dispatch", "workers", "parallel", "per-item", "per item",
-      "refactor", "rewrite", "modify", "multi-file", "across files", "worker",
-      "per-match", "regex", "code change", "edit", "transform",
-      "find", "replace", "find and replace", "search and replace",
-      "search and edit", "find and edit", "bulk edit", "bulk replace",
-      "rewrite across files", "remove", "delete pattern", "substitute",
-      "search", "match", "classify", "annotate", "extract", "batch",
-      "loop", "map", "fan out", "action", "script"
+final class DispatchWorkersTool(scriptExecutor: Option[ScriptExecutor] = None) extends Tool
+  with sigil.tool.DestructiveExternalTool {
+  type Input  = DispatchWorkersInput
+  type Output = DispatchWorkersOutput
+  val inputRW  = summon[RW[DispatchWorkersInput]]
+  val outputRW = summon[RW[DispatchWorkersOutput]]
+
+  val name = ToolName("dispatch_workers")
+  val description =
+    """Run an adhoc Scala `action` script over a container of items in parallel. The dispatcher
+      |compiles the action once, then runs it as N parallel workers. Composable with grep / LSP /
+      |any tool whose output is a paginated list, plus inline / file / filter containers via the
+      |producer tools.
+      |
+      |Two-phase confirm. First call with `confirmed = false` (the default): the action is
+      |compiled and a ScopePreview is returned without dispatching any worker. If the action does
+      |not compile, a CompileFailure with typed line / column / message errors is returned and no
+      |worker runs. Read the preview's `confirmCall` directive; re-invoke with `confirmed = true`
+      |to run.
+      |
+      |The `action` script is Scala 3, same evaluator and surface as `execute_script`. Per worker
+      |it has `items: List[Json]` (the group's item payloads — one element with the default
+      |groupSize=1) and `context: TurnContext` in scope. The script's trailing expression is the
+      |per-group worker result. Runtime errors in one worker are isolated — other workers still
+      |run.
+      |
+      |Items come from any container. Producers:
+      |  - Any paginated tool (grep, lsp_find_references, lsp_workspace_symbols, ...) — pass its
+      |    `callId` as `itemsId`.
+      |  - `create_container([items])` — assemble a container from an inline list.
+      |  - `load_file_as_container(path, parser)` — read a file into a container.
+      |  - `filter_container(sourceId, predicate)` — narrow an existing container.
+      |
+      |Required: `itemsId` (container reference), `action` (the per-group script). `groupSize`
+      |(default 1) batches items into one worker invocation — the action handles batching
+      |internally. `itemsAt` (default 0) picks the tree level to dispatch over. `itemsLimit` caps
+      |the count consumed without modifying the source. `maxParallel` (default 5) caps concurrent
+      |worker invocations; `maxItems` (default 10000) caps the total item count to avoid runaway
+      |work.""".stripMargin
+  override val keywords = Set(
+    "dispatch", "workers", "parallel", "per-item", "per item",
+    "refactor", "rewrite", "modify", "multi-file", "across files", "worker",
+    "per-match", "regex", "code change", "edit", "transform",
+    "find", "replace", "find and replace", "search and replace",
+    "search and edit", "find and edit", "bulk edit", "bulk replace",
+    "rewrite across files", "remove", "delete pattern", "substitute",
+    "search", "match", "classify", "annotate", "extract", "batch",
+    "loop", "map", "fan out", "action", "script"
+  )
+  override val examples = List(
+    ToolExample(
+      "Preview dispatching an action over a grep result (confirmed=false)",
+      DispatchWorkersInput(
+        itemsId = lightdb.id.Id[ToolOutputNode]("example-grep-call-id"),
+        action  = "items.head"
+      )
     ),
-    examples = List(
-      ToolExample(
-        "Preview dispatching an action over a grep result (confirmed=false)",
-        DispatchWorkersInput(
-          itemsId = lightdb.id.Id[ToolOutputNode]("example-grep-call-id"),
-          action  = "items.head"
-        )
-      ),
-      ToolExample(
-        "Uppercase a field of each item (confirmed=true)",
-        DispatchWorkersInput(
-          itemsId   = lightdb.id.Id[ToolOutputNode]("example-list-container-id"),
-          action    = "fabric.Str(items.head(\"name\").asString.toUpperCase)",
-          confirmed = true
-        )
+    ToolExample(
+      "Uppercase a field of each item (confirmed=true)",
+      DispatchWorkersInput(
+        itemsId   = lightdb.id.Id[ToolOutputNode]("example-list-container-id"),
+        action    = "fabric.Str(items.head(\"name\").asString.toUpperCase)",
+        confirmed = true
       )
     )
-  ) with sigil.tool.DestructiveExternalTool {
+  )
 
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: DispatchWorkersInput,
-                                      ctx: TurnContext): Task[DispatchWorkersOutput] = {
+  override def executeOutput(input: DispatchWorkersInput,
+                             ctx: TurnContext): Task[DispatchWorkersOutput] = {
     if (input.groupSize < 1) {
       return Task.pure(DispatchWorkersOutput.DispatchResult(
         sessionId    = rapid.Unique(),

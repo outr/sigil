@@ -1,12 +1,9 @@
 package sigil.mcp
 
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.{Event, Message, MessageVisibility, MessageRole}
-import sigil.signal.EventState
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
-import sigil.tool.model.ResponseContent
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class AddMcpServerInput(name: String,
                              command: Option[String] = None,
@@ -22,17 +19,22 @@ case class AddMcpServerInput(name: String,
  * transport. Persisted via [[McpManager.addConfig]] so the server
  * is available across restarts; first call lazily connects.
  */
-final class AddMcpServerTool(manager: McpManager) extends TypedTool[AddMcpServerInput](
-  name = ToolName("add_mcp_server"),
-  description =
+final class AddMcpServerTool(manager: McpManager) extends Tool {
+  type Input  = AddMcpServerInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[AddMcpServerInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("add_mcp_server")
+  val description =
     """Register an MCP (Model Context Protocol) server.
       |
       |Use either `command` (+ optional `args`) for stdio transport, or `url` (+ optional `headers`) for HTTP+SSE.
       |`prefix` (optional) is prepended to every tool name advertised by this server, disambiguating cross-server collisions.
       |`roots` (optional) lists filesystem workspace roots to advertise to filesystem-aware servers.
       |
-      |Persists the config; the server is available across restarts and connects lazily on first use.""".stripMargin,
-  examples = List(
+      |Persists the config; the server is available across restarts and connects lazily on first use.""".stripMargin
+  override val examples = List(
     ToolExample(
       "stdio fetch server",
       AddMcpServerInput(name = "fetch", command = Some("mcp-server-fetch"), prefix = Some("fetch_"))
@@ -42,12 +44,10 @@ final class AddMcpServerTool(manager: McpManager) extends TypedTool[AddMcpServer
       AddMcpServerInput(name = "github", url = Some("https://mcp.example.com"), headers = Map("Authorization" -> "Bearer ..."))
     )
   )
-) {
-  override def paginate: Boolean = false
 
   import spice.net.{TLDValidation, URL}
 
-  override protected def executeTyped(input: AddMcpServerInput, context: TurnContext): Stream[Event] = {
+  override def executeResult(input: AddMcpServerInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
     val transport = (input.command, input.url) match {
       case (Some(cmd), _) => Right(McpTransport.Stdio(cmd, input.args))
       case (_, Some(urlStr)) =>
@@ -58,7 +58,7 @@ final class AddMcpServerTool(manager: McpManager) extends TypedTool[AddMcpServer
       case _ => Left("Either `command` or `url` must be provided.")
     }
     transport match {
-      case Left(msg) => Stream.emit(reply(context, msg, isError = true))
+      case Left(msg) => Task.pure(ToolResult.failure(msg))
       case Right(t) =>
         val cfg = McpServerConfig(
           name = input.name,
@@ -66,22 +66,11 @@ final class AddMcpServerTool(manager: McpManager) extends TypedTool[AddMcpServer
           prefix = input.prefix,
           roots = input.roots
         )
-        Stream.force(manager.addConfig(cfg).map { stored =>
-          Stream.emit(reply(context, s"MCP server '${stored.name}' registered.", isError = false))
+        manager.addConfig(cfg).map { stored =>
+          ToolResult.Success(TextToolOutput(s"MCP server '${stored.name}' registered."))
         }.handleError { e =>
-          Task.pure(Stream.emit(reply(context, s"Failed to register: ${e.getMessage}", isError = true)))
-        })
+          Task.pure(ToolResult.failure(s"Failed to register: ${e.getMessage}"))
+        }
     }
   }
-
-  private def reply(context: TurnContext, text: String, isError: Boolean): Event =
-    Message(
-      participantId = context.caller,
-      conversationId = context.conversation.id,
-      topicId = context.conversation.currentTopicId,
-      content = Vector(ResponseContent.Text(text)),
-      state = EventState.Complete,
-      role = MessageRole.Tool,
-      visibility = MessageVisibility.All
-    )
 }

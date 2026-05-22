@@ -1,10 +1,11 @@
 package sigil.tool.git
 
+import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
 import sigil.tool.fs.{FileSystemContext, WorkspacePathResolver}
 import sigil.tool.model.{GitShowInput, GitShowOutput}
-import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolExample, ToolName}
 
 /**
  * Read-only `git_show` — render a single commit. Returns a typed
@@ -12,20 +13,23 @@ import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
  * structured hunks (the same shape as `git_diff format = "hunks"`).
  */
 final class GitShowTool(context: FileSystemContext)
-  extends TypedOutputTool[GitShowInput, GitShowOutput](
-    name = ToolName("git_show"),
-    description =
-      """Show a single commit's metadata + diff. `sha` accepts any git revision spec (`HEAD`, `HEAD~1`,
-        |a short sha, a tag). Returns the commit (sha, author, date, subject, body) plus structured hunks.""".stripMargin,
-    examples = List(
-      ToolExample("Show HEAD",          GitShowInput(sha = "HEAD")),
-      ToolExample("Show a specific sha", GitShowInput(sha = "abc1234"))
-    ),
-    keywords = Set("git", "show", "commit", "inspect")
-  ) with sigil.tool.ReadOnlyExternalTool {
+  extends Tool with sigil.tool.ReadOnlyExternalTool {
+  type Input  = GitShowInput
+  type Output = GitShowOutput
+  val inputRW  = summon[RW[GitShowInput]]
+  val outputRW = summon[RW[GitShowOutput]]
+  val name = ToolName("git_show")
+  val description =
+    """Show a single commit's metadata + diff. `sha` accepts any git revision spec (`HEAD`, `HEAD~1`,
+      |a short sha, a tag). Returns the commit (sha, author, date, subject, body) plus structured hunks.""".stripMargin
+  override val examples = List(
+    ToolExample("Show HEAD",          GitShowInput(sha = "HEAD")),
+    ToolExample("Show a specific sha", GitShowInput(sha = "abc1234"))
+  )
+  override val keywords = Set("git", "show", "commit", "inspect")
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: GitShowInput, ctx: TurnContext): Task[GitShowOutput] =
+  override def executeOutput(input: GitShowInput, ctx: TurnContext): Task[GitShowOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val format = "%H%x00%an%x00%aI%x00%s%x00%b%x1e"
       // `--patch` is implicit for `git show`, but we add the

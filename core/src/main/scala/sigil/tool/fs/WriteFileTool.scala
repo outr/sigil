@@ -1,11 +1,12 @@
 package sigil.tool.fs
 
+import fabric.rw.*
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.TurnContext
 import sigil.storage.{FileVersion, WriteResult}
 import sigil.tool.model.{WriteFileInput, WriteFileOutput}
-import sigil.tool.{PlaceholderInputDetector, ToolExample, ToolName, ToolResult, TypedOutputTool}
+import sigil.tool.{PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolResult}
 
 /**
  * Write `content` (UTF-8) to `filePath`, creating parent directories
@@ -20,29 +21,32 @@ import sigil.tool.{PlaceholderInputDetector, ToolExample, ToolName, ToolResult, 
  * with `hash = None`.
  */
 final class WriteFileTool(context: FileSystemContext)
-  extends TypedOutputTool[WriteFileInput, WriteFileOutput](
-    name = ToolName("write_file"),
-    description =
-      """Write content (UTF-8) to a file. Creates parent directories. Overwrites existing content.
-        |
-        |Pass `expectedHash` (SHA-256 of the file's last-known contents) to enable safe-edit:
-        |the write commits only if no other writer has modified the file since you saw it. On
-        |mismatch, the result carries the file's current contents so you can re-evaluate the
-        |change against the new state.
-        |
-        |Output: `Success(bytesWritten, hash?) | Stale(currentHash, currentContent) | NotFound`.""".stripMargin,
-    examples = List(
-      ToolExample("Save text to a new file", WriteFileInput(filePath = "notes.txt", content = "Some notes.")),
-      ToolExample(
-        "Update a file safely",
-        WriteFileInput(filePath = "config.yaml", content = "debug: true", expectedHash = Some("abc123..."))
-      )
-    ),
-    keywords = Set("file", "write", "save", "create", "output")
-  ) with sigil.tool.DestructiveExternalTool {
+  extends Tool with sigil.tool.DestructiveExternalTool {
+  type Input  = WriteFileInput
+  type Output = WriteFileOutput
+  val inputRW  = summon[RW[WriteFileInput]]
+  val outputRW = summon[RW[WriteFileOutput]]
+  val name = ToolName("write_file")
+  val description =
+    """Write content (UTF-8) to a file. Creates parent directories. Overwrites existing content.
+      |
+      |Pass `expectedHash` (SHA-256 of the file's last-known contents) to enable safe-edit:
+      |the write commits only if no other writer has modified the file since you saw it. On
+      |mismatch, the result carries the file's current contents so you can re-evaluate the
+      |change against the new state.
+      |
+      |Output: `Success(bytesWritten, hash?) | Stale(currentHash, currentContent) | NotFound`.""".stripMargin
+  override val examples = List(
+    ToolExample("Save text to a new file", WriteFileInput(filePath = "notes.txt", content = "Some notes.")),
+    ToolExample(
+      "Update a file safely",
+      WriteFileInput(filePath = "config.yaml", content = "debug: true", expectedHash = Some("abc123..."))
+    )
+  )
+  override val keywords = Set("file", "write", "save", "create", "output")
   override def paginate: Boolean = false
 
-  override protected def executeTypedResult(input: WriteFileInput, ctx: TurnContext): Task[ToolResult[WriteFileOutput]] =
+  override def executeResult(input: WriteFileInput, ctx: TurnContext): Task[ToolResult[WriteFileOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
       case None        => runWrite(input, ctx).map(ToolResult.success(_))

@@ -12,7 +12,7 @@ import fabric.rw.*
  *     (not a repo, permission denied, etc.); `error` is git's stderr
  *     and `exitCode` the process exit code.
  */
-enum GitStatusOutput derives RW {
+enum GitStatusOutput extends sigil.tool.ToolOutput derives RW {
 
   case Reported(branch: String,
                 ahead: Int,

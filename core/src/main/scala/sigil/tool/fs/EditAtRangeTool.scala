@@ -1,11 +1,13 @@
 package sigil.tool.fs
 
+import fabric.io.JsonFormatter
+import fabric.rw.*
 import lightdb.time.Timestamp
 import rapid.Task
 import sigil.TurnContext
 import sigil.storage.{FileVersion, WriteResult}
 import sigil.tool.model.{EditAtRangeInput, EditAtRangeOutput}
-import sigil.tool.{PlaceholderInputDetector, ToolExample, ToolName, ToolResult, TypedOutputTool}
+import sigil.tool.{PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolResult}
 
 /**
  * Position-based file edit. Replaces the half-open range
@@ -20,48 +22,56 @@ import sigil.tool.{PlaceholderInputDetector, ToolExample, ToolName, ToolResult, 
  * other writer has modified the file since the hash was issued.
  */
 final class EditAtRangeTool(context: FileSystemContext)
-  extends TypedOutputTool[EditAtRangeInput, EditAtRangeOutput](
-    name = ToolName("edit_at_range"),
-    description =
-      """Replace a range of text in a file with new content. The range is specified by
-        |(startLine, startChar) and (endLine, endChar) — both 0-indexed, both half-open
-        |([start, end)). Position-based edits sidestep the whitespace / line-ending
-        |sensitivity of string-based edits — use this when the file has been read and the
-        |exact span is known.
-        |
-        |  - `expectedHash` (optional) — SHA-256 of the file's last-known contents. The
-        |    edit commits only if no other writer has modified the file since.
-        |  - `newText` — the replacement content. Empty string deletes the range.
-        |    Pure-insert by setting end == start.
-        |
-        |Output: `Success(hash?, lineDelta, byteDelta)`.""".stripMargin,
-    examples = List(
-      ToolExample(
-        "Replace a single line",
-        EditAtRangeInput(filePath = "src/main.scala", startLine = 4, startChar = 0, endLine = 5, endChar = 0,
-          newText = "  val x = 42\n")
-      ),
-      ToolExample(
-        "Insert at a specific column",
-        EditAtRangeInput(filePath = "config.toml", startLine = 0, startChar = 0, endLine = 0, endChar = 0,
-          newText = "# header\n")
-      ),
-      ToolExample(
-        "Delete a multi-line block",
-        EditAtRangeInput(filePath = "src/util.scala", startLine = 10, startChar = 0, endLine = 14, endChar = 0,
-          newText = "")
-      )
+  extends Tool with sigil.tool.DestructiveExternalTool {
+  type Input  = EditAtRangeInput
+  type Output = EditAtRangeOutput
+  val inputRW  = summon[RW[EditAtRangeInput]]
+  val outputRW = summon[RW[EditAtRangeOutput]]
+  val name = ToolName("edit_at_range")
+  val description =
+    """Replace a range of text in a file with new content. The range is specified by
+      |(startLine, startChar) and (endLine, endChar) — both 0-indexed, both half-open
+      |([start, end)). Position-based edits sidestep the whitespace / line-ending
+      |sensitivity of string-based edits — use this when the file has been read and the
+      |exact span is known.
+      |
+      |  - `expectedHash` (optional) — SHA-256 of the file's last-known contents. The
+      |    edit commits only if no other writer has modified the file since.
+      |  - `newText` — the replacement content. Empty string deletes the range.
+      |    Pure-insert by setting end == start.
+      |
+      |Output: `Success(hash?, lineDelta, byteDelta)`.""".stripMargin
+  override val examples = List(
+    ToolExample(
+      "Replace a single line",
+      EditAtRangeInput(filePath = "src/main.scala", startLine = 4, startChar = 0, endLine = 5, endChar = 0,
+        newText = "  val x = 42\n")
     ),
-    keywords = Set("file", "edit", "range", "position", "line", "column", "replace", "modify", "rewrite", "patch", "refactor")
-  ) with sigil.tool.DestructiveExternalTool {
+    ToolExample(
+      "Insert at a specific column",
+      EditAtRangeInput(filePath = "config.toml", startLine = 0, startChar = 0, endLine = 0, endChar = 0,
+        newText = "# header\n")
+    ),
+    ToolExample(
+      "Delete a multi-line block",
+      EditAtRangeInput(filePath = "src/util.scala", startLine = 10, startChar = 0, endLine = 14, endChar = 0,
+        newText = "")
+    )
+  )
+  override val keywords =
+    Set("file", "edit", "range", "position", "line", "column", "replace", "modify", "rewrite", "patch", "refactor")
 
   override def paginate: Boolean = false
 
-  override protected def executeTypedResult(input: EditAtRangeInput, ctx: TurnContext): Task[ToolResult[EditAtRangeOutput]] =
+  override def executeResult(input: EditAtRangeInput, ctx: TurnContext): Task[ToolResult[EditAtRangeOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
       case None        => runEdit(input, ctx)
     }
+
+  private def renderInputArgs(input: EditAtRangeInput): Option[String] =
+    try Some(JsonFormatter.Compact(inputRW.read(input)))
+    catch { case _: Throwable => None }
 
   private def runEdit(input: EditAtRangeInput, ctx: TurnContext): Task[ToolResult[EditAtRangeOutput]] = {
     val argsJson = renderInputArgs(input)

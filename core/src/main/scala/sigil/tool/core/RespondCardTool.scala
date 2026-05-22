@@ -1,9 +1,11 @@
 package sigil.tool.core
 
+import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.{Event, Message}
+import sigil.event.Message
 import sigil.signal.EventState
-import sigil.tool.{ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, ToolName, ToolResult}
 import sigil.tool.model.RespondCardInput
 
 /**
@@ -18,9 +20,14 @@ import sigil.tool.model.RespondCardInput
  * use `respond_cards` instead — it emits all cards in a single
  * Message rather than forcing N separate ones.
  */
-case object RespondCardTool extends TypedTool[RespondCardInput](
-  name = ToolName("respond_card"),
-  description =
+case object RespondCardTool extends RespondFamilyTool {
+  type Input  = RespondCardInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[RespondCardInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("respond_card")
+  val description =
     """Emit a composite Card — a titled, optionally-kinded grouping of standard content blocks
       |(Heading, Field, Code, ItemList, Image, Options, Table, etc.). Use when several blocks
       |belong together as one logical unit (a status panel, a recipe summary, a metric card).
@@ -29,18 +36,15 @@ case object RespondCardTool extends TypedTool[RespondCardInput](
       |- `topicSummary` — 1-2 sentences.
       |- `card.title` — optional card header (renderer styles distinct from inner Heading blocks).
       |- `card.kind` — optional UI styling hint (e.g. "alert", "info", "metric", "recipe").
-      |- `card.sections` — the building blocks, in order. Recursive: nested Cards are allowed.""".stripMargin,
-  examples = Nil
-) with RespondFamilyTool {
-  override def paginate: Boolean = false
+      |- `card.sections` — the building blocks, in order. Recursive: nested Cards are allowed.""".stripMargin
 
-  override protected def executeTyped(input: RespondCardInput, context: TurnContext): rapid.Stream[Event] =
-    rapid.Stream.emits(List(Message(
+  override def executeResult(input: RespondCardInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    context.emit(Message(
       participantId = context.caller,
       conversationId = context.conversation.id,
       topicId = context.conversation.currentTopicId,
       content = Vector(input.card),
       state = EventState.Complete,
       modelId = context.modelId
-    )))
+    )).map(_ => ToolResult.Success(TextToolOutput("")))
 }

@@ -1,31 +1,35 @@
 package sigil.tool.consult
 
+import fabric.rw.*
 import lightdb.id.Id
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.{Sigil, TurnContext}
 import sigil.db.Model
-import sigil.event.{Event, Message}
 import sigil.participant.ParticipantId
-import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent, StopReason, TokenUsage}
-import sigil.tool.model.ResponseContent
-import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent, StopReason}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 import scala.reflect.ClassTag
 
 /**
  * One-shot LLM consultation. Two surfaces on the same object:
  *
- * 1. `executeTyped` — the LLM-callable path. The agent invokes the tool
+ * 1. `executeResult` — the LLM-callable path. The agent invokes the tool
  *    with system + user prompts; the consulted model returns free-form
- *    text, which is emitted as a [[Message]] back into the conversation.
+ *    text, which becomes the tool's [[TextToolOutput]] result.
  *
  * 2. [[invoke]] — the framework-callable path. Returns a typed
  *    `Option[I]` directly, no events emitted. Used by framework
  *    machinery that needs structured sub-decisions.
  */
-case object ConsultTool extends TypedTool[ConsultInput](
-  name = ToolName("consult"),
-  description =
+case object ConsultTool extends Tool {
+  type Input  = ConsultInput
+  type Output = TextToolOutput
+  val inputRW: RW[ConsultInput]    = summon[RW[ConsultInput]]
+  val outputRW: RW[TextToolOutput] = summon[RW[TextToolOutput]]
+
+  val name: ToolName = ToolName("consult")
+  val description: String =
     """Consult another model — or yourself with no conversation history — for a focused sub-question.
       |
       |Use this when:
@@ -42,8 +46,9 @@ case object ConsultTool extends TypedTool[ConsultInput](
       |
       |`systemPrompt` — set the consulted model's role / context for this question. One paragraph max.
       |
-      |`userPrompt` — the actual question or task. Be specific; the consulted model has no other context.""".stripMargin,
-  examples = List(
+      |`userPrompt` — the actual question or task. Be specific; the consulted model has no other context.""".stripMargin
+
+  override val examples: List[ToolExample] = List(
     ToolExample(
       "Ask a stronger model for a focused legal interpretation",
       ConsultInput(
@@ -53,10 +58,10 @@ case object ConsultTool extends TypedTool[ConsultInput](
       )
     )
   )
-) {
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: ConsultInput, context: TurnContext): Stream[Event] = Stream.force {
+  override def executeResult(input: ConsultInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.providerFor(input.modelId, context.chain).flatMap { provider =>
       val request = OneShotRequest(
         modelId = input.modelId,
@@ -65,17 +70,10 @@ case object ConsultTool extends TypedTool[ConsultInput](
         chain = context.chain
       )
       provider(request).toList.map { events =>
-        val text = ConsultTool.collectText(events)
-        val message = Message(
-          participantId = context.caller,
-          conversationId = context.conversation.id,
-          topicId = context.conversation.currentTopicId,
-          content = Vector(ResponseContent.Text(if (text.isEmpty) "(no response)" else text))
-        )
-        Stream.emits(List[Event](message))
+        val text = collectText(events)
+        ToolResult.success(TextToolOutput(if (text.isEmpty) "(no response)" else text))
       }
     }
-  }
 
   /**
    * Framework-facing typed consult. Builds a one-shot provider request

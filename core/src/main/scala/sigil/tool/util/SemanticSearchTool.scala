@@ -1,10 +1,11 @@
 package sigil.tool.util
 
+import fabric.rw.*
 import rapid.Task
 import sigil.{SpaceId, TurnContext}
 import sigil.conversation.MemoryStatus
 import sigil.tool.model.{SemanticSearchHit, SemanticSearchInput, SemanticSearchOutput}
-import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolExample, ToolName}
 
 /**
  * The unified memory-retrieval tool. Wraps
@@ -22,24 +23,26 @@ import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
  *
  * Emits a typed [[SemanticSearchOutput]] (`query`, `memories: List[SemanticSearchHit]`, `count`).
  */
-case object SemanticSearchTool extends TypedOutputTool[SemanticSearchInput, SemanticSearchOutput](
-  name = ToolName("semantic_search"),
-  description =
+case object SemanticSearchTool extends Tool with sigil.tool.ReadOnlyInternalTool {
+  type Input  = SemanticSearchInput
+  type Output = SemanticSearchOutput
+  val inputRW  = summon[RW[SemanticSearchInput]]
+  val outputRW = summon[RW[SemanticSearchOutput]]
+  val name = ToolName("semantic_search")
+  val description =
     """Search persisted memories. Returns matches ranked by embedding similarity when a vector
       |index is wired (otherwise Lucene/substring fallback). Use to recall a previously stored
       |fact before asking the user the same thing again. Returns
-      |`{query, memories: [{memoryId, key?, label, summary, fact, pinned, archived, confidence, justification?}], count}`.""".stripMargin,
-  examples = List(
+      |`{query, memories: [{memoryId, key?, label, summary, fact, pinned, archived, confidence, justification?}], count}`.""".stripMargin
+  override val examples = List(
     ToolExample("Recall a preference", SemanticSearchInput(query = "user's preferred coding style")),
     ToolExample("Top 3 matches only", SemanticSearchInput(query = "deadline next week", limit = 3)),
     ToolExample("Include archived versions",
       SemanticSearchInput(query = "deploy target", includeHistory = true))
-  ),
-  keywords = Set("semantic", "search", "memory", "recall", "remember", "find", "vector", "similarity", "rag")
-) with sigil.tool.ReadOnlyInternalTool {
-  override def paginate: Boolean = false
+  )
+  override val keywords = Set("semantic", "search", "memory", "recall", "remember", "find", "vector", "similarity", "rag")
 
-  override protected def executeTyped(input: SemanticSearchInput, ctx: TurnContext): Task[SemanticSearchOutput] =
+  override def executeOutput(input: SemanticSearchInput, ctx: TurnContext): Task[SemanticSearchOutput] =
     resolveSpaces(input, ctx).flatMap { spaces =>
       if (spaces.isEmpty)
         Task.pure(SemanticSearchOutput(query = input.query, memories = Nil, count = 0))

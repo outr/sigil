@@ -8,7 +8,7 @@ import fabric.rw.*
  *   - [[GitLogOutput.Listed]] — `commits` in newest-first order.
  *   - [[GitLogOutput.Failed]] — `git log` exited non-zero.
  */
-enum GitLogOutput derives RW {
+enum GitLogOutput extends sigil.tool.ToolOutput derives RW {
 
   case Listed(commits: List[GitCommitEntry])
 

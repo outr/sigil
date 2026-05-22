@@ -1,10 +1,9 @@
 package sigil.metals
 
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 case class MetalsStatusInput() extends ToolInput derives RW
 
@@ -17,38 +16,39 @@ case class MetalsStatusInput() extends ToolInput derives RW
  * actually running, and for surfaces that want to render a Metals
  * chip per workspace.
  */
-final class MetalsStatusTool extends TypedTool[MetalsStatusInput](
-  name = ToolName("metals_status"),
-  description =
+final class MetalsStatusTool extends Tool {
+  type Input  = MetalsStatusInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[MetalsStatusInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("metals_status")
+  val description =
     """List every workspace currently backed by a Metals subprocess. Reports the workspace path,
       |MCP endpoint URL, alive flag, and milliseconds since the last touch (so you can see which
-      |sessions are about to be reaped by the idle sweeper).""".stripMargin,
-  keywords = Set(
+      |sessions are about to be reaped by the idle sweeper).""".stripMargin
+  override val keywords = Set(
     "metals", "status", "health", "indexing", "ready",
     "scala", "compile", "subprocess", "running", "lsp"
   )
-) {
-  override def paginate: Boolean = false
 
   import MetalsToolSupport.*
 
-  override protected def executeTyped(input: MetalsStatusInput, context: TurnContext): Stream[Event] = {
+  override def executeResult(input: MetalsStatusInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
     val sigil = context.sigil
-    Stream.force(manager(sigil) match {
+    manager(sigil) match {
       case None =>
-        Task.pure(Stream.emit[Event](reply(
-          context,
-          "metals_status: this Sigil instance doesn't include sigil-metals — mix in MetalsSigil.",
-          isError = true
-        )))
+        Task.pure(ToolResult.failure(
+          "metals_status: this Sigil instance doesn't include sigil-metals — mix in MetalsSigil."
+        ))
       case Some(mm) =>
         mm.status.map { entries =>
           val text =
             if (entries.isEmpty) "No Metals subprocesses running."
             else entries.map(render).mkString("\n")
-          Stream.emit[Event](reply(context, text))
+          ToolResult.Success(TextToolOutput(text))
         }
-    })
+    }
   }
 
   private def render(s: MetalsManager.WorkspaceStatus): String = {

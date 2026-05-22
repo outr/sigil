@@ -1,10 +1,9 @@
 package sigil.workflow.tool
 
 import fabric.rw.*
-import rapid.Stream
+import rapid.Task
 import sigil.{GlobalSpace, SpaceId, TurnContext}
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import sigil.workflow.{WorkflowStepInput, WorkflowTemplate, WorkflowTrigger}
 
 case class CreateWorkflowInput(name: String,
@@ -26,9 +25,13 @@ case class CreateWorkflowInput(name: String,
  * `GlobalSpace`-only callers (the framework default), the
  * template is global.
  */
-final class CreateWorkflowTool extends TypedTool[CreateWorkflowInput](
-  name = ToolName("create_workflow"),
-  description =
+final class CreateWorkflowTool extends Tool with WorkflowToolSupport {
+  type Input  = CreateWorkflowInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[CreateWorkflowInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+  val name = ToolName("create_workflow")
+  val description =
     """Create a new workflow template.
       |
       |`name` is the template's identifier. `steps` is the typed step list (Job / Condition /
@@ -36,8 +39,8 @@ final class CreateWorkflowTool extends TypedTool[CreateWorkflowInput](
       |firing conditions (conversation message, time / cron, webhook, cross-workflow event,
       |plus app-defined ones).
       |
-      |Returns the persisted template's id.""".stripMargin,
-  examples = List(
+      |Returns the persisted template's id.""".stripMargin
+  override val examples = List(
     ToolExample(
       "minimal LLM-prompt workflow",
       CreateWorkflowInput(
@@ -50,12 +53,10 @@ final class CreateWorkflowTool extends TypedTool[CreateWorkflowInput](
         ))
       )
     )
-  ),
-  keywords = Set("workflow", "create", "compose", "automation")
-) with WorkflowToolSupport {
-  override def paginate: Boolean = false
+  )
+  override val keywords = Set("workflow", "create", "compose", "automation")
 
-  override protected def executeTyped(input: CreateWorkflowInput, ctx: TurnContext): Stream[Event] = withHost(ctx) { host =>
+  override def executeResult(input: CreateWorkflowInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
     host.accessibleSpaces(ctx.chain).flatMap { spaces =>
       val callerSpace: SpaceId = spaces.headOption.getOrElse(GlobalSpace)
       val template = WorkflowTemplate(

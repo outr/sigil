@@ -3,12 +3,12 @@ package sigil.tool.core
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolOutput}
 
 case class CancelFrameworkWorkflowInput(workflowId: String,
                                         reason: Option[String] = None) extends ToolInput derives RW
 
-enum CancelFrameworkWorkflowOutput derives RW {
+enum CancelFrameworkWorkflowOutput extends ToolOutput derives RW {
 
   /** Cancellation flag flipped successfully — the workflow body
     * will honour it at its next checkpoint and emit a
@@ -40,23 +40,25 @@ enum CancelFrameworkWorkflowOutput derives RW {
  * cancelling. The `find_capability` keyword set distinguishes them
  * ("framework workflow" vs "workflow run / strider").
  */
-case object CancelFrameworkWorkflowTool extends TypedOutputTool[CancelFrameworkWorkflowInput, CancelFrameworkWorkflowOutput](
-  name = ToolName("cancel_framework_workflow"),
-  description =
+case object CancelFrameworkWorkflowTool extends Tool {
+  type Input  = CancelFrameworkWorkflowInput
+  type Output = CancelFrameworkWorkflowOutput
+  val inputRW  = summon[RW[CancelFrameworkWorkflowInput]]
+  val outputRW = summon[RW[CancelFrameworkWorkflowOutput]]
+  val name = ToolName("cancel_framework_workflow")
+  val description =
     """Cancel a framework-internal workflow (pre-flight, compress, frame-load, …) by its
       |workflow id. Cooperative: the workflow body honours the cancellation at its next
       |internal checkpoint, so very short operations may complete before the cancel takes
-      |effect. Idempotent.""".stripMargin,
-  examples = List(
+      |effect. Idempotent.""".stripMargin
+  override val examples = List(
     ToolExample("Cancel a slow compress",
       CancelFrameworkWorkflowInput(workflowId = "wf-abc-123", reason = Some("user clicked cancel")))
-  ),
-  keywords = Set("cancel", "framework", "workflow", "abort", "stop", "preflight", "compress")
-) {
-  override def paginate: Boolean = false
+  )
+  override val keywords = Set("cancel", "framework", "workflow", "abort", "stop", "preflight", "compress")
 
-  override protected def executeTyped(input: CancelFrameworkWorkflowInput,
-                                       ctx: TurnContext): Task[CancelFrameworkWorkflowOutput] = Task {
+  override def executeOutput(input: CancelFrameworkWorkflowInput,
+                             ctx: TurnContext): Task[CancelFrameworkWorkflowOutput] = Task {
     val sigil = ctx.sigil
     val reason = input.reason.getOrElse(s"agent ${ctx.caller}")
     sigil.activeFrameworkWorkflows.find(_.workflowId == input.workflowId) match {

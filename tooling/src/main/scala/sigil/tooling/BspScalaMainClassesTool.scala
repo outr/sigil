@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{BspMainClassEntry, BspMainClassesResult, BspTargetMainClasses}
 
 import scala.jdk.CollectionConverters.*
@@ -17,19 +17,24 @@ case class BspScalaMainClassesInput(projectRoot: String,
  * calling [[BspRunTool]] when the agent doesn't know which class
  * to run.
  */
-final class BspScalaMainClassesTool(val manager: BspManager) extends TypedOutputTool[BspScalaMainClassesInput, BspMainClassesResult](
-  name = ToolName("bsp_scala_main_classes"),
-  description =
+final class BspScalaMainClassesTool(val manager: BspManager) extends Tool with BspToolSupport {
+  type Input  = BspScalaMainClassesInput
+  type Output = BspMainClassesResult
+  val inputRW  = summon[RW[BspScalaMainClassesInput]]
+  val outputRW = summon[RW[BspMainClassesResult]]
+
+  val name = ToolName("bsp_scala_main_classes")
+  val description =
     """List discovered Scala main classes for each target.
       |
       |`projectRoot` selects the persisted BspBuildConfig.
-      |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin,
-  keywords = Set("bsp", "main classes", "main", "entry points", "scala", "runnable")
-) with BspToolSupport {
+      |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin
+  override val keywords = Set("bsp", "main classes", "main", "entry points", "scala", "runnable")
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: BspScalaMainClassesInput,
-                                      context: TurnContext): Task[BspMainClassesResult] =
+  override def executeOutput(input: BspScalaMainClassesInput,
+                             context: TurnContext): Task[BspMainClassesResult] =
     withTargets[BspMainClassesResult](
       input.projectRoot, context, input.targets,
       onError = _ => BspMainClassesResult(input.projectRoot, Nil),

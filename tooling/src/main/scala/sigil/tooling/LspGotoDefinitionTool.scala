@@ -3,8 +3,8 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
-import sigil.tooling.types.LspLocation
+import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tooling.types.{LspLocation, LspLocationsResult}
 
 case class LspGotoDefinitionInput(languageId: String,
                                   filePath: String,
@@ -23,29 +23,36 @@ case class LspGotoDefinitionInput(languageId: String,
  * graph (imports, type aliases, generics) — finds the right Foo
  * when there are nine `Foo` in scope.
  *
- * Emits `List[LspLocation]` — empty when no definition was found.
+ * Emits `LspLocationsResult` — empty when no definition was found.
  */
-final class LspGotoDefinitionTool(val manager: LspManager) extends TypedOutputTool[LspGotoDefinitionInput, List[LspLocation]](
-  name = ToolName("lsp_goto_definition"),
-  description =
+final class LspGotoDefinitionTool(val manager: LspManager) extends Tool
+  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input  = LspGotoDefinitionInput
+  type Output = LspLocationsResult
+  val inputRW  = summon[RW[LspGotoDefinitionInput]]
+  val outputRW = summon[RW[LspLocationsResult]]
+
+  val name = ToolName("lsp_goto_definition")
+  val description =
     """Find where a symbol is defined.
       |
       |`languageId` selects the persisted LspServerConfig.
       |`filePath` + `line` + `character` (0-based) point at any character inside the identifier.
-      |Returns `[{uri, filePath, range:{start, end}}]` — empty when no definition found.""".stripMargin,
-  keywords = Set(
+      |Returns `[{uri, filePath, range:{start, end}}]` — empty when no definition found.""".stripMargin
+  override val keywords = Set(
     "lsp", "definition", "definitions", "where defined", "declaration",
     "jump-to", "goto", "go to", "find symbol", "examine", "inspect",
     "navigate", "source", "semantic", "symbol",
     "scala", "language", "code"
   )
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: LspGotoDefinitionInput, context: TurnContext): Task[List[LspLocation]] =
-    withOpenDocumentOrThrow[List[LspLocation]](
+  override def executeOutput(input: LspGotoDefinitionInput, context: TurnContext): Task[LspLocationsResult] =
+    withOpenDocumentOrThrow[LspLocationsResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>
-      session.gotoDefinition(uri, input.line, input.character).map(_.map(LspLocation.fromLsp4j))
+      session.gotoDefinition(uri, input.line, input.character)
+        .map(locs => LspLocationsResult(locs.map(LspLocation.fromLsp4j)))
     }
 }

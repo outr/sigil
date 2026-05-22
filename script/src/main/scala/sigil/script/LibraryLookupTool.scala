@@ -1,10 +1,9 @@
 package sigil.script
 
+import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.{Event, Message, MessageRole, MessageVisibility}
-import sigil.signal.EventState
-import sigil.tool.{ToolName, TypedTool}
-import sigil.tool.model.ResponseContent
+import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 import java.io.File
 import java.net.URLClassLoader
@@ -29,9 +28,14 @@ import java.util.zip.ZipException
  * lone "C" against a 5k-jar classpath) get truncated rather than
  * flooding the agent's context.
  */
-case object LibraryLookupTool extends TypedTool[LibraryLookupInput](
-  name = ToolName("library_lookup"),
-  description =
+case object LibraryLookupTool extends Tool {
+  type Input  = LibraryLookupInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[LibraryLookupInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("library_lookup")
+  val description =
     """Fuzzy-resolve an unqualified class name or method reference to its fully-qualified
       |form(s) on the executor's classpath. Use this BEFORE writing code that touches an API
       |you're unsure about — one round-trip beats one failed compile.
@@ -41,19 +45,17 @@ case object LibraryLookupTool extends TypedTool[LibraryLookupInput](
       |(with the matching method enumerated).
       |
       |Returns up to 25 candidates. After picking the right one, call `class_signatures(fqn)`
-      |for the full method/field surface.""".stripMargin,
-  modes = Set(ScriptAuthoringMode.id),
-  keywords = Set("lookup", "find", "symbol", "class", "method", "fqn", "library", "api")
-) {
-  override def paginate: Boolean = false
-
+      |for the full method/field surface.""".stripMargin
+  override val modes = Set(ScriptAuthoringMode.id)
+  override val keywords = Set("lookup", "find", "symbol", "class", "method", "fqn", "library", "api")
 
   private val MaxCandidates = 25
 
-  override protected def executeTyped(input: LibraryLookupInput, context: TurnContext): rapid.Stream[Event] = {
+  override def executeResult(input: LibraryLookupInput,
+                             context: TurnContext): Task[ToolResult[TextToolOutput]] = Task {
     val text = try render(input.symbol)
     catch { case e: Throwable => s"(lookup failed: ${e.getClass.getSimpleName}: ${e.getMessage})" }
-    rapid.Stream.emit(reply(context, text))
+    ToolResult.Success(TextToolOutput(text))
   }
 
   private def render(symbol: String): String = {
@@ -192,15 +194,4 @@ case object LibraryLookupTool extends TypedTool[LibraryLookupInput](
       }
     }
   }
-
-  private def reply(context: TurnContext, text: String): Message =
-    Message(
-      participantId  = context.caller,
-      conversationId = context.conversation.id,
-      topicId        = context.conversation.currentTopicId,
-      content        = Vector(ResponseContent.Text(text)),
-      state          = EventState.Complete,
-      role           = MessageRole.Tool,
-      visibility     = MessageVisibility.Agents
-    )
 }

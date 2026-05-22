@@ -1,11 +1,12 @@
 package sigil.tool.context
 
+import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
 import sigil.conversation.ContextMemory
 import sigil.tokenize.HeuristicTokenizer
 import sigil.tool.model.{ListMemoriesOutput, MemoryListEntry, MemoryListPage}
-import sigil.tool.{ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolName}
 
 /**
  * General memory-listing tool. Surfaces every memory the caller's
@@ -32,9 +33,13 @@ import sigil.tool.{ToolName, TypedOutputTool}
  * `pin_memory` / `unpin_memory` / `move_memory` / `forget_memory` to
  * act on a selection.
  */
-case object ListMemoriesTool extends TypedOutputTool[ListMemoriesInput, ListMemoriesOutput](
-  name = ToolName("list_memories"),
-  description =
+case object ListMemoriesTool extends Tool {
+  type Input  = ListMemoriesInput
+  type Output = ListMemoriesOutput
+  val inputRW  = summon[RW[ListMemoriesInput]]
+  val outputRW = summon[RW[ListMemoriesOutput]]
+  val name = ToolName("list_memories")
+  val description =
     """List memories you can see — pinned and unpinned — with filters and pagination.
       |
       |- `spaces` — optional filter; empty = every space your chain can access.
@@ -48,10 +53,8 @@ case object ListMemoriesTool extends TypedOutputTool[ListMemoriesInput, ListMemo
       |Returns each memory's `key`, `label`, `summary`, token cost, `spaceId`, and
       |`pinned`. Use the lookup tool to pull a memory's full fact; use the
       |memory-pinning / unpinning / moving / forgetting tools to act on individual
-      |entries.""".stripMargin,
-  keywords = Set("list", "memories", "browse", "recall", "review", "all", "show")
-) {
-  override def paginate: Boolean = false
+      |entries.""".stripMargin
+  override val keywords = Set("list", "memories", "browse", "recall", "review", "all", "show")
 
   override def resultTtl: Option[Int] = Some(0)
   override val requiresAccessibleSpaces: Boolean = true
@@ -61,7 +64,7 @@ case object ListMemoriesTool extends TypedOutputTool[ListMemoriesInput, ListMemo
     * the next turn's prompt. */
   private val MaxPageSize: Int = 100
 
-  override protected def executeTyped(input: ListMemoriesInput, context: TurnContext): Task[ListMemoriesOutput] =
+  override def executeOutput(input: ListMemoriesInput, context: TurnContext): Task[ListMemoriesOutput] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       val effective = if (input.spaces.nonEmpty) input.spaces.intersect(accessible) else accessible
       if (effective.isEmpty)

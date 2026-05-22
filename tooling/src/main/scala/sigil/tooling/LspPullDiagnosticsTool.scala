@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.DocumentDiagnosticReport
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspDiagnostic, LspDiagnosticsResult}
 
 import scala.jdk.CollectionConverters.*
@@ -27,24 +27,30 @@ case class LspPullDiagnosticsInput(languageId: String,
  *
  * Emits a typed [[LspDiagnosticsResult]].
  */
-final class LspPullDiagnosticsTool(val manager: LspManager) extends TypedOutputTool[LspPullDiagnosticsInput, LspDiagnosticsResult](
-  name = ToolName("lsp_pull_diagnostics"),
-  description =
+final class LspPullDiagnosticsTool(val manager: LspManager) extends Tool
+  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input  = LspPullDiagnosticsInput
+  type Output = LspDiagnosticsResult
+  val inputRW  = summon[RW[LspPullDiagnosticsInput]]
+  val outputRW = summon[RW[LspDiagnosticsResult]]
+
+  val name = ToolName("lsp_pull_diagnostics")
+  val description =
     """Pull diagnostics for a file synchronously (LSP 3.17 pull-model).
       |
       |`languageId` + `filePath` identify the document.
       |Returns `{filePath, diagnostics: [...]}`. Servers without pull-model support fall back to
-      |a push-snapshot.""".stripMargin,
-  keywords = Set(
+      |a push-snapshot.""".stripMargin
+  override val keywords = Set(
     "lsp", "diagnostics", "errors", "warnings", "problems", "lint",
     "analyze", "examine", "inspect", "review", "what's broken",
     "fresh", "sync", "synchronous",
     "scala", "type", "fix", "code", "language"
   )
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: LspPullDiagnosticsInput, context: TurnContext): Task[LspDiagnosticsResult] =
+  override def executeOutput(input: LspPullDiagnosticsInput, context: TurnContext): Task[LspDiagnosticsResult] =
     withOpenDocumentOrThrow[LspDiagnosticsResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

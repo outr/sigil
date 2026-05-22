@@ -1,10 +1,9 @@
 package sigil.debug
 
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class DapListSessionsInput() extends ToolInput derives RW
 
@@ -13,24 +12,27 @@ case class DapListSessionsInput() extends ToolInput derives RW
  * Useful when the agent is juggling multiple debug sessions and
  * needs a roster.
  */
-final class DapListSessionsTool(val manager: DapManager) extends TypedTool[DapListSessionsInput](
-  name = ToolName("dap_list_sessions"),
-  description = "List every active debug session in this Sigil instance.",
-  examples = List(
+final class DapListSessionsTool(val manager: DapManager) extends Tool with DapToolSupport {
+  type Input = DapListSessionsInput
+  type Output = TextToolOutput
+  val inputRW = summon[RW[DapListSessionsInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+  val name = ToolName("dap_list_sessions")
+  val description = "List every active debug session in this Sigil instance."
+  override val examples = List(
     ToolExample(
       "list active sessions",
       DapListSessionsInput()
     )
   )
-) with DapToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: DapListSessionsInput, context: TurnContext): Stream[Event] = {
-    val task = Task {
+  override def executeResult(input: DapListSessionsInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    Task {
       val sessions = manager.listSessions()
-      if (sessions.isEmpty) reply(context, "No active debug sessions.", isError = false)
-      else {
-        val rendered = sessions.map { case (id, s) =>
+      val text =
+        if (sessions.isEmpty) "No active debug sessions."
+        else sessions.map { case (id, s) =>
           val state =
             if (s.client.terminated.get()) "terminated"
             else if (s.client.lastStopped.get().isDefined) "stopped"
@@ -38,9 +40,6 @@ final class DapListSessionsTool(val manager: DapManager) extends TypedTool[DapLi
             else "starting"
           s"  [$id] language=${s.config.languageId} state=$state"
         }.mkString("\n")
-        reply(context, rendered, isError = false)
-      }
+      ToolResult.success(TextToolOutput(text))
     }
-    Stream.force(task.map(Stream.emit))
-  }
 }

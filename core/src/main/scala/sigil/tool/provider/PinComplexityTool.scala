@@ -2,13 +2,11 @@ package sigil.tool.provider
 
 import fabric.rw.*
 import lightdb.time.Timestamp
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.{ComplexityChange, Event, Message, MessageRole, MessageVisibility}
+import sigil.event.ComplexityChange
 import sigil.provider.Complexity
-import sigil.signal.EventState
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
-import sigil.tool.model.ResponseContent
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class PinComplexityInput(tier: String) extends ToolInput derives RW
 
@@ -26,9 +24,13 @@ case class PinComplexityInput(tier: String) extends ToolInput derives RW
  * add this to `staticTools` when they want the surface exposed.
  * Bug #152.
  */
-case object PinComplexityTool extends TypedTool[PinComplexityInput](
-  name = ToolName("pin_complexity"),
-  description =
+case object PinComplexityTool extends Tool {
+  type Input  = PinComplexityInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[PinComplexityInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+  val name = ToolName("pin_complexity")
+  val description =
     """Pin this conversation's routing complexity tier
       |(`low` / `medium` / `high` / `very-high`). Every turn routes
       |to whichever candidate in the strategy chain supports that
@@ -45,20 +47,19 @@ case object PinComplexityTool extends TypedTool[PinComplexityInput](
       |routing degrades to the next candidate that still supports the tier — pinning
       |a specific model can't degrade.
       |
-      |Use `unpin_complexity` to revert.""".stripMargin,
-  examples = List(
+      |Use `unpin_complexity` to revert.""".stripMargin
+  override val examples = List(
     ToolExample("Pin to medium tier",     PinComplexityInput("medium")),
     ToolExample("Pin to frontier",        PinComplexityInput("very-high")),
     ToolExample("Local-only with low tier", PinComplexityInput("low"))
-  ),
-  keywords = Set(
+  )
+  override val keywords = Set(
     "pin", "lock", "force", "stick", "fix", "always", "deterministic",
     "complexity", "tier", "routing", "cost", "ceiling", "level"
   )
-) {
-  override def paginate: Boolean = false
 
-  override protected def executeTyped(input: PinComplexityInput, ctx: TurnContext): Stream[Event] = {
+  override def executeResult(input: PinComplexityInput,
+                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] = {
     val normalized = input.tier.trim.toLowerCase.replaceAll("\\s+|-|_", "")
     val parsed: Option[Complexity] = normalized match {
       case "low"                            => Some(Complexity.Low)
@@ -69,62 +70,44 @@ case object PinComplexityTool extends TypedTool[PinComplexityInput](
     }
     parsed match {
       case None =>
-        Stream.emit[Event](reply(ctx,
-          s"Unrecognised tier '${input.tier}'. Valid tiers: `low`, `medium`, `high`, `very-high`. " +
-            s"Use the closest match by capability — `medium` is the per-turn default for most chains."))
+        Task.pure(ToolResult.failure(
+          s"Unrecognised tier '${input.tier}'. Valid tiers: `low`, `medium`, `high`, `very-high`.",
+          hint = Some("Use the closest match by capability — `medium` is the per-turn default for most chains.")
+        ))
       case Some(tier) =>
         // Sigil bug #177 — capture the prior pinned tier so the emitted
         // ComplexityChange carries the correct previous→new transition
         // and `Reason.Pinned` vs `Reason.Repinned` is distinguishable
         // without consumers diffing `previousTier` / `newTier`.
-        Stream.force(
-          ctx.sigil.withDB(_.conversations.transaction { tx =>
-            tx.get(ctx.conversation.id).flatMap {
-              case None       => Task.pure(None)
-              case Some(conv) =>
-                val previous = conv.pinnedComplexity
-                tx.upsert(conv.copy(pinnedComplexity = Some(tier), modified = Timestamp()))
-                  .map(_ => Some(previous))
-            }
-          }).map {
-            case None =>
-              // Conversation row vanished between dispatch and execute —
-              // surface a Tool-role failure rather than silently swallowing.
-              Stream.emit[Event](reply(ctx,
-                s"Could not pin complexity: conversation row not found. Try again from a live session."))
-            case Some(previous) =>
-              val reason =
-                if (previous.isEmpty) ComplexityChange.Reason.Pinned
-                else ComplexityChange.Reason.Repinned
-              Stream.emits[Event](List(
-                ComplexityChange(
-                  participantId  = ctx.caller,
-                  conversationId = ctx.conversation.id,
-                  topicId        = ctx.conversation.currentTopicId,
-                  previousTier   = previous,
-                  newTier        = Some(tier),
-                  reason         = reason
-                ),
-                reply(ctx,
-                  s"Pinned to `$tier` complexity tier. Every LLM call in this conversation will route to that " +
-                    s"tier's candidate until `unpin_complexity` is called.")
-              ))
+        ctx.sigil.withDB(_.conversations.transaction { tx =>
+          tx.get(ctx.conversation.id).flatMap {
+            case None       => Task.pure(None)
+            case Some(conv) =>
+              val previous = conv.pinnedComplexity
+              tx.upsert(conv.copy(pinnedComplexity = Some(tier), modified = Timestamp()))
+                .map(_ => Some(previous))
           }
-        )
+        }).flatMap {
+          case None =>
+            // Conversation row vanished between dispatch and execute —
+            // surface a logical failure rather than silently swallowing.
+            Task.pure(ToolResult.failure(
+              "Could not pin complexity: conversation row not found. Try again from a live session."))
+          case Some(previous) =>
+            val reason =
+              if (previous.isEmpty) ComplexityChange.Reason.Pinned
+              else ComplexityChange.Reason.Repinned
+            ctx.emit(ComplexityChange(
+              participantId  = ctx.caller,
+              conversationId = ctx.conversation.id,
+              topicId        = ctx.conversation.currentTopicId,
+              previousTier   = previous,
+              newTier        = Some(tier),
+              reason         = reason
+            )).map(_ => ToolResult.Success(TextToolOutput(
+              s"Pinned to `$tier` complexity tier. Every LLM call in this conversation will route to that " +
+                s"tier's candidate until `unpin_complexity` is called.")))
+        }
     }
   }
-
-  private def reply(ctx: TurnContext, text: String): Message = Message(
-    participantId  = ctx.caller,
-    conversationId = ctx.conversation.id,
-    topicId        = ctx.conversation.currentTopicId,
-    content        = Vector(ResponseContent.Text(text)),
-    state          = EventState.Complete,
-    role           = MessageRole.Tool,
-    // Sigil bug #164 — keep the confirmation Agents-only so the agent's
-    // mandatory `respond` doesn't have to compete with a duplicate chat
-    // bubble from the tool itself. The tool's text still feeds the
-    // agent's next iteration; the user sees only the agent's `respond`.
-    visibility     = MessageVisibility.Agents
-  )
 }

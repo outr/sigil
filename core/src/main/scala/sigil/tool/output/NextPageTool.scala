@@ -1,9 +1,10 @@
 package sigil.tool.output
 
+import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
 import sigil.event.Event
-import sigil.tool.{ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolName}
 
 /**
  * Universal navigation tool for paginated output produced by any
@@ -18,9 +19,13 @@ import sigil.tool.{ToolName, TypedOutputTool}
  *
  * Scoped to the current conversation — rows from other
  * conversations are not reachable. */
-case object NextPageTool extends TypedOutputTool[NextPageInput, JsonPagedResult](
-  name = ToolName("next_page"),
-  description =
+case object NextPageTool extends Tool {
+  type Input  = NextPageInput
+  type Output = JsonPagedResult
+  val inputRW  = summon[RW[NextPageInput]]
+  val outputRW = summon[RW[JsonPagedResult]]
+  val name = ToolName("next_page")
+  val description =
     """Read the next page of a paginated tool result.
       |
       |Most bulk-result tools (grep, glob, bash, lsp_workspace_symbols, ...) emit a
@@ -32,15 +37,12 @@ case object NextPageTool extends TypedOutputTool[NextPageInput, JsonPagedResult]
       |  - a node's `_id` from a prior page's `nodeIds` array — returns that node's
       |    children when it had `hasChildren = true`
       |
-      |Page indexing is zero-based. `pageSize` defaults to 50 (max 500).""".stripMargin,
-  keywords = Set("next", "page", "more", "paginate", "results", "navigate", "children", "expand")
-) {
-  override def paginate: Boolean = false
-
+      |Page indexing is zero-based. `pageSize` defaults to 50 (max 500).""".stripMargin
+  override val keywords = Set("next", "page", "more", "paginate", "results", "navigate", "children", "expand")
 
   private val maxPageSize = 500
 
-  override protected def executeTyped(input: NextPageInput, ctx: TurnContext): Task[JsonPagedResult] = {
+  override def executeOutput(input: NextPageInput, ctx: TurnContext): Task[JsonPagedResult] = {
     val pageSize = math.max(1, math.min(input.pageSize, maxPageSize))
     val convId   = ctx.conversation.id
     ctx.sigil.withDB(_.toolOutputs.transaction(

@@ -2,4 +2,4 @@ package sigil.tooling.types
 
 import fabric.rw.*
 
-case class BspDependencySourcesResult(projectRoot: String, items: List[BspTargetDependencySources]) derives RW
+case class BspDependencySourcesResult(projectRoot: String, items: List[BspTargetDependencySources]) extends sigil.tool.ToolOutput derives RW

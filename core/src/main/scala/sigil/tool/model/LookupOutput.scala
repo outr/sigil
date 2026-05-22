@@ -18,7 +18,7 @@ import fabric.rw.*
  *     capabilityType doesn't have a retrieval surface
  *     (`Tool` / `Mode`); `hint` describes the right action.
  */
-enum LookupOutput derives RW {
+enum LookupOutput extends sigil.tool.ToolOutput derives RW {
   case Found(capabilityType: String, name: String, payload: fabric.Json)
   case NotFound(capabilityType: String, name: String)
   case NotRetrievable(capabilityType: String, name: String, hint: String)

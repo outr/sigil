@@ -1,9 +1,10 @@
 package sigil.tool.web
 
+import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
 import sigil.tool.model.{WebFetchInput, WebFetchOutput}
-import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolExample, ToolName}
 import spice.http.client.HttpClient
 import spice.net.URL
 
@@ -16,21 +17,23 @@ import scala.concurrent.duration.*
  * a typed [[WebFetchOutput]].
  */
 final class WebFetchTool(timeout: FiniteDuration = 30.seconds)
-  extends TypedOutputTool[WebFetchInput, WebFetchOutput](
-    name = ToolName("web_fetch"),
-    description =
-      """Fetch the contents of a URL via HTTP GET. HTML responses are converted to a markdown-ish rendering;
-        |other content types are returned verbatim. Use `maxLength` to cap response size (default 100 KB).
-        |Returns the fetched content with its content type, HTTP status code, and a truncation flag.""".stripMargin,
-    examples = List(
-      ToolExample("Read a documentation page", WebFetchInput(url = "https://example.com/docs/intro")),
-      ToolExample("Fetch a small JSON endpoint", WebFetchInput(url = "https://api.example.com/status", maxLength = Some(8192)))
-    ),
-    keywords = Set("web", "fetch", "http", "url", "download", "page", "browse")
-  ) with sigil.tool.NetworkReadOnlyTool {
-  override def paginate: Boolean = false
+  extends Tool with sigil.tool.NetworkReadOnlyTool {
+  type Input  = WebFetchInput
+  type Output = WebFetchOutput
+  val inputRW  = summon[RW[WebFetchInput]]
+  val outputRW = summon[RW[WebFetchOutput]]
+  val name = ToolName("web_fetch")
+  val description =
+    """Fetch the contents of a URL via HTTP GET. HTML responses are converted to a markdown-ish rendering;
+      |other content types are returned verbatim. Use `maxLength` to cap response size (default 100 KB).
+      |Returns the fetched content with its content type, HTTP status code, and a truncation flag.""".stripMargin
+  override val examples = List(
+    ToolExample("Read a documentation page", WebFetchInput(url = "https://example.com/docs/intro")),
+    ToolExample("Fetch a small JSON endpoint", WebFetchInput(url = "https://api.example.com/status", maxLength = Some(8192)))
+  )
+  override val keywords = Set("web", "fetch", "http", "url", "download", "page", "browse")
 
-  override protected def executeTyped(input: WebFetchInput, ctx: TurnContext): Task[WebFetchOutput] =
+  override def executeOutput(input: WebFetchInput, ctx: TurnContext): Task[WebFetchOutput] =
     HttpClient
       .url(URL.parse(input.url))
       .timeout(timeout)

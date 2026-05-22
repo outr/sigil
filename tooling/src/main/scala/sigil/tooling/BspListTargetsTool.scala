@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{BspBuildTarget, BspListTargetsResult}
 
 case class BspListTargetsInput(projectRoot: String) extends ToolInput derives RW
@@ -14,21 +14,27 @@ case class BspListTargetsInput(projectRoot: String) extends ToolInput derives RW
  * right target id before calling `bsp_compile` / `bsp_test` / etc.
  * with an explicit list.
  */
-final class BspListTargetsTool(val manager: BspManager) extends TypedOutputTool[BspListTargetsInput, BspListTargetsResult](
-  name = ToolName("bsp_list_targets"),
-  description =
+final class BspListTargetsTool(val manager: BspManager) extends Tool
+  with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+  type Input  = BspListTargetsInput
+  type Output = BspListTargetsResult
+  val inputRW  = summon[RW[BspListTargetsInput]]
+  val outputRW = summon[RW[BspListTargetsResult]]
+
+  val name = ToolName("bsp_list_targets")
+  val description =
     """List every build target advertised by the project's BSP server.
       |
       |`projectRoot` selects the persisted BspBuildConfig.
-      |Returns each target's URI, display name, language tags, and capabilities (canCompile / canTest / canRun / canDebug).""".stripMargin,
-  keywords = Set(
+      |Returns each target's URI, display name, language tags, and capabilities (canCompile / canTest / canRun / canDebug).""".stripMargin
+  override val keywords = Set(
     "bsp", "targets", "list targets", "build targets", "modules",
     "examine", "inspect", "scala", "sbt", "project", "build"
   )
-) with sigil.tool.ReadOnlyExternalTool with BspToolSupport {
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: BspListTargetsInput, context: TurnContext): Task[BspListTargetsResult] =
+  override def executeOutput(input: BspListTargetsInput, context: TurnContext): Task[BspListTargetsResult] =
     withSessionTyped[BspListTargetsResult](
       input.projectRoot, context,
       onError = _ => BspListTargetsResult(input.projectRoot, Nil)

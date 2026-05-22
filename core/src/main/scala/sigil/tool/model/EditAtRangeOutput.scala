@@ -7,6 +7,6 @@ import fabric.rw.*
  * SHA-256 plus line-count and byte-count deltas so the agent can
  * verify the change shape without re-reading the file.
  */
-enum EditAtRangeOutput derives RW {
+enum EditAtRangeOutput extends sigil.tool.ToolOutput derives RW {
   case Success(hash: Option[String], lineDelta: Int, byteDelta: Int)
 }

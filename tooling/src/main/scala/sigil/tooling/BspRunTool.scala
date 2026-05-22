@@ -4,7 +4,7 @@ import ch.epfl.scala.bsp4j.{BuildTargetIdentifier, StatusCode}
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.BspExecResult
 
 case class BspRunInput(projectRoot: String,
@@ -21,20 +21,26 @@ case class BspRunInput(projectRoot: String,
  * is debugging a small program. For long-running services or
  * interactive programs, prefer running outside Sigil.
  */
-final class BspRunTool(val manager: BspManager) extends TypedOutputTool[BspRunInput, BspExecResult](
-  name = ToolName("bsp_run"),
-  description =
+final class BspRunTool(val manager: BspManager) extends Tool
+  with sigil.tool.DestructiveExternalTool with BspToolSupport {
+  type Input  = BspRunInput
+  type Output = BspExecResult
+  val inputRW  = summon[RW[BspRunInput]]
+  val outputRW = summon[RW[BspExecResult]]
+
+  val name = ToolName("bsp_run")
+  val description =
     """Run a single build target via the BSP server (typically a `Main` class).
       |
       |`projectRoot` selects the persisted BspBuildConfig.
       |`target` is the target URI to run.
       |`arguments` (optional) flows through to the running program.
-      |Returns `{status, targetCount: 1, stdout, stderr}` where status is `OK` / `ERROR` / `CANCELLED`.""".stripMargin,
-  keywords = Set("bsp", "run", "execute", "main", "launch", "start")
-) with sigil.tool.DestructiveExternalTool with BspToolSupport {
+      |Returns `{status, targetCount: 1, stdout, stderr}` where status is `OK` / `ERROR` / `CANCELLED`.""".stripMargin
+  override val keywords = Set("bsp", "run", "execute", "main", "launch", "start")
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: BspRunInput, context: TurnContext): Task[BspExecResult] =
+  override def executeOutput(input: BspRunInput, context: TurnContext): Task[BspExecResult] =
     withSessionTyped[BspExecResult](
       input.projectRoot, context,
       onError = msg => BspExecResult(input.projectRoot, "ERROR", 0, "", msg)

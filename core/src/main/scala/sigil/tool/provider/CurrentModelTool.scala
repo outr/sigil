@@ -1,8 +1,9 @@
 package sigil.tool.provider
 
+import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolName}
 
 /**
  * Read-only introspection tool that reports the conversation's
@@ -17,9 +18,14 @@ import sigil.tool.{ToolName, TypedOutputTool}
  * through rendered text.
  *
  * **Not auto-registered.** Apps add to `staticTools` to expose. */
-case object CurrentModelTool extends TypedOutputTool[CurrentModelInput, CurrentModelOutput](
-  name = ToolName("current_model"),
-  description =
+case object CurrentModelTool extends Tool {
+  type Input  = CurrentModelInput
+  type Output = CurrentModelOutput
+  val inputRW  = summon[RW[CurrentModelInput]]
+  val outputRW = summon[RW[CurrentModelOutput]]
+
+  val name = ToolName("current_model")
+  val description =
     """Report the model and strategy currently in effect for this conversation.
       |Returns:
       |  - `pinned` — set when a specific model is pinned for this conversation;
@@ -32,16 +38,13 @@ case object CurrentModelTool extends TypedOutputTool[CurrentModelInput, CurrentM
       |    pin / strategy / fallback chain.
       |
       |Use when you need to tell the user which model is in effect, or to resolve
-      |"the current model" / "this model" before changing model selection.""".stripMargin,
-  keywords = Set(
+      |"the current model" / "this model" before changing model selection.""".stripMargin
+  override val keywords = Set(
     "current", "active", "running", "model", "what", "which",
     "now", "introspect", "in", "use", "this"
   )
-) {
-  override def paginate: Boolean = false
 
-
-  override protected def executeTyped(input: CurrentModelInput, ctx: TurnContext): Task[CurrentModelOutput] = {
+  override def executeOutput(input: CurrentModelInput, ctx: TurnContext): Task[CurrentModelOutput] = {
     val conv = ctx.conversation
     val host = ctx.sigil
 

@@ -1,42 +1,26 @@
 package sigil.mcp
 
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.{Event, Message, MessageVisibility, MessageRole}
-import sigil.signal.EventState
-import sigil.tool.{ToolInput, ToolName, TypedTool}
-import sigil.tool.model.ResponseContent
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 case class RemoveMcpServerInput(name: String) extends ToolInput derives RW
 
 /** Tear down an MCP server's persisted config and active connection. */
-final class RemoveMcpServerTool(manager: McpManager) extends TypedTool[RemoveMcpServerInput](
-  name = ToolName("remove_mcp_server"),
-  description = "Remove a registered MCP server and disconnect any active connection. The persisted config is deleted."
-) {
-  override def paginate: Boolean = false
+final class RemoveMcpServerTool(manager: McpManager) extends Tool {
+  type Input  = RemoveMcpServerInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[RemoveMcpServerInput]]
+  val outputRW = summon[RW[TextToolOutput]]
 
-  override protected def executeTyped(input: RemoveMcpServerInput, context: TurnContext): Stream[Event] =
-    Stream.force(manager.removeConfig(input.name).map { _ =>
-      Stream.emit[Event](Message(
-        participantId = context.caller,
-        conversationId = context.conversation.id,
-        topicId = context.conversation.currentTopicId,
-        content = Vector(ResponseContent.Text(s"MCP server '${input.name}' removed.")),
-        state = EventState.Complete,
-        role = MessageRole.Tool,
-        visibility = MessageVisibility.All
-      ))
+  val name = ToolName("remove_mcp_server")
+  val description = "Remove a registered MCP server and disconnect any active connection. The persisted config is deleted."
+
+  override def executeResult(input: RemoveMcpServerInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    manager.removeConfig(input.name).map { _ =>
+      ToolResult.Success(TextToolOutput(s"MCP server '${input.name}' removed."))
     }.handleError { e =>
-      Task.pure(Stream.emit[Event](Message(
-        participantId = context.caller,
-        conversationId = context.conversation.id,
-        topicId = context.conversation.currentTopicId,
-        content = Vector(ResponseContent.Text(s"Failed to remove '${input.name}': ${e.getMessage}")),
-        state = EventState.Complete,
-        role = MessageRole.Tool,
-        visibility = MessageVisibility.All
-      )))
-    })
+      Task.pure(ToolResult.failure(s"Failed to remove '${input.name}': ${e.getMessage}"))
+    }
 }

@@ -3,8 +3,8 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
-import sigil.tooling.types.LspHover
+import sigil.tool.{Tool, ToolInput, ToolName}
+import sigil.tooling.types.{LspHover, LspHoverResult}
 
 case class LspHoverInput(languageId: String,
                          filePath: String,
@@ -20,25 +20,32 @@ case class LspHoverInput(languageId: String,
  * Servers that respond with the legacy `MarkedString` shape are
  * coalesced into the same plain-string output.
  *
- * Emits `Option[LspHover]` — `None` when the server returned no
- * hover info at that position.
+ * Emits `LspHoverResult` — `hover` is `None` when the server returned
+ * no hover info at that position.
  */
-final class LspHoverTool(val manager: LspManager) extends TypedOutputTool[LspHoverInput, Option[LspHover]](
-  name = ToolName("lsp_hover"),
-  description =
+final class LspHoverTool(val manager: LspManager) extends Tool
+  with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+  type Input  = LspHoverInput
+  type Output = LspHoverResult
+  val inputRW  = summon[RW[LspHoverInput]]
+  val outputRW = summon[RW[LspHoverResult]]
+
+  val name = ToolName("lsp_hover")
+  val description =
     """Get type signature + documentation at a source position.
       |
       |`languageId` selects the persisted LspServerConfig.
       |`filePath` + `line` + `character` (0-based) point at any character inside the symbol.
-      |Returns `Option[{contents, kind, range?}]` — `None` if the server has no hover info there.""".stripMargin,
-  keywords = Set("lsp", "hover", "type", "type info", "info", "what is", "signature", "docs", "documentation", "explain")
-) with sigil.tool.ReadOnlyExternalTool with LspToolSupport {
+      |Returns `Option[{contents, kind, range?}]` — `None` if the server has no hover info there.""".stripMargin
+  override val keywords = Set("lsp", "hover", "type", "type info", "info", "what is", "signature", "docs", "documentation", "explain")
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: LspHoverInput, context: TurnContext): Task[Option[LspHover]] =
-    withOpenDocumentOrThrow[Option[LspHover]](
+  override def executeOutput(input: LspHoverInput, context: TurnContext): Task[LspHoverResult] =
+    withOpenDocumentOrThrow[LspHoverResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>
-      session.hover(uri, input.line, input.character).map(_.map(LspHover.fromLsp4j))
+      session.hover(uri, input.line, input.character)
+        .map(h => LspHoverResult(h.map(LspHover.fromLsp4j)))
     }
 }

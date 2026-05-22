@@ -1,35 +1,35 @@
 package sigil.browser.tool
 
+import fabric.rw.*
 import fabric.{obj, str}
-import rapid.Stream
+import rapid.Task
 import robobrowser.select.Selector
 import sigil.TurnContext
 import sigil.browser.WebBrowserMode
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 
 /** Click the first element matching a CSS selector. Subsequent
   * scrape / screenshot calls reflect the resulting page state. */
-final class BrowserClickTool extends TypedTool[BrowserClickInput](
-  name = ToolName("browser_click"),
-  description =
-    "Click the first element matching the given CSS selector. Use after scraping to find selectors.",
-  examples = List(
+final class BrowserClickTool extends Tool {
+  type Input  = BrowserClickInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[BrowserClickInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("browser_click")
+  val description =
+    "Click the first element matching the given CSS selector. Use after scraping to find selectors."
+  override val examples = List(
     ToolExample("Click a button", BrowserClickInput(selector = "button.submit")),
     ToolExample("Click a link", BrowserClickInput(selector = "a.next-page"))
-  ),
-  modes = Set(WebBrowserMode.id),
-  keywords = Set("browser", "click", "tap", "interact", "button")
-) {
-  override def paginate: Boolean = false
+  )
+  override val modes = Set(WebBrowserMode.id)
+  override val keywords = Set("browser", "click", "tap", "interact", "button")
 
-  override protected def executeTyped(input: BrowserClickInput, ctx: TurnContext): Stream[Event] =
-    Stream.force(
-      for {
-        controller <- BrowserToolBase.resolveController(ctx)
-        _          <- controller.run(_(Selector(input.selector)).click)
-      } yield Stream.emit[Event](BrowserToolBase.toolResult(
-        obj("clicked" -> str(input.selector)), ctx
-      ))
-    )
+  override def executeResult(input: BrowserClickInput,
+                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+    for {
+      controller <- BrowserToolBase.resolveController(ctx)
+      _          <- controller.run(_(Selector(input.selector)).click)
+    } yield ToolResult.Success(BrowserToolBase.toolResult(obj("clicked" -> str(input.selector))))
 }

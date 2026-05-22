@@ -1,44 +1,41 @@
 package sigil.tool.memory
 
-import rapid.{Stream, Task}
+import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
 import sigil.conversation.ContextMemory
-import sigil.event.{Event, Message}
-import sigil.tool.model.ResponseContent
-import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 
 /**
  * Opt-in tool: return the full version history of a keyed memory,
  * chronologically (oldest → newest).
  */
-case object MemoryHistoryTool extends TypedTool[MemoryHistoryInput](
-  name = ToolName("memory_history"),
-  description =
+case object MemoryHistoryTool extends Tool {
+  type Input  = MemoryHistoryInput
+  type Output = TextToolOutput
+  val inputRW: RW[MemoryHistoryInput] = summon[RW[MemoryHistoryInput]]
+  val outputRW: RW[TextToolOutput]    = summon[RW[TextToolOutput]]
+
+  val name: ToolName = ToolName("memory_history")
+  val description: String =
     """Show the version history of a keyed memory — every past value for this key,
       |with valid-from / valid-until timestamps. Use when you need to understand how
       |a fact has changed over time (e.g. "what did the user prefer before they changed their mind?").
       |
       |`key`     — the memory key whose history you want.
-      |`spaceId` — optional; omit to use the caller's default scope.""".stripMargin,
-  examples = List(
+      |`spaceId` — optional; omit to use the caller's default scope.""".stripMargin
+  override val examples: List[ToolExample] = List(
     ToolExample("History of the user's theme preference", MemoryHistoryInput(key = "user.ui.theme"))
-  ),
-  keywords = Set("memory", "history", "version")
-) {
-  override def paginate: Boolean = false
+  )
+  override val keywords: Set[String] = Set("memory", "history", "version")
 
-  override protected def executeTyped(input: MemoryHistoryInput, context: TurnContext): Stream[Event] =
-    Stream.force {
-      resolveSpace(input, context).flatMap {
-        case None =>
-          Task.pure(toMsg(context,
-            s"[memory_history] no memory space available for key ${input.key}."))
-        case Some(space) =>
-          context.sigil.memoryHistory(input.key, space).map { versions =>
-            toMsg(context, render(input.key, versions))
-          }
-      }.map(msg => Stream.emits(List[Event](msg)))
-    }
+  override def executeResult(input: MemoryHistoryInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    resolveSpace(input, context).flatMap {
+      case None =>
+        Task.pure(s"[memory_history] no memory space available for key ${input.key}.")
+      case Some(space) =>
+        context.sigil.memoryHistory(input.key, space).map(versions => render(input.key, versions))
+    }.map(text => ToolResult.Success(TextToolOutput(text)))
 
   private def resolveSpace(input: MemoryHistoryInput, context: TurnContext) =
     input.spaceId match {
@@ -61,12 +58,4 @@ case object MemoryHistoryTool extends TypedTool[MemoryHistoryInput](
       }
       sb.toString
     }
-
-  private def toMsg(context: TurnContext, body: String): Message =
-    Message(
-      participantId = context.caller,
-      conversationId = context.conversation.id,
-      topicId = context.conversation.currentTopicId,
-      content = Vector(ResponseContent.Text(body))
-    )
 }

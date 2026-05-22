@@ -2,12 +2,9 @@ package sigil.mcp
 
 import fabric.rw.*
 import fabric.io.JsonFormatter
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.{Event, Message, MessageVisibility, MessageRole}
-import sigil.signal.EventState
-import sigil.tool.{ToolInput, ToolName, TypedTool}
-import sigil.tool.model.ResponseContent
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 case class GetMcpPromptInput(server: String,
                              prompt: String,
@@ -18,35 +15,21 @@ case class GetMcpPromptInput(server: String,
  * The result is the raw `GetPromptResult` shape (description +
  * messages array); apps decide how to splice it into their context.
  */
-final class GetMcpPromptTool(manager: McpManager) extends TypedTool[GetMcpPromptInput](
-  name = ToolName("get_mcp_prompt"),
-  description =
+final class GetMcpPromptTool(manager: McpManager) extends Tool {
+  type Input  = GetMcpPromptInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[GetMcpPromptInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("get_mcp_prompt")
+  val description =
     """Fetch a populated prompt template from a registered MCP server. Provide `server`, `prompt` (template name),
       |and any `arguments` the template requires. Returns the server's GetPromptResult JSON.""".stripMargin
-) {
-  override def paginate: Boolean = false
 
-  override protected def executeTyped(input: GetMcpPromptInput, context: TurnContext): Stream[Event] =
-    Stream.force(manager.getPrompt(input.server, input.prompt, input.arguments).map { result =>
-      val text = JsonFormatter.Default(result)
-      Stream.emit[Event](Message(
-        participantId = context.caller,
-        conversationId = context.conversation.id,
-        topicId = context.conversation.currentTopicId,
-        content = Vector(ResponseContent.Text(text)),
-        state = EventState.Complete,
-        role = MessageRole.Tool,
-        visibility = MessageVisibility.All
-      ))
+  override def executeResult(input: GetMcpPromptInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    manager.getPrompt(input.server, input.prompt, input.arguments).map { result =>
+      ToolResult.Success(TextToolOutput(JsonFormatter.Default(result)))
     }.handleError { e =>
-      Task.pure(Stream.emit[Event](Message(
-        participantId = context.caller,
-        conversationId = context.conversation.id,
-        topicId = context.conversation.currentTopicId,
-        content = Vector(ResponseContent.Text(s"Get prompt failed: ${e.getMessage}")),
-        state = EventState.Complete,
-        role = MessageRole.Tool,
-        visibility = MessageVisibility.All
-      )))
-    })
+      Task.pure(ToolResult.failure(s"Get prompt failed: ${e.getMessage}"))
+    }
 }

@@ -1,38 +1,27 @@
 package sigil.mcp
 
 import fabric.rw.*
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.{Event, Message, MessageVisibility, MessageRole}
-import sigil.signal.EventState
-import sigil.tool.{ToolInput, ToolName, TypedTool}
-import sigil.tool.model.ResponseContent
+import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 case class TestMcpServerInput(name: String) extends ToolInput derives RW
 
 /** Force a connection attempt and report success or failure. */
-final class TestMcpServerTool(manager: McpManager) extends TypedTool[TestMcpServerInput](
-  name = ToolName("test_mcp_server"),
-  description = "Connect to a registered MCP server (or use the cached connection if active) and report success or failure."
-) {
-  override def paginate: Boolean = false
+final class TestMcpServerTool(manager: McpManager) extends Tool {
+  type Input  = TestMcpServerInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[TestMcpServerInput]]
+  val outputRW = summon[RW[TextToolOutput]]
 
-  override protected def executeTyped(input: TestMcpServerInput, context: TurnContext): Stream[Event] =
-    Stream.force(manager.test(input.name).map {
+  val name = ToolName("test_mcp_server")
+  val description = "Connect to a registered MCP server (or use the cached connection if active) and report success or failure."
+
+  override def executeResult(input: TestMcpServerInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    manager.test(input.name).map {
       case Right(tools) =>
-        Stream.emit[Event](reply(context, s"OK — '${input.name}' connected, ${tools.size} tools."))
+        ToolResult.Success(TextToolOutput(s"OK — '${input.name}' connected, ${tools.size} tools."))
       case Left(t) =>
-        Stream.emit[Event](reply(context, s"FAIL — '${input.name}': ${t.getMessage}"))
-    })
-
-  private def reply(context: TurnContext, text: String): Event =
-    Message(
-      participantId = context.caller,
-      conversationId = context.conversation.id,
-      topicId = context.conversation.currentTopicId,
-      content = Vector(ResponseContent.Text(text)),
-      state = EventState.Complete,
-      role = MessageRole.Tool,
-      visibility = MessageVisibility.All
-    )
+        ToolResult.failure(s"FAIL — '${input.name}': ${t.getMessage}")
+    }
 }

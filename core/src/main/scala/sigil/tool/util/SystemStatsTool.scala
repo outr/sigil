@@ -1,10 +1,11 @@
 package sigil.tool.util
 
+import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
 import sigil.tool.fs.FileSystemContext
 import sigil.tool.model.{CpuStats, DiskStats, LoadAverage, MemoryStats, SystemStatsInput, SystemStatsOutput}
-import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolExample, ToolName}
 
 /**
  * Report basic host resource usage (CPU, memory, disk, load
@@ -20,19 +21,20 @@ import sigil.tool.{ToolExample, ToolName, TypedOutputTool}
  * surface metrics via their own provider.
  */
 final class SystemStatsTool(context: FileSystemContext)
-  extends TypedOutputTool[SystemStatsInput, SystemStatsOutput](
-    name = ToolName("system_stats"),
-    description = "Report system resource usage — CPU usage, memory, disk free, load average — by parsing standard Linux shell utilities.",
-    examples = List(
-      ToolExample("Default — everything", SystemStatsInput()),
-      ToolExample("Only memory", SystemStatsInput(includeCpu = false, includeDisk = false, includeLoadAvg = false))
-    ),
-    keywords = Set("system", "stats", "cpu", "memory", "disk", "load", "uptime")
-  ) with sigil.tool.ReadOnlyExternalTool {
-  override def paginate: Boolean = false
+  extends Tool with sigil.tool.ReadOnlyExternalTool {
+  type Input  = SystemStatsInput
+  type Output = SystemStatsOutput
+  val inputRW  = summon[RW[SystemStatsInput]]
+  val outputRW = summon[RW[SystemStatsOutput]]
+  val name = ToolName("system_stats")
+  val description = "Report system resource usage — CPU usage, memory, disk free, load average — by parsing standard Linux shell utilities."
+  override val examples = List(
+    ToolExample("Default — everything", SystemStatsInput()),
+    ToolExample("Only memory", SystemStatsInput(includeCpu = false, includeDisk = false, includeLoadAvg = false))
+  )
+  override val keywords = Set("system", "stats", "cpu", "memory", "disk", "load", "uptime")
 
-
-  override protected def executeTyped(input: SystemStatsInput, ctx: TurnContext): Task[SystemStatsOutput] = {
+  override def executeOutput(input: SystemStatsInput, ctx: TurnContext): Task[SystemStatsOutput] = {
     val parts = List(
       if (input.includeCpu) Some("top -bn1 | head -5") else None,
       if (input.includeMemory) Some("free -m") else None,

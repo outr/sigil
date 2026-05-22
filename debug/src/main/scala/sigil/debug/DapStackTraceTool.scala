@@ -1,10 +1,9 @@
 package sigil.debug
 
 import fabric.rw.*
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class DapStackTraceInput(sessionId: String,
                               threadId: Int,
@@ -13,38 +12,45 @@ case class DapStackTraceInput(sessionId: String,
 
 /**
  * Fetch the call stack for a stopped thread. Returns each frame's
- * id, name, source path + line, and (when available) a column.
+ * id, name, source path + line.
  *
  * The frame id is what the agent passes to `dap_scopes` to inspect
  * locals at that frame.
  */
-final class DapStackTraceTool(val manager: DapManager) extends TypedTool[DapStackTraceInput](
-  name = ToolName("dap_stack_trace"),
-  description =
+final class DapStackTraceTool(val manager: DapManager) extends Tool with DapToolSupport {
+  type Input = DapStackTraceInput
+  type Output = DapStackTraceOutput
+  val inputRW = summon[RW[DapStackTraceInput]]
+  val outputRW = summon[RW[DapStackTraceOutput]]
+  val name = ToolName("dap_stack_trace")
+  val description =
     """Fetch the call stack for a stopped thread.
       |
       |`sessionId` selects the active session.
       |`threadId` is the thread (typically from the latest stopped event).
       |`startFrame` (default 0) and `levels` (default 20) page through deep stacks.
-      |Returns each frame's id, name, source path, and line.""".stripMargin,
-  examples = List(
+      |Returns each frame's id, name, source path, and line.""".stripMargin
+  override val examples = List(
     ToolExample(
       "fetch the top 20 frames",
       DapStackTraceInput(sessionId = "demo-session", threadId = 1)
     )
   )
-) with DapToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: DapStackTraceInput, context: TurnContext): Stream[Event] =
+  override def executeResult(input: DapStackTraceInput, context: TurnContext): Task[ToolResult[DapStackTraceOutput]] =
     withSession(input.sessionId, context) { session =>
       session.stackTrace(input.threadId, input.startFrame, input.levels).map { frames =>
-        if (frames.isEmpty) "No frames."
-        else frames.map { f =>
-          val source = Option(f.getSource).flatMap(s => Option(s.getPath)).getOrElse("(unknown)")
-          val line = Option(f.getLine).map(_.toString).getOrElse("?")
-          s"  [${f.getId}] ${f.getName} — $source:$line"
-        }.mkString("\n")
+        ToolResult.success(DapStackTraceOutput(
+          frames.map { f =>
+            DapStackFrameInfo(
+              id = f.getId,
+              name = f.getName,
+              source = Option(f.getSource).flatMap(s => Option(s.getPath)),
+              line = Option(f.getLine).map(_.intValue)
+            )
+          }
+        ))
       }
     }
 }

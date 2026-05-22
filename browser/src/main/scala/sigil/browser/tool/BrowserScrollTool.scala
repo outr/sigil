@@ -1,38 +1,39 @@
 package sigil.browser.tool
 
+import fabric.rw.*
 import fabric.{obj, str}
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
 import sigil.browser.{ScrollAmount, ScrollDirection, WebBrowserMode}
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 
 /** Scroll the page. `direction` chooses up / down; `amount` chooses a
   * one-viewport page move or an absolute top / bottom jump. */
-final class BrowserScrollTool extends TypedTool[BrowserScrollInput](
-  name = ToolName("browser_scroll"),
-  description =
-    "Scroll the page. `direction` is up or down; `amount` is page (one viewport), top, or bottom.",
-  examples = List(
+final class BrowserScrollTool extends Tool {
+  type Input  = BrowserScrollInput
+  type Output = TextToolOutput
+  val inputRW  = summon[RW[BrowserScrollInput]]
+  val outputRW = summon[RW[TextToolOutput]]
+
+  val name = ToolName("browser_scroll")
+  val description =
+    "Scroll the page. `direction` is up or down; `amount` is page (one viewport), top, or bottom."
+  override val examples = List(
     ToolExample("Scroll one viewport down", BrowserScrollInput()),
     ToolExample("Jump to the top", BrowserScrollInput(direction = ScrollDirection.Up, amount = ScrollAmount.Top)),
     ToolExample("Jump to the bottom", BrowserScrollInput(direction = ScrollDirection.Down, amount = ScrollAmount.Bottom))
-  ),
-  modes = Set(WebBrowserMode.id),
-  keywords = Set("browser", "scroll", "viewport")
-) {
-  override def paginate: Boolean = false
+  )
+  override val modes = Set(WebBrowserMode.id)
+  override val keywords = Set("browser", "scroll", "viewport")
 
-
-  override protected def executeTyped(input: BrowserScrollInput, ctx: TurnContext): Stream[Event] =
-    Stream.force(
-      for {
-        controller <- BrowserToolBase.resolveController(ctx)
-        _          <- controller.run(_.eval(scrollScript(input.direction, input.amount)).unit)
-      } yield Stream.emit[Event](BrowserToolBase.toolResult(
-        obj("scrolled" -> str(s"${input.direction}/${input.amount}")), ctx
-      ))
-    )
+  override def executeResult(input: BrowserScrollInput,
+                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+    for {
+      controller <- BrowserToolBase.resolveController(ctx)
+      _          <- controller.run(_.eval(scrollScript(input.direction, input.amount)).unit)
+    } yield ToolResult.Success(BrowserToolBase.toolResult(
+      obj("scrolled" -> str(s"${input.direction}/${input.amount}"))
+    ))
 
   private def scrollScript(direction: ScrollDirection, amount: ScrollAmount): String = (direction, amount) match {
     case (_, ScrollAmount.Top)        => "window.scrollTo(0, 0);"

@@ -8,4 +8,4 @@ import fabric.rw.*
 case class BspCompileResult(projectRoot: String,
                             status: String,
                             targetCount: Int,
-                            diagnostics: List[BspDiagnostic]) derives RW
+                            diagnostics: List[BspDiagnostic]) extends sigil.tool.ToolOutput derives RW

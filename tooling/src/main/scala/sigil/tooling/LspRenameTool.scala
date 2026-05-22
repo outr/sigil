@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.LspRenameResult
 
 import scala.jdk.CollectionConverters.*
@@ -25,23 +25,29 @@ case class LspRenameInput(languageId: String,
  * different class, etc.). For the agent, this is the safe path to
  * symbol-level refactors.
  */
-final class LspRenameTool(val manager: LspManager) extends TypedOutputTool[LspRenameInput, LspRenameResult](
-  name = ToolName("lsp_rename"),
-  description =
+final class LspRenameTool(val manager: LspManager) extends Tool
+  with sigil.tool.DestructiveExternalTool with LspToolSupport {
+  type Input  = LspRenameInput
+  type Output = LspRenameResult
+  val inputRW  = summon[RW[LspRenameInput]]
+  val outputRW = summon[RW[LspRenameResult]]
+
+  val name = ToolName("lsp_rename")
+  val description =
     """Rename a symbol across the workspace.
       |
       |`languageId` + `filePath` identify the source document.
       |`line` + `character` (0-based) point at the symbol to rename.
       |`newName` is the replacement identifier.
-      |Returns `Applied(newName, filesChanged)` / `PartialFailure(newName, filesChanged)` / `NoEdits`.""".stripMargin,
-  keywords = Set(
+      |Returns `Applied(newName, filesChanged)` / `PartialFailure(newName, filesChanged)` / `NoEdits`.""".stripMargin
+  override val keywords = Set(
     "lsp", "rename", "refactor", "refactoring", "rename symbol", "rename across project",
     "identifier", "symbol", "change name", "modify name", "replace name", "update name"
   )
-) with sigil.tool.DestructiveExternalTool with LspToolSupport {
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: LspRenameInput, context: TurnContext): Task[LspRenameResult] =
+  override def executeOutput(input: LspRenameInput, context: TurnContext): Task[LspRenameResult] =
     withOpenDocumentOrThrow[LspRenameResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

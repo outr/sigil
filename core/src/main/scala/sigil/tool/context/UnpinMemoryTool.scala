@@ -1,12 +1,11 @@
 package sigil.tool.context
 
+import fabric.rw.*
 import lightdb.id.Id
-import rapid.{Stream, Task}
+import rapid.Task
 import sigil.TurnContext
 import sigil.conversation.ContextMemory
-import sigil.event.{Event, Message, MessageRole}
-import sigil.tool.{ToolName, TypedTool}
-import sigil.tool.model.ResponseContent
+import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 /**
  * Unpin a memory so it stops rendering every turn. The record stays
@@ -23,32 +22,27 @@ import sigil.tool.model.ResponseContent
  *      where the agent received a UUID-style id from
  *      `list_memories(pinned=true)`).
  */
-case object UnpinMemoryTool extends TypedTool[UnpinMemoryInput](
-  name = ToolName("unpin_memory"),
-  description =
+case object UnpinMemoryTool extends Tool {
+  type Input  = UnpinMemoryInput
+  type Output = TextToolOutput
+  val inputRW: RW[UnpinMemoryInput] = summon[RW[UnpinMemoryInput]]
+  val outputRW: RW[TextToolOutput]  = summon[RW[TextToolOutput]]
+
+  val name: ToolName = ToolName("unpin_memory")
+  val description: String =
     """Unpin a memory so it stops rendering every turn. The record stays on disk —
       |the agent / user can re-pin later. Use this when the user reviews `list_memories(pinned=true)`
       |and decides a directive is no longer applicable.
       |
       |- `key`   — the memory's stable key (preferred) or `_id` value if no key.
-      |- `space` — optional disambiguator when the same key is pinned in multiple spaces.""".stripMargin,
-  keywords = Set("unpin", "remove", "demote", "memory", "directive", "trim")
-) {
-  override def paginate: Boolean = false
+      |- `space` — optional disambiguator when the same key is pinned in multiple spaces.""".stripMargin
+  override val keywords: Set[String] = Set("unpin", "remove", "demote", "memory", "directive", "trim")
 
   override def resultTtl: Option[Int] = Some(0)
   override val requiresAccessibleSpaces: Boolean = true
 
-  override protected def executeTyped(input: UnpinMemoryInput, context: TurnContext): Stream[Event] =
-    Stream.force(unpin(input, context).map { messageText =>
-      Stream.emits(List[Event](Message(
-        participantId = context.caller,
-        conversationId = context.conversation.id,
-        topicId = context.conversation.currentTopicId,
-        content = Vector(ResponseContent.Text(messageText)),
-        role = MessageRole.Tool
-      )))
-    })
+  override def executeResult(input: UnpinMemoryInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    unpin(input, context).map(text => ToolResult.Success(TextToolOutput(text)))
 
   private def unpin(input: UnpinMemoryInput, context: TurnContext): Task[String] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>

@@ -1,10 +1,9 @@
 package sigil.debug
 
 import fabric.rw.*
-import rapid.Stream
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolInput, ToolName, TypedTool}
+import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class DapThreadsInput(sessionId: String) extends ToolInput derives RW
 
@@ -13,29 +12,31 @@ case class DapThreadsInput(sessionId: String) extends ToolInput derives RW
  * to find a thread id for stack-trace / continue / step calls when
  * it doesn't already have one from the latest stop event.
  */
-final class DapThreadsTool(val manager: DapManager) extends TypedTool[DapThreadsInput](
-  name = ToolName("dap_threads"),
-  description =
+final class DapThreadsTool(val manager: DapManager) extends Tool with DapToolSupport {
+  type Input = DapThreadsInput
+  type Output = DapThreadsOutput
+  val inputRW = summon[RW[DapThreadsInput]]
+  val outputRW = summon[RW[DapThreadsOutput]]
+  val name = ToolName("dap_threads")
+  val description =
     """List active threads in the debugged program.
       |
       |`sessionId` selects the active session.
-      |Returns each thread's id and name.""".stripMargin,
-  examples = List(
+      |Returns each thread's id and name.""".stripMargin
+  override val examples = List(
     ToolExample(
       "list threads",
       DapThreadsInput(sessionId = "demo-session")
     )
   )
-) with DapToolSupport {
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: DapThreadsInput, context: TurnContext): Stream[Event] =
+  override def executeResult(input: DapThreadsInput, context: TurnContext): Task[ToolResult[DapThreadsOutput]] =
     withSession(input.sessionId, context) { session =>
       session.threads.map { threads =>
-        if (threads.isEmpty) "No threads."
-        else threads.map { t =>
-          s"  [${t.getId}] ${t.getName}"
-        }.mkString("\n")
+        ToolResult.success(DapThreadsOutput(
+          threads.map(t => DapThreadInfo(id = t.getId, name = t.getName))
+        ))
       }
     }
 }

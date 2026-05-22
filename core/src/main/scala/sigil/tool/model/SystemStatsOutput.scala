@@ -25,4 +25,4 @@ case class LoadAverage(load1: Double, load5: Double, load15: Double) derives RW
 case class SystemStatsOutput(cpu: Option[CpuStats],
                              memory: Option[MemoryStats],
                              disks: List[DiskStats],
-                             loadAverage: Option[LoadAverage]) derives RW
+                             loadAverage: Option[LoadAverage]) extends sigil.tool.ToolOutput derives RW

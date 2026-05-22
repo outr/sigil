@@ -1,9 +1,9 @@
 package sigil.script
 
-import rapid.{Stream, Task}
+import fabric.rw.*
+import rapid.Task
 import sigil.TurnContext
-import sigil.event.Event
-import sigil.tool.{ToolExample, ToolName, TypedTool}
+import sigil.tool.{Tool, ToolExample, ToolName, ToolResult}
 
 /**
  * [[sigil.tool.Tool]] that hands the model's `code` argument to the
@@ -39,43 +39,43 @@ class ExecuteScriptTool(executor: ScriptExecutor,
                         bindings: TurnContext => Map[String, Any] = ScriptTools.defaultBindings,
                         override val name: ToolName = ToolName("execute_script"),
                         override val description: String = ExecuteScriptTool.DefaultDescription)
-  extends TypedTool[ScriptInput](
-    name = name,
-    description = description,
-    keywords = Set(
-      // Bug #82 — without these, keyword-rank pointed agents at the
-      // persistent CRUD variants (`create_script_tool`,
-      // `update_script_tool`) when "execute"/"evaluate"/"run script"
-      // queries should have surfaced this ad-hoc tool first. The
-      // ad-hoc / one-off / inspect terms disambiguate against
-      // create_script_tool (which is for persistent registration).
-      "execute", "run", "evaluate", "eval", "script",
-      "scala", "compute", "ad-hoc", "adhoc", "inspect",
-      "one-off", "calculate"
+  extends Tool {
+  type Input  = ScriptInput
+  type Output = ScriptToolOutput
+  val inputRW  = summon[RW[ScriptInput]]
+  val outputRW = summon[RW[ScriptToolOutput]]
+
+  override val keywords = Set(
+    // Bug #82 — without these, keyword-rank pointed agents at the
+    // persistent CRUD variants (`create_script_tool`,
+    // `update_script_tool`) when "execute"/"evaluate"/"run script"
+    // queries should have surfaced this ad-hoc tool first. The
+    // ad-hoc / one-off / inspect terms disambiguate against
+    // create_script_tool (which is for persistent registration).
+    "execute", "run", "evaluate", "eval", "script",
+    "scala", "compute", "ad-hoc", "adhoc", "inspect",
+    "one-off", "calculate"
+  )
+  override val examples = List(
+    ToolExample(
+      "Compute a derived value",
+      ScriptInput(code = "val x = 1 + 2; x * 10", summary = "demo: small arithmetic")
     ),
-    examples = List(
-      ToolExample(
-        "Compute a derived value",
-        ScriptInput(code = "val x = 1 + 2; x * 10", summary = "demo: small arithmetic")
-      ),
-      ToolExample(
-        "Count matches across files (scan pass)",
-        ScriptInput(
-          code = "// scan code …",
-          summary = "scan: count bug references in Scala files"
-        )
-      ),
-      ToolExample(
-        "Apply edits and report what was changed (edit pass)",
-        ScriptInput(
-          code = "// edit code …",
-          summary = "edit: remove all matched bug refs and report counts"
-        )
+    ToolExample(
+      "Count matches across files (scan pass)",
+      ScriptInput(
+        code = "// scan code …",
+        summary = "scan: count bug references in Scala files"
+      )
+    ),
+    ToolExample(
+      "Apply edits and report what was changed (edit pass)",
+      ScriptInput(
+        code = "// edit code …",
+        summary = "edit: remove all matched bug refs and report counts"
       )
     )
-  ) {
-  override def paginate: Boolean = false
-
+  )
 
   /** Append the executor's advertised surface (Bug #54) so the LLM
     * knows which library identifiers are pre-imported. Without this
@@ -92,44 +92,28 @@ class ExecuteScriptTool(executor: ScriptExecutor,
   // tools when both match a query.
   override def preferIfNoBetter: Boolean = true
 
-  override protected def executeTyped(input: ScriptInput, context: TurnContext): Stream[Event] = {
+  override def executeResult(input: ScriptInput,
+                             context: TurnContext): Task[ToolResult[ScriptToolOutput]] = {
     val started = System.currentTimeMillis()
     // Bug #67 — wrap the whole construction in an outer `Task.defer`
     // and `.handleError` it so synchronous throws during evaluation
     // of `bindings(context)` (or anywhere in the executor's call-site
     // arg path) become a Task error and surface as a populated
-    // `ScriptResult.error`. Without this wrap, a sync throw escapes
-    // the inner `.handleError`, the orchestrator sees no
-    // `MessageRole.Tool` event for the call_id, and `Provider`'s
-    // dangling-tool-call fallback delivers the unhelpful
-    // `"(no result recorded)"` placeholder to the agent's next turn.
-    Stream.force(
-      Task.defer {
-        executor.execute(input.code, bindings(context))
-          .map { output =>
-            val ev = ScriptResult(
-              participantId = context.caller,
-              conversationId = context.conversation.id,
-              topicId = context.conversation.currentTopicId,
-              output = Some(output),
-              durationMs = System.currentTimeMillis() - started
-            )
-            Stream.emit[Event](ev)
-          }
-          .handleError { t =>
-            Task.pure(Stream.emit[Event](errorResult(context, started, t)))
-          }
-      }.handleError { t =>
-        Task.pure(Stream.emit[Event](errorResult(context, started, t)))
-      }
-    )
+    // `ScriptToolOutput.error` rather than an unrecoverable crash.
+    Task.defer {
+      executor.execute(input.code, bindings(context))
+        .map { output =>
+          ToolResult.Success(ScriptToolOutput(
+            output     = Some(output),
+            durationMs = System.currentTimeMillis() - started
+          ))
+        }
+        .handleError(t => Task.pure(errorResult(started, t)))
+    }.handleError(t => Task.pure(errorResult(started, t)))
   }
 
-  private def errorResult(context: TurnContext, started: Long, t: Throwable): ScriptResult =
-    ScriptResult(
-      participantId = context.caller,
-      conversationId = context.conversation.id,
-      topicId = context.conversation.currentTopicId,
+  private def errorResult(started: Long, t: Throwable): ToolResult[ScriptToolOutput] =
+    ToolResult.Success(ScriptToolOutput(
       // Bug #67 — include the abbreviated stack trace so wrapped
       // exceptions (`RuntimeException` carrying an
       // `InvocationTargetException` carrying a `NoSuchMethodError`,
@@ -137,9 +121,9 @@ class ExecuteScriptTool(executor: ScriptExecutor,
       // cause through to the agent. Trim to the first 8 lines —
       // enough framing for the model to reason about; not the full
       // ~80-line JVM stack.
-      error = Some(ExecuteScriptTool.formatThrowable(t)),
+      error      = Some(ExecuteScriptTool.formatThrowable(t)),
       durationMs = System.currentTimeMillis() - started
-    )
+    ))
 }
 
 object ExecuteScriptTool {

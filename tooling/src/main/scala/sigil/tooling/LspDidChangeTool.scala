@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, ToolResult, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName, ToolResult}
 import sigil.tooling.types.LspDidChangeResult
 
 case class LspDidChangeInput(languageId: String,
@@ -21,9 +21,14 @@ case class LspDidChangeInput(languageId: String,
  * `workspace/didChangeWatchedFiles` notification is the typical
  * fan-out path. This tool exists for explicit "refresh now" flows.
  */
-final class LspDidChangeTool(val manager: LspManager) extends TypedOutputTool[LspDidChangeInput, LspDidChangeResult](
-  name = ToolName("lsp_did_change"),
-  description =
+final class LspDidChangeTool(val manager: LspManager) extends Tool
+  with sigil.tool.DestructiveExternalTool with LspToolSupport {
+  type Input  = LspDidChangeInput
+  type Output = LspDidChangeResult
+  val inputRW  = summon[RW[LspDidChangeInput]]
+  val outputRW = summon[RW[LspDidChangeResult]]
+  val name = ToolName("lsp_did_change")
+  val description =
     """Update the language server's in-memory copy of a document by passing the file's
       |complete new contents. The server's diagnostic and completion computations operate
       |against this in-memory copy until the next change is sent or the document is
@@ -33,14 +38,13 @@ final class LspDidChangeTool(val manager: LspManager) extends TypedOutputTool[Ls
       |The `text` argument is the file's COMPLETE new contents, not a query or diff.
       |`languageId` selects the persisted LspServerConfig. `filePath` is the absolute
       |path; the server's open-document state for the URI is refreshed with `text` and
-      |the document version is bumped.""".stripMargin,
-  keywords = Set("lsp", "did change", "edit", "change", "modify", "document update", "notify edit")
-) with sigil.tool.DestructiveExternalTool with LspToolSupport {
+      |the document version is bumped.""".stripMargin
+  override val keywords = Set("lsp", "did change", "edit", "change", "modify", "document update", "notify edit")
+
   override def paginate: Boolean = false
 
-
-  override protected def executeTypedResult(input: LspDidChangeInput,
-                                            context: TurnContext): Task[ToolResult[LspDidChangeResult]] = {
+  override def executeResult(input: LspDidChangeInput,
+                             context: TurnContext): Task[ToolResult[LspDidChangeResult]] = {
     // Bug #131 — Sage's wire log showed the agent calling lsp_did_change
     // with 17-character `text` values ("AdminUsersService") trying to
     // QUERY the file. Each call silently overwrote the LSP's in-memory

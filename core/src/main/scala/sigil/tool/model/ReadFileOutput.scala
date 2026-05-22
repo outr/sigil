@@ -10,4 +10,4 @@ import fabric.rw.*
 case class ReadFileOutput(content: String,
                           totalLines: Int,
                           linesRead: Int,
-                          hash: Option[String] = None) derives RW
+                          hash: Option[String] = None) extends sigil.tool.ToolOutput derives RW

@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.{FormattingOptions, Position, Range}
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.LspFormatResult
 
 import java.nio.file.{Files, Paths, StandardOpenOption}
@@ -26,20 +26,25 @@ case class LspFormatRangeInput(languageId: String,
  * Same writeback semantics as [[LspFormatTool]]: applies the edits
  * to disk and notifies the server.
  */
-final class LspFormatRangeTool(val manager: LspManager) extends TypedOutputTool[LspFormatRangeInput, LspFormatResult](
-  name = ToolName("lsp_format_range"),
-  description =
+final class LspFormatRangeTool(val manager: LspManager) extends Tool
+  with sigil.tool.DestructiveExternalTool with LspToolSupport {
+  type Input  = LspFormatRangeInput
+  type Output = LspFormatResult
+  val inputRW  = summon[RW[LspFormatRangeInput]]
+  val outputRW = summon[RW[LspFormatResult]]
+  val name = ToolName("lsp_format_range")
+  val description =
     """Format a specific range within a file via the language server.
       |
       |`languageId` + `filePath` identify the document.
       |`startLine`/`startCharacter`/`endLine`/`endCharacter` (0-based) define the range.
       |`tabSize` and `insertSpaces` are passed as FormattingOptions.
-      |Writes the formatted result back to disk; returns `{filePath, editsApplied}`.""".stripMargin,
-  keywords = Set("lsp", "format", "format range", "prettify", "indent", "beautify", "selection")
-) with sigil.tool.DestructiveExternalTool with LspToolSupport {
+      |Writes the formatted result back to disk; returns `{filePath, editsApplied}`.""".stripMargin
+  override val keywords = Set("lsp", "format", "format range", "prettify", "indent", "beautify", "selection")
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: LspFormatRangeInput, context: TurnContext): Task[LspFormatResult] =
+  override def executeOutput(input: LspFormatRangeInput, context: TurnContext): Task[LspFormatResult] =
     withOpenDocumentOrThrow[LspFormatResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

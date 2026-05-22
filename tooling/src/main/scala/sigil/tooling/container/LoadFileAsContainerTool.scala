@@ -1,11 +1,12 @@
 package sigil.tooling.container
 
 import fabric.io.JsonParser
+import fabric.rw.*
 import fabric.{Arr, Json, NumInt, Obj, Str}
 import rapid.Task
 import sigil.TurnContext
 import sigil.tool.fs.{FileSystemContext, WorkspacePathResolver}
-import sigil.tool.{ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolName}
 
 /**
  * Read a file via the host's filesystem context and materialise
@@ -17,29 +18,33 @@ import sigil.tool.{ToolName, TypedOutputTool}
  * `ToolingSigil.fileSystemContext`) governs sandboxing — the tool
  * accepts whatever paths that context accepts.
  */
-final class LoadFileAsContainerTool(fileSystemContext: FileSystemContext)
-  extends TypedOutputTool[LoadFileAsContainerInput, CreateContainerOutput](
-    name = ToolName("load_file_as_container"),
-    description =
-      """Read a file and split it into a paginated container of items, returning the containerId.
-        |Splitting policies:
-        |  - `LinesParser`: each non-empty line → one item `{"line": "<text>", "lineNumber": <n>}`.
-        |  - `JsonArrayParser`: the whole file parsed as a JSON array; each element → one item.
-        |  - `JsonLinesParser`: each non-empty line parsed as one JSON value (JSONL / NDJSON).
-        |  - `CsvParser`: first line headers, each subsequent row → one item keyed by header.
-        |  - `RegexSplitParser(pattern)`: split on regex; each non-empty segment → one item
-        |    `{"segment": "<text>", "index": <n>}`.
-        |
-        |Pass the returned containerId to any consumer that takes one (e.g. dispatch_workers).""".stripMargin,
-    keywords = Set(
-      "container", "load", "read", "file", "import", "csv", "jsonl",
-      "lines", "split", "from file"
-    )
-  ) {
+final class LoadFileAsContainerTool(fileSystemContext: FileSystemContext) extends Tool {
+  type Input  = LoadFileAsContainerInput
+  type Output = CreateContainerOutput
+  val inputRW  = summon[RW[LoadFileAsContainerInput]]
+  val outputRW = summon[RW[CreateContainerOutput]]
+
+  val name = ToolName("load_file_as_container")
+  val description =
+    """Read a file and split it into a paginated container of items, returning the containerId.
+      |Splitting policies:
+      |  - `LinesParser`: each non-empty line → one item `{"line": "<text>", "lineNumber": <n>}`.
+      |  - `JsonArrayParser`: the whole file parsed as a JSON array; each element → one item.
+      |  - `JsonLinesParser`: each non-empty line parsed as one JSON value (JSONL / NDJSON).
+      |  - `CsvParser`: first line headers, each subsequent row → one item keyed by header.
+      |  - `RegexSplitParser(pattern)`: split on regex; each non-empty segment → one item
+      |    `{"segment": "<text>", "index": <n>}`.
+      |
+      |Pass the returned containerId to any consumer that takes one (e.g. dispatch_workers).""".stripMargin
+  override val keywords = Set(
+    "container", "load", "read", "file", "import", "csv", "jsonl",
+    "lines", "split", "from file"
+  )
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: LoadFileAsContainerInput,
-                                      ctx: TurnContext): Task[CreateContainerOutput] =
+  override def executeOutput(input: LoadFileAsContainerInput,
+                             ctx: TurnContext): Task[CreateContainerOutput] =
     WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolvedPath =>
       fileSystemContext.readFile(resolvedPath).flatMap { content =>
         val items = parse(content, input.parser)

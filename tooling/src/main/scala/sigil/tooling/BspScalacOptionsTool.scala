@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
-import sigil.tool.{ToolInput, ToolName, TypedOutputTool}
+import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{BspScalacOptionsResult, BspTargetScalacOptions}
 
 import scala.jdk.CollectionConverters.*
@@ -17,19 +17,24 @@ case class BspScalacOptionsInput(projectRoot: String,
  * `-Xfatal-warnings`, etc.) and inspect the classpath when chasing
  * resolution issues.
  */
-final class BspScalacOptionsTool(val manager: BspManager) extends TypedOutputTool[BspScalacOptionsInput, BspScalacOptionsResult](
-  name = ToolName("bsp_scalac_options"),
-  description =
+final class BspScalacOptionsTool(val manager: BspManager) extends Tool with BspToolSupport {
+  type Input  = BspScalacOptionsInput
+  type Output = BspScalacOptionsResult
+  val inputRW  = summon[RW[BspScalacOptionsInput]]
+  val outputRW = summon[RW[BspScalacOptionsResult]]
+
+  val name = ToolName("bsp_scalac_options")
+  val description =
     """List scalac options + classpath for each target.
       |
       |`projectRoot` selects the persisted BspBuildConfig.
-      |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin,
-  keywords = Set("bsp", "scalac", "scalac options", "compiler options", "compile flags", "scala")
-) with BspToolSupport {
+      |`targets` (optional) is the list of target URIs; empty queries every workspace target.""".stripMargin
+  override val keywords = Set("bsp", "scalac", "scalac options", "compiler options", "compile flags", "scala")
+
   override def paginate: Boolean = false
 
-  override protected def executeTyped(input: BspScalacOptionsInput,
-                                      context: TurnContext): Task[BspScalacOptionsResult] =
+  override def executeOutput(input: BspScalacOptionsInput,
+                             context: TurnContext): Task[BspScalacOptionsResult] =
     withTargets[BspScalacOptionsResult](
       input.projectRoot, context, input.targets,
       onError = _ => BspScalacOptionsResult(input.projectRoot, Nil),

@@ -9,4 +9,5 @@ import fabric.rw.*
   * outside parens, or signature has no parameters). */
 case class LspSignatureHelpResult(signatures: List[LspSignature],
                                    activeSignature: Int,
-                                   activeParameter: Int) derives RW
+                                   activeParameter: Int)
+  extends sigil.tool.ToolOutput derives RW
