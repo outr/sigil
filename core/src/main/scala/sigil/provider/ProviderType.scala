@@ -13,4 +13,5 @@ enum ProviderType derives RW {
   case DigitalOcean
   case DeepInfra
   case OpenRouter
+  case Cloudflare
 }
