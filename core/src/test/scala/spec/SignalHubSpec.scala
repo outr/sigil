@@ -6,9 +6,9 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, FiberOps, Task}
 import sigil.conversation.Conversation
-import sigil.event.Message
+import sigil.event.{Event, Message}
 import sigil.pipeline.SignalHub
-import sigil.signal.{EventState, Signal}
+import sigil.signal.{EventState, Signal, StateDelta}
 import sigil.tool.model.ResponseContent
 
 import scala.concurrent.duration.*
@@ -38,6 +38,14 @@ class SignalHubSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       content = Vector(ResponseContent.Text(text)),
       state = EventState.Complete,
       timestamp = Timestamp(ts)
+    )
+
+  /** A transient `Delta` signal — sheddable under overflow. */
+  private def delta(targetId: String): Signal =
+    StateDelta(
+      target = Id[Event](targetId),
+      conversationId = Conversation.id("hub-test"),
+      state = EventState.Complete
     )
 
   "SignalHub.subscribe" should {
@@ -88,6 +96,67 @@ class SignalHubSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
             // After the stream completes, the subscriber should be
             // removed from the hub's list.
             Task.pure(hub.subscriberCount shouldBe 0)
+          }
+        }
+      }
+    }
+  }
+
+  "SignalHub overflow policy (bug #256)" should {
+
+    "shed the oldest transient signal before a durable Event when a subscriber queue overflows" in {
+      val hub = new SignalHub(subscriberCapacity = 4)
+      val stream = hub.subscribe
+      // Fill the capacity-4 queue: two Events and two transient Deltas.
+      hub.emit(msg("E1"))
+      hub.emit(delta("D1"))
+      hub.emit(delta("D2"))
+      hub.emit(msg("E2"))
+      // Two more Events overflow the queue. Each makes room by shedding
+      // the oldest transient — never an Event — so both Deltas go and
+      // every Event stays queued.
+      hub.emit(msg("E3"))
+      hub.emit(msg("E4"))
+      val draining = stream.toList.start()
+      Task.sleep(50.millis).flatMap { _ =>
+        Task { hub.close() }.flatMap { _ =>
+          draining.flatMap { signals =>
+            val texts  = signals.collect {
+              case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString
+            }
+            val deltas = signals.collect { case d: StateDelta => d }
+            Task.pure {
+              // Both transients were shed; no Delta survived.
+              deltas shouldBe empty
+              // The Events survived the overflow (the close sentinel
+              // evicts the single oldest, E1, to make room for itself).
+              texts should contain allOf ("E2", "E3", "E4")
+            }
+          }
+        }
+      }
+    }
+
+    "drop the oldest Event only when the queue holds no transient to shed" in {
+      val hub = new SignalHub(subscriberCapacity = 3)
+      val stream = hub.subscribe
+      hub.emit(msg("E1"))
+      hub.emit(msg("E2"))
+      hub.emit(msg("E3"))
+      // Queue is full and holds only Events — this overflow has no
+      // transient to shed, so the oldest Event (E1) is dropped.
+      hub.emit(msg("E4"))
+      val draining = stream.toList.start()
+      Task.sleep(50.millis).flatMap { _ =>
+        Task { hub.close() }.flatMap { _ =>
+          draining.flatMap { signals =>
+            val texts = signals.collect {
+              case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString
+            }
+            Task.pure {
+              texts should not contain "E1" // oldest Event dropped on overflow
+              texts should contain ("E4")   // newest Event kept
+            }
           }
         }
       }

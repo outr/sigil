@@ -2025,9 +2025,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
 
   // -- broadcast stream --
 
+  /** Per-subscriber queue capacity for the [[SignalHub]]. Every
+    * `sigil.signals` / `signalsFor(viewer)` subscriber gets its own
+    * bounded queue of this size; when one fills, the hub sheds the
+    * oldest transient signal (a `Delta` / `Notice`) rather than block
+    * the publisher. The default ([[SignalHub.DefaultCapacity]]) is
+    * sized for always-on reasoning-model streams; apps with even
+    * heavier signal volume — or many slow wire subscribers — raise it. */
+  def signalHubCapacity: Int = SignalHub.DefaultCapacity
+
   /** Multicast dispatcher populated by [[publish]]. One per Sigil
     * instance; initialized lazily so initialization order is safe. */
-  private final lazy val hub: SignalHub = new SignalHub()
+  private final lazy val hub: SignalHub = new SignalHub(signalHubCapacity)
 
   /**
    * Broadcast-level stream of every signal that has completed its
