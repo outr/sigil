@@ -131,55 +131,29 @@ class ContextPoisoningGuardsSpec extends AsyncWordSpec with AsyncTaskSpec with M
     }
   }
 
-  "Dangling tool-call placeholder" should {
+  "Dangling tool-call handling" should {
 
-    "use a user-facing recoverable-failure message, not a developer diagnostic" in {
-      // Build a conversation where a ToolInvoke exists without a paired
-      // ToolResult — the renderInput synthesis path fires its placeholder.
-      val convId = Conversation.id(s"dangling-${rapid.Unique()}")
-      val conv = Conversation(topics = TestTopicStack, _id = convId)
-      val invoke = ToolInvoke(
-        toolName       = ToolName("some_tool"),
-        participantId  = TestAgent,
-        conversationId = convId,
-        topicId        = TestTopicEntry.id,
-        state          = EventState.Complete,
-        callId         = Some("call-orphan")
-      )
-      for {
-        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        _ <- TestSigil.publish(invoke)
-        // Run renderInput against this conversation — it must produce
-        // a synthetic ToolResult for the dangling ToolInvoke.
-        // We can't easily invoke renderInput directly without a provider
-        // instance, but we can verify the placeholder text in the
-        // source has the expected user-facing shape by inspecting
-        // a small unit check.
-      } yield {
-        // Use reflection-free string check on the compiled source: the
-        // diagnostic phrase from the prior version must no longer appear.
-        val src = scala.io.Source.fromFile(
-          "core/src/main/scala/sigil/provider/Provider.scala"
-        ).getLines().mkString("\n")
-        src should not include "Please report it"
-        src should not include "framework error: tool emitted no MessageRole.Tool"
-        // The prose retry directives that stacked across past turns
-        // are gone — the architectural fix (sigil bug #190) pairs
-        // every ToolInvoke in the durable log before render time, so
-        // this fallback is unreachable in well-formed operation. The
-        // earlier "tool failed: no result emitted" / "(orphan)"
-        // placeholders are now a structured JSON marker carrying
-        // `_sigil_orphan_marker`, the wireId, and an explicit
-        // do-not-retry message — the agent's next iteration reads a
-        // truthful "result unknown" payload instead of a misleading
-        // empty / opaque placeholder, while the wire shape stays
-        // valid (function_call ↔ function_call_output pairing).
-        src should not include "The previous tool call did not return a result"
-        src should not include "tool failed: no result emitted"
-        src should include ("_sigil_orphan_marker")
-        src should include ("_sigil_orphan_wireId")
-        src should include ("_sigil_message")
-      }
+    "synthesize nothing for a dangling tool call — the wire-side orphan-heal is removed" in Task {
+      // The typed tool-execution model pairs every tool call with a
+      // result event by construction: atomic dispatch builds a
+      // `ToolResults`, streaming `respond` emits one too, and a
+      // provider stream that dies mid-args is settled+paired by
+      // `settleOrphanToolInvoke`. So `Provider.renderFrames` no
+      // longer fabricates a placeholder `function_call_output` for a
+      // dangling call — it logs the framework bug loudly instead.
+      // Nothing the agent reads can be poisoned because nothing is
+      // synthesized at all (sigil bug #189 family — closed for good).
+      val src = scala.io.Source.fromFile(
+        "core/src/main/scala/sigil/provider/Provider.scala"
+      ).getLines().mkString("\n")
+      // Neither the old prose placeholders NOR the structured orphan
+      // marker exist any more — the synthesis path is gone entirely.
+      src should not include "Please report it"
+      src should not include "framework error: tool emitted no MessageRole.Tool"
+      src should not include "The previous tool call did not return a result"
+      src should not include "tool failed: no result emitted"
+      src should not include "_sigil_orphan_marker"
+      src should not include "_sigil_orphan_wireId"
     }
   }
 

@@ -1,7 +1,5 @@
 package spec
 
-import fabric.*
-import fabric.io.{Format, JsonParser}
 import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
@@ -15,21 +13,18 @@ import sigil.provider.{Provider, ProviderCall, ProviderEvent, ProviderMessage, P
 import sigil.tool.ToolName
 
 /**
- * Coverage for the forensic-logging + diagnostic-fallback-marker
- * portion of the dangling-tool_call workaround in
- * [[sigil.provider.Provider.renderFrames]].
+ * Coverage for [[sigil.provider.Provider.renderFrames]]'s handling of
+ * a dangling `ContextFrame.ToolCall`.
  *
- * When the corruption-resistance invariant is violated and a
- * `ContextFrame.ToolCall` reaches the renderer without a paired
- * `ContextFrame.ToolResult`, the renderer must
+ * Under the typed tool-execution model every tool call is paired with
+ * a result event by construction, so a dangling `ToolCall` reaching
+ * the renderer is a genuine framework bug. The renderer must
  *
- *   1. log a forensic dump of the in-trail invoke/result wireIds and
- *      settled/active counts, so the next field occurrence carries
- *      enough state to classify which path lost the result;
- *   2. emit a structured `function_call_output` payload (rather than
- *      a bare empty string) so the agent's next iteration reads an
- *      explicit "result unknown, do not blindly retry" marker
- *      instead of "the tool returned nothing."
+ *   1. log it loudly (a `dangling tool_call` error naming the wireId)
+ *      rather than papering over it;
+ *   2. NOT fabricate a synthetic `function_call_output` — the
+ *      wire-side orphan-heal is removed, so a real bug surfaces
+ *      instead of being masked.
  *
  * Forcing the orphan path here is the same shape every renderFrames
  * spec uses: a `ContextFrame.ToolCall` with no following
@@ -96,43 +91,32 @@ class OrphanToolInvokeSpec extends AnyWordSpec with Matchers {
     }
   }
 
-  "Provider.renderFrames orphan-call fallback" should {
+  "Provider.renderFrames with a dangling tool_call" should {
 
-    "log forensic trail state when a tool_call has no paired ToolResult" in {
+    "log the framework-bug error naming the dangling wireId" in {
       val (_, logged) = captureRootLog {
         TestProvider.render(orphanFrames, agent)
       }
       val danglingError = logged.find(_.contains("dangling tool_call"))
       danglingError shouldBe defined
       val text = danglingError.get
+      text should include ("framework bug")
       text should include ("invokes seen:")
       text should include ("results seen:")
-      text should include ("invokes settled:")
-      text should include ("invokes active:")
-      // The orphan wireId is the framework `Id[Event]` (no upstream
-      // wireCallId on the ContextFrame.ToolCall) — confirm the
-      // forensic dump carries it and that the paired wireId shows
-      // up in `results seen`.
+      // The orphan wireId and the paired wireId both show up in the
+      // forensic dump.
       text should include (orphanCallId.value)
       text should include (pairedCallId.value)
     }
 
-    "emit a structured diagnostic function_call_output marker for the orphan" in {
+    "synthesize NO function_call_output for the orphan — the wire-side heal is removed" in {
       val rendered = TestProvider.render(orphanFrames, agent)
-      val orphanOutput = rendered.collectFirst {
+      // No fabricated result for the unpaired call.
+      rendered.collectFirst {
         case t: ProviderMessage.ToolResult if t.toolCallId == orphanCallId.value => t
-      }
-      orphanOutput shouldBe defined
-      val payloadJson = JsonParser(orphanOutput.get.content, Format.Json)
-      payloadJson("_sigil_orphan_marker") shouldBe bool(true)
-      payloadJson("_sigil_orphan_wireId") shouldBe str(orphanCallId.value)
-      val message = payloadJson("_sigil_message").asString
-      message should include (orphanCallId.value)
-      message.toLowerCase should include ("do not retry")
-      message.toLowerCase should include ("side-effect")
-      // Paired call's result must still carry its real content,
-      // not the orphan marker — the fallback only fires for the
-      // unpaired call.
+      } shouldBe None
+      // The paired call still carries its real result content — the
+      // dangling-call handling doesn't disturb well-formed calls.
       val pairedOutput = rendered.collectFirst {
         case t: ProviderMessage.ToolResult if t.toolCallId == pairedCallId.value => t
       }

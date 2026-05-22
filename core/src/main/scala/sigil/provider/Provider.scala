@@ -1361,62 +1361,21 @@ trait Provider extends Service {
       }
     }
 
-    // Dangling tool_call without a result — defensive last-resort
-    // fallback. With the orchestrator's corruption-resistance
-    // invariant in place (sigil bug #190) — Phase 1's tool-dispatch
-    // wrapper plus the post-stream `guarantee` orphan-settle — every
-    // ToolInvoke should reach the durable event log with a paired
-    // Tool-role Message before any subsequent turn renders. If we
-    // arrive here, one of those paths is broken; the empty-content
-    // marker keeps the wire shape valid (function_call ↔
-    // function_call_output pairing) so the next turn doesn't HTTP
-    // 400, but does NOT inject a prose directive into the agent's
-    // context — generic "tool failed" strings poisoned reasoning
-    // (sigil bug #189 family) and gave the framework bug nothing to
-    // anchor on in logs. The scribe.error is the actionable surface.
-    pendingToolCallIds.foreach { callId =>
-      // Forensic dump — every wireId that walked the ToolCall and
-      // ToolResult branches of this trail. With frames materialised
-      // only for Complete events, `invokes settled` always equals
-      // `invokesSeen.size` and `invokes active` is always 0 in this
-      // renderer's input; keeping the labels stable lets log-grep
-      // queries match the same shape across future plumbing changes
-      // that might surface in-flight invokes here.
-      val settledCount = invokesSeen.size
-      val activeCount  = 0
+    // Invariant check — every tool call is paired with its result
+    // event by construction: atomic dispatch builds a `ToolResults`,
+    // streaming `respond` emits one too, and a provider stream that
+    // dies mid-args is settled+paired by `settleOrphanToolInvoke`.
+    // So the frame trail handed here should never carry a dangling
+    // `ContextFrame.ToolCall`. If one slips through it is a genuine
+    // framework bug — log it loudly rather than papering over it with
+    // a synthetic wire output. Surfacing the failure beats masking it.
+    if (pendingToolCallIds.nonEmpty)
       scribe.error(
-        s"renderInput: dangling tool_call wireId=$callId has no paired ToolResult in this turn's frame trail. " +
-          "The orchestrator's corruption-resistance invariant should have emitted a paired Tool-role Message " +
-          "before this turn was rendered. " +
-          "Frame trail contents (debug):\n" +
-          s"  invokes seen: ${invokesSeen.mkString(", ")}\n" +
-          s"  results seen: ${resultsSeen.mkString(", ")}\n" +
-          s"  invokes settled: $settledCount\n" +
-          s"  invokes active:  $activeCount\n" +
-          "Emitting a diagnostic function_call_output marker to keep the wire shape valid; " +
-          "investigate why the orphan-settle path missed this invoke."
+        s"renderFrames: ${pendingToolCallIds.size} dangling tool_call(s) with no paired " +
+          s"ToolResult in this turn's frame trail — wireIds=[${pendingToolCallIds.mkString(", ")}]. " +
+          "Every tool call should be paired by construction; this indicates a framework bug. " +
+          s"invokes seen: [${invokesSeen.mkString(", ")}]; results seen: [${resultsSeen.mkString(", ")}]."
       )
-      // Structured diagnostic payload — wire shape stays valid
-      // (function_call ↔ function_call_output) but the content the
-      // agent reads on its next iteration tells it the truth: this
-      // tool's result is unknown, do not blindly retry. Parseable
-      // marker fields let downstream analytics count occurrences
-      // without grepping logs.
-      val fallbackPayload = obj(
-        "_sigil_orphan_marker" -> bool(true),
-        "_sigil_orphan_wireId" -> str(callId),
-        "_sigil_message" -> str(
-          s"Internal: tool result for $callId was not paired by turn-render time. " +
-            "This is a Sigil orchestration bug; the tool's actual execution status " +
-            "is unknown to this iteration. Do not retry the tool as if no result " +
-            "happened — assume the prior call may have side-effected."
-        )
-      )
-      out += ProviderMessage.ToolResult(
-        toolCallId = callId,
-        content    = JsonFormatter.Compact(fallbackPayload)
-      )
-    }
 
     mergeAdjacentAssistantContent(out.result())
   }

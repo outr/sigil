@@ -10,12 +10,16 @@ import sigil.provider.{Provider, ProviderCall, ProviderEvent, ProviderMessage, P
 import sigil.tool.ToolName
 
 /**
- * Coverage for sigil bug #167 — frame renderer must produce a
- * `function_call_output` for every `function_call` in the wire input,
- * even when multiple unpaired tool calls land back-to-back (the prior
- * `pendingToolCallId: Option[String]` overwrote on the second call,
- * silently shipping the first one unpaired and 400ing OpenAI's
- * Responses API).
+ * Coverage for `Provider.renderFrames` when an unpaired
+ * `ContextFrame.ToolCall` reaches the renderer.
+ *
+ * Under the typed tool-execution model every tool call is paired
+ * with its result event by construction, so the wire-side
+ * orphan-heal that used to fabricate a `function_call_output` is
+ * removed. This spec pins the new behavior: unpaired calls render
+ * WITHOUT a synthesized output (a real bug surfaces loudly rather
+ * than being masked), paired calls render their real result, and a
+ * stray `ToolResult` for an unknown call doesn't crash the renderer.
  */
 class UnpairedFunctionCallSpec extends AnyWordSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -36,12 +40,13 @@ class UnpairedFunctionCallSpec extends AnyWordSpec with Matchers {
   private val callC: Id[Event] = Id[Event]("call-C")
   private val nonAtomicName = ToolName("vector_lookup")
 
-  "Provider.renderFrames (Bug #167 — multi-pending fallback)" should {
+  "Provider.renderFrames with unpaired tool calls" should {
 
-    "synthesize fallback outputs for every unpaired tool call, not just the most recent" in {
-      // Two non-atomic ToolCalls in a row with no intervening ToolResult.
-      // Pre-fix: pendingToolCallId = Some(callB) overwrote Some(callA);
-      // only callB got the fallback ToolResult; callA shipped unpaired.
+    "synthesize NO fallback output for unpaired tool calls" in {
+      // Two non-atomic ToolCalls in a row with no intervening
+      // ToolResult. The wire-side orphan-heal is removed — the
+      // renderer ships them as-is (and logs a framework-bug error);
+      // it does NOT fabricate placeholder outputs.
       val frames = Vector[ContextFrame](
         ContextFrame.ToolCall(
           toolName = nonAtomicName,
@@ -62,10 +67,10 @@ class UnpairedFunctionCallSpec extends AnyWordSpec with Matchers {
       val outputIds = messages.collect {
         case t: ProviderMessage.ToolResult => t.toolCallId
       }.toSet
-      outputIds shouldBe Set(callA.value, callB.value)
+      outputIds shouldBe empty
     }
 
-    "still clear the in-band paired call before falling back on the unpaired one" in {
+    "render a real ToolResult for a paired call and nothing for the unpaired one" in {
       // callA paired (has matching ToolResult), callB unpaired.
       val frames = Vector[ContextFrame](
         ContextFrame.ToolCall(nonAtomicName, """{"q":"a"}""", callA, agent,
@@ -79,51 +84,20 @@ class UnpairedFunctionCallSpec extends AnyWordSpec with Matchers {
       val resultsByCall = messages.collect {
         case t: ProviderMessage.ToolResult => t.toolCallId -> t.content
       }.toMap
+      // The paired call renders its real result; the unpaired call
+      // gets no synthesized output.
       resultsByCall(callA.value) shouldBe "real-result-A"
-      resultsByCall.keySet should contain (callB.value)
-      // callB's content is the framework's structured diagnostic
-      // marker — a JSON object whose `_sigil_orphan_marker` flag is
-      // true and whose human-readable message warns the agent
-      // against blind retry. The wire shape stays valid
-      // (function_call ↔ function_call_output); the content is
-      // parseable so analytics can count orphans without grepping
-      // logs.
-      val orphanJson = fabric.io.JsonParser(
-        resultsByCall(callB.value), fabric.io.Format.Json
-      )
-      orphanJson("_sigil_orphan_marker") shouldBe fabric.bool(true)
-      orphanJson("_sigil_orphan_wireId") shouldBe fabric.str(callB.value)
-      orphanJson("_sigil_message").asString.toLowerCase should include ("do not retry")
+      resultsByCall.keySet should not contain callB.value
     }
 
-    "tolerate a ToolResult arriving for a call that was never pending (no crash)" in {
-      // Pathological: ToolResult with a call_id we never saw on the
-      // assistant side. Previous logic silently no-op'd; new logic
-      // simply removes it from the empty pending set — same effect,
-      // but verifies we don't crash on the unknown id.
+    "tolerate a ToolResult arriving for a call that was never seen (no crash)" in {
+      // Pathological: a ToolResult with a call_id never seen on the
+      // assistant side. The renderer must not crash on the unknown id.
       val frames = Vector[ContextFrame](
         ContextFrame.ToolResult(callC, "orphan-result",
           sourceEventId = Id[Event]("result-C"))
       )
       noException should be thrownBy TestProvider.render(frames, agent)
-    }
-
-    "produce three fallbacks when three non-atomic calls arrive unpaired" in {
-      val frames = Vector[ContextFrame](
-        ContextFrame.ToolCall(nonAtomicName, "{}", callA, agent,
-          sourceEventId = Id[Event]("f1")),
-        ContextFrame.ToolCall(nonAtomicName, "{}", callB, agent,
-          sourceEventId = Id[Event]("f2")),
-        ContextFrame.ToolCall(nonAtomicName, "{}", callC, agent,
-          sourceEventId = Id[Event]("f3"))
-      )
-      val messages = TestProvider.render(frames, agent)
-      val outputIds = messages.collect {
-        case t: ProviderMessage.ToolResult => t.toolCallId
-      }
-      // Order preserved (LinkedHashSet) — fallback outputs appear after
-      // the assistant call entries.
-      outputIds shouldBe Vector(callA.value, callB.value, callC.value)
     }
   }
 }

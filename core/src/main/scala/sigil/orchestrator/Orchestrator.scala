@@ -5,7 +5,7 @@ import lightdb.time.Timestamp
 import rapid.{Stream, Task}
 import sigil.Sigil
 import sigil.conversation.{ContextFrame, Conversation, Topic, TopicShiftResult}
-import sigil.event.{Event, Message, MessageDisposition, MessageRole, MessageVisibility, Reasoning, TopicChange, TopicChangeKind, ToolInvoke}
+import sigil.event.{Event, Message, MessageDisposition, MessageRole, MessageVisibility, Reasoning, TopicChange, TopicChangeKind, ToolInvoke, ToolResults, ToolOutcome}
 import sigil.participant.ParticipantId
 import sigil.provider.{CallId, ConversationRequest, Provider, ProviderEvent, ProviderImage, StopReason, XmlToolCallSanitizer}
 import sigil.storage.StoredFileCategory
@@ -518,6 +518,27 @@ object Orchestrator {
             // which now reads the most-recent-remaining call after
             // the remove above.
             val closeBlock = closeCurrentBlock(state, convId)
+            // The streaming path settles the in-flight Message via
+            // `MessageDelta` and never runs the tool body — so it must
+            // emit the call's paired `ToolResults` itself. Mirrors what
+            // `Tool.execute` builds for the atomic path: an empty
+            // `TextToolOutput` payload (`{"text":""}`) — the user-visible
+            // content lives in the settled Message; this event is the
+            // wire-pairing marker. With this, EVERY tool call — atomic
+            // OR streaming — has a paired result event by construction,
+            // so no wire-side orphan-heal is needed.
+            val streamingToolResults: Signal = ToolResults(
+              schemas        = Nil,
+              participantId  = caller,
+              conversationId = convId,
+              topicId        = topicId,
+              outcome        = ToolOutcome.Success,
+              typed          = Some(fabric.obj("text" -> fabric.str(""))),
+              summary        = None,
+              state          = EventState.Complete,
+              role           = MessageRole.Tool,
+              origin         = Some(invokeId)
+            )
             (Some(active.toolName), input) match {
               case (Some("respond"), r: RespondInput) =>
                 val sanitized = XmlToolCallSanitizer.sanitize(r.content)
@@ -568,7 +589,7 @@ object Orchestrator {
                         StateDelta(target = tc._id, conversationId = tc.conversationId, state = EventState.Complete)
                       )
                     }
-                    Stream.emits(prelude ::: closeBlock ::: toolDeltaPrefix ::: List[Signal](settle))
+                    Stream.emits(prelude ::: closeBlock ::: toolDeltaPrefix ::: List[Signal](settle, streamingToolResults))
                   }
                 )
               case _ =>
@@ -577,7 +598,7 @@ object Orchestrator {
                   conversationId = convId,
                   state = Some(EventState.Complete)
                 )
-                Stream.emits(closeBlock ::: toolDeltaPrefix ::: List[Signal](settle))
+                Stream.emits(closeBlock ::: toolDeltaPrefix ::: List[Signal](settle, streamingToolResults))
             }
           case None =>
             // Atomic path — run execute and forward resulting Events.

@@ -14,20 +14,16 @@ import sigil.tool.ToolName
 import sigil.tool.core.CoreTools
 
 /**
- * Coverage for sigil bug #84 — defense-in-depth: the OpenAI
- * Responses API rejects `input` arrays whose `function_call`
- * items lack a matching `function_call_output`. Even when an
- * upstream tool author misses the
- * `MessageRole.Tool`-paired-result invariant (e.g. emitting a
- * ControlPlaneEvent and nothing else), the framework's
- * request-renderer should ensure the wire payload is well-
- * formed before sending.
+ * Coverage for `OpenAIProvider.renderInput` tool-call rendering.
  *
- * Drives a frame vector containing an `agent ToolCall` with NO
- * paired ToolResult, sends through `requestConverter`, parses
- * the body, and asserts every `function_call` in the rendered
- * `input` array has a matching `function_call_output` (the
- * synthesized placeholder counts).
+ * Under the typed tool-execution model every tool call is paired
+ * with its result event by construction (atomic dispatch builds a
+ * `ToolResults`; streaming `respond` emits one too), so the
+ * wire-side `ensureFunctionCallsPaired` safety net was removed —
+ * `renderInput` no longer fabricates a placeholder
+ * `function_call_output`. This spec pins that: a (synthetic)
+ * dangling `function_call` renders WITHOUT a synthesized output,
+ * and a properly-paired call renders exactly one.
  */
 class OpenAIOrphanFunctionCallSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -61,12 +57,15 @@ class OpenAIOrphanFunctionCallSpec extends AsyncWordSpec with AsyncTaskSpec with
     }
   }
 
-  "OpenAIProvider.renderInput orphan-pairing safety net (#84)" should {
+  "OpenAIProvider.renderInput tool-call rendering" should {
 
-    "synthesize a function_call_output for an unpaired function_call" in {
-      // ToolCall frame with NO matching ToolResult — the agent
-      // emitted a function_call but the tool's executeTyped
-      // produced no MessageRole.Tool event.
+    "render an unpaired function_call WITHOUT synthesizing a paired output" in {
+      // A ToolCall frame with NO matching ToolResult should never
+      // happen under the typed model — every call is paired by
+      // construction. If one ever does, `renderInput` ships it as-is
+      // and the orchestrator logs the framework bug; it does NOT
+      // fabricate a placeholder `function_call_output` (the old
+      // `ensureFunctionCallsPaired` safety net is removed).
       val orphanCallId = Id[Event]("orphan-call-7nTbS97zIPJe9PQo2sGTq6V7nX11hQsT")
       val sourceId     = Id[Event]("source-1")
       val frames: Vector[ContextFrame] = Vector(
@@ -98,7 +97,8 @@ class OpenAIOrphanFunctionCallSpec extends AsyncWordSpec with AsyncTaskSpec with
       }
       withClue(s"callIds=$callIds outputCallIds=$outputCallIds body=${body.take(500)}") {
         callIds should contain(orphanCallId.value)
-        outputCallIds should contain(orphanCallId.value) // synthesized by the safety net
+        // No safety-net synthesis — the orphan stays unpaired.
+        outputCallIds should not contain orphanCallId.value
       }
     }
 
