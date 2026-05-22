@@ -1289,23 +1289,16 @@ trait Provider extends Service {
               argsJson = tc.argsJson
             ))
           )
-          // Atomic content tools (`respond`, `respond_options`,
-          // `respond_field`, `respond_card`, etc. — see
-          // `CoreTools.atomicContentToolNames`) emit a `Standard`-role
-          // `Message` instead of a `Tool`-role `ToolResults`, so no
-          // `ContextFrame.ToolResult` is ever produced for the call.
-          // OpenAI's Responses API strictly requires every
-          // `function_call` to be followed by a `function_call_output`
-          // carrying the same `call_id` — unsatisfied calls cause a 400
-          // on the next request. Pair each atomic call with an empty
-          // synthetic output so the wire shape is satisfied; chat-side
-          // surface is unaffected (the rendered Message is the user-
-          // facing artifact).
-          if (isAtomic) {
-            out += ProviderMessage.ToolResult(toolCallId = wireId, content = "")
-          } else {
-            pendingToolCallIds.add(wireId)
-          }
+          // Sigil #259 — every tool call, atomic-content (`respond`,
+          // `respond_options`, …) included, emits a real `ToolResults`
+          // event under the typed tool-execution model, so `FrameBuilder`
+          // always produces a matching `ContextFrame.ToolResult` that the
+          // branch below renders into the paired output. Track the call
+          // as pending until that result is seen — no synthetic pairing.
+          // A leftover synthetic empty output here would DOUBLE-pair the
+          // call, and Anthropic rejects two `tool_result` blocks for one
+          // `tool_use`.
+          pendingToolCallIds.add(wireId)
           i += 1
 
         case _: ContextFrame.ToolCall =>

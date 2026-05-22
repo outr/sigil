@@ -66,6 +66,15 @@ class OpenAIInterleavedToolResultDropSpec extends AsyncWordSpec with AsyncTaskSp
           sourceEventId = Id[Event]("agent-text-1"),
           visibility = MessageVisibility.All
         ),
+        // The respond call's real ToolResults — every tool call,
+        // atomic-content included, emits one under the typed
+        // tool-execution model, so it has a real function_call_output.
+        ContextFrame.ToolResult(
+          callId = Id[Event](respondCallId),
+          content = """{"text":""}""",
+          sourceEventId = Id[Event]("result-respond-1"),
+          visibility = MessageVisibility.All
+        ),
         ContextFrame.Text(
           content = "follow-up",
           participantId = TestUser,

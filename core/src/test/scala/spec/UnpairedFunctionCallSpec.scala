@@ -100,4 +100,43 @@ class UnpairedFunctionCallSpec extends AnyWordSpec with Matchers {
       noException should be thrownBy TestProvider.render(frames, agent)
     }
   }
+
+  "Provider.renderFrames atomic-content tool pairing (Sigil #259)" should {
+
+    "render exactly one ToolResult for a settled atomic-content (respond) call" in {
+      // A settled `respond` turn: the tool call, the user-visible reply
+      // Text, and the real ToolResult. `respond` is an atomic-content
+      // tool — pre-fix, `renderFrames` ALSO fabricated a synthetic
+      // empty ToolResult for atomic tools, so the call rendered TWO
+      // results. Anthropic rejects that ("each tool_use must have a
+      // single result"); the framework now pairs every call by its
+      // real ToolResults, so exactly one must be rendered.
+      val respondCall: Id[Event] = Id[Event]("respond-call")
+      val frames = Vector[ContextFrame](
+        ContextFrame.ToolCall(
+          toolName = ToolName("respond"),
+          argsJson = """{"content":"hi"}""",
+          callId = respondCall,
+          participantId = agent,
+          sourceEventId = Id[Event]("respond-invoke")
+        ),
+        ContextFrame.Text(
+          content = "hi",
+          participantId = agent,
+          sourceEventId = Id[Event]("respond-message")
+        ),
+        ContextFrame.ToolResult(
+          callId = respondCall,
+          content = """{"text":""}""",
+          sourceEventId = Id[Event]("respond-result")
+        )
+      )
+      val messages = TestProvider.render(frames, agent)
+      val results = messages.collect { case t: ProviderMessage.ToolResult => t }
+      // Exactly one — the real ToolResult, not a fabricated empty one.
+      results should have size 1
+      results.head.toolCallId shouldBe respondCall.value
+      results.head.content shouldBe """{"text":""}"""
+    }
+  }
 }

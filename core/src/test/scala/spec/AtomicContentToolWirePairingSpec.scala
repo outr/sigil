@@ -9,13 +9,15 @@ import _root_.sigil.event.Event
 import _root_.sigil.tool.ToolName
 import _root_.sigil.tool.core.{CoreTools, RespondOptionsTool}
 
-/** Coverage for sigil bug #19 — atomic content tools like
-  * `respond_options` emit a Standard-role Message instead of a
-  * Tool-role ToolResults, leaving the model's `function_call`
-  * orphaned in wire history. OpenAI's Responses API rejects on the
-  * next request. The framework's frame renderer pairs each atomic
-  * call with an empty synthetic `function_call_output` so the wire
-  * shape stays valid. */
+/** Coverage for atomic-content tool wire pairing.
+  *
+  * Atomic-content tools (`respond_options`, the `respond` family,
+  * `no_response`) emit a real `ToolResults` event under the typed
+  * tool-execution model — so `renderFrames` pairs each `function_call`
+  * with the real `function_call_output`, exactly one, never a
+  * fabricated synthetic duplicate (Sigil #259: a leftover synthetic
+  * pairing on top of the real one made Anthropic reject the request
+  * with two `tool_result` blocks for one `tool_use`). */
 class AtomicContentToolWirePairingSpec extends AnyWordSpec with Matchers {
 
   // Test-only Provider exposing `renderFrames` (which is
@@ -35,7 +37,7 @@ class AtomicContentToolWirePairingSpec extends AnyWordSpec with Matchers {
   private val callId: Id[Event] = Id[Event]("call-respond-options-1")
 
   "Provider.renderFrames" should {
-    "synthesize an empty function_call_output paired with respond_options call (sigil bug #19)" in {
+    "render exactly one function_call_output for a respond_options call, paired by its real ToolResults" in {
       val frames = Vector[ContextFrame](
         ContextFrame.Text(
           content = "Bind the workspace.",
@@ -53,6 +55,14 @@ class AtomicContentToolWirePairingSpec extends AnyWordSpec with Matchers {
           content = "Workspace bound.",
           participantId = agent,
           sourceEventId = Id[Event]("agent-msg")
+        ),
+        // The respond_options call's real ToolResults — every tool
+        // call, atomic-content included, emits one under the typed
+        // tool-execution model.
+        ContextFrame.ToolResult(
+          callId = callId,
+          content = """{"text":""}""",
+          sourceEventId = Id[Event]("toolresult-source-1")
         )
       )
       val messages = TestProvider.render(frames, agent)
@@ -63,11 +73,13 @@ class AtomicContentToolWirePairingSpec extends AnyWordSpec with Matchers {
       }
       assistantWithCall should not be empty
 
-      val pairedOutput = messages.collectFirst {
+      // Exactly one function_call_output for the call — the real
+      // ToolResult, never a fabricated synthetic duplicate (#259).
+      val pairedOutputs = messages.collect {
         case t: ProviderMessage.ToolResult if t.toolCallId == cidStr => t
       }
-      pairedOutput should not be empty
-      pairedOutput.get.content shouldBe ""
+      pairedOutputs should have size 1
+      pairedOutputs.head.content shouldBe """{"text":""}"""
     }
 
     "list all 7 atomic content tools" in {

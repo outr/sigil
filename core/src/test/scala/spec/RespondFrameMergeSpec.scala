@@ -57,6 +57,11 @@ class RespondFrameMergeSpec extends AnyWordSpec with Matchers {
           content       = replyText,
           participantId = agent,
           sourceEventId = Id[Event]("message-respond-1")
+        ),
+        ContextFrame.ToolResult(
+          callId        = callId,
+          content       = """{"text":""}""",
+          sourceEventId = Id[Event]("toolresult-respond-1")
         )
       )
 
@@ -72,8 +77,8 @@ class RespondFrameMergeSpec extends AnyWordSpec with Matchers {
       a.toolCalls should have size 1
       a.toolCalls.head.name shouldBe RespondTool.schema.name.value
 
-      // The synthetic empty function_call_output paired with the
-      // atomic content tool (bug #19) must still be present.
+      // The respond call's real ToolResults renders as exactly one
+      // paired function_call_output — no synthetic duplicate (#259).
       val toolResults = rendered.collect { case t: ProviderMessage.ToolResult => t }
       toolResults should have size 1
       toolResults.head.toolCallId shouldBe callId.value
