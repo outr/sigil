@@ -921,11 +921,11 @@ object Orchestrator {
             }
           case None =>
             // Truly silent turn — no Message and no tool call. The
-            // agent loop's silent-turn recovery (forced respond-family
-            // iteration) re-enters the loop; the usage from THIS
-            // turn is dropped since no Message exists to carry it.
-            // The forced iteration will emit a Message that carries
-            // its own usage.
+            // agent loop's no-tool-call recovery re-enters the loop
+            // (a full-roster retry, then a forced respond-family
+            // iteration); the usage from THIS turn is dropped since no
+            // Message exists to carry it — the recovery iteration emits
+            // a Message that carries its own usage.
             Stream.empty
         }
 

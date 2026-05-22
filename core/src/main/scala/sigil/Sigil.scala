@@ -4687,6 +4687,17 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * loop); higher values give the agent more rope. */
   protected def consecutiveNoProgressLimit: Int = 2
 
+  /** Sigil #257 — how many times the agent loop retries with the FULL
+    * tool roster when a turn returns no tool call before falling back
+    * to the respond-only forced synthesis. A no-tool-call response is
+    * usually a transient hiccup — reasoning models in particular drop
+    * the tool call after their reasoning block — and a plain re-prompt
+    * with the roster intact usually self-corrects. Default 1. Setting
+    * to 0 restores the pre-fix behavior (strip the roster to the
+    * respond family on the first miss, which turns one hiccup into a
+    * guaranteed non-answer); higher values tolerate flakier models. */
+  protected def noToolCallRetryLimit: Int = 1
+
   /** Size of the per-participant `recentToolInvocations` rolling
     * window. Older entries fall off the tail. Drives the prompt's
     * "Recently used tools" + "Repeated tool calls" surfaces and the
@@ -4804,6 +4815,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                                    * vs stall) instead of misattributing every
                                    * forced-synthesis failure as cap exhaustion. */
                                  forcedReason: Option[ForcedSynthesisReason] = None,
+                                 /** Sigil #257 — count of consecutive
+                                   * full-roster retries already spent on
+                                   * no-tool-call responses this turn. Any
+                                   * iteration that makes real progress resets
+                                   * it to 0 (the normal continuation simply
+                                   * doesn't pass it); bounded by
+                                   * [[noToolCallRetryLimit]]. */
+                                 noToolCallRetries: Int = 0,
                                  /** Sigil bug #226 — the per-agent-loop
                                    * `find_capability` cache. Shared across
                                    * every iteration of THIS loop so the agent
@@ -4853,6 +4872,30 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         failurePublished          = failurePublished,
         forceResponseSynthesis    = true,
         forcedReason              = Some(reason),
+        discoveredCapabilitiesRef = discoveredCapabilitiesRef
+      )
+    // Sigil #257 — recovery for a no-tool-call response: run ONE more
+    // iteration with the FULL roster + normal `tool_choice` intact (NOT
+    // forced synthesis). A no-tool-call turn is usually a transient
+    // reasoning-model hiccup; a plain re-prompt self-corrects far more
+    // often than stripping the roster to the respond family does — the
+    // latter guarantees a non-answer for any turn that needed tools.
+    // `noToolCallRetries` increments so the loop strips to respond-only
+    // only after [[noToolCallRetryLimit]] retries also miss.
+    def recurseFullRosterRetry: Task[Unit] =
+      runAgentLoop(
+        agent                     = agent,
+        convId                    = convId,
+        claimed                   = claimed,
+        iteration                 = iteration + 1,
+        sinceTimestamp            = thisIterationStart,
+        greeting                  = false,
+        userVisibleSeen           = userVisibleSeen,
+        turnExtractorFired        = turnExtractorFired,
+        failurePublished          = failurePublished,
+        forceResponseSynthesis    = false,
+        forcedReason              = None,
+        noToolCallRetries         = noToolCallRetries + 1,
         discoveredCapabilitiesRef = discoveredCapabilitiesRef
       )
     val stopFlag = Option(stopFlags.get(claimed._id))
@@ -5179,23 +5222,34 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             case false =>
               // No more triggers to chase, no continue requested. If the
               // agent already spoke this turn we're done. Otherwise the
-              // turn ended silently — instead of synthesizing a
-              // placeholder Message, force ONE more iteration with
-              // tool_choice restricted to the respond family so the
-              // model MUST emit a real reply (respond / respond_options /
-              // respond_field / respond_failure / respond_card / respond_cards
-              // / no_response). If THAT iteration also fails to call
-              // respond, the `case true if forceResponseSynthesis` branch
-              // above raises AgentRunawayException — model is broken,
-              // surface the hard failure instead of papering over it
-              // with a fake "(agent completed without a reply)" Message.
+              // turn ended with no tool call — a transient hiccup most
+              // of the time (reasoning models drop the tool call after
+              // their reasoning block).
+              //
+              // Sigil #257 — recover in two stages. First, retry up to
+              // `noToolCallRetryLimit` times with the FULL roster +
+              // normal `tool_choice` intact: a plain re-prompt usually
+              // self-corrects. Only once those retries are exhausted do
+              // we force ONE iteration with the roster restricted to the
+              // respond family so the model MUST emit a real reply
+              // (respond / respond_options / … / no_response). If THAT
+              // forced iteration also fails to call respond, the
+              // `forceResponseSynthesis` branch raises
+              // AgentRunawayException — model is broken; surface the
+              // hard failure instead of papering over it.
               if (userVisibleSeen.get()) Task(terminate())
               else if (forceResponseSynthesis)
                 // Routed through the handleError below for the failure
                 // publish + post-commit terminal release.
                 Task.error(buildRunawayException(
                   agent, conv, iteration, maxAgentIterations, forcedReason))
-              else
+              else if (noToolCallRetries < noToolCallRetryLimit) {
+                scribe.warn(
+                  s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration returned no " +
+                    s"tool call; retrying with the full roster (retry ${noToolCallRetries + 1}/$noToolCallRetryLimit)"
+                )
+                Task.pure(recurseFullRosterRetry)
+              } else
                 Task.pure(recurseForced(ForcedSynthesisReason.NoToolCall))
             }
           }
