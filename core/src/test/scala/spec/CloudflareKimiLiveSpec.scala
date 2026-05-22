@@ -3,7 +3,7 @@ package spec
 import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
-import rapid.AsyncTaskSpec
+import rapid.{AsyncTaskSpec, Task}
 import sigil.db.Model
 import sigil.provider.{
   GenerationSettings, MessageContent, ProviderCall, ProviderEvent,
@@ -75,6 +75,37 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   private def runScenario(pc: ProviderCall) =
     provider.call(pc).toList
 
+  /** Reliability multiplier — every scenario runs this many times and
+    * must pass each attempt. Catches intermittent degeneration that a
+    * single pass would mask. 3 is enough to surface ~30%+ flakiness in
+    * one spec run; raise to 5+ for tighter characterization. */
+  private val Reps: Int = 3
+
+  /** Sequentially run `task` `n` times and collect every result. */
+  private def repeat[A](n: Int)(task: Task[A]): Task[List[A]] = {
+    def loop(remaining: Int, acc: List[A]): Task[List[A]] =
+      if (remaining <= 0) Task.pure(acc.reverse)
+      else task.flatMap(a => loop(remaining - 1, a :: acc))
+    loop(n, Nil)
+  }
+
+  /** Assert every attempt produced a clean tool-call completion — no
+    * Error events, at least one ToolCallComplete per attempt. */
+  private def expectAllPassed(attempts: List[List[ProviderEvent]]): org.scalatest.Assertion = {
+    val perAttempt = attempts.zipWithIndex.map { case (events, idx) =>
+      val errors    = events.collect { case e: ProviderEvent.Error => e }
+      val completes = events.collect { case c: ProviderEvent.ToolCallComplete => c }
+      val ok = errors.isEmpty && completes.nonEmpty
+      val tag = if (ok) "ok" else
+        s"FAIL[errors=${errors.size}, completes=${completes.size}: ${errors.take(1).mkString}]"
+      s"attempt ${idx + 1}: $tag"
+    }
+    val passed = perAttempt.count(_.endsWith("ok"))
+    withClue(s"$passed/${attempts.size} attempts passed (${perAttempt.mkString("; ")}): ") {
+      passed shouldBe attempts.size
+    }
+  }
+
   "Cloudflare Kimi-K2.5 live reliability" should {
 
     "complete a respond tool call with ReasoningMode.Auto" in {
@@ -86,13 +117,7 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         toolChoice  = ToolChoice.Required,
         reasoning   = ReasoningMode.Auto
       )
-      runScenario(pc).map { events =>
-        val errors    = events.collect { case e: ProviderEvent.Error => e }
-        val completes = events.collect { case c: ProviderEvent.ToolCallComplete => c }
-        withClue(s"errors: ${errors.mkString("; ")}: ") { errors shouldBe empty }
-        completes should not be empty
-        completes.head.input shouldBe a[RespondInput]
-      }
+      repeat(Reps)(runScenario(pc)).map(expectAllPassed)
     }
 
     "complete a respond tool call with ReasoningMode.On" in {
@@ -105,13 +130,7 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         reasoning   = ReasoningMode.On,
         maxTokens   = 600
       )
-      runScenario(pc).map { events =>
-        val errors    = events.collect { case e: ProviderEvent.Error => e }
-        val completes = events.collect { case c: ProviderEvent.ToolCallComplete => c }
-        withClue(s"errors: ${errors.mkString("; ")}: ") { errors shouldBe empty }
-        completes should not be empty
-        completes.head.input shouldBe a[RespondInput]
-      }
+      repeat(Reps)(runScenario(pc)).map(expectAllPassed)
     }
 
     "complete a respond tool call with ReasoningMode.Off" in {
@@ -123,13 +142,7 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         toolChoice  = ToolChoice.Required,
         reasoning   = ReasoningMode.Off
       )
-      runScenario(pc).map { events =>
-        val errors    = events.collect { case e: ProviderEvent.Error => e }
-        val completes = events.collect { case c: ProviderEvent.ToolCallComplete => c }
-        withClue(s"errors: ${errors.mkString("; ")}: ") { errors shouldBe empty }
-        completes should not be empty
-        completes.head.input shouldBe a[RespondInput]
-      }
+      repeat(Reps)(runScenario(pc)).map(expectAllPassed)
     }
 
     "decode a tool call whose Input has all-optional fields (no_response)" in {
@@ -141,12 +154,7 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         toolChoice  = ToolChoice.Required,
         reasoning   = ReasoningMode.Auto
       )
-      runScenario(pc).map { events =>
-        val errors    = events.collect { case e: ProviderEvent.Error => e }
-        val completes = events.collect { case c: ProviderEvent.ToolCallComplete => c }
-        withClue(s"errors: ${errors.mkString("; ")}: ") { errors shouldBe empty }
-        completes should not be empty
-      }
+      repeat(Reps)(runScenario(pc)).map(expectAllPassed)
     }
 
     "complete a respond call exercising every RespondInput field (multi-arg strict-mode stress)" in {
@@ -159,15 +167,16 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         reasoning   = ReasoningMode.Auto,
         maxTokens   = 500
       )
-      runScenario(pc).map { events =>
-        val errors    = events.collect { case e: ProviderEvent.Error => e }
-        val completes = events.collect { case c: ProviderEvent.ToolCallComplete => c }
-        withClue(s"errors: ${errors.mkString("; ")}: ") { errors shouldBe empty }
-        completes should not be empty
-        val r = completes.head.input.asInstanceOf[RespondInput]
-        r.topicLabel.trim should not be empty
-        r.topicSummary.trim should not be empty
-        r.content.trim should not be empty
+      repeat(Reps)(runScenario(pc)).map { attempts =>
+        expectAllPassed(attempts)
+        attempts.foreach { events =>
+          val r = events.collect { case ProviderEvent.ToolCallComplete(_, in) => in }
+            .head.asInstanceOf[RespondInput]
+          r.topicLabel.trim should not be empty
+          r.topicSummary.trim should not be empty
+          r.content.trim should not be empty
+        }
+        succeed
       }
     }
 
@@ -181,12 +190,7 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         toolChoice  = ToolChoice.Required,
         reasoning   = ReasoningMode.Auto
       )
-      runScenario(pc).map { events =>
-        val errors    = events.collect { case e: ProviderEvent.Error => e }
-        val completes = events.collect { case c: ProviderEvent.ToolCallComplete => c }
-        withClue(s"errors: ${errors.mkString("; ")}: ") { errors shouldBe empty }
-        completes should not be empty
-      }
+      repeat(Reps)(runScenario(pc)).map(expectAllPassed)
     }
 
     "complete a multi-turn conversation (assistant message threaded in history)" in {
@@ -208,13 +212,14 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
           reasoningMode   = ReasoningMode.Auto
         )
       )
-      runScenario(pc).map { events =>
-        val errors    = events.collect { case e: ProviderEvent.Error => e }
-        val completes = events.collect { case c: ProviderEvent.ToolCallComplete => c }
-        withClue(s"errors: ${errors.mkString("; ")}: ") { errors shouldBe empty }
-        completes should not be empty
-        val r = completes.head.input.asInstanceOf[RespondInput]
-        r.content.trim should not be empty
+      repeat(Reps)(runScenario(pc)).map { attempts =>
+        expectAllPassed(attempts)
+        attempts.foreach { events =>
+          val r = events.collect { case ProviderEvent.ToolCallComplete(_, in) => in }
+            .head.asInstanceOf[RespondInput]
+          r.content.trim should not be empty
+        }
+        succeed
       }
     }
 
@@ -244,13 +249,7 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         reasoning   = ReasoningMode.Auto,
         maxTokens   = 400
       )
-      runScenario(pc).map { events =>
-        val errors    = events.collect { case e: ProviderEvent.Error => e }
-        val completes = events.collect { case c: ProviderEvent.ToolCallComplete => c }
-        withClue(s"errors: ${errors.mkString("; ")}: ") { errors shouldBe empty }
-        completes should not be empty
-        completes.head.input shouldBe a[RespondInput]
-      }
+      repeat(Reps)(runScenario(pc)).map(expectAllPassed)
     }
 
     "complete a reasoning-heavy turn under a realistic budget" in {
@@ -271,13 +270,7 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         reasoning   = ReasoningMode.On,
         maxTokens   = 1200
       )
-      runScenario(pc).map { events =>
-        val errors    = events.collect { case e: ProviderEvent.Error => e }
-        val completes = events.collect { case c: ProviderEvent.ToolCallComplete => c }
-        withClue(s"errors: ${errors.mkString("; ")}: ") { errors shouldBe empty }
-        completes should not be empty
-        completes.head.input shouldBe a[RespondInput]
-      }
+      repeat(Reps)(runScenario(pc)).map(expectAllPassed)
     }
   }
 
