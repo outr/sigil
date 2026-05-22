@@ -113,7 +113,11 @@ class RunawayAttributionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
                content        = Vector(ResponseContent.Text("Trigger cap-hit")),
                state          = EventState.Complete
              ))
-      _   <- Task.sleep(3.seconds)
+      // Generous wait — the cap-hit path runs maxAgentIterations + a
+      // forced-synthesis turn + the handleError failure publish; under
+      // full-suite fork concurrency the 3s this used to wait could
+      // expire before the AgentRunaway Failure Message landed.
+      _   <- Task.sleep(8.seconds)
       evs <- eventsFor(convId)
     } yield (recorder, convId, evs)
   }

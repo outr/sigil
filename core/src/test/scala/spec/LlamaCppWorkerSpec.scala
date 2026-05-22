@@ -1,6 +1,5 @@
 package spec
 
-import fabric.io.JsonParser
 import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
@@ -8,7 +7,7 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
 import sigil.db.Model
-import sigil.event.Message
+import sigil.event.{Message, ToolResults, ToolOutcome}
 import sigil.participant.{AgentParticipantId, DefaultAgentParticipant}
 import sigil.provider.{AnalysisWork, GenerationSettings, Instructions}
 import sigil.provider.llamacpp.LlamaCppProvider
@@ -418,11 +417,14 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
             DelegateTaskInput(role = role, brief = brief, modelId = modelId.value),
             ctx
           ).toList
-          payload = events.collectFirst { case m: Message =>
-            m.content.collectFirst { case ResponseContent.Text(s) => s }
-          }.flatten.map(JsonParser(_)).getOrElse(fabric.Obj.empty)
+          // The tool's typed result is a `ToolResults` carrying the
+          // `DelegateTaskOutput` json — `{taskId, workerConvId, role}`.
+          resultOpt = events.collectFirst { case tr: ToolResults => tr }
+          payload = resultOpt.flatMap(_.typed).getOrElse(fabric.Obj.empty)
           _ <- Task {
-            payload.get("ok").map(_.asString) shouldBe Some("true")
+            withClue("delegate_task must produce a Success ToolResults: ") {
+              resultOpt.map(_.outcome) shouldBe Some(ToolOutcome.Success)
+            }
             ()
           }
           taskId       = payload.get("taskId").map(_.asString).getOrElse("")

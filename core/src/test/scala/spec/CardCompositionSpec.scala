@@ -49,8 +49,9 @@ class CardCompositionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         .execute(RespondCardInput("Status Dashboard", "Server health snapshot.", card), turnContextFor(convId))
         .toList
       events.map { list =>
-        list should have size 1
-        val m = list.head.asInstanceOf[Message]
+        val messages = list.collect { case m: Message => m }
+        messages should have size 1
+        val m = messages.head
         m.content should have size 1
         val emitted = m.content.head.asInstanceOf[ResponseContent.Card]
         emitted.title shouldBe Some("Server Health")
@@ -76,8 +77,9 @@ class CardCompositionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         .execute(RespondCardInput("Nested Demo", "Card inside a card.", outer), turnContextFor(convId))
         .toList
       events.map { list =>
-        list should have size 1
-        val m = list.head.asInstanceOf[Message]
+        val messages = list.collect { case m: Message => m }
+        messages should have size 1
+        val m = messages.head
         val outerCard = m.content.head.asInstanceOf[ResponseContent.Card]
         outerCard.title shouldBe Some("Outer")
         val outerSections = Card.typedSections(outerCard)
@@ -101,8 +103,9 @@ class CardCompositionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         .execute(RespondCardsInput("Search Results", "Three result cards.", cards), turnContextFor(convId))
         .toList
       events.map { list =>
-        list should have size 1
-        val m = list.head.asInstanceOf[Message]
+        val messages = list.collect { case m: Message => m }
+        messages should have size 1
+        val m = messages.head
         m.content should have size 3
         m.content.collect { case c: ResponseContent.Card => c.title }.flatten shouldBe Vector("A", "B", "C")
       }

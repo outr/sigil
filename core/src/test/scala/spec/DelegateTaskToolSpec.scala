@@ -49,10 +49,11 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     modelId = "anthropic/claude-sonnet-4-6"
   )
 
-  private def extractJson(events: List[sigil.event.Event]): fabric.Json =
-    events.collectFirst { case m: Message =>
-      m.content.collectFirst { case ResponseContent.Text(t) => t }
-    }.flatten.map(JsonParser(_)).getOrElse(fabric.Obj.empty)
+  private def failureText(events: List[sigil.event.Event]): String =
+    events.collectFirst {
+      case m: Message if m.isFailure =>
+        m.content.collect { case ResponseContent.Text(t) => t }.mkString
+    }.getOrElse("")
 
   "DelegateTaskInput" should {
     "round-trip through fabric RW" in {
@@ -66,9 +67,8 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   "DelegateTaskTool" should {
     "return a structured error when the host Sigil doesn't mix in WorkflowSigil" in {
       DelegateTaskTool.execute(sampleInput, turnContext()).toList.map { events =>
-        val payload = extractJson(events)
-        payload.get("ok").map(_.asString) shouldBe Some("false")
-        payload.get("error").map(_.asString.contains("WorkflowSigil")).getOrElse(false) shouldBe true
+        val text = failureText(events)
+        text should include("WorkflowSigil")
       }
     }
   }

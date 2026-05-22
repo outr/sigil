@@ -199,8 +199,11 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
           toolOpt match {
             case Some(t) =>
               t.execute(ti, tcx).toList.map { evs =>
-                val text = evs.collect { case m: sigil.event.Message =>
-                  m.content.collect { case sigil.tool.model.ResponseContent.Text(s) => s }.mkString
+                val text = evs.collect {
+                  case m: sigil.event.Message =>
+                    m.content.collect { case sigil.tool.model.ResponseContent.Text(s) => s }.mkString
+                  case tr: sigil.event.ToolResults =>
+                    tr.summary.orElse(tr.typed.map(fabric.io.JsonFormatter.Compact.apply)).getOrElse("")
                 }.filter(_.nonEmpty).mkString("\n")
                 s"[Tool ${t.name.value}] $text"
               }

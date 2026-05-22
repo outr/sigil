@@ -6,7 +6,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, TopicEntry, TurnInput}
-import sigil.event.{Message, ToolApproval}
+import sigil.event.{Message, ToolApproval, ToolResults}
 import sigil.orchestrator.Orchestrator
 import sigil.signal.EventState
 import sigil.tool.core.RecordConsentTool
@@ -94,8 +94,8 @@ class RecordConsentValidationSpec extends AsyncWordSpec with AsyncTaskSpec with 
         approvalsForConv.size shouldBe 1
         approvalsForConv.head.approved shouldBe true
         val confirmations = evs.collect {
-          case m: Message =>
-            m.content.collect { case ResponseContent.Text(t) => t }
+          case tr: ToolResults =>
+            tr.typed.flatMap(_.get("text")).map(_.asString)
         }.flatten
         confirmations.exists(_.contains("approved")) shouldBe true
       }

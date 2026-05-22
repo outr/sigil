@@ -4854,6 +4854,23 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // history and continues working. Per-iteration scope (the next
     // iteration starts with its own fresh AtomicBoolean).
     val agentRequestedContinue = new java.util.concurrent.atomic.AtomicBoolean(false)
+    // Flips when a user-visible terminal tool (`respond` with
+    // `endsTurn = true`, `no_response`, the other `respond_*` family
+    // members) settles this iteration. Every tool now emits a
+    // `ToolResults` (role = Tool) which `TriggerFilter` counts as a
+    // re-trigger; without this flag the agent's OWN terminal-tool
+    // result would keep `newTriggersExist` true and the loop would
+    // never end. When set, the post-drain check only continues for a
+    // genuine *external* trigger (a message from someone else that
+    // landed mid-turn), never for the turn's own emitted events.
+    val terminalToolSettled = new java.util.concurrent.atomic.AtomicBoolean(false)
+    // Set when the orchestrator emits a `_refusal_challenge` this
+    // iteration — the agent's `respond` was suppressed and replaced
+    // with a diagnostic it must read and act on. The loop MUST run
+    // another iteration so the agent re-responds; `terminalToolSettled`
+    // (set by the suppressed respond's settle delta) would otherwise
+    // end the turn before the challenge is ever acted on.
+    val frameworkRequestedContinue = new java.util.concurrent.atomic.AtomicBoolean(false)
     // Bug #57 — diagnostic logging at iteration boundaries so a
     // future repro of "agent parks at thinking" can be localised
     // by reading the server log for missing exit lines. The cost
@@ -4934,6 +4951,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                 .evalTap {
                   case ti: ToolInvoke if Orchestrator.UserVisibleTerminalTools.contains(ti.toolName.value) =>
                     Task { activeUserVisibleInvokes.put(ti._id, ti.toolName.value); () }
+                  case ti: ToolInvoke if ti.toolName.value == "_refusal_challenge" =>
+                    Task { frameworkRequestedContinue.set(true); () }
                   // Silent-turn placeholder emitted by the orchestrator
                   // when Usage arrives with no target. Marked via
                   // `source = "orchestrator-silent-turn"` so the loop
@@ -4949,29 +4968,30 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                       // Bug #74 — `respond(endsTurn = false)` keeps the
                       // turn open. The settled delta carries the parsed
                       // input; flip the continue flag when it's a
-                      // RespondInput with endsTurn = false. Anything
-                      // else (the other respond_* tools, no_response,
-                      // unparseable input) leaves the flag false and
-                      // the loop falls through to its normal end-of-
-                      // turn check.
+                      // RespondInput with endsTurn = false. Every other
+                      // user-visible terminal tool (`respond` with
+                      // endsTurn = true, `no_response`, the other
+                      // `respond_*` family) ENDS the turn — flip
+                      // `terminalToolSettled` so the post-drain check
+                      // doesn't mistake the turn's own emitted
+                      // `ToolResults` for a fresh trigger.
                       //
                       // Bug #226 — also drop the per-loop
                       // `find_capability` cache on respond(endsTurn =
                       // true). Covers the streaming-respond path
                       // (orchestrator settles the in-flight Message via
                       // `MessageDelta` and never calls
-                      // `RespondTool.executeTyped`); the atomic-respond
-                      // path's clear in `executeTyped` is idempotent
-                      // with this one.
+                      // `RespondTool.executeResult`); the atomic-respond
+                      // path's clear is idempotent with this one.
                       val toolName = activeUserVisibleInvokes.get(td.target)
-                      if (toolName == "respond") {
-                        td.input match {
-                          case Some(r: sigil.tool.model.RespondInput) if !r.endsTurn =>
-                            agentRequestedContinue.set(true)
-                          case Some(r: sigil.tool.model.RespondInput) if r.endsTurn =>
-                            discoveredCapabilitiesRef.set(Map.empty)
-                          case _ => ()
-                        }
+                      val keepsTurnOpen = toolName == "respond" && (td.input match {
+                        case Some(r: sigil.tool.model.RespondInput) => !r.endsTurn
+                        case _                                      => false
+                      })
+                      if (keepsTurnOpen) agentRequestedContinue.set(true)
+                      else {
+                        terminalToolSettled.set(true)
+                        discoveredCapabilitiesRef.set(Map.empty)
                       }
                       ()
                     }
@@ -5011,7 +5031,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             // going; the next iteration will see it in history and
             // proceed with the announced work.
             val shouldIterate: Task[Boolean] =
-              if (agentRequestedContinue.get()) Task.pure(true)
+              if (agentRequestedContinue.get() || frameworkRequestedContinue.get()) Task.pure(true)
+              else if (terminalToolSettled.get())
+                // The agent ended the turn with a user-visible terminal
+                // tool. Continue ONLY for a genuine external trigger (a
+                // message from someone else that landed mid-turn) — never
+                // for the turn's own `ToolResults` / reply Message.
+                externalTriggersExist(agent, conv, sinceTimestamp = thisIterationStart)
               else newTriggersExist(agent, conv, sinceTimestamp = thisIterationStart)
             shouldIterate.flatMap {
             case true if iteration < maxAgentIterations =>
@@ -5716,6 +5742,22 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     withDB(_.eventsTransaction(conv._id)(_.list)).map { all =>
       all.exists(e => e.conversationId == conv._id
                    && e.timestamp.value > sinceTimestamp.value
+                   && TriggerFilter.isTriggerFor(agent, e))
+    }
+
+  /** Like [[newTriggersExist]] but only counts triggers authored by
+    * someone OTHER than the running agent. Used after a turn the agent
+    * ended with a user-visible terminal tool: the turn's own emitted
+    * events (the reply `Message`, the terminal tool's `ToolResults`)
+    * must not keep the loop alive — only a genuine external message
+    * that landed mid-turn should. */
+  private final def externalTriggersExist(agent: AgentParticipant,
+                                          conv: Conversation,
+                                          sinceTimestamp: Timestamp): Task[Boolean] =
+    withDB(_.eventsTransaction(conv._id)(_.list)).map { all =>
+      all.exists(e => e.conversationId == conv._id
+                   && e.timestamp.value > sinceTimestamp.value
+                   && e.participantId != agent.id
                    && TriggerFilter.isTriggerFor(agent, e))
     }
 

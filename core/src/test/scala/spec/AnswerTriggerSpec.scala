@@ -7,7 +7,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
-import sigil.event.Message
+import sigil.event.{Message, ToolResults}
 import sigil.signal.{Signal, WorkerAnswer}
 import sigil.tool.model.{AnswerWorkerInput, ResponseContent}
 import sigil.tool.util.AnswerWorkerTool
@@ -91,11 +91,11 @@ class AnswerTriggerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val input = AnswerWorkerInput(taskId = "wf-1", questionId = "q1", answer = "go ahead with OAuth")
       AnswerWorkerTool.execute(input, turnContext()).toList.map { events =>
         running = false
-        // Tool emits a confirmation Message + the framework also
-        // broadcasts the WorkerAnswer notice through `signals`.
-        val toolOk = events.collectFirst { case m: Message =>
-          m.content.collectFirst { case ResponseContent.Text(t) => t }
-        }.flatten.map(JsonParser(_)).flatMap(_.get("ok").map(_.asBoolean))
+        // Tool's success result is a ToolResults carrying the typed
+        // AnswerWorkerOutput; the framework also broadcasts the
+        // WorkerAnswer notice through `signals`.
+        val toolOk = events.collectFirst { case tr: ToolResults => tr }
+          .flatMap(_.typed).flatMap(_.get("ok")).map(_.asBoolean)
         toolOk shouldBe Some(true)
 
         Thread.sleep(80)

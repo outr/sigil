@@ -7,7 +7,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.Conversation
 import sigil.db.Model
-import sigil.event.{ComplexityChange, Event, Message, MessageVisibility}
+import sigil.event.{ComplexityChange, Event, Message, MessageVisibility, ToolResults}
 import sigil.provider.Complexity
 import sigil.tool.provider.{
   PinComplexityInput, PinComplexityTool, UnpinComplexityInput, UnpinComplexityTool
@@ -71,16 +71,16 @@ class ComplexityChangeEventSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       }
     }
 
-    "emit ComplexityChange BEFORE the confirmation Message (reducers update first)" in {
+    "emit ComplexityChange BEFORE the confirmation ToolResults (reducers update first)" in {
       for {
         conv   <- freshConv("pin-order")
         events <- PinComplexityTool.execute(PinComplexityInput("low"), buildCtx(conv)).toList
       } yield {
         val ccIdx = events.indexWhere(_.isInstanceOf[ComplexityChange])
-        val msgIdx = events.indexWhere(_.isInstanceOf[Message])
+        val resultIdx = events.indexWhere(_.isInstanceOf[ToolResults])
         ccIdx should be >= 0
-        msgIdx should be >= 0
-        ccIdx should be < msgIdx
+        resultIdx should be >= 0
+        ccIdx should be < resultIdx
       }
     }
 

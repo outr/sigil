@@ -6,9 +6,8 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, ContextMemory, MemorySource, TurnInput}
-import sigil.event.Message
+import sigil.event.ToolResults
 import sigil.tool.memory.{MemoryHistoryInput, MemoryHistoryTool}
-import sigil.tool.model.ResponseContent
 
 /**
  * Coverage for [[MemoryHistoryTool]] — surfaces every version of a
@@ -33,9 +32,6 @@ class MemoryHistoryToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     )
   }
 
-  private def bodyOf(m: Message): String =
-    m.content.collect { case ResponseContent.Text(t) => t }.mkString
-
   private def memoryAt(key: String, fact: String): ContextMemory =
     ContextMemory(
       fact     = fact,
@@ -56,7 +52,9 @@ class MemoryHistoryToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         events <- MemoryHistoryTool.execute(MemoryHistoryInput(
           key = key, spaceId = Some(TestSpace)), ctx(c)).toList
       } yield {
-        val body = bodyOf(events.head.asInstanceOf[Message])
+        val tr = events.collectFirst { case t: ToolResults => t }
+          .getOrElse(fail(s"expected a ToolResults; saw: ${events.map(_.getClass.getSimpleName).mkString(", ")}"))
+        val body = tr.typed.flatMap(_.get("text")).map(_.asString).getOrElse("")
         body should include("2 version(s)")
         body should include("Scala")
         body should include("Rust")

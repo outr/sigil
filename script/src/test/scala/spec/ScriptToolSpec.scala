@@ -53,6 +53,13 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     events.collect { case m: Message => m }
       .flatMap(_.content.collect { case ResponseContent.Text(t) => t; case ResponseContent.Markdown(t) => t })
 
+  /** Rendered text from a SUCCESS tool result — the `TextToolOutput`
+    * json (`{"text": "…"}`) carried on a `ToolResults` event's `typed`
+    * field. */
+  private def successText(events: List[sigil.event.Event]): List[String] =
+    events.collect { case tr: sigil.event.ToolResults => tr }
+      .flatMap(_.typed.flatMap(_.get("text")).filterNot(_.isNull).map(_.asString))
+
   "ScriptSigil polymorphic registrations (bug #53)" should {
     "register JsonInput so ToolInvoke events for ScriptTool calls round-trip via the ToolInput poly RW" in Task {
       // Concretely — once `ScriptSigil` is mixed in, `RW[ToolInput]`
@@ -187,8 +194,8 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   }
 
   "CreateScriptToolTool" should {
-    "persist a new tool, emit a single Message(Tool) carrying confirmation + schema, and auto-pop to ConversationMode" in {
-      // ONE Message(Tool) with the full create info inline + a
+    "persist a new tool, emit a single ToolResults carrying confirmation + schema, and auto-pop to ConversationMode" in {
+      // ONE ToolResults with the full create info inline + a
       // ModeChange(Standard) that auto-pops the agent back to
       // ConversationMode after a successful create.
       TestScriptSigil.resetSpaceResolver()
@@ -203,15 +210,16 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         )
       )
       CreateScriptToolTool.execute(input, context).toList.flatMap { events =>
-        val toolMessages = events.collect { case m: Message if m.role == sigil.event.MessageRole.Tool => m }
-        val modeChanges  = events.collect { case mc: sigil.event.ModeChange => mc }
+        val toolResults = events.collect { case tr: sigil.event.ToolResults => tr }
+        val modeChanges = events.collect { case mc: sigil.event.ModeChange => mc }
         TestScriptSigil.withDB(_.tools.transaction { tx =>
           tx.query.filter(_.toolName === "create-single-result").toList.map(_.headOption)
         }).map { stored =>
-          // Exactly one MessageRole.Tool event — pairs cleanly with the
+          // Exactly one ToolResults event — pairs cleanly with the
           // create_script_tool call_id; no orphan-frame fall-through.
-          toolMessages should have size 1
-          val text = textOf(toolMessages).head
+          toolResults should have size 1
+          toolResults.head.outcome shouldBe sigil.event.ToolOutcome.Success
+          val text = successText(events).head
           text should include ("Persisted tool 'create-single-result'")
           // Schema + invocation hint inline.
           text should include ("To invoke")
@@ -271,11 +279,12 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           tx.query.filter(_.toolName === "update-target").toList.map(_.headOption)
         })
       } yield {
-        // Bug #69 — exactly one Message(Tool) carrying the
+        // Bug #69 — exactly one ToolResults carrying the
         // confirmation + the (possibly-updated) schema.
-        val toolMessages = events.collect { case m: Message if m.role == sigil.event.MessageRole.Tool => m }
-        toolMessages should have size 1
-        val text = textOf(toolMessages).head
+        val toolResults = events.collect { case tr: sigil.event.ToolResults => tr }
+        toolResults should have size 1
+        toolResults.head.outcome shouldBe sigil.event.ToolOutcome.Success
+        val text = successText(events).head
         text should include ("Updated tool 'update-target'")
         text should include ("Current invocation shape")
         stored.get.asInstanceOf[ScriptTool].description shouldBe "v2"
@@ -357,7 +366,7 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         listed <- ListScriptToolsTool.execute(ListScriptToolsInput(), context).toList
       } yield {
         TestScriptSigil.resetAccessible()
-        val text = textOf(listed).mkString("\n")
+        val text = successText(listed).mkString("\n")
         text should include("list-a-global")
         text should include("list-b-global")
         text should include("list-c-project")
@@ -378,7 +387,7 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       } yield {
         TestScriptSigil.resetSpaceResolver()
         TestScriptSigil.resetAccessible()
-        val text = textOf(listed).mkString("\n")
+        val text = successText(listed).mkString("\n")
         text should not include "list-hidden"
       }
     }

@@ -85,14 +85,19 @@ trait Tool extends RecordDocument[Tool] {
   /** The `Stream[Event]` surface the orchestrator drives. **Final** —
     * tools author via [[executeResult]] / [[executeOutput]] instead.
     *
-    * Runs the tool's resolution (mapping any crash to a failure),
-    * builds exactly one paired result event — a `ToolResults` carrying
-    * the typed payload on success, a Tool-role failure `Message` on
-    * failure — stamps `origin` from the dispatching invoke, and emits
-    * it as the single-element stream. */
+    * Runs the tool's resolution (mapping any crash to a failure), then
+    * emits the tool's ancillary events (those the body recorded via
+    * `ctx.emit`) followed by exactly one paired result event — a
+    * `ToolResults` carrying the typed payload on success, a Tool-role
+    * failure `Message` on failure. The result event's `origin` is the
+    * dispatching invoke. Ancillary-first ordering keeps the durable
+    * log causally consistent (a `change_mode`'s `ModeChange` precedes
+    * its `ToolResults`; a `respond`'s reply `Message` precedes its). */
   final def execute(input: ToolInput, context: TurnContext): Stream[Event] =
     Stream.force(
-      runResolution(input, context).map(res => Stream.emit[Event](buildResultEvent(res, context)))
+      runResolution(input, context).map { res =>
+        Stream.emits(context.emittedEvents :+ buildResultEvent(res, context))
+      }
     )
 
   /** Run [[executeResult]] against a defensively-cast input, mapping any

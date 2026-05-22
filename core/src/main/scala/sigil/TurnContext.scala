@@ -214,7 +214,7 @@ case class TurnContext(sigil: Sigil,
     }
 
   /**
-   * Publish an ancillary durable [[Event]] from inside a tool's
+   * Record an ancillary durable [[Event]] from inside a tool's
    * `executeResult` — a durable event that is *not* the tool's result.
    *
    * A tool's result event (the `ToolResults` that pairs the call) is
@@ -224,13 +224,15 @@ case class TurnContext(sigil: Sigil,
    * a `ModeChange`, `respond` emits the user-visible reply `Message` and
    * `TopicChange`s. Those go through `emit`.
    *
-   * Published through the normal `Sigil.publish` pipeline. Ancillary
-   * events carry their own identity / role; `origin`-stamping (the
-   * Tool-role pairing invariant) applies only to the framework-built
-   * result event, not to these.
+   * `emit` does NOT publish — it buffers the event onto this context.
+   * [[sigil.tool.Tool.execute]] drains the buffer into the tool's result
+   * stream (ancillary events first, then the framework-built result
+   * event), so every caller — the orchestrator, a worker's tool
+   * dispatch, a direct test invocation — sees one ordered stream and
+   * there is exactly one publish path.
    */
   def emit(event: Event): rapid.Task[Unit] =
-    sigil.publish(event).map { _ =>
+    rapid.Task {
       val _ = emittedEventsRef.updateAndGet(_ :+ event)
       ()
     }

@@ -57,8 +57,9 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         .execute(input, turnContextFor(convId))
         .toList
       events.map { list =>
-        list should have size 1
-        val m = list.head.asInstanceOf[Message]
+        val messages = list.collect { case m: Message => m }
+        messages should have size 1
+        val m = messages.head
         m.conversationId shouldBe convId
         m.topicId shouldBe TestTopicId
         m.participantId shouldBe TestAgent
@@ -76,8 +77,9 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         )
         .toList
       events.map { list =>
-        list should have size 1
-        val stop = list.head.asInstanceOf[Stop]
+        val stops = list.collect { case s: Stop => s }
+        stops should have size 1
+        val stop = stops.head
         stop.targetParticipantId shouldBe Some(TestAgent)
         stop.force shouldBe true
         stop.reason shouldBe Some("too risky")
@@ -94,8 +96,9 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         .execute(CancelInput(), turnContextFor(convId))
         .toList
       events.map { list =>
-        list should have size 1
-        val stop = list.head.asInstanceOf[Stop]
+        val stops = list.collect { case s: Stop => s }
+        stops should have size 1
+        val stop = stops.head
         stop.targetParticipantId shouldBe None
         stop.force shouldBe false
         stop.reason shouldBe None

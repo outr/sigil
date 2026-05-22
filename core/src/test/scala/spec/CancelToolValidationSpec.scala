@@ -54,12 +54,11 @@ class CancelToolValidationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   private def runCancel(conv: Conversation, reason: String): Task[List[Event]] =
     CancelTool.execute(CancelInput(force = true, reason = Some(reason)), ctx(conv)).toList
 
-  /** The Stop event `cancel` emits ancillary-style via `ctx.emit` lands
-    * in `db.events` through the normal publish pipeline. */
-  private def persistedStops(conv: Conversation): Task[List[Stop]] =
-    TestSigil.withDB(_.events.transaction(_.list)).map { evs =>
-      evs.collect { case s: Stop if s.conversationId == conv.id => s }
-    }
+  /** The Stop event `cancel` emits ancillary-style via `ctx.emit` is
+    * drained into the tool's `execute` stream — not published to
+    * `db.events` by a direct `execute` call. Assert on the stream. */
+  private def emittedStops(events: List[Event]): List[Stop] =
+    events.collect { case s: Stop => s }
 
   private def failureText(events: List[Event]): Option[String] =
     events.collectFirst { case m: Message if m.isFailure => m.failureReason }.flatten
@@ -99,11 +98,10 @@ class CancelToolValidationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       for {
         conv   <- freshConversation("refuse-start")
         events <- runCancel(conv, "Starting Metals server — user requested it")
-        stops  <- persistedStops(conv)
       } yield {
         events.size shouldBe 1
         events.head shouldBe a [Message]
-        stops shouldBe empty
+        emittedStops(events) shouldBe empty
         val text = failureText(events).getOrElse("")
         text should include ("refused")
         text should include ("start")
@@ -114,10 +112,9 @@ class CancelToolValidationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       for {
         conv   <- freshConversation("refuse-need-to-read")
         events <- runCancel(conv, "Need to read grep output")
-        stops  <- persistedStops(conv)
       } yield {
         events.size shouldBe 1
-        stops shouldBe empty
+        emittedStops(events) shouldBe empty
         failureText(events).getOrElse("") should include ("need-to")
       }
     }
@@ -125,9 +122,9 @@ class CancelToolValidationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "emit a Stop event for a legitimate user-halt reason" in {
       for {
         conv   <- freshConversation("legit-halt")
-        _      <- runCancel(conv, "User requested halt via Stop button")
-        stops  <- persistedStops(conv)
+        events <- runCancel(conv, "User requested halt via Stop button")
       } yield {
+        val stops = emittedStops(events)
         stops.size shouldBe 1
         stops.head.force shouldBe true
         stops.head.reason shouldBe Some("User requested halt via Stop button")
@@ -137,20 +134,18 @@ class CancelToolValidationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "emit a Stop event for an unrecoverable-failure reason" in {
       for {
         conv   <- freshConversation("legit-failure")
-        _      <- runCancel(conv, "Unrecoverable failure: provider returned 500 on retry 3")
-        stops  <- persistedStops(conv)
+        events <- runCancel(conv, "Unrecoverable failure: provider returned 500 on retry 3")
       } yield {
-        stops.size shouldBe 1
+        emittedStops(events).size shouldBe 1
       }
     }
 
     "emit a Stop event when no reason is supplied" in {
       for {
         conv   <- freshConversation("no-reason")
-        _      <- CancelTool.execute(CancelInput(), ctx(conv)).toList
-        stops  <- persistedStops(conv)
+        events <- CancelTool.execute(CancelInput(), ctx(conv)).toList
       } yield {
-        stops.size shouldBe 1
+        emittedStops(events).size shouldBe 1
       }
     }
   }

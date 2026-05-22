@@ -61,11 +61,6 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
   private def failureText(m: Message): String =
     m.content.collect { case ResponseContent.Text(t) => t }.mkString
 
-  private def failureToolResults(events: List[Event]): ToolResults =
-    events.collectFirst {
-      case t: ToolResults if t.outcome.isInstanceOf[ToolOutcome.Failure] => t
-    }.getOrElse(fail(s"expected a Failure ToolResults; saw: ${events.map(_.getClass.getSimpleName).mkString(", ")}"))
-
   "edit_file" should {
 
     "reject `filePath = \"string\"` without touching the filesystem" in withTempDir { dir =>
@@ -137,13 +132,10 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
       val tool = new GrepTool(ctx)
       val tc = turnContext()
       tool.execute(GrepInput(path = "string", pattern = "real-pattern"), tc).toList.map { events =>
-        val tr = failureToolResults(events)
-        val reason = tr.outcome match {
-          case ToolOutcome.Failure(r, _) => r
-          case _                          => ""
-        }
-        reason should include ("JSON Schema type name")
-        reason should include ("path")
+        val msg = failureMessage(events)
+        val text = failureText(msg)
+        text should include ("JSON Schema type name")
+        text should include ("path")
       }
     }
   }

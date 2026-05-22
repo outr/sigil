@@ -6,7 +6,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, Topic, TopicEntry, TurnInput}
-import sigil.event.{Event, Message, ModeChange}
+import sigil.event.{Event, Message, ModeChange, ToolResults}
 import sigil.participant.ParticipantId
 import sigil.provider.ToolPolicy
 import sigil.script.{
@@ -19,12 +19,11 @@ import sigil.script.{
   ReadSourceInput,
   ReadSourceTool,
   ScriptAuthoringMode,
-  ScriptResult,
   ScriptTool
 }
 import sigil.tool.JsonInput
 import sigil.tool.core.ChangeModeTool
-import sigil.tool.model.{ChangeModeInput, ResponseContent}
+import sigil.tool.model.ChangeModeInput
 
 /**
  * Regression coverage for bug #59 — verifies the four moving parts
@@ -70,9 +69,12 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     )
   }
 
-  private def textOf(events: List[Event]): List[String] =
-    events.collect { case m: Message => m }
-      .flatMap(_.content.collect { case ResponseContent.Text(t) => t; case ResponseContent.Markdown(t) => t })
+  /** Rendered text from a SUCCESS tool result — the `TextToolOutput`
+    * json (`{"text": "…"}`) carried on a `ToolResults` event's `typed`
+    * field. */
+  private def successText(events: List[Event]): List[String] =
+    events.collect { case tr: ToolResults => tr }
+      .flatMap(_.typed.flatMap(_.get("text")).filterNot(_.isNull).map(_.asString))
 
   "ScriptAuthoringMode registration" should {
     "resolve through Sigil.modeByName once ScriptSigil is mixed in" in Task {
@@ -132,13 +134,23 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       }
     }
 
-    "emit nothing (and warn) when the requested mode is unknown" in {
+    "emit no ModeChange (and warn) when the requested mode is unknown" in {
+      // change_mode with an unknown mode name returns a logical
+      // failure — a Tool-role Failure Message — and crucially emits
+      // NO ModeChange event, so the conversation's mode is unchanged.
       val context = ctx("change-mode-unknown")
       ChangeModeTool.execute(
         ChangeModeInput(mode = "no-such-mode"),
         context
       ).toList.map { events =>
-        events shouldBe empty
+        events.collect { case mc: ModeChange => mc } shouldBe empty
+        // The failure surfaces as a Tool-role Message with a
+        // recoverable Failure disposition.
+        val failures = events.collect {
+          case m: Message if m.role == sigil.event.MessageRole.Tool => m
+        }
+        failures should have size 1
+        failures.head.disposition shouldBe a[sigil.event.MessageDisposition.Failure]
       }
     }
   }
@@ -187,7 +199,7 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
                     tx.query.filter(_.toolName === "e2e-multiply").toList.map(_.headOption)
                   })
         // 3) Execute the loaded tool with a live JsonInput; assert the
-        //    ScriptResult carries the expected output.
+        //    ToolResults carries the expected ScriptToolOutput.
         runEvents <- loaded.get
                        .asInstanceOf[ScriptTool]
                        .execute(JsonInput(obj("x" -> num(7))), context)
@@ -195,11 +207,12 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       } yield {
         loaded shouldBe defined
         loaded.get shouldBe a[ScriptTool]
-        val results = runEvents.collect { case r: ScriptResult => r }
+        val results = runEvents.collect { case r: ToolResults => r }
         results should have size 1
+        val typed = results.head.typed
         // 7 * 3 = 21 — the script's last expression's stringified value.
-        results.head.output shouldBe Some("21")
-        results.head.error shouldBe None
+        typed.flatMap(_.get("output")).filterNot(_.isNull).map(_.asString) shouldBe Some("21")
+        typed.flatMap(_.get("error")).filterNot(_.isNull).map(_.asString) shouldBe None
       }
     }
   }
@@ -208,7 +221,7 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     "library_lookup resolves a JDK class by simple name to its FQN" in {
       val context = ctx("lib-lookup")
       LibraryLookupTool.execute(LibraryLookupInput(symbol = "String"), context).toList.map { events =>
-        val text = textOf(events).mkString("\n")
+        val text = successText(events).mkString("\n")
         // String is in `java.lang`; the lookup walks the URLClassLoader
         // chain and the bootstrap loader's jars don't show up there
         // (rt.jar / java.base lives behind the platform loader), so we
@@ -221,7 +234,7 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     "library_lookup finds a Sigil-shipped class by simple name" in {
       val context = ctx("lib-lookup-sigil")
       LibraryLookupTool.execute(LibraryLookupInput(symbol = "ScriptAuthoringMode"), context).toList.map { events =>
-        val text = textOf(events).mkString("\n")
+        val text = successText(events).mkString("\n")
         text should include ("sigil.script.ScriptAuthoringMode")
       }
     }
@@ -232,7 +245,7 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         ClassSignaturesInput(fqn = "java.util.ArrayList"),
         context
       ).toList.map { events =>
-        val text = textOf(events).mkString("\n")
+        val text = successText(events).mkString("\n")
         text should include ("# java.util.ArrayList")
         // ArrayList's surface is broad; pick a method that is stable
         // across JDK 17+ to avoid version-coupled flakes.
@@ -247,7 +260,7 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         ClassSignaturesInput(fqn = "no.such.Class"),
         context
       ).toList.map { events =>
-        val text = textOf(events).mkString("\n")
+        val text = successText(events).mkString("\n")
         text should include ("class not found on classpath")
       }
     }
@@ -258,7 +271,7 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         ReadSourceInput(fqn = "no.such.Class"),
         context
       ).toList.map { events =>
-        val text = textOf(events).mkString("\n")
+        val text = successText(events).mkString("\n")
         text should include ("source not available")
       }
     }

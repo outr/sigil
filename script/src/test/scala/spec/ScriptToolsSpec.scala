@@ -72,9 +72,13 @@ class ScriptToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           |s"${out.echoed}/${out.length}"
           |""".stripMargin
       tool.execute(sigil.script.ScriptInput(code = script, summary = "test: execute script body"), turnCtx).toList.map { events =>
-        val resultText = events.collectFirst {
-          case r: sigil.script.ScriptResult => r.output.getOrElse(r.error.getOrElse(""))
-        }.getOrElse(fail("script produced no ScriptResult"))
+        val tr = events.collectFirst {
+          case r: sigil.event.ToolResults => r
+        }.getOrElse(fail("script produced no ToolResults"))
+        // The ScriptToolOutput json: prefer `output`, fall back to `error`.
+        val resultText = tr.typed.flatMap(_.get("output")).filterNot(_.isNull).map(_.asString)
+          .orElse(tr.typed.flatMap(_.get("error")).filterNot(_.isNull).map(_.asString))
+          .getOrElse(fail("ToolResults carried no output or error"))
         resultText shouldBe "from-script/11"
       }
     }

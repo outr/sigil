@@ -6,7 +6,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, TopicEntry, TurnInput}
-import sigil.event.{Event, Message, MessageRole, ToolApproval}
+import sigil.event.{Event, Message, MessageRole, ToolApproval, ToolResults}
 import sigil.tool.ToolName
 import sigil.tool.core.RecordConsentTool
 import sigil.tool.model.{RecordConsentInput, ResponseContent}
@@ -70,11 +70,11 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         approvals.head.toolName shouldBe ToolName(testToolName)
         approvals.head.approved shouldBe true
 
-        val toolMessages = events.collect {
-          case m: Message if m.role == MessageRole.Tool => m
+        val results = events.collect {
+          case tr: ToolResults if tr.role == MessageRole.Tool => tr
         }
-        toolMessages should have size 1
-        val text = toolMessages.head.content.collect { case ResponseContent.Text(t) => t }.mkString
+        results should have size 1
+        val text = results.head.typed.flatMap(_.get("text")).map(_.asString).getOrElse("")
         text should include(testToolName)
         text should include("approved")
         text should include("user picked Claude state")
@@ -89,26 +89,26 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
                       reason = Some("user explicitly did not select")), ctx).toList
       } yield {
         events.collect { case t: ToolApproval => t } should have size 1
-        val toolMessages = events.collect {
-          case m: Message if m.role == MessageRole.Tool => m
+        val results = events.collect {
+          case tr: ToolResults if tr.role == MessageRole.Tool => tr
         }
-        toolMessages should have size 1
-        val text = toolMessages.head.content.collect { case ResponseContent.Text(t) => t }.mkString
+        results should have size 1
+        val text = results.head.typed.flatMap(_.get("text")).map(_.asString).getOrElse("")
         text should include("declined")
         text should include("user explicitly did not select")
       }
     }
 
-    "emit a Tool-role Message even when reason is absent" in {
+    "emit a Tool-role ToolResults even when reason is absent" in {
       for {
         ctx    <- turnContextFor()
         events <- RecordConsentTool.execute(
                     RecordConsentInput(toolName = testToolName, approved = true), ctx).toList
       } yield {
-        val toolMessages = events.collect {
-          case m: Message if m.role == MessageRole.Tool => m
+        val results = events.collect {
+          case tr: ToolResults if tr.role == MessageRole.Tool => tr
         }
-        toolMessages should have size 1
+        results should have size 1
       }
     }
   }

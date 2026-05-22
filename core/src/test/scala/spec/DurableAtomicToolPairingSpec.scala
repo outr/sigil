@@ -6,7 +6,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.Model
-import sigil.event.{Event, Message, MessageRole, ToolInvoke}
+import sigil.event.{Event, Message, MessageRole, ToolInvoke, ToolResults}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{
   CallId, ConversationMode, ConversationRequest, GenerationSettings, Instructions,
@@ -93,45 +93,46 @@ class DurableAtomicToolPairingSpec extends AsyncWordSpec with AsyncTaskSpec with
 
   "Bug #174 (durable) — atomic-content tool's Tool-role pairing" should {
 
-    "include a Tool-role Message paired to the respond's ToolInvoke" in {
+    "include a ToolResults paired to the respond's ToolInvoke" in {
       runOrchestrator().map { signals =>
         val invoke = signals.collectFirst {
           case ti: ToolInvoke if ti.toolName == ToolName("respond") => ti
         }.getOrElse(fail("expected a respond ToolInvoke"))
 
-        val toolRoleEvents = signals.collect {
-          case m: Message if m.role == MessageRole.Tool && m.origin.contains(invoke._id) => m
+        val pairedResults = signals.collect {
+          case tr: ToolResults if tr.role == MessageRole.Tool && tr.origin.contains(invoke._id) => tr
         }
-        withClue(s"expected a Tool-role Message paired to respond invoke ${invoke._id.value}; signals: ${signals.map(_.getClass.getSimpleName)}: ") {
-          toolRoleEvents should have size 1
+        withClue(s"expected a ToolResults paired to respond invoke ${invoke._id.value}; signals: ${signals.map(_.getClass.getSimpleName)}: ") {
+          pairedResults should have size 1
         }
       }
     }
 
-    "the synthetic Tool-role Message has empty content" in {
-      // Empty content → wire renders an empty function_call_output,
-      // which is the canonical "atomic-content tool's user-visible
-      // output is the Message itself; no further data to feed back."
+    "the respond's ToolResults carries an empty-text typed payload" in {
+      // The respond's user-visible output is the Standard-role
+      // Message itself; the paired ToolResults carries an empty
+      // TextToolOutput ({"text": ""}) — there is no further data
+      // to feed back to the next iteration.
       runOrchestrator().map { signals =>
         val invoke = signals.collectFirst { case ti: ToolInvoke if ti.toolName == ToolName("respond") => ti }.get
         val pair = signals.collectFirst {
-          case m: Message if m.role == MessageRole.Tool && m.origin.contains(invoke._id) => m
+          case tr: ToolResults if tr.role == MessageRole.Tool && tr.origin.contains(invoke._id) => tr
         }.get
-        pair.content shouldBe empty
+        pair.typed.flatMap(_.get("text")).map(_.asString) shouldBe Some("")
       }
     }
 
-    "emit the synthetic alongside the user-visible Message (not replacing it)" in {
+    "emit the ToolResults alongside the user-visible Message (not replacing it)" in {
       runOrchestrator().map { signals =>
         val userVisible = signals.collect {
           case m: Message if m.role == MessageRole.Standard => m
         }
-        val toolRole = signals.collect {
-          case m: Message if m.role == MessageRole.Tool => m
+        val toolResults = signals.collect {
+          case tr: ToolResults if tr.role == MessageRole.Tool => tr
         }
         withClue(s"signals: ${signals.map(_.getClass.getSimpleName)}: ") {
           userVisible should have size 1
-          toolRole should have size 1
+          toolResults should have size 1
           // The user-visible Message carries the actual respond content.
           userVisible.head.content should not be empty
         }
