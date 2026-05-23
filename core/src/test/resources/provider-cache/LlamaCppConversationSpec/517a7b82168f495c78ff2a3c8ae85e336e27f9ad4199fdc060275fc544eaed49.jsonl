@@ -1,0 +1,8 @@
+{"requestHash":"517a7b82168f495c78ff2a3c8ae85e336e27f9ad4199fdc060275fc544eaed49","recordedAt":1779452395866}
+{"callId":"0abc9adb7","toolName":"respond","type":"ToolCallStart"}
+{"callId":"0abc9adb7","blockType":"Markdown","arg":null,"type":"ContentBlockStart"}
+{"callId":"0abc9adb7","text":"Blue","type":"ContentBlockDelta"}
+{"callId":"0abc9adb7","text":".","type":"ContentBlockDelta"}
+{"callId":"0abc9adb7","input":{"topicLabel":"Color preference","topicSummary":"User asked for their favorite color in one word.","content":"Blue.","disposition":"Success","endsTurn":true,"keywords":["favorite color","blue","one word"],"type":"RespondInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":4938,"completionTokens":111,"totalTokens":5049,"isEstimated":false,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

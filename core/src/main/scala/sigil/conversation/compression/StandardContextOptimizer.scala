@@ -118,9 +118,11 @@ case class StandardContextOptimizer(dropWhitespaceFrames: Boolean = true,
     }.toSet
     if (dropCallIds.isEmpty) frames
     else frames.filterNot {
-      case tc: ContextFrame.ToolCall   => dropCallIds.contains(tc.callId)
-      case tr: ContextFrame.ToolResult => dropCallIds.contains(tr.callId)
-      case _                            => false
+      // Sigil #261 — unified ToolCall(state) frame carries both
+      // call AND result content; one filter check drops the whole
+      // transaction (previously two: ToolCall + ToolResult).
+      case tc: ContextFrame.ToolCall => dropCallIds.contains(tc.callId)
+      case _                         => false
     }
   }
 

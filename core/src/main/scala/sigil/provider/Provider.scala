@@ -5,7 +5,7 @@ import fabric.io.JsonFormatter
 import lightdb.id.Id
 import rapid.{Stream, Task}
 import sigil.Sigil
-import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary, TurnInput}
+import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary, ToolCallState, TurnInput}
 import sigil.db.Model
 import sigil.diagnostics.RequestProfiler
 import sigil.participant.ParticipantId
@@ -1209,24 +1209,11 @@ trait Provider extends Service {
     val resultsSeen: scala.collection.mutable.LinkedHashSet[String] =
       scala.collection.mutable.LinkedHashSet.empty
 
-    // Sigil bug #167 r5 — track framework `Id[Event]` → wire `call_id`
-    // (e.g. OpenAI's `call_<hash>`) as we encounter each
-    // `ContextFrame.ToolCall`. Used to render `function_call_output.call_id`
-    // for the paired `ContextFrame.ToolResult` with the upstream-emitted
-    // id so the provider's `previous_response_id` state finds a match.
-    // Without this, OpenAI's Responses API 400s with "No tool output
-    // found for function call <id>" on every multi-turn conversation
-    // that involves a function_call.
-    val wireCallIdByEvent: scala.collection.mutable.Map[String, String] =
-      scala.collection.mutable.Map.empty
-
-    // Bug #69 — merge consecutive `ContextFrame.ToolResult` entries
-    // sharing the same `callId` into a single frame whose content is
-    // the concatenation in emission order. The wire stays 1:1
-    // (`function_call` ↔ `function_call_output`) which is what every
-    // provider expects; tool authors who emit multiple Tool-role
-    // events for one call get them folded into one wire-level result.
-    val merged = mergeAdjacentToolResults(frames)
+    // Sigil #261 — the unified `ToolCall(state)` frame model carries
+    // wire call id and tool result content in one frame; the prior
+    // `wireCallIdByEvent` lookup map and `mergeAdjacentToolResults`
+    // pre-pass exist only in pre-refactor history.
+    val merged = frames
 
     // Walk with explicit index so we can consume the optional
     // adjacent `Text` frame that follows an atomic-content
@@ -1258,12 +1245,6 @@ trait Provider extends Service {
           val wireId = tc.wireCallId.getOrElse(tc.callId.value)
           // Sigil bug #174 — record EVERY rendered ToolCall (not just those
           // with an upstream wireCallId) so the ToolResult branch can
-          // distinguish "ToolCall was here, framework id maps to itself"
-          // from "no matching ToolCall in this request" (orphan, drop).
-          // Prior behaviour only recorded when `wireCallId.isDefined`,
-          // which meant the orphan-guard misfired on synthetic /
-          // framework-emitted ToolCalls.
-          wireCallIdByEvent(tc.callId.value) = wireId
           invokesSeen.add(wireId)
           val isAtomic = atomicContentToolNames.contains(tc.toolName)
           // Sigil bug #210 — if the next frame is a `Text` from the
@@ -1289,56 +1270,34 @@ trait Provider extends Service {
               argsJson = tc.argsJson
             ))
           )
-          // Sigil #259 — every tool call, atomic-content (`respond`,
-          // `respond_options`, …) included, emits a real `ToolResults`
-          // event under the typed tool-execution model, so `FrameBuilder`
-          // always produces a matching `ContextFrame.ToolResult` that the
-          // branch below renders into the paired output. Track the call
-          // as pending until that result is seen — no synthetic pairing.
-          // A leftover synthetic empty output here would DOUBLE-pair the
-          // call, and Anthropic rejects two `tool_result` blocks for one
-          // `tool_use`.
-          pendingToolCallIds.add(wireId)
+          // Sigil #261 — the unified ToolCall(state) frame model emits
+          // both wire messages from one frame: the Assistant(tool_use)
+          // above, and the matching User(tool_result) immediately
+          // after when `state` is `Complete`. Pair adjacency is
+          // guaranteed by construction regardless of what events
+          // interleaved between the original ToolInvoke and
+          // ToolResults — there is no separate ToolResult frame to
+          // get reordered by intervening user messages.
+          tc.state match {
+            case ToolCallState.Complete(content, images) =>
+              out += ProviderMessage.ToolResult(toolCallId = wireId, content = content)
+              // Tool-result images ride as a follow-up user message so
+              // the model actually sees them; normalizeStoredImages
+              // inlines any internal-storage URLs as bytes downstream.
+              if (images.nonEmpty)
+                out += ProviderMessage.User(images.map(u => MessageContent.Image(u)).toVector)
+              resultsSeen.add(wireId)
+            case ToolCallState.Active =>
+              // No result yet — only happens for mid-turn debug
+              // projections (the wire-request path always renders
+              // after the agent's turn has settled). Track as pending
+              // so the post-walk invariant check surfaces it loudly.
+              pendingToolCallIds.add(wireId)
+          }
           i += 1
 
         case _: ContextFrame.ToolCall =>
           // ToolCall from someone else — skip (not rendered as a tool call for this agent).
-          i += 1
-
-        case ContextFrame.ToolResult(callId, content, _, _, _, images) =>
-          // Sigil bug #167 r5 — pair the function_call_output by wire
-          // call_id (preferring the upstream provider's id from the
-          // matching ContextFrame.ToolCall, captured into
-          // `wireCallIdByEvent` as we walked frames).
-          //
-          // Sigil bug #174 — defensive guard against orphan ToolResults:
-          // if `wireCallIdByEvent` has no entry for this callId, the
-          // matching ToolCall frame wasn't in this turn's render. Emitting
-          // `function_call_output` without its `function_call` causes
-          // every OpenAI-compatible provider to HTTP 400 ("No tool call
-          // found for function call output with call_id ..."). Drop the
-          // orphan rather than ship a malformed request. The upstream
-          // root cause (whatever filter is dropping the ToolCall while
-          // keeping the ToolResult) deserves its own fix; this guard
-          // keeps the wire request well-formed regardless.
-          wireCallIdByEvent.get(callId.value) match {
-            case Some(wireId) =>
-              out += ProviderMessage.ToolResult(toolCallId = wireId, content = content)
-              // Tool-result images ride as a follow-up user message so the
-              // model actually sees them; normalizeStoredImages then inlines
-              // any internal-storage URLs as bytes.
-              if (images.nonEmpty)
-                out += ProviderMessage.User(images.map(u => MessageContent.Image(u)).toVector)
-              pendingToolCallIds.remove(wireId)
-              resultsSeen.add(wireId)
-            case None =>
-              resultsSeen.add(callId.value)
-              scribe.warn(
-                s"Provider.renderInput: dropping orphan ToolResult frame callId=${callId.value} " +
-                  "(no matching ToolCall in this request — would cause provider 400). " +
-                  "See sigil bug #174."
-              )
-          }
           i += 1
 
         case ContextFrame.System(content, _, _) =>
@@ -1414,54 +1373,6 @@ trait Provider extends Service {
     out.result()
   }
 
-  /** Walk the frame vector and merge runs of [[ContextFrame.ToolResult]]
-    * frames sharing the same `callId` into a single frame whose
-    * content is the run's contents joined with `\n\n`. Bug #69 — tool
-    * authors who emit multiple Tool-role events for one call (the
-    * old [[sigil.event.ToolResults]] suggestion-cascade pattern, the
-    * primary-result-plus-followup shape, etc.) get a single wire
-    * `function_call_output` instead of one paired result + N orphan
-    * frames.
-    *
-    * Only **adjacent** ToolResult frames merge — interleaved frames
-    * (a Text frame between two ToolResults sharing a callId) are kept
-    * separate since the textual ordering is meaningful. In practice
-    * orchestrator-stamped events from a single `executeResult` arrive
-    * contiguously, so adjacency tracks the actual "all from one tool
-    * call" boundary. */
-  private def mergeAdjacentToolResults(frames: Vector[ContextFrame]): Vector[ContextFrame] = {
-    val out = Vector.newBuilder[ContextFrame]
-    var pending: Option[ContextFrame.ToolResult] = None
-    val joiner = "\n\n"
-
-    def flush(): Unit = {
-      pending.foreach(out += _)
-      pending = None
-    }
-
-    frames.foreach {
-      case curr @ ContextFrame.ToolResult(callId, content, _, _, _, _) =>
-        pending match {
-          case Some(prev) if prev.callId == callId =>
-            // Same call_id — merge into the pending accumulator.
-            // Keep the earliest sourceEventId / visibility (caller can
-            // override via dedicated joiner if needed; default is
-            // newline-separated concat). Images concatenate.
-            pending = Some(prev.copy(
-              content = prev.content + joiner + content,
-              images = prev.images ++ curr.images
-            ))
-          case _ =>
-            flush()
-            pending = Some(curr)
-        }
-      case other =>
-        flush()
-        out += other
-    }
-    flush()
-    out.result()
-  }
 }
 
 object Provider {

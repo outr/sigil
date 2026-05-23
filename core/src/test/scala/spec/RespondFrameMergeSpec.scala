@@ -4,7 +4,7 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import rapid.Stream
-import _root_.sigil.conversation.ContextFrame
+import _root_.sigil.conversation.{ContextFrame, ToolCallState}
 import _root_.sigil.event.Event
 import _root_.sigil.tool.core.RespondTool
 
@@ -51,17 +51,13 @@ class RespondFrameMergeSpec extends AnyWordSpec with Matchers {
           argsJson      = s"""{"topicLabel":"x","topicSummary":"y","content":"$replyText","disposition":"Success","endsTurn":true}""",
           callId        = callId,
           participantId = agent,
-          sourceEventId = Id[Event]("toolinvoke-respond-1")
+          sourceEventId = Id[Event]("toolinvoke-respond-1"),
+          state         = ToolCallState.Complete("""{"text":""}""")
         ),
         ContextFrame.Text(
           content       = replyText,
           participantId = agent,
           sourceEventId = Id[Event]("message-respond-1")
-        ),
-        ContextFrame.ToolResult(
-          callId        = callId,
-          content       = """{"text":""}""",
-          sourceEventId = Id[Event]("toolresult-respond-1")
         )
       )
 

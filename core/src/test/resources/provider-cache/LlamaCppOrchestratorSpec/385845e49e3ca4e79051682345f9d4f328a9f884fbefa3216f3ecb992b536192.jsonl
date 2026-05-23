@@ -1,0 +1,138 @@
+{"requestHash":"385845e49e3ca4e79051682345f9d4f328a9f884fbefa3216f3ecb992b536192","recordedAt":1779413520325}
+{"text":"The","type":"ThinkingDelta"}
+{"text":" user","type":"ThinkingDelta"}
+{"text":" is","type":"ThinkingDelta"}
+{"text":" asking","type":"ThinkingDelta"}
+{"text":" for","type":"ThinkingDelta"}
+{"text":" information","type":"ThinkingDelta"}
+{"text":" about","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" history","type":"ThinkingDelta"}
+{"text":" of","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" Roman","type":"ThinkingDelta"}
+{"text":" Empire","type":"ThinkingDelta"}
+{"text":",","type":"ThinkingDelta"}
+{"text":" specifically","type":"ThinkingDelta"}
+{"text":" a","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":22,"totalTokens":22,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":" brief","type":"ThinkingDelta"}
+{"text":" two","type":"ThinkingDelta"}
+{"text":"-s","type":"ThinkingDelta"}
+{"text":"entence","type":"ThinkingDelta"}
+{"text":" overview","type":"ThinkingDelta"}
+{"text":" of","type":"ThinkingDelta"}
+{"text":" its","type":"ThinkingDelta"}
+{"text":" founding","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":" This","type":"ThinkingDelta"}
+{"text":" is","type":"ThinkingDelta"}
+{"text":" a","type":"ThinkingDelta"}
+{"text":" knowledge","type":"ThinkingDelta"}
+{"text":" question","type":"ThinkingDelta"}
+{"text":" that","type":"ThinkingDelta"}
+{"text":" I","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":42,"totalTokens":42,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":" can","type":"ThinkingDelta"}
+{"text":" answer","type":"ThinkingDelta"}
+{"text":" from","type":"ThinkingDelta"}
+{"text":" my","type":"ThinkingDelta"}
+{"text":" own","type":"ThinkingDelta"}
+{"text":" knowledge","type":"ThinkingDelta"}
+{"text":" -","type":"ThinkingDelta"}
+{"text":" no","type":"ThinkingDelta"}
+{"text":" tools","type":"ThinkingDelta"}
+{"text":" needed","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":"\n\n","type":"ThinkingDelta"}
+{"text":"I","type":"ThinkingDelta"}
+{"text":" should","type":"ThinkingDelta"}
+{"text":" provide","type":"ThinkingDelta"}
+{"text":" a","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":60,"totalTokens":60,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":" concise","type":"ThinkingDelta"}
+{"text":",","type":"ThinkingDelta"}
+{"text":" accurate","type":"ThinkingDelta"}
+{"text":" two","type":"ThinkingDelta"}
+{"text":"-s","type":"ThinkingDelta"}
+{"text":"entence","type":"ThinkingDelta"}
+{"text":" overview","type":"ThinkingDelta"}
+{"text":" of","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" Roman","type":"ThinkingDelta"}
+{"text":" Empire","type":"ThinkingDelta"}
+{"text":"'s","type":"ThinkingDelta"}
+{"text":" founding","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":"\n","type":"ThinkingDelta"}
+{"callId":"1c8f9f404","toolName":"respond","type":"ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":78,"totalTokens":78,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"callId":"1c8f9f404","blockType":"Markdown","arg":null,"type":"ContentBlockStart"}
+{"callId":"1c8f9f404","text":"The","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" Roman","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" Empire","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" was","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" founded","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" in","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" 2","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":"7","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" BCE","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" when","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" the","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" Roman","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" Senate","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" granted","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" Oct","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":"avian","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" the","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" title","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" of","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" August","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":"us","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":",","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" marking","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" the","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" end","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" of","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" the","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" Roman","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" Republic","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" and","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" the","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" beginning","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" of","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" imperial","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" rule","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":".","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" This","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" transition","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" occurred","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" after","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" decades","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" of","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" civil","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" war","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":",","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" with","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" August","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":"us","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" becoming","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" the","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" first","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" emperor","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" and","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" establishing","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" a","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" system","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" that","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" would","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" govern","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" the","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" Mediterranean","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" world","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" for","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":" centuries","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","text":".","type":"ContentBlockDelta"}
+{"callId":"1c8f9f404","input":{"topicLabel":"Roman Empire History","topicSummary":"Overview of Roman Empire founding","content":"The Roman Empire was founded in 27 BCE when the Roman Senate granted Octavian the title of Augustus, marking the end of the Roman Republic and the beginning of imperial rule. This transition occurred after decades of civil war, with Augustus becoming the first emperor and establishing a system that would govern the Mediterranean world for centuries.","disposition":"Success","endsTurn":true,"keywords":["Roman Empire","history","founding"],"type":"RespondInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":4973,"completionTokens":236,"totalTokens":5209,"isEstimated":false,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

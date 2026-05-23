@@ -1,0 +1,5 @@
+{"requestHash":"ccdb480d5b7111ff1959f9c9138bf9a93e0851a2ffaf16c566c1e9ccd1948bef","recordedAt":1779452402397}
+{"callId":"1dcdb1c1a","toolName":"find_capability","type":"ToolCallStart"}
+{"callId":"1dcdb1c1a","input":{"keywords":"glob files directory paths list discover","type":"FindCapabilityInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":6578,"completionTokens":31,"totalTokens":6609,"isEstimated":false,"cacheReadTokens":4454,"cacheCreationTokens":0},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

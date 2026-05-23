@@ -12,7 +12,7 @@ import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import profig.Profig
 import rapid.{Stream, Task, logger}
-import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, EncodedContext, FrameBuilder, MemorySource, MemoryStatus, ParticipantProjection, ProgressContext, SkillSource, Topic, TopicEntry, TopicShiftResult, TurnInput, UpsertMemoryResult}
+import sigil.conversation.{ActiveSkillSlot, ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, EncodedContext, FrameBuilder, MemorySource, MemoryStatus, ParticipantProjection, ProgressContext, SkillSource, ToolCallState, Topic, TopicEntry, TopicShiftResult, TurnInput, UpsertMemoryResult}
 import sigil.SpaceId
 import sigil.cache.ModelRegistry
 import sigil.controller.OpenRouter
@@ -2392,8 +2392,48 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             case Some(event) if event.state != EventState.Complete => Task.unit
             case Some(event) =>
               val frame = FrameBuilder.computeFrame(event)
-              if (event.contextFrame == frame) Task.unit
-              else tx.upsert(event.withContextFrame(frame)).unit
+              // Sigil #261 — ownWrite is INITIAL inlining only. Once a
+              // frame is inlined, the only legitimate mutation is the
+              // cross-event pair-update below (ToolInvoke's ToolCall
+              // transitioning from Active to Complete). A later signal
+              // (e.g. a Delta) firing this path would otherwise have
+              // its purely-event-derived `computeFrame` clobber a
+              // Complete state back to Active because `computeFrame`
+              // has no visibility into cross-event pairing.
+              val ownWrite: Task[Unit] = (event.contextFrame, frame) match {
+                case (Some(_), _)    => Task.unit
+                case (None, None)    => Task.unit
+                case (None, Some(f)) => tx.upsert(event.withContextFrame(Some(f))).unit
+              }
+              // Sigil #261 — when a ToolResults settles, fold its
+              // content into the prior ToolInvoke's inlined ToolCall
+              // frame so the projection carries the full tool
+              // transaction in one frame. Pair adjacency on the wire
+              // is then guaranteed by construction, regardless of what
+              // else interleaved between the invoke and the result.
+              val pairUpdate: Task[Unit] = event match {
+                case tr: ToolResults =>
+                  tr.origin match {
+                    case Some(invokeId) =>
+                      tx.get(invokeId).flatMap {
+                        case Some(ti) =>
+                          ti.contextFrame match {
+                            case Some(tc: ContextFrame.ToolCall)
+                                if tc.state == ToolCallState.Active =>
+                              val (content, images) = FrameBuilder.toolResultPayload(tr)
+                              val updated = tc.copy(
+                                state = ToolCallState.Complete(content, images)
+                              )
+                              tx.upsert(ti.withContextFrame(Some(updated))).unit
+                            case _ => Task.unit
+                          }
+                        case None => Task.unit
+                      }
+                    case None => Task.unit
+                  }
+                case _ => Task.unit
+              }
+              ownWrite.flatMap(_ => pairUpdate)
           }
         })
     }
@@ -2456,10 +2496,37 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // so the bulk-import path matches the publish-time pipeline's
       // settle-time inlining (bug #26). Events that are still Active
       // (rare for imports, but supported) keep `contextFrame = None`.
-      val framed = events.map { e =>
-        if (e.state != EventState.Complete || e.contextFrame.nonEmpty) e
-        else e.withContextFrame(FrameBuilder.computeFrame(e))
+      //
+      // Sigil #261 — two-pass to mirror the unified ToolCall frame
+      // model: first compute each event's own frame (ToolInvoke →
+      // ToolCall(Active); ToolResults → None for well-formed rows);
+      // then pair each ToolResults into its matching ToolInvoke's
+      // inlined ToolCall frame, transitioning it to Complete. This is
+      // the bulk-import equivalent of the cross-event update
+      // `attachContextFrameOnSettle` does at live-publish time.
+      val framedMap = scala.collection.mutable.LinkedHashMap.empty[Id[Event], Event]
+      events.foreach { e =>
+        val withFrame =
+          if (e.state != EventState.Complete || e.contextFrame.nonEmpty) e
+          else e.withContextFrame(FrameBuilder.computeFrame(e))
+        framedMap(e._id) = withFrame
       }
+      framedMap.values.toList.foreach {
+        case tr: ToolResults if tr.state == EventState.Complete =>
+          tr.origin.foreach { invokeId =>
+            framedMap.get(invokeId).foreach { ti =>
+              ti.contextFrame match {
+                case Some(tc: ContextFrame.ToolCall) if tc.state == ToolCallState.Active =>
+                  val (content, images) = FrameBuilder.toolResultPayload(tr)
+                  val updated = tc.copy(state = ToolCallState.Complete(content, images))
+                  framedMap(invokeId) = ti.withContextFrame(Some(updated))
+                case _ =>
+              }
+            }
+          }
+        case _ =>
+      }
+      val framed = framedMap.values.toSeq
       val batches = framed.grouped(1000).toList
       val persistAll: Task[Unit] = Task.sequence(batches.map { batch =>
         withDB(_.events.transaction { tx =>

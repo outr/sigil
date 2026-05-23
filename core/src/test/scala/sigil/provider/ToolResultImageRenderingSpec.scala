@@ -4,7 +4,7 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
-import sigil.conversation.{ContextFrame, Conversation, FrameBuilder, Topic}
+import sigil.conversation.{ContextFrame, Conversation, FrameBuilder, ToolCallState, Topic}
 import sigil.db.Model
 import sigil.event.{Event, Message, MessageRole}
 import sigil.signal.EventState
@@ -37,8 +37,18 @@ class ToolResultImageRenderingSpec extends AsyncWordSpec with AsyncTaskSpec with
 
   "tool-result image rendering" should {
 
-    "route a Tool-role Message's image content into ContextFrame.ToolResult.images, not toString" in {
-      val callId = Id[Event]("tool-call-1")
+    "route a Tool-role Message's image content into ToolCallState.Complete.images via appendFor" in {
+      // Sigil #261 — Tool-role events fold into the parent ToolCall's
+      // state; the result content + image URLs are carried on
+      // `ToolCallState.Complete(content, images)`. FrameBuilder
+      // computes this via `toolResultPayload` when folding the result.
+      val invoke = sigil.event.ToolInvoke(
+        toolName       = ToolName("preview_theme"),
+        participantId  = TestAgent,
+        conversationId = Conversation.id("conv-1"),
+        topicId        = Topic.id("topic-1"),
+        state          = EventState.Complete
+      )
       val toolMessage = Message(
         participantId  = TestAgent,
         conversationId = Conversation.id("conv-1"),
@@ -48,15 +58,18 @@ class ToolResultImageRenderingSpec extends AsyncWordSpec with AsyncTaskSpec with
           ResponseContent.Text("preview ready"),
           ResponseContent.Image(imageUrl, Some("storefront preview"))
         ),
-        origin         = Some(callId),
+        origin         = Some(invoke._id),
         state          = EventState.Complete
       )
-      FrameBuilder.computeFrame(toolMessage) match {
-        case Some(tr: ContextFrame.ToolResult) =>
-          tr.images shouldBe List(imageUrl)
-          tr.content should include("[image: storefront preview]")
-          tr.content should not include "Image("
-        case other => fail(s"expected ContextFrame.ToolResult, got $other")
+      val frames = FrameBuilder.appendFor(FrameBuilder.appendFor(Vector.empty, invoke), toolMessage)
+      frames should have size 1
+      val tc = frames.head.asInstanceOf[ContextFrame.ToolCall]
+      tc.state match {
+        case ToolCallState.Complete(content, images) =>
+          images shouldBe List(imageUrl)
+          content should include ("[image: storefront preview]")
+          content should not include "Image("
+        case other => fail(s"expected ToolCallState.Complete, got $other")
       }
     }
 
@@ -67,15 +80,10 @@ class ToolResultImageRenderingSpec extends AsyncWordSpec with AsyncTaskSpec with
         argsJson      = "{}",
         callId        = callId,
         participantId = TestAgent,
-        sourceEventId = Id[Event]("tc-2")
+        sourceEventId = Id[Event]("tc-2"),
+        state         = ToolCallState.Complete("preview ready", List(imageUrl))
       )
-      val toolResult = ContextFrame.ToolResult(
-        callId        = callId,
-        content       = "preview ready",
-        sourceEventId = Id[Event]("tr-2"),
-        images        = List(imageUrl)
-      )
-      val rendered = FakeProvider.renderFrames(Vector(toolCall, toolResult), Some(TestAgent))
+      val rendered = FakeProvider.renderFrames(Vector(toolCall), Some(TestAgent))
       val userImageUrls = rendered.collect {
         case ProviderMessage.User(content) =>
           content.collect { case i: MessageContent.Image => i.url }

@@ -1,0 +1,362 @@
+{"requestHash":"7c528cc926a14eab68712bde20869b2bbcca48646e64ad2a0a2e703676644bd7","recordedAt":1779460308338}
+{"text":"The","type":"ThinkingDelta"}
+{"text":" user","type":"ThinkingDelta"}
+{"text":"'s","type":"ThinkingDelta"}
+{"text":" color","type":"ThinkingDelta"}
+{"text":" preference","type":"ThinkingDelta"}
+{"text":" was","type":"ThinkingDelta"}
+{"text":" asked","type":"ThinkingDelta"}
+{"text":" in","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" first","type":"ThinkingDelta"}
+{"text":" iteration","type":"ThinkingDelta"}
+{"text":":","type":"ThinkingDelta"}
+{"text":" \"","type":"ThinkingDelta"}
+{"text":"What","type":"ThinkingDelta"}
+{"text":" color","type":"ThinkingDelta"}
+{"text":" should","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":20,"totalTokens":20,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":" I","type":"ThinkingDelta"}
+{"text":" use","type":"ThinkingDelta"}
+{"text":",","type":"ThinkingDelta"}
+{"text":" red","type":"ThinkingDelta"}
+{"text":" or","type":"ThinkingDelta"}
+{"text":" blue","type":"ThinkingDelta"}
+{"text":"?\"","type":"ThinkingDelta"}
+{"text":"\n","type":"ThinkingDelta"}
+{"text":"The","type":"ThinkingDelta"}
+{"text":" parent","type":"ThinkingDelta"}
+{"text":" answered","type":"ThinkingDelta"}
+{"text":" \"","type":"ThinkingDelta"}
+{"text":"blue","type":"ThinkingDelta"}
+{"text":"\".","type":"ThinkingDelta"}
+{"text":"\n","type":"ThinkingDelta"}
+{"text":"I","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":32,"totalTokens":32,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":" should","type":"ThinkingDelta"}
+{"text":" now","type":"ThinkingDelta"}
+{"text":" confirm","type":"ThinkingDelta"}
+{"text":" that","type":"ThinkingDelta"}
+{"text":" I","type":"ThinkingDelta"}
+{"text":" will","type":"ThinkingDelta"}
+{"text":" use","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" color","type":"ThinkingDelta"}
+{"text":" blue","type":"ThinkingDelta"}
+{"text":" and","type":"ThinkingDelta"}
+{"text":" complete","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" task","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":"\n","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":51,"totalTokens":51,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":"According","type":"ThinkingDelta"}
+{"text":" to","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" instructions","type":"ThinkingDelta"}
+{"text":",","type":"ThinkingDelta"}
+{"text":" I","type":"ThinkingDelta"}
+{"text":" should","type":"ThinkingDelta"}
+{"text":" emit","type":"ThinkingDelta"}
+{"text":":","type":"ThinkingDelta"}
+{"text":"\n","type":"ThinkingDelta"}
+{"text":"`","type":"ThinkingDelta"}
+{"text":"Complete","type":"ThinkingDelta"}
+{"text":":","type":"ThinkingDelta"}
+{"text":" ","type":"ThinkingDelta"}
+{"text":"<one","type":"ThinkingDelta"}
+{"text":"-","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":66,"totalTokens":66,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":"paragraph","type":"ThinkingDelta"}
+{"text":" confirmation","type":"ThinkingDelta"}
+{"text":" that","type":"ThinkingDelta"}
+{"text":" names","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" chosen","type":"ThinkingDelta"}
+{"text":" color","type":"ThinkingDelta"}
+{"text":">`","type":"ThinkingDelta"}
+{"text":"\n","type":"ThinkingDelta"}
+{"text":"I","type":"ThinkingDelta"}
+{"text":" will","type":"ThinkingDelta"}
+{"text":" write","type":"ThinkingDelta"}
+{"text":" a","type":"ThinkingDelta"}
+{"text":" brief","type":"ThinkingDelta"}
+{"text":" confirmation","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":88,"totalTokens":88,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":"\n","type":"ThinkingDelta"}
+{"text":"I","type":"ThinkingDelta"}
+{"text":" will","type":"ThinkingDelta"}
+{"text":" call","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" `","type":"ThinkingDelta"}
+{"text":"complete","type":"ThinkingDelta"}
+{"text":"_task","type":"ThinkingDelta"}
+{"text":"`","type":"ThinkingDelta"}
+{"text":" tool","type":"ThinkingDelta"}
+{"text":" with","type":"ThinkingDelta"}
+{"text":" a","type":"ThinkingDelta"}
+{"text":" summary","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":"\n","type":"ThinkingDelta"}
+{"text":"The","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":102,"totalTokens":102,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":" summary","type":"ThinkingDelta"}
+{"text":" should","type":"ThinkingDelta"}
+{"text":" be","type":"ThinkingDelta"}
+{"text":" one","type":"ThinkingDelta"}
+{"text":" paragraph","type":"ThinkingDelta"}
+{"text":" describing","type":"ThinkingDelta"}
+{"text":" what","type":"ThinkingDelta"}
+{"text":" I","type":"ThinkingDelta"}
+{"text":" did","type":"ThinkingDelta"}
+{"text":" and","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" result","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":"\n","type":"ThinkingDelta"}
+{"text":"Since","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":122,"totalTokens":122,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":" task","type":"ThinkingDelta"}
+{"text":" was","type":"ThinkingDelta"}
+{"text":" \"","type":"ThinkingDelta"}
+{"text":"Pick","type":"ThinkingDelta"}
+{"text":" a","type":"ThinkingDelta"}
+{"text":" color","type":"ThinkingDelta"}
+{"text":" for","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" user","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":" Ask","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" parent","type":"ThinkingDelta"}
+{"text":" first","type":"ThinkingDelta"}
+{"text":".\",","type":"ThinkingDelta"}
+{"text":" and","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":139,"totalTokens":139,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":" I","type":"ThinkingDelta"}
+{"text":" asked","type":"ThinkingDelta"}
+{"text":" and","type":"ThinkingDelta"}
+{"text":" received","type":"ThinkingDelta"}
+{"text":" \"","type":"ThinkingDelta"}
+{"text":"blue","type":"ThinkingDelta"}
+{"text":"\",","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" result","type":"ThinkingDelta"}
+{"text":" is","type":"ThinkingDelta"}
+{"text":" that","type":"ThinkingDelta"}
+{"text":" I","type":"ThinkingDelta"}
+{"text":" picked","type":"ThinkingDelta"}
+{"text":" blue","type":"ThinkingDelta"}
+{"text":" for","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":156,"totalTokens":156,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":" user","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":"\n","type":"ThinkingDelta"}
+{"text":"I","type":"ThinkingDelta"}
+{"text":" will","type":"ThinkingDelta"}
+{"text":" call","type":"ThinkingDelta"}
+{"text":" `","type":"ThinkingDelta"}
+{"text":"complete","type":"ThinkingDelta"}
+{"text":"_task","type":"ThinkingDelta"}
+{"text":"`","type":"ThinkingDelta"}
+{"text":" with","type":"ThinkingDelta"}
+{"text":" summary","type":"ThinkingDelta"}
+{"text":":","type":"ThinkingDelta"}
+{"text":" \"","type":"ThinkingDelta"}
+{"text":"I","type":"ThinkingDelta"}
+{"text":" asked","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":170,"totalTokens":170,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" parent","type":"ThinkingDelta"}
+{"text":" for","type":"ThinkingDelta"}
+{"text":" a","type":"ThinkingDelta"}
+{"text":" color","type":"ThinkingDelta"}
+{"text":" preference","type":"ThinkingDelta"}
+{"text":" and","type":"ThinkingDelta"}
+{"text":" received","type":"ThinkingDelta"}
+{"text":" '","type":"ThinkingDelta"}
+{"text":"blue","type":"ThinkingDelta"}
+{"text":"'.","type":"ThinkingDelta"}
+{"text":" I","type":"ThinkingDelta"}
+{"text":" have","type":"ThinkingDelta"}
+{"text":" selected","type":"ThinkingDelta"}
+{"text":" blue","type":"ThinkingDelta"}
+{"text":" as","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":190,"totalTokens":190,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" chosen","type":"ThinkingDelta"}
+{"text":" color","type":"ThinkingDelta"}
+{"text":" for","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" user","type":"ThinkingDelta"}
+{"text":".\"","type":"ThinkingDelta"}
+{"text":"\n","type":"ThinkingDelta"}
+{"text":"Wait","type":"ThinkingDelta"}
+{"text":",","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" instructions","type":"ThinkingDelta"}
+{"text":" say","type":"ThinkingDelta"}
+{"text":":","type":"ThinkingDelta"}
+{"text":"\n","type":"ThinkingDelta"}
+{"text":"\"On","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":206,"totalTokens":206,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":" your","type":"ThinkingDelta"}
+{"text":" FIRST","type":"ThinkingDelta"}
+{"text":" iteration","type":"ThinkingDelta"}
+{"text":",","type":"ThinkingDelta"}
+{"text":" emit","type":"ThinkingDelta"}
+{"text":" exactly","type":"ThinkingDelta"}
+{"text":" one","type":"ThinkingDelta"}
+{"text":" line","type":"ThinkingDelta"}
+{"text":":","type":"ThinkingDelta"}
+{"text":" Ask","type":"ThinkingDelta"}
+{"text":"Parent","type":"ThinkingDelta"}
+{"text":":","type":"ThinkingDelta"}
+{"text":" ...\"","type":"ThinkingDelta"}
+{"text":" (","type":"ThinkingDelta"}
+{"text":"Already","type":"ThinkingDelta"}
+{"text":" done","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":225,"totalTokens":225,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":")","type":"ThinkingDelta"}
+{"text":"\n","type":"ThinkingDelta"}
+{"text":"\"After","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" parent","type":"ThinkingDelta"}
+{"text":" answers","type":"ThinkingDelta"}
+{"text":",","type":"ThinkingDelta"}
+{"text":" your","type":"ThinkingDelta"}
+{"text":" next","type":"ThinkingDelta"}
+{"text":" iteration","type":"ThinkingDelta"}
+{"text":" sees","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" answer","type":"ThinkingDelta"}
+{"text":" in","type":"ThinkingDelta"}
+{"text":" context","type":"ThinkingDelta"}
+{"text":" \u2014","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":244,"totalTokens":244,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":" emit","type":"ThinkingDelta"}
+{"text":":","type":"ThinkingDelta"}
+{"text":" Complete","type":"ThinkingDelta"}
+{"text":":","type":"ThinkingDelta"}
+{"text":" ","type":"ThinkingDelta"}
+{"text":"<one","type":"ThinkingDelta"}
+{"text":"-","type":"ThinkingDelta"}
+{"text":"paragraph","type":"ThinkingDelta"}
+{"text":" confirmation","type":"ThinkingDelta"}
+{"text":" that","type":"ThinkingDelta"}
+{"text":" names","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" chosen","type":"ThinkingDelta"}
+{"text":" color","type":"ThinkingDelta"}
+{"text":">\"","type":"ThinkingDelta"}
+{"text":"\n","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":263,"totalTokens":263,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":"It","type":"ThinkingDelta"}
+{"text":" also","type":"ThinkingDelta"}
+{"text":" says","type":"ThinkingDelta"}
+{"text":":","type":"ThinkingDelta"}
+{"text":" \"","type":"ThinkingDelta"}
+{"text":"When","type":"ThinkingDelta"}
+{"text":" you","type":"ThinkingDelta"}
+{"text":" have","type":"ThinkingDelta"}
+{"text":" completed","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" work","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" user","type":"ThinkingDelta"}
+{"text":" briefed","type":"ThinkingDelta"}
+{"text":" you","type":"ThinkingDelta"}
+{"text":" on","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":281,"totalTokens":281,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":",","type":"ThinkingDelta"}
+{"text":" you","type":"ThinkingDelta"}
+{"text":" have","type":"ThinkingDelta"}
+{"text":" two","type":"ThinkingDelta"}
+{"text":" equivalent","type":"ThinkingDelta"}
+{"text":" ways","type":"ThinkingDelta"}
+{"text":" to","type":"ThinkingDelta"}
+{"text":" terminate","type":"ThinkingDelta"}
+{"text":":","type":"ThinkingDelta"}
+{"text":" -","type":"ThinkingDelta"}
+{"text":" Call","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" `","type":"ThinkingDelta"}
+{"text":"complete","type":"ThinkingDelta"}
+{"text":"_task","type":"ThinkingDelta"}
+{"text":"`","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":298,"totalTokens":298,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":" tool","type":"ThinkingDelta"}
+{"text":" with","type":"ThinkingDelta"}
+{"text":" `","type":"ThinkingDelta"}
+{"text":"summary","type":"ThinkingDelta"}
+{"text":"`","type":"ThinkingDelta"}
+{"text":" \u2014","type":"ThinkingDelta"}
+{"text":" preferred","type":"ThinkingDelta"}
+{"text":" for","type":"ThinkingDelta"}
+{"text":" tool","type":"ThinkingDelta"}
+{"text":"-c","type":"ThinkingDelta"}
+{"text":"alling","type":"ThinkingDelta"}
+{"text":"-cap","type":"ThinkingDelta"}
+{"text":"able","type":"ThinkingDelta"}
+{"text":" models","type":"ThinkingDelta"}
+{"text":"...\"","type":"ThinkingDelta"}
+{"text":"\n\n","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":316,"totalTokens":316,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":"I","type":"ThinkingDelta"}
+{"text":" will","type":"ThinkingDelta"}
+{"text":" use","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" `","type":"ThinkingDelta"}
+{"text":"complete","type":"ThinkingDelta"}
+{"text":"_task","type":"ThinkingDelta"}
+{"text":"`","type":"ThinkingDelta"}
+{"text":" tool","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":"\n","type":"ThinkingDelta"}
+{"text":"Summary","type":"ThinkingDelta"}
+{"text":":","type":"ThinkingDelta"}
+{"text":" \"","type":"ThinkingDelta"}
+{"text":"I","type":"ThinkingDelta"}
+{"text":" asked","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":329,"totalTokens":329,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" parent","type":"ThinkingDelta"}
+{"text":" for","type":"ThinkingDelta"}
+{"text":" a","type":"ThinkingDelta"}
+{"text":" color","type":"ThinkingDelta"}
+{"text":" preference","type":"ThinkingDelta"}
+{"text":" and","type":"ThinkingDelta"}
+{"text":" received","type":"ThinkingDelta"}
+{"text":" '","type":"ThinkingDelta"}
+{"text":"blue","type":"ThinkingDelta"}
+{"text":"'.","type":"ThinkingDelta"}
+{"text":" I","type":"ThinkingDelta"}
+{"text":" have","type":"ThinkingDelta"}
+{"text":" selected","type":"ThinkingDelta"}
+{"text":" blue","type":"ThinkingDelta"}
+{"text":" as","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":349,"totalTokens":349,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" chosen","type":"ThinkingDelta"}
+{"text":" color","type":"ThinkingDelta"}
+{"text":" for","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" user","type":"ThinkingDelta"}
+{"text":".\"","type":"ThinkingDelta"}
+{"text":"\n","type":"ThinkingDelta"}
+{"text":"Let","type":"ThinkingDelta"}
+{"text":"'s","type":"ThinkingDelta"}
+{"text":" generate","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" tool","type":"ThinkingDelta"}
+{"text":" call","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":"\n","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":365,"totalTokens":365,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"callId":"5c872ae9b","toolName":"complete_task","type":"ToolCallStart"}
+{"callId":"5c872ae9b","input":{"summary":"I asked the parent for a color preference and received 'blue'. I have selected blue as the chosen color for the user.","type":"CompleteTaskInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":4679,"completionTokens":389,"totalTokens":5068,"isEstimated":false,"cacheReadTokens":4161,"cacheCreationTokens":0},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

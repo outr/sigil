@@ -4,7 +4,7 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import rapid.Stream
-import sigil.conversation.ContextFrame
+import sigil.conversation.{ContextFrame, ToolCallState}
 import sigil.event.Event
 import sigil.provider.{Provider, ProviderCall, ProviderEvent, ProviderMessage, ProviderType}
 import sigil.tool.ToolName
@@ -71,12 +71,11 @@ class UnpairedFunctionCallSpec extends AnyWordSpec with Matchers {
     }
 
     "render a real ToolResult for a paired call and nothing for the unpaired one" in {
-      // callA paired (has matching ToolResult), callB unpaired.
+      // callA paired (Complete state), callB unpaired (Active state).
       val frames = Vector[ContextFrame](
         ContextFrame.ToolCall(nonAtomicName, """{"q":"a"}""", callA, agent,
-          sourceEventId = Id[Event]("frame-A")),
-        ContextFrame.ToolResult(callA, "real-result-A",
-          sourceEventId = Id[Event]("result-A")),
+          sourceEventId = Id[Event]("frame-A"),
+          state = ToolCallState.Complete("real-result-A")),
         ContextFrame.ToolCall(nonAtomicName, """{"q":"b"}""", callB, agent,
           sourceEventId = Id[Event]("frame-B"))
       )
@@ -91,11 +90,16 @@ class UnpairedFunctionCallSpec extends AnyWordSpec with Matchers {
     }
 
     "tolerate a ToolResult arriving for a call that was never seen (no crash)" in {
-      // Pathological: a ToolResult with a call_id never seen on the
-      // assistant side. The renderer must not crash on the unknown id.
+      // TODO(#261): semantics changed, review — under the unified
+      // ToolCall(state) model, an orphan ToolResult cannot exist as
+      // a frame; FrameBuilder.appendFor folds it into a Text fallback.
+      // Simulate that fallback at the renderer level.
       val frames = Vector[ContextFrame](
-        ContextFrame.ToolResult(callC, "orphan-result",
-          sourceEventId = Id[Event]("result-C"))
+        ContextFrame.Text(
+          content       = s"[framework: orphan tool result for callId=${callC.value} — content: orphan-result]",
+          participantId = agent,
+          sourceEventId = Id[Event]("result-C")
+        )
       )
       noException should be thrownBy TestProvider.render(frames, agent)
     }
@@ -118,17 +122,13 @@ class UnpairedFunctionCallSpec extends AnyWordSpec with Matchers {
           argsJson = """{"content":"hi"}""",
           callId = respondCall,
           participantId = agent,
-          sourceEventId = Id[Event]("respond-invoke")
+          sourceEventId = Id[Event]("respond-invoke"),
+          state = ToolCallState.Complete("""{"text":""}""")
         ),
         ContextFrame.Text(
           content = "hi",
           participantId = agent,
           sourceEventId = Id[Event]("respond-message")
-        ),
-        ContextFrame.ToolResult(
-          callId = respondCall,
-          content = """{"text":""}""",
-          sourceEventId = Id[Event]("respond-result")
         )
       )
       val messages = TestProvider.render(frames, agent)

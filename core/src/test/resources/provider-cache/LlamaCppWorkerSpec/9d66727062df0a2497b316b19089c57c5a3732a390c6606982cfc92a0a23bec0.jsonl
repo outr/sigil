@@ -1,0 +1,31 @@
+{"requestHash":"9d66727062df0a2497b316b19089c57c5a3732a390c6606982cfc92a0a23bec0","recordedAt":1779414106053}
+{"text":"The","type":"ThinkingDelta"}
+{"text":" child","type":"ThinkingDelta"}
+{"text":" worker","type":"ThinkingDelta"}
+{"text":" has","type":"ThinkingDelta"}
+{"text":" been","type":"ThinkingDelta"}
+{"text":" successfully","type":"ThinkingDelta"}
+{"text":" spawned","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":" Now","type":"ThinkingDelta"}
+{"text":" I","type":"ThinkingDelta"}
+{"text":" need","type":"ThinkingDelta"}
+{"text":" to","type":"ThinkingDelta"}
+{"text":" complete","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" task","type":"ThinkingDelta"}
+{"text":" by","type":"ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":20,"totalTokens":20,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":" confirming","type":"ThinkingDelta"}
+{"text":" that","type":"ThinkingDelta"}
+{"text":" the","type":"ThinkingDelta"}
+{"text":" child","type":"ThinkingDelta"}
+{"text":" was","type":"ThinkingDelta"}
+{"text":" spawned","type":"ThinkingDelta"}
+{"text":".","type":"ThinkingDelta"}
+{"text":"\n","type":"ThinkingDelta"}
+{"callId":"04761e6bc","toolName":"complete_task","type":"ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":30,"totalTokens":30,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"callId":"04761e6bc","input":{"summary":"Successfully spawned a child-worker (taskId: gzmcm3llAmY6OhmeRMQrs8esp0mHFjSM) that has completed its work immediately as requested.","type":"CompleteTaskInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":1570,"completionTokens":90,"totalTokens":1660,"isEstimated":false,"cacheReadTokens":1069,"cacheCreationTokens":0},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

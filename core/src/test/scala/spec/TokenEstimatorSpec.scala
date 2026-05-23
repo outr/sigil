@@ -4,7 +4,7 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.GlobalSpace
-import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary, MemorySource}
+import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary, MemorySource, ToolCallState}
 import sigil.conversation.compression.TokenEstimator
 import sigil.event.Event
 import sigil.tokenize.{HeuristicTokenizer, JtokkitTokenizer}
@@ -19,11 +19,12 @@ import sigil.tool.ToolName
 class TokenEstimatorSpec extends AnyWordSpec with Matchers {
 
   "estimateFrames" should {
-    "sum tokens across Text / ToolCall / ToolResult frames" in {
+    "sum tokens across Text and Complete ToolCall frames" in {
+      val callId = Id[Event]()
       val frames: Vector[ContextFrame] = Vector(
         ContextFrame.Text("hello world", TestUser, Id[Event]()),
-        ContextFrame.ToolCall(ToolName("respond"), """{"text":"hi"}""", Id[Event](), TestAgent, Id[Event]()),
-        ContextFrame.ToolResult(Id[Event](), "ok", Id[Event]())
+        ContextFrame.ToolCall(ToolName("respond"), """{"text":"hi"}""", callId, TestAgent, callId,
+          state = ToolCallState.Complete("ok"))
       )
       val total = TokenEstimator.estimateFrames(frames, HeuristicTokenizer)
       total should be > 0

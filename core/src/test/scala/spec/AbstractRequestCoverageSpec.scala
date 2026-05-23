@@ -4,16 +4,17 @@ import fabric.rw.*
 import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import sigil.conversation.{ConversationView, 
+import sigil.conversation.{ConversationView,
   ActiveSkillSlot,
   ContextFrame,
   ContextKey,
   ContextMemory,
   ContextSummary,
   Conversation,
-  
+
   MemorySource,
   SkillSource,
+  ToolCallState,
   TurnInput
 }
 import sigil.db.Model
@@ -159,12 +160,8 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
           argsJson = "{}",
           callId = callId,
           participantId = TestAgent,
-          sourceEventId = callId
-        ),
-        ContextFrame.ToolResult(
-          callId = callId,
-          content = "Mode changed to Coding.",
-          sourceEventId = syntheticEventId
+          sourceEventId = callId,
+          state = ToolCallState.Complete("Mode changed to Coding.")
         )
       ))
       val body = bodyOf(turn)

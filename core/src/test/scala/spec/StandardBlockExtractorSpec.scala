@@ -5,7 +5,7 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
-import sigil.conversation.ContextFrame
+import sigil.conversation.{ContextFrame, ToolCallState}
 import sigil.conversation.compression.StandardBlockExtractor
 import sigil.event.Event
 import sigil.information.Information
@@ -60,17 +60,24 @@ class StandardBlockExtractorSpec extends AsyncWordSpec with AsyncTaskSpec with M
       }
     }
 
-    "leave ToolResult frames untouched regardless of size (sigil bug #201)" in {
+    "leave ToolCall frames untouched regardless of result size (sigil bug #201)" in {
       val puts = recorder()
       val extractor = StandardBlockExtractor(toInformation = (c, id) => BlockInfo(id, c), minChars = 20)
       val callId = Id[Event]("call-1")
       val longResult = "Y" * 4000
       val frames = Vector[ContextFrame](
-        ContextFrame.ToolResult(callId, longResult, Id[Event]("res-1"))
+        ContextFrame.ToolCall(
+          toolName      = sigil.tool.ToolName("noop"),
+          argsJson      = "{}",
+          callId        = callId,
+          participantId = TestUser,
+          sourceEventId = Id[Event]("res-1"),
+          state         = ToolCallState.Complete(longResult)
+        )
       )
       extractor.extract(TestSigil, frames).map { result =>
-        val preserved = result.frames.head.asInstanceOf[ContextFrame.ToolResult]
-        preserved.content shouldBe longResult
+        val preserved = result.frames.head.asInstanceOf[ContextFrame.ToolCall]
+        preserved.state shouldBe ToolCallState.Complete(longResult)
         result.information shouldBe empty
         puts() shouldBe empty
       }

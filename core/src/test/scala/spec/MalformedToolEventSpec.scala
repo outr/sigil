@@ -121,7 +121,12 @@ class MalformedToolEventSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       text.visibility shouldBe MessageVisibility.Agents
     }
 
-    "still emit the proper ToolResult frame when origin IS set (happy path)" in Task {
+    "produce NO frame when origin IS set on a Tool-role event (folded into parent ToolCall)" in Task {
+      // Sigil #261 — well-formed Tool-role events (origin set) no
+      // longer produce their own frame; the framework's settle path
+      // updates the parent ToolInvoke's inlined frame to
+      // `ToolCallState.Complete(...)` instead. FrameBuilder.computeFrame
+      // therefore returns `None`.
       val convId = Conversation.id("framebuilder-happy")
       val topicId = Topic.id("topic-happy")
       val parent = Event.id()
@@ -135,10 +140,7 @@ class MalformedToolEventSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         visibility     = MessageVisibility.Agents,
         origin         = Some(parent)
       )
-      val frame = FrameBuilder.computeFrame(ok)
-      frame.get shouldBe a[ContextFrame.ToolResult]
-      val tr = frame.get.asInstanceOf[ContextFrame.ToolResult]
-      tr.callId shouldBe parent
+      FrameBuilder.computeFrame(ok) shouldBe None
     }
   }
 

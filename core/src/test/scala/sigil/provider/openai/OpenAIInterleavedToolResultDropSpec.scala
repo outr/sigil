@@ -4,7 +4,7 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
-import sigil.conversation.{ContextFrame, Conversation, TopicEntry, TurnInput}
+import sigil.conversation.{ContextFrame, Conversation, ToolCallState, TopicEntry, TurnInput}
 import sigil.db.Model
 import sigil.event.{Event, MessageVisibility}
 import sigil.provider.{ConversationMode, ConversationRequest, GenerationSettings, Instructions}
@@ -58,21 +58,13 @@ class OpenAIInterleavedToolResultDropSpec extends AsyncWordSpec with AsyncTaskSp
           callId = Id[Event](respondCallId),
           participantId = TestAgent,
           sourceEventId = Id[Event]("invoke-respond-1"),
-          visibility = MessageVisibility.All
+          visibility = MessageVisibility.All,
+          state = ToolCallState.Complete("""{"text":""}""")
         ),
         ContextFrame.Text(
           content = "hi back",
           participantId = TestAgent,
           sourceEventId = Id[Event]("agent-text-1"),
-          visibility = MessageVisibility.All
-        ),
-        // The respond call's real ToolResults — every tool call,
-        // atomic-content included, emits one under the typed
-        // tool-execution model, so it has a real function_call_output.
-        ContextFrame.ToolResult(
-          callId = Id[Event](respondCallId),
-          content = """{"text":""}""",
-          sourceEventId = Id[Event]("result-respond-1"),
           visibility = MessageVisibility.All
         ),
         ContextFrame.Text(
@@ -147,13 +139,8 @@ class OpenAIInterleavedToolResultDropSpec extends AsyncWordSpec with AsyncTaskSp
           callId = Id[Event](vectorLookupCallId),
           participantId = TestAgent,
           sourceEventId = Id[Event]("invoke-1"),
-          visibility = MessageVisibility.All
-        ),
-        ContextFrame.ToolResult(
-          callId = Id[Event](vectorLookupCallId),
-          content = """{"results":[{"text":"RD2500 spec sheet excerpt"}]}""",
-          sourceEventId = Id[Event]("result-1"),
-          visibility = MessageVisibility.All
+          visibility = MessageVisibility.All,
+          state = ToolCallState.Complete("""{"results":[{"text":"RD2500 spec sheet excerpt"}]}""")
         ),
         ContextFrame.Text(
           content = "Found the RD2500 specs.",

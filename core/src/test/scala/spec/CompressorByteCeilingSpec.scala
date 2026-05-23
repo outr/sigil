@@ -3,7 +3,7 @@ package spec
 import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import sigil.conversation.{ContextFrame, TopicEntry}
+import sigil.conversation.{ContextFrame, ToolCallState, TopicEntry}
 import sigil.conversation.compression.SummaryOnlyCompressor
 import sigil.event.{Event, MessageVisibility}
 import sigil.tokenize.HeuristicTokenizer
@@ -29,9 +29,13 @@ class CompressorByteCeilingSpec extends AnyWordSpec with Matchers {
   /** Renderer that emits each frame's content verbatim (one line). */
   private val verbatim: SummaryOnlyCompressor.Renderer =
     (frames, _, _) => frames.iterator.map {
-      case t: ContextFrame.Text       => t.content
-      case tr: ContextFrame.ToolResult => tr.content
-      case _                          => ""
+      case t: ContextFrame.Text                                              => t.content
+      case tc: ContextFrame.ToolCall                                         =>
+        tc.state match {
+          case ToolCallState.Complete(content, _) => content
+          case ToolCallState.Active               => ""
+        }
+      case _                                                                 => ""
     }.mkString("\n")
 
   private def textFrame(content: String, idSuffix: String): ContextFrame =

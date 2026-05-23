@@ -7,7 +7,7 @@ import rapid.Stream
 import scribe.Level
 import scribe.handler.LogHandler
 import scribe.writer.CacheWriter
-import sigil.conversation.ContextFrame
+import sigil.conversation.{ContextFrame, ToolCallState}
 import sigil.event.Event
 import sigil.provider.{Provider, ProviderCall, ProviderEvent, ProviderMessage, ProviderType}
 import sigil.tool.ToolName
@@ -58,13 +58,10 @@ class OrphanToolInvokeSpec extends AnyWordSpec with Matchers {
       argsJson = """{"q":"paired"}""",
       callId = pairedCallId,
       participantId = agent,
-      sourceEventId = Id[Event]("frame-paired-call")
+      sourceEventId = Id[Event]("frame-paired-call"),
+      state = ToolCallState.Complete("real-paired-result")
     ),
-    ContextFrame.ToolResult(
-      callId = pairedCallId,
-      content = "real-paired-result",
-      sourceEventId = Id[Event]("frame-paired-result")
-    ),
+    // Orphan: ToolCall with default state = ToolCallState.Active.
     ContextFrame.ToolCall(
       toolName = nonAtomicName,
       argsJson = """{"q":"orphan"}""",

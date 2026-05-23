@@ -29,25 +29,20 @@ object TranscriptRenderer {
     topic.foreach(t => sb.append(s"Active topic: \"${t.label}\" — ${t.summary}\n"))
     if (sb.nonEmpty) sb.append("\n")
 
-    val resultByCallId = frames.collect { case tr: ContextFrame.ToolResult => tr.callId -> tr.content }.toMap
-    val consumedResults = scala.collection.mutable.Set.empty[lightdb.id.Id[sigil.event.Event]]
-
     frames.foreach {
       case ContextFrame.Text(content, participantId, _, _) =>
         sb.append(s"[${participantId.value}] ").append(content.trim).append("\n")
 
       case tc: ContextFrame.ToolCall =>
+        // Sigil #261 — unified ToolCall(state) frame: render the call
+        // line; when Complete, render the inline result on the next
+        // line. No separate ToolResult frame to pair (or orphan).
         sb.append(s"[${tc.participantId.value} → ${tc.toolName.value}] ").append(tc.argsJson).append("\n")
-        resultByCallId.get(tc.callId).foreach { result =>
-          sb.append(s"  ↳ ").append(result.trim).append("\n")
-          consumedResults += tc.callId
+        tc.state match {
+          case sigil.conversation.ToolCallState.Complete(content, _) =>
+            sb.append(s"  ↳ ").append(content.trim).append("\n")
+          case sigil.conversation.ToolCallState.Active =>
         }
-
-      case tr: ContextFrame.ToolResult if consumedResults.contains(tr.callId) =>
-      // Already rendered inline with its ToolCall.
-
-      case tr: ContextFrame.ToolResult =>
-        sb.append("[tool result (orphan)] ").append(tr.content.trim).append("\n")
 
       case ContextFrame.System(content, _, _) =>
         sb.append("[system] ").append(content.trim).append("\n")

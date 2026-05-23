@@ -5,7 +5,7 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
-import sigil.conversation.{ContextFrame, Conversation, Topic, TurnInput}
+import sigil.conversation.{ContextFrame, Conversation, Topic, ToolCallState, TurnInput}
 import sigil.db.Model
 import sigil.event.Event
 import sigil.provider.openai.OpenAIProvider
@@ -110,12 +110,8 @@ class OpenAIOrphanFunctionCallSpec extends AsyncWordSpec with AsyncTaskSpec with
           argsJson      = """{"toolName":"x","approved":true}""",
           callId        = callId,
           participantId = TestAgent,
-          sourceEventId = callId
-        ),
-        ContextFrame.ToolResult(
-          callId        = callId,
-          content       = "Consent recorded: x approved",
-          sourceEventId = Id[Event]("result-1")
+          sourceEventId = callId,
+          state         = ToolCallState.Complete("Consent recorded: x approved")
         )
       )
       val body  = renderBody(frames)

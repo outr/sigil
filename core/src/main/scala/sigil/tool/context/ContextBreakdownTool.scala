@@ -47,11 +47,17 @@ case object ContextBreakdownTool extends Tool {
         val turn      = context.turnInput
 
         val frameTokens = turn.frames.iterator.map {
-          case f: ContextFrame.Text       => tokenizer.count(f.content)
-          case f: ContextFrame.ToolCall   => tokenizer.count(f.argsJson)
-          case f: ContextFrame.ToolResult => tokenizer.count(f.content)
-          case f: ContextFrame.System     => tokenizer.count(f.content)
-          case f: ContextFrame.Reasoning  => tokenizer.count(f.summary.mkString("\n"))
+          case f: ContextFrame.Text      => tokenizer.count(f.content)
+          case f: ContextFrame.ToolCall  =>
+            // Sigil #261 — unified ToolCall(state) frame: count args
+            // plus (when Complete) the result content as one frame.
+            val resultTokens = f.state match {
+              case sigil.conversation.ToolCallState.Complete(content, _) => tokenizer.count(content)
+              case sigil.conversation.ToolCallState.Active               => 0
+            }
+            tokenizer.count(f.argsJson) + resultTokens
+          case f: ContextFrame.System    => tokenizer.count(f.content)
+          case f: ContextFrame.Reasoning => tokenizer.count(f.summary.mkString("\n"))
         }.sum
 
         val criticalTokens = criticals.iterator.map { m =>

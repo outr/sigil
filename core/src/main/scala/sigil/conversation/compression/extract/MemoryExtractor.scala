@@ -3,7 +3,7 @@ package sigil.conversation.compression.extract
 import lightdb.id.Id
 import rapid.Task
 import sigil.Sigil
-import sigil.conversation.{ContextFrame, ContextMemory, Conversation}
+import sigil.conversation.{ContextFrame, ContextMemory, Conversation, ToolCallState}
 import sigil.db.Model
 import sigil.participant.ParticipantId
 
@@ -47,10 +47,17 @@ trait MemoryExtractor {
     val (userText, agentText) = frames.foldLeft((List.empty[String], List.empty[String])) {
       case ((users, agents), frame) =>
         val text = frame match {
-          case t: ContextFrame.Text       => Some(t.content -> Option(t.participantId))
-          case tr: ContextFrame.ToolResult => Some(tr.content -> None)
-          case s: ContextFrame.System     => Some(s.content -> None)
-          case _                          => None
+          case t: ContextFrame.Text     => Some(t.content -> Option(t.participantId))
+          case tc: ContextFrame.ToolCall =>
+            // Sigil #261 — unified ToolCall(state): when Complete,
+            // surface the tool result text for memory extraction the
+            // same way the prior ContextFrame.ToolResult did.
+            tc.state match {
+              case ToolCallState.Complete(content, _) => Some(content -> None)
+              case ToolCallState.Active               => None
+            }
+          case s: ContextFrame.System   => Some(s.content -> None)
+          case _                        => None
         }
         text match {
           case Some((c, Some(pid))) if callerOpt.contains(pid) =>

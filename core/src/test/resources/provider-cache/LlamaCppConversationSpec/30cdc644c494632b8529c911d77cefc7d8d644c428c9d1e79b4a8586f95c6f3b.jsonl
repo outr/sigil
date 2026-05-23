@@ -1,0 +1,54 @@
+{"requestHash":"30cdc644c494632b8529c911d77cefc7d8d644c428c9d1e79b4a8586f95c6f3b","recordedAt":1779452407412}
+{"text":"I","type":"TextDelta"}
+{"text":"'ve","type":"TextDelta"}
+{"text":" switched","type":"TextDelta"}
+{"text":" to","type":"TextDelta"}
+{"text":" coding","type":"TextDelta"}
+{"text":" mode","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":" To","type":"TextDelta"}
+{"text":" get","type":"TextDelta"}
+{"text":" started","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" I","type":"TextDelta"}
+{"text":" need","type":"TextDelta"}
+{"text":" to","type":"TextDelta"}
+{"text":" know","type":"TextDelta"}
+{"text":" what","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":16,"totalTokens":16,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":" Scala","type":"TextDelta"}
+{"text":" project","type":"TextDelta"}
+{"text":" we","type":"TextDelta"}
+{"text":"'re","type":"TextDelta"}
+{"text":" working","type":"TextDelta"}
+{"text":" on","type":"TextDelta"}
+{"text":".","type":"TextDelta"}
+{"text":" Do","type":"TextDelta"}
+{"text":" you","type":"TextDelta"}
+{"text":" have","type":"TextDelta"}
+{"text":" an","type":"TextDelta"}
+{"text":" existing","type":"TextDelta"}
+{"text":" project","type":"TextDelta"}
+{"text":" directory","type":"TextDelta"}
+{"text":" you","type":"TextDelta"}
+{"text":"'d","type":"TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":36,"totalTokens":36,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"text":" like","type":"TextDelta"}
+{"text":" me","type":"TextDelta"}
+{"text":" to","type":"TextDelta"}
+{"text":" work","type":"TextDelta"}
+{"text":" with","type":"TextDelta"}
+{"text":",","type":"TextDelta"}
+{"text":" or","type":"TextDelta"}
+{"text":" are","type":"TextDelta"}
+{"text":" we","type":"TextDelta"}
+{"text":" starting","type":"TextDelta"}
+{"text":" from","type":"TextDelta"}
+{"text":" scratch","type":"TextDelta"}
+{"text":"?","type":"TextDelta"}
+{"text":"\n\n","type":"TextDelta"}
+{"callId":"452b86c31","toolName":"respond_options","type":"ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":50,"totalTokens":50,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"Usage"}
+{"callId":"452b86c31","input":{"prompt":"What's the starting point for this Scala project?","options":[{"label":"Existing project","value":"existing","description":"I have a project directory already set up","exclusive":false},{"label":"New project","value":"new","description":"Start from scratch","exclusive":false},{"label":"Clone from repo","value":"clone","description":"Clone from a Git repository","exclusive":false}],"allowMultiple":false,"type":"RespondOptionsInput"},"type":"ToolCallComplete"}
+{"usage":{"promptTokens":6749,"completionTokens":193,"totalTokens":6942,"isEstimated":false,"cacheReadTokens":4454,"cacheCreationTokens":0},"type":"Usage"}
+{"stopReason":"ToolCall","type":"Done"}

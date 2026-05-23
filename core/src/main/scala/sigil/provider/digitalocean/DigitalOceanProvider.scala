@@ -14,13 +14,17 @@ import scala.concurrent.duration.*
  * at `https://inference.do-ai.run/v1/chat/completions`. Hosted models
  * (kimi-k2.5, llama, mistral, …) all speak the same wire shape.
  *
- * Conservative on optional features the hosted-model surface doesn't
- * universally support: no strict-mode tool schemas (DO documents
- * OpenAI compatibility, not the strict-mode extension), no
- * `reasoning_effort`. Schemas go through [[StrictSchema.stripUnsupportedKeys]]
- * so unknown keywords (`pattern`, `format`, numeric bounds) don't
- * reach the validator. DO chat-completions supports vision via OpenAI's
- * content-array shape for VLMs (kimi K2.5/K2.6, Nemotron Nano 12B v2 VL).
+ * Strict-mode tool schemas (`strict: true`) are on (`strictModeCapable
+ * = true` in the wire config); schema shaping goes through
+ * [[StrictSchema.forOpenAIStrict]] (closed-object form,
+ * `additionalProperties: false`, `pattern`/`format`/numeric bounds
+ * stripped). Tools whose `Input` contains a `DefType.Json` field opt
+ * out per-tool — strict mode and any-JSON aren't compatible.
+ * `reasoning_effort` is not used here; Kimi reasoning is steered via
+ * the `/think` / `/no_think` system-prompt directive instead (see
+ * [[applyKimiReasoningDirective]] and sigil bug #155). DO
+ * chat-completions supports vision via OpenAI's content-array shape
+ * for VLMs (kimi K2.5/K2.6, Nemotron Nano 12B v2 VL).
  *
  * For kimi-* hosted models, [[ReasoningMode]] is translated into the
  * `/think` / `/no_think` system-prompt directive (sigil bug #155).

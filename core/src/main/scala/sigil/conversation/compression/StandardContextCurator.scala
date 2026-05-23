@@ -3,7 +3,7 @@ package sigil.conversation.compression
 import lightdb.id.Id
 import rapid.Task
 import sigil.Sigil
-import sigil.conversation.{ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, ParticipantProjection, TurnInput}
+import sigil.conversation.{ContextFrame, ContextKey, ContextMemory, ContextSummary, Conversation, ParticipantProjection, ToolCallState, TurnInput}
 import sigil.db.Model
 import sigil.information.InformationSummary
 import sigil.participant.ParticipantId
@@ -376,11 +376,17 @@ case class StandardContextCurator(sigil: Sigil,
   private def referencedInformationIds(frames: Vector[ContextFrame]): Set[String] = {
     val needle = "Information["
     frames.iterator.flatMap {
-      case t: ContextFrame.Text       => extractIds(t.content, needle)
-      case tr: ContextFrame.ToolResult => extractIds(tr.content, needle)
-      case tc: ContextFrame.ToolCall   => extractIds(tc.argsJson, needle)
-      case s: ContextFrame.System     => extractIds(s.content, needle)
-      case _                          => Iterator.empty
+      case t: ContextFrame.Text     => extractIds(t.content, needle)
+      case tc: ContextFrame.ToolCall =>
+        // Sigil #261 — unified frame: args + (if Complete) result content.
+        val argIds = extractIds(tc.argsJson, needle)
+        val resultIds = tc.state match {
+          case ToolCallState.Complete(content, _) => extractIds(content, needle)
+          case ToolCallState.Active               => Iterator.empty
+        }
+        argIds ++ resultIds
+      case s: ContextFrame.System   => extractIds(s.content, needle)
+      case _                        => Iterator.empty
     }.toSet
   }
 

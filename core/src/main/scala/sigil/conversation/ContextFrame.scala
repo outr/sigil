@@ -57,8 +57,26 @@ enum ContextFrame derives RW {
             visibility: MessageVisibility = MessageVisibility.All)
 
   /**
-   * An assistant-issued tool call. `callId` is the `ToolInvoke._id` so a
-   * following [[ToolResult]] frame can pair with it by id.
+   * A tool transaction. Begins as `state = ToolCallState.Active` when
+   * the originating [[sigil.event.ToolInvoke]] settles, and is
+   * transitioned to `ToolCallState.Complete(content, images)` by the
+   * framework's settle path when the matching [[sigil.event.ToolResults]]
+   * lands — the prior ToolInvoke event's inlined frame is rewritten
+   * so the projection carries the full transaction as one frame, not
+   * two. (Previously this was two frames `ToolCall` + `ToolResult`,
+   * which led to wire-ordering bugs when other events interleaved —
+   * sigil #261.)
+   *
+   * The renderer emits **both** wire messages from a `Complete` frame
+   * — an `Assistant(tool_use)` immediately followed by a
+   * `User(tool_result)` — so pair adjacency is guaranteed by
+   * construction. `Active` frames render only the `Assistant(tool_use)`
+   * half; they appear only in mid-turn debug projections, never on a
+   * real wire request (every wire-request render runs after the
+   * agent's settle).
+   *
+   * `callId` is the originating `ToolInvoke._id` (and also
+   * `sourceEventId` — the frame is anchored on the invoke row).
    */
   case ToolCall(toolName: ToolName,
                 argsJson: String,
@@ -72,28 +90,8 @@ enum ContextFrame derives RW {
                   * so the wire's `tool_call.id` matches what the provider's
                   * `previous_response_id` state remembers. `None` for
                   * synthetic / framework-emitted calls. Sigil bug #167 r5. */
-                wireCallId: Option[String] = None)
-
-  /**
-   * The tool-side completion of a prior [[ToolCall]]. Always renders at
-   * the `tool` role, paired to a `ToolCall` via `callId`.
-   */
-  case ToolResult(callId: Id[Event],
-                  content: String,
-                  sourceEventId: Id[Event],
-                  visibility: MessageVisibility = MessageVisibility.All,
-                  /** Wire-level `call_id` matching the originating
-                    * function_call. Renderers prefer this over
-                    * `callId.value` so `function_call_output.call_id`
-                    * matches the upstream-emitted id (e.g. OpenAI's
-                    * `call_<hash>`). `None` for synthetic / framework-
-                    * emitted results. Sigil bug #167 r5. */
-                  wireCallId: Option[String] = None,
-                  /** Image URLs the tool emitted as result content.
-                    * Kept separate from `content` (the text rendered into
-                    * `function_call_output`) so the renderer delivers them
-                    * as real image input rather than a stringified blob. */
-                  images: List[URL] = Nil)
+                wireCallId: Option[String] = None,
+                state: ToolCallState = ToolCallState.Active)
 
   /**
    * Out-of-band framework-authored context — mode transitions, title

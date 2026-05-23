@@ -1,6 +1,6 @@
 package sigil.conversation.compression
 
-import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary}
+import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary, ToolCallState}
 import sigil.information.InformationSummary
 import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
 
@@ -16,10 +16,18 @@ object TokenEstimator {
   /** Estimate tokens used by a collection of conversation frames. */
   def estimateFrames(frames: Vector[ContextFrame], tokenizer: Tokenizer = HeuristicTokenizer): Int =
     frames.iterator.map {
-      case ContextFrame.Text(c, _, _, _)              => tokenizer.count(c)
-      case ContextFrame.ToolCall(_, args, _, _, _, _, _) => tokenizer.count(args)
-      case ContextFrame.ToolResult(_, c, _, _, _, _)     => tokenizer.count(c)
-      case ContextFrame.System(c, _, _)               => tokenizer.count(c)
+      case ContextFrame.Text(c, _, _, _)                  => tokenizer.count(c)
+      case tc: ContextFrame.ToolCall                      =>
+        // Sigil #261 — unified ToolCall(state) frame carries both
+        // call args AND (when Complete) the result content. Token
+        // budget reflects both halves of the wire-rendered pair.
+        val argTokens = tokenizer.count(tc.argsJson)
+        val resultTokens = tc.state match {
+          case ToolCallState.Complete(content, _) => tokenizer.count(content)
+          case ToolCallState.Active               => 0
+        }
+        argTokens + resultTokens
+      case ContextFrame.System(c, _, _)                   => tokenizer.count(c)
       case ContextFrame.Reasoning(_, summary, _, _, _, _) => tokenizer.count(summary.mkString("\n"))
     }.sum
 

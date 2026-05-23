@@ -42,10 +42,16 @@ object FrameBuilder {
    * Extract a Tool-role event's render payload: the flattened text the
    * model reads as the `function_call_output`, and any image URLs the
    * event carried. Images are kept out of the text — the renderer
-   * delivers them as real image input via the frame's `images` field
+   * delivers them as real image input via the frame's image list
    * rather than a stringified `toString` blob.
+   *
+   * Visibility relaxed to `private[sigil]` so the framework's settle
+   * path (`Sigil.attachContextFrameOnSettle`) can use it to compute
+   * the `ToolCallState.Complete(content, images)` payload when it
+   * folds a settled [[ToolResults]] into the prior [[ToolInvoke]]'s
+   * inlined frame.
    */
-  private def toolResultPayload(event: Event): (String, List[spice.net.URL]) =
+  private[sigil] def toolResultPayload(event: Event): (String, List[spice.net.URL]) =
     event match {
       case m: Message =>
         val images = m.content.collect { case ResponseContent.Image(url, _) => url }.toList
@@ -83,32 +89,21 @@ object FrameBuilder {
     if (event.state != EventState.Complete) return None
 
     if (event.role == MessageRole.Tool) {
-      val (content, images) = toolResultPayload(event)
-      // Bug #64 — recover at read. A Tool-role event without
-      // `origin` violates the framework's invariant; the
-      // write-side validation gate (Sigil.publish + family)
-      // rejects fresh emissions, but historical events from
-      // before the gate landed (or from app code that bypassed
-      // publish) still exist in `db.events`. Throwing here
-      // permanently bricked any conversation containing one
-      // such event — every subsequent turn re-traversed the
-      // event log and re-threw. Now we log + emit a synthetic
-      // Agents-only Text frame so the agent reads "[skipped
-      // malformed event]" and the conversation continues.
+      // Well-formed Tool-role events (origin pointing back at the
+      // matching ToolInvoke) produce NO frame of their own — the
+      // framework's settle path (`Sigil.attachContextFrameOnSettle`)
+      // updates the prior ToolInvoke's inlined `ContextFrame.ToolCall`
+      // frame to `ToolCallState.Complete(content, images)` instead, so
+      // the projection carries the full tool transaction as one frame.
+      //
+      // Bug #64 holdover: malformed historical events without `origin`
+      // get a synthetic Agents-only Text frame so a broken historical
+      // row doesn't brick the conversation. The write-side validator
+      // rejects fresh emissions without `origin`, so this fallback
+      // exists purely for legacy data.
       event.origin match {
-        case Some(callId) =>
-          return Some(ContextFrame.ToolResult(
-            callId = callId,
-            content = content,
-            sourceEventId = event._id,
-            visibility = event.visibility,
-            images = images
-            // wireCallId stays None — populated by the renderer at
-            // wire-render time by looking up the matching
-            // ContextFrame.ToolCall.wireCallId. computeFrame is a
-            // per-event pure function; cross-event derivation lives
-            // in the renderer walk. Sigil bug #167 r5.
-          ))
+        case Some(_) =>
+          return None
         case None =>
           scribe.warn(
             s"FrameBuilder skipping malformed Tool-role ${event.getClass.getSimpleName} " +
@@ -247,12 +242,30 @@ object FrameBuilder {
             s"Event id=${event._id.value}; participantId=${event.participantId.value}."
         )
       }
-      return existing :+ ContextFrame.ToolResult(
-        callId = callId,
-        content = content,
+      // Sigil #261 — unified ToolCall(state) frame model: fold this
+      // Tool-role result into the matching ToolCall frame in
+      // `existing` rather than appending a separate ToolResult frame.
+      val matchingIdx = existing.indexWhere {
+        case tc: ContextFrame.ToolCall if tc.callId == callId && tc.state == ToolCallState.Active => true
+        case _ => false
+      }
+      if (matchingIdx >= 0) {
+        val tc = existing(matchingIdx).asInstanceOf[ContextFrame.ToolCall]
+        return existing.updated(
+          matchingIdx,
+          tc.copy(state = ToolCallState.Complete(content, images))
+        )
+      }
+      // No matching Active ToolCall in `existing` — orphan result.
+      // Surface as a synthetic agents-only Text frame so the data
+      // doesn't vanish silently; live publish path's invariant gate
+      // already prevents this in fresh events, so this fallback only
+      // covers legacy / replay scenarios.
+      return existing :+ ContextFrame.Text(
+        content       = s"[framework: orphan tool result for callId=${callId.value} — content: $content]",
+        participantId = event.participantId,
         sourceEventId = event._id,
-        visibility = event.visibility,
-        images = images
+        visibility    = sigil.event.MessageVisibility.Agents
       )
     }
 

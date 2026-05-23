@@ -4,7 +4,7 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import rapid.Stream
-import _root_.sigil.conversation.ContextFrame
+import _root_.sigil.conversation.{ContextFrame, ToolCallState}
 import _root_.sigil.event.Event
 import _root_.sigil.tool.ToolName
 import _root_.sigil.tool.core.{CoreTools, RespondOptionsTool}
@@ -49,20 +49,13 @@ class AtomicContentToolWirePairingSpec extends AnyWordSpec with Matchers {
           argsJson = """{"prompt":"OK?","options":[{"label":"Yes","value":"yes"}],"allowMultiple":false}""",
           callId = callId,
           participantId = agent,
-          sourceEventId = Id[Event]("frame-source-1")
+          sourceEventId = Id[Event]("frame-source-1"),
+          state = ToolCallState.Complete("""{"text":""}""")
         ),
         ContextFrame.Text(
           content = "Workspace bound.",
           participantId = agent,
           sourceEventId = Id[Event]("agent-msg")
-        ),
-        // The respond_options call's real ToolResults — every tool
-        // call, atomic-content included, emits one under the typed
-        // tool-execution model.
-        ContextFrame.ToolResult(
-          callId = callId,
-          content = """{"text":""}""",
-          sourceEventId = Id[Event]("toolresult-source-1")
         )
       )
       val messages = TestProvider.render(frames, agent)

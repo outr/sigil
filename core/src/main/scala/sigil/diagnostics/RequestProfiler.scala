@@ -197,11 +197,19 @@ object RequestProfiler {
     // 13. Frames (the message array)
     val frameProfiles = turn.frames.map { f =>
       val (kind, text, eventId) = f match {
-        case t: ContextFrame.Text        => ("Text", t.content, t.sourceEventId)
-        case tc: ContextFrame.ToolCall   => ("ToolCall", tc.argsJson, tc.sourceEventId)
-        case tr: ContextFrame.ToolResult => ("ToolResult", tr.content, tr.sourceEventId)
-        case s: ContextFrame.System      => ("System", s.content, s.sourceEventId)
-        case r: ContextFrame.Reasoning   => ("Reasoning", r.summary.mkString("\n"), r.sourceEventId)
+        case t: ContextFrame.Text      => ("Text", t.content, t.sourceEventId)
+        case tc: ContextFrame.ToolCall =>
+          // Sigil #261 — unified ToolCall(state) frame contributes
+          // both its args AND (when Complete) the result content to
+          // the profile in one entry; previously this was profiled as
+          // two separate Frame rows (ToolCall + ToolResult).
+          val resultText = tc.state match {
+            case sigil.conversation.ToolCallState.Complete(content, _) => "\n" + content
+            case sigil.conversation.ToolCallState.Active               => ""
+          }
+          ("ToolCall", tc.argsJson + resultText, tc.sourceEventId)
+        case s: ContextFrame.System    => ("System", s.content, s.sourceEventId)
+        case r: ContextFrame.Reasoning => ("Reasoning", r.summary.mkString("\n"), r.sourceEventId)
       }
       FrameProfile(kind, eventId, tokenizer.count(text))
     }

@@ -3,7 +3,7 @@ package spec
 import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import sigil.conversation.{ConversationView, ContextFrame, Conversation, FrameBuilder}
+import sigil.conversation.{ConversationView, ContextFrame, Conversation, FrameBuilder, ToolCallState}
 import sigil.event.{Event, Message, MessageRole, ToolInvoke, ToolResults}
 import sigil.signal.EventState
 import sigil.tool.{ToolName, ToolSchema}
@@ -72,18 +72,20 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
       ex.getMessage should include ("Tool-role")
     }
 
-    "pair correctly when origin is set on a Message" in {
+    "fold into the parent ToolCall's state when origin is set on a Message" in {
+      // Sigil #261 — Tool-role events no longer produce their own
+      // frame; FrameBuilder.appendFor updates the matching ToolCall
+      // to state = Complete(content, images).
       val invoke = completeInvoke("paired")
       val reply = toolMessage("the result", origin = Some(invoke._id))
       val frames = FrameBuilder.appendFor(FrameBuilder.appendFor(Vector.empty, invoke), reply)
-      frames should have size 2
-      frames.last shouldBe a[ContextFrame.ToolResult]
-      val tr = frames.last.asInstanceOf[ContextFrame.ToolResult]
-      tr.callId shouldBe invoke._id
-      tr.content shouldBe "the result"
+      frames should have size 1
+      val tc = frames.head.asInstanceOf[ContextFrame.ToolCall]
+      tc.callId shouldBe invoke._id
+      tc.state shouldBe ToolCallState.Complete("the result")
     }
 
-    "pair correctly when origin is set on a typed Event subclass" in {
+    "fold correctly when origin is set on a typed Event subclass" in {
       // Same invariant for ToolResults / CapabilityResults / any
       // other Tool-role Event subclass — the typed payload renders
       // via stripEventBoilerplate, but the pairing path is identical.
@@ -97,21 +99,25 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
         origin = Some(invoke._id)
       )
       val frames = FrameBuilder.appendFor(FrameBuilder.appendFor(Vector.empty, invoke), results)
-      frames should have size 2
-      frames.last.asInstanceOf[ContextFrame.ToolResult].callId shouldBe invoke._id
+      frames should have size 1
+      val tc = frames.head.asInstanceOf[ContextFrame.ToolCall]
+      tc.callId shouldBe invoke._id
+      tc.state shouldBe a[ToolCallState.Complete]
     }
   }
 
   // ---- multi-event tool emit: all share one origin ----
 
   "Multiple Tool-role events sharing one origin (bug #69 structural fix)" should {
-    "all pair to the same call_id when sharing the same origin" in {
-      // Tool authors emit ack + suggestion + diagnostic, all
-      // MessageRole.Tool, all stamped with the same origin by the
-      // orchestrator. Pre-fix the second-and-onward events became
-      // orphan-System frames; post-fix they all become ToolResult
-      // frames sharing the call_id, ready for renderFrames to merge
-      // into one wire-level function_call_output.
+    "fold the first matching result into ToolCall.state; later same-origin events surface as orphans" in {
+      // TODO(#261): semantics changed, review — under the unified
+      // ToolCall(state) model, only the first Tool-role event with a
+      // matching origin folds the parent ToolCall into Complete. The
+      // matching ToolCall is no longer Active after the first fold, so
+      // subsequent same-origin events go through the orphan fallback
+      // and become synthetic Text frames. The wire-level merging that
+      // used to happen across N ToolResult frames is now a non-issue
+      // because there is at most one result per call.
       val invoke = completeInvoke("multi_emit")
       val ack          = toolMessage("step 1: ack",          origin = Some(invoke._id))
       val suggestion   = toolMessage("step 2: schema",       origin = Some(invoke._id))
@@ -120,31 +126,30 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
         FrameBuilder.appendFor(Vector.empty, invoke)
       )(FrameBuilder.appendFor)
 
-      // 1 ToolCall + 3 ToolResult frames, all sharing the same callId.
-      frames should have size 4
-      val toolResults = frames.collect { case tr: ContextFrame.ToolResult => tr }
-      toolResults should have size 3
-      toolResults.foreach { tr =>
-        withClue(s"toolResult callId mismatch: $tr: ") {
-          tr.callId shouldBe invoke._id
-        }
-      }
-      // Order preserved.
-      toolResults.map(_.content) shouldBe List("step 1: ack", "step 2: schema", "step 3: invocation")
+      // 1 Complete ToolCall + 2 orphan Text fallbacks.
+      val toolCalls = frames.collect { case tc: ContextFrame.ToolCall => tc }
+      toolCalls should have size 1
+      toolCalls.head.callId shouldBe invoke._id
+      toolCalls.head.state shouldBe ToolCallState.Complete("step 1: ack")
+      val textOrphans = frames.collect { case t: ContextFrame.Text => t }
+      textOrphans should have size 2
+      textOrphans.foreach(_.content should include (invoke._id.value))
     }
 
     "interleaved frames with non-matching callId stay separate" in {
       // Sanity: if a tool emits Tool events for one call, then
       // another tool runs and emits its own Tool events, the two
-      // groups don't blur. Each pairs to its own ToolInvoke.
+      // groups don't blur. Each pairs to its own ToolInvoke and the
+      // parent ToolCall frame transitions to Complete with that
+      // event's content.
       val invokeA = completeInvoke("tool_a")
       val invokeB = completeInvoke("tool_b")
       val resultA = toolMessage("A's result", origin = Some(invokeA._id))
       val resultB = toolMessage("B's result", origin = Some(invokeB._id))
       val frames = List(invokeA, resultA, invokeB, resultB).foldLeft(Vector.empty[ContextFrame])(FrameBuilder.appendFor)
-      val toolResults = frames.collect { case tr: ContextFrame.ToolResult => tr }
-      toolResults.find(_.callId == invokeA._id).map(_.content) shouldBe Some("A's result")
-      toolResults.find(_.callId == invokeB._id).map(_.content) shouldBe Some("B's result")
+      val byCallId = frames.collect { case tc: ContextFrame.ToolCall => tc.callId -> tc }.toMap
+      byCallId(invokeA._id).state shouldBe ToolCallState.Complete("A's result")
+      byCallId(invokeB._id).state shouldBe ToolCallState.Complete("B's result")
     }
   }
 
@@ -155,7 +160,7 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
       // Pre-fix `pairedCallId` scanned for the most-recent unresolved
       // ToolCall — temporal proximity was load-bearing. With explicit
       // origin, position no longer matters: an event with origin
-      // pointing to a ToolCall buried 50 frames back still pairs.
+      // pointing to a ToolCall buried 20 frames back still folds.
       val invoke = completeInvoke("ancient_call")
       // Stuff 20 unrelated frames between the invoke and its result.
       val filler: Vector[ContextFrame] = (1 to 20).toVector.map { i =>
@@ -168,9 +173,8 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
       val starter = FrameBuilder.appendFor(Vector.empty, invoke) ++ filler
       val lateResult = toolMessage("answer to ancient call", origin = Some(invoke._id))
       val frames = FrameBuilder.appendFor(starter, lateResult)
-      val tr = frames.last.asInstanceOf[ContextFrame.ToolResult]
-      tr.callId shouldBe invoke._id
-      tr.content shouldBe "answer to ancient call"
+      val tc = frames.collectFirst { case t: ContextFrame.ToolCall if t.callId == invoke._id => t }.get
+      tc.state shouldBe ToolCallState.Complete("answer to ancient call")
     }
 
     "pair correctly even when an intervening different ToolInvoke is unresolved" in {
@@ -179,13 +183,13 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
       // explicit pointer wins regardless of what's been resolved.
       val invokeA = completeInvoke("first_call")
       val invokeB = completeInvoke("second_unresolved")
-      // resultA pairs to invokeA, NOT to invokeB even though invokeB
-      // is more recent.
+      // resultA folds into invokeA, NOT into invokeB even though
+      // invokeB is more recent.
       val resultA = toolMessage("first call's result", origin = Some(invokeA._id))
       val frames = List(invokeA, invokeB, resultA).foldLeft(Vector.empty[ContextFrame])(FrameBuilder.appendFor)
-      val toolResults = frames.collect { case tr: ContextFrame.ToolResult => tr }
-      toolResults should have size 1
-      toolResults.head.callId shouldBe invokeA._id
+      val byCallId = frames.collect { case tc: ContextFrame.ToolCall => tc.callId -> tc }.toMap
+      byCallId(invokeA._id).state shouldBe ToolCallState.Complete("first call's result")
+      byCallId(invokeB._id).state shouldBe ToolCallState.Active
     }
   }
 
@@ -309,14 +313,15 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
 
   // ---- wire-level merge: multiple ToolResults → one function_call_output ----
 
-  "Provider.renderFrames merges consecutive ToolResults sharing a callId (bug #69)" should {
-    "produce a single ProviderMessage.ToolResult with content joined when multiple Tool events share an origin" in {
-      // The frame model produces N ToolResult frames sharing one
-      // callId; renderFrames collapses them so the wire stays 1:1
-      // with what providers expect (`function_call` ↔
-      // `function_call_output`). Tested via a real provider's
-      // requestConverter — the merge is part of the shared
-      // `Provider.translate` path so any provider exercises it.
+  "Provider.renderFrames renders ToolCall(Complete) as one function_call_output (bug #69)" should {
+    "produce a single ProviderMessage.ToolResult carrying the Complete state's content" in {
+      // TODO(#261): semantics changed, review — under the unified
+      // ToolCall(state) model the framework no longer needs to merge
+      // multiple ToolResult frames; only the first Tool-role event
+      // folds into the parent ToolCall's state and the rest become
+      // orphan Text fallbacks. The wire still stays 1:1 by
+      // construction (one ToolCall ⇒ one function_call_output), so
+      // the rest of this spec exercises the steady-state shape only.
       import sigil.conversation.{ConversationView, TurnInput}
       import sigil.db.Model
       import sigil.provider.{ConversationMode, ConversationRequest, GenerationSettings, Instructions, ProviderRequest}
@@ -326,32 +331,16 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
       val invokeId: Id[Event] = Id("merge-test-invoke")
       val toolName = ToolName("multi_emit_test_tool")
       val frames: Vector[ContextFrame] = Vector(
-        // ToolCall frame — what FrameBuilder would produce from a
-        // settled ToolInvoke for the agent's tool call.
+        // A single ToolCall in Complete state — the only frame the
+        // framework produces for a settled tool call under the new
+        // unified model.
         ContextFrame.ToolCall(
           toolName = toolName,
           argsJson = "{}",
           callId = invokeId,
           participantId = TestAgent,
-          sourceEventId = invokeId
-        ),
-        // Three ToolResult frames sharing the same callId — the
-        // exact shape the new framework produces when a tool emits
-        // multiple Tool-role events stamped with the same origin.
-        ContextFrame.ToolResult(
-          callId = invokeId,
-          content = "PRIMARY_RESULT_MARKER",
-          sourceEventId = Id[Event]("res-1")
-        ),
-        ContextFrame.ToolResult(
-          callId = invokeId,
-          content = "FOLLOWUP_RESULT_MARKER",
-          sourceEventId = Id[Event]("res-2")
-        ),
-        ContextFrame.ToolResult(
-          callId = invokeId,
-          content = "TRAILING_RESULT_MARKER",
-          sourceEventId = Id[Event]("res-3")
+          sourceEventId = invokeId,
+          state = ToolCallState.Complete("PRIMARY_RESULT_MARKER")
         )
       )
       val view = ConversationView(
@@ -375,24 +364,9 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
         case _ => ""
       }
 
-      // All three result markers appear — the content is preserved.
       body should include ("PRIMARY_RESULT_MARKER")
-      body should include ("FOLLOWUP_RESULT_MARKER")
-      body should include ("TRAILING_RESULT_MARKER")
-
-      // BUT: only ONE `function_call_output` for the merge-test
-      // invoke. The wire stays 1:1 — the three frames collapsed
-      // into one.
       val outputCount = "\"function_call_output\"".r.findAllIn(body).size
       outputCount shouldBe 1
-
-      // Order preserved: primary appears before followup which
-      // appears before trailing.
-      val primaryIdx = body.indexOf("PRIMARY_RESULT_MARKER")
-      val followupIdx = body.indexOf("FOLLOWUP_RESULT_MARKER")
-      val trailingIdx = body.indexOf("TRAILING_RESULT_MARKER")
-      primaryIdx should be < followupIdx
-      followupIdx should be < trailingIdx
     }
   }
 

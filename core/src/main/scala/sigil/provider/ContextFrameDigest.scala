@@ -1,6 +1,6 @@
 package sigil.provider
 
-import sigil.conversation.ContextFrame
+import sigil.conversation.{ContextFrame, ToolCallState}
 
 /** Cross-provider digest renderer for [[ContextFrame]]. Used by the
   * default [[Provider.appendFrame]] to build the encoded-context
@@ -12,9 +12,13 @@ object ContextFrameDigest {
     case t: ContextFrame.Text =>
       s"[${t.participantId.value}] ${t.content}"
     case tc: ContextFrame.ToolCall =>
-      s"[${tc.participantId.value}] tool ${tc.toolName.value}(${tc.argsJson}) #${tc.callId.value}"
-    case tr: ContextFrame.ToolResult =>
-      s"[tool] result #${tr.callId.value}: ${tr.content}"
+      // Sigil #261 — unified ToolCall(state) frame renders both the
+      // call and (when Complete) its result in one digest entry.
+      val resultPart = tc.state match {
+        case ToolCallState.Complete(content, _) => s" → ${content}"
+        case ToolCallState.Active               => ""
+      }
+      s"[${tc.participantId.value}] tool ${tc.toolName.value}(${tc.argsJson}) #${tc.callId.value}${resultPart}"
     case s: ContextFrame.System =>
       s"[system] ${s.content}"
     case r: ContextFrame.Reasoning =>

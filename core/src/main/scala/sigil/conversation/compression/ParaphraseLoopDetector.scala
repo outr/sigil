@@ -66,8 +66,7 @@ final case class ParaphraseLoopDetector(windowSize: Int = 4,
       it.next() match {
         case t: ContextFrame.Text if t.participantId == agentId => out += t.content
         case _: ContextFrame.Text                               => stopped = true   // user turn — pattern boundary
-        case _: ContextFrame.ToolCall                           => stopped = true   // real action taken
-        case _: ContextFrame.ToolResult                         => stopped = true   // real action taken
+        case _: ContextFrame.ToolCall                           => stopped = true   // real action taken (call + result are one frame now)
         case _                                                  => ()                // System / Reasoning — skip but keep scanning
       }
     }
