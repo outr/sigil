@@ -7,6 +7,10 @@ val rapidVersion: String = "2.9.5"
 
 val spiceVersion: String = "1.8.12-SNAPSHOT"
 
+// Pinned ahead of spice's transitive 1.28.0 to pick up the
+// stable-className fix for parameterless enum cases in `derives RW`.
+val fabricVersion: String = "1.28.1"
+
 val profigVersion: String = "3.7.1"
 
 val scribeVersion: String = "3.19.0"
@@ -105,6 +109,14 @@ lazy val core = (project in file("core"))
   .settings(docNoLinkWarnings *)
   .settings(
     name := "sigil-core",
+    // Override the transitive fabric (pulled in via spice / lightdb)
+    // to 1.28.1 — picks up the stable-className fix for parameterless
+    // enum cases in `derives RW`. Drop the override once spice's
+    // direct dep bumps past 1.28.0.
+    dependencyOverrides ++= Seq(
+      "org.typelevel" %% "fabric-core" % fabricVersion,
+      "org.typelevel" %% "fabric-io"   % fabricVersion
+    ),
     libraryDependencies ++= Seq(
       "com.outr" %% "profig" % profigVersion,
       "com.outr" %% "scribe" % scribeVersion,
