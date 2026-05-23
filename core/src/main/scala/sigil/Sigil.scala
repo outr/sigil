@@ -25,7 +25,7 @@ import sigil.tool.consult.{ConsultTool, TopicClassifierTool}
 import sigil.provider.{GenerationSettings, TokenUsage}
 import sigil.db.{DefaultSigilDB, Model, SigilDB}
 import sigil.dispatcher.{StopFlag, TriggerFilter}
-import sigil.event.{AgentState, CapabilityResults, Event, EventsPage, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, ToolResults, TopicChange, TopicChangeKind}
+import sigil.event.{AgentState, CapabilityResults, Event, EventsPage, Message, MessageRole, MessageVisibility, ModeChange, Stop, ToolInvoke, TopicChange, TopicChangeKind}
 import sigil.role.Role
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{Complexity, ConversationMode, ConversationRequest, Mode, ProviderStrategy, ReasoningMode, ToolPolicy, WorkType}
@@ -2538,10 +2538,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       //
       // Sigil #261 — two-pass to mirror the unified ToolCall frame
       // model: first compute each event's own frame (ToolInvoke →
-      // ToolCall(Active); ToolResults → None for well-formed rows);
-      // then pair each ToolResults into its matching ToolInvoke's
-      // inlined ToolCall frame, transitioning it to Complete. This is
-      // the bulk-import equivalent of the cross-event update
+      // ToolCall, state derived from the invoke's own EventState +
+      // settled output/outcome); then fold any Tool-role Message
+      // diagnostics (orchestrator-synthesised refusal challenges /
+      // repeated-query intercepts) into the matching ToolInvoke's
+      // inlined ToolCall frame, transitioning it to Complete. This
+      // is the bulk-import equivalent of the cross-event update
       // `attachContextFrameOnSettle` does at live-publish time.
       val framedMap = scala.collection.mutable.LinkedHashMap.empty[Id[Event], Event]
       events.foreach { e =>
@@ -2551,12 +2553,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         framedMap(e._id) = withFrame
       }
       framedMap.values.toList.foreach {
-        case tr: ToolResults if tr.state == EventState.Complete =>
-          tr.origin.foreach { invokeId =>
+        case m: Message if m.role == MessageRole.Tool && m.state == EventState.Complete =>
+          m.origin.foreach { invokeId =>
             framedMap.get(invokeId).foreach { ti =>
               ti.contextFrame match {
                 case Some(tc: ContextFrame.ToolCall) if tc.state == ToolCallState.Active =>
-                  val (content, images) = FrameBuilder.toolResultPayload(tr)
+                  val (content, images) = FrameBuilder.toolResultPayload(m)
                   val updated = tc.copy(state = ToolCallState.Complete(content, images))
                   framedMap(invokeId) = ti.withContextFrame(Some(updated))
                 case _ =>
@@ -3033,50 +3035,34 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             invokedAt   = ti.timestamp
           )
         }
-        updateProjection(ti.conversationId, ti.participantId) { proj =>
-          val recent = (invocation :: proj.recentToolInvocations).take(recentToolInvocationsLimit)
-          val suggested =
-            if (nextTools.isEmpty) proj.suggestedTools
-            else (proj.suggestedTools ++ nextTools).distinct
-          proj.copy(recentToolInvocations = recent, suggestedTools = suggested)
-        }
-      case tr: ToolResults =>
-        // Sigil bug #169 — replace the overlay only when the tool result
-        // carries a non-empty suggestion set. Tools that don't participate
-        // in natural-progression flows emit `schemas = Nil` (the framework
-        // default) and have no effect on the overlay, so a discovered tool
-        // surviving from a prior `find_capability` stays in scope across
-        // subsequent ToolResults emissions. Tools that DO participate
-        // (e.g. `create_workflow` → `[add_workflow_step, add_trigger]`)
-        // re-emit their suggestions on each call so the relevant follow-
-        // ups stay sticky across multi-step build sequences.
-        //
-        // Sigil bug #202 — also auto-promote the universal pagination
+        // Sigil bug #202 — auto-promote the universal pagination
         // navigators (`next_page`, `query_tool_output`) whenever a
         // paginated tool's first-page result lands with navigable
-        // content (`hasMore` or non-empty `nodeIds`). Without this,
-        // an agent that calls e.g. `grep` (a `PaginatedTool`) gets
-        // back a well-formed tree it has no way to drill into,
-        // because the navigation tools weren't in scope. Promotion is
-        // per-iteration; the overlay clears at loop release with the
-        // rest of `suggestedTools`.
-        //
-        // Sigil bug #206 — distinguish tool-declared followups
-        // (intentional handoff — REPLACE the overlay) from pagination
-        // navigators (framework-additive — MERGE with the existing
-        // overlay). #202's first cut wholesale-replaced whenever
-        // either signal was non-empty, which clobbered prior
-        // find_capability promotions on the agent's first paginated
-        // call. Now: schema-declared followups still replace (the
-        // tool is intentionally narrowing the agent's next-turn
-        // toolset); pagination navigators merge on top of whatever
-        // the agent was already considering.
-        val schemaSuggested = tr.schemas.map(_.name).toList
-        val paginationNav   = Sigil.paginationNavigatorsFor(tr.typed)
-        if (schemaSuggested.isEmpty && paginationNav.isEmpty) Task.unit
-        else updateProjection(tr.conversationId, tr.participantId) { proj =>
-          val base = if (schemaSuggested.nonEmpty) schemaSuggested else proj.suggestedTools
-          proj.copy(suggestedTools = (base ++ paginationNav).distinct)
+        // content (`hasMore` or non-empty `nodeIds`). Post-#265 the
+        // typed output sits on the settled invoke itself; the
+        // promotion fires from the same projection update that
+        // records the invocation. Promotion is per-iteration; the
+        // overlay clears at loop release with the rest of
+        // `suggestedTools`.
+        val paginationNav: List[sigil.tool.ToolName] =
+          if (ti.state != EventState.Complete) Nil
+          else {
+            val typedJson: Option[fabric.Json] = ti.output match {
+              case sigil.tool.ToolOutput.Pending     => None
+              case _: sigil.tool.ToolOutput.Progress => None
+              case other                             =>
+                try Some(summon[RW[sigil.tool.ToolOutput]].read(other))
+                catch { case _: Throwable => None }
+            }
+            Sigil.paginationNavigatorsFor(typedJson)
+          }
+        updateProjection(ti.conversationId, ti.participantId) { proj =>
+          val recent = (invocation :: proj.recentToolInvocations).take(recentToolInvocationsLimit)
+          val merged = (proj.suggestedTools ++ nextTools ++ paginationNav).distinct
+          val suggested =
+            if (nextTools.isEmpty && paginationNav.isEmpty) proj.suggestedTools
+            else merged
+          proj.copy(recentToolInvocations = recent, suggestedTools = suggested)
         }
       case cr: CapabilityResults =>
         // Sigil bug #226 — the per-loop `find_capability` cache is no
@@ -5674,18 +5660,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // Tool calls + agent responds since the user message.
       val cutoff = userMsg.map(_.timestamp.value).getOrElse(0L)
       val historyEntries = scala.collection.mutable.ListBuffer.empty[String]
-      // Group by callId so a ToolInvoke + ToolResults pair render as one line.
+      // Sigil #265 — each tool transaction lives on a single stateful
+      // ToolInvoke; the post-settle outcome is on the invoke itself,
+      // so per-invoke rendering reads directly off the row.
       val invokesById = convEvents.collect {
         case ti: sigil.event.ToolInvoke if ti.timestamp.value > cutoff && ti.participantId == agentId => ti
       }
-      val resultsByOrigin = convEvents.collect {
-        case tr: sigil.event.ToolResults if tr.timestamp.value > cutoff && tr.origin.isDefined => tr.origin.get -> tr
-      }.toMap
       val sortedInvokes = invokesById.sortBy(_.timestamp.value).take(20)  // cap the history
       sortedInvokes.foreach { ti =>
-        val tail = resultsByOrigin.get(ti._id) match {
-          case Some(_) => "OK"
-          case None    => "(no result yet)"
+        val tail = ti.outcome match {
+          case sigil.event.ToolOutcome.Success         => "OK"
+          case sigil.event.ToolOutcome.Failure(_, _)   => "FAIL"
+          case sigil.event.ToolOutcome.Pending         => "(no result yet)"
         }
         historyEntries += s"${ti.toolName.value} → $tail"
       }
@@ -5742,16 +5728,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
              ti.participantId == agentId &&
              !ti.internal => ti
       }
-      val resultsByOrigin = convEvents.collect {
-        case tr: sigil.event.ToolResults if tr.origin.isDefined => tr.origin.get -> tr
-      }.toMap
       val messagesByOrigin = convEvents.collect {
         case m: Message if m.role == MessageRole.Tool && m.origin.isDefined => m.origin.get -> m
       }.toMap
       val records = invokes.sortBy(_.timestamp.value).map { ti =>
         sigil.conversation.compression.StallDetector.CallRecord(
           invoke        = ti,
-          result        = resultsByOrigin.get(ti._id),
           resultMessage = messagesByOrigin.get(ti._id)
         )
       }
@@ -6630,14 +6612,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
 
 object Sigil {
 
-  /** Sigil bug #202 — given a [[sigil.event.ToolResults.typed]]
-    * payload, return the universal pagination navigators
-    * (`next_page`, `query_tool_output`) when the payload is shaped
-    * like a [[sigil.tool.output.JsonPagedResult]] with navigable
-    * content (`hasMore` true, or a non-empty `nodeIds` list).
-    * Returns `Nil` for non-paginated results — including paginated
-    * results that fit in a single page with no children, where
-    * there's nothing for the agent to navigate to. */
+  /** Sigil bug #202 — given a settled [[sigil.event.ToolInvoke.output]]
+    * payload rendered to JSON, return the universal pagination
+    * navigators (`next_page`, `query_tool_output`) when the payload
+    * is shaped like a [[sigil.tool.output.JsonPagedResult]] with
+    * navigable content (`hasMore` true, or a non-empty `nodeIds`
+    * list). Returns `Nil` for non-paginated results — including
+    * paginated results that fit in a single page with no children,
+    * where there's nothing for the agent to navigate to. */
   private[sigil] def paginationNavigatorsFor(typed: Option[fabric.Json]): List[sigil.tool.ToolName] = {
     import fabric.{Bool, Arr, Obj}
     typed match {

@@ -34,11 +34,12 @@ sealed trait ToolResult[+O]
 object ToolResult {
 
   /** The tool ran successfully and produced a typed payload. The
-    * framework converts `value` to fabric `Json` via the tool's
+    * framework folds `value` into the settling
+    * [[sigil.signal.ToolDelta]] (carried as `output` on the
+    * originating [[sigil.event.ToolInvoke]]) via the tool's
     * `outputRW` at emission time — no [[fabric.rw.RW]] context
     * bound on `Out` here because the envelope itself doesn't
-    * round-trip; only the rendered wire shape (the `ToolResults`
-    * event's `typed: Option[Json]`) does. */
+    * round-trip. */
   final case class Success[O](value: O) extends ToolResult[O]
 
   /** The tool didn't produce a useful payload — the call hit a

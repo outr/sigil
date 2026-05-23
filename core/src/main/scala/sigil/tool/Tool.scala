@@ -267,7 +267,7 @@ trait Tool extends RecordDocument[Tool] {
     * usefulness doesn't depend on space wiring leave this false. */
   def requiresAccessibleSpaces: Boolean = false
 
-  /** How long this tool's `ToolResults` frames should remain in the
+  /** How long this tool's settled result frames should remain in the
     * curated turn input.
     *
     *   - `None` (default) — keep forever; the result is durable and

@@ -1274,10 +1274,9 @@ trait Provider extends Service {
           // both wire messages from one frame: the Assistant(tool_use)
           // above, and the matching User(tool_result) immediately
           // after when `state` is `Complete`. Pair adjacency is
-          // guaranteed by construction regardless of what events
-          // interleaved between the original ToolInvoke and
-          // ToolResults — there is no separate ToolResult frame to
-          // get reordered by intervening user messages.
+          // guaranteed by construction — the call and its result
+          // live on one stateful `ToolInvoke` frame, so nothing else
+          // can interleave between them.
           tc.state match {
             case ToolCallState.Complete(content, images) =>
               out += ProviderMessage.ToolResult(toolCallId = wireId, content = content)
@@ -1314,14 +1313,15 @@ trait Provider extends Service {
       }
     }
 
-    // Invariant check — every tool call is paired with its result
-    // event by construction: atomic dispatch builds a `ToolResults`,
-    // streaming `respond` emits one too, and a provider stream that
-    // dies mid-args is settled+paired by `settleOrphanToolInvoke`.
-    // So the frame trail handed here should never carry a dangling
-    // `ContextFrame.ToolCall`. If one slips through it is a genuine
-    // framework bug — log it loudly rather than papering over it with
-    // a synthetic wire output. Surfacing the failure beats masking it.
+    // Invariant check — every tool call settles by construction:
+    // atomic dispatch emits a [[ToolDelta]] folding output / outcome
+    // / state onto the invoke; streaming `respond` emits one too;
+    // and a provider stream that dies mid-args is settled by
+    // `settleOrphanToolInvoke`. So the frame trail handed here
+    // should never carry a dangling `ContextFrame.ToolCall` in
+    // `Active` state. If one slips through it is a genuine framework
+    // bug — log it loudly rather than papering over it with a
+    // synthetic wire output. Surfacing the failure beats masking it.
     if (pendingToolCallIds.nonEmpty)
       scribe.error(
         s"renderFrames: ${pendingToolCallIds.size} dangling tool_call(s) with no paired " +

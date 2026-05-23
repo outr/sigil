@@ -10,9 +10,10 @@ import sigil.tool.discovery.CapabilityMatch
  * Mode, Skill) ranked by relevance, plus the normalised query that
  * produced them.
  *
- * The framework builds the paired `ToolResults` event from this output;
- * the per-loop discovery cache is updated separately via
- * [[sigil.TurnContext.recordDiscovery]].
+ * The framework folds this output onto the originating
+ * [[sigil.event.ToolInvoke]] via the settling
+ * [[sigil.signal.ToolDelta]]; the per-loop discovery cache is updated
+ * separately via [[sigil.TurnContext.recordDiscovery]].
  */
 case class FindCapabilityOutput(query: String,
                                 matches: List[CapabilityMatch]) extends ToolOutput derives RW

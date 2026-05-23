@@ -24,8 +24,8 @@ import sigil.conversation.ContextFrame
  *     passes it to `optimize`. Tools that declare `resultTtl = Some(0)`
  *     (e.g. `find_capability`, `change_mode`) get their call/result
  *     pairs dropped because the meaningful effect lives on a
- *     projection or `System` frame, not in the verbose ToolResults
- *     payload.
+ *     projection or `System` frame, not in the verbose settled
+ *     tool-call payload.
  *
  *   - [[stripStaleTools]]: explicit additional tool names whose
  *     call/result pairs should be collapsed regardless of their

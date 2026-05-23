@@ -8,10 +8,10 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.conversation.compression.StallDetector
 import sigil.conversation.compression.StallDetector.CallRecord
-import sigil.event.{Event, MessageRole, ToolInvoke, ToolOutcome, ToolResults}
+import sigil.event.{Event, MessageRole, ToolInvoke, ToolOutcome}
 import sigil.participant.ParticipantId
 import sigil.signal.EventState
-import sigil.tool.{ToolInput, ToolName}
+import sigil.tool.{ToolInput, ToolName, ToolOutput}
 
 /**
  * Coverage for [[StallDetector]] — pure-function unit tests over
@@ -40,35 +40,35 @@ class StallDetectorSpec extends AnyWordSpec with Matchers {
   private case class TestInput(query: String = "") extends ToolInput derives RW
   ToolInput.register(RW.static(TestInput()))
 
+  /** Test-only [[ToolOutput]] carrying an arbitrary JSON payload —
+    * lets specs drive the stall heuristic's structural inspection
+    * with synthesised shapes that don't depend on a real tool's
+    * concrete output type. Sigil #265 — outputs live on the invoke,
+    * so the test wraps the raw JSON in a typed carrier. */
+  private case class RawJsonOutput(payload: Json) extends ToolOutput derives RW
+  ToolOutput.register(summon[RW[RawJsonOutput]])
+
   private val convId  = sigil.conversation.Conversation.id("stall-spec-conv")
   private val topicId = sigil.conversation.Topic.id("stall-spec-topic")
 
-  private def invoke(name: String, input: TestInput, atMs: Long): ToolInvoke =
+  private def invoke(name: String, input: TestInput, atMs: Long,
+                     output: ToolOutput = ToolOutput.Pending,
+                     outcome: ToolOutcome = ToolOutcome.Success): ToolInvoke =
     ToolInvoke(
       toolName       = ToolName(name),
       participantId  = StallAgent,
       conversationId = convId,
       topicId        = topicId,
       input          = Some(input),
+      output         = output,
+      outcome        = outcome,
       state          = EventState.Complete,
       timestamp      = Timestamp(atMs)
     )
 
-  private def results(typed: Json, origin: Id[Event]): ToolResults =
-    ToolResults(
-      schemas        = Nil,
-      participantId  = StallAgent,
-      conversationId = convId,
-      topicId        = topicId,
-      outcome        = ToolOutcome.Success,
-      typed          = Some(typed),
-      state          = EventState.Complete,
-      origin         = Some(origin)
-    )
-
   private def record(name: String, input: TestInput, atMs: Long, output: Json): CallRecord = {
-    val ti = invoke(name, input, atMs)
-    CallRecord(invoke = ti, result = Some(results(output, ti._id)), resultMessage = None)
+    val ti = invoke(name, input, atMs, output = RawJsonOutput(output))
+    CallRecord(invoke = ti, resultMessage = None)
   }
 
   "StallDetector — identical-call streak heuristic" should {

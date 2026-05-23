@@ -22,8 +22,9 @@ import sigil.tool.ToolName
  *     from this participant completes. Each entry carries a canonical
  *     argument hash plus a short preview so the prompt renderer can
  *     warn the agent when it re-issues an identical call
- *   - `suggestedTools` — replaced when a `ToolResults` from this participant
- *     carries fresh `find_capability` matches
+ *   - `suggestedTools` — folded from a settling `ToolInvoke`'s
+ *     `suggestedNextTools` plus pagination navigators auto-promoted
+ *     when the invoke's typed output is a paginated result
  *   - `extraContext` — app-driven (populated via curator or tool behavior)
  *
  * Persisted as its own [[RecordDocument]] (id derived from

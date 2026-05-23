@@ -527,7 +527,7 @@ object Orchestrator {
             // this delta is the invoke-settle marker. With this, EVERY
             // tool call — atomic OR streaming — settles its invoke by
             // construction, so no wire-side orphan-heal is needed.
-            val streamingToolResults: Signal = ToolDelta(
+            val streamingSettleDelta: Signal = ToolDelta(
               target         = invokeId,
               conversationId = convId,
               state          = Some(EventState.Complete),
@@ -584,7 +584,7 @@ object Orchestrator {
                         StateDelta(target = tc._id, conversationId = tc.conversationId, state = EventState.Complete)
                       )
                     }
-                    Stream.emits(prelude ::: closeBlock ::: toolDeltaPrefix ::: List[Signal](settle, streamingToolResults))
+                    Stream.emits(prelude ::: closeBlock ::: toolDeltaPrefix ::: List[Signal](settle, streamingSettleDelta))
                   }
                 )
               case _ =>
@@ -593,7 +593,7 @@ object Orchestrator {
                   conversationId = convId,
                   state = Some(EventState.Complete)
                 )
-                Stream.emits(closeBlock ::: toolDeltaPrefix ::: List[Signal](settle, streamingToolResults))
+                Stream.emits(closeBlock ::: toolDeltaPrefix ::: List[Signal](settle, streamingSettleDelta))
             }
           case None =>
             // Atomic path — run execute and forward resulting Events.
@@ -708,10 +708,10 @@ object Orchestrator {
               }
               // `tool.execute` is total: the framework runs the tool's
               // resolution (mapping any crash to a Failure) and emits
-              // exactly one origin-stamped paired result event — a
-              // `ToolResults` on success, a Tool-role Failure `Message`
-              // on logical failure. The call/result pairing invariant
-              // holds by construction; no synth / drain-and-guarantee
+              // exactly one settling [[ToolDelta]] that folds the typed
+              // output / outcome / state onto the originating
+              // [[ToolInvoke]]. The call/result pairing invariant holds
+              // by construction; no synth / drain-and-guarantee
               // apparatus is needed.
               val tool = toolsByName.get(active.toolName)
               val context = TurnContext(
@@ -812,10 +812,23 @@ object Orchestrator {
                   )))
                 }.map { collected =>
                   collected.foreach {
-                    case tr: _root_.sigil.event.ToolResults if tr.origin.contains(invokeId) =>
-                      val rendered = tr.summary
-                        .orElse(tr.typed.map(j => fabric.io.JsonFormatter.Default(j)))
-                        .getOrElse("")
+                    // Sigil #265 — the settling [[ToolDelta]] carries the
+                    // typed output + failure summary on the invoke itself.
+                    // Render it for the duplicate-call inlining cache so
+                    // repeated calls inline the prior result without
+                    // re-running the tool.
+                    case td: ToolDelta if td.target == invokeId =>
+                      val rendered: String = td.outcome match {
+                        case Some(_root_.sigil.event.ToolOutcome.Failure(reason, _)) =>
+                          td.summary.getOrElse(reason)
+                        case _ =>
+                          td.summary.orElse {
+                            td.output.flatMap { o =>
+                              try Some(fabric.io.JsonFormatter.Default(summon[fabric.rw.RW[_root_.sigil.tool.ToolOutput]].read(o)))
+                              catch { case _: Throwable => None }
+                            }
+                          }.getOrElse("")
+                      }
                       if (rendered.nonEmpty)
                         state.dispatchedResultContent(invokeId) = Vector(ResponseContent.Text(rendered))
                     case m: Message if m.role == MessageRole.Tool && m.origin.contains(invokeId) =>
@@ -1286,8 +1299,7 @@ object Orchestrator {
       )
       // Sigil #265 — the orphan settle is one [[ToolDelta]] folding
       // input + state = Complete + outcome = Failure(reason, recoverable)
-      // onto the invoke in a single update (replaces the pre-#265 pair
-      // of closeDelta + a separate Tool-role `ToolResults` event). The
+      // onto the invoke in a single update. The
       // agent reads the failure on its next iteration via the invoke's
       // own settled `outcome`/`summary`. Bug #51 — `error = Some(...)`
       // surfaces the provider-side diagnostic so client chips render

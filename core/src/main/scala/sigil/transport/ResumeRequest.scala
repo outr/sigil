@@ -10,8 +10,8 @@ package sigil.transport
  *     (DurableSocket).
  *   - [[ResumeRequest.RecentMessages]]: replay enough history to
  *     surface the most recent N [[sigil.event.Message]] events,
- *     INCLUDING any non-Message events (ToolInvoke, ToolResults,
- *     ModeChange, TopicChange, ...) that interleave with them.
+ *     INCLUDING any non-Message events (ToolInvoke, ModeChange,
+ *     TopicChange, ...) that interleave with them.
  *     Counts Messages, not events — so a chatty turn full of tool
  *     calls can't crowd Messages out of the budget.
  */

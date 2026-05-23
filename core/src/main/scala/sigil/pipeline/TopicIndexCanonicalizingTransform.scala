@@ -5,7 +5,7 @@ import sigil.Sigil
 import sigil.event.{
   AgentState, CapabilityResults, Event, Message, ModeChange,
   Reaction, ReadState, Reasoning, Stop, ToolInvoke, ToolLog,
-  ToolResults, TopicChange
+  TopicChange
 }
 import sigil.signal.Signal
 
@@ -61,7 +61,6 @@ object TopicIndexCanonicalizingTransform extends InboundTransform {
   private def withTopicIndex(e: Event, idx: Int): Event = e match {
     case m: Message            => m.copy(topicIndex = idx)
     case ti: ToolInvoke        => ti.copy(topicIndex = idx)
-    case tr: ToolResults       => tr.copy(topicIndex = idx)
     case tl: ToolLog           => tl.copy(topicIndex = idx)
     case mc: ModeChange        => mc.copy(topicIndex = idx)
     case tc: TopicChange       => tc.copy(topicIndex = idx)

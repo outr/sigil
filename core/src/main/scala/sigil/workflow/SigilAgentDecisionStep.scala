@@ -202,8 +202,22 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
                 val text = evs.collect {
                   case m: sigil.event.Message =>
                     m.content.collect { case sigil.tool.model.ResponseContent.Text(s) => s }.mkString
-                  case tr: sigil.event.ToolResults =>
-                    tr.summary.orElse(tr.typed.map(fabric.io.JsonFormatter.Compact.apply)).getOrElse("")
+                  case td: sigil.signal.ToolDelta =>
+                    // Sigil #265 — the settling ToolDelta carries the
+                    // tool's outcome + typed output. Failure outcomes
+                    // surface their reason; success outcomes render the
+                    // typed output via its polymorphic RW.
+                    td.outcome match {
+                      case Some(sigil.event.ToolOutcome.Failure(reason, _)) =>
+                        td.summary.getOrElse(reason)
+                      case _ =>
+                        td.summary.orElse {
+                          td.output.flatMap { o =>
+                            try Some(fabric.io.JsonFormatter.Compact(summon[fabric.rw.RW[sigil.tool.ToolOutput]].read(o)))
+                            catch { case _: Throwable => None }
+                          }
+                        }.getOrElse("")
+                    }
                 }.filter(_.nonEmpty).mkString("\n")
                 s"[Tool ${t.name.value}] $text"
               }

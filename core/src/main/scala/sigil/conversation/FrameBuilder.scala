@@ -3,7 +3,7 @@ package sigil.conversation
 import fabric.io.JsonFormatter
 import fabric.rw.*
 import fabric.{Json, Obj}
-import sigil.event.{AgentState, CapabilityResults, Event, Message, ModeChange, MessageRole, Reasoning, Stop, TopicChange, TopicChangeKind, ToolInvoke, ToolOutcome, ToolResults}
+import sigil.event.{AgentState, CapabilityResults, Event, Message, ModeChange, MessageRole, Reasoning, Stop, TopicChange, TopicChangeKind, ToolInvoke, ToolOutcome}
 import sigil.signal.EventState
 import sigil.tool.{ToolInput, ToolOutput}
 import sigil.tool.ToolInput.given
@@ -17,15 +17,16 @@ import sigil.tool.model.ResponseContent
  * a [[ConversationView]].
  *
  * Event → frame mapping rules (per-type, no runtime visibility flag):
- *   - `Message` → one `ContextFrame.Text`.
- *   - `ToolInvoke` → one `ContextFrame.ToolCall`. The `respond` tool is
- *     filtered at render time by the provider (the following `Message`
- *     is the response); the frame is still emitted here so the view
- *     carries the full history.
- *   - `ToolResults` → one `ContextFrame.ToolResult` whose `callId` points
- *     at the immediately-preceding pending `ToolInvoke`. If no pending
- *     call is found, falls back to a `System` frame so information isn't
- *     silently dropped.
+ *   - `Message` → one `ContextFrame.Text`. Tool-role Messages
+ *     (synthesised diagnostics from the orchestrator) fold their
+ *     content into the originating `ToolInvoke`'s inlined
+ *     `ContextFrame.ToolCall` instead of emitting their own frame.
+ *   - `ToolInvoke` → one `ContextFrame.ToolCall` whose `state` reflects
+ *     the invoke's lifecycle: `Active` while in flight, `Complete`
+ *     once a `ToolDelta` has folded `output` / `outcome` / `state`
+ *     onto it. The `respond` tool is filtered at render time by the
+ *     provider (the following `Message` is the response); the frame
+ *     is still emitted here so the view carries the full history.
  *   - `ModeChange` → one `ContextFrame.System`.
  *   - `TopicChange` → one `ContextFrame.System` (Switch vs. Rename
  *     reflected in the rendered text).
@@ -39,17 +40,20 @@ import sigil.tool.model.ResponseContent
 object FrameBuilder {
 
   /**
-   * Extract a Tool-role event's render payload: the flattened text the
+   * Extract a Tool-role Message's render payload: the flattened text the
    * model reads as the `function_call_output`, and any image URLs the
-   * event carried. Images are kept out of the text — the renderer
+   * Message carried. Images are kept out of the text — the renderer
    * delivers them as real image input via the frame's image list
    * rather than a stringified `toString` blob.
    *
-   * Visibility relaxed to `private[sigil]` so the framework's settle
-   * path (`Sigil.attachContextFrameOnSettle`) can use it to compute
-   * the `ToolCallState.Complete(content, images)` payload when it
-   * folds a settled [[ToolResults]] into the prior [[ToolInvoke]]'s
-   * inlined frame.
+   * Tool-role Messages are the orchestrator's synthetic-diagnostic
+   * surface ([[sigil.orchestrator.SyntheticDiagnostic]] — refusal
+   * challenges, repeated-query intercepts, plain-text reply
+   * recoveries). Visibility relaxed to `private[sigil]` so the
+   * framework's settle path (`Sigil.attachContextFrameOnSettle`) can
+   * use it to compute the `ToolCallState.Complete(content, images)`
+   * payload when it folds the diagnostic into the prior
+   * [[ToolInvoke]]'s inlined frame.
    */
   private[sigil] def toolResultPayload(event: Event): (String, List[spice.net.URL]) =
     event match {
@@ -66,8 +70,6 @@ object FrameBuilder {
           case other                              => other.toString
         }.mkString("\n")
         (text, images)
-      case tr: ToolResults if tr.typed.isDefined =>
-        (JsonFormatter.Compact(tr.typed.get), Nil)
       case other =>
         (JsonFormatter.Compact(stripEventBoilerplate(Event.rw.read(other))), Nil)
     }

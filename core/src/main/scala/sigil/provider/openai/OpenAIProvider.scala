@@ -209,7 +209,7 @@ case class OpenAIProvider(apiKey: String,
         // from the tail — Assistant text / tool calls and Reasoning
         // are server-side too. This branch runs only on turns with no
         // tool outputs (tool-output turns take the full-render path
-        // above), so there are no ToolResults to preserve here.
+        // above), so there are no tool-result entries to preserve here.
         val drop = math.min(input.priorMessageCount.getOrElse(0), input.messages.size)
         input.messages.drop(drop).collect { case u: ProviderMessage.User => u }
       case None => input.messages
@@ -315,9 +315,10 @@ case class OpenAIProvider(apiKey: String,
     * input items. Each item carries a `role` + a `content` array of
     * typed blocks.
     *
-    * Every tool call is paired with its result event by construction
-    * (the framework builds a `ToolResults` for atomic AND streaming
-    * dispatch alike), so no wire-side `function_call` ↔
+    * Every tool call settles by construction (the framework emits a
+    * [[ToolDelta]] folding output / outcome / state onto the
+    * originating [[ToolInvoke]] for atomic AND streaming dispatch
+    * alike), so no wire-side `function_call` ↔
     * `function_call_output` synthesis is needed. */
   private def renderInput(messages: Vector[ProviderMessage]): Vector[Json] =
     messages.flatMap {
@@ -621,10 +622,10 @@ case class OpenAIProvider(apiKey: String,
         // drops that many leading PMs and role-filters the tail to
         // User + ToolResult (the only items that need to ship to
         // OpenAI; Assistant + Reasoning are already covered by
-        // `previous_response_id`). Framework-emitted ToolResults that
-        // sit BETWEEN server output items get rescued by the role
-        // filter even when their position is within the dropped range.
-        // Sigil bug #167 r3.
+        // `previous_response_id`). Framework-emitted tool-result
+        // messages that sit BETWEEN server output items get rescued
+        // by the role filter even when their position is within the
+        // dropped range. Sigil bug #167 r3.
         val nextDropCount = state.sentMessageCount
         val responseStateEv: Vector[ProviderEvent] =
           if (state.responseId.nonEmpty)

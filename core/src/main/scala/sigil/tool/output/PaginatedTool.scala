@@ -15,9 +15,10 @@ import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolResult}
  * payloads. Tool authors implement [[executeStream]] returning
  * `rapid.Stream[Node[A]]`; the framework drains the stream lazily into
  * [[sigil.db.SigilDB.toolOutputs]] and resolves to a [[JsonPagedResult]]
- * carrying the first page. [[Tool.execute]] then emits the standard
- * `ToolResults` event; subsequent pages are reached through
- * [[NextPageTool]] / [[QueryToolOutputTool]].
+ * carrying the first page. [[Tool.execute]] then emits the settling
+ * [[sigil.signal.ToolDelta]] folding the first-page payload onto the
+ * originating [[sigil.event.ToolInvoke]]; subsequent pages are reached
+ * through [[NextPageTool]] / [[QueryToolOutputTool]].
  *
  * The specialised sub-shape of [[Tool]] for genuinely-unbounded bulk
  * output: one node at a time crosses the drain pipeline, the rest lives
@@ -83,9 +84,9 @@ abstract class PaginatedTool[In <: ToolInput, A](
 
   /** Drains the typed stream into the DB and resolves to the
     * first-page [[JsonPagedResult]]; [[Tool.execute]] emits the
-    * standard `ToolResults` event from it. A drain-time crash maps to
-    * a recoverable [[ToolResult.Failure]] via [[Tool]]'s framework
-    * error path — no per-tool `handleError` needed. */
+    * settling [[sigil.signal.ToolDelta]] from it. A drain-time crash
+    * maps to a recoverable [[ToolResult.Failure]] via [[Tool]]'s
+    * framework error path — no per-tool `handleError` needed. */
   override def executeResult(input: In, context: TurnContext): Task[ToolResult[JsonPagedResult]] =
     drainAndFirstPage(input, context).map(ToolResult.success)
 

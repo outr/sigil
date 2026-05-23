@@ -58,14 +58,16 @@ enum ContextFrame derives RW {
 
   /**
    * A tool transaction. Begins as `state = ToolCallState.Active` when
-   * the originating [[sigil.event.ToolInvoke]] settles, and is
+   * the originating [[sigil.event.ToolInvoke]] is created, and is
    * transitioned to `ToolCallState.Complete(content, images)` by the
-   * framework's settle path when the matching [[sigil.event.ToolResults]]
-   * lands — the prior ToolInvoke event's inlined frame is rewritten
-   * so the projection carries the full transaction as one frame, not
-   * two. (Previously this was two frames `ToolCall` + `ToolResult`,
-   * which led to wire-ordering bugs when other events interleaved —
-   * sigil #261.)
+   * framework's settle path when the invoke's settling
+   * [[sigil.signal.ToolDelta]] folds the typed output / outcome onto
+   * it — the ToolInvoke event's inlined frame is rewritten so the
+   * projection carries the full transaction as one frame. (Previously
+   * this was two frames `ToolCall` + `ToolResult`, which led to
+   * wire-ordering bugs when other events interleaved — sigil #261;
+   * Sigil #265 then collapsed the paired event model into a single
+   * stateful invoke.)
    *
    * The renderer emits **both** wire messages from a `Complete` frame
    * — an `Assistant(tool_use)` immediately followed by a

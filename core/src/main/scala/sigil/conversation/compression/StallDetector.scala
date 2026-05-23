@@ -2,7 +2,8 @@ package sigil.conversation.compression
 
 import fabric.{Arr, Bool, Json, NumDec, NumInt, Obj, Null, Str}
 import fabric.rw.*
-import sigil.event.{Message, ToolInvoke, ToolResults}
+import sigil.event.{Message, ToolInvoke, ToolOutcome}
+import sigil.tool.ToolOutput
 import sigil.tool.model.ResponseContent
 
 /**
@@ -23,7 +24,7 @@ import sigil.tool.model.ResponseContent
  *      getting the same answer.
  *
  *   2. **Empty-payload streak** — four or more consecutive
- *      tool calls whose `ToolResults.typed` is structurally empty
+ *      tool calls whose settled output is structurally empty
  *      (empty array, empty object, `null`, or a Tool-role Message
  *      whose content collapses to whitespace). The calls may be
  *      distinct, but no information is flowing back.
@@ -76,14 +77,14 @@ object StallDetector {
     * The framework collects these from the event log in
     * chronological order; the detector walks them tail-first.
     *
-    *   - `invoke` — the ToolInvoke event (carries name + input).
-    *   - `result` — the paired ToolResults (`None` when the call
-    *     orphan-settled or its result hasn't been recorded yet).
-    *   - `resultMessage` — when the tool emitted free-form Tool-
-    *     role Messages instead of ToolResults; surfaces empty-
-    *     payload detection against rendered text. */
+    *   - `invoke` — the settled ToolInvoke event (carries name +
+    *     input + the typed `output` + `outcome` post-#265).
+    *   - `resultMessage` — Tool-role Message diagnostics paired to
+    *     the invoke (orchestrator-synthesised refusal / repeated-
+    *     query intercepts); surfaces empty-payload detection
+    *     against rendered text when the result lives on a Message
+    *     rather than the invoke's typed output. */
   final case class CallRecord(invoke: ToolInvoke,
-                              result: Option[ToolResults],
                               resultMessage: Option[Message])
 
   /** Evaluate the tail of recent calls. Returns a positive signal
@@ -221,20 +222,42 @@ object StallDetector {
     }
   }
 
-  /** Atomize a call's output — typed JSON payload preferred, then
-    * `ToolResults.summary`, then Tool-role Message content. Used
-    * by [[lowInformationStreak]] to compare payloads across
-    * heterogenous tool shapes. */
-  def outputAtoms(r: CallRecord): Set[String] = (r.result, r.resultMessage) match {
-    case (Some(tr), _) if tr.typed.isDefined => jsonAtoms(tr.typed.get)
-    case (Some(tr), _)                       => tr.summary.map(textAtoms).getOrElse(Set.empty)
-    case (None, Some(m))                     => m.content.flatMap {
-      case ResponseContent.Text(t)        => textAtoms(t)
-      case ResponseContent.Markdown(t)    => textAtoms(t)
-      case ResponseContent.Code(code, _)  => textAtoms(code)
-      case _                              => Set.empty[String]
-    }.toSet
-    case _ => Set.empty
+  /** Atomize a call's output — typed JSON payload preferred (the
+    * invoke's settled `output` rendered through its polymorphic RW),
+    * then the invoke's `summary`, then any paired Tool-role Message
+    * content. Used by [[lowInformationStreak]] to compare payloads
+    * across heterogenous tool shapes. */
+  def outputAtoms(r: CallRecord): Set[String] = typedOutputJson(r.invoke) match {
+    case Some(j) => jsonAtoms(j)
+    case None =>
+      val viaSummary = if (r.invoke.summary.nonEmpty) textAtoms(r.invoke.summary) else Set.empty[String]
+      if (viaSummary.nonEmpty) viaSummary
+      else r.resultMessage match {
+        case Some(m) => m.content.flatMap {
+          case ResponseContent.Text(t)        => textAtoms(t)
+          case ResponseContent.Markdown(t)    => textAtoms(t)
+          case ResponseContent.Code(code, _)  => textAtoms(code)
+          case _                              => Set.empty[String]
+        }.toSet
+        case None => Set.empty
+      }
+  }
+
+  /** Render the invoke's settled typed output to JSON with the
+    * polymorphic `type` discriminator stripped, returning `None`
+    * for pending / progress / unrenderable values. Used by the
+    * atomization + fingerprint + emptiness helpers to inspect the
+    * typed payload that lives on the invoke post-#265. */
+  private def typedOutputJson(ti: ToolInvoke): Option[Json] = ti.output match {
+    case ToolOutput.Pending      => None
+    case _: ToolOutput.Progress  => None
+    case other                   =>
+      try {
+        summon[RW[ToolOutput]].read(other) match {
+          case o: Obj => Some(Obj(o.value - "type"))
+          case j      => Some(j)
+        }
+      } catch { case _: Throwable => None }
   }
 
   /** Recursively atomize a JSON payload. Strings tokenize via
@@ -281,40 +304,54 @@ object StallDetector {
 
   /** Output fingerprint — used by the identical-call detector to
     * tell apart "same call, same answer" (real stall) from "same
-    * call, different answer" (legit re-query). For ToolResults
-    * with a typed payload, fingerprint the canonical JSON; for
-    * Tool-role Messages, fingerprint the text content; for
-    * pending (no result), fingerprint `"<pending>"`. */
-  def outputFingerprint(r: CallRecord): String = (r.result, r.resultMessage) match {
-    case (Some(tr), _) if tr.typed.isDefined =>
-      canonicalize(tr.typed.get).toString
-    case (Some(tr), _) =>
-      tr.summary.getOrElse("<no-output>")
-    case (None, Some(m)) =>
-      val text = m.content.collect {
-        case ResponseContent.Text(t)     => t
-        case ResponseContent.Markdown(t) => t
-      }.mkString("\n").trim
-      m.disposition match {
-        case _: sigil.event.MessageDisposition.Failure => "FAIL:" + text
-        case sigil.event.MessageDisposition.Success    => text
+    * call, different answer" (legit re-query). For invokes with a
+    * typed payload, fingerprint the canonical JSON; for failure
+    * outcomes, fingerprint the failure reason; for Tool-role Message
+    * diagnostics, fingerprint the text content; for pending (no
+    * settled output), fingerprint `"<pending>"`. */
+  def outputFingerprint(r: CallRecord): String = typedOutputJson(r.invoke) match {
+    case Some(j) => canonicalize(j).toString
+    case None =>
+      r.invoke.outcome match {
+        case ToolOutcome.Failure(reason, _) => "FAIL:" + reason
+        case _ if r.invoke.summary.nonEmpty => r.invoke.summary
+        case _ =>
+          r.resultMessage match {
+            case Some(m) =>
+              val text = m.content.collect {
+                case ResponseContent.Text(t)     => t
+                case ResponseContent.Markdown(t) => t
+              }.mkString("\n").trim
+              m.disposition match {
+                case _: sigil.event.MessageDisposition.Failure => "FAIL:" + text
+                case sigil.event.MessageDisposition.Success    => text
+              }
+            case None => "<pending>"
+          }
       }
-    case _ => "<pending>"
   }
 
   /** True when the call's output carries no information.
-    * Recognises empty arrays / objects / `null`, the empty-string
-    * sentinel, and Tool-role Messages whose rendered content
-    * collapses to whitespace. */
-  def isEmpty(r: CallRecord): Boolean = (r.result, r.resultMessage) match {
-    case (Some(tr), _) if tr.typed.isDefined => isEmptyJson(tr.typed.get)
-    case (Some(tr), _) => tr.summary.forall(_.trim.isEmpty)
-    case (None, Some(m)) =>
-      m.content.collect {
-        case ResponseContent.Text(t)     => t
-        case ResponseContent.Markdown(t) => t
-      }.mkString("").trim.isEmpty
-    case _ => false  // pending / unknown — don't count as empty
+    * Recognises empty arrays / objects / `null`, an empty-string
+    * summary sentinel on the invoke, and Tool-role Message
+    * diagnostics whose rendered content collapses to whitespace. */
+  def isEmpty(r: CallRecord): Boolean = typedOutputJson(r.invoke) match {
+    case Some(j) => isEmptyJson(j)
+    case None =>
+      r.invoke.outcome match {
+        case ToolOutcome.Failure(reason, _) => reason.trim.isEmpty
+        case ToolOutcome.Pending             => false
+        case ToolOutcome.Success =>
+          if (r.invoke.summary.nonEmpty) r.invoke.summary.trim.isEmpty
+          else r.resultMessage match {
+            case Some(m) =>
+              m.content.collect {
+                case ResponseContent.Text(t)     => t
+                case ResponseContent.Markdown(t) => t
+              }.mkString("").trim.isEmpty
+            case None => false
+          }
+      }
   }
 
   private def isEmptyJson(j: Json): Boolean = j match {

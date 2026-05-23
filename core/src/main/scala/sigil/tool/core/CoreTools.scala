@@ -150,9 +150,8 @@ object CoreTools {
   /** Names of the atomic content tools — those whose output IS the
     * agent's user-facing content rather than a tool result feeding
     * back to the model. Their `executeResult` emits a `Standard`-role
-    * `Message` (not a `Tool`-role `ToolResults`), so no
-    * `function_call_output` follows the model's invoking
-    * `function_call` in wire history. The framework's frame renderer
+    * `Message` via `ctx.emit` (alongside the standard settling
+    * [[sigil.signal.ToolDelta]]); the framework's frame renderer
     * pairs each such call with a synthetic empty output to satisfy
     * providers (notably OpenAI Responses) that strictly require every
     * `function_call` to have a matching `function_call_output`

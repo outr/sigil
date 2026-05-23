@@ -10,17 +10,10 @@ import sigil.signal.EventState
 import sigil.tool.discovery.CapabilityMatch
 
 /**
- * Result of a `find_capability` discovery call. Bug #66 — emitted in
- * place of the tool-only [[ToolResults]] so the agent receives a
+ * Result of a `find_capability` discovery call. Bug #66 — carries the
  * unified view of every matching capability category (Tool, Mode,
- * Skill) ranked by relevance.
- *
- * Distinct from [[ToolResults]] (which stays in use for tool-only
- * suggestion cascades — `CreateScriptToolTool` etc. emit
- * `ToolResults` to surface follow-up tool schemas). Discovery and
- * cascade are different shapes: cascades carry full
- * [[sigil.tool.ToolSchema]]s; discovery carries name/description
- * matches across heterogeneous categories with availability hints.
+ * Skill) ranked by relevance so the agent has a single typed surface
+ * to read on its next iteration.
  *
  * Always `MessageRole.Tool` — find_capability's whole purpose is to
  * feed discovery results back to the agent's next iteration. Born

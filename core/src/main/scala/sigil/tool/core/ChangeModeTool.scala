@@ -61,9 +61,9 @@ case object ChangeModeTool extends Tool {
   )
 
   // ModeChange Events update Conversation.currentMode and the system
-  // prompt's "Current mode" line. The verbose ToolResults pair is
-  // redundant after settling — mark ephemeral so the curator elides
-  // it from future turns.
+  // prompt's "Current mode" line. The verbose settled tool-call
+  // frame is redundant after the mode is in effect — mark ephemeral
+  // so the curator elides it from future turns.
   override def resultTtl: Option[Int] = Some(0)
 
   override def executeResult(input: ChangeModeInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
