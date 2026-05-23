@@ -3,9 +3,9 @@ package sigil.conversation
 import fabric.io.JsonFormatter
 import fabric.rw.*
 import fabric.{Json, Obj}
-import sigil.event.{AgentState, CapabilityResults, Event, Message, ModeChange, MessageRole, Reasoning, Stop, TopicChange, TopicChangeKind, ToolInvoke, ToolResults}
+import sigil.event.{AgentState, CapabilityResults, Event, Message, ModeChange, MessageRole, Reasoning, Stop, TopicChange, TopicChangeKind, ToolInvoke, ToolOutcome, ToolResults}
 import sigil.signal.EventState
-import sigil.tool.ToolInput
+import sigil.tool.{ToolInput, ToolOutput}
 import sigil.tool.ToolInput.given
 import sigil.tool.ToolName
 import sigil.tool.discovery.CapabilityType
@@ -72,6 +72,34 @@ object FrameBuilder {
         (JsonFormatter.Compact(stripEventBoilerplate(Event.rw.read(other))), Nil)
     }
 
+  /** Sigil #265 — render the settled tool transaction's content + image
+    * URLs from a `state = Complete` [[ToolInvoke]]. Success outcomes
+    * render the typed `output` via the polymorphic `RW[ToolOutput]` and
+    * use the result as the function_call_output text; failure outcomes
+    * surface the reason; pending outputs (Failure with no output) fall
+    * back to `ti.summary`. Image extraction is not supported off the
+    * typed `ToolOutput` carrier today — image-bearing results pass URLs
+    * through their own output-type fields, which renderers can lift to
+    * `ContextFrame.ToolCall.images` by overriding this hook. */
+  private[sigil] def toolInvokePayload(ti: ToolInvoke): (String, List[spice.net.URL]) =
+    ti.outcome match {
+      case ToolOutcome.Failure(reason, _) =>
+        val body = if (ti.summary.nonEmpty) ti.summary else reason
+        (body, Nil)
+      case ToolOutcome.Success =>
+        ti.output match {
+          case ToolOutput.Pending =>
+            (if (ti.summary.nonEmpty) ti.summary else "(no result)", Nil)
+          case other =>
+            val rendered = JsonFormatter.Compact(stripPolyDiscriminator(summon[RW[ToolOutput]].read(other)))
+            (rendered, Nil)
+        }
+      case ToolOutcome.Pending =>
+        // Defensive: a Complete-state invoke shouldn't still be Pending
+        // on outcome — but if it is, surface whatever summary exists.
+        (if (ti.summary.nonEmpty) ti.summary else "(pending)", Nil)
+    }
+
   /**
    * Compute the render-ready [[ContextFrame]] for a single Event.
    * `None` for in-flight events and event types that don't produce
@@ -132,6 +160,16 @@ object FrameBuilder {
         val argsJson = ti.input
           .map(i => JsonFormatter.Compact(stripPolyDiscriminator(summon[RW[ToolInput]].read(i))))
           .getOrElse("{}")
+        // Sigil #265 — `state == Complete` invokes carry their settled
+        // payload inline (`output`, `outcome`, `summary`) so the frame
+        // renders the full transaction. `Active` invokes shouldn't reach
+        // this branch (the `state != Complete` gate at the top of the
+        // method short-circuits them) — defensive fallback to Active.
+        val callState =
+          if (ti.state == EventState.Complete) {
+            val (content, images) = toolInvokePayload(ti)
+            ToolCallState.Complete(content, images)
+          } else ToolCallState.Active
         Some(ContextFrame.ToolCall(
           toolName = ti.toolName,
           argsJson = argsJson,
@@ -139,7 +177,8 @@ object FrameBuilder {
           participantId = ti.participantId,
           sourceEventId = ti._id,
           visibility = ti.visibility,
-          wireCallId = ti.callId
+          wireCallId = ti.callId,
+          state = callState
         ))
 
       case mc: ModeChange =>
@@ -282,14 +321,20 @@ object FrameBuilder {
         val argsJson = ti.input
           .map(i => JsonFormatter.Compact(stripPolyDiscriminator(summon[RW[ToolInput]].read(i))))
           .getOrElse("{}")
+        val callState =
+          if (ti.state == EventState.Complete) {
+            val (content, images) = toolInvokePayload(ti)
+            ToolCallState.Complete(content, images)
+          } else ToolCallState.Active
         existing :+ ContextFrame.ToolCall(
-          toolName = ti.toolName,   // already ToolName
+          toolName = ti.toolName,
           argsJson = argsJson,
           callId = ti._id,
           participantId = ti.participantId,
           sourceEventId = ti._id,
           visibility = ti.visibility,
-          wireCallId = ti.callId
+          wireCallId = ti.callId,
+          state = callState
         )
 
       case mc: ModeChange =>

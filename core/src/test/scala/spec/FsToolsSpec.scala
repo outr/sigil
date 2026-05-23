@@ -1,19 +1,18 @@
 package spec
 
-import fabric.rw.*
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
-import sigil.event.{Event, ToolOutcome}
+import sigil.event.ToolOutcome
 import sigil.signal.{Signal, ToolDelta}
-import sigil.tool.ToolOutput
 import sigil.tool.fs.{DeleteFileTool, EditFileTool, FileSystemContext, LocalFileSystemContext, ReadFileTool, WriteFileTool}
 import sigil.tool.model.{DeleteFileInput, DeleteFileOutput, EditFileInput, EditFileOutput, ReadFileInput, ReadFileOutput, WriteFileInput, WriteFileOutput}
 
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
+import scala.reflect.ClassTag
 
 /**
  * End-to-end coverage for the `sigil.tool.fs` family. Each test
@@ -51,27 +50,17 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     )
   }
 
-  private def extractJson(signals: List[Signal]): fabric.Json = {
-    // Prefer the typed payload from the settling ToolDelta's `output`
-    // (success path); fall back to a synthetic JSON object carrying
-    // the failure reason/recoverable flag for a logical-failure result.
+  /** Recover the typed payload from the settling [[ToolDelta]]'s
+    * `output` — the same concrete instance the tool produced, no
+    * JSON round-trip. */
+  private def typed[T <: sigil.tool.ToolOutput](signals: List[Signal])(using ct: ClassTag[T]): T =
     signals.collectFirst {
-      case d: ToolDelta if d.output.exists(_ != ToolOutput.Pending) =>
-        summon[RW[ToolOutput]].read(d.output.get)
-    }.orElse {
-      signals.collectFirst {
-        case d: ToolDelta if d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) =>
-          val f = d.outcome.get.asInstanceOf[ToolOutcome.Failure]
-          fabric.obj("reason" -> fabric.str(f.reason), "recoverable" -> fabric.bool(f.recoverable))
-      }
-    }.getOrElse(fabric.Obj.empty)
-  }
-
-  /** Decode the typed payload of the settling ToolDelta back to the
-    * tool's Output case class via its registered RW — what apps
-    * doing tool-to-tool composition do via [[Tool.invoke]]. */
-  private def typed[T](signals: List[Signal])(using rw: RW[T]): T =
-    rw.write(extractJson(signals))
+      case d: ToolDelta if d.output.exists(o => ct.runtimeClass.isInstance(o)) =>
+        d.output.get.asInstanceOf[T]
+    }.getOrElse(fail(
+      s"expected ToolOutput of type ${ct.runtimeClass.getSimpleName}; saw outputs: " +
+        signals.collect { case d: ToolDelta => d.output.map(_.getClass.getSimpleName) }.mkString(", ")
+    ))
 
   /** Extract the failure body from the settling ToolDelta — the text
     * the agent reads when a tool resolved a `ToolResult.Failure`. */

@@ -1,13 +1,11 @@
 package spec
 
-import fabric.rw.RW
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, ConversationView, TopicEntry, TurnInput}
 import sigil.signal.{Signal, ToolDelta}
-import sigil.tool.ToolOutput
 import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext}
 import sigil.tool.git.GitPushTool
 import sigil.tool.model.{GitPushError, GitPushInput, GitPushOutput}
@@ -15,6 +13,7 @@ import sigil.tool.model.{GitPushError, GitPushInput, GitPushOutput}
 import java.nio.file.{Files, Path}
 
 import scala.jdk.CollectionConverters.*
+import scala.reflect.ClassTag
 
 /**
  * Coverage for `GitPushTool`. Spec sets up two local git repos: a
@@ -76,14 +75,17 @@ class GitPushToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     )
   }
 
-  /** Decode the settling [[ToolDelta]]'s typed `output` back to [[GitPushOutput]]. */
-  private def typed[T](signals: List[Signal])(using rw: RW[T]): T = {
-    val json = signals.collectFirst {
-      case d: ToolDelta if d.output.exists(_ != ToolOutput.Pending) =>
-        summon[RW[ToolOutput]].read(d.output.get)
-    }.getOrElse(fail(s"expected a settling ToolDelta with a typed output; saw: ${signals.map(_.getClass.getSimpleName).mkString(", ")}"))
-    rw.write(json)
-  }
+  /** Recover the typed payload from the settling [[ToolDelta]]'s
+    * `output` — the same concrete instance the tool produced, no
+    * JSON round-trip. */
+  private def typed[T <: sigil.tool.ToolOutput](signals: List[Signal])(using ct: ClassTag[T]): T =
+    signals.collectFirst {
+      case d: ToolDelta if d.output.exists(o => ct.runtimeClass.isInstance(o)) =>
+        d.output.get.asInstanceOf[T]
+    }.getOrElse(fail(
+      s"expected ToolOutput of type ${ct.runtimeClass.getSimpleName}; saw outputs: " +
+        signals.collect { case d: ToolDelta => d.output.map(_.getClass.getSimpleName) }.mkString(", ")
+    ))
 
   if (!gitOnPath) {
     "GitPushTool" should {

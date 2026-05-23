@@ -1,21 +1,19 @@
 package spec
 
-import fabric.rw.*
 import lightdb.id.Id
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
-import rapid.{AsyncTaskSpec, Task}
+import rapid.AsyncTaskSpec
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
-import sigil.event.ToolOutcome
 import sigil.signal.{Signal, ToolDelta}
-import sigil.tool.ToolOutput
 import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext, ReadFileTool, WriteFileTool, WorkspacePathResolver}
-import sigil.tool.model.{ReadFileInput, WriteFileInput}
+import sigil.tool.model.{ReadFileInput, ReadFileOutput, WriteFileInput}
 
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
+import scala.reflect.ClassTag
 
 /**
  * Coverage for bug #45 — `Sigil.workspaceFor(convId)` lets multiple
@@ -65,18 +63,17 @@ class WorkspaceRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     file
   }
 
-  private def extractJson(signals: List[Signal]): fabric.Json = {
+  /** Recover the typed payload from the settling [[ToolDelta]]'s
+    * `output` — the same concrete instance the tool produced, no
+    * JSON round-trip. */
+  private def typed[T <: sigil.tool.ToolOutput](signals: List[Signal])(using ct: ClassTag[T]): T =
     signals.collectFirst {
-      case d: ToolDelta if d.output.exists(_ != ToolOutput.Pending) =>
-        summon[RW[ToolOutput]].read(d.output.get)
-    }.orElse {
-      signals.collectFirst {
-        case d: ToolDelta if d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) =>
-          val f = d.outcome.get.asInstanceOf[ToolOutcome.Failure]
-          fabric.obj("reason" -> fabric.str(f.reason), "recoverable" -> fabric.bool(f.recoverable))
-      }
-    }.getOrElse(fabric.Obj.empty)
-  }
+      case d: ToolDelta if d.output.exists(o => ct.runtimeClass.isInstance(o)) =>
+        d.output.get.asInstanceOf[T]
+    }.getOrElse(fail(
+      s"expected ToolOutput of type ${ct.runtimeClass.getSimpleName}; saw outputs: " +
+        signals.collect { case d: ToolDelta => d.output.map(_.getClass.getSimpleName) }.mkString(", ")
+    ))
 
   // FS context with NO basePath — same shape Sage uses (full
   // filesystem access). Per-conversation rooting comes purely from
@@ -114,8 +111,8 @@ class WorkspaceRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         a <- read.execute(ReadFileInput("build.sbt"), turnCtx(convA)).toList
         b <- read.execute(ReadFileInput("build.sbt"), turnCtx(convB)).toList
       } yield {
-        extractJson(a).get("content").map(_.asString) shouldBe Some("version := \"a-version\"")
-        extractJson(b).get("content").map(_.asString) shouldBe Some("version := \"b-version\"")
+        typed[ReadFileOutput](a).content shouldBe "version := \"a-version\""
+        typed[ReadFileOutput](b).content shouldBe "version := \"b-version\""
       }
     }
 
@@ -138,7 +135,7 @@ class WorkspaceRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
         out <- read.execute(ReadFileInput(absScratch.toString), turnCtx(convA)).toList
       } yield {
         try {
-          extractJson(out).get("content").map(_.asString) shouldBe Some("absolute-passthrough")
+          typed[ReadFileOutput](out).content shouldBe "absolute-passthrough"
         } finally Files.deleteIfExists(absScratch)
       }
     }

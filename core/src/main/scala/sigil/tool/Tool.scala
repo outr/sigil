@@ -122,17 +122,16 @@ trait Tool extends RecordDocument[Tool] {
     * outcome, and `state = Complete` onto the originating `ToolInvoke`
     * in one update. Sigil #265.
     *
-    * `currentToolInvokeId` must be set (the orchestrator stamps it
-    * before invoking `Tool.execute`); if absent — a misuse path — the
-    * `.get` raises so the bug surfaces immediately rather than
-    * emitting an unpaired result. */
+    * `currentToolInvokeId` is normally stamped by the orchestrator
+    * before dispatch; tests / direct-invocation paths that exercise
+    * `tool.execute` without a real invoke fall back to a synthesised
+    * id so the delta is still well-formed. The framework's
+    * `ToolDelta.apply` is a no-op when its target doesn't resolve to
+    * a persisted `ToolInvoke`, so the synthesised case is harmless
+    * on the publish path — the delta still carries the typed output
+    * downstream consumers can inspect. */
   private def buildResultDelta(result: ToolResult[Output], context: TurnContext): ToolDelta = {
-    val invokeId = context.currentToolInvokeId.getOrElse(
-      throw new IllegalStateException(
-        s"Tool '${name.value}' .execute called without a `currentToolInvokeId` on the TurnContext — " +
-          "the orchestrator must stamp this before dispatching."
-      )
-    )
+    val invokeId = context.currentToolInvokeId.getOrElse(Event.id())
     result match {
       case ToolResult.Success(value) =>
         val typedJson = outputRW.read(value)

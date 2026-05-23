@@ -5,7 +5,7 @@ import lightdb.time.Timestamp
 import rapid.{Stream, Task}
 import sigil.Sigil
 import sigil.conversation.{ContextFrame, Conversation, Topic, TopicShiftResult}
-import sigil.event.{Event, Message, MessageDisposition, MessageRole, MessageVisibility, Reasoning, TopicChange, TopicChangeKind, ToolInvoke, ToolResults, ToolOutcome}
+import sigil.event.{Event, Message, MessageDisposition, MessageRole, MessageVisibility, Reasoning, TopicChange, TopicChangeKind, ToolInvoke, ToolOutcome}
 import sigil.participant.ParticipantId
 import sigil.provider.{CallId, ConversationRequest, Provider, ProviderEvent, ProviderImage, StopReason, XmlToolCallSanitizer}
 import sigil.storage.StoredFileCategory
@@ -520,24 +520,19 @@ object Orchestrator {
             val closeBlock = closeCurrentBlock(state, convId)
             // The streaming path settles the in-flight Message via
             // `MessageDelta` and never runs the tool body — so it must
-            // emit the call's paired `ToolResults` itself. Mirrors what
-            // `Tool.execute` builds for the atomic path: an empty
-            // `TextToolOutput` payload (`{"text":""}`) — the user-visible
-            // content lives in the settled Message; this event is the
-            // wire-pairing marker. With this, EVERY tool call — atomic
-            // OR streaming — has a paired result event by construction,
-            // so no wire-side orphan-heal is needed.
-            val streamingToolResults: Signal = ToolResults(
-              schemas        = Nil,
-              participantId  = caller,
+            // emit the call's settling delta itself. Sigil #265 — the
+            // settling [[ToolDelta]] folds output / outcome / state =
+            // Complete onto the originating ToolInvoke in one update;
+            // the user-visible content lives in the settled Message,
+            // this delta is the invoke-settle marker. With this, EVERY
+            // tool call — atomic OR streaming — settles its invoke by
+            // construction, so no wire-side orphan-heal is needed.
+            val streamingToolResults: Signal = ToolDelta(
+              target         = invokeId,
               conversationId = convId,
-              topicId        = topicId,
-              outcome        = ToolOutcome.Success,
-              typed          = Some(fabric.obj("text" -> fabric.str(""))),
-              summary        = None,
-              state          = EventState.Complete,
-              role           = MessageRole.Tool,
-              origin         = Some(invokeId)
+              state          = Some(EventState.Complete),
+              output         = Some(_root_.sigil.tool.TextToolOutput("")),
+              outcome        = Some(ToolOutcome.Success)
             )
             (Some(active.toolName), input) match {
               case (Some("respond"), r: RespondInput) =>
@@ -1189,29 +1184,23 @@ object Orchestrator {
             val syntheticInvoke = SyntheticDiagnostic.invoke("_provider_error", caller, convId, topicId)
             (List[Signal](syntheticInvoke), syntheticInvoke._id)
         }
-        // Sigil #263 — emit the provider-error pairing as a typed
-        // `ToolResults(outcome = Failure(reason, recoverable = true))`
-        // rather than a Tool-role `Message`. The structured outcome
-        // travels through the wire — the agent reads "the call
-        // failed because $msg; retry with corrected args" and
-        // self-corrects. `recoverable = true` because pre-flight /
-        // mid-stream provider errors are typically retryable
-        // (transient backend hiccup, args malformed, etc.); a fatal
-        // provider failure has its own escalation path through
-        // `ProviderStrategy`.
+        // Sigil #265 — emit the provider-error pairing as a settling
+        // [[ToolDelta]] folding `outcome = Failure(reason, recoverable
+        // = true)` onto the originating invoke. The structured outcome
+        // travels through the wire — the agent reads "the call failed
+        // because $msg; retry with corrected args" and self-corrects.
+        // `recoverable = true` because pre-flight / mid-stream provider
+        // errors are typically retryable (transient backend hiccup,
+        // args malformed, etc.); a fatal provider failure has its own
+        // escalation path through `ProviderStrategy`.
         val reason = s"Provider error: $msg"
-        val errorResult: Signal = _root_.sigil.event.ToolResults(
-          schemas        = Nil,
-          participantId  = caller,
+        val errorResult: Signal = ToolDelta(
+          target         = originId,
           conversationId = convId,
-          topicId        = topicId,
-          outcome        = ToolOutcome.Failure(reason, recoverable = true),
-          typed          = None,
+          state          = Some(EventState.Complete),
           summary        = Some(reason),
-          state          = EventState.Complete,
-          role           = MessageRole.Tool,
-          visibility     = MessageVisibility.Agents,
-          origin         = Some(originId)
+          outcome        = Some(ToolOutcome.Failure(reason, recoverable = true)),
+          error          = Some(reason)
         )
         Stream.emits(orphanSettle ++ orphanMessageSettle ++ preludeSignals :+ errorResult)
     }
@@ -1295,43 +1284,26 @@ object Orchestrator {
         state          = EventState.Active,
         internal       = isInternal
       )
-      val closeDelta: Signal = ToolDelta(
-        target = active.invokeId,
-        conversationId = convId,
-        input = None,
-        state = Some(EventState.Complete),
-        // Bug #51 — when the orphan-settle is the result of a provider
-        // failure (validator rejection, mid-call error), surface the
-        // diagnostic on the delta so client chips can render
-        // "(invalid args: …)" instead of the "(input pending)"
-        // placeholder reserved for genuinely-mid-flight calls.
-        error = error
-      )
-      // Sigil #263 — emit the paired failure as a typed `ToolResults`
-      // (`outcome = Failure(reason, recoverable)`) rather than a Tool-
-      // role `Message` with `disposition = Failure`. The structured
-      // outcome travels through the wire/RW round-trip — consumers
-      // pattern-matching on `ToolResults` see the failure plus the
-      // `recoverable` signal without inspecting Message content blocks.
-      // The framework's settle-path pair-update transitions the
-      // matching `ContextFrame.ToolCall` to `Complete(reason, …)` so
-      // the agent reads the failure on its next iteration and can
-      // self-correct.
+      // Sigil #265 — the orphan settle is one [[ToolDelta]] folding
+      // input + state = Complete + outcome = Failure(reason, recoverable)
+      // onto the invoke in a single update (replaces the pre-#265 pair
+      // of closeDelta + a separate Tool-role `ToolResults` event). The
+      // agent reads the failure on its next iteration via the invoke's
+      // own settled `outcome`/`summary`. Bug #51 — `error = Some(...)`
+      // surfaces the provider-side diagnostic so client chips render
+      // "(invalid args: …)" instead of the "(input pending)" placeholder
+      // reserved for genuinely-mid-flight calls.
       val reason = reasonFor(active)
-      val pairedFailure: Signal = _root_.sigil.event.ToolResults(
-        schemas        = Nil,
-        participantId  = caller,
+      val settleDelta: Signal = ToolDelta(
+        target         = active.invokeId,
         conversationId = convId,
-        topicId        = topicId,
-        outcome        = ToolOutcome.Failure(reason, recoverable = recoverable),
-        typed          = None,
+        input          = None,
+        state          = Some(EventState.Complete),
         summary        = Some(reason),
-        state          = EventState.Complete,
-        role           = MessageRole.Tool,
-        visibility     = MessageVisibility.Agents,
-        origin         = Some(active.invokeId)
+        outcome        = Some(ToolOutcome.Failure(reason, recoverable = recoverable)),
+        error          = error
       )
-      List(synthInvoke, closeDelta, pairedFailure)
+      List(synthInvoke, settleDelta)
     }
     state.activeCalls.clear()
     signals

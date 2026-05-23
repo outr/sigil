@@ -2414,18 +2414,23 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             case Some(event) if event.state != EventState.Complete => Task.unit
             case Some(event) =>
               val frame = FrameBuilder.computeFrame(event)
-              // Sigil #261 — ownWrite is INITIAL inlining only. Once a
-              // frame is inlined, the only legitimate mutation is the
-              // cross-event pair-update below (ToolInvoke's ToolCall
-              // transitioning from Active to Complete). A later signal
-              // (e.g. a Delta) firing this path would otherwise have
-              // its purely-event-derived `computeFrame` clobber a
-              // Complete state back to Active because `computeFrame`
-              // has no visibility into cross-event pairing.
-              val ownWrite: Task[Unit] = (event.contextFrame, frame) match {
-                case (Some(_), _)    => Task.unit
-                case (None, None)    => Task.unit
-                case (None, Some(f)) => tx.upsert(event.withContextFrame(Some(f))).unit
+              // Sigil #261/#265 — write whenever computeFrame disagrees
+              // with the inlined frame. `computeFrame` is a pure
+              // function of the event's current state, so any
+              // disagreement means the durable state has moved on (a
+              // ToolDelta folded `output` / `outcome` onto a
+              // ToolInvoke, flipping its frame from Active to
+              // Complete; a settling MessageDelta replaced a
+              // streaming Message's content; …) and the inline frame
+              // must follow. Pre-#265 the framework guarded with a
+              // hard "never replace" rule because the cross-event
+              // pair-update was the only legitimate mutation —
+              // collapsing the tool transaction into a single
+              // stateful invoke removed that constraint.
+              val ownWrite: Task[Unit] = frame match {
+                case None                                 => Task.unit
+                case Some(f) if event.contextFrame.contains(f) => Task.unit
+                case Some(f)                              => tx.upsert(event.withContextFrame(Some(f))).unit
               }
               // Sigil #261 — when a ToolResults settles, fold its
               // content into the prior ToolInvoke's inlined ToolCall

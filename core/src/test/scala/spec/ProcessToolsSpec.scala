@@ -1,15 +1,15 @@
 package spec
 
-import fabric.rw.RW
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
 import sigil.signal.{Signal, ToolDelta}
-import sigil.tool.ToolOutput
 import sigil.tool.model.{ProcessListInput, ProcessListOutput, ProcessListScope, ProcessOutputInput, ProcessOutputResult, ProcessRunStatus, ProcessSignal, ProcessSignalInput, ProcessSignalOutput, ProcessSpawnInput, ProcessSpawnOutput}
 import sigil.tool.process.{ProcessListTool, ProcessOutputTool, ProcessRegistry, ProcessSignalTool, ProcessSpawnTool, RingBuffer}
+
+import scala.reflect.ClassTag
 
 /**
  * End-to-end coverage for the `sigil.tool.process` family.
@@ -47,14 +47,17 @@ class ProcessToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     body(reg).guarantee(Task(reg.terminateAll()))
   }
 
-  /** Decode the settling [[ToolDelta]]'s typed `output` back to the tool's Output. */
-  private def typed[T](signals: List[Signal])(using rw: RW[T]): T = {
-    val json = signals.collectFirst {
-      case d: ToolDelta if d.output.exists(_ != ToolOutput.Pending) =>
-        summon[RW[ToolOutput]].read(d.output.get)
-    }.getOrElse(fail(s"expected a settling ToolDelta with a typed output; saw: ${signals.map(_.getClass.getSimpleName).mkString(", ")}"))
-    rw.write(json)
-  }
+  /** Recover the typed payload from the settling [[ToolDelta]]'s
+    * `output` — the same concrete instance the tool produced, no
+    * JSON round-trip. */
+  private def typed[T <: sigil.tool.ToolOutput](signals: List[Signal])(using ct: ClassTag[T]): T =
+    signals.collectFirst {
+      case d: ToolDelta if d.output.exists(o => ct.runtimeClass.isInstance(o)) =>
+        d.output.get.asInstanceOf[T]
+    }.getOrElse(fail(
+      s"expected ToolOutput of type ${ct.runtimeClass.getSimpleName}; saw outputs: " +
+        signals.collect { case d: ToolDelta => d.output.map(_.getClass.getSimpleName) }.mkString(", ")
+    ))
 
   /** Poll `process_output` until either the predicate satisfies or the deadline expires. */
   private def waitFor(reg: ProcessRegistry, handle: String, deadlineMs: Long)(pred: ProcessOutputResult => Boolean): Task[ProcessOutputResult] = {
