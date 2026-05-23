@@ -9,7 +9,7 @@ import sigil.db.Model
 import sigil.participant.ParticipantId
 import sigil.provider.TokenUsage
 import sigil.signal.EventState
-import sigil.tool.{ToolInput, ToolName}
+import sigil.tool.{ToolInput, ToolName, ToolOutput}
 
 /**
  * Records that a tool call happened. Created `Active` at `ToolCallStart` by
@@ -36,6 +36,20 @@ case class ToolInvoke(toolName: ToolName,
                       topicId: Id[Topic],
                       topicIndex: Int = 0,
                       input: Option[ToolInput] = None,
+                      /** Sigil #265 — typed output payload, set via
+                        * [[sigil.signal.ToolDelta]] when the tool settles.
+                        * `ToolOutput.Pending` while the call is in flight;
+                        * `ToolOutput.Progress(msg, pct?)` for long-running
+                        * tools reporting interim status; a concrete
+                        * app-defined `ToolOutput` subtype once the tool's
+                        * `execute` produces a final result. Replaces the
+                        * pre-#265 separate `ToolResults` event. */
+                      output: sigil.tool.ToolOutput = sigil.tool.ToolOutput.Pending,
+                      /** Sigil #265 — Success / Failure(reason, recoverable)
+                        * discriminator, set via [[sigil.signal.ToolDelta]]
+                        * when the tool settles. `Pending` while the call
+                        * is in flight. */
+                      outcome: ToolOutcome = ToolOutcome.Pending,
                       state: EventState = EventState.Active,
                       timestamp: Timestamp = Timestamp(Nowish()),
                       role: MessageRole = MessageRole.Standard,

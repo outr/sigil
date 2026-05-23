@@ -45,13 +45,26 @@ case class ToolDelta(target: Id[Event],
                        * [[sigil.event.ToolInvoke.summary]]. Sigil bug
                        * #191 — wire-event channel that drives the inline
                        * tool-chip tagline UI consumers render. */
-                     summary: Option[String] = None)
+                     summary: Option[String] = None,
+                     /** Sigil #265 — typed result payload folded onto
+                       * [[sigil.event.ToolInvoke.output]]. `Some(...)`
+                       * carries either the final concrete output once
+                       * `Tool.execute` settles, or an interim
+                       * `ToolOutput.Progress(message, percent?)` emitted
+                       * from `ToolContext.progress(...)`. `None` means
+                       * this delta doesn't change the invoke's output. */
+                     output: Option[sigil.tool.ToolOutput] = None,
+                     /** Sigil #265 — Success / Failure outcome folded
+                       * onto [[sigil.event.ToolInvoke.outcome]]. Set
+                       * alongside `output` when the tool settles.
+                       * `None` means no change. */
+                     outcome: Option[sigil.event.ToolOutcome] = None)
   extends Delta derives RW {
 
   /**
-   * Apply this delta to a [[sigil.event.ToolInvoke]]. Sets `input` (the parsed args),
-   * `state`, and `usage` from any present fields. Returns `target` unchanged if it
-   * isn't a `ToolInvoke`.
+   * Apply this delta to a [[sigil.event.ToolInvoke]]. Folds every present
+   * field onto the invoke; absent fields preserve the invoke's existing
+   * value. Returns `target` unchanged if it isn't a `ToolInvoke`.
    */
   override def apply(target: Event): Event = target match {
     case t: sigil.event.ToolInvoke =>
@@ -59,7 +72,16 @@ case class ToolDelta(target: Id[Event],
       val nextState   = state.getOrElse(t.state)
       val nextUsage   = usage.getOrElse(t.usage)
       val nextSummary = summary.getOrElse(t.summary)
-      t.copy(input = nextInput, state = nextState, usage = nextUsage, summary = nextSummary)
+      val nextOutput  = output.getOrElse(t.output)
+      val nextOutcome = outcome.getOrElse(t.outcome)
+      t.copy(
+        input   = nextInput,
+        state   = nextState,
+        usage   = nextUsage,
+        summary = nextSummary,
+        output  = nextOutput,
+        outcome = nextOutcome
+      )
     case other => other
   }
 }

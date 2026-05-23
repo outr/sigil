@@ -374,6 +374,22 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def toolInputRegistrations: List[RW[? <: sigil.tool.ToolInput]] = Nil
 
   /**
+   * RWs for app-defined [[sigil.tool.ToolOutput]] subtypes, registered
+   * alongside the framework's `Pending` / `Progress` cases at
+   * [[polymorphicRegistrations]] time. Sigil #265 — `ToolInvoke.output`
+   * is a polymorphic field carrying the typed result payload (the
+   * pre-#265 model had the result on a separate `ToolResults` event);
+   * apps that ship concrete `ToolOutput` subtypes (`TextToolOutput`,
+   * custom result types) add their `RW`s here so persistence and the
+   * wire round-trip cleanly.
+   *
+   * Empty by default — the framework's `Pending` / `Progress` cover
+   * the generic in-flight + progress-reporting surface; apps that ship
+   * concrete output types (`TextToolOutput`, etc.) add their RWs here.
+   */
+  def toolOutputRegistrations: List[RW[? <: sigil.tool.ToolOutput]] = Nil
+
+  /**
    * Capability-discovery finder. Default queries [[sigil.db.SigilDB.tools]]
    * via [[sigil.tool.DbToolFinder]] — apps override only when they
    * need a custom finder (marketplace union, in-memory test catalog,
@@ -6007,6 +6023,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // runtime tool's `ToolInvoke` persistence with `Type not found
       // [JsonInput]`.
       _ = ToolInput.register((CoreTools.inputRWs ++ findTools.toolInputRWs ++ toolInputRegistrations).distinctBy(_.definition.className)*)
+      // Sigil #265 — `ToolOutput` is a polymorphic discriminator on
+      // `ToolInvoke.output` (the field that replaces the pre-#265
+      // separate `ToolResults` event). Register the framework-shipped
+      // `Pending` / `Progress` cases, every `staticTools` output RW
+      // (auto-discovery — each `Tool` carries `outputRW`), and any
+      // app-defined output subtypes so `ToolInvoke` RW round-trips
+      // cleanly through persistence and the wire.
+      staticOutputRWs = staticTools.map(_.outputRW.asInstanceOf[RW[? <: sigil.tool.ToolOutput]])
+      _ = sigil.tool.ToolOutput.register(
+            (sigil.tool.ToolOutput.frameworkOutputRWs ++ staticOutputRWs ++ toolOutputRegistrations)
+              .distinctBy(_.definition.className)*
+          )
       _ = sigil.viewer.ViewerStatePayload.register(viewerStatePayloadRegistrations.distinct*)
       // Mixin hook — runs AFTER all framework leaf polytypes register but
       // BEFORE the aggregates that walk Participant/Tool/Signal definitions.

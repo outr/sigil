@@ -19,6 +19,15 @@ import fabric.rw.*
  * tool's `execute` raised (Bug #50 / Bug #69 paths).
  */
 enum ToolOutcome derives RW {
+
+  /**
+   * The tool call is in flight — `ToolInvoke.state == Active` and no
+   * `ToolDelta(outcome = …)` has settled it yet. Sigil #265: paired
+   * with [[sigil.tool.ToolOutput.Pending]] as the initial outcome of
+   * every invoke before the tool's `execute` produces a result.
+   */
+  case Pending
+
   case Success
 
   /**
