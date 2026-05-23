@@ -104,26 +104,25 @@ class OrchestratorMaxTokensTruncationSpec extends AsyncWordSpec with AsyncTaskSp
         terminalDelta.flatMap(_.state) shouldBe Some(EventState.Complete)
         terminalDelta.flatMap(_.input) shouldBe None
 
-        // The fix — a Tool-role Message paired to the orphan invoke,
-        // carrying a Failure block that names the tool and tells the
-        // agent the actual cause + remediation.
+        // The fix — a typed Tool-role `ToolResults(outcome = Failure)`
+        // paired to the orphan invoke, naming the tool and telling
+        // the agent the actual cause + remediation. Sigil #263.
         val pairedFailure = signals.collectFirst {
-          case m: Message
-            if m.role == MessageRole.Tool && m.origin.contains(invoke._id) =>
-            m
-        }.getOrElse(fail(s"Expected a Tool-role Message paired to invoke ${invoke._id.value}; saw none"))
+          case tr: sigil.event.ToolResults
+            if tr.role == MessageRole.Tool && tr.origin.contains(invoke._id) =>
+            tr
+        }.getOrElse(fail(s"Expected a Tool-role ToolResults paired to invoke ${invoke._id.value}; saw none"))
 
         pairedFailure.visibility shouldBe MessageVisibility.Agents
         pairedFailure.state shouldBe EventState.Complete
-        pairedFailure.disposition match {
-          case sigil.event.MessageDisposition.Failure(recoverable, _) =>
-            val text = pairedFailure.failureReason.getOrElse("")
-            text should include ("lsp_did_change")
-            text should include ("max_tokens")
-            text should include ("arguments never fully arrived")
+        pairedFailure.outcome match {
+          case sigil.event.ToolOutcome.Failure(reason, recoverable) =>
+            reason should include ("lsp_did_change")
+            reason should include ("max_tokens")
+            reason should include ("arguments never fully arrived")
             recoverable shouldBe true
           case other =>
-            fail(s"Expected MessageDisposition.Failure; saw $other")
+            fail(s"Expected ToolOutcome.Failure; saw $other")
         }
       }
     }
@@ -133,11 +132,18 @@ class OrchestratorMaxTokensTruncationSpec extends AsyncWordSpec with AsyncTaskSp
       // function_call_output pair; the frame renderer no longer
       // needs to synthesize its "please report it" placeholder.
       runWith(new TruncatedArgsProvider, suffix = "no-report-it").map { signals =>
+        // Sigil #263 — the orphan-paired Failure now rides on
+        // `ToolResults.outcome.reason`; the legacy Tool-role Message
+        // payload no longer carries this text.
         val anyTextMentions = signals.collect {
           case m: Message =>
-            m.content.collectFirst {
-              case ResponseContent.Text(t) => t
-            }.orElse(m.failureReason).getOrElse("")
+            m.content.collectFirst { case ResponseContent.Text(t) => t }
+              .orElse(m.failureReason).getOrElse("")
+          case tr: sigil.event.ToolResults =>
+            tr.outcome match {
+              case sigil.event.ToolOutcome.Failure(reason, _) => reason
+              case _                                          => tr.summary.getOrElse("")
+            }
           case _ => ""
         }
         all(anyTextMentions) should not include "please report it"
@@ -152,9 +158,14 @@ class OrchestratorMaxTokensTruncationSpec extends AsyncWordSpec with AsyncTaskSp
         // fires on text-buffer repetition) is independent and not
         // exercised here.
         val pairedFailures = signals.collect {
-          case m: Message
-            if m.role == MessageRole.Tool && m.origin.isDefined && m.isFailure =>
-            m
+          // Sigil #263 — Tool-role failure pairings now ride on
+          // `ToolResults(outcome = Failure)` rather than `Message`.
+          case tr: sigil.event.ToolResults
+            if tr.role == MessageRole.Tool && tr.origin.isDefined &&
+               (tr.outcome match {
+                 case _: sigil.event.ToolOutcome.Failure => true
+                 case _                                  => false
+               }) => tr
         }
         pairedFailures shouldBe empty
       }

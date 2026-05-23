@@ -1189,17 +1189,31 @@ object Orchestrator {
             val syntheticInvoke = SyntheticDiagnostic.invoke("_provider_error", caller, convId, topicId)
             (List[Signal](syntheticInvoke), syntheticInvoke._id)
         }
-        val errorMessage = Message(
+        // Sigil #263 — emit the provider-error pairing as a typed
+        // `ToolResults(outcome = Failure(reason, recoverable = true))`
+        // rather than a Tool-role `Message`. The structured outcome
+        // travels through the wire — the agent reads "the call
+        // failed because $msg; retry with corrected args" and
+        // self-corrects. `recoverable = true` because pre-flight /
+        // mid-stream provider errors are typically retryable
+        // (transient backend hiccup, args malformed, etc.); a fatal
+        // provider failure has its own escalation path through
+        // `ProviderStrategy`.
+        val reason = s"Provider error: $msg"
+        val errorResult: Signal = _root_.sigil.event.ToolResults(
+          schemas        = Nil,
           participantId  = caller,
           conversationId = convId,
           topicId        = topicId,
-          role           = MessageRole.Tool,
-          content        = Vector(ResponseContent.Text(s"Provider error: $msg")),
+          outcome        = ToolOutcome.Failure(reason, recoverable = true),
+          typed          = None,
+          summary        = Some(reason),
           state          = EventState.Complete,
+          role           = MessageRole.Tool,
           visibility     = MessageVisibility.Agents,
           origin         = Some(originId)
         )
-        Stream.emits(orphanSettle ++ orphanMessageSettle ++ preludeSignals :+ (errorMessage: Signal))
+        Stream.emits(orphanSettle ++ orphanMessageSettle ++ preludeSignals :+ errorResult)
     }
   }
 
@@ -1293,14 +1307,27 @@ object Orchestrator {
         // placeholder reserved for genuinely-mid-flight calls.
         error = error
       )
-      val pairedFailure: Signal = Message(
+      // Sigil #263 — emit the paired failure as a typed `ToolResults`
+      // (`outcome = Failure(reason, recoverable)`) rather than a Tool-
+      // role `Message` with `disposition = Failure`. The structured
+      // outcome travels through the wire/RW round-trip — consumers
+      // pattern-matching on `ToolResults` see the failure plus the
+      // `recoverable` signal without inspecting Message content blocks.
+      // The framework's settle-path pair-update transitions the
+      // matching `ContextFrame.ToolCall` to `Complete(reason, …)` so
+      // the agent reads the failure on its next iteration and can
+      // self-correct.
+      val reason = reasonFor(active)
+      val pairedFailure: Signal = _root_.sigil.event.ToolResults(
+        schemas        = Nil,
         participantId  = caller,
         conversationId = convId,
         topicId        = topicId,
-        role           = MessageRole.Tool,
-        content        = Vector(ResponseContent.Text(reasonFor(active))),
+        outcome        = ToolOutcome.Failure(reason, recoverable = recoverable),
+        typed          = None,
+        summary        = Some(reason),
         state          = EventState.Complete,
-        disposition    = MessageDisposition.Failure(recoverable = recoverable),
+        role           = MessageRole.Tool,
         visibility     = MessageVisibility.Agents,
         origin         = Some(active.invokeId)
       )

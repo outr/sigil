@@ -20,5 +20,32 @@ import fabric.rw.*
  */
 enum ToolOutcome derives RW {
   case Success
+
+  /**
+   * The tool call did not produce a usable result.
+   *
+   * @param reason       REQUIRED. Always present. The text the agent
+   *                     reads on its next iteration to understand what
+   *                     went wrong. Authoring contract:
+   *                     - If `recoverable = false`: explain *why* the
+   *                       call failed — the diagnostic the agent reads
+   *                       so it can give the user an honest answer or
+   *                       pick a different approach.
+   *                     - If `recoverable = true`: explain *why* it
+   *                       failed AND *how to fix it* — the agent reads
+   *                       this on its next turn and is expected to
+   *                       retry with the correction. An empty or
+   *                       useless `reason` strands the agent ("the
+   *                       call failed; try again how?") so this field
+   *                       must always carry actionable content. Sigil
+   *                       #263.
+   * @param recoverable  Whether the agent should attempt to retry the
+   *                     call after reading `reason`. `false` (default)
+   *                     means terminal for this approach; the agent
+   *                     should report or change strategy. `true` means
+   *                     the failure is something the agent can fix
+   *                     from the diagnostic — malformed args, missing
+   *                     required field, validator rejection.
+   */
   case Failure(reason: String, recoverable: Boolean = false)
 }

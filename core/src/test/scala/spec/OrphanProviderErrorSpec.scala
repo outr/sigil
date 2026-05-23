@@ -75,24 +75,29 @@ class OrphanProviderErrorSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         synthetic should have size 1
         synthetic.head.internal shouldBe true
 
-        // The Tool-role error Message — paired to the synthetic
+        // The Tool-role error result — paired to the synthetic
         // invoke (NOT origin = None, which bug #64 would refuse).
-        val errorMessages = signals.collect {
-          case m: Message if m.role == MessageRole.Tool && m.content.exists {
-            case sigil.tool.model.ResponseContent.Text(t) => t.contains("Provider error")
-            case _ => false
-          } => m
+        // Sigil #263 — emitted as a typed `ToolResults(outcome =
+        // Failure(reason, recoverable))` so the structured outcome
+        // travels through the wire.
+        val errorResults = signals.collect {
+          case tr: sigil.event.ToolResults
+            if tr.role == MessageRole.Tool &&
+               (tr.outcome match {
+                 case sigil.event.ToolOutcome.Failure(reason, _) => reason.contains("Provider error")
+                 case _                                          => false
+               }) => tr
         }
-        errorMessages should have size 1
-        errorMessages.head.origin shouldBe Some(synthetic.head._id)
+        errorResults should have size 1
+        errorResults.head.origin shouldBe Some(synthetic.head._id)
 
-        // Critically: NO orphan Tool-role Message with origin = None.
+        // Critically: NO orphan Tool-role event with origin = None.
         // (If one slipped through, bug #64's write-side validation
         // would fire downstream, killing the iteration.)
-        val orphanedToolMessages = signals.collect {
-          case m: Message if m.role == MessageRole.Tool && m.origin.isEmpty => m
+        val orphanedToolEvents = signals.collect {
+          case e: sigil.event.Event if e.role == MessageRole.Tool && e.origin.isEmpty => e
         }
-        orphanedToolMessages shouldBe empty
+        orphanedToolEvents shouldBe empty
       }
     }
   }

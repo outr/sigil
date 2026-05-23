@@ -35,6 +35,14 @@ case class ToolResults(schemas: List[ToolSchema],
                        state: EventState = EventState.Active,
                        timestamp: Timestamp = Timestamp(Nowish()),
                        role: MessageRole = MessageRole.Tool,
+                       // Sigil #263 — explicit visibility on the event so
+                       // failure-pairing paths can keep their diagnostic
+                       // payloads `Agents`-only (the orphan-paired
+                       // `outcome = Failure` shape replaces a Tool-role
+                       // `Message` that filtered to Agents). Default
+                       // `All` preserves pre-fix behavior for every
+                       // other call site.
+                       override val visibility: MessageVisibility = MessageVisibility.All,
                        override val origin: Option[Id[Event]] = None,
                        override val source: Option[String] = None,
                        override val contextFrame: Option[sigil.conversation.ContextFrame] = None,

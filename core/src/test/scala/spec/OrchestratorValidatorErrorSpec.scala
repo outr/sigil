@@ -90,29 +90,30 @@ class OrchestratorValidatorErrorSpec extends AsyncWordSpec with AsyncTaskSpec wi
         terminalDelta.flatMap(_.state) shouldBe Some(EventState.Complete)
 
         // The actual fix — the validator error reaches the agent as
-        // a Tool-role Message instead of being dropped. The orphan-
-        // settle path also emits a paired Tool-role failure Message
-        // for wire-pairing well-formedness; filter to just the
-        // validator-error one carrying "Provider error".
-        val errorMessages = signals.collect {
-          case m: Message
-            if m.role == MessageRole.Tool &&
-              m.content.exists {
-                case ResponseContent.Text(t) => t.contains("Provider error")
-                case _ => false
-              } => m
+        // a typed Tool-role `ToolResults(outcome = Failure(reason, …))`
+        // instead of being dropped. The orphan-settle path also emits
+        // a paired Tool-role failure result for wire-pairing well-
+        // formedness; filter to just the validator-error one
+        // carrying "Provider error". Sigil #263.
+        val errorResults = signals.collect {
+          case tr: sigil.event.ToolResults
+            if tr.role == MessageRole.Tool &&
+               (tr.outcome match {
+                 case sigil.event.ToolOutcome.Failure(reason, _) => reason.contains("Provider error")
+                 case _                                          => false
+               }) => tr
         }
-        errorMessages should have size 1
-        val msg = errorMessages.head
-        msg.visibility shouldBe MessageVisibility.Agents
-        msg.state shouldBe EventState.Complete
-        msg.content.headOption match {
-          case Some(ResponseContent.Text(text)) =>
-            text should include("Provider error")
-            text should include("violated schema")
-            text should include("pattern")
+        errorResults should have size 1
+        val res = errorResults.head
+        res.visibility shouldBe MessageVisibility.Agents
+        res.state shouldBe EventState.Complete
+        res.outcome match {
+          case sigil.event.ToolOutcome.Failure(reason, _) =>
+            reason should include("Provider error")
+            reason should include("violated schema")
+            reason should include("pattern")
           case other =>
-            fail(s"Expected Text content; saw $other")
+            fail(s"Expected ToolOutcome.Failure; saw $other")
         }
       }
     }

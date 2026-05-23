@@ -2417,16 +2417,28 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               // transaction in one frame. Pair adjacency on the wire
               // is then guaranteed by construction, regardless of what
               // else interleaved between the invoke and the result.
+              // Sigil #263 — pair-update fires on ANY Tool-role event
+              // with an `origin`, not just `ToolResults`. The orchestrator
+              // surfaces tool-input parse failures via a Tool-role
+              // `Message` (`disposition = Failure`, `origin =
+              // Some(invokeId)`) — same shape `settleOrphanToolInvoke`
+              // emits for stream-abort orphans. Narrowing pair-update
+              // to `ToolResults` left those failures unpaired, so the
+              // ToolInvoke stayed Active and `renderFrames` complained
+              // about dangling tool_calls. Generalising over the
+              // Tool-role+origin shape closes that hole and keeps the
+              // invariant honest: every event the framework attributes
+              // to a parent tool call settles its frame.
               val pairUpdate: Task[Unit] = event match {
-                case tr: ToolResults =>
-                  tr.origin match {
+                case e: Event if e.role == MessageRole.Tool =>
+                  e.origin match {
                     case Some(invokeId) =>
                       tx.get(invokeId).flatMap {
                         case Some(ti) =>
                           ti.contextFrame match {
                             case Some(tc: ContextFrame.ToolCall)
                                 if tc.state == ToolCallState.Active =>
-                              val (content, images) = FrameBuilder.toolResultPayload(tr)
+                              val (content, images) = FrameBuilder.toolResultPayload(e)
                               val updated = tc.copy(
                                 state = ToolCallState.Complete(content, images)
                               )
