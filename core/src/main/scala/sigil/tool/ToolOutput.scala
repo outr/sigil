@@ -133,9 +133,29 @@ object ToolOutput {
     *
     * App-defined subtypes (outside `sigil.tool.*`) still register
     * via `Sigil.toolOutputRegistrations`. */
+  /** Re-stamp a nested-in-companion case's `className` to the
+    * parent-prefixed `<ToolOutput-fqn>$<case>` shape. Bug #266 —
+    * `Pending` / `Progress` live inside the `ToolOutput` companion, so
+    * fabric's `cleanClassName` rewrites their derived RW's className
+    * from `sigil.tool.ToolOutput$Pending` to `sigil.tool.ToolOutput.Pending`
+    * (collapsing the `$`). Runtime instance lookup still uses the raw
+    * `getClass.getName` ("…$Pending"), so the disambiguating
+    * `classNameMapping` derives "ToolOutputPending" on the lookup side
+    * but "Pending" on the registration side. Re-stamping with an
+    * explicit `$`-delimited className aligns the two halves. */
+  private def frameworkCaseRW[T <: ToolOutput](caseName: String, baseRw: RW[T]): RW[T] = {
+    val parentClassName = classOf[ToolOutput].getName
+    new RW[T] {
+      override def read(t: T): fabric.Json     = baseRw.read(t)
+      override def write(json: fabric.Json): T = baseRw.write(json)
+      override def definition: Definition      =
+        baseRw.definition.copy(className = Some(s"$parentClassName$$$caseName"))
+    }
+  }
+
   val frameworkOutputRWs: List[RW[? <: ToolOutput]] = List[RW[? <: ToolOutput]](
-    RW.static(Pending),
-    summon[RW[Progress]],
+    frameworkCaseRW("Pending", RW.static(Pending)),
+    frameworkCaseRW("Progress", summon[RW[Progress]]),
     summon[RW[TextToolOutput]],
 
     // core/
