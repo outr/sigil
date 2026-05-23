@@ -4831,11 +4831,25 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * page size. Apps override to tune the prompt budget. */
   def discoveredCapabilitiesPromptCap: Int = 25
 
+  /** Sigil #264 — clear the per-agent dedupe cache at the start of a
+    * new turn. The cache exists to stop an agent from looping on a
+    * stable-output tool within ONE run of `runAgentLoop`; persisting
+    * across turns blocks legitimate retries after the user has fixed
+    * an external precondition (permissions, rate limit, etc.).
+    * `runAgent` is the per-turn entry point — every external trigger
+    * (user message, other-agent emission, etc.) lands here once via
+    * `tryFire`, so clearing here scopes the dedupe to "since the
+    * last external event," which is the soundest "result might
+    * differ" window the framework can reason about. */
+  def clearDedupeForTurn(convId: Id[Conversation],
+                         agentId: ParticipantId): Task[Unit] =
+    updateProjection(convId, agentId)(_.copy(recentToolInvocations = Nil))
+
   private final def runAgent(agent: AgentParticipant,
                              conv: Conversation,
                              claimed: AgentState,
                              greeting: Boolean = false): Task[Unit] =
-    runAgentLoop(
+    clearDedupeForTurn(conv._id, agent.id).flatMap(_ => runAgentLoop(
       agent,
       conv._id,
       claimed,
@@ -4870,7 +4884,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // empty cache, preventing prompt pollution from prior turns'
       // discoveries.
       discoveredCapabilitiesRef = new AtomicReference(Map.empty)
-    )
+    ))
 
   /**
    * `sinceTimestamp` advances per iteration — each loop hands the next one

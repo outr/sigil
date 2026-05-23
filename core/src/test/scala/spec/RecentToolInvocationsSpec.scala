@@ -343,4 +343,78 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       }
     }
   }
+
+  "Sigil #264 — cross-turn dedupe reset" should {
+
+    "clearDedupeForTurn empties the agent's recentToolInvocations" in {
+      // Seed the agent's projection with enough identical entries to
+      // would-be-trip the refusal on the next dispatch — mirrors the
+      // bug scenario: the agent called a tool twice in a prior turn
+      // (hitting an external blocker that's since been fixed).
+      val convId  = Conversation.id(s"cross-turn-${rapid.Unique()}")
+      val args    = SearchInput(pattern = "TODO|FIXME", glob = "**/*.scala")
+      val hash    = ToolInputCanonicalizer.argsHash(args)
+      val preview = ToolInputCanonicalizer.argsPreview(args)
+      val now     = Timestamp()
+      val priorEntries = (1 to 2).toList.map { i =>
+        RecentToolInvocation(SearchTool.name, hash, preview, Timestamp(now.value - 1_000L * i))
+      }
+      val seeded = ParticipantProjection.empty(TestAgent, convId).copy(recentToolInvocations = priorEntries)
+      for {
+        _    <- TestSigil.withDB(_.participantProjections.transaction(_.upsert(seeded)))
+        _    <- TestSigil.clearDedupeForTurn(convId, TestAgent)
+        proj <- TestSigil.projectionFor(TestAgent, convId)
+      } yield {
+        proj.recentToolInvocations shouldBe empty
+      }
+    }
+
+    "after clear, the orchestrator allows a dispatch that would have been refused before" in {
+      // Same seed as the hard-cap refusal test (2 prior identical
+      // entries — next call would be #3 and trigger the refusal),
+      // but `clearDedupeForTurn` runs before the dispatch the way
+      // `runAgent` does at every new turn boundary. The tool must
+      // actually run — `searchInvocations` ticks to 1.
+      searchInvocations.set(0)
+      val args    = SearchInput(pattern = "TODO|FIXME", glob = "**/*.scala")
+      val hash    = ToolInputCanonicalizer.argsHash(args)
+      val preview = ToolInputCanonicalizer.argsPreview(args)
+      val convId  = Conversation.id(s"cross-turn-allow-${rapid.Unique()}")
+      val conv    = Conversation(topics = TestTopicStack, _id = convId)
+      val now     = Timestamp()
+      val priorEntries = (1 to 2).toList.map { i =>
+        RecentToolInvocation(SearchTool.name, hash, preview, Timestamp(now.value - 1_000L * i))
+      }
+      val seeded = ParticipantProjection.empty(TestAgent, convId).copy(recentToolInvocations = priorEntries)
+      for {
+        _       <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _       <- TestSigil.withDB(_.participantProjections.transaction(_.upsert(seeded)))
+        _       <- TestSigil.clearDedupeForTurn(convId, TestAgent)
+        cleared <- TestSigil.projectionFor(TestAgent, convId)
+        request  = ConversationRequest(
+                     conversationId     = convId,
+                     modelId            = Model.id("test", "cross-turn-model"),
+                     instructions       = Instructions(),
+                     turnInput          = TurnInput(
+                       conversationId         = convId,
+                       participantProjections = Map(TestAgent -> cleared)
+                     ),
+                     currentMode        = ConversationMode,
+                     currentTopic       = TestTopicEntry,
+                     previousTopics     = Nil,
+                     generationSettings = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
+                     chain              = List(TestUser, TestAgent),
+                     tools              = Vector(SearchTool, RespondTool, NoResponseTool)
+                   )
+        _       <- Orchestrator.process(
+                     TestSigil,
+                     new SingleSearchCallProvider("cross-turn-allow-call", args),
+                     request,
+                     conv
+                   ).toList
+      } yield {
+        searchInvocations.get() shouldBe 1
+      }
+    }
+  }
 }
