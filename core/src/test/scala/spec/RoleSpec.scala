@@ -139,6 +139,38 @@ class RoleSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       result should not contain toolA
     }
 
+    "ActiveOnly preserves baseline + adds names but strips find_capability (Sigil #262)" in Task {
+      val a = agent(toolNames = List(toolA, toolB), tools = ToolPolicy.ActiveOnly(List(toolC)))
+      val result = TestSigil.effectiveToolNames(a, standardMode, Nil).toSet
+      result shouldBe (essentials ++ Set(toolA, toolB, toolC))
+      result should not contain FindCapabilityTool.schema.name
+    }
+
+    "ActiveOnly on the mode strips find_capability for a Standard agent" in Task {
+      val a = agent(toolNames = List(toolA, toolB), tools = ToolPolicy.Standard)
+      val mode: Mode = new Mode {
+        val name = "m"; val description = "m"
+        override val tools = ToolPolicy.ActiveOnly(List(toolC))
+      }
+      val result = TestSigil.effectiveToolNames(a, mode, Nil).toSet
+      result shouldBe (essentials ++ Set(toolA, toolB, toolC))
+      result should not contain FindCapabilityTool.schema.name
+    }
+
+    "ActiveOnly's find_capability suppression is sticky — layering Active on top doesn't re-enable it" in Task {
+      // Agent says "I don't want discovery"; mode adds more direct tools.
+      // find_capability should stay off because once any contributor
+      // turns it off, no later policy turns it back on.
+      val a = agent(toolNames = List(toolA), tools = ToolPolicy.ActiveOnly(List(toolB)))
+      val mode: Mode = new Mode {
+        val name = "m"; val description = "m"
+        override val tools = ToolPolicy.Active(List(toolC))
+      }
+      val result = TestSigil.effectiveToolNames(a, mode, Nil).toSet
+      result shouldBe (essentials ++ Set(toolA, toolB, toolC))
+      result should not contain FindCapabilityTool.schema.name
+    }
+
     "compose Exclusive (agent) + Active (mode) — both extras present, baseline stripped" in Task {
       val a = agent(toolNames = List(toolA, toolB), tools = ToolPolicy.Exclusive(List(toolC)))
       val mode: Mode = new Mode {

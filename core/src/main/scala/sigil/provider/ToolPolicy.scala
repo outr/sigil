@@ -12,11 +12,12 @@ import sigil.tool.ToolName
  *     on the turn.
  *   - **Discovery**: the pool `find_capability` can search through.
  *
- * The seven cases cover the useful combinations. Framework essentials
+ * The eight cases cover the useful combinations. Framework essentials
  * (`respond`, `no_response`, `change_mode`, `stop`) are in the roster
  * by default; `find_capability` is in the roster unless the contributor
- * is [[None]]. [[PureDiscovery]] strips the respond family + no_response
- * from the roster so every reply path goes through `find_capability`.
+ * is [[None]] or [[ActiveOnly]]. [[PureDiscovery]] strips the respond
+ * family + no_response from the roster so every reply path goes
+ * through `find_capability`.
  */
 enum ToolPolicy derives RW {
   /** Contributor has no opinion on tools. Baseline participant roster
@@ -41,6 +42,14 @@ enum ToolPolicy derives RW {
   /** `names` are added to the roster while this contributor is active. */
   case Active(names: List[ToolName])
 
+  /** Like [[Active]], but `find_capability` is suppressed — the agent
+    * sees `names` (plus framework essentials and baseline) and has no
+    * discovery indirection. Right for hosts that wire every tool the
+    * agent should be able to call directly into the roster and don't
+    * want the model wandering into `find_capability` for an unknown
+    * intent. Sigil #262. */
+  case ActiveOnly(names: List[ToolName])
+
   /** `names` are only visible to `find_capability` while this contributor
     * is active — hidden from the discovery catalog of other contributors.
     * Not added to the immediate roster; agent must discover explicitly. */
@@ -60,6 +69,7 @@ enum ToolPolicy derives RW {
   def listed: List[ToolName] = this match {
     case Standard | None | PureDiscovery => Nil
     case Active(n)                       => n
+    case ActiveOnly(n)                   => n
     case Discoverable(n)                 => n
     case Exclusive(n)                    => n
     case Scoped(n)                       => n

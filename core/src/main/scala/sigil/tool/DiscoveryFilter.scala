@@ -58,6 +58,7 @@ object DiscoveryFilter {
          | sigil.provider.ToolPolicy.None
          | sigil.provider.ToolPolicy.PureDiscovery
          | sigil.provider.ToolPolicy.Active(_)
+         | sigil.provider.ToolPolicy.ActiveOnly(_)
          | sigil.provider.ToolPolicy.Discoverable(_) => true
       case sigil.provider.ToolPolicy.Exclusive(names) => names.contains(tool.name)
       case sigil.provider.ToolPolicy.Scoped(names)    => names.contains(tool.name)

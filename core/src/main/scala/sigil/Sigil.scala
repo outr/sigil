@@ -1383,13 +1383,19 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     val initial = PolicyState(Nil, includesFindCapability = true, includesBaseline = true, pureDiscovery = false)
 
     def apply(s: PolicyState, p: ToolPolicy): PolicyState = p match {
-      case ToolPolicy.Standard         => s
-      case ToolPolicy.None             => s.copy(includesFindCapability = false, includesBaseline = false)
-      case ToolPolicy.PureDiscovery    => s.copy(pureDiscovery = true)
-      case ToolPolicy.Active(names)    => s.copy(extras = s.extras ++ names)
-      case ToolPolicy.Discoverable(_)  => s
-      case ToolPolicy.Exclusive(names) => s.copy(includesBaseline = false, extras = s.extras ++ names)
-      case ToolPolicy.Scoped(_)        => s
+      case ToolPolicy.Standard           => s
+      case ToolPolicy.None               => s.copy(includesFindCapability = false, includesBaseline = false)
+      case ToolPolicy.PureDiscovery      => s.copy(pureDiscovery = true)
+      case ToolPolicy.Active(names)      => s.copy(extras = s.extras ++ names)
+      // Sigil #262 — same as Active but additionally strips
+      // `find_capability` from the roster. Sticky-off semantics in the
+      // fold: once any contributor flips includesFindCapability false,
+      // later policies don't re-enable it (matching the intent of "this
+      // host doesn't want discovery indirection at all").
+      case ToolPolicy.ActiveOnly(names)  => s.copy(includesFindCapability = false, extras = s.extras ++ names)
+      case ToolPolicy.Discoverable(_)    => s
+      case ToolPolicy.Exclusive(names)   => s.copy(includesBaseline = false, extras = s.extras ++ names)
+      case ToolPolicy.Scoped(_)          => s
     }
 
     // Bug #97 — fold conversation overlays last so they're additive
