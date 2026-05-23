@@ -71,14 +71,14 @@ class ScriptToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           |val out = tools.callTool[EchoOutput]("echo", EchoInput("from-script"))
           |s"${out.echoed}/${out.length}"
           |""".stripMargin
-      tool.execute(sigil.script.ScriptInput(code = script, summary = "test: execute script body"), turnCtx).toList.map { events =>
-        val tr = events.collectFirst {
-          case r: sigil.event.ToolResults => r
-        }.getOrElse(fail("script produced no ToolResults"))
-        // The ScriptToolOutput json: prefer `output`, fall back to `error`.
-        val resultText = tr.typed.flatMap(_.get("output")).filterNot(_.isNull).map(_.asString)
-          .orElse(tr.typed.flatMap(_.get("error")).filterNot(_.isNull).map(_.asString))
-          .getOrElse(fail("ToolResults carried no output or error"))
+      tool.execute(sigil.script.ScriptInput(code = script, summary = "test: execute script body"), turnCtx).toList.map { signals =>
+        val output = signals.collectFirst {
+          case d: sigil.signal.ToolDelta if d.outcome.contains(sigil.event.ToolOutcome.Success) =>
+            d.output.collect { case o: sigil.script.ScriptToolOutput => o }
+        }.flatten.getOrElse(fail("script produced no settling Success ToolDelta with ScriptToolOutput"))
+        val resultText = output.output.filterNot(_.isEmpty)
+          .orElse(output.error.filterNot(_.isEmpty))
+          .getOrElse(fail("ScriptToolOutput carried no output or error"))
         resultText shouldBe "from-script/11"
       }
     }

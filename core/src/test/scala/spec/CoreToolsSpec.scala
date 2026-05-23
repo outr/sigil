@@ -7,13 +7,13 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, Topic, TurnInput}
-import sigil.event.{Message, Stop, TopicChange}
+import sigil.event.{Message, Stop, ToolOutcome, TopicChange}
 import sigil.information.Information
-import sigil.signal.EventState
+import sigil.signal.{EventState, ToolDelta}
 import sigil.tool.core.{RespondTool, CancelTool}
 import sigil.tool.discovery.CapabilityType
 import sigil.tool.util.LookupTool
-import sigil.tool.model.{LookupInput, RespondInput, CancelInput}
+import sigil.tool.model.{LookupInput, LookupOutput, RespondInput, CancelInput}
 
 /**
  * Round-trip coverage for framework tools where direct `execute` semantics
@@ -117,15 +117,16 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       Information.register(summon[RW[TestInformationWithBody]])
       TestSigil.information.put(full)
 
-      val events = LookupTool
+      val signals = LookupTool
         .execute(LookupInput(capabilityType = CapabilityType.Information, name = infoId.value), turnContextFor(convId))
         .toList
-      events.map { list =>
+      signals.map { list =>
         list should have size 1
-        val tr = list.head.asInstanceOf[sigil.event.ToolResults]
-        val rw = summon[RW[sigil.tool.model.LookupOutput]]
-        rw.write(tr.typed.get) match {
-          case sigil.tool.model.LookupOutput.Found(_, _, payload) =>
+        val out = list.head.asInstanceOf[ToolDelta].output
+          .collect { case o: LookupOutput => o }
+          .getOrElse(fail(s"expected a ToolDelta carrying LookupOutput; got: $list"))
+        out match {
+          case LookupOutput.Found(_, _, payload) =>
             fabric.io.JsonFormatter.Compact(payload) should include("HIT_BODY_42")
           case other => fail(s"expected Found, got $other")
         }
@@ -135,15 +136,16 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "emit a NotFound when the id doesn't resolve" in {
       val convId = freshConversationId("lookup-miss")
       val missingId = Id[Information]("info-missing")
-      val events = LookupTool
+      val signals = LookupTool
         .execute(LookupInput(capabilityType = CapabilityType.Information, name = missingId.value), turnContextFor(convId))
         .toList
-      events.map { list =>
+      signals.map { list =>
         list should have size 1
-        val tr = list.head.asInstanceOf[sigil.event.ToolResults]
-        val rw = summon[RW[sigil.tool.model.LookupOutput]]
-        rw.write(tr.typed.get) match {
-          case sigil.tool.model.LookupOutput.NotFound(_, name) => name shouldBe missingId.value
+        val out = list.head.asInstanceOf[ToolDelta].output
+          .collect { case o: LookupOutput => o }
+          .getOrElse(fail(s"expected a ToolDelta carrying LookupOutput; got: $list"))
+        out match {
+          case LookupOutput.NotFound(_, name) => name shouldBe missingId.value
           case other => fail(s"expected NotFound, got $other")
         }
       }
@@ -151,15 +153,16 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
     "decline retrieval for Tool capability type" in {
       val convId = freshConversationId("lookup-tool-not-supported")
-      val events = LookupTool
+      val signals = LookupTool
         .execute(LookupInput(capabilityType = CapabilityType.Tool, name = "respond"), turnContextFor(convId))
         .toList
-      events.map { list =>
+      signals.map { list =>
         list should have size 1
-        val tr = list.head.asInstanceOf[sigil.event.ToolResults]
-        val rw = summon[RW[sigil.tool.model.LookupOutput]]
-        rw.write(tr.typed.get) match {
-          case sigil.tool.model.LookupOutput.NotRetrievable(_, _, hint) =>
+        val out = list.head.asInstanceOf[ToolDelta].output
+          .collect { case o: LookupOutput => o }
+          .getOrElse(fail(s"expected a ToolDelta carrying LookupOutput; got: $list"))
+        out match {
+          case LookupOutput.NotRetrievable(_, _, hint) =>
             hint should include("not retrievable")
           case other => fail(s"expected NotRetrievable, got $other")
         }

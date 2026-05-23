@@ -6,14 +6,14 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.Model
-import sigil.event.{Event, Message, MessageRole, ToolInvoke, ToolResults}
+import sigil.event.{Event, Message, MessageRole, ToolInvoke, ToolOutcome}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{
   CallId, ConversationMode, ConversationRequest, GenerationSettings, Instructions,
   Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
-import sigil.signal.{EventState, Signal}
-import sigil.tool.ToolName
+import sigil.signal.{EventState, Signal, ToolDelta}
+import sigil.tool.{TextToolOutput, ToolName}
 import sigil.tool.core.{CoreTools, RespondTool}
 import sigil.tool.model.RespondInput
 import spice.http.HttpRequest
@@ -93,46 +93,46 @@ class DurableAtomicToolPairingSpec extends AsyncWordSpec with AsyncTaskSpec with
 
   "Bug #174 (durable) — atomic-content tool's Tool-role pairing" should {
 
-    "include a ToolResults paired to the respond's ToolInvoke" in {
+    "settle the respond's ToolInvoke via a ToolDelta carrying Success outcome" in {
       runOrchestrator().map { signals =>
         val invoke = signals.collectFirst {
           case ti: ToolInvoke if ti.toolName == ToolName("respond") => ti
         }.getOrElse(fail("expected a respond ToolInvoke"))
 
-        val pairedResults = signals.collect {
-          case tr: ToolResults if tr.role == MessageRole.Tool && tr.origin.contains(invoke._id) => tr
+        val settling = signals.collect {
+          case d: ToolDelta if d.target == invoke._id && d.outcome.contains(ToolOutcome.Success) => d
         }
-        withClue(s"expected a ToolResults paired to respond invoke ${invoke._id.value}; signals: ${signals.map(_.getClass.getSimpleName)}: ") {
-          pairedResults should have size 1
+        withClue(s"expected a settling ToolDelta against respond invoke ${invoke._id.value}; signals: ${signals.map(_.getClass.getSimpleName)}: ") {
+          settling should have size 1
         }
       }
     }
 
-    "the respond's ToolResults carries an empty-text typed payload" in {
+    "the respond's settling ToolDelta carries an empty TextToolOutput" in {
       // The respond's user-visible output is the Standard-role
-      // Message itself; the paired ToolResults carries an empty
-      // TextToolOutput ({"text": ""}) — there is no further data
-      // to feed back to the next iteration.
+      // Message itself; the settling delta carries an empty
+      // TextToolOutput — there is no further data to feed back to
+      // the next iteration.
       runOrchestrator().map { signals =>
         val invoke = signals.collectFirst { case ti: ToolInvoke if ti.toolName == ToolName("respond") => ti }.get
-        val pair = signals.collectFirst {
-          case tr: ToolResults if tr.role == MessageRole.Tool && tr.origin.contains(invoke._id) => tr
+        val settling = signals.collectFirst {
+          case d: ToolDelta if d.target == invoke._id && d.outcome.contains(ToolOutcome.Success) => d
         }.get
-        pair.typed.flatMap(_.get("text")).map(_.asString) shouldBe Some("")
+        settling.output.collect { case TextToolOutput(t) => t } shouldBe Some("")
       }
     }
 
-    "emit the ToolResults alongside the user-visible Message (not replacing it)" in {
+    "emit the settling ToolDelta alongside the user-visible Message (not replacing it)" in {
       runOrchestrator().map { signals =>
         val userVisible = signals.collect {
           case m: Message if m.role == MessageRole.Standard => m
         }
-        val toolResults = signals.collect {
-          case tr: ToolResults if tr.role == MessageRole.Tool => tr
+        val settling = signals.collect {
+          case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) => d
         }
         withClue(s"signals: ${signals.map(_.getClass.getSimpleName)}: ") {
           userVisible should have size 1
-          toolResults should have size 1
+          settling should have size 1
           // The user-visible Message carries the actual respond content.
           userVisible.head.content should not be empty
         }

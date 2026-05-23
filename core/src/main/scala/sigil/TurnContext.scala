@@ -253,9 +253,9 @@ case class TurnContext(sigil: Sigil,
    * Distinct from [[reportProgress]]: progress pulses are transient
    * Notices (no DB write, fade in the UI as new ones arrive); the
    * summary is durable invoke state and persists across reload.
-   * Distinct from the final-only [[sigil.event.ToolResults.summary]]
-   * field: that's a snapshot at result-emit time; this drives the
-   * full arc.
+   * The settled-invoke's `summary` snapshot at result-emit time
+   * captures the final state; this drives the full arc up to that
+   * point.
    *
    * Typical lifecycle:
    *

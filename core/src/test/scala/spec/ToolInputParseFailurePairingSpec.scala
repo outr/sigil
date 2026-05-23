@@ -20,8 +20,8 @@ import sigil.tool.model.ResponseContent
  * `_provider_error` synthesis, and any other "tool dispatch died
  * before producing a typed result" branch) emit a Tool-role `Message`
  * with `disposition = Failure` and `origin = Some(invokeId)`. Before
- * the fix, the framework's pair-update only fired on `ToolResults`
- * events, so the Message-with-role=Tool sat there with the right
+ * the fix, the framework's pair-update only fired on settling
+ * deltas, so the Message-with-role=Tool sat there with the right
  * `origin` link but the `ToolInvoke`'s frame never transitioned from
  * `Active` to `Complete`. `renderFrames` saw a dangling tool_call,
  * logged "framework bug", and Anthropic 400s on the unpaired

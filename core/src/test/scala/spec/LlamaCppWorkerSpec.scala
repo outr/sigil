@@ -7,7 +7,9 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
 import sigil.db.Model
-import sigil.event.{Message, ToolResults, ToolOutcome}
+import sigil.event.{Message, ToolOutcome}
+import sigil.signal.ToolDelta
+import sigil.tool.util.DelegateTaskOutput
 import sigil.participant.{AgentParticipantId, DefaultAgentParticipant}
 import sigil.provider.{AnalysisWork, GenerationSettings, Instructions}
 import sigil.provider.llamacpp.LlamaCppProvider
@@ -413,22 +415,24 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
         for {
           _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(parentConv)))
-          events <- DelegateTaskTool.execute(
+          signals <- DelegateTaskTool.execute(
             DelegateTaskInput(role = role, brief = brief, modelId = modelId.value),
             ctx
           ).toList
-          // The tool's typed result is a `ToolResults` carrying the
-          // `DelegateTaskOutput` json — `{taskId, workerConvId, role}`.
-          resultOpt = events.collectFirst { case tr: ToolResults => tr }
-          payload = resultOpt.flatMap(_.typed).getOrElse(fabric.Obj.empty)
+          // The tool's typed result settles its ToolInvoke via a
+          // ToolDelta carrying a `DelegateTaskOutput(taskId, workerConvId, role)`.
+          settling = signals.collectFirst {
+            case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) => d
+          }
+          payload = settling.flatMap(_.output).collect { case o: DelegateTaskOutput => o }
           _ <- Task {
-            withClue("delegate_task must produce a Success ToolResults: ") {
-              resultOpt.map(_.outcome) shouldBe Some(ToolOutcome.Success)
+            withClue("delegate_task must produce a Success ToolDelta with DelegateTaskOutput: ") {
+              payload should not be empty
             }
             ()
           }
-          taskId       = payload.get("taskId").map(_.asString).getOrElse("")
-          workerConvId = payload.get("workerConvId").map(_.asString).getOrElse("")
+          taskId       = payload.map(_.taskId).getOrElse("")
+          workerConvId = payload.map(_.workerConvId).getOrElse("")
           _ <- Task {
             taskId should not be empty
             workerConvId should not be empty

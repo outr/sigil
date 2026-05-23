@@ -7,9 +7,10 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.{GlobalSpace, TurnContext}
 import sigil.conversation.{Conversation, Topic, TopicEntry, TurnInput}
-import sigil.event.{Event, ToolResults}
+import sigil.event.{Event, ToolOutcome}
 import sigil.participant.ParticipantId
-import sigil.script.{ExecuteScriptTool, ScriptInput, ScriptTool, ScriptExecutor}
+import sigil.script.{ExecuteScriptTool, ScriptInput, ScriptTool, ScriptToolOutput, ScriptExecutor}
+import sigil.signal.{Signal, ToolDelta}
 import sigil.tool.{JsonInput, JsonSchemaToDefinition, ToolName}
 
 /**
@@ -75,11 +76,13 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
     override def advertisedSurface: Option[String] = None
   }
 
-  /** Read an optional-string field out of a `ToolResults.typed` json
-    * (the `ScriptToolOutput` payload). `None` serialises as `Null`, so
-    * filter those out. */
-  private def typedString(tr: ToolResults, field: String): Option[String] =
-    tr.typed.flatMap(_.get(field)).filterNot(_.isNull).map(_.asString)
+  /** Pull the `ScriptToolOutput` off the settling Success ToolDelta. */
+  private def scriptOutput(signals: List[Signal]): ScriptToolOutput =
+    signals.collectFirst {
+      case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) =>
+        d.output.collect { case o: ScriptToolOutput => o }
+    }.flatten
+      .getOrElse(fail(s"expected a settling Success ToolDelta carrying ScriptToolOutput; saw: ${signals.map(_.getClass.getSimpleName).mkString(", ")}"))
 
   private def ctx(suffix: String): TurnContext = {
     val convId = Conversation.id(s"recover-$suffix-${rapid.Unique()}")
@@ -96,48 +99,39 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
   }
 
   "ExecuteScriptTool (bug #67)" should {
-    "emit a ToolResults with `error` populated when the executor's Task fails" in {
+    "emit a ScriptToolOutput with `error` populated when the executor's Task fails" in {
       val tool = new ExecuteScriptTool(FailingExecutor)
-      tool.execute(ScriptInput(code = "anything", summary = "test: error path"), ctx("task-failure")).toList.map { events =>
-        val results = events.collect { case r: ToolResults => r }
-        results should have size 1
-        val tr = results.head
-        val error = typedString(tr, "error")
-        error shouldBe defined
-        // Error carries the throwable's class name (full stack-trace formatting).
-        error.get should include ("RuntimeException")
-        error.get should include ("synthetic script failure")
-        typedString(tr, "output") shouldBe None
+      tool.execute(ScriptInput(code = "anything", summary = "test: error path"), ctx("task-failure")).toList.map { signals =>
+        val out = scriptOutput(signals)
+        out.error shouldBe defined
+        out.error.get should include ("RuntimeException")
+        out.error.get should include ("synthetic script failure")
+        out.output shouldBe empty
       }
     }
 
-    "emit a ToolResults with `error` populated when the executor THROWS synchronously" in {
+    "emit a ScriptToolOutput with `error` populated when the executor THROWS synchronously" in {
       // Pre-fix: this case would emit no events (sync throw escaped
       // Stream.force) and the orchestrator's dangling-tool-call
       // fallback would later inject `(no result recorded)`.
       // Post-fix: the outer Task.defer + handleError catches the
       // throw and emits a populated ScriptToolOutput.
       val tool = new ExecuteScriptTool(SyncThrowExecutor)
-      tool.execute(ScriptInput(code = "anything", summary = "test: error path"), ctx("sync-throw")).toList.map { events =>
-        val results = events.collect { case r: ToolResults => r }
-        results should have size 1
-        val tr = results.head
-        val error = typedString(tr, "error")
-        error shouldBe defined
-        error.get should include ("RuntimeException")
-        error.get should include ("synthetic synchronous throw")
-        typedString(tr, "output") shouldBe None
+      tool.execute(ScriptInput(code = "anything", summary = "test: error path"), ctx("sync-throw")).toList.map { signals =>
+        val out = scriptOutput(signals)
+        out.error shouldBe defined
+        out.error.get should include ("RuntimeException")
+        out.error.get should include ("synthetic synchronous throw")
+        out.output shouldBe empty
       }
     }
 
-    "emit a ToolResults with `output` populated on the happy path" in {
+    "emit a ScriptToolOutput with `output` populated on the happy path" in {
       val tool = new ExecuteScriptTool(SucceedingExecutor)
-      tool.execute(ScriptInput(code = "1 + 2", summary = "test: happy path"), ctx("happy")).toList.map { events =>
-        val results = events.collect { case r: ToolResults => r }
-        results should have size 1
-        val tr = results.head
-        typedString(tr, "output") shouldBe Some("ran:1 + 2")
-        typedString(tr, "error") shouldBe None
+      tool.execute(ScriptInput(code = "1 + 2", summary = "test: happy path"), ctx("happy")).toList.map { signals =>
+        val out = scriptOutput(signals)
+        out.output shouldBe Some("ran:1 + 2")
+        out.error shouldBe empty
       }
     }
 
@@ -147,21 +141,15 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
       // takes the first 8 lines of `printStackTrace`, which always
       // starts with the throwable line followed by `at` frames.
       val tool = new ExecuteScriptTool(FailingExecutor)
-      tool.execute(ScriptInput(code = "x", summary = "test: stack-trace path"), ctx("stack-trace")).toList.map { events =>
-        val tr = events.collectFirst { case r: ToolResults => r }.get
-        typedString(tr, "error").get should include ("at ")
+      tool.execute(ScriptInput(code = "x", summary = "test: stack-trace path"), ctx("stack-trace")).toList.map { signals =>
+        val out = scriptOutput(signals)
+        out.error.get should include ("at ")
       }
     }
   }
 
   "ScriptTool (bug #67) — same recovery in the persisted-tool path" should {
-    "emit a ToolResults with `error` populated when the executor's Task fails" in {
-      // Build a ScriptTool whose execution path goes through
-      // ScriptSigil.scriptExecutor — TestScriptSigil's executor is
-      // ScalaScriptExecutor by default; we need to pin a failing one
-      // for this test only. The simplest seam: use a tool with
-      // `name`/`code` and rely on the standard ScalaScriptExecutor
-      // failing on a script that throws.
+    "emit a ScriptToolOutput with `error` populated when the executor's Task fails" in {
       val tool = ScriptTool(
         name = ToolName("recover-test-throws"),
         description = "A script that throws a runtime exception.",
@@ -169,24 +157,13 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
         parameters = JsonSchemaToDefinition(obj("type" -> str("object"))),
         space = GlobalSpace
       )
-      tool.execute(JsonInput(obj()), ctx("script-tool-throw")).toList.map { events =>
-        val results = events.collect { case r: ToolResults => r }
-        results should have size 1
-        val tr = results.head
-        val error = typedString(tr, "error")
-        val output = typedString(tr, "output")
-        withClue(s"got error=$error, output=$output: ") {
-          error shouldBe defined
-          // The error string contains an abbreviated stack trace —
-          // assert it's framing-shaped (throwable line + at-frames),
-          // not which specific exception type the Scala REPL chose to
-          // wrap the script's throw in. `InvocationTargetException`,
-          // `RuntimeException`, `ScriptCompileException` all
-          // legitimate depending on REPL phase + reflection
-          // plumbing.
-          error.get should include ("Exception")
-          error.get should include ("at ")
-          output shouldBe None
+      tool.execute(JsonInput(obj()), ctx("script-tool-throw")).toList.map { signals =>
+        val out = scriptOutput(signals)
+        withClue(s"got error=${out.error}, output=${out.output}: ") {
+          out.error shouldBe defined
+          out.error.get should include ("Exception")
+          out.error.get should include ("at ")
+          out.output shouldBe empty
         }
       }
     }

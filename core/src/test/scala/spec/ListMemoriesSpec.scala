@@ -7,7 +7,8 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.{GlobalSpace, SpaceId, TurnContext}
 import sigil.conversation.{ConversationView, Conversation, ContextMemory, MemorySource, TopicEntry, TurnInput}
-import sigil.event.ToolResults
+import sigil.event.ToolOutcome
+import sigil.signal.ToolDelta
 import sigil.tool.context.{ListMemoriesInput, ListMemoriesTool}
 import sigil.tool.model.{ListMemoriesOutput, MemoryListEntry, MemoryListPage}
 
@@ -62,12 +63,14 @@ class ListMemoriesSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       pinned = pinned
     ))
 
-  /** Decode the `ToolResults.typed` payload back to [[ListMemoriesOutput]]. */
+  /** Pull the typed [[ListMemoriesOutput]] off the settling [[ToolDelta]]. */
   private def runTool(input: ListMemoriesInput, ctx: TurnContext): Task[ListMemoriesOutput] =
-    ListMemoriesTool.execute(input, ctx).toList.map { events =>
-      val json = events.collectFirst { case t: ToolResults if t.typed.isDefined => t.typed.get }
-        .getOrElse(fail(s"expected a ToolResults with a typed payload; saw: ${events.map(_.getClass.getSimpleName).mkString(", ")}"))
-      summon[RW[ListMemoriesOutput]].write(json)
+    ListMemoriesTool.execute(input, ctx).toList.map { signals =>
+      signals.collectFirst {
+        case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) =>
+          d.output.collect { case o: ListMemoriesOutput => o }
+      }.flatten
+        .getOrElse(fail(s"expected a Success ToolDelta carrying ListMemoriesOutput; saw: ${signals.map(_.getClass.getSimpleName).mkString(", ")}"))
     }
 
   /** Unwrap a `Listed` result or fail the test. */

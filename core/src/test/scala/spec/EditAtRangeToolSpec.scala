@@ -4,7 +4,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.tool.fs.{EditAtRangeTool, LocalFileSystemContext, ReadFileTool, WriteFileTool}
-import sigil.tool.model.{EditAtRangeInput, ReadFileInput, ReadFileOutput, ResponseContent, WriteFileInput}
+import sigil.tool.model.{EditAtRangeInput, ReadFileInput, ReadFileOutput, WriteFileInput}
 
 import java.nio.file.{Files, Path}
 
@@ -91,11 +91,15 @@ class EditAtRangeToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         events <- edit(ctx, EditAtRangeInput("a.txt", 0, 0, 0, 5, "HELLO"))
         re     <- new ReadFileTool(ctx).execute(ReadFileInput("a.txt"), tc).toList
       } yield {
-        val results = events.collect { case tr: sigil.event.ToolResults => tr }
+        val results = events.collect {
+          case d: sigil.signal.ToolDelta if d.outcome.contains(sigil.event.ToolOutcome.Success) => d
+        }
         results should not be empty
         // File on disk now contains the replacement.
-        re.collectFirst { case tr: sigil.event.ToolResults => tr.typed }.flatten
-          .map(j => summon[fabric.rw.RW[ReadFileOutput]].write(j).content) shouldBe Some("HELLO\nworld\n")
+        re.collectFirst {
+          case d: sigil.signal.ToolDelta if d.outcome.contains(sigil.event.ToolOutcome.Success) =>
+            d.output.collect { case o: ReadFileOutput => o.content }
+        }.flatten shouldBe Some("HELLO\nworld\n")
       }
     }
 
@@ -106,17 +110,20 @@ class EditAtRangeToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         events <- edit(ctx, EditAtRangeInput("oob.txt", 0, 100, 0, 100, "x"))
         re     <- new ReadFileTool(ctx).execute(ReadFileInput("oob.txt"), tc).toList
       } yield {
-        val failureMsg = events.collectFirst {
-          case m: sigil.event.Message
-            if m.role == sigil.event.MessageRole.Tool &&
-              m.disposition.isInstanceOf[sigil.event.MessageDisposition.Failure] => m
+        val failure = events.collectFirst {
+          case d: sigil.signal.ToolDelta
+            if d.outcome.exists(_.isInstanceOf[sigil.event.ToolOutcome.Failure]) => d
         }
-        failureMsg should not be empty
-        val text = failureMsg.get.content.collect { case ResponseContent.Text(t) => t }.mkString
-        text should include ("exceeds line")
+        failure should not be empty
+        val reason = failure.get.outcome.collect {
+          case sigil.event.ToolOutcome.Failure(r, _) => r
+        }.getOrElse("")
+        reason should include ("exceeds line")
         // File on disk is unchanged.
-        re.collectFirst { case tr: sigil.event.ToolResults => tr.typed }.flatten
-          .map(j => summon[fabric.rw.RW[ReadFileOutput]].write(j).content) shouldBe Some("short\n")
+        re.collectFirst {
+          case d: sigil.signal.ToolDelta if d.outcome.contains(sigil.event.ToolOutcome.Success) =>
+            d.output.collect { case o: ReadFileOutput => o.content }
+        }.flatten shouldBe Some("short\n")
       }
     }
   }

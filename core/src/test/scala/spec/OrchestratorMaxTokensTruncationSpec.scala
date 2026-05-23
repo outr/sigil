@@ -6,7 +6,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.Model
-import sigil.event.{Message, MessageRole, MessageVisibility, ToolInvoke}
+import sigil.event.{Message, MessageRole, ToolInvoke, ToolOutcome}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{
   CallId, ConversationMode, ConversationRequest, GenerationSettings,
@@ -95,28 +95,22 @@ class OrchestratorMaxTokensTruncationSpec extends AsyncWordSpec with AsyncTaskSp
 
   "Orchestrator on Done(MaxTokens) with an in-flight tool call" should {
 
-    "emit a paired Tool-role Failure Message diagnosing args-truncation" in {
+    "emit a settling ToolDelta with Failure outcome diagnosing args-truncation" in {
       runWith(new TruncatedArgsProvider, suffix = "truncation").map { signals =>
         val invoke = signals.collectFirst { case t: ToolInvoke => t }
           .getOrElse(fail("Expected a ToolInvoke for the orphaned call"))
-        // Sanity — orphan still settles via ToolDelta (bug #50/#51 path).
-        val terminalDelta = signals.collect { case d: ToolDelta => d }.find(_.target == invoke._id)
-        terminalDelta.flatMap(_.state) shouldBe Some(EventState.Complete)
-        terminalDelta.flatMap(_.input) shouldBe None
-
-        // The fix — a typed Tool-role `ToolResults(outcome = Failure)`
-        // paired to the orphan invoke, naming the tool and telling
-        // the agent the actual cause + remediation. Sigil #263.
-        val pairedFailure = signals.collectFirst {
-          case tr: sigil.event.ToolResults
-            if tr.role == MessageRole.Tool && tr.origin.contains(invoke._id) =>
-            tr
-        }.getOrElse(fail(s"Expected a Tool-role ToolResults paired to invoke ${invoke._id.value}; saw none"))
-
-        pairedFailure.visibility shouldBe MessageVisibility.Agents
-        pairedFailure.state shouldBe EventState.Complete
-        pairedFailure.outcome match {
-          case sigil.event.ToolOutcome.Failure(reason, recoverable) =>
+        // Sigil #265 — the orphan invoke is self-settling: one
+        // ToolDelta folds state = Complete + outcome = Failure(reason,
+        // recoverable = true) onto the invoke. The agent reads the
+        // failure on its next iteration via the invoke's own settled
+        // `outcome`/`summary` — no separate paired event.
+        val terminalDelta = signals.collect { case d: ToolDelta => d }
+          .find(_.target == invoke._id)
+          .getOrElse(fail(s"Expected a settling ToolDelta for invoke ${invoke._id.value}; saw none"))
+        terminalDelta.state shouldBe Some(EventState.Complete)
+        terminalDelta.input shouldBe None
+        terminalDelta.outcome match {
+          case Some(ToolOutcome.Failure(reason, recoverable)) =>
             reason should include ("lsp_did_change")
             reason should include ("max_tokens")
             reason should include ("arguments never fully arrived")
@@ -128,21 +122,18 @@ class OrchestratorMaxTokensTruncationSpec extends AsyncWordSpec with AsyncTaskSp
     }
 
     "NOT emit the misleading 'tool emitted no MessageRole.Tool event' framework error" in {
-      // The orphan-paired Failure closes the function_call ↔
-      // function_call_output pair; the frame renderer no longer
-      // needs to synthesize its "please report it" placeholder.
+      // The settled invoke closes the function_call ↔ function_call_output
+      // pair via its own outcome; the frame renderer no longer needs
+      // to synthesize its "please report it" placeholder.
       runWith(new TruncatedArgsProvider, suffix = "no-report-it").map { signals =>
-        // Sigil #263 — the orphan-paired Failure now rides on
-        // `ToolResults.outcome.reason`; the legacy Tool-role Message
-        // payload no longer carries this text.
         val anyTextMentions = signals.collect {
           case m: Message =>
             m.content.collectFirst { case ResponseContent.Text(t) => t }
               .orElse(m.failureReason).getOrElse("")
-          case tr: sigil.event.ToolResults =>
-            tr.outcome match {
-              case sigil.event.ToolOutcome.Failure(reason, _) => reason
-              case _                                          => tr.summary.getOrElse("")
+          case d: ToolDelta =>
+            d.outcome match {
+              case Some(ToolOutcome.Failure(reason, _)) => reason
+              case _                                    => d.summary.getOrElse("")
             }
           case _ => ""
         }
@@ -153,21 +144,14 @@ class OrchestratorMaxTokensTruncationSpec extends AsyncWordSpec with AsyncTaskSp
 
     "NOT emit a truncation diagnostic when Done(MaxTokens) fires with no in-flight call" in {
       runWith(new IdleMaxTokensProvider, suffix = "idle-max").map { signals =>
-        // No paired-to-orphan Failure messages should land — there's
-        // no orphan to pair with. The degenerate-content path (which
+        // No orphan-settling Failure deltas should land — there's no
+        // orphan invoke to settle. The degenerate-content path (which
         // fires on text-buffer repetition) is independent and not
         // exercised here.
-        val pairedFailures = signals.collect {
-          // Sigil #263 — Tool-role failure pairings now ride on
-          // `ToolResults(outcome = Failure)` rather than `Message`.
-          case tr: sigil.event.ToolResults
-            if tr.role == MessageRole.Tool && tr.origin.isDefined &&
-               (tr.outcome match {
-                 case _: sigil.event.ToolOutcome.Failure => true
-                 case _                                  => false
-               }) => tr
+        val failureDeltas = signals.collect {
+          case d: ToolDelta if d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) => d
         }
-        pairedFailures shouldBe empty
+        failureDeltas shouldBe empty
       }
     }
   }

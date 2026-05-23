@@ -6,9 +6,9 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, TopicEntry, TurnInput}
-import sigil.event.{Event, Message, MessageRole, ToolResults}
+import sigil.event.{Event, Message, MessageRole, ToolOutcome}
 import sigil.orchestrator.Orchestrator
-import sigil.signal.Signal
+import sigil.signal.{Signal, ToolDelta}
 import sigil.tool.{InMemoryToolFinder, TextToolOutput, ToolInput, ToolName}
 import sigil.tool.core.RecordConsentTool
 import sigil.tool.model.{RecordConsentInput, ResponseContent}
@@ -149,12 +149,12 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         signals <- dispatch(GatedTool, GatedInput("hello"), ctx)
       } yield {
         invocations.get() shouldBe 1
-        // A successful tool emits a ToolResults event carrying the
-        // typed TextToolOutput payload ({"text": "..."}).
-        val result = signals.collectFirst {
-          case tr: ToolResults => tr
-        }.getOrElse(fail("expected ToolResults"))
-        val text = result.typed.flatMap(_.get("text")).map(_.asString).getOrElse("")
+        // A successful tool settles its ToolInvoke via a ToolDelta
+        // carrying the typed TextToolOutput payload.
+        val text = signals.collectFirst {
+          case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) =>
+            d.output.collect { case TextToolOutput(t) => t }
+        }.flatten.getOrElse(fail("expected a Success ToolDelta with TextToolOutput"))
         text should include("ran with hello")
       }
     }
@@ -188,10 +188,10 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         ctx = turnContextFor(conv)
         signals <- dispatch(FreeTool, FreeInput("ok"), ctx)
       } yield {
-        val result = signals.collectFirst {
-          case tr: ToolResults => tr
-        }.getOrElse(fail("expected ToolResults"))
-        val text = result.typed.flatMap(_.get("text")).map(_.asString).getOrElse("")
+        val text = signals.collectFirst {
+          case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) =>
+            d.output.collect { case TextToolOutput(t) => t }
+        }.flatten.getOrElse(fail("expected a Success ToolDelta with TextToolOutput"))
         text should include("free ran with ok")
       }
     }

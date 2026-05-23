@@ -7,13 +7,13 @@ import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.{GlobalSpace, SpaceId, TurnContext}
 import sigil.conversation.{ConversationView, Conversation, TurnInput}
 import sigil.db.Model
-import sigil.event.{Event, Message, MessageRole, ToolInvoke, ToolResults}
+import sigil.event.{Event, Message, MessageRole, ToolInvoke, ToolOutcome}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{
   CallId, ConversationMode, ConversationRequest, GenerationSettings,
   Instructions, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
-import sigil.signal.{EventState, Signal}
+import sigil.signal.{EventState, Signal, ToolDelta}
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolPrecondition, ToolPreconditionResult, ToolResult}
 import sigil.tool.model.{NoResponseInput, ResponseContent}
 import spice.http.HttpRequest
@@ -113,13 +113,16 @@ class ToolPreconditionSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   "Orchestrator + Tool.preconditions" should {
     "let a tool run when all preconditions return Satisfied" in {
       runWith(new StubProvider(SatisfiedTool.name.value, "ok-call"), Vector(SatisfiedTool), "ok").map { signals =>
-        // A satisfied tool runs and emits a ToolResults event carrying
-        // its typed payload — no precondition-blocked Failure Message.
+        // A satisfied tool runs and settles its ToolInvoke via a
+        // ToolDelta carrying the typed payload — no precondition-
+        // blocked Failure Message.
         val toolMsgs = signals.collect { case m: Message if m.role == MessageRole.Tool => m }
         toolMsgs shouldBe empty
-        val results = signals.collect { case tr: ToolResults => tr }
+        val results = signals.collect {
+          case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) => d
+        }
         results should have size 1
-        results.head.typed.flatMap(_.get("text")).map(_.asString) shouldBe Some("RAN")
+        results.head.output.collect { case TextToolOutput(t) => t } shouldBe Some("RAN")
       }
     }
 

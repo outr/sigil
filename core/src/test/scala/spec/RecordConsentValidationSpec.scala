@@ -6,7 +6,9 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, TopicEntry, TurnInput}
-import sigil.event.{Message, ToolApproval, ToolResults}
+import sigil.event.{ToolApproval, ToolOutcome}
+import sigil.signal.ToolDelta
+import sigil.tool.TextToolOutput
 import sigil.orchestrator.Orchestrator
 import sigil.signal.EventState
 import sigil.tool.core.RecordConsentTool
@@ -58,8 +60,8 @@ class RecordConsentValidationSpec extends AsyncWordSpec with AsyncTaskSpec with 
                               }
       } yield {
         val failures = evs.collect {
-          case m: Message =>
-            m.failureReason.toVector
+          case d: ToolDelta =>
+            d.outcome.collect { case ToolOutcome.Failure(reason, _) => reason }.toVector
         }.flatten
         failures should not be empty
         failures.head.toLowerCase should include("unknown tool")
@@ -94,8 +96,8 @@ class RecordConsentValidationSpec extends AsyncWordSpec with AsyncTaskSpec with 
         approvalsForConv.size shouldBe 1
         approvalsForConv.head.approved shouldBe true
         val confirmations = evs.collect {
-          case tr: ToolResults =>
-            tr.typed.flatMap(_.get("text")).map(_.asString)
+          case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) =>
+            d.output.collect { case TextToolOutput(t) => t }
         }.flatten
         confirmations.exists(_.contains("approved")) shouldBe true
       }

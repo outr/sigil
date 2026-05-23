@@ -26,7 +26,7 @@ class SubtypeNameRegistrySpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val deltas = TestSigil.deltaSubtypeNames
       val notices = TestSigil.noticeSubtypeNames
 
-      events should contain allOf ("Message", "ToolInvoke", "ToolResults", "ModeChange", "TopicChange", "AgentState", "Stop")
+      events should contain allOf ("Message", "ToolInvoke", "ModeChange", "TopicChange", "AgentState", "Stop")
       deltas should contain allOf ("MessageDelta", "ToolDelta", "StateDelta", "AgentStateDelta", "LocationDelta", "ImageDelta")
       notices should contain allOf (
         "RequestConversationList",

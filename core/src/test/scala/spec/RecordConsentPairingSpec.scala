@@ -6,10 +6,11 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, TopicEntry, TurnInput}
-import sigil.event.{Event, Message, MessageRole, ToolApproval, ToolResults}
-import sigil.tool.ToolName
+import sigil.event.{ToolApproval, ToolOutcome}
+import sigil.signal.ToolDelta
+import sigil.tool.{TextToolOutput, ToolName}
 import sigil.tool.core.RecordConsentTool
-import sigil.tool.model.{RecordConsentInput, ResponseContent}
+import sigil.tool.model.RecordConsentInput
 
 /**
  * Coverage for sigil bug #84 — `record_consent` previously emitted
@@ -58,7 +59,7 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
 
   "RecordConsentTool.execute (#84)" should {
 
-    "emit a ToolApproval AND a Tool-role Message on approve" in {
+    "emit a ToolApproval AND settle the ToolInvoke on approve" in {
       for {
         ctx    <- turnContextFor()
         events <- RecordConsentTool.execute(
@@ -70,18 +71,18 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         approvals.head.toolName shouldBe ToolName(testToolName)
         approvals.head.approved shouldBe true
 
-        val results = events.collect {
-          case tr: ToolResults if tr.role == MessageRole.Tool => tr
+        val settling = events.collect {
+          case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) => d
         }
-        results should have size 1
-        val text = results.head.typed.flatMap(_.get("text")).map(_.asString).getOrElse("")
+        settling should have size 1
+        val text = settling.head.output.collect { case TextToolOutput(t) => t }.getOrElse("")
         text should include(testToolName)
         text should include("approved")
         text should include("user picked Claude state")
       }
     }
 
-    "emit a Tool-role Message on decline carrying the decline reason" in {
+    "settle the ToolInvoke with the decline reason on decline" in {
       for {
         ctx    <- turnContextFor()
         events <- RecordConsentTool.execute(
@@ -89,26 +90,26 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
                       reason = Some("user explicitly did not select")), ctx).toList
       } yield {
         events.collect { case t: ToolApproval => t } should have size 1
-        val results = events.collect {
-          case tr: ToolResults if tr.role == MessageRole.Tool => tr
+        val settling = events.collect {
+          case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) => d
         }
-        results should have size 1
-        val text = results.head.typed.flatMap(_.get("text")).map(_.asString).getOrElse("")
+        settling should have size 1
+        val text = settling.head.output.collect { case TextToolOutput(t) => t }.getOrElse("")
         text should include("declined")
         text should include("user explicitly did not select")
       }
     }
 
-    "emit a Tool-role ToolResults even when reason is absent" in {
+    "settle the ToolInvoke even when reason is absent" in {
       for {
         ctx    <- turnContextFor()
         events <- RecordConsentTool.execute(
                     RecordConsentInput(toolName = testToolName, approved = true), ctx).toList
       } yield {
-        val results = events.collect {
-          case tr: ToolResults if tr.role == MessageRole.Tool => tr
+        val settling = events.collect {
+          case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) => d
         }
-        results should have size 1
+        settling should have size 1
       }
     }
   }

@@ -8,7 +8,8 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.Conversation
-import sigil.event.ToolResults
+import sigil.event.ToolOutcome
+import sigil.signal.ToolDelta
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import sigil.tool.proxy.{ProxyTool, ToolProxyTransport}
 
@@ -68,11 +69,13 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         // Transport saw the typed input as Json.
         val (_, capturedJson, _) = transport.lastCall.get()
         JsonFormatter.Compact(capturedJson) should include("\"value\":7")
-        // The framework built exactly one ToolResults event from the
+        // The framework built exactly one settling ToolDelta from the
         // transport's resolution, carrying the decoded payload.
-        val results = events.collect { case tr: ToolResults => tr }
+        val results = events.collect {
+          case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) => d
+        }
         results should have size 1
-        results.head.typed.flatMap(_.get("text")).map(_.asString) shouldBe Some("remote-ok")
+        results.head.output.collect { case TextToolOutput(t) => t } shouldBe Some("remote-ok")
       }
     }
 

@@ -8,14 +8,14 @@ import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.Model
-import sigil.event.{Message, MessageRole, ToolInvoke, ToolResults}
+import sigil.event.{Message, MessageRole, ToolInvoke, ToolOutcome}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{
   CallId, ConversationMode, ConversationRequest, GenerationSettings,
   Instructions, Provider, ProviderCall, ProviderEvent, ProviderType,
   StopReason
 }
-import sigil.signal.Signal
+import sigil.signal.{Signal, ToolDelta}
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 import sigil.tool.model.ResponseContent
 import spice.http.HttpRequest
@@ -111,22 +111,25 @@ class ParallelToolCallDedupeSpec extends AsyncWordSpec with AsyncTaskSpec with M
         invokes should have size 2
 
         // Tool-role results paired to BOTH invokes — wire pairing
-        // satisfied. The genuine execution produces one `ToolResults`
-        // event carrying the typed payload; the deduplicated call gets
-        // a Tool-role Message inlining that same result content.
-        val toolResults = signals.collect { case tr: ToolResults => tr }
+        // satisfied. The genuine execution settles its invoke via a
+        // ToolDelta carrying the typed payload; the deduplicated call
+        // gets a Tool-role Message inlining that same result content.
+        val settledDeltas = signals.collect {
+          case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) => d
+        }
         val toolMessages = signals.collect {
           case m: Message if m.role == MessageRole.Tool => m
         }
         // One typed result for the genuine execution + one inlined
         // dupe Message — both invokes are paired.
-        (toolResults.size + toolMessages.size) should be >= 2
+        (settledDeltas.size + toolMessages.size) should be >= 2
 
-        // Result text — from the genuine ToolResults' typed payload
-        // and from the dupe Message's inlined content. Both carry the
-        // original execution's output, NOT a "see that result" pointer.
+        // Result text — from the genuine settling ToolDelta's typed
+        // output and from the dupe Message's inlined content. Both
+        // carry the original execution's output, NOT a "see that
+        // result" pointer.
         val rendered =
-          toolResults.flatMap(_.typed.flatMap(_.get("text").map(_.asString))) ++
+          settledDeltas.flatMap(_.output).collect { case TextToolOutput(t) => t } ++
             toolMessages.flatMap(_.content).collect { case ResponseContent.Text(t) => t }
         // The genuine result text appears at least once (the original execution).
         rendered.exists(_.contains("ran with hedged")) shouldBe true

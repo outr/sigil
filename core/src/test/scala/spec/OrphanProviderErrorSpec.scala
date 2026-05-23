@@ -6,13 +6,13 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.Model
-import sigil.event.{Message, MessageRole, ToolInvoke}
+import sigil.event.{Message, MessageRole, ToolInvoke, ToolOutcome}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{
   ConversationMode, ConversationRequest, GenerationSettings, Instructions,
   Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
-import sigil.signal.Signal
+import sigil.signal.{Signal, ToolDelta}
 import spice.http.HttpRequest
 
 /**
@@ -75,21 +75,19 @@ class OrphanProviderErrorSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         synthetic should have size 1
         synthetic.head.internal shouldBe true
 
-        // The Tool-role error result — paired to the synthetic
-        // invoke (NOT origin = None, which bug #64 would refuse).
-        // Sigil #263 — emitted as a typed `ToolResults(outcome =
-        // Failure(reason, recoverable))` so the structured outcome
-        // travels through the wire.
-        val errorResults = signals.collect {
-          case tr: sigil.event.ToolResults
-            if tr.role == MessageRole.Tool &&
-               (tr.outcome match {
-                 case sigil.event.ToolOutcome.Failure(reason, _) => reason.contains("Provider error")
-                 case _                                          => false
-               }) => tr
+        // The provider-error result — emitted as a settling ToolDelta
+        // folding `outcome = Failure(reason, recoverable = true)` onto
+        // the synthetic invoke (Sigil #265). The structured outcome
+        // travels through the wire; the agent reads "the call failed
+        // because $msg; retry with corrected args" on its next turn.
+        val errorDeltas = signals.collect {
+          case d: ToolDelta if d.target == synthetic.head._id &&
+            (d.outcome match {
+              case Some(ToolOutcome.Failure(reason, _)) => reason.contains("Provider error")
+              case _                                    => false
+            }) => d
         }
-        errorResults should have size 1
-        errorResults.head.origin shouldBe Some(synthetic.head._id)
+        errorDeltas should have size 1
 
         // Critically: NO orphan Tool-role event with origin = None.
         // (If one slipped through, bug #64's write-side validation

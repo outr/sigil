@@ -1,12 +1,11 @@
 package spec
 
-import fabric.rw.*
 import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.Conversation
-import sigil.event.{Event, MessageRole, ToolInvoke, ToolOutcome, ToolResults}
+import sigil.event.{Event, MessageRole, ToolInvoke, ToolOutcome}
 import sigil.signal.EventState
 import sigil.tool.ToolName
 import sigil.tool.output.JsonPagedResult
@@ -35,30 +34,20 @@ class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec 
     )))).unit
 
   private def publishPaginatedToolResult(convId: Id[Conversation], typedPayload: JsonPagedResult): Task[Unit] = {
-    // Tool-role events require an `origin` pointing at the parent
-    // ToolInvoke (framework invariant). Publish a synthetic invoke
-    // first, then pair the ToolResults to it.
-    val invokeId = Event.id()
+    // Sigil #265 — the typed output now sits on the settled
+    // ToolInvoke itself (no separate ToolResults event). The
+    // projection's pagination-navigator promotion reads
+    // `ti.output` on the settled invoke.
     val invoke = ToolInvoke(
       toolName       = ToolName("paginated_probe"),
       participantId  = TestAgent,
       conversationId = convId,
       topicId        = TestTopicEntry.id,
-      _id            = invokeId,
+      output         = typedPayload,
+      outcome        = ToolOutcome.Success,
       state          = EventState.Complete
     )
-    val result = ToolResults(
-      schemas        = Nil,
-      participantId  = TestAgent,
-      conversationId = convId,
-      topicId        = TestTopicEntry.id,
-      outcome        = ToolOutcome.Success,
-      typed          = Some(summon[RW[JsonPagedResult]].read(typedPayload)),
-      state          = EventState.Complete,
-      role           = MessageRole.Tool,
-      origin         = Some(invokeId)
-    )
-    TestSigil.publish(invoke).flatMap(_ => TestSigil.publish(result)).unit
+    TestSigil.publish(invoke).unit
   }
 
   private def suggestedToolsOf(participantId: sigil.participant.ParticipantId, convId: Id[Conversation]): Task[List[String]] =
@@ -66,7 +55,7 @@ class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec 
 
   "Sigil pagination navigator promotion (bug #202)" should {
 
-    "auto-promote next_page + query_tool_output when a ToolResults carries a JsonPagedResult with hasMore = true" in {
+    "auto-promote next_page + query_tool_output when a settled ToolInvoke carries a JsonPagedResult with hasMore = true" in {
       val convId = freshConvId()
       val page = JsonPagedResult(
         items       = Nil,
@@ -128,33 +117,20 @@ class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec 
       }
     }
 
-    "NOT promote for a ToolResults whose typed payload isn't a JsonPagedResult shape" in {
-      import fabric.{obj, str}
+    "NOT promote for a settled ToolInvoke whose typed output isn't a JsonPagedResult shape" in {
       val convId = freshConvId()
-      val invokeId = Event.id()
       val invoke = ToolInvoke(
         toolName       = ToolName("non_paginated_probe"),
         participantId  = TestAgent,
         conversationId = convId,
         topicId        = TestTopicEntry.id,
-        _id            = invokeId,
-        state          = EventState.Complete
-      )
-      val result = ToolResults(
-        schemas        = Nil,
-        participantId  = TestAgent,
-        conversationId = convId,
-        topicId        = TestTopicEntry.id,
+        output         = sigil.tool.TextToolOutput("ok"),
         outcome        = ToolOutcome.Success,
-        typed          = Some(obj("result" -> str("ok"))),
-        state          = EventState.Complete,
-        role           = MessageRole.Tool,
-        origin         = Some(invokeId)
+        state          = EventState.Complete
       )
       for {
         _     <- setup(convId)
         _     <- TestSigil.publish(invoke)
-        _     <- TestSigil.publish(result)
         names <- suggestedToolsOf(TestAgent, convId)
       } yield {
         names should not contain "next_page"
@@ -173,7 +149,7 @@ class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec 
     // field divergence is downstream (stale JAR, app-side
     // projection override, etc.).
     "preserve find_capability matches across grep AND query_tool_output events emitted via publish" in {
-      import sigil.event.{CapabilityResults, ToolOutcome}
+      import sigil.event.CapabilityResults
       import sigil.tool.discovery.{CapabilityMatch, CapabilityStatus, CapabilityType}
       val convId = freshConvId()
       val discovered = (1 to 50).map(i => s"discovered_tool_$i").toList
@@ -206,16 +182,7 @@ class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec 
         origin         = Some(findInvokeId)
       )
 
-      def pagedInvokeAndResult(toolName: String, ref: String): (ToolInvoke, ToolResults) = {
-        val invokeId = Event.id()
-        val invoke = ToolInvoke(
-          toolName       = ToolName(toolName),
-          participantId  = TestAgent,
-          conversationId = convId,
-          topicId        = TestTopicEntry.id,
-          _id            = invokeId,
-          state          = EventState.Complete
-        )
+      def pagedInvoke(toolName: String, ref: String): ToolInvoke = {
         val page = JsonPagedResult(
           items       = Nil,
           hasMore     = true,
@@ -224,22 +191,19 @@ class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec 
           referenceId = ref,
           callId      = Id[Event](s"$ref-call")
         )
-        val result = ToolResults(
-          schemas        = Nil,
+        ToolInvoke(
+          toolName       = ToolName(toolName),
           participantId  = TestAgent,
           conversationId = convId,
           topicId        = TestTopicEntry.id,
+          output         = page,
           outcome        = ToolOutcome.Success,
-          typed          = Some(summon[RW[JsonPagedResult]].read(page)),
-          state          = EventState.Complete,
-          role           = MessageRole.Tool,
-          origin         = Some(invokeId)
+          state          = EventState.Complete
         )
-        (invoke, result)
       }
 
-      val (grepInvoke, grepResult) = pagedInvokeAndResult("grep", "grep-ref")
-      val (qtoInvoke,  qtoResult)  = pagedInvokeAndResult("query_tool_output", "qto-ref")
+      val grepInvoke = pagedInvoke("grep", "grep-ref")
+      val qtoInvoke  = pagedInvoke("query_tool_output", "qto-ref")
 
       for {
         _              <- setup(convId)
@@ -247,13 +211,11 @@ class PaginationNavigatorPromotionSpec extends AsyncWordSpec with AsyncTaskSpec 
         _              <- TestSigil.publish(findInvoke)
         _              <- TestSigil.publish(capResults)
         afterFind      <- suggestedToolsOf(TestAgent, convId)
-        // 2. grep lands (PaginatedTool shape, schemas=Nil).
+        // 2. grep lands (PaginatedTool shape, settled with output set).
         _              <- TestSigil.publish(grepInvoke)
-        _              <- TestSigil.publish(grepResult)
         afterGrep      <- suggestedToolsOf(TestAgent, convId)
-        // 3. query_tool_output lands (TypedOutputTool shape, schemas=Nil).
+        // 3. query_tool_output lands (TypedOutputTool shape).
         _              <- TestSigil.publish(qtoInvoke)
-        _              <- TestSigil.publish(qtoResult)
         afterQto       <- suggestedToolsOf(TestAgent, convId)
       } yield {
         // After find_capability: exactly the 50 discovered tools.

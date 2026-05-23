@@ -6,7 +6,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.conversation.{ConversationView, Conversation, TurnInput}
 import sigil.db.Model
-import sigil.event.{Message, MessageRole, MessageVisibility, ToolInvoke}
+import sigil.event.{Message, MessageRole, ToolInvoke, ToolOutcome}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{
   CallId, ConversationMode, ConversationRequest, GenerationSettings,
@@ -80,35 +80,27 @@ class OrchestratorValidatorErrorSpec extends AsyncWordSpec with AsyncTaskSpec wi
   }
 
   "Orchestrator (bug #50)" should {
-    "surface a Tool-role Message carrying the validator error text" in {
+    "surface the validator error via a settling ToolDelta carrying the failure outcome" in {
       runWith(new ValidatorErrorProvider, suffix = "validator").map { signals =>
-        // Sanity — the orphan ToolInvoke gets a settled ToolDelta so
-        // the chip resolves rather than hanging at "input pending".
-        val invoke = signals.collectFirst { case t: ToolInvoke => t }
-          .getOrElse(fail("Expected a ToolInvoke; saw none"))
-        val terminalDelta = signals.collect { case d: ToolDelta => d }.find(_.target == invoke._id)
-        terminalDelta.flatMap(_.state) shouldBe Some(EventState.Complete)
-
-        // The actual fix — the validator error reaches the agent as
-        // a typed Tool-role `ToolResults(outcome = Failure(reason, …))`
-        // instead of being dropped. The orphan-settle path also emits
-        // a paired Tool-role failure result for wire-pairing well-
-        // formedness; filter to just the validator-error one
-        // carrying "Provider error". Sigil #263.
-        val errorResults = signals.collect {
-          case tr: sigil.event.ToolResults
-            if tr.role == MessageRole.Tool &&
-               (tr.outcome match {
-                 case sigil.event.ToolOutcome.Failure(reason, _) => reason.contains("Provider error")
-                 case _                                          => false
-               }) => tr
+        // Sigil #265 — the orphan invoke is self-settling: one ToolDelta
+        // folds state = Complete + outcome = Failure(reason, …) onto
+        // the orphan invoke. The provider-error pairing path THEN
+        // synthesises a `_provider_error` invoke (because the active
+        // call was already cleared by `settleOrphanToolInvoke`) and
+        // emits a second ToolDelta carrying the "Provider error: …"
+        // reason against THAT synthetic invoke — that's the one the
+        // agent reads on its next iteration.
+        val errorDeltas = signals.collect {
+          case d: ToolDelta if d.outcome match {
+            case Some(ToolOutcome.Failure(reason, _)) => reason.contains("Provider error")
+            case _                                    => false
+          } => d
         }
-        errorResults should have size 1
-        val res = errorResults.head
-        res.visibility shouldBe MessageVisibility.Agents
-        res.state shouldBe EventState.Complete
-        res.outcome match {
-          case sigil.event.ToolOutcome.Failure(reason, _) =>
+        errorDeltas should have size 1
+        val d = errorDeltas.head
+        d.state shouldBe Some(EventState.Complete)
+        d.outcome match {
+          case Some(ToolOutcome.Failure(reason, _)) =>
             reason should include("Provider error")
             reason should include("violated schema")
             reason should include("pattern")

@@ -6,7 +6,8 @@ import org.scalatest.wordspec.{AnyWordSpec, AsyncWordSpec}
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.Conversation
-import sigil.event.{Message, MessageRole, MessageVisibility, ToolResults}
+import sigil.event.ToolOutcome
+import sigil.signal.ToolDelta
 import sigil.tool.core.{NoResponseTool, RespondCardTool, RespondCardsTool, RespondFailureTool, RespondFieldTool, RespondOptionsTool, RespondTool}
 import sigil.tool.{TextToolOutput, Tool, ToolFailureException, ToolInput, ToolName, ToolOutput, ToolResult}
 
@@ -94,24 +95,25 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       }
     }
 
-    "auto-convert a thrown Task.error to a recoverable Failure Message on the execute path" in {
+    "auto-convert a thrown Task.error to a settling ToolDelta with recoverable Failure outcome" in {
       // A crash inside `executeOutput` is caught by the framework's
-      // `execute` resolution and surfaced as a Tool-role Failure
-      // Message — the exception message becomes the failure reason
+      // `execute` resolution and surfaced as a settling ToolDelta
+      // folding `outcome = Failure(reason, recoverable = true)` onto
+      // the invoke — the exception message becomes the failure reason
       // and the failing input is rendered into the args block.
       val tool = new LegacyEchoTool(throwOn = Some("kaboom"))
       turnContext().flatMap { ctx =>
-        tool.execute(EchoInput("hello"), ctx).toList.map { evs =>
-          val msgs = evs.collect { case m: Message => m }
-          msgs should have size 1
-          msgs.head.role shouldBe MessageRole.Tool
-          msgs.head.isFailure shouldBe true
-          val body = (msgs.head.failureReason.toVector ++ msgs.head.content.collect {
-            case sigil.tool.model.ResponseContent.Text(t) => t
-          }).mkString("\n")
-          body should include("kaboom")
+        tool.execute(EchoInput("hello"), ctx).toList.map { signals =>
+          val deltas = signals.collect {
+            case d: ToolDelta if d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) => d
+          }
+          deltas should have size 1
+          val reason = deltas.head.outcome.collect {
+            case ToolOutcome.Failure(r, _) => r
+          }.getOrElse("")
+          reason should include("kaboom")
           // Failing input is captured as JSON args.
-          body should include("hello")
+          reason should include("hello")
         }
       }
     }
@@ -134,29 +136,32 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       }
     }
 
-    "emit a Tool-role Failure-disposition Message on the event stream when execute runs against a Failure" in {
+    "emit a settling ToolDelta with Failure outcome on the event stream when execute runs against a Failure" in {
       val tool = new EnvelopeEchoTool
       turnContext().flatMap { ctx =>
-        tool.execute(EchoInput(""), ctx).toList.map { evs =>
-          val msgs = evs.collect { case m: Message => m }
-          msgs should have size 1
-          msgs.head.role shouldBe MessageRole.Tool
-          msgs.head.visibility shouldBe MessageVisibility.Agents
-          msgs.head.isFailure shouldBe true
-          val reason = msgs.head.failureReason.getOrElse("")
+        tool.execute(EchoInput(""), ctx).toList.map { signals =>
+          val deltas = signals.collect {
+            case d: ToolDelta if d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) => d
+          }
+          deltas should have size 1
+          val reason = deltas.head.outcome.collect {
+            case ToolOutcome.Failure(r, _) => r
+          }.getOrElse("")
           reason should include("payload must not be empty")
           reason should include("non-empty") // hint inlined
         }
       }
     }
 
-    "emit a Tool-role ToolResults event on the event stream when execute runs against a Success" in {
+    "emit a settling ToolDelta with Success outcome carrying the typed output when execute runs against a Success" in {
       val tool = new EnvelopeEchoTool
       turnContext().flatMap { ctx =>
-        tool.execute(EchoInput("hi"), ctx).toList.map { evs =>
-          val results = evs.collect { case tr: ToolResults => tr }
-          results should have size 1
-          results.head.typed.isDefined shouldBe true
+        tool.execute(EchoInput("hi"), ctx).toList.map { signals =>
+          val deltas = signals.collect {
+            case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) => d
+          }
+          deltas should have size 1
+          deltas.head.output.collect { case EchoOutput(echoed) => echoed } shouldBe Some("hi")
         }
       }
     }

@@ -7,10 +7,10 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
-import sigil.event.{Message, ToolResults}
-import sigil.signal.{Signal, WorkerAnswer}
+import sigil.event.{Message, ToolOutcome}
+import sigil.signal.{Signal, ToolDelta, WorkerAnswer}
 import sigil.tool.model.{AnswerWorkerInput, ResponseContent}
-import sigil.tool.util.AnswerWorkerTool
+import sigil.tool.util.{AnswerWorkerOutput, AnswerWorkerTool}
 import sigil.workflow.WorkflowTrigger
 import sigil.workflow.trigger.AnswerTrigger
 
@@ -89,13 +89,15 @@ class AnswerTriggerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       Thread.sleep(60)
 
       val input = AnswerWorkerInput(taskId = "wf-1", questionId = "q1", answer = "go ahead with OAuth")
-      AnswerWorkerTool.execute(input, turnContext()).toList.map { events =>
+      AnswerWorkerTool.execute(input, turnContext()).toList.map { signals =>
         running = false
-        // Tool's success result is a ToolResults carrying the typed
-        // AnswerWorkerOutput; the framework also broadcasts the
-        // WorkerAnswer notice through `signals`.
-        val toolOk = events.collectFirst { case tr: ToolResults => tr }
-          .flatMap(_.typed).flatMap(_.get("ok")).map(_.asBoolean)
+        // Tool's success result settles its ToolInvoke via a ToolDelta
+        // carrying the typed AnswerWorkerOutput; the framework also
+        // broadcasts the WorkerAnswer notice through `signals`.
+        val toolOk = signals.collectFirst {
+          case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) =>
+            d.output.collect { case o: AnswerWorkerOutput => o.ok }
+        }.flatten
         toolOk shouldBe Some(true)
 
         Thread.sleep(80)

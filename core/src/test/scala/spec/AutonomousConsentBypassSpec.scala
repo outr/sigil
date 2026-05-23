@@ -6,11 +6,11 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, TopicEntry, TurnInput}
-import sigil.event.{Message, MessageRole, ToolResults}
+import sigil.event.{Message, MessageRole, ToolOutcome}
 import sigil.orchestrator.Orchestrator
 import sigil.participant.DefaultAgentParticipant
 import sigil.provider.{GenerationSettings, Instructions, SafetyPosture}
-import sigil.signal.Signal
+import sigil.signal.{Signal, ToolDelta}
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 /**
@@ -80,10 +80,11 @@ class AutonomousConsentBypassSpec extends AsyncWordSpec with AsyncTaskSpec with 
     Orchestrator.dispatchAtomic(ConsentGatedTool, input, ctx, invokeId).toList
   }
 
-  /** Text payloads carried by `ToolResults.typed` ({"text": "…"}). */
+  /** Text payloads carried by settling `ToolDelta`s. */
   private def resultTexts(signals: List[Signal]): List[String] =
     signals.collect {
-      case tr: ToolResults => tr.typed.flatMap(_.get("text")).map(_.asString)
+      case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) =>
+        d.output.collect { case TextToolOutput(t) => t }
     }.flatten
 
   "consent gate" should {

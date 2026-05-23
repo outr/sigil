@@ -6,7 +6,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.Conversation
-import sigil.event.{Event, MessageRole, ToolInvoke, ToolOutcome, ToolResults}
+import sigil.event.{Event, ToolInvoke, ToolOutcome}
 import sigil.provider.ConversationMode
 import sigil.signal.EventState
 import sigil.tool.ToolName
@@ -40,31 +40,23 @@ class Bugs203To206RegressionSpec extends AsyncWordSpec with AsyncTaskSpec with M
       _id          = convId
     )))).unit
 
+  /** Publish a settled `ToolInvoke` carrying the typed output (or a
+    * placeholder TextToolOutput when `typed` is None). Sigil #265
+    * collapsed the tool transaction onto the invoke itself, so the
+    * projection-side machinery reads `ti.output` directly. */
   private def publishToolResults(convId: Id[Conversation],
                                  toolName: String,
-                                 typed: Option[fabric.Json] = None,
-                                 schemas: List[sigil.tool.ToolSchema] = Nil): Task[Unit] = {
-    val invokeId = Event.id()
+                                 typed: Option[sigil.tool.ToolOutput] = None): Task[Unit] = {
     val invoke = ToolInvoke(
       toolName       = ToolName(toolName),
       participantId  = TestAgent,
       conversationId = convId,
       topicId        = TestTopicEntry.id,
-      _id            = invokeId,
+      output         = typed.getOrElse(sigil.tool.TextToolOutput("")),
+      outcome        = ToolOutcome.Success,
       state          = EventState.Complete
     )
-    val result = ToolResults(
-      schemas        = schemas,
-      participantId  = TestAgent,
-      conversationId = convId,
-      topicId        = TestTopicEntry.id,
-      outcome        = ToolOutcome.Success,
-      typed          = typed,
-      state          = EventState.Complete,
-      role           = MessageRole.Tool,
-      origin         = Some(invokeId)
-    )
-    TestSigil.publish(invoke).flatMap(_ => TestSigil.publish(result)).unit
+    TestSigil.publish(invoke).unit
   }
 
   // ---- #203 ----
@@ -153,19 +145,19 @@ class Bugs203To206RegressionSpec extends AsyncWordSpec with AsyncTaskSpec with M
           .copy(suggestedTools = List(ToolName("edit_file"), ToolName("read_file"))))
       }).unit
 
-      val pagedJson = summon[RW[JsonPagedResult]].read(JsonPagedResult(
+      val pagedOutput = JsonPagedResult(
         items       = Nil,
         hasMore     = true,
         page        = 0,
         pageSize    = 50,
         referenceId = "ref",
         callId      = Id[Event]("call")
-      ))
+      )
 
       for {
         _      <- setup(convId)
         _      <- preSeed
-        _      <- publishToolResults(convId, "grep", typed = Some(pagedJson))
+        _      <- publishToolResults(convId, "grep", typed = Some(pagedOutput))
         proj   <- TestSigil.projectionFor(TestAgent, convId)
       } yield {
         val names = proj.suggestedTools.map(_.value)
@@ -175,42 +167,6 @@ class Bugs203To206RegressionSpec extends AsyncWordSpec with AsyncTaskSpec with M
         // Pagination navigators merged in.
         names should contain("next_page")
         names should contain("query_tool_output")
-      }
-    }
-
-    "still REPLACE the overlay when a tool emits its own schema-driven followups" in {
-      // create_workflow → [add_workflow_step, add_trigger] pattern.
-      // The tool intentionally narrows the agent's next-turn toolset;
-      // we shouldn't preserve unrelated prior promotions.
-      val convId = freshConvId()
-      val preSeed = TestSigil.withDB(_.participantProjections.transaction { tx =>
-        tx.upsert(sigil.conversation.ParticipantProjection.empty(TestAgent, convId)
-          .copy(suggestedTools = List(ToolName("edit_file"))))
-      }).unit
-
-      // Fabricate a small tool schema-list payload.
-      val followupSchemas: List[sigil.tool.ToolSchema] = List(
-        sigil.tool.ToolSchema(
-          id          = Id("add_workflow_step"),
-          name        = ToolName("add_workflow_step"),
-          description = "Append a step",
-          input       = fabric.define.Definition(fabric.define.DefType.Obj(scala.collection.immutable.VectorMap.empty)),
-          examples    = Nil,
-          output      = None
-        )
-      )
-
-      for {
-        _    <- setup(convId)
-        _    <- preSeed
-        _    <- publishToolResults(convId, "create_workflow", schemas = followupSchemas)
-        proj <- TestSigil.projectionFor(TestAgent, convId)
-      } yield {
-        val names = proj.suggestedTools.map(_.value)
-        // Schema-declared followup is now the basis (replaces the prior overlay).
-        names should contain("add_workflow_step")
-        // Prior overlay overridden.
-        names should not contain "edit_file"
       }
     }
   }

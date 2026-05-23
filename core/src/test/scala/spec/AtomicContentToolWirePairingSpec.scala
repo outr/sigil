@@ -12,12 +12,13 @@ import _root_.sigil.tool.core.{CoreTools, RespondOptionsTool}
 /** Coverage for atomic-content tool wire pairing.
   *
   * Atomic-content tools (`respond_options`, the `respond` family,
-  * `no_response`) emit a real `ToolResults` event under the typed
-  * tool-execution model — so `renderFrames` pairs each `function_call`
-  * with the real `function_call_output`, exactly one, never a
-  * fabricated synthetic duplicate (Sigil #259: a leftover synthetic
-  * pairing on top of the real one made Anthropic reject the request
-  * with two `tool_result` blocks for one `tool_use`). */
+  * `no_response`) settle their `ToolInvoke` via a `ToolDelta` carrying
+  * the typed output under the typed tool-execution model — so
+  * `renderFrames` pairs each `function_call` with one
+  * `function_call_output`, exactly one, never a fabricated synthetic
+  * duplicate (Sigil #259: a leftover synthetic pairing on top of the
+  * real one made Anthropic reject the request with two `tool_result`
+  * blocks for one `tool_use`). */
 class AtomicContentToolWirePairingSpec extends AnyWordSpec with Matchers {
 
   // Test-only Provider exposing `renderFrames` (which is
@@ -37,7 +38,7 @@ class AtomicContentToolWirePairingSpec extends AnyWordSpec with Matchers {
   private val callId: Id[Event] = Id[Event]("call-respond-options-1")
 
   "Provider.renderFrames" should {
-    "render exactly one function_call_output for a respond_options call, paired by its real ToolResults" in {
+    "render exactly one function_call_output for a respond_options call, paired by its settled ToolInvoke" in {
       val frames = Vector[ContextFrame](
         ContextFrame.Text(
           content = "Bind the workspace.",
@@ -66,8 +67,9 @@ class AtomicContentToolWirePairingSpec extends AnyWordSpec with Matchers {
       }
       assistantWithCall should not be empty
 
-      // Exactly one function_call_output for the call — the real
-      // ToolResult, never a fabricated synthetic duplicate (#259).
+      // Exactly one function_call_output for the call — the settled
+      // ToolInvoke's typed output, never a fabricated synthetic
+      // duplicate (#259).
       val pairedOutputs = messages.collect {
         case t: ProviderMessage.ToolResult if t.toolCallId == cidStr => t
       }

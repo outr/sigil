@@ -6,13 +6,13 @@ import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TurnInput}
 import sigil.db.Model
-import sigil.event.{Message, MessageDisposition, MessageRole, ToolInvoke, ToolResults}
+import sigil.event.{ToolInvoke, ToolOutcome}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{
   CallId, ConversationMode, ConversationRequest, GenerationSettings,
   Instructions, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
-import sigil.signal.Signal
+import sigil.signal.{Signal, ToolDelta}
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 import sigil.tool.model.NoResponseInput
 import spice.http.HttpRequest
@@ -97,9 +97,9 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
     } yield signals
   }
 
-  "Orchestrator.executeAtomic origin stamping (bug #69)" should {
+  "Orchestrator.executeAtomic pairing (sigil #265 — tool transaction collapses onto its ToolInvoke)" should {
 
-    "stamp origin = invokeId on the ToolResults event a Success tool produces" in {
+    "settle the dispatching ToolInvoke via a ToolDelta(target = invokeId, outcome = Success)" in {
       runWith(
         provider = new StubProvider(SuccessTool.name.value, "success-call"),
         tools    = Vector(SuccessTool),
@@ -109,13 +109,14 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
         invokes should have size 1
         val invokeId = invokes.head._id
 
-        val results = signals.collect { case tr: ToolResults => tr }
-        results should have size 1
-        results.head.origin shouldBe Some(invokeId)
+        val deltas = signals.collect {
+          case d: ToolDelta if d.target == invokeId && d.outcome.contains(ToolOutcome.Success) => d
+        }
+        deltas should have size 1
       }
     }
 
-    "stamp origin = invokeId on the Tool-role Failure Message a Failure tool produces" in {
+    "settle the dispatching ToolInvoke via a ToolDelta(target = invokeId, outcome = Failure) when the tool resolves to a logical Failure" in {
       runWith(
         provider = new StubProvider(FailureTool.name.value, "failure-call"),
         tools    = Vector(FailureTool),
@@ -125,12 +126,15 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
         invokes should have size 1
         val invokeId = invokes.head._id
 
-        val toolMessages = signals.collect {
-          case m: Message if m.role == MessageRole.Tool => m
+        val deltas = signals.collect {
+          case d: ToolDelta if d.target == invokeId &&
+            d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) => d
         }
-        toolMessages should have size 1
-        toolMessages.head.disposition shouldBe a [MessageDisposition.Failure]
-        toolMessages.head.origin shouldBe Some(invokeId)
+        deltas should have size 1
+        val reason = deltas.head.outcome.collect {
+          case ToolOutcome.Failure(r, _) => r
+        }.getOrElse("")
+        reason should include("deliberate failure")
       }
     }
   }

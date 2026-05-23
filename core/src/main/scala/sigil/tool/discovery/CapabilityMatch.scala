@@ -20,9 +20,9 @@ import fabric.rw.*
  *   - `paginate` — `Some(true)` when the matched tool emits a paged
  *     `JsonPagedResult` (the agent must walk pages with `next_page`
  *     to consume the full output); `Some(false)` for single-shot
- *     tools whose result lands in one [[sigil.event.ToolResults]]
- *     event. `None` for non-tool capability kinds (modes, skills,
- *     memories) where pagination is not a meaningful concept.
+ *     tools whose result lands on the settled `ToolInvoke`.
+ *     `None` for non-tool capability kinds (modes, skills, memories)
+ *     where pagination is not a meaningful concept.
  *
  * Mirrors Scalagentic's `CapabilityMatch` shape (the framework's
  * predecessor) and leaves room to grow categories (`McpServer`,

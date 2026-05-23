@@ -8,7 +8,7 @@ import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.Model
-import sigil.event.{Event, Message, MessageRole, ToolInvoke, ToolResults}
+import sigil.event.{Event, Message, MessageRole, ToolInvoke, ToolOutcome}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{
   CallId, ConversationMode, ConversationRequest, GenerationSettings,
@@ -21,10 +21,12 @@ import spice.http.HttpRequest
 
 /**
  * Conversation-corruption resistance regression — every persisted
- * `ToolInvoke` must reach `state = Complete` AND have at least one
- * paired result event (a `MessageRole.Tool` Message OR a
- * `ToolResults` event whose `origin` points back at the invoke) by
- * the time the surrounding turn's publish pipeline finishes.
+ * `ToolInvoke` must reach `state = Complete` with a non-Pending
+ * `outcome` (Success or Failure) by the time the surrounding turn's
+ * publish pipeline finishes. Sigil #265 collapsed the tool transaction
+ * onto a single self-settling invoke; the framework no longer emits
+ * a separate paired event — the invoke's own settled `outcome`/
+ * `output` IS the pair.
  *
  * The invariant has to hold under adversarial tool bodies — the bug
  * doc enumerates several failure shapes (sync throw at construction,
@@ -152,13 +154,20 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       withClue(s"ToolInvoke ${invoke._id.value} (tool=${invoke.toolName.value}) must reach state=Complete: ") {
         invoke.state shouldBe EventState.Complete
       }
-      val paired = events.exists {
-        case m: Message if m.role == MessageRole.Tool && m.origin.contains(invoke._id)      => true
-        case r: ToolResults if r.origin.contains(invoke._id)                                => true
-        case _                                                                              => false
+      // Sigil #265 — the settled invoke must carry a non-Pending
+      // outcome (Success or Failure) OR there must be a paired
+      // Tool-role Message (still used for legacy / orchestrator-
+      // synthesised diagnostic paths). The Pending outcome means
+      // the invoke wasn't settled and the renderer would inject
+      // "tool failed: no result emitted" — that's the corruption
+      // this spec guards against.
+      val settled = invoke.outcome != ToolOutcome.Pending
+      val pairedMessage = events.exists {
+        case m: Message if m.role == MessageRole.Tool && m.origin.contains(invoke._id) => true
+        case _                                                                         => false
       }
-      withClue(s"ToolInvoke ${invoke._id.value} (tool=${invoke.toolName.value}) must have at least one paired result event: ") {
-        paired shouldBe true
+      withClue(s"ToolInvoke ${invoke._id.value} (tool=${invoke.toolName.value}) must be self-settled (outcome != Pending) OR have a paired Tool-role Message: ") {
+        (settled || pairedMessage) shouldBe true
       }
     }
     succeed

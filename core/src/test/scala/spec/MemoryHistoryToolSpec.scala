@@ -6,7 +6,9 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, ContextMemory, MemorySource, TurnInput}
-import sigil.event.ToolResults
+import sigil.event.ToolOutcome
+import sigil.signal.ToolDelta
+import sigil.tool.TextToolOutput
 import sigil.tool.memory.{MemoryHistoryInput, MemoryHistoryTool}
 
 /**
@@ -49,12 +51,14 @@ class MemoryHistoryToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       for {
         _ <- TestSigil.upsertMemoryByKey(memoryAt(key, "Scala"))
         _ <- TestSigil.upsertMemoryByKey(memoryAt(key, "Rust"))
-        events <- MemoryHistoryTool.execute(MemoryHistoryInput(
+        signals <- MemoryHistoryTool.execute(MemoryHistoryInput(
           key = key, spaceId = Some(TestSpace)), ctx(c)).toList
       } yield {
-        val tr = events.collectFirst { case t: ToolResults => t }
-          .getOrElse(fail(s"expected a ToolResults; saw: ${events.map(_.getClass.getSimpleName).mkString(", ")}"))
-        val body = tr.typed.flatMap(_.get("text")).map(_.asString).getOrElse("")
+        val body = signals.collectFirst {
+          case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) =>
+            d.output.collect { case TextToolOutput(text) => text }
+        }.flatten
+          .getOrElse(fail(s"expected a Success ToolDelta carrying TextToolOutput; saw: ${signals.map(_.getClass.getSimpleName).mkString(", ")}"))
         body should include("2 version(s)")
         body should include("Scala")
         body should include("Rust")

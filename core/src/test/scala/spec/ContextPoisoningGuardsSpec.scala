@@ -7,13 +7,13 @@ import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.{GlobalSpace, SpaceId, TurnContext}
 import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.Model
-import sigil.event.{Event, Message, MessageRole, ToolInvoke, ToolResults}
+import sigil.event.{Event, Message, MessageRole, ToolInvoke, ToolOutcome}
 import sigil.orchestrator.Orchestrator
 import sigil.provider.{
   CallId, ConversationMode, ConversationRequest, GenerationSettings,
   Instructions, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
-import sigil.signal.{EventState, Signal}
+import sigil.signal.{EventState, Signal, ToolDelta}
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 import sigil.tool.core.NoResponseTool
 import sigil.tool.model.{NoResponseInput, ResponseContent}
@@ -105,13 +105,13 @@ class ContextPoisoningGuardsSpec extends AsyncWordSpec with AsyncTaskSpec with M
         val invokes = signals.collect { case t: ToolInvoke => t }
         invokes should have size 2
 
-        // The original invoke's result is now a ToolResults event
-        // carrying the typed payload `{"text":"echoed: hello"}`.
-        val toolResults = signals.collect {
-          case tr: ToolResults if tr.conversationId == convId => tr
+        // The original invoke settles via a ToolDelta carrying the
+        // typed payload `TextToolOutput("echoed: hello")`.
+        val settledDeltas = signals.collect {
+          case d: ToolDelta if d.conversationId == convId && d.outcome.contains(ToolOutcome.Success) => d
         }
-        toolResults should not be empty
-        val resultTexts = toolResults.flatMap(_.typed).flatMap(_.get("text")).map(_.asString)
+        settledDeltas should not be empty
+        val resultTexts = settledDeltas.flatMap(_.output).collect { case TextToolOutput(t) => t }
         resultTexts.exists(_.contains("echoed: hello")) shouldBe true
 
         // The dedup path emits one Tool-role Message for the duplicate

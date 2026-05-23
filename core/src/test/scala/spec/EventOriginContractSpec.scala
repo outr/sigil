@@ -4,9 +4,9 @@ import lightdb.id.Id
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.conversation.{ConversationView, ContextFrame, Conversation, FrameBuilder, ToolCallState}
-import sigil.event.{Event, Message, MessageRole, ToolInvoke, ToolResults}
+import sigil.event.{Event, Message, MessageRole, ToolInvoke}
 import sigil.signal.EventState
-import sigil.tool.{ToolName, ToolSchema}
+import sigil.tool.ToolName
 import sigil.tool.model.ResponseContent
 
 /**
@@ -85,25 +85,6 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
       tc.state shouldBe ToolCallState.Complete("the result")
     }
 
-    "fold correctly when origin is set on a typed Event subclass" in {
-      // Same invariant for ToolResults / CapabilityResults / any
-      // other Tool-role Event subclass — the typed payload renders
-      // via stripEventBoilerplate, but the pairing path is identical.
-      val invoke = completeInvoke("typed_paired")
-      val results = ToolResults(
-        schemas = List.empty[ToolSchema],
-        participantId = TestAgent,
-        conversationId = conversationId,
-        topicId = TestTopicId,
-        state = EventState.Complete,
-        origin = Some(invoke._id)
-      )
-      val frames = FrameBuilder.appendFor(FrameBuilder.appendFor(Vector.empty, invoke), results)
-      frames should have size 1
-      val tc = frames.head.asInstanceOf[ContextFrame.ToolCall]
-      tc.callId shouldBe invoke._id
-      tc.state shouldBe a[ToolCallState.Complete]
-    }
   }
 
   // ---- multi-event tool emit: all share one origin ----
@@ -311,7 +292,7 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
     }
   }
 
-  // ---- wire-level merge: multiple ToolResults → one function_call_output ----
+  // ---- wire-level: settled ToolInvoke → one function_call_output ----
 
   "Provider.renderFrames renders ToolCall(Complete) as one function_call_output (bug #69)" should {
     "produce a single ProviderMessage.ToolResult carrying the Complete state's content" in {
