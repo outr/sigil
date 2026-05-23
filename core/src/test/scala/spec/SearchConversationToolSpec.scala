@@ -6,8 +6,8 @@ import rapid.AsyncTaskSpec
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TurnInput}
 import fabric.rw.*
-import sigil.event.{Message, ToolResults}
-import sigil.signal.EventState
+import sigil.event.Message
+import sigil.signal.{EventState, Signal, ToolDelta}
 import sigil.tool.model.{ResponseContent, SearchConversationInput, SearchConversationOutput}
 import sigil.tool.util.SearchConversationTool
 
@@ -49,11 +49,11 @@ class SearchConversationToolSpec extends AsyncWordSpec with AsyncTaskSpec with M
     )
   }
 
-  private def typed(events: List[sigil.event.Event]): SearchConversationOutput = {
-    val tr = events.collectFirst { case t: ToolResults => t }
-      .getOrElse(fail("expected a ToolResults event"))
-    summon[RW[SearchConversationOutput]].write(tr.typed.get)
-  }
+  private def typed(signals: List[Signal]): SearchConversationOutput =
+    signals.collectFirst {
+      case d: ToolDelta if d.output.exists(_.isInstanceOf[SearchConversationOutput]) =>
+        d.output.get.asInstanceOf[SearchConversationOutput]
+    }.getOrElse(fail("expected a settling ToolDelta carrying a SearchConversationOutput"))
 
   "SearchConversationTool (fallback path)" should {
     "return typed hits scoped to the caller's conversation" in {

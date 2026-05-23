@@ -1,6 +1,6 @@
 package spec
 
-import fabric.io.JsonParser
+import fabric.rw.*
 import lightdb.id.Id
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.matchers.should.Matchers
@@ -8,9 +8,11 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
-import sigil.event.Message
+import sigil.event.ToolOutcome
+import sigil.signal.{Signal, ToolDelta}
+import sigil.tool.ToolOutput
 import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext, ReadFileTool, WriteFileTool, WorkspacePathResolver}
-import sigil.tool.model.{ReadFileInput, ResponseContent, WriteFileInput}
+import sigil.tool.model.{ReadFileInput, WriteFileInput}
 
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
@@ -63,14 +65,16 @@ class WorkspaceRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     file
   }
 
-  private def extractJson(events: List[sigil.event.Event]): fabric.Json = {
-    val fromTyped = events.collectFirst {
-      case t: sigil.event.ToolResults if t.typed.isDefined => t.typed.get
-    }
-    fromTyped.orElse {
-      events.collectFirst { case m: Message =>
-        m.content.collectFirst { case ResponseContent.Text(t) => t }
-      }.flatten.map(JsonParser(_))
+  private def extractJson(signals: List[Signal]): fabric.Json = {
+    signals.collectFirst {
+      case d: ToolDelta if d.output.exists(_ != ToolOutput.Pending) =>
+        summon[RW[ToolOutput]].read(d.output.get)
+    }.orElse {
+      signals.collectFirst {
+        case d: ToolDelta if d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) =>
+          val f = d.outcome.get.asInstanceOf[ToolOutcome.Failure]
+          fabric.obj("reason" -> fabric.str(f.reason), "recoverable" -> fabric.bool(f.recoverable))
+      }
     }.getOrElse(fabric.Obj.empty)
   }
 

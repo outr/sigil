@@ -61,12 +61,10 @@ object ToolHeavyBench {
       (1 to turns).foreach { n =>
         current :+= ProfilerHarness.textFrame(s"User turn $n: please find a tool that can help with task $n.")
         val fcCall = ProfilerHarness.toolCallFrame("find_capability", s"""{"keywords":"task $n action"}""")
-        current :+= fcCall
-        current :+= ProfilerHarness.toolResultFrame(fcCall.callId,
+        current :+= ProfilerHarness.completedToolCallFrame(fcCall,
           s"""{"matches":[{"name":"tool_${n % 25}","description":"${descriptions(n % descriptions.size)}","capabilityType":"Tool","score":${25 - n % 25},"status":{"type":"Ready"}}]}""")
         val toolCall = ProfilerHarness.toolCallFrame(s"tool_${n % 25}", s"""{"value":"input for turn $n"}""")
-        current :+= toolCall
-        current :+= ProfilerHarness.toolResultFrame(toolCall.callId, s"""{"result":"tool_${n % 25} executed for turn $n"}""")
+        current :+= ProfilerHarness.completedToolCallFrame(toolCall, s"""{"result":"tool_${n % 25} executed for turn $n"}""")
         current :+= ProfilerHarness.textFrame(s"Agent reply $n: I used tool_${n % 25}; here are the results.", ProfilerHarness.AgentId)
         builder += current
       }

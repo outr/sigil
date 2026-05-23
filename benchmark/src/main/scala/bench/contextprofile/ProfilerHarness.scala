@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import sigil.conversation.{
   ContextFrame, ContextMemory, ContextSummary, Conversation,
-  ParticipantProjection, TopicEntry, Topic, TurnInput
+  ParticipantProjection, ToolCallState, TopicEntry, Topic, TurnInput
 }
 import sigil.GlobalSpace
 import sigil.conversation.MemorySource
@@ -83,12 +83,13 @@ object ProfilerHarness {
     )
   }
 
-  def toolResultFrame(callId: Id[Event], content: String): ContextFrame.ToolResult =
-    ContextFrame.ToolResult(
-      callId = callId,
-      content = content,
-      sourceEventId = Id[Event]()
-    )
+  /** Sigil #261 / #265 — `ContextFrame.ToolCall` carries the result
+    * inline via `state = ToolCallState.Complete(content)`. Helper
+    * builds a fresh ToolCall in the completed state for profiling
+    * fixtures (replaces the pre-#261 separate `ContextFrame.ToolResult`
+    * frame the harness emitted). */
+  def completedToolCallFrame(call: ContextFrame.ToolCall, content: String): ContextFrame.ToolCall =
+    call.copy(state = ToolCallState.Complete(content))
 
   // ---- memory + summary fixtures ----
 

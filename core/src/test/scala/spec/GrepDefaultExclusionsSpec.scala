@@ -6,7 +6,9 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, ConversationView, TopicEntry, TurnInput}
-import sigil.event.{Event, ToolResults}
+import sigil.event.Event
+import sigil.signal.{Signal, ToolDelta}
+import sigil.tool.ToolOutput
 import sigil.tool.fs.{GrepNode, GrepTool, LocalFileSystemContext}
 import sigil.tool.model.GrepInput
 import sigil.tool.output.JsonPagedResult
@@ -67,11 +69,12 @@ class GrepDefaultExclusionsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   }
 
   /** Pull the first-page `JsonPagedResult` out of the grep tool's
-    * emitted events; FileMatch payloads identify which files matched. */
-  private def matchedFiles(events: List[Event]): List[String] = {
-    val page = events.collectFirst {
-      case t: ToolResults if t.typed.isDefined => t.typed.get.as[JsonPagedResult]
-    }.getOrElse(throw new RuntimeException(s"no typed ToolResults found in $events"))
+    * emitted signals; FileMatch payloads identify which files matched. */
+  private def matchedFiles(signals: List[Signal]): List[String] = {
+    val page = signals.collectFirst {
+      case d: ToolDelta if d.output.exists(_.isInstanceOf[JsonPagedResult]) =>
+        d.output.get.asInstanceOf[JsonPagedResult]
+    }.getOrElse(throw new RuntimeException(s"no settling ToolDelta with JsonPagedResult output found in $signals"))
     page.items.map(_.as[GrepNode]).collect { case f: GrepNode.FileMatch => f.filePath }
   }
 

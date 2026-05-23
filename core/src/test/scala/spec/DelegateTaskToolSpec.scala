@@ -1,15 +1,15 @@
 package spec
 
-import fabric.io.JsonParser
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
-import sigil.event.Message
+import sigil.event.ToolOutcome
 import sigil.provider.AnalysisWork
 import sigil.role.Role
-import sigil.tool.model.{DelegateTaskInput, ResponseContent}
+import sigil.signal.{Signal, ToolDelta}
+import sigil.tool.model.DelegateTaskInput
 import sigil.tool.util.DelegateTaskTool
 
 /**
@@ -49,10 +49,10 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     modelId = "anthropic/claude-sonnet-4-6"
   )
 
-  private def failureText(events: List[sigil.event.Event]): String =
-    events.collectFirst {
-      case m: Message if m.isFailure =>
-        m.content.collect { case ResponseContent.Text(t) => t }.mkString
+  private def failureText(signals: List[Signal]): String =
+    signals.collectFirst {
+      case d: ToolDelta if d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) =>
+        d.summary.getOrElse(d.outcome.collect { case ToolOutcome.Failure(r, _) => r }.getOrElse(""))
     }.getOrElse("")
 
   "DelegateTaskInput" should {
@@ -66,8 +66,8 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
   "DelegateTaskTool" should {
     "return a structured error when the host Sigil doesn't mix in WorkflowSigil" in {
-      DelegateTaskTool.execute(sampleInput, turnContext()).toList.map { events =>
-        val text = failureText(events)
+      DelegateTaskTool.execute(sampleInput, turnContext()).toList.map { signals =>
+        val text = failureText(signals)
         text should include("WorkflowSigil")
       }
     }

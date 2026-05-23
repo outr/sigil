@@ -8,7 +8,9 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, Topic, TopicEntry, TurnInput}
 import sigil.db.{Model, ModelArchitecture, ModelDefaultParameters, ModelLinks, ModelPricing, ModelTopProvider}
-import sigil.event.{Message, MessageRole}
+import sigil.event.{Message, ToolOutcome}
+import sigil.signal.{Signal, ToolDelta}
+import sigil.tool.TextToolOutput
 import sigil.tool.model.ResponseContent
 import sigil.tool.provider.{
   ModelAlias, ModelResolution, ModelResolutionResult,
@@ -94,14 +96,24 @@ class ModelAliasResolutionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   private def loadConv(conv: Conversation): Task[Conversation] =
     TestSigil.withDB(_.conversations.transaction(_.get(conv.id))).map(_.getOrElse(conv))
 
-  private def replyText(events: List[sigil.event.Event]): String =
-    events.collect {
+  private def replyText(signals: List[Signal]): String = {
+    val fromMessages = signals.collect {
       case m: Message =>
         m.content.collect {
           case ResponseContent.Text(t)     => t
           case ResponseContent.Markdown(t) => t
         }.mkString("\n")
     }.mkString("\n")
+    val fromDelta = signals.collect {
+      case d: ToolDelta =>
+        // Success path: typed TextToolOutput carries the user-visible reply text.
+        val successText = d.output.collect { case t: TextToolOutput => t.text }
+        // Failure path: outcome carries the failure reason.
+        val failureText = d.outcome.collect { case ToolOutcome.Failure(reason, _) => reason }
+        (successText.toList ++ failureText.toList ++ d.summary.toList).mkString("\n")
+    }.mkString("\n")
+    (fromMessages :: fromDelta :: Nil).filter(_.nonEmpty).mkString("\n")
+  }
 
   // --- ModelAlias.resolve ---------------------------------------------------
 

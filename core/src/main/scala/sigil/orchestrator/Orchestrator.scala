@@ -1634,20 +1634,25 @@ object Orchestrator {
     )
   }
 
-  /** Tool execution path — emit each event with origin-stamping +
-    * paired StateDelta. Extracted so both fast (no-precondition) and
-    * slow (precondition-gated) executeAtomic paths share one
+  /** Tool execution path — drive the tool's `Stream[Signal]` (Sigil
+    * #265) and origin-stamp / settle ancillary Events. Pass-through
+    * for the settling [[ToolDelta]] the tool emits last (it already
+    * carries `state = Some(Complete)` and targets the originating
+    * invoke). Extracted so both fast (no-precondition) and slow
+    * (precondition-gated) executeAtomic paths share one
     * implementation. */
   private def runExecute(tool: Tool,
                          input: ToolInput,
                          context: TurnContext,
                          originatingInvokeId: Id[Event]): Stream[Signal] =
-    tool.execute(input, context).flatMap { ev =>
-      val stamped = if (ev.origin.isDefined) ev else ev.withOrigin(Some(originatingInvokeId))
-      Stream.emits(List[Signal](
-        stamped,
-        StateDelta(target = stamped._id, conversationId = stamped.conversationId, state = EventState.Complete)
-      ))
+    tool.execute(input, context).flatMap {
+      case ev: Event =>
+        val stamped = if (ev.origin.isDefined) ev else ev.withOrigin(Some(originatingInvokeId))
+        Stream.emits(List[Signal](
+          stamped,
+          StateDelta(target = stamped._id, conversationId = stamped.conversationId, state = EventState.Complete)
+        ))
+      case other => Stream.emit(other)
     }
 
   /** Run every [[Tool.preconditions]] check. If any returns

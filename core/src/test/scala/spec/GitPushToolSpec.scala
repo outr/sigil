@@ -6,7 +6,8 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, ConversationView, TopicEntry, TurnInput}
-import sigil.event.ToolResults
+import sigil.signal.{Signal, ToolDelta}
+import sigil.tool.ToolOutput
 import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext}
 import sigil.tool.git.GitPushTool
 import sigil.tool.model.{GitPushError, GitPushInput, GitPushOutput}
@@ -75,10 +76,12 @@ class GitPushToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     )
   }
 
-  /** Decode the `ToolResults.typed` payload back to [[GitPushOutput]]. */
-  private def typed[T](events: List[sigil.event.Event])(using rw: RW[T]): T = {
-    val json = events.collectFirst { case t: ToolResults if t.typed.isDefined => t.typed.get }
-      .getOrElse(fail(s"expected a ToolResults with a typed payload; saw: ${events.map(_.getClass.getSimpleName).mkString(", ")}"))
+  /** Decode the settling [[ToolDelta]]'s typed `output` back to [[GitPushOutput]]. */
+  private def typed[T](signals: List[Signal])(using rw: RW[T]): T = {
+    val json = signals.collectFirst {
+      case d: ToolDelta if d.output.exists(_ != ToolOutput.Pending) =>
+        summon[RW[ToolOutput]].read(d.output.get)
+    }.getOrElse(fail(s"expected a settling ToolDelta with a typed output; saw: ${signals.map(_.getClass.getSimpleName).mkString(", ")}"))
     rw.write(json)
   }
 

@@ -5,9 +5,10 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, ConversationView, TopicEntry, TurnInput}
-import sigil.event.{Event, Message, MessageDisposition, MessageRole, ToolOutcome, ToolResults}
+import sigil.event.{Event, ToolOutcome}
+import sigil.signal.{Signal, ToolDelta}
 import sigil.tool.fs.{EditFileTool, GrepTool, LocalFileSystemContext, ReadFileTool}
-import sigil.tool.model.{EditFileInput, GrepInput, ReadFileInput, ResponseContent}
+import sigil.tool.model.{EditFileInput, GrepInput, ReadFileInput}
 
 import java.nio.file.{Files, Path, StandardOpenOption}
 import scala.jdk.CollectionConverters.*
@@ -51,15 +52,11 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
     })
   }
 
-  private def failureMessage(events: List[Event]): Message =
-    events.collectFirst {
-      case m: Message
-        if m.role == MessageRole.Tool &&
-          m.disposition.isInstanceOf[MessageDisposition.Failure] => m
-    }.getOrElse(fail(s"expected a Tool-role Failure Message; saw: ${events.map(_.getClass.getSimpleName).mkString(", ")}"))
-
-  private def failureText(m: Message): String =
-    m.content.collect { case ResponseContent.Text(t) => t }.mkString
+  private def failureText(signals: List[Signal]): String =
+    signals.collectFirst {
+      case d: ToolDelta if d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) =>
+        d.summary.getOrElse(d.outcome.collect { case ToolOutcome.Failure(r, _) => r }.getOrElse(""))
+    }.getOrElse(fail(s"expected a settling ToolDelta carrying ToolOutcome.Failure; saw: ${signals.map(_.getClass.getSimpleName).mkString(", ")}"))
 
   "edit_file" should {
 
@@ -67,9 +64,8 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
       val ctx = new LocalFileSystemContext(Some(dir))
       val tool = new EditFileTool(ctx)
       val tc = turnContext()
-      tool.execute(EditFileInput(filePath = "string", oldString = "a", newString = "b"), tc).toList.map { events =>
-        val msg = failureMessage(events)
-        val text = failureText(msg)
+      tool.execute(EditFileInput(filePath = "string", oldString = "a", newString = "b"), tc).toList.map { signals =>
+        val text = failureText(signals)
         text should include ("JSON Schema type name")
         text should include ("filePath")
         // The tool never touched the filesystem — no temp-dir contents
@@ -92,12 +88,10 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
           newString = "String"
         ),
         tc
-      ).toList.map { events =>
-        // No Tool-role Failure Message: the edit succeeded.
-        events.collectFirst {
-          case m: Message
-            if m.role == MessageRole.Tool &&
-              m.disposition.isInstanceOf[MessageDisposition.Failure] => m
+      ).toList.map { signals =>
+        // No failure-outcome ToolDelta: the edit succeeded.
+        signals.collectFirst {
+          case d: ToolDelta if d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) => d
         } shouldBe None
         // File now contains the replacement.
         Files.readString(target) should include ("String")
@@ -115,14 +109,14 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
       val ctx = new LocalFileSystemContext(Some(dir))
       val tool = new GrepTool(ctx)
       val tc = turnContext()
-      tool.execute(GrepInput(path = ".", pattern = "string"), tc).toList.map { events =>
-        // No Failure ToolResults — the search ran.
-        events.collectFirst {
-          case t: ToolResults if t.outcome.isInstanceOf[ToolOutcome.Failure] => t
+      tool.execute(GrepInput(path = ".", pattern = "string"), tc).toList.map { signals =>
+        // No Failure outcome — the search ran.
+        signals.collectFirst {
+          case d: ToolDelta if d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) => d
         } shouldBe None
-        // A successful ToolResults landed.
-        events.collectFirst {
-          case t: ToolResults if t.outcome == ToolOutcome.Success => t
+        // A successful settling ToolDelta landed.
+        signals.collectFirst {
+          case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) => d
         } should not be None
       }
     }
@@ -131,9 +125,8 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
       val ctx = new LocalFileSystemContext(Some(dir))
       val tool = new GrepTool(ctx)
       val tc = turnContext()
-      tool.execute(GrepInput(path = "string", pattern = "real-pattern"), tc).toList.map { events =>
-        val msg = failureMessage(events)
-        val text = failureText(msg)
+      tool.execute(GrepInput(path = "string", pattern = "real-pattern"), tc).toList.map { signals =>
+        val text = failureText(signals)
         text should include ("JSON Schema type name")
         text should include ("path")
       }
@@ -146,9 +139,8 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
       val ctx = new LocalFileSystemContext(Some(dir))
       val tool = new ReadFileTool(ctx)
       val tc = turnContext()
-      tool.execute(ReadFileInput(filePath = "integer"), tc).toList.map { events =>
-        val msg = failureMessage(events)
-        val text = failureText(msg)
+      tool.execute(ReadFileInput(filePath = "integer"), tc).toList.map { signals =>
+        val text = failureText(signals)
         text should include ("JSON Schema type name")
         text should include ("filePath")
         Files.list(dir).iterator().asScala.toList shouldBe empty

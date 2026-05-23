@@ -28,8 +28,7 @@ object CompressionTriggerBench {
       val userMsg = ProfilerHarness.textFrame(s"User turn $n: fetch records and summarize them.")
       current :+= userMsg
       val tc = ProfilerHarness.toolCallFrame("fetch_records", s"""{"page":$n}""")
-      current :+= tc
-      current :+= ProfilerHarness.toolResultFrame(tc.callId, verboseToolResult)
+      current :+= ProfilerHarness.completedToolCallFrame(tc, verboseToolResult)
       current :+= ProfilerHarness.textFrame(s"Agent reply $n: summarized $n pages.", ProfilerHarness.AgentId)
       cumulativeFrames += current
     }

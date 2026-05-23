@@ -6,7 +6,8 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
-import sigil.event.ToolResults
+import sigil.signal.{Signal, ToolDelta}
+import sigil.tool.ToolOutput
 import sigil.tool.model.{ProcessListInput, ProcessListOutput, ProcessListScope, ProcessOutputInput, ProcessOutputResult, ProcessRunStatus, ProcessSignal, ProcessSignalInput, ProcessSignalOutput, ProcessSpawnInput, ProcessSpawnOutput}
 import sigil.tool.process.{ProcessListTool, ProcessOutputTool, ProcessRegistry, ProcessSignalTool, ProcessSpawnTool, RingBuffer}
 
@@ -17,10 +18,10 @@ import sigil.tool.process.{ProcessListTool, ProcessOutputTool, ProcessRegistry, 
  * bleed across tests, and tears it down via `terminateAll()` in a
  * `guarantee` block.
  *
- * Each process tool declares a typed `Output`; the framework emits
- * it as a `ToolResults` event, and each test decodes the
- * `ToolResults.typed` payload back to the typed Output via its
- * registered `RW`.
+ * Each process tool declares a typed `Output`; the framework folds
+ * it onto the settling [[sigil.signal.ToolDelta]]'s `output` field,
+ * and each test decodes that payload back to the typed Output via
+ * its registered `RW`.
  */
 class ProcessToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -46,10 +47,12 @@ class ProcessToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     body(reg).guarantee(Task(reg.terminateAll()))
   }
 
-  /** Decode the `ToolResults.typed` payload back to the tool's Output. */
-  private def typed[T](events: List[sigil.event.Event])(using rw: RW[T]): T = {
-    val json = events.collectFirst { case t: ToolResults if t.typed.isDefined => t.typed.get }
-      .getOrElse(fail(s"expected a ToolResults with a typed payload; saw: ${events.map(_.getClass.getSimpleName).mkString(", ")}"))
+  /** Decode the settling [[ToolDelta]]'s typed `output` back to the tool's Output. */
+  private def typed[T](signals: List[Signal])(using rw: RW[T]): T = {
+    val json = signals.collectFirst {
+      case d: ToolDelta if d.output.exists(_ != ToolOutput.Pending) =>
+        summon[RW[ToolOutput]].read(d.output.get)
+    }.getOrElse(fail(s"expected a settling ToolDelta with a typed output; saw: ${signals.map(_.getClass.getSimpleName).mkString(", ")}"))
     rw.write(json)
   }
 
@@ -58,8 +61,8 @@ class ProcessToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     val tool = new ProcessOutputTool(reg)
     val tc   = turnContext(convA)
     def loop(): Task[ProcessOutputResult] =
-      tool.execute(ProcessOutputInput(handle = handle), tc).toList.flatMap { events =>
-        val result = typed[ProcessOutputResult](events)
+      tool.execute(ProcessOutputInput(handle = handle), tc).toList.flatMap { signals =>
+        val result = typed[ProcessOutputResult](signals)
         if (pred(result) || System.currentTimeMillis() > deadlineMs) Task.pure(result)
         else Task.sleep(scala.concurrent.duration.Duration(50L, "ms")).flatMap(_ => loop())
       }

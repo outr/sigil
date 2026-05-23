@@ -7,7 +7,9 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.{GlobalSpace, SpaceId, TurnContext}
 import sigil.conversation.{Conversation, Topic, TopicEntry, TurnInput}
-import sigil.event.Message
+import sigil.event.{Message, ToolOutcome}
+import sigil.signal.{Signal, ToolDelta}
+import sigil.tool.TextToolOutput
 import sigil.participant.{AgentParticipantId, ParticipantId}
 import sigil.script.{
   CreateScriptToolInput,
@@ -49,16 +51,26 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     )
   }
 
-  private def textOf(events: List[sigil.event.Event]): List[String] =
-    events.collect { case m: Message => m }
+  /** Rendered text from any Tool-role Message (failure summaries) plus the
+    * settling [[ToolDelta]]'s outcome reason — what the agent reads when a
+    * tool resolves a `ToolResult.Failure`. */
+  private def textOf(signals: List[Signal]): List[String] = {
+    val fromMessages = signals.collect { case m: Message => m }
       .flatMap(_.content.collect { case ResponseContent.Text(t) => t; case ResponseContent.Markdown(t) => t })
+    val fromFailureDelta = signals.collect {
+      case d: ToolDelta if d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) =>
+        d.summary.getOrElse(d.outcome.collect { case ToolOutcome.Failure(r, _) => r }.getOrElse(""))
+    }
+    fromMessages ::: fromFailureDelta
+  }
 
   /** Rendered text from a SUCCESS tool result — the `TextToolOutput`
-    * json (`{"text": "…"}`) carried on a `ToolResults` event's `typed`
-    * field. */
-  private def successText(events: List[sigil.event.Event]): List[String] =
-    events.collect { case tr: sigil.event.ToolResults => tr }
-      .flatMap(_.typed.flatMap(_.get("text")).filterNot(_.isNull).map(_.asString))
+    * text carried on the settling [[ToolDelta]]'s `output` field. */
+  private def successText(signals: List[Signal]): List[String] =
+    signals.collect {
+      case d: ToolDelta if d.output.exists(_.isInstanceOf[TextToolOutput]) =>
+        d.output.get.asInstanceOf[TextToolOutput].text
+    }
 
   "ScriptSigil polymorphic registrations (bug #53)" should {
     "register JsonInput so ToolInvoke events for ScriptTool calls round-trip via the ToolInput poly RW" in Task {
@@ -210,15 +222,17 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         )
       )
       CreateScriptToolTool.execute(input, context).toList.flatMap { events =>
-        val toolResults = events.collect { case tr: sigil.event.ToolResults => tr }
+        val settlingDeltas = events.collect {
+          case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) => d
+        }
         val modeChanges = events.collect { case mc: sigil.event.ModeChange => mc }
         TestScriptSigil.withDB(_.tools.transaction { tx =>
           tx.query.filter(_.toolName === "create-single-result").toList.map(_.headOption)
         }).map { stored =>
-          // Exactly one ToolResults event — pairs cleanly with the
+          // Exactly one settling ToolDelta — pairs cleanly with the
           // create_script_tool call_id; no orphan-frame fall-through.
-          toolResults should have size 1
-          toolResults.head.outcome shouldBe sigil.event.ToolOutcome.Success
+          settlingDeltas should have size 1
+          settlingDeltas.head.outcome shouldBe Some(ToolOutcome.Success)
           val text = successText(events).head
           text should include ("Persisted tool 'create-single-result'")
           // Schema + invocation hint inline.
@@ -279,11 +293,13 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           tx.query.filter(_.toolName === "update-target").toList.map(_.headOption)
         })
       } yield {
-        // Bug #69 — exactly one ToolResults carrying the
+        // Bug #69 — exactly one settling ToolDelta carrying the
         // confirmation + the (possibly-updated) schema.
-        val toolResults = events.collect { case tr: sigil.event.ToolResults => tr }
-        toolResults should have size 1
-        toolResults.head.outcome shouldBe sigil.event.ToolOutcome.Success
+        val settlingDeltas = events.collect {
+          case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) => d
+        }
+        settlingDeltas should have size 1
+        settlingDeltas.head.outcome shouldBe Some(ToolOutcome.Success)
         val text = successText(events).head
         text should include ("Updated tool 'update-target'")
         text should include ("Current invocation shape")

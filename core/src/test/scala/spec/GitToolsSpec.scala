@@ -6,7 +6,8 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
-import sigil.event.ToolResults
+import sigil.signal.{Signal, ToolDelta}
+import sigil.tool.ToolOutput
 import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext}
 import sigil.tool.git.{GitBranchTool, GitCommitTool, GitDiffTool, GitLogTool, GitShowTool, GitStatusTool}
 import sigil.tool.model.{GitBranchInput, GitBranchOutput, GitCommitInput, GitCommitOutput, GitDiffFormat, GitDiffInput, GitDiffOutput, GitFileState, GitLogInput, GitLogOutput, GitShowInput, GitShowOutput, GitStatusInput, GitStatusOutput}
@@ -21,8 +22,9 @@ import scala.jdk.CollectionConverters.*
  * isn't on PATH (CI sandbox without git binary).
  *
  * The tools declare a typed `Output` — each test decodes the
- * `ToolResults.typed` payload back to the typed Output via the
- * Output type's registered `RW` and asserts on the typed value.
+ * settling [[sigil.signal.ToolDelta]]'s `output` payload back to the
+ * typed Output via the Output type's registered `RW` and asserts on
+ * the typed value.
  */
 class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -65,12 +67,14 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     )
   }
 
-  /** Decode the `ToolResults.typed` payload back to the tool's Output
-    * case class via its registered RW — what apps doing tool-to-tool
+  /** Decode the settling [[ToolDelta]]'s typed `output` back to the tool's
+    * Output case class via its registered RW — what apps doing tool-to-tool
     * composition do via `Tool.invoke`. */
-  private def typed[T](events: List[sigil.event.Event])(using rw: RW[T]): T = {
-    val json = events.collectFirst { case t: ToolResults if t.typed.isDefined => t.typed.get }
-      .getOrElse(fail(s"expected a ToolResults with a typed payload; saw: ${events.map(_.getClass.getSimpleName).mkString(", ")}"))
+  private def typed[T](signals: List[Signal])(using rw: RW[T]): T = {
+    val json = signals.collectFirst {
+      case d: ToolDelta if d.output.exists(_ != ToolOutput.Pending) =>
+        summon[RW[ToolOutput]].read(d.output.get)
+    }.getOrElse(fail(s"expected a settling ToolDelta with a typed output; saw: ${signals.map(_.getClass.getSimpleName).mkString(", ")}"))
     rw.write(json)
   }
 

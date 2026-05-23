@@ -7,11 +7,10 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.{Stream, Task}
 import sigil.{GlobalSpace, Sigil, SpaceId, TurnContext}
-import sigil.event.{Event, Message, MessageDisposition, MessageRole, MessageVisibility, ToolOutcome, ToolResults}
+import sigil.event.{Event, MessageRole, ToolOutcome}
 import sigil.participant.ParticipantId
 import sigil.provider.Mode
-import sigil.signal.EventState
-import sigil.tool.model.ResponseContent
+import sigil.signal.{EventState, Signal, ToolDelta}
 
 /**
  * A capability available to agents at runtime. Persisted in
@@ -82,21 +81,27 @@ trait Tool extends RecordDocument[Tool] {
 
   // ---- framework glue (final) ----
 
-  /** The `Stream[Event]` surface the orchestrator drives. **Final** —
+  /** The `Stream[Signal]` surface the orchestrator drives. **Final** —
     * tools author via [[executeResult]] / [[executeOutput]] instead.
     *
     * Runs the tool's resolution (mapping any crash to a failure), then
     * emits the tool's ancillary events (those the body recorded via
-    * `ctx.emit`) followed by exactly one paired result event — a
-    * `ToolResults` carrying the typed payload on success, a Tool-role
-    * failure `Message` on failure. The result event's `origin` is the
-    * dispatching invoke. Ancillary-first ordering keeps the durable
-    * log causally consistent (a `change_mode`'s `ModeChange` precedes
-    * its `ToolResults`; a `respond`'s reply `Message` precedes its). */
-  final def execute(input: ToolInput, context: TurnContext): Stream[Event] =
+    * `ctx.emit`) followed by exactly one [[ToolDelta]] that settles
+    * the originating `ToolInvoke` — folding the typed output, outcome
+    * (Success or Failure), and final state in one update. Ancillary-
+    * first ordering keeps the durable log causally consistent (a
+    * `change_mode`'s `ModeChange` precedes the settling delta; a
+    * `respond`'s reply `Message` precedes its).
+    *
+    * Sigil #265 — pre-fix the result was a separate `ToolResults`
+    * event linked back to the invoke by `origin`, which had to be
+    * paired by every downstream consumer (#259/#260/#261/#263 were
+    * all "the pair drifted" symptoms). The settling delta unifies the
+    * tool transaction into a single stateful invoke. */
+  final def execute(input: ToolInput, context: TurnContext): Stream[Signal] =
     Stream.force(
       runResolution(input, context).map { res =>
-        Stream.emits(context.emittedEvents :+ buildResultEvent(res, context))
+        Stream.emits[Signal](context.emittedEvents :+ buildResultDelta(res, context))
       }
     )
 
@@ -113,45 +118,54 @@ trait Tool extends RecordDocument[Tool] {
         ))
       }
 
-  /** Build the single paired result event from a resolution. */
-  private def buildResultEvent(result: ToolResult[Output], context: TurnContext): Event = result match {
-    case ToolResult.Success(value) =>
-      val typedJson = outputRW.read(value)
-      val rendered  = JsonFormatter.Compact(typedJson)
-      val threshold = context.sigil.inlineContentThreshold
-      val summaryOpt =
-        if (rendered.length.toLong <= threshold) None
-        else Some(
-          summarize(value, rendered) + "\n\n" +
-            s"${name.value}: result is ${rendered.length} bytes (threshold $threshold), truncated inline. " +
-            "Refine inputs to narrow the output, or — for naturally-large bulk output — use PaginatedTool."
+  /** Build the settling [[ToolDelta]] from a resolution — folds output,
+    * outcome, and `state = Complete` onto the originating `ToolInvoke`
+    * in one update. Sigil #265.
+    *
+    * `currentToolInvokeId` must be set (the orchestrator stamps it
+    * before invoking `Tool.execute`); if absent — a misuse path — the
+    * `.get` raises so the bug surfaces immediately rather than
+    * emitting an unpaired result. */
+  private def buildResultDelta(result: ToolResult[Output], context: TurnContext): ToolDelta = {
+    val invokeId = context.currentToolInvokeId.getOrElse(
+      throw new IllegalStateException(
+        s"Tool '${name.value}' .execute called without a `currentToolInvokeId` on the TurnContext — " +
+          "the orchestrator must stamp this before dispatching."
+      )
+    )
+    result match {
+      case ToolResult.Success(value) =>
+        val typedJson = outputRW.read(value)
+        val rendered  = JsonFormatter.Compact(typedJson)
+        val threshold = context.sigil.inlineContentThreshold
+        val summaryOpt =
+          if (rendered.length.toLong <= threshold) None
+          else Some(
+            summarize(value, rendered) + "\n\n" +
+              s"${name.value}: result is ${rendered.length} bytes (threshold $threshold), truncated inline. " +
+              "Refine inputs to narrow the output, or — for naturally-large bulk output — use PaginatedTool."
+          )
+        ToolDelta(
+          target         = invokeId,
+          conversationId = context.conversation.id,
+          state          = Some(EventState.Complete),
+          summary        = summaryOpt,
+          output         = Some(value),
+          outcome        = Some(ToolOutcome.Success)
         )
-      ToolResults(
-        schemas        = Nil,
-        participantId  = context.caller,
-        conversationId = context.conversation.id,
-        topicId        = context.conversation.currentTopicId,
-        outcome        = ToolOutcome.Success,
-        typed          = Some(typedJson),
-        summary        = summaryOpt,
-        state          = EventState.Complete,
-        role           = MessageRole.Tool,
-        origin         = context.currentToolInvokeId
-      )
-    case ToolResult.Failure(message, hint, args) =>
-      val body = (List(message) ++ hint.toList.map(h => s"\n\nHint: $h") ++
-        args.toList.map(a => s"\n\nFailing args: $a")).mkString
-      Message(
-        participantId  = context.caller,
-        conversationId = context.conversation.id,
-        topicId        = context.conversation.currentTopicId,
-        role           = MessageRole.Tool,
-        content        = Vector(ResponseContent.Text(body)),
-        disposition    = MessageDisposition.Failure(recoverable = true),
-        state          = EventState.Complete,
-        visibility     = MessageVisibility.Agents,
-        origin         = context.currentToolInvokeId
-      )
+      case ToolResult.Failure(message, hint, args) =>
+        val body = (List(message) ++ hint.toList.map(h => s"\n\nHint: $h") ++
+          args.toList.map(a => s"\n\nFailing args: $a")).mkString
+        ToolDelta(
+          target         = invokeId,
+          conversationId = context.conversation.id,
+          state          = Some(EventState.Complete),
+          summary        = Some(body),
+          // No real `output` — outcome carries the failure. The
+          // invoke's `output` field stays `ToolOutput.Pending`.
+          outcome        = Some(ToolOutcome.Failure(body, recoverable = true))
+        )
+    }
   }
 
   /** Inline summary text rendered when the typed payload exceeds

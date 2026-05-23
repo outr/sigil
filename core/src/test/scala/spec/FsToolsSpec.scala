@@ -1,15 +1,16 @@
 package spec
 
-import fabric.io.JsonParser
 import fabric.rw.*
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
-import sigil.event.{Message, ToolResults}
+import sigil.event.{Event, ToolOutcome}
+import sigil.signal.{Signal, ToolDelta}
+import sigil.tool.ToolOutput
 import sigil.tool.fs.{DeleteFileTool, EditFileTool, FileSystemContext, LocalFileSystemContext, ReadFileTool, WriteFileTool}
-import sigil.tool.model.{DeleteFileInput, DeleteFileOutput, EditFileInput, EditFileOutput, ReadFileInput, ReadFileOutput, ResponseContent, WriteFileInput, WriteFileOutput}
+import sigil.tool.model.{DeleteFileInput, DeleteFileOutput, EditFileInput, EditFileOutput, ReadFileInput, ReadFileOutput, WriteFileInput, WriteFileOutput}
 
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
@@ -50,34 +51,35 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     )
   }
 
-  private def extractJson(events: List[sigil.event.Event]): fabric.Json = {
-    // Prefer the typed payload from a ToolResults (the framework's
-    // success-path emission); fall back to a Tool-role Message's
-    // Text content for a logical-failure result.
-    val fromTypedResults = events.collectFirst {
-      case t: ToolResults if t.typed.isDefined => t.typed.get
-    }
-    fromTypedResults.orElse {
-      events.collectFirst { case m: Message =>
-        m.content.collectFirst { case ResponseContent.Text(t) => t }
-      }.flatten.map(JsonParser(_))
+  private def extractJson(signals: List[Signal]): fabric.Json = {
+    // Prefer the typed payload from the settling ToolDelta's `output`
+    // (success path); fall back to a synthetic JSON object carrying
+    // the failure reason/recoverable flag for a logical-failure result.
+    signals.collectFirst {
+      case d: ToolDelta if d.output.exists(_ != ToolOutput.Pending) =>
+        summon[RW[ToolOutput]].read(d.output.get)
+    }.orElse {
+      signals.collectFirst {
+        case d: ToolDelta if d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) =>
+          val f = d.outcome.get.asInstanceOf[ToolOutcome.Failure]
+          fabric.obj("reason" -> fabric.str(f.reason), "recoverable" -> fabric.bool(f.recoverable))
+      }
     }.getOrElse(fabric.Obj.empty)
   }
 
-  /** Decode the typed payload of a ToolResults event back to the
+  /** Decode the typed payload of the settling ToolDelta back to the
     * tool's Output case class via its registered RW — what apps
     * doing tool-to-tool composition do via [[Tool.invoke]]. */
-  private def typed[T](events: List[sigil.event.Event])(using rw: RW[T]): T =
-    rw.write(extractJson(events))
+  private def typed[T](signals: List[Signal])(using rw: RW[T]): T =
+    rw.write(extractJson(signals))
 
-  /** Extract the single Tool-role Failure Message from the events
-    * a tool emitted. Used for tests of `ToolResult.failure` cases. */
-  private def failureMessage(events: List[sigil.event.Event]): sigil.event.Message =
-    events.collectFirst {
-      case m: sigil.event.Message
-        if m.role == sigil.event.MessageRole.Tool &&
-          m.disposition.isInstanceOf[sigil.event.MessageDisposition.Failure] => m
-    }.getOrElse(fail(s"expected a Tool-role Failure Message; saw: ${events.map(_.getClass.getSimpleName).mkString(", ")}"))
+  /** Extract the failure body from the settling ToolDelta — the text
+    * the agent reads when a tool resolved a `ToolResult.Failure`. */
+  private def failureText(signals: List[Signal]): String =
+    signals.collectFirst {
+      case d: ToolDelta if d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) =>
+        d.summary.getOrElse(d.outcome.collect { case ToolOutcome.Failure(r, _) => r }.getOrElse(""))
+    }.getOrElse(fail(s"expected a settling ToolDelta carrying ToolOutcome.Failure; saw: ${signals.map(_.getClass.getSimpleName).mkString(", ")}"))
 
   "WriteFileTool + ReadFileTool" should {
     "round-trip a file's contents" in withTempDir { (ctx, _) =>
@@ -131,9 +133,7 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         edited <- new EditFileTool(ctx).execute(EditFileInput("d.txt", "foo", "bar"), tc).toList
         re     <- new ReadFileTool(ctx).execute(ReadFileInput("d.txt"), tc).toList
       } yield {
-        val msg = failureMessage(edited)
-        msg.disposition shouldBe a[sigil.event.MessageDisposition.Failure]
-        val text = msg.content.collect { case ResponseContent.Text(t) => t }.mkString
+        val text = failureText(edited)
         text should include ("matched 2 times")
         text should include ("replaceAll: true")
         typed[ReadFileOutput](re).content shouldBe "foo\nfoo"
@@ -147,8 +147,7 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         edited <- new EditFileTool(ctx).execute(EditFileInput("nm.txt", "xyz", "ZZZ"), tc).toList
         re     <- new ReadFileTool(ctx).execute(ReadFileInput("nm.txt"), tc).toList
       } yield {
-        val msg = failureMessage(edited)
-        val text = msg.content.collect { case ResponseContent.Text(t) => t }.mkString
+        val text = failureText(edited)
         text should include ("no match for `oldString`")
         text should include ("Read the file again")
         // File on disk is unchanged.
@@ -188,8 +187,7 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
                   ).toList
         re     <- new ReadFileTool(ctx).execute(ReadFileInput("conflict.toml"), tc).toList
       } yield {
-        val msg = failureMessage(edited)
-        val text = msg.content.collect { case ResponseContent.Text(t) => t }.mkString
+        val text = failureText(edited)
         text should include ("file changed since")
         text should include ("Re-read the file")
         // File unchanged

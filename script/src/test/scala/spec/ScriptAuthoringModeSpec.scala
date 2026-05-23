@@ -6,7 +6,9 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, Topic, TopicEntry, TurnInput}
-import sigil.event.{Event, Message, ModeChange, ToolResults}
+import sigil.event.{Event, Message, ModeChange, ToolOutcome}
+import sigil.signal.{Signal, ToolDelta}
+import sigil.tool.TextToolOutput
 import sigil.participant.ParticipantId
 import sigil.provider.ToolPolicy
 import sigil.script.{
@@ -70,11 +72,12 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   }
 
   /** Rendered text from a SUCCESS tool result — the `TextToolOutput`
-    * json (`{"text": "…"}`) carried on a `ToolResults` event's `typed`
-    * field. */
-  private def successText(events: List[Event]): List[String] =
-    events.collect { case tr: ToolResults => tr }
-      .flatMap(_.typed.flatMap(_.get("text")).filterNot(_.isNull).map(_.asString))
+    * text carried on the settling [[ToolDelta]]'s `output` field. */
+  private def successText(signals: List[Signal]): List[String] =
+    signals.collect {
+      case d: ToolDelta if d.output.exists(_.isInstanceOf[TextToolOutput]) =>
+        d.output.get.asInstanceOf[TextToolOutput].text
+    }
 
   "ScriptAuthoringMode registration" should {
     "resolve through Sigil.modeByName once ScriptSigil is mixed in" in Task {
@@ -207,12 +210,14 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       } yield {
         loaded shouldBe defined
         loaded.get shouldBe a[ScriptTool]
-        val results = runEvents.collect { case r: ToolResults => r }
-        results should have size 1
-        val typed = results.head.typed
+        val scriptOutputs = runEvents.collect {
+          case d: ToolDelta if d.output.exists(_.isInstanceOf[sigil.script.ScriptToolOutput]) =>
+            d.output.get.asInstanceOf[sigil.script.ScriptToolOutput]
+        }
+        scriptOutputs should have size 1
         // 7 * 3 = 21 — the script's last expression's stringified value.
-        typed.flatMap(_.get("output")).filterNot(_.isNull).map(_.asString) shouldBe Some("21")
-        typed.flatMap(_.get("error")).filterNot(_.isNull).map(_.asString) shouldBe None
+        scriptOutputs.head.output shouldBe Some("21")
+        scriptOutputs.head.error shouldBe None
       }
     }
   }

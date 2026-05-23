@@ -1,16 +1,15 @@
 package spec
 
-import fabric.io.JsonParser
 import fabric.rw.*
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
-import sigil.event.{Message, ToolInvoke, ToolResults}
+import sigil.signal.{Signal, ToolDelta}
 import sigil.tool.fs.{BashLine, BashTool, GlobEntry, GlobTool, GrepNode, GrepTool, FileSystemContext, LocalFileSystemContext, WriteFileTool}
-import sigil.tool.model.{BashInput, GlobInput, GrepInput, WriteFileInput, ResponseContent}
-import sigil.tool.output.{JsonPagedResult, NextPageInput, NextPageTool, PaginatedTool, QueryToolOutputInput, QueryToolOutputTool}
+import sigil.tool.model.{BashInput, GlobInput, GrepInput, WriteFileInput}
+import sigil.tool.output.{JsonPagedResult, NextPageInput, NextPageTool, QueryToolOutputInput, QueryToolOutputTool}
 
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
@@ -23,9 +22,9 @@ import scala.jdk.CollectionConverters.*
  *
  * The framework writes one [[sigil.tool.output.ToolOutputNode]]
  * row per emitted [[sigil.tool.output.Node]]; the first-page
- * [[JsonPagedResult]] is what the tool's `ToolResults` emission
- * carries inline. Subsequent pages land via [[NextPageTool]] /
- * [[QueryToolOutputTool]].
+ * [[JsonPagedResult]] is what the tool's settling
+ * [[sigil.signal.ToolDelta]] carries inline as its `output`.
+ * Subsequent pages land via [[NextPageTool]] / [[QueryToolOutputTool]].
  */
 class PaginatedToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -56,12 +55,13 @@ class PaginatedToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     )
   }
 
-  /** Pull the first page's `JsonPagedResult` out of the emitted
-    * `ToolResults` event. */
-  private def firstPage(events: List[sigil.event.Event]): JsonPagedResult =
-    events.collectFirst {
-      case t: ToolResults if t.typed.isDefined => t.typed.get.as[JsonPagedResult]
-    }.getOrElse(throw new RuntimeException(s"no typed ToolResults found in $events"))
+  /** Pull the first page's `JsonPagedResult` out of the settling
+    * [[ToolDelta]]'s typed `output`. */
+  private def firstPage(signals: List[Signal]): JsonPagedResult =
+    signals.collectFirst {
+      case d: ToolDelta if d.output.exists(_.isInstanceOf[JsonPagedResult]) =>
+        d.output.get.asInstanceOf[JsonPagedResult]
+    }.getOrElse(throw new RuntimeException(s"no settling ToolDelta with JsonPagedResult output found in $signals"))
 
   "GrepTool (paginated, tree-shaped)" should {
     "emit one top-level node per file with at least one match" in withTempDir { (fs, _) =>
