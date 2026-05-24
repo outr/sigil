@@ -52,7 +52,7 @@ class GrepDefaultExclusionsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     ()
   }
 
-  private def turnContext(callId: lightdb.id.Id[Event]): TurnContext = {
+  private def turnContext(): TurnContext = {
     val convId  = Conversation.id(s"grep-excl-${rapid.Unique()}")
     val topicId = sigil.conversation.Topic.id(s"grep-excl-topic-${rapid.Unique()}")
     val conv = Conversation(
@@ -63,8 +63,7 @@ class GrepDefaultExclusionsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       sigil                = TestSigil,
       chain                = List(TestUser),
       conversation         = conv,
-      turnInput            = TurnInput(ConversationView(conversationId = convId)),
-      currentToolInvokeId  = Some(callId)
+      turnInput            = TurnInput(ConversationView(conversationId = convId))
     )
   }
 
@@ -80,10 +79,10 @@ class GrepDefaultExclusionsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   private def runGrep(root: Path, includeIgnored: Boolean): Task[List[String]] = {
     val callId = Event.id()
-    val ctx    = turnContext(callId)
+    val ctx    = turnContext()
     val fs     = new LocalFileSystemContext(basePath = Some(root))
     new GrepTool(fs)
-      .execute(GrepInput(path = ".", pattern = "TODO", includeIgnored = includeIgnored), ctx)
+      .execute(GrepInput(path = ".", pattern = "TODO", includeIgnored = includeIgnored), ctx, callId)
       .toList
       .map(matchedFiles)
   }

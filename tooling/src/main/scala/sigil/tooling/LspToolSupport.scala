@@ -1,7 +1,7 @@
 package sigil.tooling
 
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.event.{Event, Message, MessageRole, MessageVisibility}
 import sigil.signal.EventState
 import sigil.tool.model.ResponseContent
@@ -39,7 +39,7 @@ trait LspToolSupport extends sigil.tool.Tool {
   protected def validatePlaceholders(fields: (String, String)*): Option[String] =
     sigil.tool.PlaceholderInputDetector.validateNoPlaceholders(fields*)
 
-  protected def reply(context: TurnContext, text: String, isError: Boolean): Event =
+  protected def reply(context: ToolContext, text: String, isError: Boolean): Event =
     Message(
       participantId = context.caller,
       conversationId = context.conversation.id,
@@ -59,7 +59,7 @@ trait LspToolSupport extends sigil.tool.Tool {
     * without forcing a generic envelope. */
   protected def withSessionTyped[Output](languageId: String,
                                          filePath: String,
-                                         context: TurnContext,
+                                         context: ToolContext,
                                          onError: String => Output)
                                         (body: (LspSession, String, String) => Task[Output]): Task[Output] =
     validatePlaceholders("languageId" -> languageId, "filePath" -> filePath) match {
@@ -69,7 +69,7 @@ trait LspToolSupport extends sigil.tool.Tool {
 
   private def withSessionTypedResolved[Output](languageId: String,
                                                filePath: String,
-                                               context: TurnContext,
+                                               context: ToolContext,
                                                onError: String => Output)
                                               (body: (LspSession, String, String) => Task[Output]): Task[Output] =
     manager.configFor(languageId).flatMap {
@@ -100,7 +100,7 @@ trait LspToolSupport extends sigil.tool.Tool {
     * target file before running `body`. */
   protected def withOpenDocumentTyped[Output](languageId: String,
                                               filePath: String,
-                                              context: TurnContext,
+                                              context: ToolContext,
                                               onError: String => Output)
                                              (body: (LspSession, String) => Task[Output]): Task[Output] =
     withSessionTyped(languageId, filePath, context, onError) { (session, uri, _) =>
@@ -115,7 +115,7 @@ trait LspToolSupport extends sigil.tool.Tool {
     * result shape. */
   protected def withSessionOrThrow[Output](languageId: String,
                                            filePath: String,
-                                           context: TurnContext)
+                                           context: ToolContext)
                                           (body: (LspSession, String, String) => Task[Output]): Task[Output] =
     withSessionTyped[Output](languageId, filePath, context, onError = msg => throw new RuntimeException(msg))(body)
 
@@ -126,7 +126,7 @@ trait LspToolSupport extends sigil.tool.Tool {
     * of carrying it in the result shape. */
   protected def withOpenDocumentOrThrow[Output](languageId: String,
                                                 filePath: String,
-                                                context: TurnContext)
+                                                context: ToolContext)
                                                (body: (LspSession, String) => Task[Output]): Task[Output] =
     withOpenDocumentTyped[Output](languageId, filePath, context, onError = msg => throw new RuntimeException(msg))(body)
 }

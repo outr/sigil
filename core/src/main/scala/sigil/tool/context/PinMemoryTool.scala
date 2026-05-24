@@ -3,7 +3,7 @@ package sigil.tool.context
 import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.conversation.ContextMemory
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
@@ -45,10 +45,10 @@ case object PinMemoryTool extends Tool {
   override def resultTtl: Option[Int] = Some(0)
   override val requiresAccessibleSpaces: Boolean = true
 
-  override def executeResult(input: PinMemoryInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: PinMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     pin(input, context).map(text => ToolResult.Success(TextToolOutput(text)))
 
-  private def pin(input: PinMemoryInput, context: TurnContext): Task[String] =
+  private def pin(input: PinMemoryInput, context: ToolContext): Task[String] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       val effective = input.space.map(s => Set(s).intersect(accessible)).getOrElse(accessible)
       if (effective.isEmpty)
@@ -70,7 +70,7 @@ case object PinMemoryTool extends Tool {
   /** Look for the target by `key` first, then by `_id` fallback. */
   private def findTarget(key: String,
                          spaces: Set[sigil.SpaceId],
-                         context: TurnContext): Task[Option[ContextMemory]] =
+                         context: ToolContext): Task[Option[ContextMemory]] =
     context.sigil.findMemories(spaces).flatMap { memories =>
       memories.find(m => m.key.contains(key)) match {
         case some @ Some(_) => Task.pure(some)

@@ -10,6 +10,7 @@ import sigil.event.{Event, Message, MessageRole, ToolOutcome}
 import sigil.orchestrator.Orchestrator
 import sigil.signal.{Signal, ToolDelta}
 import sigil.tool.{InMemoryToolFinder, TextToolOutput, ToolInput, ToolName}
+import sigil.tool.ToolContext
 import sigil.tool.core.RecordConsentTool
 import sigil.tool.model.{RecordConsentInput, ResponseContent}
 
@@ -52,7 +53,7 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     val description = "A consent-gated demo tool used by the spec."
     override def requiresUserConsent: Boolean = true
 
-    override def executeOutput(input: GatedInput, ctx: TurnContext): Task[TextToolOutput] = Task {
+    override def executeOutput(input: GatedInput, ctx: ToolContext): Task[TextToolOutput] = Task {
       invocations.incrementAndGet()
       TextToolOutput(s"ran with ${input.payload}")
     }
@@ -70,7 +71,7 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     val name        = ToolName("free_demo_tool")
     val description = "A no-consent demo tool — should always dispatch."
 
-    override def executeOutput(input: FreeInput, ctx: TurnContext): Task[TextToolOutput] =
+    override def executeOutput(input: FreeInput, ctx: ToolContext): Task[TextToolOutput] =
       Task.pure(TextToolOutput(s"free ran with ${input.payload}"))
   }
 
@@ -103,7 +104,7 @@ class ToolConsentGateSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       turnInput    = TurnInput(conversationId = conv._id)
     )
 
-  /** Drive `tool.execute(input, ctx)` through the orchestrator's
+  /** Drive `tool.execute(input, ctx, Event.id())` through the orchestrator's
     * consent + precondition gates — same path the agent loop
     * uses for atomic dispatches. Returns the resulting signals. */
   private def dispatch(tool: sigil.tool.Tool, input: ToolInput, ctx: TurnContext): Task[List[Signal]] = {

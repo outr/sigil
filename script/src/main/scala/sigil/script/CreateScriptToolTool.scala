@@ -3,7 +3,7 @@ package sigil.script
 import fabric.io.JsonFormatter
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.event.{MessageRole, ModeChange}
 import sigil.provider.ConversationMode
 import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
@@ -33,7 +33,7 @@ case object CreateScriptToolTool extends Tool {
   val description =
     """Persist a new script-backed tool the agent (or any other agent in scope) can later invoke
       |through `find_capability`. The script body sees `args: fabric.Json` (matching the declared
-      |`parameters` schema) and `context: TurnContext` in scope; its return value is stringified
+      |`parameters` schema) and `context: ToolContext` in scope; its return value is stringified
       |and surfaced as the tool result.
       |
       |`name` must be unique — the same name overwrites. `parameters` is a JSON Schema
@@ -81,7 +81,7 @@ case object CreateScriptToolTool extends Tool {
     }
 
   override def executeResult(input: CreateScriptToolInput,
-                             context: TurnContext): Task[ToolResult[TextToolOutput]] = context.sigil match {
+                             context: ToolContext): Task[ToolResult[TextToolOutput]] = context.sigil match {
     case s: ScriptSigil =>
       s.scriptToolSpace(context.chain, input.space).flatMap { resolvedSpace =>
         val tool = ScriptTool(

@@ -11,6 +11,7 @@ import sigil.tooling.container.{CreateContainerInput, CreateContainerTool}
 import sigil.tooling.dispatch.{DispatchWorkersInput, DispatchWorkersOutput, DispatchWorkersTool}
 
 import scala.concurrent.duration.*
+import sigil.tool.ToolContext
 
 /**
  * Acceptance for the `dispatch_workers` empty-items guard. When
@@ -37,13 +38,12 @@ class DispatchWorkersEmptyItemsSpec extends AsyncWordSpec with AsyncTaskSpec wit
       sigil               = DispatchTestSigil,
       chain               = List(DispatchTestUser),
       conversation        = conv,
-      turnInput           = TurnInput(ConversationView(conversationId = convId)),
-      currentToolInvokeId = Some(Event.id())
+      turnInput           = TurnInput(ConversationView(conversationId = convId))
     )
   }
 
   private def emptyContainer(ctx: TurnContext): lightdb.id.Id[sigil.tool.output.ToolOutputNode] =
-    CreateContainerTool.invoke(CreateContainerInput(items = List.empty[Json]), ctx).sync().itemsId
+    CreateContainerTool.invoke(CreateContainerInput(items = List.empty[Json]), ToolContext(ctx, Event.id(), CreateContainerTool.name)).sync().itemsId
 
   "dispatch_workers" should {
 
@@ -56,7 +56,7 @@ class DispatchWorkersEmptyItemsSpec extends AsyncWordSpec with AsyncTaskSpec wit
         action    = "items.headOption",
         confirmed = true
       )
-      tool.invoke(input, ctx).map {
+      tool.invoke(input, ToolContext(ctx, Event.id(), tool.name)).map {
         case d: DispatchWorkersOutput.DispatchResult =>
           d.totalItems shouldBe 0
           d.successCount shouldBe 0
@@ -79,7 +79,7 @@ class DispatchWorkersEmptyItemsSpec extends AsyncWordSpec with AsyncTaskSpec wit
         action    = "items.headOption",
         confirmed = false
       )
-      tool.invoke(input, ctx).map {
+      tool.invoke(input, ToolContext(ctx, Event.id(), tool.name)).map {
         case s: DispatchWorkersOutput.ScopePreview =>
           s.totalItems shouldBe 0
           s.workerCount shouldBe 0

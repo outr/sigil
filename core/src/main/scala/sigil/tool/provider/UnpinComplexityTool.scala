@@ -3,7 +3,7 @@ package sigil.tool.provider
 import fabric.rw.*
 import lightdb.time.Timestamp
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.event.ComplexityChange
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
@@ -28,7 +28,7 @@ case object UnpinComplexityTool extends Tool {
   override val keywords = Set("unpin", "unlock", "clear", "auto", "default", "complexity", "tier")
 
   override def executeResult(input: UnpinComplexityInput,
-                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     // Sigil bug #177 — emit ComplexityChange alongside the
     // confirmation so UI consumers can reduce the unpin event
     // without polling Conversation.pinnedComplexity.

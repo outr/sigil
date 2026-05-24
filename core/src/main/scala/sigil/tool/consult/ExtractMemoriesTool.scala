@@ -2,7 +2,7 @@ package sigil.tool.consult
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.provider.{GenerationSettings, ReasoningMode, SummarizationWork, WorkType}
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
@@ -76,6 +76,6 @@ case object ExtractMemoriesTool extends Tool with FrameworkConsult {
 
   /** Never executed — the framework reads the typed input directly via
     * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
-  override def executeResult(input: ExtractMemoriesInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: ExtractMemoriesInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.success(TextToolOutput("")))
 }

@@ -2,7 +2,7 @@ package sigil.debug
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class DapPauseInput(sessionId: String, threadId: Int) extends ToolInput derives RW
@@ -29,7 +29,7 @@ final class DapPauseTool(val manager: DapManager) extends Tool with DapToolSuppo
     )
   )
 
-  override def executeResult(input: DapPauseInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: DapPauseInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     withSession(input.sessionId, context) { session =>
       session.pause(input.threadId).map(_ =>
         ToolResult.success(TextToolOutput(s"Pause requested on thread ${input.threadId}.")))

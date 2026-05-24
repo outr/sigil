@@ -2,7 +2,7 @@ package sigil.debug
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class DapStepOverInput(sessionId: String, threadId: Int) extends ToolInput derives RW
@@ -29,7 +29,7 @@ final class DapStepOverTool(val manager: DapManager) extends Tool with DapToolSu
     )
   )
 
-  override def executeResult(input: DapStepOverInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: DapStepOverInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     withSession(input.sessionId, context) { session =>
       session.next(input.threadId).map(_ =>
         ToolResult.success(TextToolOutput(s"Stepped over on thread ${input.threadId}.")))

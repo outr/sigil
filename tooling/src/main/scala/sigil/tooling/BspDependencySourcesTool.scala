@@ -2,7 +2,7 @@ package sigil.tooling
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{BspDependencySourcesResult, BspTargetDependencySources}
 
@@ -34,7 +34,7 @@ final class BspDependencySourcesTool(val manager: BspManager) extends Tool
 
 
   override def executeOutput(input: BspDependencySourcesInput,
-                             context: TurnContext): Task[BspDependencySourcesResult] =
+                             context: ToolContext): Task[BspDependencySourcesResult] =
     withTargets[BspDependencySourcesResult](
       input.projectRoot, context, input.targets,
       onError = _ => BspDependencySourcesResult(input.projectRoot, Nil),

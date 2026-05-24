@@ -2,7 +2,7 @@ package sigil.tooling
 
 import ch.epfl.scala.bsp4j.BuildTargetIdentifier
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.event.{Event, Message, MessageRole, MessageVisibility}
 import sigil.signal.EventState
 import sigil.tool.model.ResponseContent
@@ -44,7 +44,7 @@ trait BspToolSupport extends sigil.tool.Tool {
     * installed for the duration of `body` and cleared on exit so
     * concurrent tool calls in the same session don't see stale
     * text. */
-  private def installProgressCallback(session: BspSession, context: TurnContext): Unit =
+  private def installProgressCallback(session: BspSession, context: ToolContext): Unit =
     session.client.setStatusCallback(Some(text =>
       context.reportProgress(text).handleError(_ => Task.unit).startUnit()
     ))
@@ -59,7 +59,7 @@ trait BspToolSupport extends sigil.tool.Tool {
   /** Emit a `Role.Tool` Message event carrying `text` back into the
     * agent's signal stream — the reply primitive for raw-`Tool` BSP
     * subclasses that don't return a typed `Output`. */
-  protected def reply(context: TurnContext, text: String, isError: Boolean): Event =
+  protected def reply(context: ToolContext, text: String, isError: Boolean): Event =
     Message(
       participantId = context.caller,
       conversationId = context.conversation.id,
@@ -77,7 +77,7 @@ trait BspToolSupport extends sigil.tool.Tool {
     * `onError` mapping — typically a sentinel variant on the tool's
     * Output type. */
   protected def withSessionTyped[Output](projectRoot: String,
-                                         context: TurnContext,
+                                         context: ToolContext,
                                          onError: String => Output)
                                         (body: BspSession => Task[Output]): Task[Output] =
     validatePlaceholders("projectRoot" -> projectRoot) match {
@@ -99,7 +99,7 @@ trait BspToolSupport extends sigil.tool.Tool {
     * `onError` value so the per-tool body is just the RPC + its
     * result mapping. */
   protected def withTargets[Output](projectRoot: String,
-                                    context: TurnContext,
+                                    context: ToolContext,
                                     requested: List[String],
                                     onError: String => Output,
                                     emptyResult: => Output)

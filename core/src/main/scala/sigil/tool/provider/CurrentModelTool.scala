@@ -2,7 +2,7 @@ package sigil.tool.provider
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolName}
 
 /**
@@ -44,7 +44,7 @@ case object CurrentModelTool extends Tool {
     "now", "introspect", "in", "use", "this"
   )
 
-  override def executeOutput(input: CurrentModelInput, ctx: TurnContext): Task[CurrentModelOutput] = {
+  override def executeOutput(input: CurrentModelInput, ctx: ToolContext): Task[CurrentModelOutput] = {
     val conv = ctx.conversation
     val host = ctx.sigil
 

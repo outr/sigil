@@ -15,23 +15,29 @@ import sigil.provider.{
   Instructions, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
 import sigil.signal.Signal
-import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.signal.ToolDelta
+import sigil.event.ToolOutcome
+import sigil.tool.{JsonInput, TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.ToolContext
 import spice.http.HttpRequest
 
 /**
- * Coverage for sigil bug #167 — every dispatched `ToolCallComplete`
- * must produce at least one `MessageRole.Tool`-shaped event so the
- * frame builder emits a paired `ContextFrame.ToolResult` and the
- * downstream renderer ships a `function_call_output` to OpenAI's
- * Responses API. Two paths previously dropped the result event:
+ * Coverage for the call ↔ output pairing invariant — every dispatched
+ * `ToolCallComplete` settles its invoke with a Failure outcome the agent
+ * can act on, regardless of whether the name resolves or the tool body
+ * returned a logical failure.
  *
- *   1. Tool name not in the agent's roster — orchestrator's
- *      `case None => Stream.empty` silently produced nothing.
- *   2. Registered tool whose `execute` returned an empty stream
- *      (silent-failure path).
+ *   1. Tool name not in the agent's roster (sigil #167 / #271) — the
+ *      orchestrator falls back to [[sigil.tool.core.UnknownTool]] which
+ *      emits a paired Tool-role Failure Message (origin = invokeId)
+ *      that re-triggers the agent loop. Same shape as any other tool
+ *      dispatch — no special case in the orchestrator.
  *
- * Both now produce a Tool-role Failure Message so the wire's
- * call ↔ output pairing stays intact.
+ *   2. Registered tool whose `executeResult` returns
+ *      [[sigil.tool.ToolResult.Failure]] — the framework settles the
+ *      invoke with a [[ToolDelta]] folding `outcome = Failure`. The
+ *      agent reads the failure through the settled invoke's outcome
+ *      field on the next turn's context.
  */
 class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -49,15 +55,19 @@ class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
     val outputRW = summon[RW[TextToolOutput]]
     val name        = ToolName("silent_tool")
     val description = "Returns nothing useful."
-    override def executeResult(input: EmptyToolInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: EmptyToolInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.failure("Tool 'silent_tool' failed internally — it produced no usable result."))
   }
 
   private val modelId: Id[Model] = Model.id("test", "model")
 
   /** Provider that emits ToolCallComplete for whatever toolName the
-    * test asks for, with empty args. */
-  private class FakeProvider(toolName: String) extends Provider {
+    * test asks for. `inputForCall` lets each scenario inject the matching
+    * input shape — `JsonInput(Obj.empty)` for unknown names (what the
+    * real accumulator produces after sigil #271) or a typed input that
+    * matches a registered tool's `Input` type for the silent-failure
+    * scenario. */
+  private class FakeProvider(toolName: String, inputForCall: ToolInput) extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[Model] = Nil
     override protected def sigil: _root_.sigil.Sigil = TestSigil
@@ -67,7 +77,7 @@ class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
       val cid = CallId("c1")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(cid, toolName),
-        ProviderEvent.ToolCallComplete(cid, EmptyToolInput()),
+        ProviderEvent.ToolCallComplete(cid, inputForCall),
         ProviderEvent.Done(StopReason.ToolCall)
       ))
     }
@@ -94,10 +104,11 @@ class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
     } yield signals
   }
 
-  "Orchestrator (Bug #167) for an unknown tool name" should {
+  "Orchestrator for an unknown tool name (sigil #167 / #271)" should {
 
-    "emit a Tool-role Failure Message paired to the invoke when the tool isn't in the roster" in {
-      runWith(new FakeProvider("not_a_real_tool"), tools = Vector.empty, "unknown").map { signals =>
+    "emit a Tool-role Failure Message paired to the invoke via UnknownTool" in {
+      runWith(new FakeProvider("not_a_real_tool", JsonInput(fabric.Obj.empty)),
+              tools = Vector.empty, "unknown").map { signals =>
         val toolMessages = signals.collect {
           case m: Message if m.role == MessageRole.Tool => m
         }
@@ -111,19 +122,20 @@ class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
     }
   }
 
-  "Orchestrator (Bug #167) for a registered tool that produces no usable result" should {
+  "Orchestrator for a registered tool that returns a logical failure" should {
 
-    "emit a paired Tool-role Failure Message when the tool resolves to ToolResult.Failure" in {
-      runWith(new FakeProvider("silent_tool"), tools = Vector(SilentTool), "silent").map { signals =>
-        val toolMessages = signals.collect {
-          case m: Message if m.role == MessageRole.Tool => m
+    "settle the invoke with a ToolDelta carrying outcome = Failure" in {
+      runWith(new FakeProvider("silent_tool", EmptyToolInput()),
+              tools = Vector(SilentTool), "silent").map { signals =>
+        val failureDeltas = signals.collect {
+          case d: ToolDelta if d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) => d
         }
-        toolMessages should have size 1
-        val msg = toolMessages.head
-        msg.disposition shouldBe a [MessageDisposition.Failure]
-        msg.failureReason.getOrElse("") should include ("failed internally")
-        msg.failureReason.getOrElse("") should include ("silent_tool")
-        msg.origin shouldBe defined
+        failureDeltas should not be empty
+        val reason = failureDeltas.head.outcome.collect {
+          case f: ToolOutcome.Failure => f.reason
+        }.getOrElse("")
+        reason should include ("failed internally")
+        reason should include ("silent_tool")
       }
     }
   }

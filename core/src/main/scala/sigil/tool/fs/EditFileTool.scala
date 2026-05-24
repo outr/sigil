@@ -4,7 +4,7 @@ import fabric.io.JsonFormatter
 import fabric.rw.*
 import lightdb.time.Timestamp
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.storage.{FileVersion, WriteResult}
 import sigil.tool.{PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolResult}
 import sigil.tool.model.{EditFileInput, EditFileOutput}
@@ -60,7 +60,7 @@ final class EditFileTool(context: FileSystemContext)
     * with actionable hints — instead of a Success-shaped `ToolResults`
     * whose typed payload the agent might gloss over and incorrectly
     * report as "I edited the file." */
-  override def executeResult(input: EditFileInput, ctx: TurnContext): Task[ToolResult[EditFileOutput]] =
+  override def executeResult(input: EditFileInput, ctx: ToolContext): Task[ToolResult[EditFileOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
       case None        => runEdit(input, ctx)
@@ -70,7 +70,7 @@ final class EditFileTool(context: FileSystemContext)
     try Some(JsonFormatter.Compact(inputRW.read(input)))
     catch { case _: Throwable => None }
 
-  private def runEdit(input: EditFileInput, ctx: TurnContext): Task[ToolResult[EditFileOutput]] =
+  private def runEdit(input: EditFileInput, ctx: ToolContext): Task[ToolResult[EditFileOutput]] =
     WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>
       context.readFile(resolved).flatMap { content =>
         val pattern = Pattern.quote(input.oldString)

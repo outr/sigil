@@ -1,7 +1,8 @@
 package sigil.metals
 
 import rapid.Task
-import sigil.{Sigil, TurnContext}
+import sigil.Sigil
+import sigil.tool.ToolContext
 import sigil.event.{Event, Message, MessageRole, MessageVisibility}
 import sigil.signal.EventState
 import sigil.tool.model.ResponseContent
@@ -31,7 +32,7 @@ private[metals] object MetalsToolSupport {
     * has no workspace mapping (`None` from the hook), or when the
     * mapping resolves to a non-existent path. The Right branch
     * carries the canonical absolute path. */
-  def workspaceFor(sigil: Sigil, ctx: TurnContext): Task[Either[String, Path]] = sigil match {
+  def workspaceFor(sigil: Sigil, ctx: ToolContext): Task[Either[String, Path]] = sigil match {
     case ms: MetalsSigil =>
       ms.metalsWorkspace(ctx.conversation.id).map {
         case None =>
@@ -51,7 +52,7 @@ private[metals] object MetalsToolSupport {
   }
 
   /** Build a `Role.Tool` Message reply with the supplied text. */
-  def reply(context: TurnContext, text: String, isError: Boolean = false): Event =
+  def reply(context: ToolContext, text: String, isError: Boolean = false): Event =
     Message(
       participantId  = context.caller,
       conversationId = context.conversation.id,

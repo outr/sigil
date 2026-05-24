@@ -2,7 +2,7 @@ package sigil.tool.skill
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.conversation.{ActiveSkillSlot, SkillSource}
 import sigil.skill.Skill
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
@@ -48,10 +48,10 @@ case object ActivateSkillTool extends Tool {
       |the failure and changes nothing.""".stripMargin
   override val keywords: Set[String] = Set("activate", "skill", "load", "enable", "use")
 
-  override def executeResult(input: ActivateSkillInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: ActivateSkillInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     activate(input, context).map(text => ToolResult.Success(TextToolOutput(text)))
 
-  private def activate(input: ActivateSkillInput, context: TurnContext): Task[String] =
+  private def activate(input: ActivateSkillInput, context: ToolContext): Task[String] =
     context.sigil.withDB(_.skills.transaction(_.get(lightdb.id.Id[Skill](input.name)))).flatMap {
       case None =>
         Task.pure(s"[activate_skill] no Skill found with name '${input.name}'.")

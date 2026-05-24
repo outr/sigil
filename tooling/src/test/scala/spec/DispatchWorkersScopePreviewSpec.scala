@@ -14,6 +14,7 @@ import sigil.tooling.container.{CreateContainerInput, CreateContainerTool}
 import sigil.tooling.dispatch.{DispatchWorkersInput, DispatchWorkersOutput, DispatchWorkersTool}
 
 import scala.concurrent.duration.*
+import sigil.tool.ToolContext
 
 /**
  * Acceptance for the `dispatch_workers(confirmed=false)` ScopePreview
@@ -48,13 +49,12 @@ class DispatchWorkersScopePreviewSpec extends AsyncWordSpec with AsyncTaskSpec w
       sigil               = DispatchTestSigil,
       chain               = List(DispatchTestUser),
       conversation        = conv,
-      turnInput           = TurnInput(ConversationView(conversationId = convId)),
-      currentToolInvokeId = Some(Event.id())
+      turnInput           = TurnInput(ConversationView(conversationId = convId))
     )
   }
 
   private def containerFor(items: List[Json], ctx: TurnContext): lightdb.id.Id[sigil.tool.output.ToolOutputNode] =
-    CreateContainerTool.invoke(CreateContainerInput(items), ctx).sync().itemsId
+    CreateContainerTool.invoke(CreateContainerInput(items), ToolContext(ctx, Event.id(), CreateContainerTool.name)).sync().itemsId
 
   "dispatch_workers(confirmed=false)" should {
 
@@ -69,7 +69,7 @@ class DispatchWorkersScopePreviewSpec extends AsyncWordSpec with AsyncTaskSpec w
         action    = "items.headOption",
         confirmed = false
       )
-      tool.invoke(input, ctx).map { result =>
+      tool.invoke(input, ToolContext(ctx, Event.id(), tool.name)).map { result =>
         result shouldBe a [DispatchWorkersOutput.ScopePreview]
         result shouldNot be (a [DispatchWorkersOutput.DispatchResult])
       }
@@ -86,7 +86,7 @@ class DispatchWorkersScopePreviewSpec extends AsyncWordSpec with AsyncTaskSpec w
         action    = "items.headOption",
         confirmed = false
       )
-      tool.invoke(input, ctx).map {
+      tool.invoke(input, ToolContext(ctx, Event.id(), tool.name)).map {
         case s: DispatchWorkersOutput.ScopePreview =>
           s.totalItems shouldBe 47
           s.workerCount shouldBe 47
@@ -111,7 +111,7 @@ class DispatchWorkersScopePreviewSpec extends AsyncWordSpec with AsyncTaskSpec w
         action    = "items.headOption",
         confirmed = false
       )
-      tool.invoke(input, ctx).map {
+      tool.invoke(input, ToolContext(ctx, Event.id(), tool.name)).map {
         case s: DispatchWorkersOutput.ScopePreview =>
           val rendered = JsonFormatter.Compact(summon[RW[DispatchWorkersOutput]].read(s))
           rendered.length should be < 8192
@@ -137,7 +137,7 @@ class DispatchWorkersScopePreviewSpec extends AsyncWordSpec with AsyncTaskSpec w
         action    = "items.head",
         confirmed = true
       )
-      tool.invoke(input, ctx).map {
+      tool.invoke(input, ToolContext(ctx, Event.id(), tool.name)).map {
         case d: DispatchWorkersOutput.DispatchResult =>
           d.totalItems shouldBe 3
           d.successCount shouldBe 3

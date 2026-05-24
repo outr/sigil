@@ -2,7 +2,7 @@ package sigil.tooling.container
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolName}
 
 /**
@@ -28,7 +28,7 @@ case object PinContainerTool extends Tool {
 
 
   override def executeOutput(input: PinContainerInput,
-                             ctx: TurnContext): Task[PinContainerOutput] =
+                             ctx: ToolContext): Task[PinContainerOutput] =
     ContainerSupport.readItems(ctx.sigil, ctx.conversation.id, input.itemsId).flatMap { rows =>
       val needsUpdate = rows.filterNot(_.pinned)
       if (needsUpdate.isEmpty) Task.pure(PinContainerOutput(itemsId = input.itemsId, rowsAffected = 0))

@@ -3,7 +3,7 @@ package sigil.workflow.tool
 import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import sigil.workflow.WorkflowTemplate
 
@@ -33,7 +33,7 @@ final class DeleteWorkflowTool extends Tool with WorkflowToolSupport {
   override val examples = List(ToolExample("delete by id", DeleteWorkflowInput(workflowId = "wf-abc")))
   override val keywords = Set("workflow", "delete", "remove")
 
-  override def executeResult(input: DeleteWorkflowInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
+  override def executeResult(input: DeleteWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
     val id = Id[WorkflowTemplate](input.workflowId)
     host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
       case None => Task.pure(s"Workflow '${input.workflowId}' not found.")

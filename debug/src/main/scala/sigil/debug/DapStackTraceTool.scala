@@ -2,7 +2,7 @@ package sigil.debug
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class DapStackTraceInput(sessionId: String,
@@ -37,7 +37,7 @@ final class DapStackTraceTool(val manager: DapManager) extends Tool with DapTool
     )
   )
 
-  override def executeResult(input: DapStackTraceInput, context: TurnContext): Task[ToolResult[DapStackTraceOutput]] =
+  override def executeResult(input: DapStackTraceInput, context: ToolContext): Task[ToolResult[DapStackTraceOutput]] =
     withSession(input.sessionId, context) { session =>
       session.stackTrace(input.threadId, input.startFrame, input.levels).map { frames =>
         ToolResult.success(DapStackTraceOutput(

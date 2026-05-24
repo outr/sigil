@@ -1,7 +1,7 @@
 package sigil.tool.fs
 
 import rapid.{Stream, Task}
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.model.GlobInput
 import sigil.tool.output.{Node, PaginatedTool}
 import sigil.tool.{PlaceholderInputDetector, ToolExample, ToolName}
@@ -28,7 +28,7 @@ final class GlobTool(context: FileSystemContext) extends PaginatedTool[GlobInput
   // tools when both match a query.
   override def preferIfNoBetter: Boolean = true
 
-  override protected def executeStream(input: GlobInput, ctx: TurnContext): Stream[Node[GlobEntry]] =
+  override protected def executeStream(input: GlobInput, ctx: ToolContext): Stream[Node[GlobEntry]] =
     PlaceholderInputDetector.validateNoPlaceholders("basePath" -> input.basePath) match {
       case Some(reason) =>
         Stream.force(Task.error(new RuntimeException(reason)))

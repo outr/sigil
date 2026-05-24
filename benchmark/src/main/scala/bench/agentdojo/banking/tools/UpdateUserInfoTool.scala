@@ -4,7 +4,7 @@ import bench.agentdojo.banking.BankingEnvironment
 import bench.agentdojo.banking.events.UserInfoRead
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 import java.util.concurrent.atomic.AtomicReference
@@ -27,7 +27,7 @@ final class UpdateUserInfoTool(state: AtomicReference[BankingEnvironment]) exten
   val description: String = "Update the user information."
 
 
-  override def executeResult(input: UpdateUserInfoInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
+  override def executeResult(input: UpdateUserInfoInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val updated = state.updateAndGet { env =>
       env.copy(userAccount = env.userAccount.copy(
         firstName = input.first_name.getOrElse(env.userAccount.firstName),

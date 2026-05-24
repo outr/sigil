@@ -2,7 +2,7 @@ package sigil.script
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 /**
@@ -26,7 +26,7 @@ case object DeleteScriptToolTool extends Tool {
   override val keywords = Set("delete", "remove", "tool", "script", "drop")
 
   override def executeResult(input: DeleteScriptToolInput,
-                             context: TurnContext): Task[ToolResult[TextToolOutput]] =
+                             context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       context.sigil.withDB(_.tools.transaction { tx =>
         tx.query.filter(_.toolName === input.name).toList.map(_.headOption).flatMap {

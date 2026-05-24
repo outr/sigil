@@ -5,7 +5,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import sigil.conversation.{Conversation, Topic, TopicEntry}
 import sigil.db.Model
-import sigil.event.{Message, ModeChange, TopicChange, TopicChangeKind, ToolInvoke}
+import sigil.event.{Event, Message, ModeChange, ToolInvoke, TopicChange, TopicChangeKind}
 import sigil.participant.{DefaultAgentParticipant, Participant}
 import sigil.provider.{GenerationSettings, Instructions, Mode, ConversationMode, TokenUsage}
 import sigil.signal.{MessageContentDelta, ContentKind, EventState, MessageDelta, Signal, ToolDelta}

@@ -2,7 +2,7 @@ package sigil.tool.core
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.event.Message
 import sigil.signal.EventState
 import sigil.tool.{TextToolOutput, ToolName, ToolResult}
@@ -38,7 +38,7 @@ case object RespondCardTool extends RespondFamilyTool {
       |- `card.kind` — optional UI styling hint (e.g. "alert", "info", "metric", "recipe").
       |- `card.sections` — the building blocks, in order. Recursive: nested Cards are allowed.""".stripMargin
 
-  override def executeResult(input: RespondCardInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: RespondCardInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.emit(Message(
       participantId = context.caller,
       conversationId = context.conversation.id,

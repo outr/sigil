@@ -34,7 +34,7 @@ object ToolOutput extends PolyType[ToolOutput]()(using scala.reflect.ClassTag(cl
   case object Pending extends ToolOutput
 
   /** Interim progress update emitted by a long-running tool via
-    * `ToolContext.progress(message, percent?)`. Folded into the live
+    * [[sigil.tool.ToolContext.reportProgress]]. Folded into the live
     * invoke by a [[sigil.signal.ToolDelta]]; consumers see the chip's
     * content advance through successive Progress values before the
     * final concrete `ToolOutput` lands.

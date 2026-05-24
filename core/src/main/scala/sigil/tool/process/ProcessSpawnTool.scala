@@ -2,7 +2,7 @@ package sigil.tool.process
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.fs.WorkspacePathResolver
 import sigil.tool.model.{ProcessSpawnInput, ProcessSpawnOutput}
 import sigil.tool.{Tool, ToolExample, ToolName}
@@ -34,7 +34,7 @@ final class ProcessSpawnTool(registry: ProcessRegistry) extends Tool {
   )
   override val keywords = Set("process", "spawn", "background", "watch", "tail", "stream", "subprocess")
 
-  override def executeOutput(input: ProcessSpawnInput, ctx: TurnContext): Task[ProcessSpawnOutput] =
+  override def executeOutput(input: ProcessSpawnInput, ctx: ToolContext): Task[ProcessSpawnOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       registry.spawn(
         command        = input.command,

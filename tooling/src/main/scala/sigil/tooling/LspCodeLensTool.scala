@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import org.eclipse.lsp4j.CodeLens
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspCodeLensItem, LspCodeLensResult, LspPosition}
 
@@ -32,7 +32,7 @@ final class LspCodeLensTool(val manager: LspManager) extends Tool
   override val keywords = Set("lsp", "code lens", "lens", "inline action", "above-line action")
 
 
-  override def executeOutput(input: LspCodeLensInput, context: TurnContext): Task[LspCodeLensResult] =
+  override def executeOutput(input: LspCodeLensInput, context: ToolContext): Task[LspCodeLensResult] =
     withOpenDocumentOrThrow[LspCodeLensResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

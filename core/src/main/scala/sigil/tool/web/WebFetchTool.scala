@@ -2,7 +2,7 @@ package sigil.tool.web
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.model.{WebFetchInput, WebFetchOutput}
 import sigil.tool.{Tool, ToolExample, ToolName}
 import spice.http.client.HttpClient
@@ -33,7 +33,7 @@ final class WebFetchTool(timeout: FiniteDuration = 30.seconds)
   )
   override val keywords = Set("web", "fetch", "http", "url", "download", "page", "browse")
 
-  override def executeOutput(input: WebFetchInput, ctx: TurnContext): Task[WebFetchOutput] =
+  override def executeOutput(input: WebFetchInput, ctx: ToolContext): Task[WebFetchOutput] =
     HttpClient
       .url(URL.parse(input.url))
       .timeout(timeout)

@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.{DocumentSymbol, SymbolInformation}
 import org.eclipse.lsp4j.jsonrpc.messages.{Either => LspEither}
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspDocumentSymbolEntry, LspDocumentSymbolsResult, LspPosition}
 
@@ -46,7 +46,7 @@ final class LspDocumentSymbolsTool(val manager: LspManager) extends Tool
 
 
   override def executeOutput(input: LspDocumentSymbolsInput,
-                             context: TurnContext): Task[LspDocumentSymbolsResult] =
+                             context: ToolContext): Task[LspDocumentSymbolsResult] =
     withOpenDocumentOrThrow[LspDocumentSymbolsResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

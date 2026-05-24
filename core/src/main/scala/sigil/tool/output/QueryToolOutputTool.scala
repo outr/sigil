@@ -5,7 +5,7 @@ import fabric.rw.*
 import lightdb.filter.FilterExtras
 import lightdb.id.Id
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.event.Event
 import sigil.tool.{Tool, ToolName}
 
@@ -40,7 +40,7 @@ case object QueryToolOutputTool extends Tool {
 
   private val maxPageSize = 500
 
-  override def executeOutput(input: QueryToolOutputInput, ctx: TurnContext): Task[JsonPagedResult] = {
+  override def executeOutput(input: QueryToolOutputInput, ctx: ToolContext): Task[JsonPagedResult] = {
     val pageSize = math.max(1, math.min(input.pageSize, maxPageSize))
     val safePage = math.max(0, input.page)
     val convId   = ctx.conversation.id

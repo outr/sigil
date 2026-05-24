@@ -2,7 +2,7 @@ package sigil.tool.memory
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.conversation.ContextMemory
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 
@@ -29,7 +29,7 @@ case object MemoryHistoryTool extends Tool {
   )
   override val keywords: Set[String] = Set("memory", "history", "version")
 
-  override def executeResult(input: MemoryHistoryInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: MemoryHistoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     resolveSpace(input, context).flatMap {
       case None =>
         Task.pure(s"[memory_history] no memory space available for key ${input.key}.")
@@ -37,7 +37,7 @@ case object MemoryHistoryTool extends Tool {
         context.sigil.memoryHistory(input.key, space).map(versions => render(input.key, versions))
     }.map(text => ToolResult.Success(TextToolOutput(text)))
 
-  private def resolveSpace(input: MemoryHistoryInput, context: TurnContext) =
+  private def resolveSpace(input: MemoryHistoryInput, context: ToolContext) =
     input.spaceId match {
       case Some(s) => Task.pure(Some(s))
       case None    => context.sigil.defaultMemorySpace(context.conversation.id)

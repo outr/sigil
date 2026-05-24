@@ -2,7 +2,7 @@ package sigil.tool.util
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.fs.FileSystemContext
 import sigil.tool.model.{CpuStats, DiskStats, LoadAverage, MemoryStats, SystemStatsInput, SystemStatsOutput}
 import sigil.tool.{Tool, ToolExample, ToolName}
@@ -34,7 +34,7 @@ final class SystemStatsTool(context: FileSystemContext)
   )
   override val keywords = Set("system", "stats", "cpu", "memory", "disk", "load", "uptime")
 
-  override def executeOutput(input: SystemStatsInput, ctx: TurnContext): Task[SystemStatsOutput] = {
+  override def executeOutput(input: SystemStatsInput, ctx: ToolContext): Task[SystemStatsOutput] = {
     val parts = List(
       if (input.includeCpu) Some("top -bn1 | head -5") else None,
       if (input.includeMemory) Some("free -m") else None,

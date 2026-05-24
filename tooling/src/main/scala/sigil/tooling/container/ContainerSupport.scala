@@ -5,7 +5,8 @@ import fabric.io.JsonFormatter
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Task
-import sigil.{Sigil, TurnContext}
+import sigil.Sigil
+import sigil.tool.ToolContext
 import sigil.conversation.Conversation
 import sigil.event.Event
 import sigil.tool.output.ToolOutputNode
@@ -67,7 +68,7 @@ object ContainerSupport {
     * tools that just need the payloads. Honors optional `itemsAt`
     * (level filter; default 0 = top-level) and `itemsLimit` (hard
     * cap). */
-  def resolveItems(ctx: TurnContext,
+  def resolveItems(ctx: ToolContext,
                    itemsId: Id[ToolOutputNode],
                    itemsAt: Option[Int],
                    itemsLimit: Option[Int]): Task[List[Json]] = {

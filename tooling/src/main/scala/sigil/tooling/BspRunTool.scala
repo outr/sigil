@@ -3,7 +3,7 @@ package sigil.tooling
 import ch.epfl.scala.bsp4j.{BuildTargetIdentifier, StatusCode}
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.BspExecResult
 
@@ -39,7 +39,7 @@ final class BspRunTool(val manager: BspManager) extends Tool
   override val keywords = Set("bsp", "run", "execute", "main", "launch", "start")
 
 
-  override def executeOutput(input: BspRunInput, context: TurnContext): Task[BspExecResult] =
+  override def executeOutput(input: BspRunInput, context: ToolContext): Task[BspExecResult] =
     withSessionTyped[BspExecResult](
       input.projectRoot, context,
       onError = msg => BspExecResult(input.projectRoot, "ERROR", 0, "", msg)

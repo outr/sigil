@@ -14,6 +14,7 @@ import java.nio.file.{Files, Path}
 
 import scala.jdk.CollectionConverters.*
 import scala.reflect.ClassTag
+import sigil.event.Event
 
 /**
  * Coverage for `GitPushTool`. Spec sets up two local git repos: a
@@ -99,7 +100,7 @@ class GitPushToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         for {
           out <- tool.execute(
             GitPushInput(workingDir = Some(workDir.toString), setUpstream = true),
-            turnContext()
+            turnContext(), Event.id()
           ).toList
         } yield typed[GitPushOutput](out) match {
           case _: GitPushOutput.Pushed => succeed
@@ -112,12 +113,12 @@ class GitPushToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         for {
           _   <- tool.execute(
                    GitPushInput(workingDir = Some(workDir.toString), setUpstream = true),
-                   turnContext()
+                   turnContext(), Event.id()
                  ).toList
           _   <- workCtx.writeFile("second.txt", "hi")
           _   <- workCtx.executeCommand("git add -- second.txt", Some(workDir.toString))
           _   <- workCtx.executeCommand("git commit -m 'second'", Some(workDir.toString))
-          out <- tool.execute(GitPushInput(workingDir = Some(workDir.toString)), turnContext()).toList
+          out <- tool.execute(GitPushInput(workingDir = Some(workDir.toString)), turnContext(), Event.id()).toList
         } yield typed[GitPushOutput](out) match {
           case _: GitPushOutput.Pushed => succeed
           case other                   => fail(s"expected Pushed, got $other")
@@ -133,7 +134,7 @@ class GitPushToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
               branch     = Some("master"),
               force      = true
             ),
-            turnContext()
+            turnContext(), Event.id()
           ).toList
         } yield typed[GitPushOutput](out) match {
           case GitPushOutput.Failed(error, detail, exitCode, _) =>
@@ -150,7 +151,7 @@ class GitPushToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         for {
           _   <- tool.execute(
                    GitPushInput(workingDir = Some(workDir.toString), setUpstream = true),
-                   turnContext()
+                   turnContext(), Event.id()
                  ).toList
           out <- tool.execute(
             GitPushInput(
@@ -159,7 +160,7 @@ class GitPushToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
               forceWithLease   = true,
               confirmForcePush = true
             ),
-            turnContext()
+            turnContext(), Event.id()
           ).toList
         } yield typed[GitPushOutput](out) match {
           // No gate refusal — pushed (possibly a no-op fast-forward).
@@ -174,7 +175,7 @@ class GitPushToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         val tool = new GitPushTool(workCtx)
         for {
           _   <- workCtx.executeCommand("git checkout -b feature/unpushed", Some(workDir.toString))
-          out <- tool.execute(GitPushInput(workingDir = Some(workDir.toString)), turnContext()).toList
+          out <- tool.execute(GitPushInput(workingDir = Some(workDir.toString)), turnContext(), Event.id()).toList
         } yield typed[GitPushOutput](out) match {
           case GitPushOutput.Failed(error, _, _, _) =>
             error should (be(GitPushError.NoUpstream) or be(GitPushError.Unknown))

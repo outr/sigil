@@ -4,7 +4,8 @@ import fabric.rw.*
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Task
-import sigil.{SpaceId, TurnContext}
+import sigil.SpaceId
+import sigil.tool.ToolContext
 import sigil.participant.ParticipantId
 import sigil.provider.Mode
 import sigil.tool.{Tool, ToolExample, ToolName, ToolResult, ToolSchema}
@@ -59,7 +60,7 @@ class ProxyTool(val wrapped: Tool, transport: ToolProxyTransport) extends Tool {
   override def modified: Timestamp              = wrapped.modified
   override lazy val schema: ToolSchema          = wrapped.schema
 
-  override def executeResult(input: Input, context: TurnContext): Task[ToolResult[Output]] = {
+  override def executeResult(input: Input, context: ToolContext): Task[ToolResult[Output]] = {
     val rendered = inputRW.read(input)
     transport.dispatch(wrapped.name, rendered, context).map {
       case ToolResult.Success(json)   => ToolResult.Success(outputRW.write(json))

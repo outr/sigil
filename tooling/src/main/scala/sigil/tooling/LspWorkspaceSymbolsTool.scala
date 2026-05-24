@@ -2,7 +2,7 @@ package sigil.tooling
 
 import fabric.rw.*
 import rapid.{Stream, Task}
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.output.{Node, PaginatedTool}
 import sigil.tool.{ToolInput, ToolName}
 import sigil.tooling.types.{LspPosition, LspWorkspaceSymbol}
@@ -43,7 +43,7 @@ final class LspWorkspaceSymbolsTool(val manager: LspManager) extends PaginatedTo
   // the next tool so the agent sees the natural follow-up.
   override def suggestedNextTools: List[ToolName] = List(ToolName("dispatch_workers"))
 
-  override protected def executeStream(input: LspWorkspaceSymbolsInput, context: TurnContext): Stream[Node[LspWorkspaceSymbol]] =
+  override protected def executeStream(input: LspWorkspaceSymbolsInput, context: ToolContext): Stream[Node[LspWorkspaceSymbol]] =
     Stream.force(
       withSessionTyped[Stream[Node[LspWorkspaceSymbol]]](
         input.languageId, input.projectRoot, context,

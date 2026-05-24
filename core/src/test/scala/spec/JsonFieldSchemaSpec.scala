@@ -10,6 +10,7 @@ import sigil.db.Model
 import sigil.provider.{ConversationMode, ConversationRequest, GenerationSettings, Instructions, ProviderRequest}
 import sigil.provider.openai.OpenAIProvider
 import rapid.Task
+import sigil.tool.ToolContext
 import sigil.tool.{DefinitionToSchema, TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import sigil.tool.core.CoreTools
 
@@ -74,7 +75,7 @@ class JsonFieldSchemaSpec extends AnyWordSpec with Matchers {
     val outputRW = summon[RW[TextToolOutput]]
     val name        = ToolName("typed_only_test_tool")
     val description = "All-typed input — should ship with strict: true."
-    override def executeResult(input: TypedOnlyInput, context: sigil.TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: TypedOnlyInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
 
@@ -86,7 +87,7 @@ class JsonFieldSchemaSpec extends AnyWordSpec with Matchers {
     val outputRW = summon[RW[TextToolOutput]]
     val name        = ToolName("json_field_test_tool")
     val description = "Has Option[Json] — should ship with strict: false."
-    override def executeResult(input: JsonFieldInput, context: sigil.TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: JsonFieldInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
 

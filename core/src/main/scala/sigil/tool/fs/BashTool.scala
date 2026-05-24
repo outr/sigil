@@ -1,7 +1,7 @@
 package sigil.tool.fs
 
 import rapid.{Stream, Task}
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.model.BashInput
 import sigil.tool.output.{Node, PaginatedTool}
 import sigil.tool.{PlaceholderInputDetector, ToolExample, ToolName}
@@ -36,14 +36,14 @@ final class BashTool(context: FileSystemContext) extends PaginatedTool[BashInput
   // tools when both match a query.
   override def preferIfNoBetter: Boolean = true
 
-  override protected def executeStream(input: BashInput, ctx: TurnContext): Stream[Node[BashLine]] =
+  override protected def executeStream(input: BashInput, ctx: ToolContext): Stream[Node[BashLine]] =
     PlaceholderInputDetector.validateNoPlaceholders("command" -> input.command) match {
       case Some(reason) =>
         Stream.force(Task.error(new RuntimeException(reason)))
       case None         => runCommand(input, ctx)
     }
 
-  private def runCommand(input: BashInput, ctx: TurnContext): Stream[Node[BashLine]] =
+  private def runCommand(input: BashInput, ctx: ToolContext): Stream[Node[BashLine]] =
     Stream.force(
       WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
         context.executeCommand(input.command, dir, input.timeoutMs.getOrElse(120000L)).map { r =>

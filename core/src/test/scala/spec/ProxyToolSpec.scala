@@ -11,9 +11,11 @@ import sigil.conversation.Conversation
 import sigil.event.ToolOutcome
 import sigil.signal.ToolDelta
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
+import sigil.tool.ToolContext
 import sigil.tool.proxy.{ProxyTool, ToolProxyTransport}
 
 import java.util.concurrent.atomic.{AtomicReference, AtomicInteger}
+import sigil.event.Event
 
 /**
  * Coverage for [[ProxyTool]] — verifies that the wrapper preserves
@@ -42,7 +44,7 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       ToolExample("doubles its input", FakeToolInput(value = 5))
     )
 
-    override def executeOutput(input: FakeToolInput, context: TurnContext): Task[TextToolOutput] =
+    override def executeOutput(input: FakeToolInput, context: ToolContext): Task[TextToolOutput] =
       Task.pure(TextToolOutput(s"local: ${input.value * 2}"))
   }
 
@@ -65,7 +67,7 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       // here a TextToolOutput-shaped payload.
       transport.respondWith(ToolResult.Success(obj("text" -> str("remote-ok"))))
 
-      proxy.execute(FakeToolInput(value = 7), ctx).toList.map { events =>
+      proxy.execute(FakeToolInput(value = 7), ctx, Event.id()).toList.map { events =>
         // Transport saw the typed input as Json.
         val (_, capturedJson, _) = transport.lastCall.get()
         JsonFormatter.Compact(capturedJson) should include("\"value\":7")
@@ -85,7 +87,7 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val ctx       = makeContext()
       transport.respondWith(ToolResult.Success(obj("text" -> str("ok"))))
 
-      proxy.execute(FakeToolInput(value = 1), ctx).toList.map { _ =>
+      proxy.execute(FakeToolInput(value = 1), ctx, Event.id()).toList.map { _ =>
         val (capturedName, _, _) = transport.lastCall.get()
         capturedName shouldBe FakeWrappedTool.name
       }
@@ -110,13 +112,13 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   /** Test transport — records each dispatch call, replays a configured result. */
   private class RecordingTransport extends ToolProxyTransport {
     private val response = new AtomicReference[ToolResult[Json]](ToolResult.Success(obj()))
-    val lastCall: AtomicReference[(ToolName, Json, TurnContext)] =
-      new AtomicReference[(ToolName, Json, TurnContext)]()
+    val lastCall: AtomicReference[(ToolName, Json, ToolContext)] =
+      new AtomicReference[(ToolName, Json, ToolContext)]()
     val callCount = new AtomicInteger(0)
 
     def respondWith(r: ToolResult[Json]): Unit = response.set(r)
 
-    override def dispatch(toolName: ToolName, inputJson: Json, context: TurnContext): Task[ToolResult[Json]] = {
+    override def dispatch(toolName: ToolName, inputJson: Json, context: ToolContext): Task[ToolResult[Json]] = {
       callCount.incrementAndGet()
       lastCall.set((toolName, inputJson, context))
       Task.pure(response.get())

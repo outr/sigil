@@ -17,6 +17,7 @@ import sigil.provider.{
 import sigil.signal.{EventState, Signal}
 import sigil.tool.core.CoreTools
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.ToolContext
 import spice.http.HttpRequest
 
 /**
@@ -62,7 +63,7 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     val name = ToolName("adversarial_silent")
     val description = "Adversarial tool: resolves a benign success."
 
-    override def executeResult(input: AdversarialInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: AdversarialInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 
@@ -77,7 +78,7 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     val name = ToolName("adversarial_sync_throw")
     val description = "Adversarial tool: throws while constructing the Task."
 
-    override def executeResult(input: AnotherInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: AnotherInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       throw new RuntimeException("adversarial: sync construction throw")
   }
 
@@ -92,7 +93,7 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     val name = ToolName("adversarial_mid_stream_error")
     val description = "Adversarial tool: errors when the resolution Task is evaluated."
 
-    override def executeResult(input: ThirdInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: ThirdInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.error(new RuntimeException("adversarial: mid-stream throw"))
   }
 

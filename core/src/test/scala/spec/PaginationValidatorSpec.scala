@@ -6,6 +6,7 @@ import org.scalatest.wordspec.AnyWordSpec
 import rapid.Task
 import sigil.TurnContext
 import sigil.tool.{PaginationValidator, TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.ToolContext
 
 /**
  * Coverage for [[PaginationValidator]] (sigil bug #201). Every Tool
@@ -26,7 +27,7 @@ class PaginationValidatorSpec extends AnyWordSpec with Matchers {
     val name        = ToolName("plain_single_shot")
     val description = "A single-shot tool with no pagination fields."
     override def paginate: Boolean = false
-    override def executeResult(input: PlainInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: PlainInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
 
@@ -38,7 +39,7 @@ class PaginationValidatorSpec extends AnyWordSpec with Matchers {
     val name        = ToolName("plain_claims_paginated")
     val description = "Claims paginate=true but exposes no pagination field — invalid."
     override def paginate: Boolean = true
-    override def executeResult(input: PlainInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: PlainInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
 
@@ -53,7 +54,7 @@ class PaginationValidatorSpec extends AnyWordSpec with Matchers {
     val name        = ToolName("paged_tool")
     val description = "Exposes offset / limit; valid paginate=true."
     override def paginate: Boolean = true
-    override def executeResult(input: PagedInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: PagedInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
 
@@ -67,7 +68,7 @@ class PaginationValidatorSpec extends AnyWordSpec with Matchers {
     val name        = ToolName("cursor_tool")
     val description = "Uses a single cursor field; valid paginate=true."
     override def paginate: Boolean = true
-    override def executeResult(input: CursorInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: CursorInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
 

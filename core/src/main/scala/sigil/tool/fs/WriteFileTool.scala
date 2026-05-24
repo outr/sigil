@@ -3,7 +3,7 @@ package sigil.tool.fs
 import fabric.rw.*
 import lightdb.time.Timestamp
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.storage.{FileVersion, WriteResult}
 import sigil.tool.model.{WriteFileInput, WriteFileOutput}
 import sigil.tool.{PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolResult}
@@ -45,13 +45,13 @@ final class WriteFileTool(context: FileSystemContext)
   )
   override val keywords = Set("file", "write", "save", "create", "output")
 
-  override def executeResult(input: WriteFileInput, ctx: TurnContext): Task[ToolResult[WriteFileOutput]] =
+  override def executeResult(input: WriteFileInput, ctx: ToolContext): Task[ToolResult[WriteFileOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
       case None        => runWrite(input, ctx).map(ToolResult.success(_))
     }
 
-  private def runWrite(input: WriteFileInput, ctx: TurnContext): Task[WriteFileOutput] =
+  private def runWrite(input: WriteFileInput, ctx: ToolContext): Task[WriteFileOutput] =
     WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>
       input.expectedHash match {
         case None =>

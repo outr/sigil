@@ -2,7 +2,7 @@ package sigil.metals
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class StartMetalsInput() extends ToolInput derives RW
@@ -41,7 +41,7 @@ final class StartMetalsTool extends Tool {
 
   import MetalsToolSupport.*
 
-  override def executeResult(input: StartMetalsInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
+  override def executeResult(input: StartMetalsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val sigil = context.sigil
     workspaceFor(sigil, context).flatMap {
       case Left(msg) =>

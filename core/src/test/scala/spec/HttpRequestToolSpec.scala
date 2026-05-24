@@ -14,6 +14,8 @@ import sigil.tool.web.HttpRequestTool
 import java.net.InetSocketAddress
 import java.util.concurrent.atomic.AtomicReference
 import scala.jdk.CollectionConverters.*
+import sigil.event.Event
+import sigil.tool.ToolContext
 
 class HttpRequestToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers with BeforeAndAfterAll {
   TestSigil.initFor(getClass.getSimpleName)
@@ -85,7 +87,7 @@ class HttpRequestToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
   "HttpRequestTool" should {
     "issue a GET and return status / headers / body" in {
       captured.set(None)
-      HttpRequestTool.invoke(HttpRequestInput(url = s"$baseUrl/echo"), ctx).map { out =>
+      HttpRequestTool.invoke(HttpRequestInput(url = s"$baseUrl/echo"), ToolContext(ctx, Event.id(), HttpRequestTool.name)).map { out =>
         out.status shouldBe 200
         out.statusText should not be empty
         out.body should include(""""method":"GET"""")
@@ -105,7 +107,7 @@ class HttpRequestToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
           headers = Map("X-Custom-Header" -> "marker-42"),
           body    = Some(body)
         ),
-        ctx
+        ToolContext(ctx, Event.id(), HttpRequestTool.name)
       ).map { out =>
         out.status shouldBe 200
         out.body should include(s""""echoed":${body.length}""")
@@ -118,7 +120,7 @@ class HttpRequestToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     }
 
     "surface non-2xx status without throwing" in {
-      HttpRequestTool.invoke(HttpRequestInput(url = s"$baseUrl/notfound"), ctx).map { out =>
+      HttpRequestTool.invoke(HttpRequestInput(url = s"$baseUrl/notfound"), ToolContext(ctx, Event.id(), HttpRequestTool.name)).map { out =>
         out.status shouldBe 404
         out.body shouldBe "missing"
       }
@@ -127,7 +129,7 @@ class HttpRequestToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     "truncate response bodies past `maxResponseBytes` and flag the truncation" in {
       HttpRequestTool.invoke(
         HttpRequestInput(url = s"$baseUrl/large", maxResponseBytes = 4096),
-        ctx
+        ToolContext(ctx, Event.id(), HttpRequestTool.name)
       ).map { out =>
         out.status shouldBe 200
         out.body.length shouldBe 4096
@@ -139,7 +141,7 @@ class HttpRequestToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       captured.set(None)
       HttpRequestTool.invoke(
         HttpRequestInput(url = s"$baseUrl/echo", method = HttpRequestMethod.Delete),
-        ctx
+        ToolContext(ctx, Event.id(), HttpRequestTool.name)
       ).map { out =>
         out.status shouldBe 200
         captured.get().map(_.method) shouldBe Some("DELETE")

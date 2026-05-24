@@ -10,6 +10,7 @@ import sigil.provider.{
   CachedProvider, GenerationSettings, OneShotRequest, Provider, ProviderCall,
   ProviderEvent, ProviderType, StopReason
 }
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tool.core.RespondTool
 import spice.http.HttpRequest
@@ -235,7 +236,7 @@ class CachedProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     val name: ToolName = delegate.name
     val description: String = descriptionText
     override def executeResult(input: ToolInput,
-                               context: sigil.TurnContext): Task[sigil.tool.ToolResult[sigil.tool.TextToolOutput]] =
+                               context: ToolContext): Task[sigil.tool.ToolResult[sigil.tool.TextToolOutput]] =
       Task.pure(sigil.tool.ToolResult.Success(sigil.tool.TextToolOutput("")))
     override def paginate: Boolean = delegate.paginate
     override def inputDefinition: fabric.define.Definition = delegate.inputDefinition

@@ -2,7 +2,8 @@ package sigil.workflow.tool
 
 import fabric.rw.*
 import rapid.Task
-import sigil.{GlobalSpace, SpaceId, TurnContext}
+import sigil.{GlobalSpace, SpaceId}
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import sigil.workflow.{WorkflowStepInput, WorkflowTemplate, WorkflowTrigger}
 
@@ -56,7 +57,7 @@ final class CreateWorkflowTool extends Tool with WorkflowToolSupport {
   )
   override val keywords = Set("workflow", "create", "compose", "automation")
 
-  override def executeResult(input: CreateWorkflowInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
+  override def executeResult(input: CreateWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
     host.accessibleSpaces(ctx.chain).flatMap { spaces =>
       val callerSpace: SpaceId = spaces.headOption.getOrElse(GlobalSpace)
       val template = WorkflowTemplate(

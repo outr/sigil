@@ -9,6 +9,7 @@ import rapid.Task
 import sigil.event.Event
 import sigil.provider.{CallId, ProviderEvent, ToolCallAccumulator}
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.ToolContext
 
 /**
  * Regression for Sigil audit H8 — `ToolCallAccumulator.observeHeader`
@@ -38,7 +39,7 @@ class SplitToolCallHeaderSpec extends AnyWordSpec with Matchers {
     val description: String = "test"
     override def space: SpaceId = GlobalSpace
     override def _id: Id[Tool] = Id[Tool](name.value)
-    override def executeResult(input: Args, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: Args, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.value)))
   }
 

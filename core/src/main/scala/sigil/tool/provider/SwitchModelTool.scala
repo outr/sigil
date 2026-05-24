@@ -3,7 +3,7 @@ package sigil.tool.provider
 import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.db.Model
 import sigil.provider.{ModelCandidate, ProviderStrategyRecord}
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
@@ -54,10 +54,10 @@ case object SwitchModelTool extends Tool {
   override val keywords = Set("switch", "model", "strategy", "provider", "change", "use", "auto", "default")
 
   override def executeResult(input: SwitchModelInput,
-                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     handle(input.query.trim, ctx)
 
-  private def handle(rawQuery: String, ctx: TurnContext): Task[ToolResult[TextToolOutput]] = {
+  private def handle(rawQuery: String, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val q = rawQuery.toLowerCase
     val convSpace = ctx.conversation.space
     if (q.isEmpty)
@@ -96,7 +96,7 @@ case object SwitchModelTool extends Tool {
     * matches — eliminates the prior silent-fallthrough that stamped
     * phantom modelIds and routed to llama by accident. */
   private def createAdHocOrRefuse(rawQuery: String,
-                                  ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+                                  ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     ModelResolution.resolve(rawQuery, ctx).flatMap {
       case ModelResolutionResult.Unresolved(_, guidance) =>
         Task.pure(ToolResult.failure(guidance))
@@ -110,14 +110,14 @@ case object SwitchModelTool extends Tool {
     }
 
   private def assign(record: ProviderStrategyRecord,
-                     ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+                     ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     ctx.sigil.assignProviderStrategy(ctx.conversation.space, record._id, ctx.chain).map { _ =>
       ok(s"Switched to strategy '${record.label}' (id=${record._id.value}).")
     }
 
   private def createAdHoc(modelId: Id[Model],
                           noteVia: String,
-                          ctx: TurnContext): Task[ToolResult[TextToolOutput]] = {
+                          ctx: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val record = ProviderStrategyRecord(
       space = ctx.conversation.space,
       label = s"Override: ${modelId.value}",

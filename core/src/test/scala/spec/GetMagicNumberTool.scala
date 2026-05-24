@@ -4,6 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.ToolContext
 
 /** Empty input — `get_magic_number` takes no arguments. */
 final case class GetMagicNumberInput() extends ToolInput derives RW
@@ -26,6 +27,6 @@ case object GetMagicNumberTool extends Tool {
   val name = ToolName("get_magic_number")
   val description = "Returns the magic number. Call this first, then tell the user what number you got."
 
-  override def executeResult(input: GetMagicNumberInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: GetMagicNumberInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.Success(TextToolOutput("42")))
 }

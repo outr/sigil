@@ -4,7 +4,7 @@ import fabric.Json
 import fabric.define.{DefType, Definition}
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 /**
@@ -46,6 +46,6 @@ case class DynamicTool(toolName: String,
     * JSON via DynamicToolInput.rw regardless). */
   override def inputDefinition: Definition = paramsDefinition
 
-  override def executeResult(input: DynamicToolInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: DynamicToolInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.Success(TextToolOutput("")))
 }

@@ -2,7 +2,7 @@ package sigil.tooling
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspLocation, LspLocationsResult}
 
@@ -38,7 +38,7 @@ final class LspTypeDefinitionTool(val manager: LspManager) extends Tool
   override val keywords = Set("lsp", "type definition", "type", "where defined", "type declaration", "examine", "inspect")
 
 
-  override def executeOutput(input: LspTypeDefinitionInput, context: TurnContext): Task[LspLocationsResult] =
+  override def executeOutput(input: LspTypeDefinitionInput, context: ToolContext): Task[LspLocationsResult] =
     withOpenDocumentOrThrow[LspLocationsResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

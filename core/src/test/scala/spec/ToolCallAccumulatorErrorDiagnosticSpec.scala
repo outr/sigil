@@ -11,6 +11,7 @@ import sigil.{GlobalSpace, SpaceId, TurnContext}
 import sigil.event.Event
 import sigil.provider.{CallId, ProviderEvent, ToolCallAccumulator}
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.ToolContext
 
 /**
  * Regression coverage for bug #72 — when `tool.inputRW.write(json)`
@@ -68,7 +69,7 @@ class ToolCallAccumulatorErrorDiagnosticSpec extends AnyWordSpec with Matchers {
     val description: String = "Always throws on inputRW.write."
     override def space: SpaceId = GlobalSpace
     override def _id: Id[Tool] = Id[Tool](name.value)
-    override def executeResult(input: ToolInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: ToolInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 
@@ -81,7 +82,7 @@ class ToolCallAccumulatorErrorDiagnosticSpec extends AnyWordSpec with Matchers {
     val description: String = "Round-trips ValidInput cleanly."
     override def space: SpaceId = GlobalSpace
     override def _id: Id[Tool] = Id[Tool](name.value)
-    override def executeResult(input: ValidInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: ValidInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.name)))
   }
 
@@ -171,7 +172,7 @@ class ToolCallAccumulatorErrorDiagnosticSpec extends AnyWordSpec with Matchers {
         val description: String = "Tool with required + optional fields."
         override def space: SpaceId = GlobalSpace
         override def _id: Id[Tool] = Id[Tool](name.value)
-        override def executeResult(input: ToolInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+        override def executeResult(input: ToolInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
           Task.pure(ToolResult.Success(TextToolOutput("")))
       }
       val msg = errorMessage(runComplete(WithOptTool, """{"req":"x"}"""))

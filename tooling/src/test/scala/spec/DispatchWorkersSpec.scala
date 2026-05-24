@@ -20,7 +20,7 @@ import sigil.script.ScalaScriptExecutor
 import sigil.signal.{EventState, Signal}
 import sigil.tool.fs.LocalFileSystemContext
 import sigil.tool.model.GrepInput
-import sigil.tool.{Tool, ToolName}
+import sigil.tool.{Tool, ToolContext, ToolName}
 import sigil.tooling.container.{CreateContainerInput, CreateContainerTool}
 import sigil.tooling.dispatch.{DispatchWorkersInput, DispatchWorkersOutput, DispatchWorkersTool}
 import sigil.vector.{NoOpVectorIndex, VectorIndex}
@@ -60,8 +60,7 @@ class DispatchWorkersSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       sigil               = DispatchTestSigil,
       chain               = List(DispatchTestUser),
       conversation        = conv,
-      turnInput           = TurnInput(ConversationView(conversationId = convId)),
-      currentToolInvokeId = Some(Event.id())
+      turnInput           = TurnInput(ConversationView(conversationId = convId))
     )
   }
 
@@ -88,7 +87,7 @@ class DispatchWorkersSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
   /** Persist `items` as a fresh container under `ctx`'s conversation
     * and return the resulting `itemsId`. */
   private def containerFor(items: List[Json], ctx: TurnContext): lightdb.id.Id[sigil.tool.output.ToolOutputNode] =
-    CreateContainerTool.invoke(CreateContainerInput(items), ctx).sync().itemsId
+    CreateContainerTool.invoke(CreateContainerInput(items), ToolContext(ctx, Event.id(), CreateContainerTool.name)).sync().itemsId
 
   // ------------- the cases -------------
 
@@ -107,7 +106,7 @@ class DispatchWorkersSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         confirmed = true,
         maxParallel = 4
       )
-      tool.invoke(input, ctx).map {
+      tool.invoke(input, ToolContext(ctx, Event.id(), tool.name)).map {
         case d: DispatchWorkersOutput.DispatchResult =>
           d.totalItems shouldBe 10
           d.successCount shouldBe 10
@@ -136,7 +135,7 @@ class DispatchWorkersSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         groupSize = 3,
         confirmed = true
       )
-      tool.invoke(input, ctx).map {
+      tool.invoke(input, ToolContext(ctx, Event.id(), tool.name)).map {
         case d: DispatchWorkersOutput.DispatchResult =>
           d.totalItems shouldBe 7
           d.successCount shouldBe 3
@@ -175,7 +174,7 @@ class DispatchWorkersSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         confirmed   = true,
         maxParallel = 3
       )
-      tool.invoke(input, ctx).map {
+      tool.invoke(input, ToolContext(ctx, Event.id(), tool.name)).map {
         case d: DispatchWorkersOutput.DispatchResult =>
           try {
             withClue(s"outcomes: ${d.perItem.mkString("\n")}\n") {

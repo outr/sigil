@@ -6,7 +6,8 @@ import fabric.rw.*
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Task
-import sigil.{SpaceId, TurnContext}
+import sigil.SpaceId
+import sigil.tool.ToolContext
 import sigil.participant.{AgentParticipantId, ParticipantId}
 import sigil.provider.Mode
 import sigil.tool.{JsonInput, JsonSchemaToDefinition, TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
@@ -46,7 +47,7 @@ final class McpTool(manager: McpManager,
   override val created: Timestamp = Tool.Epoch
   override val modified: Timestamp = Tool.Epoch
 
-  override def executeResult(input: JsonInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
+  override def executeResult(input: JsonInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val agentId = context.chain.collectFirst { case a: AgentParticipantId => a }
       .getOrElse(context.caller)
     manager.callTool(serverConfig.name, definition.name, input.json, agentId).map { result =>

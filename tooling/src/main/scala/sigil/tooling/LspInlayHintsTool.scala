@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import org.eclipse.lsp4j.{InlayHint, InlayHintKind, Position, Range}
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspInlayHintItem, LspInlayHintsResult, LspPosition}
 
@@ -42,7 +42,7 @@ final class LspInlayHintsTool(val manager: LspManager) extends Tool
   override val keywords = Set("lsp", "inlay", "hints", "type annotation", "parameter hint", "type hint")
 
 
-  override def executeOutput(input: LspInlayHintsInput, context: TurnContext): Task[LspInlayHintsResult] =
+  override def executeOutput(input: LspInlayHintsInput, context: ToolContext): Task[LspInlayHintsResult] =
     withOpenDocumentOrThrow[LspInlayHintsResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

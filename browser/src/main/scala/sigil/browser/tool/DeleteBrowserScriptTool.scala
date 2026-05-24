@@ -5,7 +5,8 @@ import rapid.Task
 import sigil.browser.BrowserScript
 import sigil.browser.WebBrowserMode
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
-import sigil.{GlobalSpace, TurnContext}
+import sigil.GlobalSpace
+import sigil.tool.ToolContext
 
 /** Delete a stored [[BrowserScript]] by name. Authz: caller's
   * `accessibleSpaces` must include the script's space (or the
@@ -23,7 +24,7 @@ case object DeleteBrowserScriptTool extends Tool {
   override val keywords = Set("delete", "remove", "browser", "script")
 
   override def executeResult(input: DeleteBrowserScriptInput,
-                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     ctx.sigil.accessibleSpaces(ctx.chain).flatMap { accessible =>
       ctx.sigil.withDB(_.tools.transaction { tx =>
         tx.query.filter(_.toolName === input.name).toList.map(_.headOption).flatMap {

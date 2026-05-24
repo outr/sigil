@@ -4,7 +4,7 @@ import fabric.{Json, Null, str}
 import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import strider.Workflow
 import strider.step.Step
@@ -44,7 +44,7 @@ final class ResumeWorkflowTool extends Tool with WorkflowToolSupport {
   )
   override val keywords = Set("workflow", "resume", "approve", "continue")
 
-  override def executeResult(input: ResumeWorkflowInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
+  override def executeResult(input: ResumeWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
     val workflowId = Id[Workflow](input.runId)
     host.withDB(_.workflows.transaction(_.get(workflowId))).flatMap {
       case None => Task.pure(s"Workflow run '${input.runId}' not found.")

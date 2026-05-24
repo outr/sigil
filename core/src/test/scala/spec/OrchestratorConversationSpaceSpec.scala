@@ -13,6 +13,7 @@ import sigil.provider.{
   Instructions, Provider, ProviderCall, ProviderEvent, ProviderType, StopReason
 }
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.ToolContext
 import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.AtomicReference
@@ -51,7 +52,7 @@ class OrchestratorConversationSpaceSpec extends AsyncWordSpec with AsyncTaskSpec
     val outputRW = summon[RW[TextToolOutput]]
     val name        = ToolName("capture")
     val description = "test-only — captures the TurnContext's conversation"
-    override def executeResult(input: CaptureInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: CaptureInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task {
         captured.set(Some(ctx.conversation))
         ToolResult.Success(TextToolOutput("captured"))

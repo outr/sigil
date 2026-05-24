@@ -8,6 +8,7 @@ import rapid.Task
 import sigil.{GlobalSpace, TurnContext}
 import sigil.provider.{ConversationMode, Mode}
 import sigil.tool.{DiscoveryFilter, DiscoveryRequest, TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.ToolContext
 
 /**
  * Coverage for sigil bug #95 — `tool.modes.isEmpty` means "no
@@ -38,7 +39,7 @@ class DiscoveryFilterModeAffinitySpec extends AnyWordSpec with Matchers {
     val description = s"Stub $n"
     override val modes: Set[Id[Mode]] = Set.empty
 
-    override def executeResult(input: StubInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: StubInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.text)))
   }
 
@@ -53,7 +54,7 @@ class DiscoveryFilterModeAffinitySpec extends AnyWordSpec with Matchers {
     val description = s"Stub $n"
     override val modes: Set[Id[Mode]] = Set(restrictTo.id)
 
-    override def executeResult(input: StubInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: StubInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.text)))
   }
 

@@ -8,6 +8,7 @@ import sigil.conversation.{Conversation, Topic, TopicEntry, TurnInput}
 import sigil.provider.{ConversationMode, ToolPolicy}
 import sigil.script.{CreateScriptToolInput, CreateScriptToolTool}
 import sigil.tool.{DiscoveryRequest, ToolName}
+import sigil.event.Event
 
 /**
  * Coverage for the just-created-script-tool flow:
@@ -59,7 +60,7 @@ class CreateScriptToolImmediateInvocationSpec extends AsyncWordSpec with AsyncTa
       parameters = fabric.obj("type" -> fabric.str("object"), "properties" -> fabric.obj()),
       keywords = Set.empty,
       space = None
-    ), ctx()).toList.map(_ => ())
+    ), ctx(), Event.id()).toList.map(_ => ())
 
   "create_script_tool" should {
 

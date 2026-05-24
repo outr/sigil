@@ -2,7 +2,7 @@ package sigil.tool.util
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.event.{Event, Message, TopicChange}
 import sigil.tool.model.{ResponseContent, SearchConversationHit, SearchConversationInput, SearchConversationOutput}
 import sigil.tool.{Tool, ToolExample, ToolName}
@@ -48,7 +48,7 @@ case object SearchConversationTool extends Tool with sigil.tool.ReadOnlyInternal
   )
   override val keywords = Set("search", "conversation", "history", "find", "recall")
 
-  override def executeOutput(input: SearchConversationInput, context: TurnContext): Task[SearchConversationOutput] =
+  override def executeOutput(input: SearchConversationInput, context: ToolContext): Task[SearchConversationOutput] =
     context.sigil
       .searchConversationEvents(
         conversationId = context.conversation.id,

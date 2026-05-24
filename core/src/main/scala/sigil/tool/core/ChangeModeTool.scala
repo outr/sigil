@@ -2,7 +2,8 @@ package sigil.tool.core
 
 import fabric.rw.*
 import rapid.Task
-import sigil.{Sigil, TurnContext}
+import sigil.Sigil
+import sigil.tool.ToolContext
 import sigil.event.{ModeChange, MessageRole}
 import sigil.provider.Mode
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
@@ -66,7 +67,7 @@ case object ChangeModeTool extends Tool {
   // so the curator elides it from future turns.
   override def resultTtl: Option[Int] = Some(0)
 
-  override def executeResult(input: ChangeModeInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: ChangeModeInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.modeByName(input.mode) match {
       case Some(mode) =>
         context.emit(ModeChange(

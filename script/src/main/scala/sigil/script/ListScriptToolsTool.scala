@@ -2,7 +2,7 @@ package sigil.script
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 /**
@@ -27,7 +27,7 @@ case object ListScriptToolsTool extends Tool {
   override val keywords = Set("list", "tools", "script", "enumerate", "available")
 
   override def executeResult(input: ListScriptToolsInput,
-                             context: TurnContext): Task[ToolResult[TextToolOutput]] =
+                             context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       context.sigil.withDB(_.tools.transaction(_.list)).map { allTools =>
         val needle = input.nameContains.map(_.toLowerCase)

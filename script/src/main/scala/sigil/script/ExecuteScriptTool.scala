@@ -2,7 +2,7 @@ package sigil.script
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolExample, ToolName, ToolResult}
 
 /**
@@ -36,7 +36,7 @@ import sigil.tool.{Tool, ToolExample, ToolName, ToolResult}
  * default [[ScalaScriptExecutor]] grants full JVM access.
  */
 class ExecuteScriptTool(executor: ScriptExecutor,
-                        bindings: TurnContext => Map[String, Any] = ScriptTools.defaultBindings,
+                        bindings: ToolContext => Map[String, Any] = ScriptTools.defaultBindings,
                         override val name: ToolName = ToolName("execute_script"),
                         override val description: String = ExecuteScriptTool.DefaultDescription)
   extends Tool {
@@ -93,7 +93,7 @@ class ExecuteScriptTool(executor: ScriptExecutor,
   override def preferIfNoBetter: Boolean = true
 
   override def executeResult(input: ScriptInput,
-                             context: TurnContext): Task[ToolResult[ScriptToolOutput]] = {
+                             context: ToolContext): Task[ToolResult[ScriptToolOutput]] = {
     val started = System.currentTimeMillis()
     // Bug #67 — wrap the whole construction in an outer `Task.defer`
     // and `.handleError` it so synchronous throws during evaluation

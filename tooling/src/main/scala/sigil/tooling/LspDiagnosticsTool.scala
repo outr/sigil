@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import org.eclipse.lsp4j.Diagnostic
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspDiagnostic, LspDiagnosticsResult}
 
@@ -54,7 +54,7 @@ final class LspDiagnosticsTool(val manager: LspManager) extends Tool
   )
 
 
-  override def executeOutput(input: LspDiagnosticsInput, context: TurnContext): Task[LspDiagnosticsResult] =
+  override def executeOutput(input: LspDiagnosticsInput, context: ToolContext): Task[LspDiagnosticsResult] =
     withOpenDocumentOrThrow[LspDiagnosticsResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

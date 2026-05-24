@@ -2,7 +2,7 @@ package sigil.debug
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class DapSessionStatusInput(sessionId: String,
@@ -39,7 +39,7 @@ final class DapSessionStatusTool(val manager: DapManager) extends Tool with DapT
     )
   )
 
-  override def executeResult(input: DapSessionStatusInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: DapSessionStatusInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     withSession(input.sessionId, context) { session =>
       val waitTask =
         if (input.waitForStopMs <= 0) Task.unit

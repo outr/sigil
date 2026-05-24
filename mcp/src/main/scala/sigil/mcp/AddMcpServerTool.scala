@@ -2,7 +2,7 @@ package sigil.mcp
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class AddMcpServerInput(name: String,
@@ -47,7 +47,7 @@ final class AddMcpServerTool(manager: McpManager) extends Tool {
 
   import spice.net.{TLDValidation, URL}
 
-  override def executeResult(input: AddMcpServerInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
+  override def executeResult(input: AddMcpServerInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val transport = (input.command, input.url) match {
       case (Some(cmd), _) => Right(McpTransport.Stdio(cmd, input.args))
       case (_, Some(urlStr)) =>

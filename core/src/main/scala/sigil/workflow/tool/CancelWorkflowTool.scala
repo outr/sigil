@@ -3,7 +3,7 @@ package sigil.workflow.tool
 import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import strider.Workflow
 
@@ -31,7 +31,7 @@ final class CancelWorkflowTool extends Tool with WorkflowToolSupport {
   override val examples = List(ToolExample("cancel by run id", CancelWorkflowInput(runId = "run-abc")))
   override val keywords = Set("workflow", "cancel", "stop", "abort")
 
-  override def executeResult(input: CancelWorkflowInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
+  override def executeResult(input: CancelWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
     val workflowId = Id[Workflow](input.runId)
     host.withDB(_.workflows.transaction(_.get(workflowId))).flatMap {
       case None => Task.pure(s"Workflow run '${input.runId}' not found.")

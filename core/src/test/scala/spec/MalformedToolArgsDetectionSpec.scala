@@ -9,6 +9,7 @@ import rapid.Task
 import sigil.event.Event
 import sigil.provider.{CallId, ProviderEvent, ProviderStreamException, ToolCallAccumulator}
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.ToolContext
 
 /**
  * Regression for sigil bug #171 part B — when the model emits a JSON
@@ -39,7 +40,7 @@ class MalformedToolArgsDetectionSpec extends AnyWordSpec with Matchers {
     val description: String = "Object-rooted respond schema."
     override def space: SpaceId = GlobalSpace
     override def _id: Id[Tool] = Id[Tool](name.value)
-    override def executeResult(input: RespondLike, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: RespondLike, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.content)))
   }
 

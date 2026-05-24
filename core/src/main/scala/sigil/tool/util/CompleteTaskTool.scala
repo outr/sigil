@@ -2,7 +2,7 @@ package sigil.tool.util
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.model.CompleteTaskInput
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 
@@ -43,6 +43,6 @@ case object CompleteTaskTool extends Tool {
   override val keywords = Set("complete", "done", "finish", "terminate", "settle", "result")
 
   override def executeResult(input: CompleteTaskInput,
-                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.Success(TextToolOutput(input.summary)))
 }

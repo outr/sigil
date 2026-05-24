@@ -18,6 +18,7 @@ import sigil.tool.provider.{
   PinComplexityInput, PinComplexityTool, UnpinComplexityInput, UnpinComplexityTool
 }
 import sigil.TurnContext
+import sigil.event.Event
 
 /**
  * Regression for sigil bug #152 — there's no way to pin a
@@ -141,7 +142,7 @@ class PinComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       for {
         conv <- freshConv("pin-tool")
         ctx = buildCtx(conv)
-        _   <- PinComplexityTool.execute(PinComplexityInput("high"), ctx).toList
+        _   <- PinComplexityTool.execute(PinComplexityInput("high"), ctx, Event.id()).toList
         reloaded <- TestSigil.withDB(_.conversations.transaction(_.get(conv._id)))
       } yield {
         reloaded.flatMap(_.pinnedComplexity) shouldBe Some(Complexity.High)
@@ -155,7 +156,7 @@ class PinComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         for {
           conv <- freshConv(s"normalise-${raw.replaceAll("\\W", "")}")
           ctx = buildCtx(conv)
-          _   <- PinComplexityTool.execute(PinComplexityInput(raw), ctx).toList
+          _   <- PinComplexityTool.execute(PinComplexityInput(raw), ctx, Event.id()).toList
           reloaded <- TestSigil.withDB(_.conversations.transaction(_.get(conv._id)))
         } yield reloaded.flatMap(_.pinnedComplexity)
       }).map { results =>
@@ -168,7 +169,7 @@ class PinComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       for {
         conv <- freshConv("reject")
         ctx = buildCtx(conv)
-        _   <- PinComplexityTool.execute(PinComplexityInput("ultra"), ctx).toList
+        _   <- PinComplexityTool.execute(PinComplexityInput("ultra"), ctx, Event.id()).toList
         reloaded <- TestSigil.withDB(_.conversations.transaction(_.get(conv._id)))
       } yield {
         reloaded.flatMap(_.pinnedComplexity) shouldBe None
@@ -182,7 +183,7 @@ class PinComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       for {
         conv <- freshConv("unpin", pinned = Some(Complexity.High))
         ctx = buildCtx(conv)
-        _   <- UnpinComplexityTool.execute(UnpinComplexityInput(), ctx).toList
+        _   <- UnpinComplexityTool.execute(UnpinComplexityInput(), ctx, Event.id()).toList
         reloaded <- TestSigil.withDB(_.conversations.transaction(_.get(conv._id)))
       } yield {
         reloaded.flatMap(_.pinnedComplexity) shouldBe None
@@ -193,7 +194,7 @@ class PinComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       for {
         conv <- freshConv("unpin-noop")
         ctx = buildCtx(conv)
-        _   <- UnpinComplexityTool.execute(UnpinComplexityInput(), ctx).toList
+        _   <- UnpinComplexityTool.execute(UnpinComplexityInput(), ctx, Event.id()).toList
         reloaded <- TestSigil.withDB(_.conversations.transaction(_.get(conv._id)))
       } yield {
         reloaded.flatMap(_.pinnedComplexity) shouldBe None

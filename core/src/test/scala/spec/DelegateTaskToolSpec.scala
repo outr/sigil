@@ -11,6 +11,7 @@ import sigil.role.Role
 import sigil.signal.{Signal, ToolDelta}
 import sigil.tool.model.DelegateTaskInput
 import sigil.tool.util.DelegateTaskTool
+import sigil.event.Event
 
 /**
  * Coverage for `delegate_task` against a vanilla Sigil — the tool
@@ -66,7 +67,7 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
 
   "DelegateTaskTool" should {
     "return a structured error when the host Sigil doesn't mix in WorkflowSigil" in {
-      DelegateTaskTool.execute(sampleInput, turnContext()).toList.map { signals =>
+      DelegateTaskTool.execute(sampleInput, turnContext(), Event.id()).toList.map { signals =>
         val text = failureText(signals)
         text should include("WorkflowSigil")
       }

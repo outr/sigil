@@ -9,6 +9,7 @@ import sigil.conversation.{ConversationView, Conversation, TurnInput}
 import sigil.event.Message
 import sigil.tool.core.{RespondCardTool, RespondCardsTool}
 import sigil.tool.model.{Card, RespondCardInput, RespondCardsInput, ResponseContent}
+import sigil.event.Event
 
 /**
  * Round-trips the `respond_card` / `respond_cards` tools through their
@@ -46,7 +47,7 @@ class CardCompositionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         kind = Some("metric")
       )
       val events = RespondCardTool
-        .execute(RespondCardInput("Status Dashboard", "Server health snapshot.", card), turnContextFor(convId))
+        .execute(RespondCardInput("Status Dashboard", "Server health snapshot.", card), turnContextFor(convId), Event.id())
         .toList
       events.map { list =>
         val messages = list.collect { case m: Message => m }
@@ -74,7 +75,7 @@ class CardCompositionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         title = Some("Outer")
       )
       val events = RespondCardTool
-        .execute(RespondCardInput("Nested Demo", "Card inside a card.", outer), turnContextFor(convId))
+        .execute(RespondCardInput("Nested Demo", "Card inside a card.", outer), turnContextFor(convId), Event.id())
         .toList
       events.map { list =>
         val messages = list.collect { case m: Message => m }
@@ -100,7 +101,7 @@ class CardCompositionSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         Card(Vector(ResponseContent.Heading("Third")), title = Some("C"))
       )
       val events = RespondCardsTool
-        .execute(RespondCardsInput("Search Results", "Three result cards.", cards), turnContextFor(convId))
+        .execute(RespondCardsInput("Search Results", "Three result cards.", cards), turnContextFor(convId), Event.id())
         .toList
       events.map { list =>
         val messages = list.collect { case m: Message => m }

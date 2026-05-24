@@ -3,7 +3,8 @@ package sigil.tool.consult
 import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
-import sigil.{Sigil, TurnContext}
+import sigil.Sigil
+import sigil.tool.ToolContext
 import sigil.db.Model
 import sigil.participant.ParticipantId
 import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent, StopReason}
@@ -60,7 +61,7 @@ case object ConsultTool extends Tool {
   )
 
 
-  override def executeResult(input: ConsultInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: ConsultInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.providerFor(input.modelId, context.chain).flatMap { provider =>
       val request = OneShotRequest(
         modelId = input.modelId,

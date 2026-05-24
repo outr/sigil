@@ -22,6 +22,7 @@ import sigil.tooling.container.{
 import sigil.tooling.dispatch.{DispatchWorkersInput, DispatchWorkersOutput, DispatchWorkersTool}
 
 import scala.concurrent.duration.*
+import sigil.tool.ToolContext
 
 /**
  * Acceptance for the container abstraction and the conversation-
@@ -59,8 +60,7 @@ class PaginatedContainerSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       sigil               = DispatchTestSigil,
       chain               = List(DispatchTestUser),
       conversation        = conv,
-      turnInput           = TurnInput(ConversationView(conversationId = conv._id)),
-      currentToolInvokeId = Some(Event.id())
+      turnInput           = TurnInput(ConversationView(conversationId = conv._id))
     )
 
   /** Persist a synthetic container by seeding `ToolOutputNode`
@@ -102,7 +102,7 @@ class PaginatedContainerSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         Obj("name" -> Str("b")),
         Obj("name" -> Str("c"))
       )
-      CreateContainerTool.invoke(CreateContainerInput(items), ctx).flatMap { container =>
+      CreateContainerTool.invoke(CreateContainerInput(items), ToolContext(ctx, Event.id(), CreateContainerTool.name)).flatMap { container =>
         container.itemCount shouldBe 3
         val tool = new DispatchWorkersTool(scriptExecutor = Some(new sigil.script.ScalaScriptExecutor()))
         val input = DispatchWorkersInput(
@@ -110,7 +110,7 @@ class PaginatedContainerSpec extends AsyncWordSpec with AsyncTaskSpec with Match
           action    = "items.head(\"name\")",
           confirmed = true
         )
-        tool.invoke(input, ctx).map {
+        tool.invoke(input, ToolContext(ctx, Event.id(), tool.name)).map {
           case d: DispatchWorkersOutput.DispatchResult =>
             d.totalItems shouldBe 3
             d.successCount shouldBe 3
@@ -129,20 +129,20 @@ class PaginatedContainerSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       val items: List[Json] = (1 to 100).toList.map { i =>
         Obj("name" -> Str(s"item-$i"), "category" -> Str(if (i % 3 == 0) "foo" else "bar"))
       }
-      CreateContainerTool.invoke(CreateContainerInput(items), ctx).flatMap { source =>
+      CreateContainerTool.invoke(CreateContainerInput(items), ToolContext(ctx, Event.id(), CreateContainerTool.name)).flatMap { source =>
         FilterContainerTool.invoke(
           FilterContainerInput(
             sourceId  = source.itemsId,
             predicate = ContainerPredicate.Contains("\"foo\"")
           ),
-          ctx
+          ToolContext(ctx, Event.id(), FilterContainerTool.name)
         ).flatMap { derived =>
           derived.itemsId.value should not equal source.itemsId.value
           // Source untouched.
-          ContainerSupport.resolveItems(ctx, source.itemsId, None, None).flatMap { sourceItems =>
+          ContainerSupport.resolveItems(ToolContext(ctx, Event.id(), sigil.tool.ToolName("test_container_resolver")), source.itemsId, None, None).flatMap { sourceItems =>
             sourceItems.size shouldBe 100
             // Derived has the subset.
-            ContainerSupport.resolveItems(ctx, derived.itemsId, None, None).map { derivedItems =>
+            ContainerSupport.resolveItems(ToolContext(ctx, Event.id(), sigil.tool.ToolName("test_container_resolver")), derived.itemsId, None, None).map { derivedItems =>
               derivedItems.size should be > 0
               derivedItems.size should be < 100
               all(derivedItems.map(_.asInstanceOf[Obj].value("category"))) shouldBe Str("foo")
@@ -158,7 +158,7 @@ class PaginatedContainerSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       DispatchTestSigil.reset()
       val ctx = turnContextFor(newConversation("ttl-gone"))
       val items: List[Json] = List(Str("alpha"), Str("beta"))
-      CreateContainerTool.invoke(CreateContainerInput(items), ctx).flatMap { created =>
+      CreateContainerTool.invoke(CreateContainerInput(items), ToolContext(ctx, Event.id(), CreateContainerTool.name)).flatMap { created =>
         // Rewrite the container rows' `created` to 24h in the past
         // — the old per-row TTL would have reclaimed everything by
         // now (the default was 30 min). With per-row TTL gone, the
@@ -175,7 +175,7 @@ class PaginatedContainerSpec extends AsyncWordSpec with AsyncTaskSpec with Match
             Task.sequence(convRows.map(r => tx.upsert(r.copy(created = backdated, modified = backdated)))).unit
           }
         }).flatMap { _ =>
-          ContainerSupport.resolveItems(ctx, created.itemsId, None, None).map { readBack =>
+          ContainerSupport.resolveItems(ToolContext(ctx, Event.id(), sigil.tool.ToolName("test_container_resolver")), created.itemsId, None, None).map { readBack =>
             readBack shouldBe items
           }
         }
@@ -278,11 +278,11 @@ class PaginatedContainerSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       DispatchTestSigil.reset()
       val ctx = turnContextFor(newConversation("pin-tool"))
       val items: List[Json] = List(Str("x"), Str("y"), Str("z"))
-      CreateContainerTool.invoke(CreateContainerInput(items), ctx).flatMap { created =>
-        PinContainerTool.invoke(PinContainerInput(created.itemsId), ctx).flatMap { pinned =>
+      CreateContainerTool.invoke(CreateContainerInput(items), ToolContext(ctx, Event.id(), CreateContainerTool.name)).flatMap { created =>
+        PinContainerTool.invoke(PinContainerInput(created.itemsId), ToolContext(ctx, Event.id(), PinContainerTool.name)).flatMap { pinned =>
           pinned.rowsAffected shouldBe 3
           // Re-pinning is idempotent.
-          PinContainerTool.invoke(PinContainerInput(created.itemsId), ctx).flatMap { again =>
+          PinContainerTool.invoke(PinContainerInput(created.itemsId), ToolContext(ctx, Event.id(), PinContainerTool.name)).flatMap { again =>
             again.rowsAffected shouldBe 0
             ContainerSupport.readItems(DispatchTestSigil, ctx.conversation._id, created.itemsId).map { rows =>
               all(rows.map(_.pinned)) shouldBe true

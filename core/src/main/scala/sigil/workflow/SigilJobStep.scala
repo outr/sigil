@@ -8,7 +8,7 @@ import rapid.Task
 import sigil.{Sigil, TurnContext}
 import sigil.conversation.{Conversation, TurnInput}
 import sigil.db.Model
-import sigil.event.Message
+import sigil.event.{Event, Message}
 import sigil.participant.ParticipantId
 import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent}
 import sigil.tool.{ToolInput, ToolName}
@@ -88,7 +88,7 @@ final case class SigilJobStep(input: JobStepInput,
           case Right(decoded) =>
             SyntheticTurnContext.build(host, workflow).flatMap { ctx =>
               val typedInput = decoded.asInstanceOf[ToolInput]
-              tool.execute(typedInput, ctx).toList.map { evs =>
+              tool.execute(typedInput, ctx, Event.id()).toList.map { evs =>
                 val texts = evs.collect { case m: Message =>
                   m.content.collect { case ResponseContent.Text(text) => text }.mkString
                 }.filter(_.nonEmpty)

@@ -4,6 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.ToolContext
 
 /** Test-only tool that publishes three [[sigil.signal.ToolProgress]]
   * pulses (one indeterminate, two with `percent`) before completing.
@@ -21,7 +22,7 @@ case object ProgressEmittingTool extends Tool {
   val description = "Test-only tool that emits ToolProgress pulses while running."
   override val keywords: Set[String] = Set("progress", "test")
 
-  override def executeResult(input: ToolProgressInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: ToolProgressInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     ctx.reportProgress("preparing")
       .flatMap(_ => ctx.reportProgress("halfway", percent = Some(0.5)))
       .flatMap(_ => ctx.reportProgress("almost done", percent = Some(0.9)))

@@ -2,7 +2,7 @@ package sigil.tool.git
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.fs.{FileSystemContext, WorkspacePathResolver}
 import sigil.tool.model.{GitCommitInput, GitCommitOutput}
 import sigil.tool.{Tool, ToolExample, ToolName}
@@ -31,7 +31,7 @@ final class GitCommitTool(context: FileSystemContext)
   )
   override val keywords = Set("git", "commit", "save", "checkpoint")
 
-  override def executeOutput(input: GitCommitInput, ctx: TurnContext): Task[GitCommitOutput] =
+  override def executeOutput(input: GitCommitInput, ctx: ToolContext): Task[GitCommitOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val pathsToStage = input.paths.getOrElse(Nil)
       val addCmd = pathsToStage match {

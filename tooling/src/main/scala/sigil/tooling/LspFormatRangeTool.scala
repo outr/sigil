@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import org.eclipse.lsp4j.{FormattingOptions, Position, Range}
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.LspFormatResult
 
@@ -43,7 +43,7 @@ final class LspFormatRangeTool(val manager: LspManager) extends Tool
   override val keywords = Set("lsp", "format", "format range", "prettify", "indent", "beautify", "selection")
 
 
-  override def executeOutput(input: LspFormatRangeInput, context: TurnContext): Task[LspFormatResult] =
+  override def executeOutput(input: LspFormatRangeInput, context: ToolContext): Task[LspFormatResult] =
     withOpenDocumentOrThrow[LspFormatResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

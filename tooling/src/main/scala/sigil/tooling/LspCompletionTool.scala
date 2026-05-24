@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import org.eclipse.lsp4j.CompletionItem
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspCompletionItem, LspCompletionResult}
 
@@ -41,7 +41,7 @@ final class LspCompletionTool(val manager: LspManager) extends Tool
   override val keywords = Set("lsp", "completion", "complete", "autocomplete", "suggest", "suggestion", "intellisense")
 
 
-  override def executeOutput(input: LspCompletionInput, context: TurnContext): Task[LspCompletionResult] =
+  override def executeOutput(input: LspCompletionInput, context: ToolContext): Task[LspCompletionResult] =
     withOpenDocumentOrThrow[LspCompletionResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

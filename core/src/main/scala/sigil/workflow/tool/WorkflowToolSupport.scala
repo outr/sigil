@@ -1,7 +1,8 @@
 package sigil.workflow.tool
 
 import rapid.Task
-import sigil.{Sigil, TurnContext}
+import sigil.Sigil
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, ToolResult}
 import sigil.workflow.{WorkflowSigil, WorkflowTemplate}
 
@@ -13,7 +14,7 @@ import sigil.workflow.{WorkflowSigil, WorkflowTemplate}
 trait WorkflowToolSupport {
   /** Cast the turn's host Sigil to its WorkflowSigil mixin. Tools
     * registered on a non-workflow Sigil produce a clear error. */
-  protected def workflowHost(ctx: TurnContext): Either[String, WorkflowSigil] =
+  protected def workflowHost(ctx: ToolContext): Either[String, WorkflowSigil] =
     ctx.sigil match {
       case ws: WorkflowSigil => Right(ws)
       case _ => Left("Workflow tools require the host Sigil to mix in WorkflowSigil.")
@@ -24,7 +25,7 @@ trait WorkflowToolSupport {
     * `WorkflowSigil` the resolution is a [[ToolResult.Failure]].
     * Absorbs the host-unwrap boilerplate shared by every workflow
     * management tool. */
-  protected def withHostResult(ctx: TurnContext)(body: WorkflowSigil => Task[String]): Task[ToolResult[TextToolOutput]] =
+  protected def withHostResult(ctx: ToolContext)(body: WorkflowSigil => Task[String]): Task[ToolResult[TextToolOutput]] =
     workflowHost(ctx) match {
       case Left(err)   => Task.pure(ToolResult.failure(err))
       case Right(host) => body(host).map(text => ToolResult.success(TextToolOutput(text)))

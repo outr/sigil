@@ -128,7 +128,7 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val context = ctx("change-mode")
       ChangeModeTool.execute(
         ChangeModeInput(mode = "script-authoring", reason = Some("user asked to author a tool")),
-        context
+        context, Event.id()
       ).toList.map { events =>
         val changes = events.collect { case mc: ModeChange => mc }
         changes should have size 1
@@ -144,7 +144,7 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val context = ctx("change-mode-unknown")
       ChangeModeTool.execute(
         ChangeModeInput(mode = "no-such-mode"),
-        context
+        context, Event.id()
       ).toList.map { events =>
         events.collect { case mc: ModeChange => mc } shouldBe empty
         // The failure surfaces as a Tool-role Message with a
@@ -195,7 +195,7 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       )
       for {
         // 1) Persist the tool.
-        _      <- CreateScriptToolTool.execute(createInput, context).toList
+        _      <- CreateScriptToolTool.execute(createInput, context, Event.id()).toList
         // 2) Re-load from the DB so we exercise the round-trip path
         //    rather than holding an in-memory reference.
         loaded <- TestScriptSigil.withDB(_.tools.transaction { tx =>
@@ -205,7 +205,7 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         //    ToolResults carries the expected ScriptToolOutput.
         runEvents <- loaded.get
                        .asInstanceOf[ScriptTool]
-                       .execute(JsonInput(obj("x" -> num(7))), context)
+                       .execute(JsonInput(obj("x" -> num(7))), context, Event.id())
                        .toList
       } yield {
         loaded shouldBe defined
@@ -225,7 +225,7 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   "Library introspection tools" should {
     "library_lookup resolves a JDK class by simple name to its FQN" in {
       val context = ctx("lib-lookup")
-      LibraryLookupTool.execute(LibraryLookupInput(symbol = "String"), context).toList.map { events =>
+      LibraryLookupTool.execute(LibraryLookupInput(symbol = "String"), context, Event.id()).toList.map { events =>
         val text = successText(events).mkString("\n")
         // String is in `java.lang`; the lookup walks the URLClassLoader
         // chain and the bootstrap loader's jars don't show up there
@@ -238,7 +238,7 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
     "library_lookup finds a Sigil-shipped class by simple name" in {
       val context = ctx("lib-lookup-sigil")
-      LibraryLookupTool.execute(LibraryLookupInput(symbol = "ScriptAuthoringMode"), context).toList.map { events =>
+      LibraryLookupTool.execute(LibraryLookupInput(symbol = "ScriptAuthoringMode"), context, Event.id()).toList.map { events =>
         val text = successText(events).mkString("\n")
         text should include ("sigil.script.ScriptAuthoringMode")
       }
@@ -248,7 +248,7 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val context = ctx("class-sigs")
       ClassSignaturesTool.execute(
         ClassSignaturesInput(fqn = "java.util.ArrayList"),
-        context
+        context, Event.id()
       ).toList.map { events =>
         val text = successText(events).mkString("\n")
         text should include ("# java.util.ArrayList")
@@ -263,7 +263,7 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val context = ctx("class-sigs-missing")
       ClassSignaturesTool.execute(
         ClassSignaturesInput(fqn = "no.such.Class"),
-        context
+        context, Event.id()
       ).toList.map { events =>
         val text = successText(events).mkString("\n")
         text should include ("class not found on classpath")
@@ -274,7 +274,7 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       val context = ctx("read-src-missing")
       ReadSourceTool.execute(
         ReadSourceInput(fqn = "no.such.Class"),
-        context
+        context, Event.id()
       ).toList.map { events =>
         val text = successText(events).mkString("\n")
         text should include ("source not available")

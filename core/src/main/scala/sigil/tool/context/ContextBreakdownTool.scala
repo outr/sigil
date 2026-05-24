@@ -2,7 +2,7 @@ package sigil.tool.context
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.conversation.{ContextFrame, ContextMemory}
 import sigil.tokenize.HeuristicTokenizer
 import sigil.tool.model.{ContextBreakdownOutput, ContextSectionBreakdown, ContextSectionKind}
@@ -38,7 +38,7 @@ case object ContextBreakdownTool extends Tool {
 
   override def resultTtl: Option[Int] = Some(0)
 
-  override def executeOutput(input: ContextBreakdownInput, context: TurnContext): Task[ContextBreakdownOutput] =
+  override def executeOutput(input: ContextBreakdownInput, context: ToolContext): Task[ContextBreakdownOutput] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { spaces =>
       val critTask = if (spaces.isEmpty) Task.pure(List.empty[ContextMemory])
                      else context.sigil.findCriticalMemories(spaces)

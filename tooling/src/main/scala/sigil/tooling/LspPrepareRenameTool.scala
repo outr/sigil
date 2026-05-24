@@ -2,7 +2,7 @@ package sigil.tooling
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspPrepareRenameResult, LspRange}
 
@@ -35,7 +35,7 @@ final class LspPrepareRenameTool(val manager: LspManager) extends Tool
   override val keywords = Set("lsp", "rename", "refactor", "can rename", "renameable", "prepare")
 
 
-  override def executeOutput(input: LspPrepareRenameInput, context: TurnContext): Task[LspPrepareRenameResult] =
+  override def executeOutput(input: LspPrepareRenameInput, context: ToolContext): Task[LspPrepareRenameResult] =
     withOpenDocumentOrThrow[LspPrepareRenameResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

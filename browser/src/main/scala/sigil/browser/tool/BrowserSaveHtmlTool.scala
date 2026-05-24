@@ -7,7 +7,8 @@ import robobrowser.select.Selector
 import sigil.browser.BrowserStateDelta
 import sigil.browser.WebBrowserMode
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
-import sigil.{GlobalSpace, TurnContext}
+import sigil.GlobalSpace
+import sigil.tool.ToolContext
 
 /**
  * Capture the current page's outer HTML, normalize via jSoup so the
@@ -37,7 +38,7 @@ final class BrowserSaveHtmlTool extends Tool {
   override val keywords = Set("browser", "html", "save", "snapshot", "overview", "structure")
 
   override def executeResult(input: BrowserSaveHtmlInput,
-                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     for {
       controller <- BrowserToolBase.resolveController(ctx)
       capture    <- controller.run { browser =>

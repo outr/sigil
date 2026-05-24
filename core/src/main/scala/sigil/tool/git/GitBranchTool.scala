@@ -2,7 +2,7 @@ package sigil.tool.git
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.fs.{FileSystemContext, WorkspacePathResolver}
 import sigil.tool.model.{GitBranchInput, GitBranchOutput}
 import sigil.tool.{Tool, ToolExample, ToolName}
@@ -28,7 +28,7 @@ final class GitBranchTool(context: FileSystemContext)
   )
   override val keywords = Set("git", "branch", "branches", "checkout")
 
-  override def executeOutput(input: GitBranchInput, ctx: TurnContext): Task[GitBranchOutput] =
+  override def executeOutput(input: GitBranchInput, ctx: ToolContext): Task[GitBranchOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val flag = if (input.includeRemotes) "-a" else ""
       for {

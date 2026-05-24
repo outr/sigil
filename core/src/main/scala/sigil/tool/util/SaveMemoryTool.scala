@@ -3,7 +3,8 @@ package sigil.tool.util
 import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
-import sigil.{SpaceId, TurnContext}
+import sigil.SpaceId
+import sigil.tool.ToolContext
 import sigil.conversation.{ContextMemory, MemorySource, UpsertMemoryResult}
 import sigil.provider.Mode
 import sigil.tool.model.{MemoryWriteOutcome, SaveMemoryInput, SaveMemoryOutput}
@@ -56,7 +57,7 @@ final class SaveMemoryTool(space: SpaceId,
 
   override val requiresAccessibleSpaces: Boolean = true
 
-  override def executeOutput(input: SaveMemoryInput, ctx: TurnContext): Task[SaveMemoryOutput] =
+  override def executeOutput(input: SaveMemoryInput, ctx: ToolContext): Task[SaveMemoryOutput] =
     resolveSpace(input.space, ctx).flatMap { resolvedSpace =>
       val mem = ContextMemory(
         fact         = input.fact,
@@ -90,7 +91,7 @@ final class SaveMemoryTool(space: SpaceId,
     * the hint is omitted or doesn't match an accessible space, fall
     * back to the tool's default `space` and let the framework's
     * classifier decide if the caller left it at GlobalSpace. */
-  private def resolveSpace(hint: Option[String], ctx: TurnContext): Task[SpaceId] = hint match {
+  private def resolveSpace(hint: Option[String], ctx: ToolContext): Task[SpaceId] = hint match {
     case None => Task.pure(space)
     case Some(value) =>
       ctx.sigil.accessibleSpaces(ctx.chain, ctx.conversation.id).map { accessible =>
@@ -101,7 +102,7 @@ final class SaveMemoryTool(space: SpaceId,
   /** Resolve mode `name`s to `Id[Mode]`. Unknown names are dropped
     * with a WARN — better to persist the memory as universal (empty
     * set) than to lose it entirely on a typo. Sigil bug #195. */
-  private def resolveModeAffinity(names: Set[String], ctx: TurnContext): Set[Id[Mode]] = {
+  private def resolveModeAffinity(names: Set[String], ctx: ToolContext): Set[Id[Mode]] = {
     if (names.isEmpty) Set.empty
     else {
       val known = ctx.sigil.availableModes.map(_.name).toSet

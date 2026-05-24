@@ -2,7 +2,7 @@ package sigil.debug
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class DapSetExceptionBreakpointsInput(sessionId: String,
@@ -37,7 +37,7 @@ final class DapSetExceptionBreakpointsTool(val manager: DapManager) extends Tool
   )
 
   override def executeResult(input: DapSetExceptionBreakpointsInput,
-                             context: TurnContext): Task[ToolResult[TextToolOutput]] =
+                             context: ToolContext): Task[ToolResult[TextToolOutput]] =
     withSession(input.sessionId, context) { session =>
       session.setExceptionBreakpoints(input.filters).map { bps =>
         val text =

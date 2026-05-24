@@ -11,6 +11,7 @@ import sigil.event.ToolOutcome
 import sigil.signal.ToolDelta
 import sigil.tool.context.{ListMemoriesInput, ListMemoriesTool}
 import sigil.tool.model.{ListMemoriesOutput, MemoryListEntry, MemoryListPage}
+import sigil.event.Event
 
 /**
  * Coverage for [[ListMemoriesTool]] — the general "what do you
@@ -65,7 +66,7 @@ class ListMemoriesSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
   /** Pull the typed [[ListMemoriesOutput]] off the settling [[ToolDelta]]. */
   private def runTool(input: ListMemoriesInput, ctx: TurnContext): Task[ListMemoriesOutput] =
-    ListMemoriesTool.execute(input, ctx).toList.map { signals =>
+    ListMemoriesTool.execute(input, ctx, Event.id()).toList.map { signals =>
       signals.collectFirst {
         case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) =>
           d.output.collect { case o: ListMemoriesOutput => o }

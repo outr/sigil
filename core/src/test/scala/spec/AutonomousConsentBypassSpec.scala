@@ -6,12 +6,13 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, TopicEntry, TurnInput}
-import sigil.event.{Message, MessageRole, ToolOutcome}
+import sigil.event.{Event, Message, MessageRole, ToolOutcome}
 import sigil.orchestrator.Orchestrator
 import sigil.participant.DefaultAgentParticipant
 import sigil.provider.{GenerationSettings, Instructions, SafetyPosture}
 import sigil.signal.{Signal, ToolDelta}
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.ToolContext
 
 /**
  * Coverage for sigil bug #160 (Problem B) — when the caller agent's
@@ -40,7 +41,7 @@ class AutonomousConsentBypassSpec extends AsyncWordSpec with AsyncTaskSpec with 
 
     override def requiresUserConsent: Boolean = true
 
-    override def executeResult(input: BypassInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: BypassInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task {
         ranCount.incrementAndGet()
         ToolResult.Success(TextToolOutput(s"executed with ${input.payload}"))

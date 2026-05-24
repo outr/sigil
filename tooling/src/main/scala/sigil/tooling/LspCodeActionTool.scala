@@ -4,7 +4,7 @@ import fabric.rw.*
 import org.eclipse.lsp4j.{CodeAction, Command, Position, Range}
 import org.eclipse.lsp4j.jsonrpc.messages.{Either => LspEither}
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspCodeActionItem, LspCodeActionResult}
 
@@ -51,7 +51,7 @@ final class LspCodeActionTool(val manager: LspManager) extends Tool
   )
 
 
-  override def executeOutput(input: LspCodeActionInput, context: TurnContext): Task[LspCodeActionResult] =
+  override def executeOutput(input: LspCodeActionInput, context: ToolContext): Task[LspCodeActionResult] =
     withOpenDocumentOrThrow[LspCodeActionResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

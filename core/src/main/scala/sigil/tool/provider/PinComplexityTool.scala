@@ -3,7 +3,7 @@ package sigil.tool.provider
 import fabric.rw.*
 import lightdb.time.Timestamp
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.event.ComplexityChange
 import sigil.provider.Complexity
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
@@ -59,7 +59,7 @@ case object PinComplexityTool extends Tool {
   )
 
   override def executeResult(input: PinComplexityInput,
-                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] = {
+                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val normalized = input.tier.trim.toLowerCase.replaceAll("\\s+|-|_", "")
     val parsed: Option[Complexity] = normalized match {
       case "low"                            => Some(Complexity.Low)

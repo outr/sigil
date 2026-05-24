@@ -2,7 +2,7 @@ package sigil.tool.core
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.conversation.ContextFrame
 import sigil.event.{Event, Message, MessageDisposition}
 import sigil.provider.XmlToolCallSanitizer
@@ -77,7 +77,7 @@ case object RespondTool extends RespondFamilyTool {
       |- `endsTurn` — `true` when this respond is your COMPLETE reply for this turn. Set `false`
       |  for in-flight status pulses you intend to follow up on the same turn.""".stripMargin
 
-  override def executeResult(input: RespondInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
+  override def executeResult(input: RespondInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     // Sigil bug #226 — `endsTurn = true` is the explicit "this agent
     // loop is done" signal. Drop the per-loop `find_capability` cache
     // here so the trace is visible at the call site; the natural
@@ -86,7 +86,7 @@ case object RespondTool extends RespondFamilyTool {
     // traceable in-loop signal rather than a load-bearing one. Status
     // pulses (`endsTurn = false`) leave the cache intact — the agent
     // is still mid-loop.
-    if (input.endsTurn) context.clearDiscoveredCapabilities()
+    if (input.endsTurn) context.turn.clearDiscoveredCapabilities()
     val sanitized = XmlToolCallSanitizer.sanitize(input.content)
     if (sanitized.leakedSpans.nonEmpty) {
       context.sigil.publish(XmlToolCallLeak(

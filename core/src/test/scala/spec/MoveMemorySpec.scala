@@ -7,6 +7,7 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.{GlobalSpace, SpaceId, TurnContext}
 import sigil.conversation.{ConversationView, Conversation, ContextMemory, MemorySource, TopicEntry, TurnInput}
 import sigil.tool.context.{MoveMemoryInput, MoveMemoryTool}
+import sigil.event.Event
 
 /**
  * Coverage for [[MoveMemoryTool]] — agent re-scoping a memory to a
@@ -63,7 +64,7 @@ class MoveMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       for {
         m       <- seed("k.move", "Memory to move.", in = GlobalSpace)
         _        = m.spaceId shouldBe GlobalSpace
-        _       <- MoveMemoryTool.execute(MoveMemoryInput(key = "k.move", newSpace = TestSpace), ctx).toList
+        _       <- MoveMemoryTool.execute(MoveMemoryInput(key = "k.move", newSpace = TestSpace), ctx, Event.id()).toList
         after   <- reload(m._id)
       } yield {
         after.map(_.spaceId) shouldBe Some(TestSpace)
@@ -76,7 +77,7 @@ class MoveMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val ctx = makeContext(convId)
       for {
         m       <- seed("k.same-space", "Already in target.", in = TestSpace)
-        events  <- MoveMemoryTool.execute(MoveMemoryInput(key = "k.same-space", newSpace = TestSpace), ctx).toList
+        events  <- MoveMemoryTool.execute(MoveMemoryInput(key = "k.same-space", newSpace = TestSpace), ctx, Event.id()).toList
         after   <- reload(m._id)
       } yield {
         after.map(_.spaceId) shouldBe Some(TestSpace)
@@ -90,7 +91,7 @@ class MoveMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val ctx = makeContext(convId)
       for {
         m       <- seed("k.no-access", "Try moving here.", in = GlobalSpace)
-        events  <- MoveMemoryTool.execute(MoveMemoryInput(key = "k.no-access", newSpace = TestSpace), ctx).toList
+        events  <- MoveMemoryTool.execute(MoveMemoryInput(key = "k.no-access", newSpace = TestSpace), ctx, Event.id()).toList
         after   <- reload(m._id)
       } yield {
         after.map(_.spaceId) shouldBe Some(GlobalSpace)  // unchanged
@@ -102,7 +103,7 @@ class MoveMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       reseed(Set(GlobalSpace, TestSpace))
       val convId = Conversation.id(s"move-miss-${rapid.Unique()}")
       val ctx = makeContext(convId)
-      MoveMemoryTool.execute(MoveMemoryInput(key = "k.nothing", newSpace = TestSpace), ctx).toList.map { events =>
+      MoveMemoryTool.execute(MoveMemoryInput(key = "k.nothing", newSpace = TestSpace), ctx, Event.id()).toList.map { events =>
         events should have size 1
       }
     }
@@ -121,7 +122,7 @@ class MoveMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           spaceId = GlobalSpace,
           pinned = true
         ))
-        _      <- MoveMemoryTool.execute(MoveMemoryInput(key = "k.pinned-move", newSpace = TestSpace), ctx).toList
+        _      <- MoveMemoryTool.execute(MoveMemoryInput(key = "k.pinned-move", newSpace = TestSpace), ctx, Event.id()).toList
         after  <- reload(m._id)
       } yield {
         after.map(_._id) shouldBe Some(m._id)

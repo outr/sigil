@@ -2,7 +2,7 @@ package sigil.tooling
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspHover, LspHoverResult}
 
@@ -40,7 +40,7 @@ final class LspHoverTool(val manager: LspManager) extends Tool
   override val keywords = Set("lsp", "hover", "type", "type info", "info", "what is", "signature", "docs", "documentation", "explain")
 
 
-  override def executeOutput(input: LspHoverInput, context: TurnContext): Task[LspHoverResult] =
+  override def executeOutput(input: LspHoverInput, context: ToolContext): Task[LspHoverResult] =
     withOpenDocumentOrThrow[LspHoverResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

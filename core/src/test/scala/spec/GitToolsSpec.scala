@@ -13,6 +13,7 @@ import sigil.tool.model.{GitBranchInput, GitBranchOutput, GitCommitInput, GitCom
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import scala.reflect.ClassTag
+import sigil.event.Event
 
 /**
  * End-to-end coverage for the `sigil.tool.git` family. Each test
@@ -95,7 +96,7 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         val tc = turnContext()
         for {
           _   <- writeAndCommit(ctx, dir, "README.md", "hello", "init")
-          out <- new GitStatusTool(ctx).execute(GitStatusInput(workingDir = Some(dir.toString)), tc).toList
+          out <- new GitStatusTool(ctx).execute(GitStatusInput(workingDir = Some(dir.toString)), tc, Event.id()).toList
         } yield typed[GitStatusOutput](out) match {
           case GitStatusOutput.Reported(branch, _, _, entries) =>
             branch shouldBe "master"
@@ -109,7 +110,7 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         for {
           _   <- writeAndCommit(ctx, dir, "f.txt", "v1", "init")
           _   <- ctx.writeFile("f.txt", "v2")
-          out <- new GitStatusTool(ctx).execute(GitStatusInput(workingDir = Some(dir.toString)), tc).toList
+          out <- new GitStatusTool(ctx).execute(GitStatusInput(workingDir = Some(dir.toString)), tc, Event.id()).toList
         } yield typed[GitStatusOutput](out) match {
           case GitStatusOutput.Reported(_, _, _, entries) =>
             entries.size shouldBe 1
@@ -126,7 +127,7 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         for {
           _   <- writeAndCommit(ctx, dir, "f.txt", "v1\n", "init")
           _   <- ctx.writeFile("f.txt", "v2\n")
-          out <- new GitDiffTool(ctx).execute(GitDiffInput(workingDir = Some(dir.toString)), tc).toList
+          out <- new GitDiffTool(ctx).execute(GitDiffInput(workingDir = Some(dir.toString)), tc, Event.id()).toList
         } yield typed[GitDiffOutput](out) match {
           case GitDiffOutput.Text(text) => text should include("-v1")
           case other                    => fail(s"expected Text, got $other")
@@ -138,7 +139,7 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         for {
           _   <- writeAndCommit(ctx, dir, "f.txt", "v1\n", "init")
           _   <- ctx.writeFile("f.txt", "v2\n")
-          out <- new GitDiffTool(ctx).execute(GitDiffInput(format = GitDiffFormat.Hunks, workingDir = Some(dir.toString)), tc).toList
+          out <- new GitDiffTool(ctx).execute(GitDiffInput(format = GitDiffFormat.Hunks, workingDir = Some(dir.toString)), tc, Event.id()).toList
         } yield typed[GitDiffOutput](out) match {
           case GitDiffOutput.Hunks(hunks) =>
             hunks should not be empty
@@ -156,7 +157,7 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         for {
           _   <- writeAndCommit(ctx, dir, "f.txt", "v1", "first commit")
           _   <- writeAndCommit(ctx, dir, "f.txt", "v2", "second commit")
-          out <- new GitLogTool(ctx).execute(GitLogInput(limit = Some(5), workingDir = Some(dir.toString)), tc).toList
+          out <- new GitLogTool(ctx).execute(GitLogInput(limit = Some(5), workingDir = Some(dir.toString)), tc, Event.id()).toList
         } yield typed[GitLogOutput](out) match {
           case GitLogOutput.Listed(commits) =>
             commits.size shouldBe 2
@@ -173,7 +174,7 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         val tc = turnContext()
         for {
           _   <- writeAndCommit(ctx, dir, "f.txt", "v1", "init")
-          out <- new GitBranchTool(ctx).execute(GitBranchInput(workingDir = Some(dir.toString)), tc).toList
+          out <- new GitBranchTool(ctx).execute(GitBranchInput(workingDir = Some(dir.toString)), tc, Event.id()).toList
         } yield typed[GitBranchOutput](out) match {
           case GitBranchOutput.Listed(current, branches) =>
             current shouldBe "master"
@@ -188,7 +189,7 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         val tc = turnContext()
         for {
           _   <- writeAndCommit(ctx, dir, "f.txt", "v1", "first commit")
-          out <- new GitShowTool(ctx).execute(GitShowInput(sha = "HEAD", workingDir = Some(dir.toString)), tc).toList
+          out <- new GitShowTool(ctx).execute(GitShowInput(sha = "HEAD", workingDir = Some(dir.toString)), tc, Event.id()).toList
         } yield typed[GitShowOutput](out) match {
           case GitShowOutput.Found(sha, author, _, subject, _, _) =>
             subject shouldBe "first commit"
@@ -206,7 +207,7 @@ class GitToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           _   <- writeAndCommit(ctx, dir, "seed.txt", "seed", "init")
           _   <- ctx.writeFile("new.txt", "fresh")
           _   <- ctx.executeCommand("git add new.txt", Some(dir.toString))
-          out <- new GitCommitTool(ctx).execute(GitCommitInput(message = "Add new.txt", workingDir = Some(dir.toString)), tc).toList
+          out <- new GitCommitTool(ctx).execute(GitCommitInput(message = "Add new.txt", workingDir = Some(dir.toString)), tc, Event.id()).toList
         } yield typed[GitCommitOutput](out) match {
           case GitCommitOutput.Committed(sha, message) =>
             sha.length should be > 7

@@ -2,7 +2,7 @@ package sigil.tool.process
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.model.{ProcessListEntry, ProcessListInput, ProcessListOutput, ProcessListScope}
 import sigil.tool.{Tool, ToolExample, ToolName}
 
@@ -28,7 +28,7 @@ final class ProcessListTool(registry: ProcessRegistry) extends Tool {
   )
   override val keywords = Set("process", "list", "running", "background")
 
-  override def executeOutput(input: ProcessListInput, ctx: TurnContext): Task[ProcessListOutput] =
+  override def executeOutput(input: ProcessListInput, ctx: ToolContext): Task[ProcessListOutput] =
     registry.list(filterByConversation = input.scope match {
       case ProcessListScope.All     => None
       case ProcessListScope.Current => Some(ctx.conversation.id)

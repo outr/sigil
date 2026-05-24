@@ -16,7 +16,7 @@ import sigil.participant.{AgentParticipantId, Participant, ParticipantId}
 import sigil.provider.{Mode, Provider}
 import sigil.signal.Signal
 import sigil.spatial.{Geocoder, NoOpGeocoder, Place}
-import sigil.tool.{InMemoryToolFinder, Tool, ToolFinder, ToolInput}
+import sigil.tool.{InMemoryToolFinder, Tool, ToolContext, ToolFinder, ToolInput}
 import sigil.tool.core.CoreTools
 import sigil.vector.{NoOpVectorIndex, VectorIndex}
 import spice.net.*
@@ -451,7 +451,7 @@ case object SendSlackMessageTool extends sigil.tool.Tool {
     "Send a message to a Slack channel on behalf of the user. Takes a channel name and the message text."
   override val keywords = Set("slack", "message", "channel")
 
-  override def executeOutput(input: SendSlackMessageInput, context: TurnContext): rapid.Task[sigil.tool.TextToolOutput] =
+  override def executeOutput(input: SendSlackMessageInput, context: ToolContext): rapid.Task[sigil.tool.TextToolOutput] =
     rapid.Task.pure(sigil.tool.TextToolOutput(s"Sent to ${input.channel}: ${input.text}"))
 }
 

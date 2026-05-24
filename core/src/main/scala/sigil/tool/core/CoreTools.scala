@@ -142,7 +142,16 @@ object CoreTools {
       summon[RW[sigil.tool.consult.TopicClassifierInput]],
       summon[RW[sigil.tool.consult.ClassifyMemoryInput]],
       summon[RW[sigil.tool.consult.RerankInput]],
-      summon[RW[sigil.tool.consult.ProgressReflectionInput]]
+      summon[RW[sigil.tool.consult.ProgressReflectionInput]],
+      // Sigil #271 — used as the placeholder input for tool calls whose
+      // name doesn't resolve. The accumulator wraps the model's raw args
+      // in a [[sigil.tool.JsonInput]] and the orchestrator dispatches to
+      // [[sigil.tool.core.UnknownTool]]; the resulting ToolInvoke
+      // persists with `input = Some(JsonInput(...))` so the round-trip
+      // succeeds. Also reused by `sigil-mcp` and `sigil-script` for
+      // their runtime-shaped tools — register once at the framework
+      // level so apps without those mixins still round-trip.
+      summon[RW[sigil.tool.JsonInput]]
     )
 
   val coreToolNames: List[sigil.tool.ToolName] = all.map(_.schema.name).toList

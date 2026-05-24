@@ -1,7 +1,7 @@
 package sigil.debug
 
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.ToolResult
 
 /**
@@ -17,7 +17,7 @@ trait DapToolSupport {
     * result. If no session with that id is active, resolve a
     * [[ToolResult.Failure]] pointing the agent at `dap_launch`. A
     * thrown error from `body` becomes a recoverable failure. */
-  protected def withSession[O](sessionId: String, context: TurnContext)
+  protected def withSession[O](sessionId: String, context: ToolContext)
                               (body: DapSession => Task[ToolResult[O]]): Task[ToolResult[O]] =
     manager.get(sessionId) match {
       case None =>

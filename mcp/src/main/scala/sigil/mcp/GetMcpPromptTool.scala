@@ -3,7 +3,7 @@ package sigil.mcp
 import fabric.rw.*
 import fabric.io.JsonFormatter
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 case class GetMcpPromptInput(server: String,
@@ -26,7 +26,7 @@ final class GetMcpPromptTool(manager: McpManager) extends Tool {
     """Fetch a populated prompt template from a registered MCP server. Provide `server`, `prompt` (template name),
       |and any `arguments` the template requires. Returns the server's GetPromptResult JSON.""".stripMargin
 
-  override def executeResult(input: GetMcpPromptInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: GetMcpPromptInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     manager.getPrompt(input.server, input.prompt, input.arguments).map { result =>
       ToolResult.Success(TextToolOutput(JsonFormatter.Default(result)))
     }.handleError { e =>

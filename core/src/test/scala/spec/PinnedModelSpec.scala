@@ -8,6 +8,7 @@ import sigil.conversation.{Conversation, Topic, TopicEntry, TurnInput}
 import sigil.db.Model
 import sigil.tool.provider.{PinModelInput, PinModelTool, UnpinModelInput, UnpinModelTool}
 import sigil.TurnContext
+import sigil.event.Event
 
 /**
  * Coverage for conversation-level model pinning.
@@ -85,7 +86,7 @@ class PinnedModelSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "persist pinnedModelId on the Conversation record" in {
       for {
         conv     <- freshConversation()
-        _        <- PinModelTool.execute(PinModelInput(pinnedModelId.value), ctx(conv)).toList
+        _        <- PinModelTool.execute(PinModelInput(pinnedModelId.value), ctx(conv), Event.id()).toList
         loaded   <- TestSigil.withDB(_.conversations.transaction(_.get(conv.id)))
       } yield {
         loaded.flatMap(_.pinnedModelId) shouldBe Some(pinnedModelId)
@@ -95,9 +96,9 @@ class PinnedModelSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "be cleared by unpin_model" in {
       for {
         conv      <- freshConversation()
-        _         <- PinModelTool.execute(PinModelInput(pinnedModelId.value), ctx(conv)).toList
+        _         <- PinModelTool.execute(PinModelInput(pinnedModelId.value), ctx(conv), Event.id()).toList
         afterPin  <- TestSigil.withDB(_.conversations.transaction(_.get(conv.id)))
-        _         <- UnpinModelTool.execute(UnpinModelInput(), ctx(conv)).toList
+        _         <- UnpinModelTool.execute(UnpinModelInput(), ctx(conv), Event.id()).toList
         afterUnpin <- TestSigil.withDB(_.conversations.transaction(_.get(conv.id)))
       } yield {
         afterPin.flatMap(_.pinnedModelId) shouldBe Some(pinnedModelId)
@@ -117,7 +118,7 @@ class PinnedModelSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       // Pin against a Conversation that was never persisted — the
       // tool's `_.modify(...)` returns None for missing ids and the
       // emit succeeds without writing.
-      PinModelTool.execute(PinModelInput(pinnedModelId.value), ctx(orphan)).toList.map { events =>
+      PinModelTool.execute(PinModelInput(pinnedModelId.value), ctx(orphan), Event.id()).toList.map { events =>
         events should not be empty
       }
     }

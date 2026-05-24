@@ -3,7 +3,7 @@ package sigil.tool.util
 import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.conversation.ContextMemory
 import sigil.information.Information
 import sigil.information.Information.given
@@ -52,7 +52,7 @@ case object LookupTool extends Tool with sigil.tool.ReadOnlyInternalTool {
       |`NotRetrievable(capabilityType, name, hint)`.""".stripMargin
   override val keywords = Set("lookup", "fetch", "retrieve", "resolve", "details", "full", "expand")
 
-  override def executeOutput(input: LookupInput, context: TurnContext): Task[LookupOutput] = {
+  override def executeOutput(input: LookupInput, context: ToolContext): Task[LookupOutput] = {
     val typeName = input.capabilityType.toString
     input.capabilityType match {
       case CapabilityType.Memory      => resolveMemory(input.name, typeName, context)
@@ -67,7 +67,7 @@ case object LookupTool extends Tool with sigil.tool.ReadOnlyInternalTool {
     }
   }
 
-  private def resolveMemory(name: String, typeName: String, context: TurnContext): Task[LookupOutput] =
+  private def resolveMemory(name: String, typeName: String, context: ToolContext): Task[LookupOutput] =
     context.sigil.withDB { db =>
       db.memories.transaction { tx =>
         tx.query.filter(_.key === Some(name)).toList.flatMap { byKey =>
@@ -86,13 +86,13 @@ case object LookupTool extends Tool with sigil.tool.ReadOnlyInternalTool {
       }
     }
 
-  private def resolveInformation(name: String, typeName: String, context: TurnContext): Task[LookupOutput] =
+  private def resolveInformation(name: String, typeName: String, context: ToolContext): Task[LookupOutput] =
     context.sigil.getInformation(Id[Information](name)).map {
       case Some(full) => LookupOutput.Found(typeName, name, summon[RW[Information]].read(full))
       case None       => LookupOutput.NotFound(typeName, name)
     }
 
-  private def resolveSkill(name: String, typeName: String, context: TurnContext): Task[LookupOutput] =
+  private def resolveSkill(name: String, typeName: String, context: ToolContext): Task[LookupOutput] =
     context.sigil.withDB(_.skills.transaction(_.get(Id[Skill](name)))).map {
       case Some(skill) => LookupOutput.Found(typeName, name, summon[RW[Skill]].read(skill))
       case None        => LookupOutput.NotFound(typeName, name)

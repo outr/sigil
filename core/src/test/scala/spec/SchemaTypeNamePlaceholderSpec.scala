@@ -36,8 +36,7 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
       sigil        = TestSigil,
       chain        = List(TestUser),
       conversation = conv,
-      turnInput    = TurnInput(ConversationView(conversationId = convId)),
-      currentToolInvokeId = Some(Event.id())
+      turnInput    = TurnInput(ConversationView(conversationId = convId))
     )
   }
 
@@ -64,7 +63,7 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
       val ctx = new LocalFileSystemContext(Some(dir))
       val tool = new EditFileTool(ctx)
       val tc = turnContext()
-      tool.execute(EditFileInput(filePath = "string", oldString = "a", newString = "b"), tc).toList.map { signals =>
+      tool.execute(EditFileInput(filePath = "string", oldString = "a", newString = "b"), tc, Event.id()).toList.map { signals =>
         val text = failureText(signals)
         text should include ("JSON Schema type name")
         text should include ("filePath")
@@ -87,7 +86,7 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
           oldString = "string",
           newString = "String"
         ),
-        tc
+        tc, Event.id()
       ).toList.map { signals =>
         // No failure-outcome ToolDelta: the edit succeeded.
         signals.collectFirst {
@@ -109,7 +108,7 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
       val ctx = new LocalFileSystemContext(Some(dir))
       val tool = new GrepTool(ctx)
       val tc = turnContext()
-      tool.execute(GrepInput(path = ".", pattern = "string"), tc).toList.map { signals =>
+      tool.execute(GrepInput(path = ".", pattern = "string"), tc, Event.id()).toList.map { signals =>
         // No Failure outcome — the search ran.
         signals.collectFirst {
           case d: ToolDelta if d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) => d
@@ -125,7 +124,7 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
       val ctx = new LocalFileSystemContext(Some(dir))
       val tool = new GrepTool(ctx)
       val tc = turnContext()
-      tool.execute(GrepInput(path = "string", pattern = "real-pattern"), tc).toList.map { signals =>
+      tool.execute(GrepInput(path = "string", pattern = "real-pattern"), tc, Event.id()).toList.map { signals =>
         val text = failureText(signals)
         text should include ("JSON Schema type name")
         text should include ("path")
@@ -139,7 +138,7 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
       val ctx = new LocalFileSystemContext(Some(dir))
       val tool = new ReadFileTool(ctx)
       val tc = turnContext()
-      tool.execute(ReadFileInput(filePath = "integer"), tc).toList.map { signals =>
+      tool.execute(ReadFileInput(filePath = "integer"), tc, Event.id()).toList.map { signals =>
         val text = failureText(signals)
         text should include ("JSON Schema type name")
         text should include ("filePath")

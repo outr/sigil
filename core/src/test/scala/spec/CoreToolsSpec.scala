@@ -7,7 +7,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.AsyncTaskSpec
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, Topic, TurnInput}
-import sigil.event.{Message, Stop, ToolOutcome, TopicChange}
+import sigil.event.{Event, Message, Stop, ToolOutcome, TopicChange}
 import sigil.information.Information
 import sigil.signal.{EventState, ToolDelta}
 import sigil.tool.core.{RespondTool, CancelTool}
@@ -54,7 +54,7 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         endsTurn = true
       )
       val events = RespondTool
-        .execute(input, turnContextFor(convId))
+        .execute(input, turnContextFor(convId), Event.id())
         .toList
       events.map { list =>
         val messages = list.collect { case m: Message => m }
@@ -73,7 +73,7 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val events = CancelTool
         .execute(
           CancelInput(targetParticipantId = Some(TestAgent), force = true, reason = Some("too risky")),
-          turnContextFor(convId)
+          turnContextFor(convId), Event.id()
         )
         .toList
       events.map { list =>
@@ -93,7 +93,7 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "default to graceful (force=false) and broadcast (target=None) when inputs omitted" in {
       val convId = freshConversationId("stop-graceful-all")
       val events = CancelTool
-        .execute(CancelInput(), turnContextFor(convId))
+        .execute(CancelInput(), turnContextFor(convId), Event.id())
         .toList
       events.map { list =>
         val stops = list.collect { case s: Stop => s }
@@ -118,7 +118,7 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       TestSigil.information.put(full)
 
       val signals = LookupTool
-        .execute(LookupInput(capabilityType = CapabilityType.Information, name = infoId.value), turnContextFor(convId))
+        .execute(LookupInput(capabilityType = CapabilityType.Information, name = infoId.value), turnContextFor(convId), Event.id())
         .toList
       signals.map { list =>
         list should have size 1
@@ -137,7 +137,7 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val convId = freshConversationId("lookup-miss")
       val missingId = Id[Information]("info-missing")
       val signals = LookupTool
-        .execute(LookupInput(capabilityType = CapabilityType.Information, name = missingId.value), turnContextFor(convId))
+        .execute(LookupInput(capabilityType = CapabilityType.Information, name = missingId.value), turnContextFor(convId), Event.id())
         .toList
       signals.map { list =>
         list should have size 1
@@ -154,7 +154,7 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "decline retrieval for Tool capability type" in {
       val convId = freshConversationId("lookup-tool-not-supported")
       val signals = LookupTool
-        .execute(LookupInput(capabilityType = CapabilityType.Tool, name = "respond"), turnContextFor(convId))
+        .execute(LookupInput(capabilityType = CapabilityType.Tool, name = "respond"), turnContextFor(convId), Event.id())
         .toList
       signals.map { list =>
         list should have size 1

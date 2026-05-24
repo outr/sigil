@@ -2,7 +2,7 @@ package sigil.debug
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class DapScopesInput(sessionId: String, frameId: Int) extends ToolInput derives RW
@@ -32,7 +32,7 @@ final class DapScopesTool(val manager: DapManager) extends Tool with DapToolSupp
     )
   )
 
-  override def executeResult(input: DapScopesInput, context: TurnContext): Task[ToolResult[DapScopesOutput]] =
+  override def executeResult(input: DapScopesInput, context: ToolContext): Task[ToolResult[DapScopesOutput]] =
     withSession(input.sessionId, context) { session =>
       session.scopes(input.frameId).map { scopes =>
         ToolResult.success(DapScopesOutput(

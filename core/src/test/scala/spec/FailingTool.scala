@@ -4,6 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.ToolContext
 
 /** Test-only tool that unconditionally throws when executed. Used by
   * [[LlamaCppWorkerSpec]] to verify a worker's tool-dispatch path
@@ -18,6 +19,6 @@ case object FailingTool extends Tool {
   val description = "Test-only tool that always throws an exception when called."
   override val keywords = Set("fail", "test", "error")
 
-  override def executeResult(input: FailingToolInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: FailingToolInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.error(new RuntimeException("intentional failure for worker error-handling test"))
 }

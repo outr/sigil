@@ -2,7 +2,7 @@ package sigil.tool.core
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolOutput}
 
 case class CancelFrameworkWorkflowInput(workflowId: String,
@@ -58,7 +58,7 @@ case object CancelFrameworkWorkflowTool extends Tool {
   override val keywords = Set("cancel", "framework", "workflow", "abort", "stop", "preflight", "compress")
 
   override def executeOutput(input: CancelFrameworkWorkflowInput,
-                             ctx: TurnContext): Task[CancelFrameworkWorkflowOutput] = Task {
+                             ctx: ToolContext): Task[CancelFrameworkWorkflowOutput] = Task {
     val sigil = ctx.sigil
     val reason = input.reason.getOrElse(s"agent ${ctx.caller}")
     sigil.activeFrameworkWorkflows.find(_.workflowId == input.workflowId) match {

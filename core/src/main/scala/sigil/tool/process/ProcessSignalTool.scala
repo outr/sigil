@@ -2,7 +2,7 @@ package sigil.tool.process
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.model.{ProcessSignalInput, ProcessSignalOutput}
 import sigil.tool.{Tool, ToolExample, ToolName}
 
@@ -29,7 +29,7 @@ final class ProcessSignalTool(registry: ProcessRegistry) extends Tool {
   )
   override val keywords = Set("process", "signal", "terminate", "kill", "stop")
 
-  override def executeOutput(input: ProcessSignalInput, ctx: TurnContext): Task[ProcessSignalOutput] =
+  override def executeOutput(input: ProcessSignalInput, ctx: ToolContext): Task[ProcessSignalOutput] =
     registry.signal(input.handle, input.signal).map { delivered =>
       ProcessSignalOutput(handle = input.handle, signal = input.signal, delivered = delivered)
     }

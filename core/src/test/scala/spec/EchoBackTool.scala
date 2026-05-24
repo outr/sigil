@@ -4,6 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.TurnContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.ToolContext
 
 /** Test-only tool that echoes its `text` input back as the tool's
   * typed result reading `Echo: <text>`. Used by [[LlamaCppWorkerSpec]] to
@@ -25,6 +26,6 @@ case object EchoBackTool extends Tool {
   )
   override val keywords = Set("echo", "test")
 
-  override def executeResult(input: EchoBackInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: EchoBackInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.Success(TextToolOutput(s"Echo: ${input.text}")))
 }

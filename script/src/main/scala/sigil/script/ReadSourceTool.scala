@@ -2,7 +2,7 @@ package sigil.script
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 import java.io.{ByteArrayOutputStream, File, InputStream}
@@ -47,7 +47,7 @@ case object ReadSourceTool extends Tool {
   override val keywords = Set("source", "code", "read", "scaladoc", "implementation", "introspect")
 
   override def executeResult(input: ReadSourceInput,
-                             context: TurnContext): Task[ToolResult[TextToolOutput]] = Task {
+                             context: ToolContext): Task[ToolResult[TextToolOutput]] = Task {
     val text = try render(input.fqn)
     catch { case e: Throwable => s"(read_source failed: ${e.getClass.getSimpleName}: ${e.getMessage})" }
     ToolResult.Success(TextToolOutput(text))

@@ -6,7 +6,8 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import rapid.Task
-import sigil.{SpaceId, TurnContext}
+import sigil.SpaceId
+import sigil.tool.ToolContext
 import sigil.participant.ParticipantId
 import sigil.provider.Mode
 import sigil.tool.{JsonInput, Tool, ToolExample, ToolResult, ToolName}
@@ -64,7 +65,7 @@ case class ScriptTool(name: ToolName,
   override def inputDefinition: Definition = parameters
 
   override def executeResult(input: JsonInput,
-                             context: TurnContext): Task[ToolResult[ScriptToolOutput]] =
+                             context: ToolContext): Task[ToolResult[ScriptToolOutput]] =
     context.sigil match {
       case s: ScriptSigil => runOnExecutor(s.scriptExecutor, input.json, context)
       case _              => Task.pure(ToolResult.Success(ScriptToolOutput(
@@ -75,7 +76,7 @@ case class ScriptTool(name: ToolName,
 
   private def runOnExecutor(executor: ScriptExecutor,
                             args: fabric.Json,
-                            context: TurnContext): Task[ToolResult[ScriptToolOutput]] = {
+                            context: ToolContext): Task[ToolResult[ScriptToolOutput]] = {
     val bindings = ScriptTools.defaultBindings(context) ++ Map("args" -> args, "context" -> context)
     val started  = System.currentTimeMillis()
     // Bug #67 — wrap the construction in `Task.defer` so synchronous

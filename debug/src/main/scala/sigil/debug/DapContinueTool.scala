@@ -2,7 +2,7 @@ package sigil.debug
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class DapContinueInput(sessionId: String, threadId: Int) extends ToolInput derives RW
@@ -31,7 +31,7 @@ final class DapContinueTool(val manager: DapManager) extends Tool with DapToolSu
     )
   )
 
-  override def executeResult(input: DapContinueInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: DapContinueInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     withSession(input.sessionId, context) { session =>
       session.continueExecution(input.threadId).map { allThreads =>
         val text = if (allThreads) "All threads resumed." else s"Thread ${input.threadId} resumed."

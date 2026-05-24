@@ -4,7 +4,7 @@ import fabric.io.JsonFormatter
 import fabric.rw.*
 import fabric.{arr, obj, str}
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 /** List provider strategies visible to the caller in the
@@ -25,7 +25,7 @@ case object ListProviderStrategiesTool extends Tool {
   override val keywords = Set("list", "provider", "strategy", "strategies", "models")
 
   override def executeResult(input: ListProviderStrategiesInput,
-                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     for {
       records  <- ctx.sigil.listProviderStrategies(ctx.conversation.space, ctx.chain)
       assigned <- ctx.sigil.assignedProviderStrategy(ctx.conversation.space)

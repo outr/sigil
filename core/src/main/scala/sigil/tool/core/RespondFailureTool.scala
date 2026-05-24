@@ -2,7 +2,7 @@ package sigil.tool.core
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.event.{Message, MessageDisposition}
 import sigil.signal.EventState
 import sigil.tool.{TextToolOutput, ToolName, ToolResult}
@@ -31,7 +31,7 @@ case object RespondFailureTool extends RespondFamilyTool {
     """Signal that you can't complete the task. `recoverable` = true if a retry might succeed
       |(transient: rate limits, network); false if permanent (missing permissions, unsupported input).""".stripMargin
 
-  override def executeResult(input: RespondFailureInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: RespondFailureInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.emit(Message(
       participantId  = context.caller,
       conversationId = context.conversation.id,

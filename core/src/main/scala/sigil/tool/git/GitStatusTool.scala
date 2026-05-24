@@ -2,7 +2,7 @@ package sigil.tool.git
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.fs.{FileSystemContext, WorkspacePathResolver}
 import sigil.tool.model.{GitStatusInput, GitStatusOutput}
 import sigil.tool.{Tool, ToolExample, ToolName}
@@ -30,7 +30,7 @@ final class GitStatusTool(context: FileSystemContext)
   )
   override val keywords = Set("git", "status", "changes", "diff", "porcelain", "uncommitted")
 
-  override def executeOutput(input: GitStatusInput, ctx: TurnContext): Task[GitStatusOutput] =
+  override def executeOutput(input: GitStatusInput, ctx: ToolContext): Task[GitStatusOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       context.executeCommand("git status --porcelain=v1 --branch", dir).map { r =>
         if (r.exitCode != 0) GitStatusOutput.Failed(r.stderr, r.exitCode)

@@ -2,7 +2,7 @@ package sigil.tool.core
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{DiscoveryRequest, Tool, ToolExample, ToolName, ToolResult}
 
 /**
@@ -56,7 +56,7 @@ case object FindCapabilityTool extends Tool {
   override def resultTtl: Option[Int] = Some(0)
 
   override def executeResult(input: FindCapabilityInput,
-                             context: TurnContext): Task[ToolResult[FindCapabilityOutput]] =
+                             context: ToolContext): Task[ToolResult[FindCapabilityOutput]] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { spaces =>
       val request = DiscoveryRequest(
         keywords = FindCapabilityTool.normaliseKeywords(input.keywords),
@@ -73,7 +73,7 @@ case object FindCapabilityTool extends Tool {
         val toolNames = matches.collect {
           case m if m.capabilityType == sigil.tool.discovery.CapabilityType.Tool => sigil.tool.ToolName(m.name)
         }
-        context.recordDiscovery(request.keywords, toolNames)
+        context.turn.recordDiscovery(request.keywords, toolNames)
         ToolResult.Success(FindCapabilityOutput(query = request.keywords, matches = matches))
       }
     }

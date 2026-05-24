@@ -2,7 +2,7 @@ package sigil.tooling
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{BspResourcesResult, BspTargetResources}
 
@@ -33,7 +33,7 @@ final class BspResourcesTool(val manager: BspManager) extends Tool
   override val keywords = Set("bsp", "resources", "target resources", "list resources")
 
 
-  override def executeOutput(input: BspResourcesInput, context: TurnContext): Task[BspResourcesResult] =
+  override def executeOutput(input: BspResourcesInput, context: ToolContext): Task[BspResourcesResult] =
     withTargets[BspResourcesResult](
       input.projectRoot, context, input.targets,
       onError = _ => BspResourcesResult(input.projectRoot, Nil),

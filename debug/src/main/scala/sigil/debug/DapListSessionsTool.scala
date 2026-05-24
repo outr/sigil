@@ -2,7 +2,7 @@ package sigil.debug
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class DapListSessionsInput() extends ToolInput derives RW
@@ -26,7 +26,7 @@ final class DapListSessionsTool(val manager: DapManager) extends Tool with DapTo
     )
   )
 
-  override def executeResult(input: DapListSessionsInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: DapListSessionsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task {
       val sessions = manager.listSessions()
       val text =

@@ -4,7 +4,7 @@ import fabric.rw.*
 import fabric.{Str, obj, str}
 import rapid.Task
 import robobrowser.select.Selector
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.browser.WebBrowserMode
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 
@@ -27,7 +27,7 @@ final class BrowserTypeTool extends Tool {
   override val keywords = Set("browser", "type", "input", "form", "fill")
 
   override def executeResult(input: BrowserTypeInput,
-                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     for {
       controller <- BrowserToolBase.resolveController(ctx)
       _          <- controller.run { browser =>

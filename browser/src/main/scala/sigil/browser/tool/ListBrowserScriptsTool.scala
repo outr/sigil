@@ -7,7 +7,8 @@ import rapid.Task
 import sigil.browser.BrowserScript
 import sigil.browser.WebBrowserMode
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
-import sigil.{GlobalSpace, TurnContext}
+import sigil.GlobalSpace
+import sigil.tool.ToolContext
 
 /** List every [[BrowserScript]] the caller's `accessibleSpaces`
   * authorizes them to see (plus any in [[GlobalSpace]]). Returns a
@@ -26,7 +27,7 @@ case object ListBrowserScriptsTool extends Tool {
   override val keywords = Set("list", "browser", "scripts", "browse", "find")
 
   override def executeResult(input: ListBrowserScriptsInput,
-                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     ctx.sigil.accessibleSpaces(ctx.chain).flatMap { accessible =>
       ctx.sigil.withDB(_.tools.transaction { tx =>
         tx.query.toList.map { tools =>

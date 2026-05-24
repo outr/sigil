@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import org.eclipse.lsp4j.{MarkupContent, SignatureHelp, SignatureInformation}
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspSignature, LspSignatureHelpResult, LspSignatureParam}
 
@@ -42,7 +42,7 @@ final class LspSignatureHelpTool(val manager: LspManager) extends Tool
   override val keywords = Set("lsp", "signature", "parameters", "args", "arguments", "what does take", "function signature")
 
 
-  override def executeOutput(input: LspSignatureHelpInput, context: TurnContext): Task[LspSignatureHelpResult] =
+  override def executeOutput(input: LspSignatureHelpInput, context: ToolContext): Task[LspSignatureHelpResult] =
     withOpenDocumentOrThrow[LspSignatureHelpResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

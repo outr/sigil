@@ -10,6 +10,7 @@ import sigil.event.ToolOutcome
 import sigil.signal.ToolDelta
 import sigil.tool.TextToolOutput
 import sigil.tool.memory.{MemoryHistoryInput, MemoryHistoryTool}
+import sigil.event.Event
 
 /**
  * Coverage for [[MemoryHistoryTool]] — surfaces every version of a
@@ -52,7 +53,7 @@ class MemoryHistoryToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         _ <- TestSigil.upsertMemoryByKey(memoryAt(key, "Scala"))
         _ <- TestSigil.upsertMemoryByKey(memoryAt(key, "Rust"))
         signals <- MemoryHistoryTool.execute(MemoryHistoryInput(
-          key = key, spaceId = Some(TestSpace)), ctx(c)).toList
+          key = key, spaceId = Some(TestSpace)), ctx(c), Event.id()).toList
       } yield {
         val body = signals.collectFirst {
           case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) =>

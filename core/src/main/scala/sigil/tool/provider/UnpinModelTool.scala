@@ -3,7 +3,7 @@ package sigil.tool.provider
 import fabric.rw.*
 import lightdb.time.Timestamp
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 case class UnpinModelInput() extends ToolInput derives RW
@@ -26,7 +26,7 @@ case object UnpinModelTool extends Tool {
   override val keywords = Set("unpin", "unlock", "clear", "auto", "default", "model")
 
   override def executeResult(input: UnpinModelInput,
-                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     ctx.sigil.withDB(_.conversations.transaction(_.modify(ctx.conversation.id) {
       case None       => Task.pure(None)
       case Some(conv) => Task.pure(Some(conv.copy(pinnedModelId = None, modified = Timestamp())))

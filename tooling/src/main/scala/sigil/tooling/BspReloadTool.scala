@@ -2,7 +2,7 @@ package sigil.tooling
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.BspReloadResult
 
@@ -29,7 +29,7 @@ final class BspReloadTool(val manager: BspManager) extends Tool
   override val keywords = Set("bsp", "reload", "refresh", "rebuild", "reinitialise", "rescan")
 
 
-  override def executeOutput(input: BspReloadInput, context: TurnContext): Task[BspReloadResult] =
+  override def executeOutput(input: BspReloadInput, context: ToolContext): Task[BspReloadResult] =
     withSessionTyped[BspReloadResult](
       input.projectRoot, context,
       onError = _ => BspReloadResult(input.projectRoot)

@@ -2,7 +2,7 @@ package sigil.tool.output
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.event.Event
 import sigil.tool.{Tool, ToolName}
 
@@ -42,7 +42,7 @@ case object NextPageTool extends Tool {
 
   private val maxPageSize = 500
 
-  override def executeOutput(input: NextPageInput, ctx: TurnContext): Task[JsonPagedResult] = {
+  override def executeOutput(input: NextPageInput, ctx: ToolContext): Task[JsonPagedResult] = {
     val pageSize = math.max(1, math.min(input.pageSize, maxPageSize))
     val convId   = ctx.conversation.id
     ctx.sigil.withDB(_.toolOutputs.transaction(

@@ -2,7 +2,7 @@ package sigil.tool.core
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.event.Message
 import sigil.signal.EventState
 import sigil.tool.{TextToolOutput, ToolExample, ToolName, ToolResult}
@@ -69,7 +69,7 @@ case object RespondOptionsTool extends RespondFamilyTool {
     )
   )
 
-  override def executeResult(input: RespondOptionsInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
+  override def executeResult(input: RespondOptionsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val block = ResponseContent.Options(
       prompt = input.prompt,
       options = input.options,

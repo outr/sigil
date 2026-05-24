@@ -6,7 +6,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, TopicEntry, TurnInput}
-import sigil.event.{ToolApproval, ToolOutcome}
+import sigil.event.{Event, ToolApproval, ToolOutcome}
 import sigil.signal.ToolDelta
 import sigil.tool.TextToolOutput
 import sigil.orchestrator.Orchestrator
@@ -52,7 +52,7 @@ class RecordConsentValidationSpec extends AsyncWordSpec with AsyncTaskSpec with 
                   RecordConsentInput(toolName = "definitely_not_a_real_tool",
                                      approved = true,
                                      reason   = Some("test")),
-                  ctx
+                  ctx, Event.id()
                 ).toList
         persistedApprovals <- TestSigil.withDB(_.events.transaction(_.list)).map { all =>
                                 all.collect { case ta: ToolApproval => ta }

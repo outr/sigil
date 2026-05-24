@@ -8,12 +8,14 @@ import rapid.AsyncTaskSpec
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
 import sigil.signal.{Signal, ToolDelta}
+import sigil.tool.{ToolContext, ToolName}
 import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext, ReadFileTool, WriteFileTool, WorkspacePathResolver}
 import sigil.tool.model.{ReadFileInput, ReadFileOutput, WriteFileInput}
 
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import scala.reflect.ClassTag
+import sigil.event.Event
 
 /**
  * Coverage for bug #45 — `Sigil.workspaceFor(convId)` lets multiple
@@ -57,6 +59,11 @@ class WorkspaceRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     )
   }
 
+  /** Build a [[ToolContext]] for callers (like [[WorkspacePathResolver]])
+    * that take ToolContext rather than TurnContext. */
+  private def toolCtx(convId: Id[Conversation]): ToolContext =
+    ToolContext(turnCtx(convId), Event.id(), ToolName("workspace_test"))
+
   private def writeProjectFile(p: Path, name: String, contents: String): Path = {
     val file = p.resolve(name)
     Files.writeString(file, contents)
@@ -83,19 +90,19 @@ class WorkspaceRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   "WorkspacePathResolver" should {
 
     "resolve a relative path against the conversation's workspace" in {
-      WorkspacePathResolver.resolve(turnCtx(convA), "build.sbt").map { resolved =>
+      WorkspacePathResolver.resolve(toolCtx(convA), "build.sbt").map { resolved =>
         Path.of(resolved).normalize shouldBe projectA.resolve("build.sbt").normalize
       }
     }
 
     "leave an absolute path untouched even when a workspace is configured" in {
-      WorkspacePathResolver.resolve(turnCtx(convA), "/etc/hosts").map { resolved =>
+      WorkspacePathResolver.resolve(toolCtx(convA), "/etc/hosts").map { resolved =>
         resolved shouldBe "/etc/hosts"
       }
     }
 
     "fall through to the relative path when no workspace is configured" in {
-      WorkspacePathResolver.resolve(turnCtx(convNoWorkspace), "build.sbt").map { resolved =>
+      WorkspacePathResolver.resolve(toolCtx(convNoWorkspace), "build.sbt").map { resolved =>
         resolved shouldBe "build.sbt"
       }
     }
@@ -108,8 +115,8 @@ class WorkspaceRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       writeProjectFile(projectB, "build.sbt", "version := \"b-version\"")
       val read = new ReadFileTool(fs)
       for {
-        a <- read.execute(ReadFileInput("build.sbt"), turnCtx(convA)).toList
-        b <- read.execute(ReadFileInput("build.sbt"), turnCtx(convB)).toList
+        a <- read.execute(ReadFileInput("build.sbt"), turnCtx(convA), Event.id()).toList
+        b <- read.execute(ReadFileInput("build.sbt"), turnCtx(convB), Event.id()).toList
       } yield {
         typed[ReadFileOutput](a).content shouldBe "version := \"a-version\""
         typed[ReadFileOutput](b).content shouldBe "version := \"b-version\""
@@ -119,8 +126,8 @@ class WorkspaceRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "write to each conversation's own workspace by relative path" in {
       val write = new WriteFileTool(fs)
       for {
-        _ <- write.execute(WriteFileInput("notes.md", "from-a"), turnCtx(convA)).toList
-        _ <- write.execute(WriteFileInput("notes.md", "from-b"), turnCtx(convB)).toList
+        _ <- write.execute(WriteFileInput("notes.md", "from-a"), turnCtx(convA), Event.id()).toList
+        _ <- write.execute(WriteFileInput("notes.md", "from-b"), turnCtx(convB), Event.id()).toList
       } yield {
         Files.readString(projectA.resolve("notes.md")) shouldBe "from-a"
         Files.readString(projectB.resolve("notes.md")) shouldBe "from-b"
@@ -132,7 +139,7 @@ class WorkspaceRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       Files.writeString(absScratch, "absolute-passthrough")
       val read = new ReadFileTool(fs)
       for {
-        out <- read.execute(ReadFileInput(absScratch.toString), turnCtx(convA)).toList
+        out <- read.execute(ReadFileInput(absScratch.toString), turnCtx(convA), Event.id()).toList
       } yield {
         try {
           typed[ReadFileOutput](out).content shouldBe "absolute-passthrough"

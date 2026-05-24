@@ -7,7 +7,8 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, TurnInput}
 import sigil.script.ScriptTools
-import sigil.tool.{InMemoryToolFinder, Tool, ToolExample, ToolInput, ToolName, ToolOutput}
+import sigil.tool.{InMemoryToolFinder, Tool, ToolContext, ToolExample, ToolInput, ToolName, ToolOutput}
+import sigil.event.Event
 
 class ScriptToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   ScriptToolsTestSigil.initFor(getClass.getSimpleName)
@@ -27,9 +28,12 @@ class ScriptToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     turnInput        = TurnInput(conversationId = convId)
   )
 
+  private def toolCtx: ToolContext =
+    ToolContext(turnCtx, Event.id(), ToolName("script_tools_test"))
+
   "ScriptTools" should {
     "decode a typed-output tool's result via callTool[Out]" in {
-      val helper = new ScriptTools(turnCtx)
+      val helper = new ScriptTools(toolCtx)
       Task {
         val out = helper.callTool[EchoOutput]("echo", EchoInput("marker-42"))
         out.echoed shouldBe "marker-42"
@@ -38,7 +42,7 @@ class ScriptToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     }
 
     "expose the raw fabric Json via callToolJson when callers want untyped" in {
-      val helper = new ScriptTools(turnCtx)
+      val helper = new ScriptTools(toolCtx)
       Task {
         val json = helper.callToolJson("echo", EchoInput("hello"))
         json.get("echoed").map(_.asString) shouldBe Some("hello")
@@ -47,7 +51,7 @@ class ScriptToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     }
 
     "report registration via has(name)" in {
-      val helper = new ScriptTools(turnCtx)
+      val helper = new ScriptTools(toolCtx)
       Task {
         helper.has("echo") shouldBe true
         helper.has("does_not_exist") shouldBe false
@@ -55,7 +59,7 @@ class ScriptToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     }
 
     "raise on an unregistered tool name" in {
-      val helper = new ScriptTools(turnCtx)
+      val helper = new ScriptTools(toolCtx)
       val attempt = Task(helper.callTool[EchoOutput]("nope", EchoInput("x"))).attempt
       attempt.map { result =>
         result.isFailure shouldBe true
@@ -71,7 +75,7 @@ class ScriptToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           |val out = tools.callTool[EchoOutput]("echo", EchoInput("from-script"))
           |s"${out.echoed}/${out.length}"
           |""".stripMargin
-      tool.execute(sigil.script.ScriptInput(code = script, summary = "test: execute script body"), turnCtx).toList.map { signals =>
+      tool.execute(sigil.script.ScriptInput(code = script, summary = "test: execute script body"), turnCtx, Event.id()).toList.map { signals =>
         val output = signals.collectFirst {
           case d: sigil.signal.ToolDelta if d.outcome.contains(sigil.event.ToolOutcome.Success) =>
             d.output.collect { case o: sigil.script.ScriptToolOutput => o }
@@ -103,7 +107,7 @@ case object EchoTool extends Tool {
   val description = "Echo the input text back with its length."
   override val examples: List[ToolExample] = List(ToolExample("echo a string", EchoInput("hello")))
 
-  override def executeOutput(input: EchoInput, ctx: TurnContext): Task[EchoOutput] =
+  override def executeOutput(input: EchoInput, ctx: ToolContext): Task[EchoOutput] =
     Task.pure(EchoOutput(echoed = input.text, length = input.text.length))
 }
 

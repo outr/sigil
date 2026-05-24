@@ -2,7 +2,7 @@ package sigil.tooling.container
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolName}
 
 /**
@@ -38,7 +38,7 @@ case object FilterContainerTool extends Tool {
 
 
   override def executeOutput(input: FilterContainerInput,
-                             ctx: TurnContext): Task[CreateContainerOutput] =
+                             ctx: ToolContext): Task[CreateContainerOutput] =
     ContainerSupport.readItems(ctx.sigil, ctx.conversation.id, input.sourceId).flatMap { rows =>
       val filtered = rows.filter(r => ContainerSupport.evaluate(input.predicate, r.payload))
       val payloads = filtered.sortBy(r => (r.level, r.ordinal)).map(_.payload)

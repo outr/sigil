@@ -3,7 +3,7 @@ package sigil.tool.util
 import fabric.rw.*
 import lightdb.id.Id as LId
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.model.DelegateTaskInput
 import sigil.tool.{Tool, ToolExample, ToolName, ToolOutput, ToolResult}
 import sigil.workflow.{AgentDecisionStepInput, WorkflowSigil, WorkflowStepInputCompiler}
@@ -64,7 +64,7 @@ case object DelegateTaskTool extends Tool {
   override val keywords = Set("delegate", "worker", "spawn", "task", "research", "background", "subagent")
 
   override def executeResult(input: DelegateTaskInput,
-                             ctx: TurnContext): Task[ToolResult[DelegateTaskOutput]] =
+                             ctx: ToolContext): Task[ToolResult[DelegateTaskOutput]] =
     ctx.sigil match {
       case ws: WorkflowSigil => spawnWorker(ws, input, ctx)
       case _ =>
@@ -74,7 +74,7 @@ case object DelegateTaskTool extends Tool {
 
   private def spawnWorker(ws: WorkflowSigil & sigil.Sigil,
                           input: DelegateTaskInput,
-                          ctx: TurnContext): Task[ToolResult[DelegateTaskOutput]] = {
+                          ctx: ToolContext): Task[ToolResult[DelegateTaskOutput]] = {
     val workerLabel  = s"Worker: ${input.role.name}"
     val parentConvId = ctx.conversation.id
 

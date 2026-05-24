@@ -4,7 +4,7 @@ import bench.agentdojo.banking.BankingEnvironment
 import bench.agentdojo.banking.events.BalanceRead
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 import java.util.concurrent.atomic.AtomicReference
@@ -27,7 +27,7 @@ final class GetBalanceTool(state: AtomicReference[BankingEnvironment]) extends T
   val description: String = "Get the balance of the account."
 
 
-  override def executeResult(input: GetBalanceInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
+  override def executeResult(input: GetBalanceInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val balance = state.get.bankAccount.balance
     context.emit(BalanceRead(
       balance = balance,

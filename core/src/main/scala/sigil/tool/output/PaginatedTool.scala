@@ -4,7 +4,8 @@ import fabric.rw.*
 import lightdb.filter.FilterExtras
 import lightdb.id.Id
 import rapid.{Stream, Task}
-import sigil.{GlobalSpace, SpaceId, TurnContext}
+import sigil.{GlobalSpace, SpaceId}
+import sigil.tool.ToolContext
 import sigil.event.Event
 import sigil.participant.ParticipantId
 import sigil.provider.Mode
@@ -73,13 +74,13 @@ abstract class PaginatedTool[In <: ToolInput, A](
 
   /** Tool authors implement this. Returns a lazy stream of
     * top-level nodes; the framework drains them in order. */
-  protected def executeStream(input: In, context: TurnContext): Stream[Node[A]]
+  protected def executeStream(input: In, context: ToolContext): Stream[Node[A]]
 
   /** Composition entry — runs the stream, drains to the DB, and
     * returns the first-page result so a caller (the framework's
     * execute path, or another tool that wraps this one) can use
     * it directly. */
-  def invokeFirstPage(input: In, context: TurnContext): Task[JsonPagedResult] =
+  def invokeFirstPage(input: In, context: ToolContext): Task[JsonPagedResult] =
     drainAndFirstPage(input, context)
 
   /** Drains the typed stream into the DB and resolves to the
@@ -87,16 +88,16 @@ abstract class PaginatedTool[In <: ToolInput, A](
     * settling [[sigil.signal.ToolDelta]] from it. A drain-time crash
     * maps to a recoverable [[ToolResult.Failure]] via [[Tool]]'s
     * framework error path — no per-tool `handleError` needed. */
-  override def executeResult(input: In, context: TurnContext): Task[ToolResult[JsonPagedResult]] =
+  override def executeResult(input: In, context: ToolContext): Task[ToolResult[JsonPagedResult]] =
     drainAndFirstPage(input, context).map(ToolResult.success)
 
   /** Drain the stream into `db.toolOutputs`, then return the
     * first page. Rows are keyed by
     * `(conversationId, callId, referenceId, ordinal)` so
     * `next_page` reads via the compound index. */
-  private def drainAndFirstPage(input: In, context: TurnContext): Task[JsonPagedResult] = {
+  private def drainAndFirstPage(input: In, context: ToolContext): Task[JsonPagedResult] = {
     val convId = context.conversation.id
-    val callId: Id[Event] = context.currentToolInvokeId.getOrElse(Event.id())
+    val callId: Id[Event] = context.invokeId
 
     def drainOne(node: Node[A],
                  referenceId: String,

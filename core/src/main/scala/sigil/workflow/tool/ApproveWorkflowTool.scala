@@ -4,7 +4,7 @@ import fabric.{Json, str}
 import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import strider.Workflow
 import strider.step.Step
@@ -49,7 +49,7 @@ final class ApproveWorkflowTool extends Tool with WorkflowToolSupport {
   )
   override val keywords = Set("workflow", "approve", "ok", "yes", "continue")
 
-  override def executeResult(input: ApproveWorkflowInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
+  override def executeResult(input: ApproveWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
     val workflowId = Id[Workflow](input.runId)
     val payload: Json = input.comment.filter(_.nonEmpty).fold[Json](str("approve"))(c => str(s"approve: $c"))
     host.withDB(_.workflows.transaction(_.get(workflowId))).flatMap {

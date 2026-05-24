@@ -4,7 +4,7 @@ import fabric.io.JsonFormatter
 import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.browser.WebBrowserMode
 import sigil.browser.{BrowserScript, BrowserSigil, CookieJar}
 import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, TextToolOutput, Tool, ToolName, ToolResult}
@@ -44,7 +44,7 @@ case object CreateBrowserScriptTool extends Tool {
   override val keywords = Set("create", "browser", "script", "automate", "record", "save", "replay")
 
   override def executeResult(input: CreateBrowserScriptInput,
-                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] = ctx.sigil match {
+                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] = ctx.sigil match {
     case bs: BrowserSigil =>
       bs.browserScriptSpace(ctx.chain, input.space).flatMap { resolvedSpace =>
         val script = BrowserScript(

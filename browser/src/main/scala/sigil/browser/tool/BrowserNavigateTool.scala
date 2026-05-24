@@ -3,7 +3,7 @@ package sigil.browser.tool
 import fabric.rw.*
 import fabric.{num, obj, str}
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.browser.BrowserStateDelta
 import sigil.browser.WebBrowserMode
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
@@ -42,7 +42,7 @@ final class BrowserNavigateTool extends Tool {
   override val keywords = Set("browser", "navigate", "open", "goto", "load", "url")
 
   override def executeResult(input: BrowserNavigateInput,
-                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     for {
       controller <- BrowserToolBase.resolveController(ctx)
       title      <- controller.run { browser =>

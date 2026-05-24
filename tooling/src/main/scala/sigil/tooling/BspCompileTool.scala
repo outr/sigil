@@ -3,7 +3,7 @@ package sigil.tooling
 import ch.epfl.scala.bsp4j.StatusCode
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{BspCompileResult, BspDiagnostic}
 
@@ -42,7 +42,7 @@ final class BspCompileTool(val manager: BspManager) extends Tool
   )
 
 
-  override def executeOutput(input: BspCompileInput, context: TurnContext): Task[BspCompileResult] =
+  override def executeOutput(input: BspCompileInput, context: ToolContext): Task[BspCompileResult] =
     withTargets[BspCompileResult](
       input.projectRoot, context, input.targets,
       onError = _ => BspCompileResult(input.projectRoot, "ERROR", 0, Nil),

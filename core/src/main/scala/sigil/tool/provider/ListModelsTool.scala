@@ -2,7 +2,7 @@ package sigil.tool.provider
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolName}
 
 /**
@@ -40,7 +40,7 @@ case object ListModelsTool extends Tool {
     "switch", "pin", "alternatives", "what", "which", "catalog"
   )
 
-  override def executeOutput(input: ListModelsInput, ctx: TurnContext): Task[ListModelsOutput] = Task {
+  override def executeOutput(input: ListModelsInput, ctx: ToolContext): Task[ListModelsOutput] = Task {
     val all = ctx.sigil.cache.find(provider = input.provider, model = None)
     val q = input.query.map(_.toLowerCase.trim).filter(_.nonEmpty)
     val filtered = q match {

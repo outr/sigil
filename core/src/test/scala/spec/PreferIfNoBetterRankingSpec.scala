@@ -7,6 +7,7 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.GlobalSpace
 import sigil.conversation.Conversation
 import sigil.tool.{DiscoveryRequest, InMemoryToolFinder, TextToolOutput, Tool, ToolFinder, ToolInput, ToolName, ToolResult}
+import sigil.tool.ToolContext
 import sigil.TurnContext
 
 /**
@@ -37,7 +38,7 @@ class PreferIfNoBetterRankingSpec extends AsyncWordSpec with AsyncTaskSpec with 
     val description = "Search files by regex."
     override val keywords: Set[String] = Set("grep", "search", "regex", "find", "match", "lines")
     override def preferIfNoBetter: Boolean = true
-    override def executeResult(input: GenericInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: GenericInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
 
@@ -50,7 +51,7 @@ class PreferIfNoBetterRankingSpec extends AsyncWordSpec with AsyncTaskSpec with 
     val description = "Read a file's contents."
     override val keywords: Set[String] = Set("read", "file", "open", "load")
     override def preferIfNoBetter: Boolean = true
-    override def executeResult(input: GenericInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: GenericInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
 

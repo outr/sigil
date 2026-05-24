@@ -17,6 +17,7 @@ import sigil.provider.{
 }
 import sigil.signal.{Signal, ToolDelta}
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.ToolContext
 import sigil.tool.model.ResponseContent
 import spice.http.HttpRequest
 
@@ -48,7 +49,7 @@ class ParallelToolCallDedupeSpec extends AsyncWordSpec with AsyncTaskSpec with M
     val name        = ToolName("counting_tool")
     val description = "Records every execution."
 
-    override def executeResult(input: CountingInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: CountingInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task {
         invocations.incrementAndGet()
         ToolResult.Success(TextToolOutput(s"ran with ${input.payload}"))

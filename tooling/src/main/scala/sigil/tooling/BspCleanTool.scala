@@ -2,7 +2,7 @@ package sigil.tooling
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.BspCleanResult
 
@@ -30,7 +30,7 @@ final class BspCleanTool(val manager: BspManager) extends Tool
   override val keywords = Set("bsp", "clean", "clean cache", "clear build", "wipe build", "reset")
 
 
-  override def executeOutput(input: BspCleanInput, context: TurnContext): Task[BspCleanResult] =
+  override def executeOutput(input: BspCleanInput, context: ToolContext): Task[BspCleanResult] =
     withTargets[BspCleanResult](
       input.projectRoot, context, input.targets,
       onError = _ => BspCleanResult(input.projectRoot, 0, cleaned = false),

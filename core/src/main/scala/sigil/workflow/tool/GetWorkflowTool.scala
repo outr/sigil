@@ -3,7 +3,7 @@ package sigil.workflow.tool
 import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import sigil.workflow.WorkflowTemplate
 
@@ -29,7 +29,7 @@ final class GetWorkflowTool extends Tool with WorkflowToolSupport {
   override val examples = List(ToolExample("fetch by id", GetWorkflowInput(workflowId = "wf-abc")))
   override val keywords = Set("workflow", "get", "describe")
 
-  override def executeResult(input: GetWorkflowInput, ctx: TurnContext): Task[ToolResult[GetWorkflowOutput]] =
+  override def executeResult(input: GetWorkflowInput, ctx: ToolContext): Task[ToolResult[GetWorkflowOutput]] =
     workflowHost(ctx) match {
       case Left(err) => Task.pure(ToolResult.failure(err))
       case Right(host) =>

@@ -9,7 +9,7 @@ import sigil.conversation.Conversation
 import sigil.provider.{ConversationMode, Mode}
 import sigil.tool.{
   DiscoveryFilter, DiscoveryRequest, InMemoryToolFinder, TextToolOutput, Tool, ToolFinder,
-  ToolInput, ToolName
+  ToolInput, ToolName, ToolContext
 }
 import sigil.tool.discovery.CapabilityType
 import sigil.tool.fs.{GlobTool, GrepTool, LocalFileSystemContext, ReadFileTool}
@@ -54,7 +54,7 @@ class ToolModesDefaultRegressionSpec extends AsyncWordSpec with AsyncTaskSpec wi
     val name        = ToolName("vanilla_default_tool")
     val description = "A test tool that doesn't override modes."
 
-    override def executeOutput(input: StubInput, context: TurnContext): rapid.Task[TextToolOutput] =
+    override def executeOutput(input: StubInput, context: ToolContext): rapid.Task[TextToolOutput] =
       rapid.Task.pure(TextToolOutput(""))
   }
 

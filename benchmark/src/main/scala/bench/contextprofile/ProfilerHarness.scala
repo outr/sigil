@@ -63,7 +63,7 @@ object ProfilerHarness {
     val description: String = toolDescription
 
 
-    override def executeResult(input: DummyInput, context: sigil.TurnContext): rapid.Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: DummyInput, context: sigil.tool.ToolContext): rapid.Task[ToolResult[TextToolOutput]] =
       rapid.Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 

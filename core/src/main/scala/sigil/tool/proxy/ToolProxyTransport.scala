@@ -2,7 +2,7 @@ package sigil.tool.proxy
 
 import fabric.Json
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{ToolName, ToolResult}
 
 /**
@@ -47,5 +47,5 @@ trait ToolProxyTransport {
    */
   def dispatch(toolName: ToolName,
                inputJson: Json,
-               context: TurnContext): Task[ToolResult[Json]]
+               context: ToolContext): Task[ToolResult[Json]]
 }

@@ -53,7 +53,7 @@ trait Tool extends RecordDocument[Tool] {
   /** Simple authoring entry — return the typed [[Output]]. A thrown
     * error (`Task.error`) is caught by the framework and surfaced as a
     * recoverable [[ToolResult.Failure]]. Override this OR [[executeResult]]. */
-  def executeOutput(input: Input, context: TurnContext): Task[Output] =
+  def executeOutput(input: Input, context: ToolContext): Task[Output] =
     Task.error(new NotImplementedError(
       s"Tool '${name.value}' must override `executeOutput` or `executeResult`."
     ))
@@ -66,7 +66,7 @@ trait Tool extends RecordDocument[Tool] {
     * or it errors (a crash) and the framework maps that to an
     * unrecoverable failure. Either way the framework constructs exactly
     * one paired result event — "tool emitted no result" is unrepresentable. */
-  def executeResult(input: Input, context: TurnContext): Task[ToolResult[Output]] =
+  def executeResult(input: Input, context: ToolContext): Task[ToolResult[Output]] =
     executeOutput(input, context).map(ToolResult.success)
 
   /** Whether this tool returns paginated output. Defaults to `false` —
@@ -98,17 +98,23 @@ trait Tool extends RecordDocument[Tool] {
     * paired by every downstream consumer (#259/#260/#261/#263 were
     * all "the pair drifted" symptoms). The settling delta unifies the
     * tool transaction into a single stateful invoke. */
-  final def execute(input: ToolInput, context: TurnContext): Stream[Signal] =
+  final def execute(input: ToolInput,
+                    turn: TurnContext,
+                    invokeId: Id[Event],
+                    invokedName: ToolName = name,
+                    currentMessageId: Option[Id[Event]] = None): Stream[Signal] = {
+    val ctx = ToolContext(turn, invokeId, invokedName, currentMessageId)
     Stream.force(
-      runResolution(input, context).map { res =>
-        Stream.emits[Signal](context.emittedEvents :+ buildResultDelta(res, context))
+      runResolution(input, ctx).map { res =>
+        Stream.emits[Signal](ctx.emittedEvents :+ buildResultDelta(res, ctx))
       }
     )
+  }
 
   /** Run [[executeResult]] against a defensively-cast input, mapping any
     * throwable (including a `ClassCastException` from a mismatched input)
     * to a recoverable [[ToolResult.Failure]]. Total — never errors. */
-  private def runResolution(input: ToolInput, context: TurnContext): Task[ToolResult[Output]] =
+  private def runResolution(input: ToolInput, context: ToolContext): Task[ToolResult[Output]] =
     Task(input.asInstanceOf[Input])
       .flatMap(typed => executeResult(typed, context))
       .handleError { err =>
@@ -120,18 +126,9 @@ trait Tool extends RecordDocument[Tool] {
 
   /** Build the settling [[ToolDelta]] from a resolution — folds output,
     * outcome, and `state = Complete` onto the originating `ToolInvoke`
-    * in one update. Sigil #265.
-    *
-    * `currentToolInvokeId` is normally stamped by the orchestrator
-    * before dispatch; tests / direct-invocation paths that exercise
-    * `tool.execute` without a real invoke fall back to a synthesised
-    * id so the delta is still well-formed. The framework's
-    * `ToolDelta.apply` is a no-op when its target doesn't resolve to
-    * a persisted `ToolInvoke`, so the synthesised case is harmless
-    * on the publish path — the delta still carries the typed output
-    * downstream consumers can inspect. */
-  private def buildResultDelta(result: ToolResult[Output], context: TurnContext): ToolDelta = {
-    val invokeId = context.currentToolInvokeId.getOrElse(Event.id())
+    * in one update. Sigil #265. */
+  private def buildResultDelta(result: ToolResult[Output], context: ToolContext): ToolDelta = {
+    val invokeId = context.invokeId
     result match {
       case ToolResult.Success(value) =>
         val typedJson = outputRW.read(value)
@@ -184,7 +181,7 @@ trait Tool extends RecordDocument[Tool] {
     * no JSON parsing. A [[ToolResult.Failure]] raises a
     * [[ToolFailureException]] so the caller can `handleError` or let it
     * propagate. */
-  def invoke(input: Input, context: TurnContext): Task[Output] =
+  def invoke(input: Input, context: ToolContext): Task[Output] =
     executeResult(input, context).flatMap {
       case ToolResult.Success(value)           => Task.pure(value)
       case ToolResult.Failure(msg, hint, args) => Task.error(new ToolFailureException(name, msg, hint, args))

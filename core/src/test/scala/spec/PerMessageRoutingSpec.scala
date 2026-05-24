@@ -21,6 +21,8 @@ import spice.http.HttpRequest
 
 import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.duration.*
+import sigil.event.Event
+import sigil.tool.ToolContext
 
 /**
  * Coverage for sigil bug #128 — per-message routing via inferWorkType
@@ -279,10 +281,10 @@ class PerMessageRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       )
       for {
         _    <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, Some(userMsg), ctx)
-        out1 <- RequestEscalationTool.invoke(RequestEscalationInput(reason = "harder than I thought"), ctx)
-        out2 <- RequestEscalationTool.invoke(RequestEscalationInput(reason = "harder still"), ctx)
-        out3 <- RequestEscalationTool.invoke(RequestEscalationInput(reason = "frontier needed"), ctx)
-        out4 <- RequestEscalationTool.invoke(RequestEscalationInput(reason = "max it out"), ctx)
+        out1 <- RequestEscalationTool.invoke(RequestEscalationInput(reason = "harder than I thought"), ToolContext(ctx, Event.id(), RequestEscalationTool.name))
+        out2 <- RequestEscalationTool.invoke(RequestEscalationInput(reason = "harder still"), ToolContext(ctx, Event.id(), RequestEscalationTool.name))
+        out3 <- RequestEscalationTool.invoke(RequestEscalationInput(reason = "frontier needed"), ToolContext(ctx, Event.id(), RequestEscalationTool.name))
+        out4 <- RequestEscalationTool.invoke(RequestEscalationInput(reason = "max it out"), ToolContext(ctx, Event.id(), RequestEscalationTool.name))
       } yield {
         out1.tier shouldBe Complexity.Medium
         out1.bumped shouldBe true

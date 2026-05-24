@@ -2,7 +2,7 @@ package sigil.tool.util
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.model.SleepInput
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 
@@ -31,7 +31,7 @@ case object SleepTool extends Tool {
   override val keywords = Set("sleep", "wait", "delay", "pause")
 
   override def executeResult(input: SleepInput,
-                             context: TurnContext): Task[ToolResult[TextToolOutput]] =
+                             context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.sleep(input.millis.millis).map { _ =>
       ToolResult.Success(TextToolOutput(s"Paused for ${input.millis} ms."))
     }

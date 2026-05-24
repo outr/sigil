@@ -7,7 +7,7 @@ import lightdb.progress.ProgressManager
 import rapid.Task
 import sigil.conversation.Conversation
 import sigil.db.Model
-import sigil.event.{Message, MessageRole, MessageVisibility}
+import sigil.event.{Event, Message, MessageRole, MessageVisibility}
 import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent, TokenUsage}
 import sigil.signal.EventState
 import sigil.tool.model.ResponseContent
@@ -198,7 +198,7 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
           }
           toolOpt match {
             case Some(t) =>
-              t.execute(ti, tcx).toList.map { evs =>
+              t.execute(ti, tcx, Event.id()).toList.map { evs =>
                 val text = evs.collect {
                   case m: sigil.event.Message =>
                     m.content.collect { case sigil.tool.model.ResponseContent.Text(s) => s }.mkString

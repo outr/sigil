@@ -1,7 +1,7 @@
 package sigil.tool.fs
 
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 
 import java.nio.file.Paths
 
@@ -31,7 +31,7 @@ import java.nio.file.Paths
 object WorkspacePathResolver {
 
   /** Resolve `path` against the conversation's workspace. */
-  def resolve(ctx: TurnContext, path: String): Task[String] = {
+  def resolve(ctx: ToolContext, path: String): Task[String] = {
     val asPath = Paths.get(path)
     if (asPath.isAbsolute) Task.pure(path)
     else ctx.sigil.workspaceFor(ctx.conversation.id).map {
@@ -44,7 +44,7 @@ object WorkspacePathResolver {
     * `None` falls through to the configured workspace as cwd when
     * one exists, otherwise stays `None` (the FS context's existing
     * "use JVM cwd" default applies). */
-  def resolveOptional(ctx: TurnContext, path: Option[String]): Task[Option[String]] = path match {
+  def resolveOptional(ctx: ToolContext, path: Option[String]): Task[Option[String]] = path match {
     case Some(p) => resolve(ctx, p).map(Some(_))
     case None    => ctx.sigil.workspaceFor(ctx.conversation.id).map(_.map(_.toString))
   }

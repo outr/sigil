@@ -7,6 +7,7 @@ import sigil.tool.fs.{EditAtRangeTool, LocalFileSystemContext, ReadFileTool, Wri
 import sigil.tool.model.{EditAtRangeInput, ReadFileInput, ReadFileOutput, WriteFileInput}
 
 import java.nio.file.{Files, Path}
+import sigil.event.Event
 
 class EditAtRangeToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -26,7 +27,7 @@ class EditAtRangeToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     )
 
   private def edit(ctx: sigil.tool.fs.FileSystemContext, in: EditAtRangeInput) =
-    new EditAtRangeTool(ctx).execute(in, turnContext()).toList
+    new EditAtRangeTool(ctx).execute(in, turnContext(), Event.id()).toList
 
   "EditAtRangeTool — pure applyRange" should {
 
@@ -87,9 +88,9 @@ class EditAtRangeToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     "commit a position-based replace and persist the new content on disk" in withTempDir { (ctx, _) =>
       val tc = turnContext()
       for {
-        _      <- new WriteFileTool(ctx).execute(WriteFileInput("a.txt", "hello\nworld\n"), tc).toList
+        _      <- new WriteFileTool(ctx).execute(WriteFileInput("a.txt", "hello\nworld\n"), tc, Event.id()).toList
         events <- edit(ctx, EditAtRangeInput("a.txt", 0, 0, 0, 5, "HELLO"))
-        re     <- new ReadFileTool(ctx).execute(ReadFileInput("a.txt"), tc).toList
+        re     <- new ReadFileTool(ctx).execute(ReadFileInput("a.txt"), tc, Event.id()).toList
       } yield {
         val results = events.collect {
           case d: sigil.signal.ToolDelta if d.outcome.contains(sigil.event.ToolOutcome.Success) => d
@@ -106,9 +107,9 @@ class EditAtRangeToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     "surface a typed Failure when the range is out of bounds (file unchanged)" in withTempDir { (ctx, _) =>
       val tc = turnContext()
       for {
-        _      <- new WriteFileTool(ctx).execute(WriteFileInput("oob.txt", "short\n"), tc).toList
+        _      <- new WriteFileTool(ctx).execute(WriteFileInput("oob.txt", "short\n"), tc, Event.id()).toList
         events <- edit(ctx, EditAtRangeInput("oob.txt", 0, 100, 0, 100, "x"))
-        re     <- new ReadFileTool(ctx).execute(ReadFileInput("oob.txt"), tc).toList
+        re     <- new ReadFileTool(ctx).execute(ReadFileInput("oob.txt"), tc, Event.id()).toList
       } yield {
         val failure = events.collectFirst {
           case d: sigil.signal.ToolDelta

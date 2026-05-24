@@ -10,6 +10,8 @@ import sigil.event.ToolOutcome
 import sigil.signal.ToolDelta
 import sigil.tool.core.{NoResponseTool, RespondCardTool, RespondCardsTool, RespondFailureTool, RespondFieldTool, RespondOptionsTool, RespondTool}
 import sigil.tool.{TextToolOutput, Tool, ToolFailureException, ToolInput, ToolName, ToolOutput, ToolResult}
+import sigil.tool.ToolContext
+import sigil.event.Event
 
 /** Shared ad-hoc input for synchronous annotation tests. */
 private case class PlainInput() extends ToolInput derives RW
@@ -46,7 +48,7 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     val name        = ToolName("legacy_echo")
     val description = "Echoes the payload."
 
-    override def executeOutput(input: EchoInput, context: TurnContext): Task[EchoOutput] =
+    override def executeOutput(input: EchoInput, context: ToolContext): Task[EchoOutput] =
       throwOn match {
         case Some(msg) => Task.error(new RuntimeException(msg))
         case None      => Task.pure(EchoOutput(input.payload))
@@ -64,7 +66,7 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     val name        = ToolName("envelope_echo")
     val description = "Echoes the payload via the envelope."
 
-    override def executeResult(input: EchoInput, context: TurnContext): Task[ToolResult[EchoOutput]] =
+    override def executeResult(input: EchoInput, context: ToolContext): Task[ToolResult[EchoOutput]] =
       if (input.payload.isEmpty)
         Task.pure(ToolResult.failure(
           message = "payload must not be empty",
@@ -89,7 +91,7 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     "produce ToolResult.Success carrying the typed payload when executeOutput succeeds" in {
       val tool = new LegacyEchoTool()
       turnContext().flatMap { ctx =>
-        tool.invoke(EchoInput("hello"), ctx).map { out =>
+        tool.invoke(EchoInput("hello"), ToolContext(ctx, Event.id(), tool.name)).map { out =>
           out.echoed shouldBe "hello"
         }
       }
@@ -103,7 +105,7 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       // and the failing input is rendered into the args block.
       val tool = new LegacyEchoTool(throwOn = Some("kaboom"))
       turnContext().flatMap { ctx =>
-        tool.execute(EchoInput("hello"), ctx).toList.map { signals =>
+        tool.execute(EchoInput("hello"), ctx, Event.id()).toList.map { signals =>
           val deltas = signals.collect {
             case d: ToolDelta if d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) => d
           }
@@ -124,7 +126,7 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     "return ToolResult.Failure with hint when executeResult emits it explicitly" in {
       val tool = new EnvelopeEchoTool
       turnContext().flatMap { ctx =>
-        tool.invoke(EchoInput(""), ctx)
+        tool.invoke(EchoInput(""), ToolContext(ctx, Event.id(), tool.name))
           .map(_ => fail("expected ToolFailureException"))
           .handleError { err =>
             err shouldBe a [ToolFailureException]
@@ -139,7 +141,7 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     "emit a settling ToolDelta with Failure outcome on the event stream when execute runs against a Failure" in {
       val tool = new EnvelopeEchoTool
       turnContext().flatMap { ctx =>
-        tool.execute(EchoInput(""), ctx).toList.map { signals =>
+        tool.execute(EchoInput(""), ctx, Event.id()).toList.map { signals =>
           val deltas = signals.collect {
             case d: ToolDelta if d.outcome.exists(_.isInstanceOf[ToolOutcome.Failure]) => d
           }
@@ -156,7 +158,7 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     "emit a settling ToolDelta with Success outcome carrying the typed output when execute runs against a Success" in {
       val tool = new EnvelopeEchoTool
       turnContext().flatMap { ctx =>
-        tool.execute(EchoInput("hi"), ctx).toList.map { signals =>
+        tool.execute(EchoInput("hi"), ctx, Event.id()).toList.map { signals =>
           val deltas = signals.collect {
             case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) => d
           }
@@ -192,7 +194,7 @@ class ToolAnnotationsSpec extends AnyWordSpec with Matchers {
         override def description = "noop"
         override def inputRW = summon[RW[PlainInput]]
         override def outputRW = summon[RW[TextToolOutput]]
-        override def executeOutput(input: PlainInput, context: TurnContext): rapid.Task[TextToolOutput] =
+        override def executeOutput(input: PlainInput, context: ToolContext): rapid.Task[TextToolOutput] =
           rapid.Task.pure(TextToolOutput(""))
       }
       noop.readOnly shouldBe false

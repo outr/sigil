@@ -101,7 +101,7 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
   "ExecuteScriptTool (bug #67)" should {
     "emit a ScriptToolOutput with `error` populated when the executor's Task fails" in {
       val tool = new ExecuteScriptTool(FailingExecutor)
-      tool.execute(ScriptInput(code = "anything", summary = "test: error path"), ctx("task-failure")).toList.map { signals =>
+      tool.execute(ScriptInput(code = "anything", summary = "test: error path"), ctx("task-failure"), Event.id()).toList.map { signals =>
         val out = scriptOutput(signals)
         out.error shouldBe defined
         out.error.get should include ("RuntimeException")
@@ -117,7 +117,7 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
       // Post-fix: the outer Task.defer + handleError catches the
       // throw and emits a populated ScriptToolOutput.
       val tool = new ExecuteScriptTool(SyncThrowExecutor)
-      tool.execute(ScriptInput(code = "anything", summary = "test: error path"), ctx("sync-throw")).toList.map { signals =>
+      tool.execute(ScriptInput(code = "anything", summary = "test: error path"), ctx("sync-throw"), Event.id()).toList.map { signals =>
         val out = scriptOutput(signals)
         out.error shouldBe defined
         out.error.get should include ("RuntimeException")
@@ -128,7 +128,7 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
 
     "emit a ScriptToolOutput with `output` populated on the happy path" in {
       val tool = new ExecuteScriptTool(SucceedingExecutor)
-      tool.execute(ScriptInput(code = "1 + 2", summary = "test: happy path"), ctx("happy")).toList.map { signals =>
+      tool.execute(ScriptInput(code = "1 + 2", summary = "test: happy path"), ctx("happy"), Event.id()).toList.map { signals =>
         val out = scriptOutput(signals)
         out.output shouldBe Some("ran:1 + 2")
         out.error shouldBe empty
@@ -141,7 +141,7 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
       // takes the first 8 lines of `printStackTrace`, which always
       // starts with the throwable line followed by `at` frames.
       val tool = new ExecuteScriptTool(FailingExecutor)
-      tool.execute(ScriptInput(code = "x", summary = "test: stack-trace path"), ctx("stack-trace")).toList.map { signals =>
+      tool.execute(ScriptInput(code = "x", summary = "test: stack-trace path"), ctx("stack-trace"), Event.id()).toList.map { signals =>
         val out = scriptOutput(signals)
         out.error.get should include ("at ")
       }
@@ -157,7 +157,7 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
         parameters = JsonSchemaToDefinition(obj("type" -> str("object"))),
         space = GlobalSpace
       )
-      tool.execute(JsonInput(obj()), ctx("script-tool-throw")).toList.map { signals =>
+      tool.execute(JsonInput(obj()), ctx("script-tool-throw"), Event.id()).toList.map { signals =>
         val out = scriptOutput(signals)
         withClue(s"got error=${out.error}, output=${out.output}: ") {
           out.error shouldBe defined

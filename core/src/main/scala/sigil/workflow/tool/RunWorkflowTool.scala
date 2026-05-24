@@ -3,7 +3,7 @@ package sigil.workflow.tool
 import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import sigil.workflow.{WorkflowScheduler, WorkflowTemplate}
 
@@ -42,7 +42,7 @@ final class RunWorkflowTool extends Tool with WorkflowToolSupport {
   )
   override val keywords = Set("workflow", "run", "schedule", "execute", "trigger")
 
-  override def executeResult(input: RunWorkflowInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
+  override def executeResult(input: RunWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
     val id = Id[WorkflowTemplate](input.workflowId)
     host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
       case None => Task.pure(s"Workflow '${input.workflowId}' not found.")

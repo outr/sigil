@@ -8,6 +8,7 @@ import sigil.conversation.{Conversation, TopicEntry}
 import sigil.event.Message
 import sigil.signal.EventState
 import sigil.tool.model.{ResponseContent, SelectOption}
+import sigil.event.Event
 
 /**
  * Coverage for sigil bug #72 — `respond_options` selections come back

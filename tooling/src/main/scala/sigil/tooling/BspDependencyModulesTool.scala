@@ -2,7 +2,7 @@ package sigil.tooling
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{BspDependencyModule, BspDependencyModulesResult, BspTargetDependencyModules}
 
@@ -40,7 +40,7 @@ final class BspDependencyModulesTool(val manager: BspManager) extends Tool
 
 
   override def executeOutput(input: BspDependencyModulesInput,
-                             context: TurnContext): Task[BspDependencyModulesResult] = {
+                             context: ToolContext): Task[BspDependencyModulesResult] = {
     val cacheKey = BspDependencyModulesTool.cacheKeyFor(input.projectRoot, input.targets)
     cacheKey.flatMap {
       case Some(key) =>
@@ -62,7 +62,7 @@ final class BspDependencyModulesTool(val manager: BspManager) extends Tool
   }
 
   private def compute(input: BspDependencyModulesInput,
-                      context: TurnContext): Task[BspDependencyModulesResult] =
+                      context: ToolContext): Task[BspDependencyModulesResult] =
     withTargets[BspDependencyModulesResult](
       input.projectRoot, context, input.targets,
       onError = _ => BspDependencyModulesResult(input.projectRoot, Nil),

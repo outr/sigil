@@ -69,7 +69,7 @@ class PinUnpinMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       for {
         m       <- seed("k.color", "User prefers blue.")
         _        = m.pinned shouldBe false
-        events  <- PinMemoryTool.execute(PinMemoryInput(key = "k.color"), ctx).toList
+        events  <- PinMemoryTool.execute(PinMemoryInput(key = "k.color"), ctx, Event.id()).toList
         after   <- reload(m._id)
       } yield {
         after.map(_.pinned) shouldBe Some(true)
@@ -83,7 +83,7 @@ class PinUnpinMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       val ctx = makeContext(convId)
       for {
         m       <- seed("k.already-pinned", "Already pinned.", pinned = true)
-        events  <- PinMemoryTool.execute(PinMemoryInput(key = "k.already-pinned"), ctx).toList
+        events  <- PinMemoryTool.execute(PinMemoryInput(key = "k.already-pinned"), ctx, Event.id()).toList
         after   <- reload(m._id)
       } yield {
         after.map(_.pinned) shouldBe Some(true)
@@ -95,7 +95,7 @@ class PinUnpinMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       reseed()
       val convId = Conversation.id(s"pin-miss-${rapid.Unique()}")
       val ctx = makeContext(convId)
-      PinMemoryTool.execute(PinMemoryInput(key = "k.nonexistent"), ctx).toList.map { events =>
+      PinMemoryTool.execute(PinMemoryInput(key = "k.nonexistent"), ctx, Event.id()).toList.map { events =>
         events should have size 1
       }
     }
@@ -105,7 +105,7 @@ class PinUnpinMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       TestSigil.setAccessibleSpaces(_ => Task.pure(Set.empty))
       val convId = Conversation.id(s"pin-noaccess-${rapid.Unique()}")
       val ctx = makeContext(convId)
-      PinMemoryTool.execute(PinMemoryInput(key = "k.x"), ctx).toList.map { events =>
+      PinMemoryTool.execute(PinMemoryInput(key = "k.x"), ctx, Event.id()).toList.map { events =>
         events should have size 1
       }
     }
@@ -119,7 +119,7 @@ class PinUnpinMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       for {
         m       <- seed("k.always-blue", "Always reply with blue.", pinned = true)
         _        = m.pinned shouldBe true
-        events  <- UnpinMemoryTool.execute(UnpinMemoryInput(key = "k.always-blue"), ctx).toList
+        events  <- UnpinMemoryTool.execute(UnpinMemoryInput(key = "k.always-blue"), ctx, Event.id()).toList
         after   <- reload(m._id)
       } yield {
         after.map(_.pinned) shouldBe Some(false)
@@ -133,7 +133,7 @@ class PinUnpinMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       val ctx = makeContext(convId)
       for {
         m       <- seed("k.unpinned", "Not pinned.")
-        events  <- UnpinMemoryTool.execute(UnpinMemoryInput(key = "k.unpinned"), ctx).toList
+        events  <- UnpinMemoryTool.execute(UnpinMemoryInput(key = "k.unpinned"), ctx, Event.id()).toList
         after   <- reload(m._id)
       } yield {
         after.map(_.pinned) shouldBe Some(false)
@@ -150,9 +150,9 @@ class PinUnpinMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       for {
         m         <- seed("k.cycle", "Round-trip me.")
         afterSeed  = m.pinned
-        _         <- PinMemoryTool.execute(PinMemoryInput(key = "k.cycle"), ctx).toList
+        _         <- PinMemoryTool.execute(PinMemoryInput(key = "k.cycle"), ctx, Event.id()).toList
         afterPin  <- reload(m._id).map(_.exists(_.pinned))
-        _         <- UnpinMemoryTool.execute(UnpinMemoryInput(key = "k.cycle"), ctx).toList
+        _         <- UnpinMemoryTool.execute(UnpinMemoryInput(key = "k.cycle"), ctx, Event.id()).toList
         afterUnpin <- reload(m._id).map(_.exists(_.pinned))
         // Record itself is intact
         present   <- reload(m._id).map(_.isDefined)

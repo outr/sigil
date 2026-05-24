@@ -15,6 +15,7 @@ import sigil.provider.{
 }
 import sigil.signal.{EventState, Signal, ToolDelta}
 import sigil.tool.{JsonInput, TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.ToolContext
 import sigil.tool.core.{NoResponseTool, RespondTool}
 import sigil.tool.model.NoResponseInput
 import spice.http.HttpRequest
@@ -46,7 +47,7 @@ class OrchestratorMultiToolPerTurnSpec extends AsyncWordSpec with AsyncTaskSpec 
     val description: String = "Always throws on execute."
     override def space: SpaceId = GlobalSpace
     override def _id: Id[Tool] = Id[Tool](name.value)
-    override def executeResult(input: NoResponseInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: NoResponseInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.error(new RuntimeException("synthetic atomic-tool failure"))
   }
 

@@ -8,7 +8,8 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import rapid.{Task, Unique}
-import sigil.{GlobalSpace, SpaceId, TurnContext}
+import sigil.{GlobalSpace, SpaceId}
+import sigil.tool.ToolContext
 import sigil.participant.ParticipantId
 import sigil.provider.Mode
 import sigil.storage.StoredFile
@@ -66,7 +67,7 @@ case class BrowserScript(name: ToolName,
   override def inputDefinition: Definition = parameters
 
   override def executeResult(input: JsonInput,
-                             context: TurnContext): Task[ToolResult[TextToolOutput]] =
+                             context: ToolContext): Task[ToolResult[TextToolOutput]] =
     BrowserScript.runSteps(this, input.json, context)
 }
 
@@ -77,7 +78,7 @@ object BrowserScript {
     * JSON payload aggregates the per-step outputs. */
   private[browser] def runSteps(script: BrowserScript,
                                 args: Json,
-                                context: TurnContext): Task[ToolResult[TextToolOutput]] = context.sigil match {
+                                context: ToolContext): Task[ToolResult[TextToolOutput]] = context.sigil match {
     case bs: BrowserSigil =>
       val outputs = scala.collection.mutable.LinkedHashMap.empty[String, String]
       val log     = scala.collection.mutable.ListBuffer.empty[Json]

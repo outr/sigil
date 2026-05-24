@@ -49,7 +49,7 @@ class ComplexityChangeEventSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     "fire with Reason.Pinned + previousTier=None when no prior pin" in {
       for {
         conv   <- freshConv("pin-first")
-        events <- PinComplexityTool.execute(PinComplexityInput("medium"), buildCtx(conv)).toList
+        events <- PinComplexityTool.execute(PinComplexityInput("medium"), buildCtx(conv), Event.id()).toList
       } yield {
         val ccs = events.collect { case cc: ComplexityChange => cc }
         ccs should have size 1
@@ -62,7 +62,7 @@ class ComplexityChangeEventSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     "fire with Reason.Repinned + previousTier=Some(prior) when replacing a pin" in {
       for {
         conv   <- freshConv("pin-repin", pinned = Some(Complexity.Medium))
-        events <- PinComplexityTool.execute(PinComplexityInput("high"), buildCtx(conv)).toList
+        events <- PinComplexityTool.execute(PinComplexityInput("high"), buildCtx(conv), Event.id()).toList
       } yield {
         val ccs = events.collect { case cc: ComplexityChange => cc }
         ccs should have size 1
@@ -75,7 +75,7 @@ class ComplexityChangeEventSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     "emit ComplexityChange BEFORE the settling ToolDelta (reducers update first)" in {
       for {
         conv   <- freshConv("pin-order")
-        events <- PinComplexityTool.execute(PinComplexityInput("low"), buildCtx(conv)).toList
+        events <- PinComplexityTool.execute(PinComplexityInput("low"), buildCtx(conv), Event.id()).toList
       } yield {
         val ccIdx = events.indexWhere(_.isInstanceOf[ComplexityChange])
         val resultIdx = events.indexWhere(_.isInstanceOf[ToolDelta])
@@ -88,7 +88,7 @@ class ComplexityChangeEventSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     "use visibility=All so UI consumers receive the event" in {
       for {
         conv   <- freshConv("pin-vis")
-        events <- PinComplexityTool.execute(PinComplexityInput("medium"), buildCtx(conv)).toList
+        events <- PinComplexityTool.execute(PinComplexityInput("medium"), buildCtx(conv), Event.id()).toList
       } yield {
         val cc = events.collectFirst { case cc: ComplexityChange => cc }.value
         cc.visibility shouldBe MessageVisibility.All
@@ -98,7 +98,7 @@ class ComplexityChangeEventSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     "NOT fire when the tier string is unrecognised" in {
       for {
         conv   <- freshConv("pin-unrecognised")
-        events <- PinComplexityTool.execute(PinComplexityInput("ultra"), buildCtx(conv)).toList
+        events <- PinComplexityTool.execute(PinComplexityInput("ultra"), buildCtx(conv), Event.id()).toList
       } yield {
         events.collect { case cc: ComplexityChange => cc } shouldBe empty
       }
@@ -110,7 +110,7 @@ class ComplexityChangeEventSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     "fire with Reason.Unpinned + previousTier=Some(prior), newTier=None" in {
       for {
         conv   <- freshConv("unpin-prior", pinned = Some(Complexity.High))
-        events <- UnpinComplexityTool.execute(UnpinComplexityInput(), buildCtx(conv)).toList
+        events <- UnpinComplexityTool.execute(UnpinComplexityInput(), buildCtx(conv), Event.id()).toList
       } yield {
         val ccs = events.collect { case cc: ComplexityChange => cc }
         ccs should have size 1
@@ -123,7 +123,7 @@ class ComplexityChangeEventSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     "still emit when nothing was pinned (UI sees user intent)" in {
       for {
         conv   <- freshConv("unpin-noop")
-        events <- UnpinComplexityTool.execute(UnpinComplexityInput(), buildCtx(conv)).toList
+        events <- UnpinComplexityTool.execute(UnpinComplexityInput(), buildCtx(conv), Event.id()).toList
       } yield {
         val ccs = events.collect { case cc: ComplexityChange => cc }
         ccs should have size 1

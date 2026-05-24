@@ -2,7 +2,7 @@ package sigil.tool.web
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.model.{WebSearchInput, WebSearchOutput, WebSearchResult}
 import sigil.tool.{Tool, ToolExample, ToolName}
 
@@ -27,7 +27,7 @@ final class WebSearchTool(provider: SearchProvider, defaultMaxResults: Int = 10)
   )
   override val keywords = Set("web", "search", "google", "find", "lookup", "query", "internet")
 
-  override def executeOutput(input: WebSearchInput, ctx: TurnContext): Task[WebSearchOutput] =
+  override def executeOutput(input: WebSearchInput, ctx: ToolContext): Task[WebSearchOutput] =
     provider.search(input.query, input.maxResults.getOrElse(defaultMaxResults)).map { results =>
       val items = results.toList.map { r =>
         WebSearchResult(

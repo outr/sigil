@@ -2,7 +2,7 @@ package sigil.tooling.container
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolName}
 
 /**
@@ -33,7 +33,7 @@ case object CreateContainerTool extends Tool {
 
 
   override def executeOutput(input: CreateContainerInput,
-                             ctx: TurnContext): Task[CreateContainerOutput] =
+                             ctx: ToolContext): Task[CreateContainerOutput] =
     ContainerSupport.persistItems(ctx.sigil, ctx.conversation.id, input.items).map {
       case (itemsId, count) => CreateContainerOutput(itemsId = itemsId, itemCount = count)
     }

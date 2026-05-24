@@ -2,7 +2,7 @@ package sigil.tool.random
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolExample, ToolName}
 import sigil.tool.model.{RandomUuidInput, RandomUuidOutput}
 
@@ -26,6 +26,6 @@ case object RandomUuidTool extends Tool {
   override val examples = List(ToolExample("fresh uuid", RandomUuidInput()))
   override val keywords = Set("uuid", "guid", "random", "id", "identifier", "token")
 
-  override def executeOutput(input: RandomUuidInput, context: TurnContext): Task[RandomUuidOutput] =
+  override def executeOutput(input: RandomUuidInput, context: ToolContext): Task[RandomUuidOutput] =
     Task(RandomUuidOutput(uuid = java.util.UUID.randomUUID().toString))
 }

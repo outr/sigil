@@ -3,7 +3,7 @@ package sigil.browser.tool
 import fabric.Json
 import fabric.io.JsonFormatter
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.browser.{BrowserController, BrowserSigil}
 import sigil.tool.TextToolOutput
 
@@ -22,7 +22,7 @@ private[tool] object BrowserToolBase {
     * Errors loudly when the surrounding `Sigil` doesn't mix in
     * [[BrowserSigil]] — tells the app to add the trait rather than
     * silently failing the tool. */
-  def resolveController(ctx: TurnContext): Task[BrowserController] =
+  def resolveController(ctx: ToolContext): Task[BrowserController] =
     ctx.sigil match {
       case bs: BrowserSigil =>
         bs.browserController(ctx.conversation.id, ctx.caller, ctx.chain)

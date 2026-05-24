@@ -1,7 +1,7 @@
 package sigil.tool.fs
 
 import rapid.{Stream, Task}
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.model.GrepInput
 import sigil.tool.output.{Node, PaginatedTool}
 import sigil.tool.{PlaceholderInputDetector, ToolExample, ToolName}
@@ -62,14 +62,14 @@ final class GrepTool(context: FileSystemContext) extends PaginatedTool[GrepInput
   // browsing pages of hits by hand.
   override def suggestedNextTools: List[ToolName] = List(ToolName("dispatch_workers"))
 
-  override protected def executeStream(input: GrepInput, ctx: TurnContext): Stream[Node[GrepNode]] =
+  override protected def executeStream(input: GrepInput, ctx: ToolContext): Stream[Node[GrepNode]] =
     PlaceholderInputDetector.validateNoPlaceholders("path" -> input.path) match {
       case Some(reason) =>
         Stream.force(Task.error(new RuntimeException(reason)))
       case None         => runGrep(input, ctx)
     }
 
-  private def runGrep(input: GrepInput, ctx: TurnContext): Stream[Node[GrepNode]] =
+  private def runGrep(input: GrepInput, ctx: ToolContext): Stream[Node[GrepNode]] =
     Stream.force(
       WorkspacePathResolver.resolve(ctx, input.path).flatMap { base =>
         context.searchFiles(base, input.pattern, input.glob, input.maxMatches, input.contextLines, input.includeIgnored).map { matches =>

@@ -5,7 +5,8 @@ import rapid.Task
 import sigil.browser.BrowserStateDelta
 import sigil.browser.WebBrowserMode
 import sigil.tool.{Tool, ToolExample, ToolName, ToolResult}
-import sigil.{GlobalSpace, TurnContext}
+import sigil.GlobalSpace
+import sigil.tool.ToolContext
 
 import java.nio.file.Files
 import scala.concurrent.duration.*
@@ -39,7 +40,7 @@ final class BrowserScreenshotTool extends Tool {
   override val keywords = Set("browser", "screenshot", "image", "capture", "render")
 
   override def executeResult(input: BrowserScreenshotInput,
-                             ctx: TurnContext): Task[ToolResult[BrowserScreenshotOutput]] =
+                             ctx: ToolContext): Task[ToolResult[BrowserScreenshotOutput]] =
     for {
       controller <- BrowserToolBase.resolveController(ctx)
       // Resize viewport if requested.

@@ -7,7 +7,7 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{ConversationView, Conversation, TopicEntry, TurnInput}
 import sigil.db.Model
-import sigil.event.{Message, ToolOutcome}
+import sigil.event.{Event, Message, ToolOutcome}
 import sigil.signal.ToolDelta
 import sigil.tool.util.DelegateTaskOutput
 import sigil.participant.{AgentParticipantId, DefaultAgentParticipant}
@@ -417,7 +417,7 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
           _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(parentConv)))
           signals <- DelegateTaskTool.execute(
             DelegateTaskInput(role = role, brief = brief, modelId = modelId.value),
-            ctx
+            ctx, Event.id()
           ).toList
           // The tool's typed result settles its ToolInvoke via a
           // ToolDelta carrying a `DelegateTaskOutput(taskId, workerConvId, role)`.

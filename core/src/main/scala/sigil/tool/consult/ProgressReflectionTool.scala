@@ -2,7 +2,7 @@ package sigil.tool.consult
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.provider.{ClassificationWork, GenerationSettings, ReasoningMode, WorkType}
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
@@ -47,6 +47,6 @@ case object ProgressReflectionTool extends Tool with FrameworkConsult {
 
   /** Never executed — the framework reads the typed input directly via
     * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
-  override def executeResult(input: ProgressReflectionInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: ProgressReflectionInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.success(TextToolOutput("")))
 }

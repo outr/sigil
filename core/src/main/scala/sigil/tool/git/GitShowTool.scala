@@ -2,7 +2,7 @@ package sigil.tool.git
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.fs.{FileSystemContext, WorkspacePathResolver}
 import sigil.tool.model.{GitShowInput, GitShowOutput}
 import sigil.tool.{Tool, ToolExample, ToolName}
@@ -28,7 +28,7 @@ final class GitShowTool(context: FileSystemContext)
   )
   override val keywords = Set("git", "show", "commit", "inspect")
 
-  override def executeOutput(input: GitShowInput, ctx: TurnContext): Task[GitShowOutput] =
+  override def executeOutput(input: GitShowInput, ctx: ToolContext): Task[GitShowOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val format = "%H%x00%an%x00%aI%x00%s%x00%b%x1e"
       // `--patch` is implicit for `git show`, but we add the

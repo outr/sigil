@@ -4,7 +4,7 @@ import fabric.rw.*
 import lightdb.id.Id
 import lightdb.time.Timestamp
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import sigil.workflow.{WorkflowStepInput, WorkflowTemplate, WorkflowTrigger}
 
@@ -45,7 +45,7 @@ final class UpdateWorkflowTool extends Tool with WorkflowToolSupport {
   )
   override val keywords = Set("workflow", "update", "edit", "modify")
 
-  override def executeResult(input: UpdateWorkflowInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
+  override def executeResult(input: UpdateWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
     val id = Id[WorkflowTemplate](input.workflowId)
     host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
       case None => Task.pure(s"Workflow '${input.workflowId}' not found.")

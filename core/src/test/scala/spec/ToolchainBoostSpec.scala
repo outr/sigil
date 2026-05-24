@@ -7,6 +7,7 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.GlobalSpace
 import sigil.conversation.Conversation
 import sigil.tool.{DiscoveryRequest, InMemoryToolFinder, TextToolOutput, Tool, ToolFinder, ToolInput, ToolName}
+import sigil.tool.ToolContext
 import sigil.TurnContext
 
 /**
@@ -42,7 +43,7 @@ class ToolchainBoostSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     val description = "Generic search."
     override val keywords = Set("grep", "search", "examine", "inspect", "code")
 
-    override def executeOutput(input: GenericInput, ctx: TurnContext): Task[TextToolOutput] =
+    override def executeOutput(input: GenericInput, ctx: ToolContext): Task[TextToolOutput] =
       Task.pure(TextToolOutput(""))
   }
 
@@ -58,7 +59,7 @@ class ToolchainBoostSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
     override val keywords = Set("lsp", "examine", "inspect", "analyze")
     override def toolchain: Option[String] = Some("lsp")
 
-    override def executeOutput(input: GenericInput, ctx: TurnContext): Task[TextToolOutput] =
+    override def executeOutput(input: GenericInput, ctx: ToolContext): Task[TextToolOutput] =
       Task.pure(TextToolOutput(""))
   }
 

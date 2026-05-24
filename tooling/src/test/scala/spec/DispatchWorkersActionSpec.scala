@@ -14,6 +14,7 @@ import sigil.tooling.dispatch.{DispatchWorkersInput, DispatchWorkersOutput, Disp
 
 import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.duration.*
+import sigil.tool.ToolContext
 
 /**
  * Acceptance for the `dispatch_workers` adhoc-`action` shape (bug
@@ -50,13 +51,12 @@ class DispatchWorkersActionSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       sigil               = DispatchTestSigil,
       chain               = List(DispatchTestUser),
       conversation        = conv,
-      turnInput           = TurnInput(ConversationView(conversationId = convId)),
-      currentToolInvokeId = Some(Event.id())
+      turnInput           = TurnInput(ConversationView(conversationId = convId))
     )
   }
 
   private def containerFor(items: List[Json], ctx: TurnContext): lightdb.id.Id[ToolOutputNode] =
-    CreateContainerTool.invoke(CreateContainerInput(items), ctx).sync().itemsId
+    CreateContainerTool.invoke(CreateContainerInput(items), ToolContext(ctx, Event.id(), CreateContainerTool.name)).sync().itemsId
 
   "dispatch_workers action pre-flight compile" should {
 
@@ -72,7 +72,7 @@ class DispatchWorkersActionSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         action    = "this is not valid scala",
         confirmed = true
       )
-      tool.invoke(input, ctx).map {
+      tool.invoke(input, ToolContext(ctx, Event.id(), tool.name)).map {
         case f: DispatchWorkersOutput.CompileFailure =>
           f.errors should not be empty
           all(f.errors.map(_.message.nonEmpty)) shouldBe true
@@ -98,7 +98,7 @@ class DispatchWorkersActionSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         action    = "fabric.Str(items.head(\"name\").asString.toUpperCase)",
         confirmed = false
       )
-      tool.invoke(input, ctx).map {
+      tool.invoke(input, ToolContext(ctx, Event.id(), tool.name)).map {
         case s: DispatchWorkersOutput.ScopePreview =>
           s.compileOk shouldBe true
           s.totalItems shouldBe 5
@@ -125,7 +125,7 @@ class DispatchWorkersActionSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         action    = "fabric.Str(items.head(\"name\").asString.toUpperCase)",
         confirmed = true
       )
-      tool.invoke(input, ctx).map {
+      tool.invoke(input, ToolContext(ctx, Event.id(), tool.name)).map {
         case d: DispatchWorkersOutput.DispatchResult =>
           withClue(s"outcomes: ${d.perItem.mkString("\n")}\n") {
             d.totalItems shouldBe 5
@@ -152,7 +152,7 @@ class DispatchWorkersActionSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         confirmed   = true,
         maxParallel = 10
       )
-      tool.invoke(input, ctx).map {
+      tool.invoke(input, ToolContext(ctx, Event.id(), tool.name)).map {
         case d: DispatchWorkersOutput.DispatchResult =>
           d.totalItems shouldBe 100
           d.successCount shouldBe 100
@@ -183,7 +183,7 @@ class DispatchWorkersActionSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         action    = action,
         confirmed = true
       )
-      tool.invoke(input, ctx).map {
+      tool.invoke(input, ToolContext(ctx, Event.id(), tool.name)).map {
         case d: DispatchWorkersOutput.DispatchResult =>
           withClue(s"outcomes: ${d.perItem.mkString("\n")}\n") {
             d.totalItems shouldBe 5

@@ -3,7 +3,7 @@ package sigil.browser.tool
 import fabric.rw.*
 import fabric.{obj, str}
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.browser.{ScrollAmount, ScrollDirection, WebBrowserMode}
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 
@@ -27,7 +27,7 @@ final class BrowserScrollTool extends Tool {
   override val keywords = Set("browser", "scroll", "viewport")
 
   override def executeResult(input: BrowserScrollInput,
-                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     for {
       controller <- BrowserToolBase.resolveController(ctx)
       _          <- controller.run(_.eval(scrollScript(input.direction, input.amount)).unit)

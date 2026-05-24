@@ -2,7 +2,7 @@ package sigil.tool.core
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.event.{MessageRole, Stop}
 import sigil.tool.model.CancelInput
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
@@ -97,7 +97,7 @@ case object CancelTool extends Tool {
       case (name, pat) if pat.findFirstIn(reason).isDefined => name
     }
 
-  override def executeResult(input: CancelInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
+  override def executeResult(input: CancelInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val reasonText = input.reason.getOrElse("")
     detectTransition(reasonText) match {
       case Some(matchedPattern) =>

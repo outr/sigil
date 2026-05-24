@@ -2,7 +2,7 @@ package sigil.tool.fs
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.model.{DeleteFileInput, DeleteFileOutput}
 import sigil.tool.{PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolResult}
 
@@ -24,7 +24,7 @@ final class DeleteFileTool(context: FileSystemContext)
   )
   override val keywords = Set("file", "delete", "remove", "rm", "unlink")
 
-  override def executeResult(input: DeleteFileInput, ctx: TurnContext): Task[ToolResult[DeleteFileOutput]] =
+  override def executeResult(input: DeleteFileInput, ctx: ToolContext): Task[ToolResult[DeleteFileOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
       case None =>

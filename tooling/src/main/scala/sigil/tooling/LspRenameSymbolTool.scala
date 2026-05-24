@@ -2,7 +2,7 @@ package sigil.tooling
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolName}
 import sigil.tooling.types.LspWorkspaceSymbol
 
@@ -62,7 +62,7 @@ final class LspRenameSymbolTool(val manager: LspManager) extends Tool
 
 
   override def executeOutput(input: LspRenameSymbolInput,
-                             context: TurnContext): Task[LspRenameSymbolOutput] = {
+                             context: ToolContext): Task[LspRenameSymbolOutput] = {
     withSessionTyped[LspRenameSymbolOutput](
       input.languageId, input.projectRoot, context,
       onError = msg => LspRenameSymbolOutput.Failed(input.symbolName, msg)
@@ -127,7 +127,7 @@ final class LspRenameSymbolTool(val manager: LspManager) extends Tool
                        filePath: String,
                        line: Int,
                        character: Int,
-                       context: TurnContext): Task[LspRenameSymbolOutput] = {
+                       context: ToolContext): Task[LspRenameSymbolOutput] = {
     withOpenDocumentTyped[LspRenameSymbolOutput](
       input.languageId, filePath, context,
       onError = msg => LspRenameSymbolOutput.Failed(input.symbolName, msg)

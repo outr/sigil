@@ -2,7 +2,7 @@ package sigil.tooling
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspLocation, LspLocationsResult}
 
@@ -40,7 +40,7 @@ final class LspImplementationTool(val manager: LspManager) extends Tool
   )
 
 
-  override def executeOutput(input: LspImplementationInput, context: TurnContext): Task[LspLocationsResult] =
+  override def executeOutput(input: LspImplementationInput, context: ToolContext): Task[LspLocationsResult] =
     withOpenDocumentOrThrow[LspLocationsResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

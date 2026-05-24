@@ -250,7 +250,19 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
               ))
           }
         case None =>
-          Vector(ProviderEvent.Error(s"Unknown tool: ${s.toolName}"))
+          // Sigil #271 — don't short-circuit with a ProviderEvent.Error.
+          // Emit a normal ToolCallComplete carrying the raw args as a
+          // JsonInput so the orchestrator's dispatch path runs uniformly.
+          // `UnknownTool` is substituted for the missing name downstream
+          // (`Orchestrator` falls back via `toolsByName.getOrElse(name,
+          // UnknownTool)`), and its `executeResult` emits a paired
+          // Tool-role Failure Message — same shape as any other tool
+          // failure, so the agent loop re-triggers and self-corrects
+          // instead of aborting with AgentRunawayException.
+          val rawJson = scala.util
+            .Try(JsonParser(s.buf.toString))
+            .getOrElse(fabric.Obj.empty)
+          Vector(ProviderEvent.ToolCallComplete(s.callId, sigil.tool.JsonInput(rawJson)))
       }
     }
     // Sigil audit H8 — any pending headers still partial at stream

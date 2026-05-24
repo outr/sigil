@@ -10,6 +10,7 @@ import sigil.participant.AgentParticipant
 import sigil.provider.{ConversationMode, ToolPolicy}
 import sigil.role.GeneralistRole
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.ToolContext
 import sigil.TurnContext
 import rapid.Task
 
@@ -35,7 +36,7 @@ class ConversationToolOverlaySpec extends AsyncWordSpec with AsyncTaskSpec with 
     val name = ToolName("pinned_tool_a")
     val description = "Stub pinned by overlay"
 
-    override def executeResult(input: StubInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: StubInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.text)))
   }
 
@@ -47,7 +48,7 @@ class ConversationToolOverlaySpec extends AsyncWordSpec with AsyncTaskSpec with 
     val name = ToolName("pinned_tool_b")
     val description = "Stub pinned by overlay"
 
-    override def executeResult(input: StubInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: StubInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.text)))
   }
 

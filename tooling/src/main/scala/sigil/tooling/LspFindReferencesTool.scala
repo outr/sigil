@@ -2,7 +2,7 @@ package sigil.tooling
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.LspLocation
 
@@ -58,7 +58,7 @@ final class LspFindReferencesTool(val manager: LspManager) extends Tool
   // sees the natural follow-up.
   override def suggestedNextTools: List[ToolName] = List(ToolName("dispatch_workers"))
 
-  override def executeOutput(input: LspFindReferencesInput, context: TurnContext): Task[LspFindReferencesOutput] =
+  override def executeOutput(input: LspFindReferencesInput, context: ToolContext): Task[LspFindReferencesOutput] =
     withOpenDocumentOrThrow[LspFindReferencesOutput](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

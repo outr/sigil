@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import org.eclipse.lsp4j.{Position, SelectionRange}
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspRange, LspSelectionRangeChain, LspSelectionRangeResult}
 
@@ -45,7 +45,7 @@ final class LspSelectionRangeTool(val manager: LspManager) extends Tool
   override val keywords = Set("lsp", "selection", "expand selection", "smart selection")
 
 
-  override def executeOutput(input: LspSelectionRangeInput, context: TurnContext): Task[LspSelectionRangeResult] =
+  override def executeOutput(input: LspSelectionRangeInput, context: ToolContext): Task[LspSelectionRangeResult] =
     withOpenDocumentOrThrow[LspSelectionRangeResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

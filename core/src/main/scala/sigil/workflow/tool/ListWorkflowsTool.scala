@@ -2,7 +2,7 @@ package sigil.workflow.tool
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class ListWorkflowsInput(tag: Option[String] = None) extends ToolInput derives RW
@@ -29,7 +29,7 @@ final class ListWorkflowsTool extends Tool with WorkflowToolSupport {
   )
   override val keywords = Set("workflow", "list", "find")
 
-  override def executeResult(input: ListWorkflowsInput, ctx: TurnContext): Task[ToolResult[ListWorkflowsOutput]] =
+  override def executeResult(input: ListWorkflowsInput, ctx: ToolContext): Task[ToolResult[ListWorkflowsOutput]] =
     workflowHost(ctx) match {
       case Left(err) => Task.pure(ToolResult.failure(err))
       case Right(host) =>

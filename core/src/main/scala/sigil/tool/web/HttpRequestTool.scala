@@ -2,7 +2,7 @@ package sigil.tool.web
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.model.{HttpRequestInput, HttpRequestMethod, HttpRequestOutput}
 import sigil.tool.{Tool, ToolExample, ToolName}
 import spice.http.HttpMethod
@@ -57,7 +57,7 @@ case object HttpRequestTool extends Tool {
   )
   override val keywords = Set("http", "request", "api", "rest", "fetch", "curl", "post", "put", "patch", "delete")
 
-  override def executeOutput(input: HttpRequestInput, context: TurnContext): Task[HttpRequestOutput] = Task.defer {
+  override def executeOutput(input: HttpRequestInput, context: ToolContext): Task[HttpRequestOutput] = Task.defer {
     val timeout = input.timeoutMs.millis
     val parsedUrl = URL.parse(input.url)
     val httpMethod = methodFor(input.method)

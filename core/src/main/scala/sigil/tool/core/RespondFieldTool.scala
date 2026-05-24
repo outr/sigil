@@ -2,7 +2,7 @@ package sigil.tool.core
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.event.Message
 import sigil.signal.EventState
 import sigil.tool.{TextToolOutput, ToolName, ToolResult}
@@ -30,7 +30,7 @@ case object RespondFieldTool extends RespondFamilyTool {
     """Emit a labeled key/value field — for compact metadata (status, source, timestamp). `icon`
       |is an optional semantic hint.""".stripMargin
 
-  override def executeResult(input: RespondFieldInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
+  override def executeResult(input: RespondFieldInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val block = ResponseContent.Field(label = input.label, value = input.value, icon = input.icon)
     context.emit(Message(
       participantId = context.caller,

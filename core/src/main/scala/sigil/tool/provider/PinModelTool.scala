@@ -3,7 +3,7 @@ package sigil.tool.provider
 import fabric.rw.*
 import lightdb.time.Timestamp
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class PinModelInput(modelId: String) extends ToolInput derives RW
@@ -41,7 +41,7 @@ case object PinModelTool extends Tool {
   )
 
   override def executeResult(input: PinModelInput,
-                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     ModelResolution.resolve(input.modelId, ctx).flatMap {
       case ModelResolutionResult.Unresolved(_, guidance) =>
         Task.pure(ToolResult.failure(guidance))

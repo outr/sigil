@@ -11,6 +11,7 @@ import sigil.provider.{
   ProviderType, ReasoningMode, StopReason, TokenUsage
 }
 import sigil.tool.consult.{ConsultOutcome, ConsultTool}
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 import spice.http.HttpRequest
 
@@ -45,7 +46,7 @@ class ConsultToolOutcomeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     val name = ToolName("consult_probe")
     val description = "Probe target for ConsultTool outcome tests."
 
-    override def executeResult(input: ProbeInput, ctx: sigil.TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: ProbeInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(input.answer)))
   }
 

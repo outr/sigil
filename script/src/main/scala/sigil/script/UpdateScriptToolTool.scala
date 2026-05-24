@@ -5,7 +5,7 @@ import fabric.rw.*
 import lightdb.time.Timestamp
 import lightdb.util.Nowish
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, TextToolOutput, Tool, ToolName, ToolResult}
 
 /**
@@ -36,7 +36,7 @@ case object UpdateScriptToolTool extends Tool {
   override val keywords = Set("update", "edit", "modify", "tool", "script", "change")
 
   override def executeResult(input: UpdateScriptToolInput,
-                             context: TurnContext): Task[ToolResult[TextToolOutput]] =
+                             context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       context.sigil.withDB(_.tools.transaction { tx =>
         tx.query.filter(_.toolName === input.name).toList.map(_.headOption).flatMap {

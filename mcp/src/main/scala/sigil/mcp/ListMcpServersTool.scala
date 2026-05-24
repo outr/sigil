@@ -2,7 +2,7 @@ package sigil.mcp
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 case class ListMcpServersInput() extends ToolInput derives RW
@@ -17,7 +17,7 @@ final class ListMcpServersTool(manager: McpManager) extends Tool {
   val name = ToolName("list_mcp_servers")
   val description = "List the registered MCP servers — name, transport, prefix, and the count of tools each currently exposes."
 
-  override def executeResult(input: ListMcpServersInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: ListMcpServersInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     manager.listConfigs().flatMap { configs =>
       Task.sequence(configs.map { cfg =>
         manager.listTools(cfg.name).map(_.size).handleError(_ => Task.pure(-1)).map { count =>

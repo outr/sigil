@@ -3,7 +3,7 @@ package sigil.tool.consult
 import fabric.define.{DefType, Definition}
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.provider.{ClassificationWork, GenerationSettings, ReasoningMode, WorkType}
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
@@ -51,6 +51,6 @@ class TopicClassifierTool(priorLabels: List[String]) extends Tool with Framework
 
   /** Never executed — the framework reads the typed input directly via
     * [[ConsultTool.invoke]]. Resolves to an empty success for completeness. */
-  override def executeResult(input: TopicClassifierInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: TopicClassifierInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.success(TextToolOutput("")))
 }

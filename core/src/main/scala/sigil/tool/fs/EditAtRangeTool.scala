@@ -4,7 +4,7 @@ import fabric.io.JsonFormatter
 import fabric.rw.*
 import lightdb.time.Timestamp
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.storage.{FileVersion, WriteResult}
 import sigil.tool.model.{EditAtRangeInput, EditAtRangeOutput}
 import sigil.tool.{PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolResult}
@@ -62,7 +62,7 @@ final class EditAtRangeTool(context: FileSystemContext)
     Set("file", "edit", "range", "position", "line", "column", "replace", "modify", "rewrite", "patch", "refactor")
 
 
-  override def executeResult(input: EditAtRangeInput, ctx: TurnContext): Task[ToolResult[EditAtRangeOutput]] =
+  override def executeResult(input: EditAtRangeInput, ctx: ToolContext): Task[ToolResult[EditAtRangeOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
       case None        => runEdit(input, ctx)
@@ -72,7 +72,7 @@ final class EditAtRangeTool(context: FileSystemContext)
     try Some(JsonFormatter.Compact(inputRW.read(input)))
     catch { case _: Throwable => None }
 
-  private def runEdit(input: EditAtRangeInput, ctx: TurnContext): Task[ToolResult[EditAtRangeOutput]] = {
+  private def runEdit(input: EditAtRangeInput, ctx: ToolContext): Task[ToolResult[EditAtRangeOutput]] = {
     val argsJson = renderInputArgs(input)
 
     WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolved =>

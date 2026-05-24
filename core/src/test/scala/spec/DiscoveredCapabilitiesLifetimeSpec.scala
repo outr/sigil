@@ -19,6 +19,7 @@ import sigil.tool.ToolName
 import sigil.tool.core.{CoreTools, FindCapabilityTool, RespondTool}
 import sigil.tool.discovery.{CapabilityMatch, CapabilityStatus, CapabilityType}
 import sigil.tool.model.{RespondInput, ResponseDisposition}
+import sigil.event.Event
 
 /**
  * Lifetime regression for sigil bug #226 — the per-agent-loop
@@ -162,7 +163,7 @@ class DiscoveredCapabilitiesLifetimeSpec extends AsyncWordSpec with AsyncTaskSpe
             disposition  = ResponseDisposition.Success,
             endsTurn     = true
           ),
-          ctx
+          ctx, Event.id()
         ).toList
       } yield ctx.discoveredCapabilities shouldBe Map.empty
     }
@@ -180,7 +181,7 @@ class DiscoveredCapabilitiesLifetimeSpec extends AsyncWordSpec with AsyncTaskSpe
             disposition  = ResponseDisposition.Success,
             endsTurn     = false
           ),
-          ctx
+          ctx, Event.id()
         ).toList
       } yield {
         ctx.discoveredCapabilities.keySet should contain("send slack message")

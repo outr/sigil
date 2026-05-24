@@ -13,6 +13,7 @@ import sigil.tool.model.{DeleteFileInput, DeleteFileOutput, EditFileInput, EditF
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import scala.reflect.ClassTag
+import sigil.event.Event
 
 /**
  * End-to-end coverage for the `sigil.tool.fs` family. Each test
@@ -74,8 +75,8 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "round-trip a file's contents" in withTempDir { (ctx, _) =>
       val tc = turnContext()
       for {
-        wrote <- new WriteFileTool(ctx).execute(WriteFileInput("notes.txt", "hello sigil"), tc).toList
-        read  <- new ReadFileTool(ctx).execute(ReadFileInput("notes.txt"), tc).toList
+        wrote <- new WriteFileTool(ctx).execute(WriteFileInput("notes.txt", "hello sigil"), tc, Event.id()).toList
+        read  <- new ReadFileTool(ctx).execute(ReadFileInput("notes.txt"), tc, Event.id()).toList
       } yield {
         typed[WriteFileOutput](wrote) shouldBe a[WriteFileOutput.Success]
         typed[ReadFileOutput](read).content shouldBe "hello sigil"
@@ -88,8 +89,8 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       val tc = turnContext()
       val text = (1 to 10).map(i => s"line $i").mkString("\n")
       for {
-        _    <- new WriteFileTool(ctx).execute(WriteFileInput("data.log", text), tc).toList
-        read <- new ReadFileTool(ctx).execute(ReadFileInput("data.log", offset = Some(2), limit = Some(3)), tc).toList
+        _    <- new WriteFileTool(ctx).execute(WriteFileInput("data.log", text), tc, Event.id()).toList
+        read <- new ReadFileTool(ctx).execute(ReadFileInput("data.log", offset = Some(2), limit = Some(3)), tc, Event.id()).toList
       } yield {
         val payload = typed[ReadFileOutput](read)
         payload.content shouldBe "line 3\nline 4\nline 5"
@@ -103,9 +104,9 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "replace a unique substring" in withTempDir { (ctx, _) =>
       val tc = turnContext()
       for {
-        _      <- new WriteFileTool(ctx).execute(WriteFileInput("c.toml", "x = 1\ny = 2"), tc).toList
-        edited <- new EditFileTool(ctx).execute(EditFileInput("c.toml", "y = 2", "y = 99"), tc).toList
-        re     <- new ReadFileTool(ctx).execute(ReadFileInput("c.toml"), tc).toList
+        _      <- new WriteFileTool(ctx).execute(WriteFileInput("c.toml", "x = 1\ny = 2"), tc, Event.id()).toList
+        edited <- new EditFileTool(ctx).execute(EditFileInput("c.toml", "y = 2", "y = 99"), tc, Event.id()).toList
+        re     <- new ReadFileTool(ctx).execute(ReadFileInput("c.toml"), tc, Event.id()).toList
       } yield {
         typed[EditFileOutput](edited) match {
           case EditFileOutput.Success(replacements, _) => replacements shouldBe 1
@@ -118,9 +119,9 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "reject ambiguous edits without replaceAll as a typed Failure (file unchanged)" in withTempDir { (ctx, _) =>
       val tc = turnContext()
       for {
-        _      <- new WriteFileTool(ctx).execute(WriteFileInput("d.txt", "foo\nfoo"), tc).toList
-        edited <- new EditFileTool(ctx).execute(EditFileInput("d.txt", "foo", "bar"), tc).toList
-        re     <- new ReadFileTool(ctx).execute(ReadFileInput("d.txt"), tc).toList
+        _      <- new WriteFileTool(ctx).execute(WriteFileInput("d.txt", "foo\nfoo"), tc, Event.id()).toList
+        edited <- new EditFileTool(ctx).execute(EditFileInput("d.txt", "foo", "bar"), tc, Event.id()).toList
+        re     <- new ReadFileTool(ctx).execute(ReadFileInput("d.txt"), tc, Event.id()).toList
       } yield {
         val text = failureText(edited)
         text should include ("matched 2 times")
@@ -132,9 +133,9 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "surface a typed Failure when oldString doesn't match (file unchanged, bug #183)" in withTempDir { (ctx, _) =>
       val tc = turnContext()
       for {
-        _      <- new WriteFileTool(ctx).execute(WriteFileInput("nm.txt", "abcdef"), tc).toList
-        edited <- new EditFileTool(ctx).execute(EditFileInput("nm.txt", "xyz", "ZZZ"), tc).toList
-        re     <- new ReadFileTool(ctx).execute(ReadFileInput("nm.txt"), tc).toList
+        _      <- new WriteFileTool(ctx).execute(WriteFileInput("nm.txt", "abcdef"), tc, Event.id()).toList
+        edited <- new EditFileTool(ctx).execute(EditFileInput("nm.txt", "xyz", "ZZZ"), tc, Event.id()).toList
+        re     <- new ReadFileTool(ctx).execute(ReadFileInput("nm.txt"), tc, Event.id()).toList
       } yield {
         val text = failureText(edited)
         text should include ("no match for `oldString`")
@@ -147,14 +148,14 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "commit safe-edit when expectedHash matches and surface fresh hash" in withTempDir { (ctx, _) =>
       val tc = turnContext()
       for {
-        _      <- new WriteFileTool(ctx).execute(WriteFileInput("safe.toml", "x = 1\ny = 2"), tc).toList
-        readJ  <- new ReadFileTool(ctx).execute(ReadFileInput("safe.toml"), tc).toList
+        _      <- new WriteFileTool(ctx).execute(WriteFileInput("safe.toml", "x = 1\ny = 2"), tc, Event.id()).toList
+        readJ  <- new ReadFileTool(ctx).execute(ReadFileInput("safe.toml"), tc, Event.id()).toList
         hash    = typed[ReadFileOutput](readJ).hash.get
         edited <- new EditFileTool(ctx).execute(
                     EditFileInput("safe.toml", "y = 2", "y = 99", expectedHash = Some(hash)),
-                    tc
+                    tc, Event.id()
                   ).toList
-        re     <- new ReadFileTool(ctx).execute(ReadFileInput("safe.toml"), tc).toList
+        re     <- new ReadFileTool(ctx).execute(ReadFileInput("safe.toml"), tc, Event.id()).toList
       } yield {
         typed[EditFileOutput](edited) match {
           case EditFileOutput.Success(repls, h) =>
@@ -169,12 +170,12 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "surface stale on safe-edit when expectedHash is wrong as a typed Failure (file unchanged)" in withTempDir { (ctx, _) =>
       val tc = turnContext()
       for {
-        _      <- new WriteFileTool(ctx).execute(WriteFileInput("conflict.toml", "x = 1"), tc).toList
+        _      <- new WriteFileTool(ctx).execute(WriteFileInput("conflict.toml", "x = 1"), tc, Event.id()).toList
         edited <- new EditFileTool(ctx).execute(
                     EditFileInput("conflict.toml", "x = 1", "x = 2", expectedHash = Some("not-the-real-hash")),
-                    tc
+                    tc, Event.id()
                   ).toList
-        re     <- new ReadFileTool(ctx).execute(ReadFileInput("conflict.toml"), tc).toList
+        re     <- new ReadFileTool(ctx).execute(ReadFileInput("conflict.toml"), tc, Event.id()).toList
       } yield {
         val text = failureText(edited)
         text should include ("file changed since")
@@ -187,17 +188,17 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "WriteFileTool surfaces written/stale results when expectedHash is supplied" in withTempDir { (ctx, _) =>
       val tc = turnContext()
       for {
-        _      <- new WriteFileTool(ctx).execute(WriteFileInput("ow.txt", "v1"), tc).toList
-        readJ  <- new ReadFileTool(ctx).execute(ReadFileInput("ow.txt"), tc).toList
+        _      <- new WriteFileTool(ctx).execute(WriteFileInput("ow.txt", "v1"), tc, Event.id()).toList
+        readJ  <- new ReadFileTool(ctx).execute(ReadFileInput("ow.txt"), tc, Event.id()).toList
         hash    = typed[ReadFileOutput](readJ).hash.get
         ok     <- new WriteFileTool(ctx).execute(
                     WriteFileInput("ow.txt", "v2", expectedHash = Some(hash)),
-                    tc
+                    tc, Event.id()
                   ).toList
         // Now hash is stale — try writing again with the OLD hash.
         stale  <- new WriteFileTool(ctx).execute(
                     WriteFileInput("ow.txt", "v3", expectedHash = Some(hash)),
-                    tc
+                    tc, Event.id()
                   ).toList
       } yield {
         typed[WriteFileOutput](ok) shouldBe a[WriteFileOutput.Success]
@@ -213,8 +214,8 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     "delete an existing file and report deleted = true" in withTempDir { (ctx, _) =>
       val tc = turnContext()
       for {
-        _ <- new WriteFileTool(ctx).execute(WriteFileInput("scratch.txt", "x"), tc).toList
-        d <- new DeleteFileTool(ctx).execute(DeleteFileInput("scratch.txt"), tc).toList
+        _ <- new WriteFileTool(ctx).execute(WriteFileInput("scratch.txt", "x"), tc, Event.id()).toList
+        d <- new DeleteFileTool(ctx).execute(DeleteFileInput("scratch.txt"), tc, Event.id()).toList
       } yield {
         typed[DeleteFileOutput](d).deleted shouldBe true
       }

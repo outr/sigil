@@ -2,7 +2,7 @@ package sigil.script
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 import java.lang.reflect.{Constructor, Field, Method, Modifier}
@@ -39,7 +39,7 @@ case object ClassSignaturesTool extends Tool {
   override val keywords = Set("class", "signature", "method", "introspect", "lookup", "api")
 
   override def executeResult(input: ClassSignaturesInput,
-                             context: TurnContext): Task[ToolResult[TextToolOutput]] = Task {
+                             context: ToolContext): Task[ToolResult[TextToolOutput]] = Task {
     val text =
       try render(loadClass(input.fqn))
       catch {

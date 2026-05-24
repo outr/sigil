@@ -10,6 +10,8 @@ import sigil.signal.{FrameworkWorkflowNotice, FrameworkWorkflowPhase}
 import sigil.tool.core.{CancelFrameworkWorkflowInput, CancelFrameworkWorkflowOutput, CancelFrameworkWorkflowTool}
 
 import scala.concurrent.duration.*
+import sigil.event.Event
+import sigil.tool.ToolContext
 
 /**
  * Coverage for sigil bug #51 — framework-workflow cancellation.
@@ -123,7 +125,7 @@ class FrameworkWorkflowCancellationSpec extends AsyncWordSpec with AsyncTaskSpec
       val tool  = CancelFrameworkWorkflowTool
       val input = CancelFrameworkWorkflowInput(workflowId = "no-such-id")
       val ctx   = makeContext()
-      tool.invoke(input, ctx).map { out =>
+      tool.invoke(input, ToolContext(ctx, Event.id(), tool.name)).map { out =>
         out shouldBe CancelFrameworkWorkflowOutput.NotActive("no-such-id")
       }
     }
@@ -145,10 +147,10 @@ class FrameworkWorkflowCancellationSpec extends AsyncWordSpec with AsyncTaskSpec
       }.flatMap { _ =>
         val ctx = makeContext()
         val first = CancelFrameworkWorkflowTool.invoke(
-          CancelFrameworkWorkflowInput(workflowId = workflowIdRef.get(), reason = Some("first")), ctx
+          CancelFrameworkWorkflowInput(workflowId = workflowIdRef.get(), reason = Some("first")), ToolContext(ctx, Event.id(), CancelFrameworkWorkflowTool.name)
         )
         val second = CancelFrameworkWorkflowTool.invoke(
-          CancelFrameworkWorkflowInput(workflowId = workflowIdRef.get(), reason = Some("second")), ctx
+          CancelFrameworkWorkflowInput(workflowId = workflowIdRef.get(), reason = Some("second")), ToolContext(ctx, Event.id(), CancelFrameworkWorkflowTool.name)
         )
         for {
           a <- first

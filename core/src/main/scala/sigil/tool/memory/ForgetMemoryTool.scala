@@ -2,7 +2,8 @@ package sigil.tool.memory
 
 import fabric.rw.*
 import rapid.Task
-import sigil.{SpaceId, TurnContext}
+import sigil.SpaceId
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 
 /**
@@ -41,7 +42,7 @@ case object ForgetMemoryTool extends Tool {
   )
   override val keywords: Set[String] = Set("memory", "forget", "delete", "remove")
 
-  override def executeResult(input: ForgetMemoryInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
+  override def executeResult(input: ForgetMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val textTask: Task[String] = (input.memoryId, input.key) match {
       case (Some(_), Some(_)) =>
         Task.pure("[forget_memory] supply either memoryId OR key, not both.")
@@ -68,6 +69,6 @@ case object ForgetMemoryTool extends Tool {
     textTask.map(text => ToolResult.Success(TextToolOutput(text)))
   }
 
-  private def resolveSpace(context: TurnContext): Task[Option[SpaceId]] =
+  private def resolveSpace(context: ToolContext): Task[Option[SpaceId]] =
     context.sigil.defaultMemorySpace(context.conversation.id)
 }

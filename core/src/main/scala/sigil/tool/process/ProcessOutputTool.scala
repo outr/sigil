@@ -2,7 +2,7 @@ package sigil.tool.process
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.model.{ProcessOutputInput, ProcessOutputResult, ProcessRunStatus}
 import sigil.tool.{Tool, ToolExample, ToolName}
 
@@ -32,7 +32,7 @@ final class ProcessOutputTool(registry: ProcessRegistry) extends Tool {
   )
   override val keywords = Set("process", "output", "stdout", "stderr", "tail", "watch", "stream")
 
-  override def executeOutput(input: ProcessOutputInput, ctx: TurnContext): Task[ProcessOutputResult] =
+  override def executeOutput(input: ProcessOutputInput, ctx: ToolContext): Task[ProcessOutputResult] =
     registry.output(
       handle         = input.handle,
       sinceCursor    = input.sinceCursor,

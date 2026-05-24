@@ -51,7 +51,7 @@ case class ToolDelta(target: Id[Event],
                        * carries either the final concrete output once
                        * `Tool.execute` settles, or an interim
                        * `ToolOutput.Progress(message, percent?)` emitted
-                       * from `ToolContext.progress(...)`. `None` means
+                       * from [[sigil.tool.ToolContext.reportProgress]]. `None` means
                        * this delta doesn't change the invoke's output. */
                      output: Option[sigil.tool.ToolOutput] = None,
                      /** Sigil #265 — Success / Failure outcome folded

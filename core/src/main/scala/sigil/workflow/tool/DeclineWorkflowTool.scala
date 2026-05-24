@@ -4,7 +4,7 @@ import fabric.{Json, str}
 import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import strider.Workflow
 import strider.step.Step
@@ -44,7 +44,7 @@ final class DeclineWorkflowTool extends Tool with WorkflowToolSupport {
   )
   override val keywords = Set("workflow", "decline", "reject", "no", "deny", "refuse")
 
-  override def executeResult(input: DeclineWorkflowInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
+  override def executeResult(input: DeclineWorkflowInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
     val workflowId = Id[Workflow](input.runId)
     val payload: Json = input.reason.filter(_.nonEmpty).fold[Json](str("decline"))(r => str(s"decline: $r"))
     host.withDB(_.workflows.transaction(_.get(workflowId))).flatMap {

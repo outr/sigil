@@ -14,6 +14,7 @@ import sigil.provider.{
 }
 import sigil.signal.{Signal, ToolDelta}
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.ToolContext
 import sigil.tool.model.NoResponseInput
 import spice.http.HttpRequest
 import fabric.rw.*
@@ -44,7 +45,7 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
     val outputRW = summon[RW[TextToolOutput]]
     val name        = ToolName("success_origin_test")
     val description = "Resolves to a typed Success."
-    override def executeResult(input: NoResponseInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: NoResponseInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("done")))
   }
 
@@ -57,7 +58,7 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
     val outputRW = summon[RW[TextToolOutput]]
     val name        = ToolName("failure_origin_test")
     val description = "Resolves to a logical Failure."
-    override def executeResult(input: NoResponseInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: NoResponseInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.failure("deliberate failure for origin coverage"))
   }
 

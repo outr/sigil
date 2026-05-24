@@ -2,7 +2,7 @@ package sigil.tool.core
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.provider.Complexity
 import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolOutput, ToolResult}
 
@@ -61,7 +61,7 @@ case object RequestEscalationTool extends Tool {
   override val keywords = Set("escalate", "tier", "complexity", "harder", "smarter model", "frontier")
 
   override def executeResult(input: RequestEscalationInput,
-                             context: TurnContext): Task[ToolResult[RequestEscalationOutput]] =
+                             context: ToolContext): Task[ToolResult[RequestEscalationOutput]] =
     context.sigil.requestEscalation(context.conversation._id, input.reason).map {
       case (newTier, true)  => ToolResult.success(RequestEscalationOutput(tier = newTier, bumped = true))
       case (newTier, false) => ToolResult.success(RequestEscalationOutput(tier = newTier, bumped = false))

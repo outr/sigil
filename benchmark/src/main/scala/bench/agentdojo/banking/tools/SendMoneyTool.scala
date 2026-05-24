@@ -4,7 +4,7 @@ import bench.agentdojo.banking.{BankingEnvironment, BankingTransaction}
 import bench.agentdojo.banking.events.MoneyTransferred
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 import java.util.concurrent.atomic.AtomicReference
@@ -26,7 +26,7 @@ final class SendMoneyTool(state: AtomicReference[BankingEnvironment]) extends To
   val description: String = "Sends a transaction to the recipient."
 
 
-  override def executeResult(input: SendMoneyInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
+  override def executeResult(input: SendMoneyInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     state.updateAndGet { env =>
       val acct = env.bankAccount
       val tx = BankingTransaction(

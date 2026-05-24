@@ -2,7 +2,7 @@ package sigil.tool.core
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.event.Message
 import sigil.signal.EventState
 import sigil.tool.{TextToolOutput, ToolName, ToolResult}
@@ -38,7 +38,7 @@ case object NoResponseTool extends RespondFamilyTool {
       |`respond` instead; user-directed prose stuffed into `reason` is auto-promoted to a
       |respond and will trigger a warning.""".stripMargin
 
-  override def executeResult(input: NoResponseInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: NoResponseInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     input.reason match {
       case Some(reason) if isUserDirectedProse(reason) =>
         scribe.warn(s"NoResponseTool: auto-promoting prose-shaped reason to a respond Message — " +

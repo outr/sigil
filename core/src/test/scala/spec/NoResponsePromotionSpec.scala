@@ -8,6 +8,7 @@ import sigil.conversation.{Conversation, Topic, TopicEntry, TurnInput}
 import sigil.event.Message
 import sigil.tool.core.NoResponseTool
 import sigil.tool.model.{NoResponseInput, ResponseContent}
+import sigil.event.Event
 
 /**
  * Coverage for sigil bug #79 — when a small/mid model misroutes
@@ -39,7 +40,7 @@ class NoResponsePromotionSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         conversation = stored,
         turnInput    = TurnInput(conversationId = stored._id)
       )
-      NoResponseTool.execute(NoResponseInput(reason = reason), ctx)
+      NoResponseTool.execute(NoResponseInput(reason = reason), ctx, Event.id())
         .toList
         .map(_.collect { case m: Message => m })
     }

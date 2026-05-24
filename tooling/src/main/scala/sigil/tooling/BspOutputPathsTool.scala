@@ -2,7 +2,7 @@ package sigil.tooling
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{BspOutputPathItem, BspOutputPathsResult, BspTargetOutputPaths}
 
@@ -34,7 +34,7 @@ final class BspOutputPathsTool(val manager: BspManager) extends Tool
 
 
   override def executeOutput(input: BspOutputPathsInput,
-                             context: TurnContext): Task[BspOutputPathsResult] =
+                             context: ToolContext): Task[BspOutputPathsResult] =
     withTargets[BspOutputPathsResult](
       input.projectRoot, context, input.targets,
       onError = _ => BspOutputPathsResult(input.projectRoot, Nil),

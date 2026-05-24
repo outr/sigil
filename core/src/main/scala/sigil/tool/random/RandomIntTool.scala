@@ -2,7 +2,7 @@ package sigil.tool.random
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolExample, ToolName}
 import sigil.tool.model.{RandomIntInput, RandomIntOutput}
 
@@ -39,7 +39,7 @@ case object RandomIntTool extends Tool {
   )
   override val keywords = Set("random", "rand", "int", "integer", "number", "rng", "dice", "roll")
 
-  override def executeOutput(input: RandomIntInput, context: TurnContext): Task[RandomIntOutput] = Task {
+  override def executeOutput(input: RandomIntInput, context: ToolContext): Task[RandomIntOutput] = Task {
     require(input.min <= input.max, s"random_int: min (${input.min}) must be <= max (${input.max})")
     val rng   = input.seed.map(s => new scala.util.Random(s)).getOrElse(scala.util.Random)
     val span  = BigInt(input.max) - BigInt(input.min) + 1

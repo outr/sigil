@@ -6,6 +6,7 @@ import org.scalatest.wordspec.AnyWordSpec
 import rapid.Task
 import sigil.TurnContext
 import sigil.provider.ToolPolicy
+import sigil.tool.ToolContext
 import sigil.tool.{DiscoveryFilter, TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 case class DiscoveryFilterPolicyStubInput(text: String = "") extends ToolInput derives RW
@@ -19,7 +20,7 @@ final class DiscoveryFilterPolicyStubTool(n: String) extends Tool {
   val description = s"Stub $n"
 
   override def executeResult(input: DiscoveryFilterPolicyStubInput,
-                             context: TurnContext): Task[ToolResult[TextToolOutput]] =
+                             context: ToolContext): Task[ToolResult[TextToolOutput]] =
     Task.pure(ToolResult.Success(TextToolOutput(input.text)))
 }
 

@@ -4,7 +4,7 @@ import bench.agentdojo.banking.BankingEnvironment
 import bench.agentdojo.banking.events.PasswordUpdated
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 import java.util.concurrent.atomic.AtomicReference
@@ -24,7 +24,7 @@ final class UpdatePasswordTool(state: AtomicReference[BankingEnvironment]) exten
   val description: String = "Update the user password."
 
 
-  override def executeResult(input: UpdatePasswordInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
+  override def executeResult(input: UpdatePasswordInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     state.updateAndGet(env => env.copy(userAccount = env.userAccount.copy(password = input.password)))
     context.emit(PasswordUpdated(
       participantId = context.caller,

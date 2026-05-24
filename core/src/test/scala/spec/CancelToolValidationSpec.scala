@@ -5,7 +5,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, Topic, TopicEntry, TurnInput}
-import sigil.event.{Stop, ToolOutcome}
+import sigil.event.{Event, Stop, ToolOutcome}
 import sigil.signal.{Signal, ToolDelta}
 import sigil.tool.core.CancelTool
 import sigil.tool.model.CancelInput
@@ -54,7 +54,7 @@ class CancelToolValidationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     * `execute` stream emits — a settling ToolDelta carrying outcome,
     * plus any ancillary events emitted via `ctx.emit` (e.g. Stop). */
   private def runCancel(conv: Conversation, reason: String): Task[List[Signal]] =
-    CancelTool.execute(CancelInput(force = true, reason = Some(reason)), ctx(conv)).toList
+    CancelTool.execute(CancelInput(force = true, reason = Some(reason)), ctx(conv), Event.id()).toList
 
   /** The Stop event `cancel` emits ancillary-style via `ctx.emit` is
     * drained into the tool's `execute` stream — not published to
@@ -145,7 +145,7 @@ class CancelToolValidationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "emit a Stop event when no reason is supplied" in {
       for {
         conv    <- freshConversation("no-reason")
-        signals <- CancelTool.execute(CancelInput(), ctx(conv)).toList
+        signals <- CancelTool.execute(CancelInput(), ctx(conv), Event.id()).toList
       } yield {
         emittedStops(signals).size shouldBe 1
       }

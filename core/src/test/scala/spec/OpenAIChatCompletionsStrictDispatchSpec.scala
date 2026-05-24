@@ -10,6 +10,7 @@ import sigil.provider.{
   ConversationMode, GenerationSettings, ProviderCall, ProviderMessage, StrictSchema, ToolChoice
 }
 import sigil.provider.wire.OpenAIChatCompletions
+import sigil.tool.ToolContext
 import sigil.tool.{JsonInput, TextToolOutput, Tool, ToolName, ToolResult}
 import sigil.tool.model.RespondInput
 import rapid.Task
@@ -50,7 +51,7 @@ class OpenAIChatCompletionsStrictDispatchSpec extends AnyWordSpec with Matchers 
     val outputRW = summon[RW[TextToolOutput]]
     val name        = ToolName("test_json_tool")
     val description = "Test tool with a Json root input."
-    override def executeResult(input: JsonInput, context: sigil.TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: JsonInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("ok")))
   }
 

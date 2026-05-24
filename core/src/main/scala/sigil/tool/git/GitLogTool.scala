@@ -2,7 +2,7 @@ package sigil.tool.git
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.fs.{FileSystemContext, WorkspacePathResolver}
 import sigil.tool.model.{GitLogInput, GitLogOutput}
 import sigil.tool.{Tool, ToolExample, ToolName}
@@ -30,7 +30,7 @@ final class GitLogTool(context: FileSystemContext)
   )
   override val keywords = Set("git", "log", "history", "commits", "blame")
 
-  override def executeOutput(input: GitLogInput, ctx: TurnContext): Task[GitLogOutput] =
+  override def executeOutput(input: GitLogInput, ctx: ToolContext): Task[GitLogOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       val limit    = input.limit.getOrElse(20)
       val format   = "%H%x00%an%x00%aI%x00%s%x00%b%x1e"

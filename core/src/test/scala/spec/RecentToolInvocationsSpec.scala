@@ -20,6 +20,7 @@ import sigil.provider.{
 import sigil.provider.llamacpp.LlamaCppProvider
 import sigil.signal.Signal
 import sigil.tool.{InMemoryToolFinder, TextToolOutput, ToolInput, ToolInputCanonicalizer, ToolName}
+import sigil.tool.ToolContext
 import sigil.tool.core.{CoreTools, NoResponseTool, RespondTool}
 import sigil.tool.model.ResponseContent
 import spice.http.HttpRequest
@@ -59,7 +60,7 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     val name        = ToolName("recent_search_tool")
     val description = "Synthetic search tool used by RecentToolInvocationsSpec."
 
-    override def executeOutput(input: SearchInput, ctx: TurnContext): Task[TextToolOutput] = Task {
+    override def executeOutput(input: SearchInput, ctx: ToolContext): Task[TextToolOutput] = Task {
       searchInvocations.incrementAndGet()
       TextToolOutput(s"matched ${input.pattern} in ${input.glob}")
     }

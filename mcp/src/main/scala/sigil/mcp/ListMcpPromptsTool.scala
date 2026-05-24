@@ -2,7 +2,7 @@ package sigil.mcp
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 case class ListMcpPromptsInput(server: String) extends ToolInput derives RW
@@ -17,7 +17,7 @@ final class ListMcpPromptsTool(manager: McpManager) extends Tool {
   val name = ToolName("list_mcp_prompts")
   val description = "List the prompt templates advertised by a registered MCP server, including their argument names."
 
-  override def executeResult(input: ListMcpPromptsInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: ListMcpPromptsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     manager.listPrompts(input.server).map { prompts =>
       val text = if (prompts.isEmpty) "(no prompts advertised)"
       else prompts.map { p =>

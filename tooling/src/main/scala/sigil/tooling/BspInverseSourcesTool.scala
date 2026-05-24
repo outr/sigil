@@ -2,7 +2,7 @@ package sigil.tooling
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.BspInverseSourcesResult
 
@@ -34,7 +34,7 @@ final class BspInverseSourcesTool(val manager: BspManager) extends Tool
 
 
   override def executeOutput(input: BspInverseSourcesInput,
-                             context: TurnContext): Task[BspInverseSourcesResult] =
+                             context: ToolContext): Task[BspInverseSourcesResult] =
     withSessionTyped[BspInverseSourcesResult](
       input.projectRoot, context,
       onError = _ => BspInverseSourcesResult(input.projectRoot, input.filePath, Nil)

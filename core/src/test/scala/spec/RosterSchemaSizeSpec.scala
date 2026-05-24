@@ -6,6 +6,7 @@ import org.scalatest.wordspec.AnyWordSpec
 import rapid.{Stream, Task}
 import sigil.provider.{ConversationMode, Provider, ProviderCall, ProviderType}
 import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName}
 
 /**
@@ -40,7 +41,7 @@ class RosterSchemaSizeSpec extends AnyWordSpec with Matchers {
     val name        = ToolName("wide_tool")
     val description = "A short description."
 
-    override def executeOutput(input: WideInput, context: sigil.TurnContext): Task[TextToolOutput] =
+    override def executeOutput(input: WideInput, context: ToolContext): Task[TextToolOutput] =
       Task.pure(TextToolOutput(""))
   }
 

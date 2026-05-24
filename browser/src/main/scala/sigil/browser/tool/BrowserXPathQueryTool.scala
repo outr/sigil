@@ -5,7 +5,7 @@ import fabric.{Json, arr, num, obj, str}
 import lightdb.id.Id
 import org.jsoup.Jsoup
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.browser.WebBrowserMode
 import sigil.storage.StoredFile
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
@@ -48,7 +48,7 @@ final class BrowserXPathQueryTool extends Tool {
   override val keywords = Set("browser", "xpath", "query", "extract", "html", "structure")
 
   override def executeResult(input: BrowserXPathQueryInput,
-                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     ctx.sigil.fetchStoredFile(Id[StoredFile](input.htmlFileId), ctx.chain).map {
         case None =>
           ToolResult.failure(s"htmlFileId '${input.htmlFileId}' not found or not authorized")

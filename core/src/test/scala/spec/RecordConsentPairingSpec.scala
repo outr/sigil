@@ -6,7 +6,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, TopicEntry, TurnInput}
-import sigil.event.{ToolApproval, ToolOutcome}
+import sigil.event.{Event, ToolApproval, ToolOutcome}
 import sigil.signal.ToolDelta
 import sigil.tool.{TextToolOutput, ToolName}
 import sigil.tool.core.RecordConsentTool
@@ -64,7 +64,7 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         ctx    <- turnContextFor()
         events <- RecordConsentTool.execute(
                     RecordConsentInput(toolName = testToolName, approved = true,
-                      reason = Some("user picked Claude state in setup options")), ctx).toList
+                      reason = Some("user picked Claude state in setup options")), ctx, Event.id()).toList
       } yield {
         val approvals = events.collect { case t: ToolApproval => t }
         approvals should have size 1
@@ -87,7 +87,7 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         ctx    <- turnContextFor()
         events <- RecordConsentTool.execute(
                     RecordConsentInput(toolName = testToolName, approved = false,
-                      reason = Some("user explicitly did not select")), ctx).toList
+                      reason = Some("user explicitly did not select")), ctx, Event.id()).toList
       } yield {
         events.collect { case t: ToolApproval => t } should have size 1
         val settling = events.collect {
@@ -104,7 +104,7 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       for {
         ctx    <- turnContextFor()
         events <- RecordConsentTool.execute(
-                    RecordConsentInput(toolName = testToolName, approved = true), ctx).toList
+                    RecordConsentInput(toolName = testToolName, approved = true), ctx, Event.id()).toList
       } yield {
         val settling = events.collect {
           case d: ToolDelta if d.outcome.contains(ToolOutcome.Success) => d

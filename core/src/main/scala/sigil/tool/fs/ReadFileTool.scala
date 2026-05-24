@@ -2,7 +2,7 @@ package sigil.tool.fs
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.storage.FileVersion
 import sigil.tool.model.{ReadFileInput, ReadFileOutput}
 import sigil.tool.{PlaceholderInputDetector, Tool, ToolExample, ToolName, ToolResult}
@@ -40,7 +40,7 @@ final class ReadFileTool(context: FileSystemContext)
   // Generic primitive: ranks below domain-specific tools when both match a query.
   override def preferIfNoBetter: Boolean = true
 
-  override def executeResult(input: ReadFileInput, ctx: TurnContext): Task[ToolResult[ReadFileOutput]] =
+  override def executeResult(input: ReadFileInput, ctx: ToolContext): Task[ToolResult[ReadFileOutput]] =
     PlaceholderInputDetector.validateNoPlaceholders("filePath" -> input.filePath) match {
       case Some(reason) => Task.pure(ToolResult.failure(message = reason))
       case None        =>

@@ -2,7 +2,7 @@ package sigil.tool.random
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolExample, ToolName}
 import sigil.tool.model.{RandomChoiceInput, RandomChoiceOutput}
 
@@ -33,7 +33,7 @@ case object RandomChoiceTool extends Tool {
   )
   override val keywords = Set("random", "choose", "pick", "select", "sample", "choice")
 
-  override def executeOutput(input: RandomChoiceInput, context: TurnContext): Task[RandomChoiceOutput] = Task {
+  override def executeOutput(input: RandomChoiceInput, context: ToolContext): Task[RandomChoiceOutput] = Task {
     require(input.items.nonEmpty, "random_choice: `items` must be non-empty")
     val rng   = input.seed.map(s => new scala.util.Random(s)).getOrElse(scala.util.Random)
     val index = rng.nextInt(input.items.size)

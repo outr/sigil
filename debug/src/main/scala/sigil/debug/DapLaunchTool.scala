@@ -3,7 +3,7 @@ package sigil.debug
 import fabric.Json
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 import scala.jdk.CollectionConverters.*
@@ -61,7 +61,7 @@ final class DapLaunchTool(val manager: DapManager) extends Tool with DapToolSupp
     )
   )
 
-  override def executeResult(input: DapLaunchInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: DapLaunchInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     manager.spawn(input.languageId, input.sessionId).flatMap { session =>
       val args = input.launchArguments.map { case (k, v) => k -> jsonToObject(v) }.asJava
 

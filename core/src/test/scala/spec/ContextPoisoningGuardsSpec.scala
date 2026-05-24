@@ -15,6 +15,7 @@ import sigil.provider.{
 }
 import sigil.signal.{EventState, Signal, ToolDelta}
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
+import sigil.tool.ToolContext
 import sigil.tool.core.NoResponseTool
 import sigil.tool.model.{NoResponseInput, ResponseContent}
 import spice.http.HttpRequest
@@ -54,7 +55,7 @@ class ContextPoisoningGuardsSpec extends AsyncWordSpec with AsyncTaskSpec with M
     val description: String = "Echo input"
     override def space: SpaceId = GlobalSpace
     override def _id: Id[Tool] = Id[Tool](name.value)
-    override def executeResult(input: EchoInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: EchoInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput(s"echoed: ${input.text}")))
   }
 

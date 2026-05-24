@@ -2,7 +2,7 @@ package sigil.tooling
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.LspRenameResult
 
@@ -46,7 +46,7 @@ final class LspRenameTool(val manager: LspManager) extends Tool
   )
 
 
-  override def executeOutput(input: LspRenameInput, context: TurnContext): Task[LspRenameResult] =
+  override def executeOutput(input: LspRenameInput, context: ToolContext): Task[LspRenameResult] =
     withOpenDocumentOrThrow[LspRenameResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

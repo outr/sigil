@@ -2,7 +2,7 @@ package sigil.tool.git
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.fs.{FileSystemContext, WorkspacePathResolver}
 import sigil.tool.model.{GitPushError, GitPushInput, GitPushOutput}
 import sigil.tool.{Tool, ToolExample, ToolName}
@@ -55,7 +55,7 @@ final class GitPushTool(context: FileSystemContext)
   )
   override val keywords = Set("git", "push", "publish", "upload", "remote", "upstream", "deploy", "sync")
 
-  override def executeOutput(input: GitPushInput, ctx: TurnContext): Task[GitPushOutput] =
+  override def executeOutput(input: GitPushInput, ctx: ToolContext): Task[GitPushOutput] =
     WorkspacePathResolver.resolveOptional(ctx, input.workingDir).flatMap { dir =>
       validateForcePushGate(input) match {
         case Some(reason) =>

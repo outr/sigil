@@ -4,7 +4,7 @@ import fabric.io.JsonFormatter
 import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 import sigil.workflow.{WorkflowTemplate, WorkflowTrigger}
 
@@ -31,7 +31,7 @@ final class ListTriggersTool extends Tool with WorkflowToolSupport {
   override val examples = List(ToolExample("list triggers on a template", ListTriggersInput(workflowId = "wf-abc")))
   override val keywords = Set("workflow", "trigger", "list")
 
-  override def executeResult(input: ListTriggersInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
+  override def executeResult(input: ListTriggersInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = withHostResult(ctx) { host =>
     val id = Id[WorkflowTemplate](input.workflowId)
     host.withDB(_.workflowTemplates.transaction(_.get(id))).flatMap {
       case None => Task.pure(s"Workflow '${input.workflowId}' not found.")

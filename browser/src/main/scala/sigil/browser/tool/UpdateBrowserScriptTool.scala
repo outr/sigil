@@ -9,7 +9,8 @@ import rapid.Task
 import sigil.browser.WebBrowserMode
 import sigil.browser.{BrowserScript, CookieJar}
 import sigil.tool.{DefinitionToSchema, JsonSchemaToDefinition, TextToolOutput, Tool, ToolName, ToolResult}
-import sigil.{GlobalSpace, TurnContext}
+import sigil.GlobalSpace
+import sigil.tool.ToolContext
 
 /**
  * Update an existing [[BrowserScript]] in place. Identified by
@@ -32,7 +33,7 @@ case object UpdateBrowserScriptTool extends Tool {
   override val keywords = Set("update", "edit", "modify", "browser", "script")
 
   override def executeResult(input: UpdateBrowserScriptInput,
-                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     ctx.sigil.accessibleSpaces(ctx.chain).flatMap { accessible =>
       ctx.sigil.withDB(_.tools.transaction { tx =>
         tx.query.filter(_.toolName === input.name).toList.map(_.headOption).flatMap {

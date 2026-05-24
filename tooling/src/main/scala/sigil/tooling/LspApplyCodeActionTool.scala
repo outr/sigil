@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import org.eclipse.lsp4j.CodeAction
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.LspApplyCodeActionResult
 
@@ -53,7 +53,7 @@ final class LspApplyCodeActionTool(val manager: LspManager) extends Tool
   )
 
 
-  override def executeOutput(input: LspApplyCodeActionInput, context: TurnContext): Task[LspApplyCodeActionResult] =
+  override def executeOutput(input: LspApplyCodeActionInput, context: ToolContext): Task[LspApplyCodeActionResult] =
     withSessionOrThrow[LspApplyCodeActionResult](
       input.languageId, input.filePath, context
     ) { (session, uri, _) =>

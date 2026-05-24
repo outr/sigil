@@ -10,6 +10,8 @@ import sigil.db.SigilDB
 import sigil.tooling.{BspManager, BspTestInput, BspTestTool, ToolingCollections, ToolingSigil}
 
 import java.nio.file.Files
+import sigil.event.Event
+import sigil.tool.ToolContext
 
 /**
  * Coverage for the BSP-tool exception-escape failure mode. When
@@ -90,7 +92,7 @@ class BspTestToolErrorPathSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         // and no .bsp discovery file. Pre-fix the tool's onError
         // re-throws and the exception escapes; post-fix we get a
         // typed BspExecResult with status="ERROR".
-        tool.invoke(BspTestInput(projectRoot = root), ctx).attempt.map { result =>
+        tool.invoke(BspTestInput(projectRoot = root), ToolContext(ctx, Event.id(), tool.name)).attempt.map { result =>
           // Cleanup the synthetic project dir.
           try Files.delete(java.nio.file.Path.of(root)) catch { case _: Throwable => () }
           result.isSuccess shouldBe true

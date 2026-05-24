@@ -15,6 +15,7 @@ import sigil.provider.{
 }
 import sigil.signal.{EventState, Signal, ToolDelta}
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolPrecondition, ToolPreconditionResult, ToolResult}
+import sigil.tool.ToolContext
 import sigil.tool.model.{NoResponseInput, ResponseContent}
 import spice.http.HttpRequest
 import fabric.rw.*
@@ -53,7 +54,7 @@ class ToolPreconditionSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       StaticPrecondition("ok-1", ToolPreconditionResult.Satisfied),
       StaticPrecondition("ok-2", ToolPreconditionResult.Satisfied)
     )
-    override def executeResult(input: NoResponseInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: NoResponseInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("RAN")))
   }
 
@@ -70,7 +71,7 @@ class ToolPreconditionSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       StaticPrecondition("oauth", ToolPreconditionResult.Satisfied),
       StaticPrecondition("rate-limit", ToolPreconditionResult.Unsatisfied("daily quota exceeded", suggestedFix = Some("upgrade_plan")))
     )
-    override def executeResult(input: NoResponseInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: NoResponseInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("SHOULD_NOT_RUN")))
   }
 

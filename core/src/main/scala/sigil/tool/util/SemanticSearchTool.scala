@@ -2,7 +2,8 @@ package sigil.tool.util
 
 import fabric.rw.*
 import rapid.Task
-import sigil.{SpaceId, TurnContext}
+import sigil.SpaceId
+import sigil.tool.ToolContext
 import sigil.conversation.MemoryStatus
 import sigil.tool.model.{SemanticSearchHit, SemanticSearchInput, SemanticSearchOutput}
 import sigil.tool.{Tool, ToolExample, ToolName}
@@ -42,7 +43,7 @@ case object SemanticSearchTool extends Tool with sigil.tool.ReadOnlyInternalTool
   )
   override val keywords = Set("semantic", "search", "memory", "recall", "remember", "find", "vector", "similarity", "rag")
 
-  override def executeOutput(input: SemanticSearchInput, ctx: TurnContext): Task[SemanticSearchOutput] =
+  override def executeOutput(input: SemanticSearchInput, ctx: ToolContext): Task[SemanticSearchOutput] =
     resolveSpaces(input, ctx).flatMap { spaces =>
       if (spaces.isEmpty)
         Task.pure(SemanticSearchOutput(query = input.query, memories = Nil, count = 0))
@@ -61,7 +62,7 @@ case object SemanticSearchTool extends Tool with sigil.tool.ReadOnlyInternalTool
         }
     }
 
-  private def resolveSpaces(input: SemanticSearchInput, ctx: TurnContext): Task[Set[SpaceId]] =
+  private def resolveSpaces(input: SemanticSearchInput, ctx: ToolContext): Task[Set[SpaceId]] =
     if (input.spaces.nonEmpty) Task.pure(input.spaces)
     else ctx.sigil.defaultRecallSpaces(ctx.conversation.id)
 

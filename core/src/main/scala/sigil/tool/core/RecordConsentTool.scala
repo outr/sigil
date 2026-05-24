@@ -2,7 +2,7 @@ package sigil.tool.core
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.event.ToolApproval
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 import sigil.tool.model.RecordConsentInput
@@ -66,7 +66,7 @@ case object RecordConsentTool extends Tool {
     )
   )
 
-  override def executeResult(input: RecordConsentInput, ctx: TurnContext): Task[ToolResult[TextToolOutput]] = {
+  override def executeResult(input: RecordConsentInput, ctx: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val targetName = ToolName(input.toolName)
     ctx.sigil.findTools.byName(targetName).flatMap {
       case None =>

@@ -2,7 +2,7 @@ package sigil.tool.util
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.signal.WorkerAnswer
 import sigil.tool.model.AnswerWorkerInput
 import sigil.tool.{Tool, ToolExample, ToolName, ToolOutput, ToolResult}
@@ -47,7 +47,7 @@ case object AnswerWorkerTool extends Tool {
   override val keywords = Set("answer", "worker", "respond", "unblock", "clarify")
 
   override def executeResult(input: AnswerWorkerInput,
-                             ctx: TurnContext): Task[ToolResult[AnswerWorkerOutput]] =
+                             ctx: ToolContext): Task[ToolResult[AnswerWorkerOutput]] =
     ctx.sigil.publish(WorkerAnswer(input.taskId, input.questionId, input.answer)).map { _ =>
       ToolResult.Success(AnswerWorkerOutput(ok = true, input.taskId, input.questionId))
     }

@@ -8,25 +8,27 @@ import sigil.TurnContext
 import sigil.conversation.{Conversation, ContextFrame, Topic, TopicEntry, TurnInput}
 import sigil.event.{Event, LogLevel, ToolInvoke, ToolLog}
 import sigil.signal.{EventState, Signal}
-import sigil.tool.ToolName
+import sigil.tool.{ToolContext, ToolName}
 
 import java.util.concurrent.{ConcurrentLinkedQueue, atomic}
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 
 /**
- * Coverage for sigil bug #69 — `ToolLog` event subtype carrying
- * one streaming-progress line emitted by a tool. Verifies:
+ * Coverage for `ToolLog` event subtype carrying one streaming-progress
+ * line emitted by a tool. Verifies:
  *
- *   1. `TurnContext.toolLog(content)` publishes a `ToolLog` Event
- *      paired to `currentToolInvokeId` via `origin`.
+ *   1. `ToolContext.toolLog(content)` publishes a `ToolLog` Event
+ *      paired to `invokeId` via `origin`.
  *   2. The published ToolLog persists in `db.events` (durable, not
  *      transient like a Notice).
  *   3. `FrameBuilder` produces no [[ContextFrame]] for ToolLog —
  *      logs stay out of the agent's prompt context (the durable
  *      `Event.contextFrame` field is `None` after settle).
- *   4. `TurnContext.toolLog` is a no-op when no tool is dispatching
- *      (`currentToolInvokeId == None`).
+ *
+ * The prior "no-op when no tool is dispatching" case is structurally
+ * impossible: `toolLog` lives on [[ToolContext]] only, which always
+ * carries an `invokeId` by construction.
  */
 class ToolLogSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -57,19 +59,20 @@ class ToolLogSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     }
   }
 
-  private def freshContext(conv: Conversation, invokeId: Option[Id[Event]]): TurnContext =
+  private def freshContext(conv: Conversation): TurnContext =
     TurnContext(
       sigil               = TestSigil,
       chain               = List(TestUser),
       conversation        = conv,
-      turnInput           = TurnInput(conversationId = conv._id),
-      currentToolInvokeId = invokeId,
-      currentToolName     = invokeId.map(_ => ToolName("test_tool"))
+      turnInput           = TurnInput(conversationId = conv._id)
     )
 
-  "TurnContext.toolLog" should {
+  private def toolCtx(conv: Conversation, invokeId: Id[Event]): ToolContext =
+    ToolContext(freshContext(conv), invokeId, ToolName("test_tool"))
 
-    "publish a ToolLog Event paired to currentToolInvokeId via origin" in {
+  "ToolContext.toolLog" should {
+
+    "publish a ToolLog Event paired to invokeId via origin" in {
       for {
         conv <- upsertConv()
         invoke = ToolInvoke(
@@ -80,7 +83,7 @@ class ToolLogSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
           state          = EventState.Complete
         )
         _ <- TestSigil.publish(invoke)
-        ctx = freshContext(conv, Some(invoke._id))
+        ctx = toolCtx(conv, invoke._id)
         captured <- captureSignals(ctx.toolLog("hello from tool", LogLevel.Info))
         (_, signals) = captured
         events <- TestSigil.withDB(_.events.transaction(_.list))
@@ -99,17 +102,6 @@ class ToolLogSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         // FrameBuilder didn't emit a frame — ToolLog is a
         // ControlPlaneEvent and stays out of the agent's prompt.
         persisted.head.contextFrame shouldBe None
-      }
-    }
-
-    "be a no-op when no tool is dispatching (currentToolInvokeId == None)" in {
-      for {
-        conv <- upsertConv()
-        ctx = freshContext(conv, None)
-        captured <- captureSignals(ctx.toolLog("nobody listens"))
-        (_, signals) = captured
-      } yield {
-        signals.collect { case _: ToolLog => 1 } shouldBe empty
       }
     }
   }

@@ -2,7 +2,7 @@ package sigil.script
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 import java.io.File
@@ -52,7 +52,7 @@ case object LibraryLookupTool extends Tool {
   private val MaxCandidates = 25
 
   override def executeResult(input: LibraryLookupInput,
-                             context: TurnContext): Task[ToolResult[TextToolOutput]] = Task {
+                             context: ToolContext): Task[ToolResult[TextToolOutput]] = Task {
     val text = try render(input.symbol)
     catch { case e: Throwable => s"(lookup failed: ${e.getClass.getSimpleName}: ${e.getMessage})" }
     ToolResult.Success(TextToolOutput(text))

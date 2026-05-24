@@ -4,19 +4,23 @@ import lightdb.id.Id
 import lightdb.time.Timestamp
 import sigil.conversation.{Conversation, DiscoveredCapability, TurnInput}
 import sigil.db.Model
-import sigil.event.{Event, LogLevel, ToolLog}
+import sigil.event.Event
 import sigil.participant.ParticipantId
-import sigil.signal.{ToolDelta, ToolProgress}
 import sigil.tool.ToolName
 
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Runtime context supplied at the boundary of a unit of work — both
- * [[sigil.tool.Tool.execute]] and [[sigil.participant.Participant.process]]
- * receive one. Identifies the active Sigil, the chain-of-responsibility, the
- * conversation being acted upon, and the curated view/input the caller should
- * use to compose provider requests or inspect prior events.
+ * Turn-scope runtime context supplied at the boundary of a unit of work.
+ * Handed to [[sigil.participant.Participant.process]], to provider routing,
+ * to role-source resolution, and to the framework's pre-dispatch wiring.
+ *
+ * Tool bodies receive a narrower [[sigil.tool.ToolContext]] — that type
+ * wraps a `TurnContext` and adds the tool-only side channel (progress, log,
+ * emit, setSummary) plus guaranteed-set fields (`invokeId`, `toolName`).
+ * The tool-side methods used to live on `TurnContext` with silent no-op
+ * fallbacks when `currentToolInvokeId` was `None`; they moved to
+ * `ToolContext` so the type tells the truth about which methods work where.
  *
  * @param sigil               the active Sigil instance. Consulted for
  *                            configuration (`testMode`), shared resources
@@ -45,31 +49,6 @@ import java.util.concurrent.atomic.AtomicReference
  *                            AgentState without a DB lookup. `None` when no
  *                            AgentState is active (e.g., user-typed Message
  *                            being published externally).
- * @param currentMessageId    the id of the in-flight assistant
- *                            [[sigil.event.Message]] for the current turn,
- *                            when one is being assembled. Set by the
- *                            orchestrator when content/atomic block tool
- *                            output starts arriving so atomic content
- *                            tools (`respond_options`, `respond_field`,
- *                            `respond_failure`) can target their
- *                            [[sigil.signal.MessageDelta]] at the same
- *                            in-flight Message that the markdown content
- *                            stream is being merged into. `None` before
- *                            any content has been emitted on this turn.
- * @param currentToolInvokeId the id of the [[sigil.event.ToolInvoke]] this
- *                            execution belongs to — set by the
- *                            orchestrator when dispatching to
- *                            `executeResult` so tools can publish
- *                            mid-execution [[sigil.signal.ToolProgress]]
- *                            pulses via [[reportProgress]] without
- *                            threading the id manually. `None` outside a
- *                            tool dispatch (Participant.process,
- *                            settled-effect callbacks, etc.).
- * @param currentToolName     the name of the tool currently dispatching,
- *                            paired with `currentToolInvokeId`. Used as
- *                            the default `attribution` on
- *                            `ToolProgress` pulses so clients can
- *                            label the chip without an extra lookup.
  * @param modelId             the id of the [[sigil.db.Model]] driving
  *                            this turn — set by the orchestrator from
  *                            the active [[sigil.provider.ProviderRequest.modelId]]
@@ -88,10 +67,7 @@ case class TurnContext(sigil: Sigil,
                        conversation: Conversation,
                        turnInput: TurnInput,
                        currentAgentStateId: Option[Id[Event]] = None,
-                       currentMessageId: Option[Id[Event]] = None,
                        correlationId: String = TurnContext.freshCorrelationId(),
-                       currentToolInvokeId: Option[Id[Event]] = None,
-                       currentToolName: Option[ToolName] = None,
                        modelId: Option[Id[Model]] = None,
                        /** Sigil bug #205 — the model id this turn will
                          * actually route to, resolved up-front by
@@ -131,18 +107,7 @@ case class TurnContext(sigil: Sigil,
                          * from a prior task surfaced on every subsequent
                          * turn. */
                        discoveredCapabilitiesRef: AtomicReference[Map[String, DiscoveredCapability]] =
-                         new AtomicReference(Map.empty[String, DiscoveredCapability]),
-                       /** Durable [[Event]]s emitted by the dispatching tool via
-                         * [[emit]] during this turn — the ancillary events that
-                         * are NOT the tool's framework-built result (a
-                         * `change_mode`'s `ModeChange`, a `respond`'s user-visible
-                         * reply `Message`, …). Accumulated as `emit` is called;
-                         * the orchestrator reads it after dispatch to recover,
-                         * e.g., the user-visible Message id for `Usage`
-                         * attribution on tool-call-only respond paths. Not
-                         * persisted; fresh per `TurnContext`. */
-                       emittedEventsRef: AtomicReference[Vector[Event]] =
-                         new AtomicReference(Vector.empty[Event])) {
+                         new AtomicReference(Map.empty[String, DiscoveredCapability])) {
 
   /**
    * The participant currently acting — `chain.last`.
@@ -157,130 +122,6 @@ case class TurnContext(sigil: Sigil,
    * "view" shape access it through this accessor.
    */
   def conversationView: _root_.sigil.conversation.ConversationView = turnInput.conversationView
-
-  /**
-   * Publish a mid-execution progress pulse for the currently-dispatching
-   * tool. Reads `currentToolInvokeId` to wire the correlation id; no-op
-   * outside a tool dispatch (no chip to attach to).
-   *
-   * @param message status string to render on the chip ("Imported 500 / 7,300
-   *                events", "Compiling step 3/7", …).
-   * @param percent optional `0.0..1.0` fraction. Clients render a thin
-   *                progress bar when present, an indeterminate spinner
-   *                otherwise. Caller responsible for clamping; the framework
-   *                publishes whatever's passed.
-   */
-  def reportProgress(message: String, percent: Option[Double] = None): rapid.Task[Unit] =
-    currentToolInvokeId match {
-      case None => rapid.Task.unit
-      case Some(invokeId) =>
-        sigil.publish(ToolProgress(
-          invokeId       = invokeId,
-          conversationId = conversation.id,
-          message        = message,
-          percent        = percent,
-          attribution    = currentToolName
-        )).map(_ => ())
-    }
-
-  /**
-   * Emit one [[ToolLog]] line for the currently-dispatching tool.
-   * Bug #69 — paired to the parent [[sigil.event.ToolInvoke]] via
-   * `currentToolInvokeId`; consumers render the tail of paired
-   * logs in the per-tool chip while the call is running.
-   *
-   * Distinct from [[reportProgress]]: progress carries one
-   * replacement status per chip (transient Notice); ToolLog is
-   * append-only (durable Event) so the full streaming output
-   * survives reload + replay. Use progress for "where am I in the
-   * task?" and toolLog for "what is the underlying process
-   * actually doing right now?".
-   *
-   * No-op outside a tool dispatch — there's no parent ToolInvoke
-   * to pair to.
-   */
-  def toolLog(content: String, level: LogLevel = LogLevel.Info): rapid.Task[Unit] =
-    currentToolInvokeId match {
-      case None => rapid.Task.unit
-      case Some(invokeId) =>
-        sigil.publish(ToolLog(
-          content        = content,
-          level          = level,
-          participantId  = caller,
-          conversationId = conversation.id,
-          topicId        = conversation.currentTopicId,
-          origin         = Some(invokeId)
-        )).map(_ => ())
-    }
-
-  /**
-   * Record an ancillary durable [[Event]] from inside a tool's
-   * `executeResult` — a durable event that is *not* the tool's result.
-   *
-   * A tool's result event (the `ToolResults` that pairs the call) is
-   * constructed by the framework from the returned [[sigil.tool.ToolResult]];
-   * a tool never emits it directly. But a few tools legitimately emit
-   * *other* durable events as part of their effect — `change_mode` emits
-   * a `ModeChange`, `respond` emits the user-visible reply `Message` and
-   * `TopicChange`s. Those go through `emit`.
-   *
-   * `emit` does NOT publish — it buffers the event onto this context.
-   * [[sigil.tool.Tool.execute]] drains the buffer into the tool's result
-   * stream (ancillary events first, then the framework-built result
-   * event), so every caller — the orchestrator, a worker's tool
-   * dispatch, a direct test invocation — sees one ordered stream and
-   * there is exactly one publish path.
-   */
-  def emit(event: Event): rapid.Task[Unit] =
-    rapid.Task {
-      val _ = emittedEventsRef.updateAndGet(_ :+ event)
-      ()
-    }
-
-  /** Snapshot of the ancillary durable events this turn's tool emitted
-    * via [[emit]], in emission order. */
-  def emittedEvents: List[Event] = emittedEventsRef.get().toList
-
-  /**
-   * Update the inline tool-call chip summary across the dispatching
-   * tool's execution arc (sigil bug #191). Tool authors call this at
-   * meaningful points — start of work, mid-flight progress, final
-   * result — to drive what users see on the chip without expanding
-   * it. Each call publishes a [[sigil.signal.ToolDelta]] that folds
-   * the new value onto [[sigil.event.ToolInvoke.summary]], so the
-   * persisted invoke always carries the most recent string.
-   *
-   * Distinct from [[reportProgress]]: progress pulses are transient
-   * Notices (no DB write, fade in the UI as new ones arrive); the
-   * summary is durable invoke state and persists across reload.
-   * The settled-invoke's `summary` snapshot at result-emit time
-   * captures the final state; this drives the full arc up to that
-   * point.
-   *
-   * Typical lifecycle:
-   *
-   * {{{
-   *   override def executeOutput(input: GrepInput, ctx: TurnContext): Task[GrepOutput] =
-   *     for {
-   *       _       <- ctx.setSummary(s"Searching '${input.pattern}'")
-   *       results <- searchAsync(input)
-   *       _       <- ctx.setSummary(s"${results.matchCount} matches across ${results.fileCount} files")
-   *     } yield results
-   * }}}
-   *
-   * No-op outside a tool dispatch — no [[sigil.event.ToolInvoke]] to
-   * pair to.
-   */
-  def setSummary(value: String): rapid.Task[Unit] =
-    currentToolInvokeId match {
-      case None => rapid.Task.unit
-      case Some(invokeId) =>
-        sigil.publish(ToolDelta(
-          target         = invokeId,
-          conversationId = conversation.id,
-          summary        = Some(value)
-        )).map(_ => ())
-    }
 
   /** Snapshot of the per-agent-loop `find_capability` cache. Renderers
     * read this when assembling the "Capabilities you've already

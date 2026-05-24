@@ -1,13 +1,14 @@
 package sigil.script
 
 import fabric.rw.*
-import sigil.TurnContext
+import sigil.event.Event
+import sigil.tool.ToolContext
 import sigil.signal.{Signal, ToolDelta}
 import sigil.tool.{ToolInput, ToolName, ToolOutput}
 
 /** Bound as `tools` in script scope. Invokes a host tool by name and
   * decodes its typed result. */
-class ScriptTools(context: TurnContext) {
+class ScriptTools(context: ToolContext) {
 
   def callTool[Out](name: String, input: ToolInput)(using RW[Out]): Out =
     summon[RW[Out]].write(callToolJson(name, input))
@@ -16,7 +17,7 @@ class ScriptTools(context: TurnContext) {
     val tool = context.sigil.findTools.byName(ToolName(name)).sync().getOrElse(
       throw new RuntimeException(s"callTool: no tool registered as '$name'")
     )
-    val signals: List[Signal] = tool.execute(input, context).toList.sync()
+    val signals: List[Signal] = tool.execute(input, context.turn, Event.id()).toList.sync()
     // Sigil #265 — the settling `ToolDelta` carries the typed output
     // payload directly; serialise via the polymorphic `ToolOutput` RW
     // so callers receive the same `Json` shape they used to get from
@@ -32,6 +33,6 @@ class ScriptTools(context: TurnContext) {
 }
 
 object ScriptTools {
-  def defaultBindings(context: TurnContext): Map[String, Any] =
+  def defaultBindings(context: ToolContext): Map[String, Any] =
     Map("tools" -> new ScriptTools(context))
 }

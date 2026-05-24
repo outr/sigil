@@ -3,7 +3,7 @@ package sigil.tooling
 import fabric.rw.*
 import org.eclipse.lsp4j.DocumentLink
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspDocumentLinkItem, LspDocumentLinkResult, LspPosition}
 
@@ -32,7 +32,7 @@ final class LspDocumentLinkTool(val manager: LspManager) extends Tool
   override val keywords = Set("lsp", "links", "document link", "hyperlink", "navigate")
 
 
-  override def executeOutput(input: LspDocumentLinkInput, context: TurnContext): Task[LspDocumentLinkResult] =
+  override def executeOutput(input: LspDocumentLinkInput, context: ToolContext): Task[LspDocumentLinkResult] =
     withOpenDocumentOrThrow[LspDocumentLinkResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

@@ -2,7 +2,7 @@ package sigil.tooling
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tooling.types.{LspFoldingRangeItem, LspFoldingRangeResult}
 
@@ -30,7 +30,7 @@ final class LspFoldingRangeTool(val manager: LspManager) extends Tool
   override val keywords = Set("lsp", "fold", "folding", "collapse", "sections", "regions", "code structure")
 
 
-  override def executeOutput(input: LspFoldingRangeInput, context: TurnContext): Task[LspFoldingRangeResult] =
+  override def executeOutput(input: LspFoldingRangeInput, context: ToolContext): Task[LspFoldingRangeResult] =
     withOpenDocumentOrThrow[LspFoldingRangeResult](
       input.languageId, input.filePath, context
     ) { (session, uri) =>

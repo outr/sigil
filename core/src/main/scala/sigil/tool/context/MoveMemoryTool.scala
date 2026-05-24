@@ -3,7 +3,8 @@ package sigil.tool.context
 import fabric.rw.*
 import lightdb.id.Id
 import rapid.Task
-import sigil.{SpaceId, TurnContext}
+import sigil.SpaceId
+import sigil.tool.ToolContext
 import sigil.conversation.ContextMemory
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
@@ -46,10 +47,10 @@ case object MoveMemoryTool extends Tool {
   override def resultTtl: Option[Int] = Some(0)
   override val requiresAccessibleSpaces: Boolean = true
 
-  override def executeResult(input: MoveMemoryInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: MoveMemoryInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     move(input, context).map(text => ToolResult.Success(TextToolOutput(text)))
 
-  private def move(input: MoveMemoryInput, context: TurnContext): Task[String] =
+  private def move(input: MoveMemoryInput, context: ToolContext): Task[String] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       if (!accessible.contains(input.newSpace))
         Task.pure(s"[move_memory] target space '${input.newSpace.value}' is not in this caller's accessible spaces; cannot move.")
@@ -73,7 +74,7 @@ case object MoveMemoryTool extends Tool {
 
   private def findTarget(key: String,
                          spaces: Set[SpaceId],
-                         context: TurnContext): Task[Option[ContextMemory]] =
+                         context: ToolContext): Task[Option[ContextMemory]] =
     context.sigil.findMemories(spaces).flatMap { memories =>
       memories.find(m => m.key.contains(key)) match {
         case some @ Some(_) => Task.pure(some)

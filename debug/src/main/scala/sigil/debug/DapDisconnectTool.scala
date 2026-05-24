@@ -2,7 +2,7 @@ package sigil.debug
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class DapDisconnectInput(sessionId: String,
@@ -36,7 +36,7 @@ final class DapDisconnectTool(val manager: DapManager) extends Tool with DapTool
     )
   )
 
-  override def executeResult(input: DapDisconnectInput, context: TurnContext): Task[ToolResult[TextToolOutput]] =
+  override def executeResult(input: DapDisconnectInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     withSession(input.sessionId, context) { session =>
       session.disconnect(input.terminateDebuggee).flatMap(_ => manager.disconnect(input.sessionId)).map { _ =>
         val suffix = if (input.terminateDebuggee) " (debuggee terminated)" else ""

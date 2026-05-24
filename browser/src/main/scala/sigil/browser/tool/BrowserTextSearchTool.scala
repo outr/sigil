@@ -7,7 +7,7 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.{Element, TextNode}
 import org.jsoup.select.{NodeTraversor, NodeVisitor}
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.browser.WebBrowserMode
 import sigil.storage.StoredFile
 import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
@@ -51,7 +51,7 @@ final class BrowserTextSearchTool extends Tool {
   override val keywords = Set("browser", "text", "search", "find", "substring", "query")
 
   override def executeResult(input: BrowserTextSearchInput,
-                             ctx: TurnContext): Task[ToolResult[TextToolOutput]] =
+                             ctx: ToolContext): Task[ToolResult[TextToolOutput]] =
     ctx.sigil.fetchStoredFile(Id[StoredFile](input.htmlFileId), ctx.chain).map {
         case None =>
           ToolResult.failure(s"htmlFileId '${input.htmlFileId}' not found or not authorized")

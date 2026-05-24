@@ -2,7 +2,7 @@ package sigil.tool.provider
 
 import lightdb.id.Id
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.db.Model
 
 /**
@@ -50,7 +50,7 @@ object ModelAlias {
     * model id. Returns `None` if the input isn't an alias the
     * resolver knows about — callers fall through to strict id
     * matching against the registry. */
-  def resolve(input: String, ctx: TurnContext): Task[Option[Id[Model]]] = {
+  def resolve(input: String, ctx: ToolContext): Task[Option[Id[Model]]] = {
     val key = input.toLowerCase.trim
     if (conversationAliases.contains(key)) ctx.sigil.currentModelFor(ctx.conversation)
     else providerAliases.get(key) match {

@@ -8,12 +8,13 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, Topic, TopicEntry, TurnInput}
 import sigil.db.{Model, ModelArchitecture, ModelDefaultParameters, ModelLinks, ModelPricing, ModelTopProvider}
-import sigil.event.{Message, MessageRole}
+import sigil.event.{Event, Message, MessageRole}
 import sigil.signal.EventState
 import sigil.tool.provider.{
   CurrentModelInput, CurrentModelTool, ListModelsInput, ListModelsTool,
   PinModelInput, PinModelTool
 }
+import sigil.tool.ToolContext
 
 /**
  * Coverage for the agent-facing model introspection surface.
@@ -120,7 +121,7 @@ class CurrentModelToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "return all-None for a fresh conversation with no pin / strategy / history" in {
       for {
         conv <- freshConversation()
-        out  <- CurrentModelTool.invoke(CurrentModelInput(), ctx(conv))
+        out  <- CurrentModelTool.invoke(CurrentModelInput(), ToolContext(ctx(conv), Event.id(), CurrentModelTool.name))
       } yield {
         out.pinned shouldBe None
         out.assignedStrategy shouldBe None
@@ -133,9 +134,9 @@ class CurrentModelToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "report the pinned model id and a registry-resolved summary when pin_model is active" in {
       for {
         conv <- freshConversation()
-        _    <- PinModelTool.execute(PinModelInput(localModel._id.value), ctx(conv)).toList
+        _    <- PinModelTool.execute(PinModelInput(localModel._id.value), ctx(conv), Event.id()).toList
         reloaded <- reloadConv(conv)
-        out  <- CurrentModelTool.invoke(CurrentModelInput(), ctx(reloaded))
+        out  <- CurrentModelTool.invoke(CurrentModelInput(), ToolContext(ctx(reloaded), Event.id(), CurrentModelTool.name))
       } yield {
         out.pinned.map(_.id) shouldBe Some(localModel._id.value)
         // The registry contains the model, so the summary is populated.
@@ -160,7 +161,7 @@ class CurrentModelToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
           case Some(c) => Task.pure(Some(c.copy(pinnedModelId = Some(phantomId))))
         })).unit
         reloaded <- reloadConv(conv)
-        out  <- CurrentModelTool.invoke(CurrentModelInput(), ctx(reloaded))
+        out  <- CurrentModelTool.invoke(CurrentModelInput(), ToolContext(ctx(reloaded), Event.id(), CurrentModelTool.name))
       } yield {
         out.pinned.map(_.id) shouldBe Some("phantom/unknown")
         out.pinned.flatMap(_.summary) shouldBe None
@@ -196,7 +197,7 @@ class CurrentModelToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
             timestamp      = Timestamp()
           )
         ))).unit
-        out <- CurrentModelTool.invoke(CurrentModelInput(), ctx(conv))
+        out <- CurrentModelTool.invoke(CurrentModelInput(), ToolContext(ctx(conv), Event.id(), CurrentModelTool.name))
       } yield {
         out.lastUsed.map(_.id) shouldBe Some(openaiModel._id.value)
       }
@@ -206,7 +207,7 @@ class CurrentModelToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
   "list_models" should {
 
     "return every model when no filter is supplied" in {
-      ListModelsTool.invoke(ListModelsInput(), ctx(stubConv("list-noop"))).map { out =>
+      ListModelsTool.invoke(ListModelsInput(), ToolContext(ctx(stubConv("list-noop")), Event.id(), ListModelsTool.name)).map { out =>
         // The registry has at least our three test models; downstream
         // catalog refreshes may add more, so assert >= and that ours
         // appear.
@@ -221,7 +222,7 @@ class CurrentModelToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "filter by provider exact-match" in {
       ListModelsTool.invoke(
         ListModelsInput(provider = Some("openai")),
-        ctx(stubConv("list-openai"))
+        ToolContext(ctx(stubConv("list-openai")), Event.id(), ListModelsTool.name)
       ).map { out =>
         out.models.map(_.provider).distinct shouldBe List("openai")
         out.models.map(_.id) should contain (openaiModel._id.value)
@@ -231,7 +232,7 @@ class CurrentModelToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "filter by provider 'local' to surface the local llamacpp model" in {
       ListModelsTool.invoke(
         ListModelsInput(provider = Some("local")),
-        ctx(stubConv("list-local"))
+        ToolContext(ctx(stubConv("list-local")), Event.id(), ListModelsTool.name)
       ).map { out =>
         out.models.map(_.id) should contain (localModel._id.value)
         out.models.foreach(_.provider shouldBe "local")
@@ -242,7 +243,7 @@ class CurrentModelToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "filter by query substring against id / name / description" in {
       ListModelsTool.invoke(
         ListModelsInput(query = Some("qwen")),
-        ctx(stubConv("list-qwen"))
+        ToolContext(ctx(stubConv("list-qwen")), Event.id(), ListModelsTool.name)
       ).map { out =>
         out.models.map(_.id) should contain (localModel._id.value)
       }
@@ -251,7 +252,7 @@ class CurrentModelToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     "respect limit when supplied" in {
       ListModelsTool.invoke(
         ListModelsInput(limit = Some(1)),
-        ctx(stubConv("list-limited"))
+        ToolContext(ctx(stubConv("list-limited")), Event.id(), ListModelsTool.name)
       ).map { out =>
         out.returned shouldBe 1
         out.models.size shouldBe 1

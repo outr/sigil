@@ -3,7 +3,7 @@ package sigil.tooling.dispatch
 import fabric.Json
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.script.{CompiledScript, ScriptBinding, ScriptExecutor}
 import sigil.tool.output.ToolOutputNode
 import sigil.tool.{Tool, ToolExample, ToolName}
@@ -16,7 +16,7 @@ import sigil.tooling.container.ContainerSupport
  * compiles it ONCE, then runs the compiled artifact in parallel — one
  * worker per group of `groupSize` items. The script's per-group
  * binding is `items: List[fabric.Json]` (the group's payloads) plus
- * `context: sigil.TurnContext`; its trailing expression is the
+ * `context: sigil.tool.ToolContext`; its trailing expression is the
  * per-group worker result.
  *
  * Items come from a container: any tool whose output is paginated
@@ -60,7 +60,7 @@ final class DispatchWorkersTool(scriptExecutor: Option[ScriptExecutor] = None) e
       |
       |The `action` script is Scala 3, same evaluator and surface as `execute_script`. Per worker
       |it has `items: List[Json]` (the group's item payloads — one element with the default
-      |groupSize=1) and `context: TurnContext` in scope. The script's trailing expression is the
+      |groupSize=1) and `context: ToolContext` in scope. The script's trailing expression is the
       |per-group worker result. Runtime errors in one worker are isolated — other workers still
       |run.
       |
@@ -107,7 +107,7 @@ final class DispatchWorkersTool(scriptExecutor: Option[ScriptExecutor] = None) e
 
 
   override def executeOutput(input: DispatchWorkersInput,
-                             ctx: TurnContext): Task[DispatchWorkersOutput] = {
+                             ctx: ToolContext): Task[DispatchWorkersOutput] = {
     if (input.groupSize < 1) {
       return Task.pure(DispatchWorkersOutput.DispatchResult(
         sessionId    = rapid.Unique(),
@@ -142,7 +142,7 @@ final class DispatchWorkersTool(scriptExecutor: Option[ScriptExecutor] = None) e
   // ---- core flow ----
 
   private def dispatch(input: DispatchWorkersInput,
-                       ctx: TurnContext,
+                       ctx: ToolContext,
                        exec: ScriptExecutor,
                        items: List[Json]): Task[DispatchWorkersOutput] = {
     val totalItems = items.size
@@ -198,7 +198,7 @@ final class DispatchWorkersTool(scriptExecutor: Option[ScriptExecutor] = None) e
   }
 
   private def runWorkers(input: DispatchWorkersInput,
-                         ctx: TurnContext,
+                         ctx: ToolContext,
                          compiled: CompiledScript,
                          items: List[Json]): Task[DispatchWorkersOutput] = {
     val groups: List[List[Json]] = items.grouped(input.groupSize).toList
@@ -253,7 +253,7 @@ object DispatchWorkersTool {
     * against — the group's item payloads and the turn context. */
   val ActionBindings: List[ScriptBinding] = List(
     ScriptBinding("items", "List[fabric.Json]"),
-    ScriptBinding("context", "sigil.TurnContext")
+    ScriptBinding("context", "sigil.tool.ToolContext")
   )
 
   /** First [[ActionPreviewLength]] characters of `action`, for the

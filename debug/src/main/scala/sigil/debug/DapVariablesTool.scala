@@ -2,7 +2,7 @@ package sigil.debug
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class DapVariablesInput(sessionId: String,
@@ -38,7 +38,7 @@ final class DapVariablesTool(val manager: DapManager) extends Tool with DapToolS
     )
   )
 
-  override def executeResult(input: DapVariablesInput, context: TurnContext): Task[ToolResult[DapVariablesOutput]] =
+  override def executeResult(input: DapVariablesInput, context: ToolContext): Task[ToolResult[DapVariablesOutput]] =
     withSession(input.sessionId, context) { session =>
       session.variables(input.variablesReference).map { vars =>
         val capped = vars.take(input.maxResults)

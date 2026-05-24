@@ -2,7 +2,7 @@ package sigil.debug
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolExample, ToolInput, ToolName, ToolResult}
 
 case class DapThreadsInput(sessionId: String) extends ToolInput derives RW
@@ -30,7 +30,7 @@ final class DapThreadsTool(val manager: DapManager) extends Tool with DapToolSup
     )
   )
 
-  override def executeResult(input: DapThreadsInput, context: TurnContext): Task[ToolResult[DapThreadsOutput]] =
+  override def executeResult(input: DapThreadsInput, context: ToolContext): Task[ToolResult[DapThreadsOutput]] =
     withSession(input.sessionId, context) { session =>
       session.threads.map { threads =>
         ToolResult.success(DapThreadsOutput(

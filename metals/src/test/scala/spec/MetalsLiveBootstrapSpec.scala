@@ -273,7 +273,7 @@ class MetalsLiveBootstrapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
             projectRoot = workspace.toAbsolutePath.normalize.toString,
             query       = "Main",
             maxResults  = 100
-          ), context)
+          ), sigil.tool.ToolContext(context, sigil.event.Event.id(), tool.name))
           _   <- checkpoint(s"tool returned ${result1.items.size} items, totalCount=${result1.totalCount.getOrElse(-1)}")
 
           // Tool call 2 — same query, capped at 1.
@@ -282,7 +282,7 @@ class MetalsLiveBootstrapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
             projectRoot = workspace.toAbsolutePath.normalize.toString,
             query       = "Main",
             maxResults  = 1
-          ), context)
+          ), sigil.tool.ToolContext(context, sigil.event.Event.id(), tool.name))
           _   <- checkpoint(s"tool returned (capped) ${result2.items.size} items, hasMore=${result2.hasMore}")
         } yield {
           // Result mapping: items contain a Main symbol;

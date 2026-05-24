@@ -2,7 +2,7 @@ package sigil.tool.provider
 
 import lightdb.id.Id
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.db.Model
 
 /**
@@ -58,7 +58,7 @@ object ModelResolution {
 
   import ModelResolutionResult.*
 
-  def resolve(input: String, ctx: TurnContext): Task[ModelResolutionResult] = {
+  def resolve(input: String, ctx: ToolContext): Task[ModelResolutionResult] = {
     val raw = input.trim
     if (raw.isEmpty)
       Task.pure(Unresolved(input,
@@ -93,7 +93,7 @@ object ModelResolution {
     }
   }
 
-  private def refusalMessage(input: String, ctx: TurnContext): String = {
+  private def refusalMessage(input: String, ctx: ToolContext): String = {
     val cache  = ctx.sigil.cache
     val all    = cache.all
     val sample = all.sortBy(_._id.value).take(8).map(_._id.value).mkString(", ")

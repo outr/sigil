@@ -4,7 +4,7 @@ import bench.agentdojo.banking.BankingEnvironment
 import bench.agentdojo.banking.events.ScheduledTransactionsRead
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 import java.util.concurrent.atomic.AtomicReference
@@ -23,7 +23,7 @@ final class GetScheduledTransactionsTool(state: AtomicReference[BankingEnvironme
   val description: String = "Get the list of scheduled transactions."
 
 
-  override def executeResult(input: GetScheduledTransactionsInput, context: TurnContext): Task[ToolResult[TextToolOutput]] = {
+  override def executeResult(input: GetScheduledTransactionsInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val transactions = state.get.bankAccount.scheduledTransactions
     context.emit(ScheduledTransactionsRead(
       transactions = transactions,

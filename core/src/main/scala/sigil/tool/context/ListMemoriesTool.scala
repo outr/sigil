@@ -2,7 +2,7 @@ package sigil.tool.context
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.conversation.ContextMemory
 import sigil.tokenize.HeuristicTokenizer
 import sigil.tool.model.{ListMemoriesOutput, MemoryListEntry, MemoryListPage}
@@ -64,7 +64,7 @@ case object ListMemoriesTool extends Tool {
     * the next turn's prompt. */
   private val MaxPageSize: Int = 100
 
-  override def executeOutput(input: ListMemoriesInput, context: TurnContext): Task[ListMemoriesOutput] =
+  override def executeOutput(input: ListMemoriesInput, context: ToolContext): Task[ListMemoriesOutput] =
     context.sigil.accessibleSpaces(context.chain, context.conversation.id).flatMap { accessible =>
       val effective = if (input.spaces.nonEmpty) input.spaces.intersect(accessible) else accessible
       if (effective.isEmpty)

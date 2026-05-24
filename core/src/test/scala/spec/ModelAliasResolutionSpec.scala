@@ -8,9 +8,9 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
 import sigil.conversation.{Conversation, Topic, TopicEntry, TurnInput}
 import sigil.db.{Model, ModelArchitecture, ModelDefaultParameters, ModelLinks, ModelPricing, ModelTopProvider}
-import sigil.event.{Message, ToolOutcome}
+import sigil.event.{Event, Message, ToolOutcome}
 import sigil.signal.{Signal, ToolDelta}
-import sigil.tool.TextToolOutput
+import sigil.tool.{TextToolOutput, ToolContext, ToolName}
 import sigil.tool.model.ResponseContent
 import sigil.tool.provider.{
   ModelAlias, ModelResolution, ModelResolutionResult,
@@ -93,6 +93,13 @@ class ModelAliasResolutionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       turnInput    = TurnInput(conversationId = conv.id)
     )
 
+  /** Build a [[ToolContext]] for the model-resolution helpers, which
+    * now take ToolContext rather than TurnContext. The invokeId is
+    * synthetic — these helpers don't dispatch any side-effecting
+    * tool methods so the id is purely for shape conformance. */
+  private def toolCtx(conv: Conversation): ToolContext =
+    ToolContext(ctx(conv), Event.id(), ToolName("model_alias_test"))
+
   private def loadConv(conv: Conversation): Task[Conversation] =
     TestSigil.withDB(_.conversations.transaction(_.get(conv.id))).map(_.getOrElse(conv))
 
@@ -122,7 +129,7 @@ class ModelAliasResolutionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "map 'local' / 'llama' / 'llamacpp' to a llamacpp/* registered id" in {
       for {
         conv <- freshConversation()
-        ctx0  = ctx(conv)
+        ctx0  = toolCtx(conv)
         a    <- ModelAlias.resolve("local", ctx0)
         b    <- ModelAlias.resolve("llama", ctx0)
         c    <- ModelAlias.resolve("LLAMACPP", ctx0)
@@ -136,7 +143,7 @@ class ModelAliasResolutionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "map 'openai' / 'gpt' to an openai/* id" in {
       for {
         conv <- freshConversation()
-        ctx0  = ctx(conv)
+        ctx0  = toolCtx(conv)
         a    <- ModelAlias.resolve("openai", ctx0)
         b    <- ModelAlias.resolve("gpt", ctx0)
       } yield {
@@ -148,7 +155,7 @@ class ModelAliasResolutionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "map 'anthropic' / 'claude' / 'google' / 'gemini' / 'deepseek'" in {
       for {
         conv <- freshConversation()
-        ctx0  = ctx(conv)
+        ctx0  = toolCtx(conv)
         anthropic <- ModelAlias.resolve("anthropic", ctx0)
         claude    <- ModelAlias.resolve("claude", ctx0)
         google    <- ModelAlias.resolve("google", ctx0)
@@ -166,7 +173,7 @@ class ModelAliasResolutionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "return None for inputs that aren't aliases" in {
       for {
         conv <- freshConversation()
-        out  <- ModelAlias.resolve("definitely-not-an-alias", ctx(conv))
+        out  <- ModelAlias.resolve("definitely-not-an-alias", toolCtx(conv))
       } yield out shouldBe None
     }
   }
@@ -178,7 +185,7 @@ class ModelAliasResolutionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "match an exact registered id (Resolution.ExactId)" in {
       for {
         conv <- freshConversation()
-        out  <- ModelResolution.resolve("openai/gpt-5.5", ctx(conv))
+        out  <- ModelResolution.resolve("openai/gpt-5.5", toolCtx(conv))
       } yield out match {
         case ModelResolutionResult.Resolved(id, ModelResolutionResult.Resolution.ExactId) =>
           id shouldBe openaiModel._id
@@ -195,7 +202,7 @@ class ModelAliasResolutionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       // lookup misses.
       for {
         conv <- freshConversation()
-        out  <- ModelResolution.resolve("qwen3.5-9b", ctx(conv))
+        out  <- ModelResolution.resolve("qwen3.5-9b", toolCtx(conv))
       } yield out match {
         case ModelResolutionResult.Resolved(id, _) =>
           id shouldBe localModel._id
@@ -206,7 +213,7 @@ class ModelAliasResolutionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "use the alias resolver before strict id matching" in {
       for {
         conv <- freshConversation()
-        out  <- ModelResolution.resolve("local", ctx(conv))
+        out  <- ModelResolution.resolve("local", toolCtx(conv))
       } yield out match {
         case ModelResolutionResult.Resolved(id, ModelResolutionResult.Resolution.Alias) =>
           id shouldBe localModel._id
@@ -217,7 +224,7 @@ class ModelAliasResolutionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "refuse with a guidance message listing aliases + sample registry ids" in {
       for {
         conv <- freshConversation()
-        out  <- ModelResolution.resolve("completely-made-up-model", ctx(conv))
+        out  <- ModelResolution.resolve("completely-made-up-model", toolCtx(conv))
       } yield out match {
         case ModelResolutionResult.Unresolved(input, guidance) =>
           input shouldBe "completely-made-up-model"
@@ -233,7 +240,7 @@ class ModelAliasResolutionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "refuse on empty input" in {
       for {
         conv <- freshConversation()
-        out  <- ModelResolution.resolve("   ", ctx(conv))
+        out  <- ModelResolution.resolve("   ", toolCtx(conv))
       } yield out shouldBe a [ModelResolutionResult.Unresolved]
     }
   }
@@ -245,7 +252,7 @@ class ModelAliasResolutionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "resolve 'local' to the LlamaCpp-registered model and persist that id" in {
       for {
         conv     <- freshConversation()
-        _        <- PinModelTool.execute(PinModelInput("local"), ctx(conv)).toList
+        _        <- PinModelTool.execute(PinModelInput("local"), ctx(conv), Event.id()).toList
         loaded   <- loadConv(conv)
       } yield loaded.pinnedModelId shouldBe Some(localModel._id)
     }
@@ -253,7 +260,7 @@ class ModelAliasResolutionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "refuse to pin to a phantom id without persisting anything" in {
       for {
         conv   <- freshConversation()
-        events <- PinModelTool.execute(PinModelInput("flarbargle"), ctx(conv)).toList
+        events <- PinModelTool.execute(PinModelInput("flarbargle"), ctx(conv), Event.id()).toList
         loaded <- loadConv(conv)
       } yield {
         loaded.pinnedModelId shouldBe None
@@ -264,7 +271,7 @@ class ModelAliasResolutionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "preserve direct id pins for known ids" in {
       for {
         conv   <- freshConversation()
-        _      <- PinModelTool.execute(PinModelInput("openai/gpt-5.5"), ctx(conv)).toList
+        _      <- PinModelTool.execute(PinModelInput("openai/gpt-5.5"), ctx(conv), Event.id()).toList
         loaded <- loadConv(conv)
       } yield loaded.pinnedModelId shouldBe Some(openaiModel._id)
     }
@@ -277,7 +284,7 @@ class ModelAliasResolutionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "refuse 'flarbargle' (not an alias, not a known id) without creating an ad-hoc strategy" in {
       for {
         conv      <- freshConversation()
-        events    <- SwitchModelTool.execute(SwitchModelInput("flarbargle"), ctx(conv)).toList
+        events    <- SwitchModelTool.execute(SwitchModelInput("flarbargle"), ctx(conv), Event.id()).toList
         strategies <- TestSigil.listProviderStrategies(conv.space, ctx(conv).chain)
       } yield {
         replyText(events) should include ("Cannot resolve 'flarbargle'")
@@ -289,7 +296,7 @@ class ModelAliasResolutionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     "create an ad-hoc strategy for 'local' resolved to the llamacpp model" in {
       for {
         conv      <- freshConversation()
-        _         <- SwitchModelTool.execute(SwitchModelInput("local"), ctx(conv)).toList
+        _         <- SwitchModelTool.execute(SwitchModelInput("local"), ctx(conv), Event.id()).toList
         strategies <- TestSigil.listProviderStrategies(conv.space, ctx(conv).chain)
       } yield {
         // The ad-hoc record's label embeds the resolved canonical id.

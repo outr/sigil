@@ -6,6 +6,7 @@ import org.scalatest.wordspec.AnyWordSpec
 import rapid.{Stream, Task}
 import sigil.provider.{Provider, ProviderCall, ProviderType}
 import sigil.tokenize.Tokenizer
+import sigil.tool.ToolContext
 import sigil.tool.{TextToolOutput, Tool, ToolInput, ToolName, ToolResult}
 
 import java.util.concurrent.atomic.AtomicInteger
@@ -33,7 +34,7 @@ class EstimateToolBytesCallCountSpec extends AnyWordSpec with Matchers {
     val name = ToolName("wide_tool")
     val description = "A short description."
 
-    override def executeResult(input: WideInput, context: sigil.TurnContext): Task[ToolResult[TextToolOutput]] =
+    override def executeResult(input: WideInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
       Task.pure(ToolResult.Success(TextToolOutput("")))
   }
 

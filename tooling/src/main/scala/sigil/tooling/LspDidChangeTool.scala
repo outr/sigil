@@ -2,7 +2,7 @@ package sigil.tooling
 
 import fabric.rw.*
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.{Tool, ToolInput, ToolName, ToolResult}
 import sigil.tooling.types.LspDidChangeResult
 
@@ -43,7 +43,7 @@ final class LspDidChangeTool(val manager: LspManager) extends Tool
 
 
   override def executeResult(input: LspDidChangeInput,
-                             context: TurnContext): Task[ToolResult[LspDidChangeResult]] = {
+                             context: ToolContext): Task[ToolResult[LspDidChangeResult]] = {
     // Bug #131 — Sage's wire log showed the agent calling lsp_did_change
     // with 17-character `text` values ("AdminUsersService") trying to
     // QUERY the file. Each call silently overwrote the LSP's in-memory

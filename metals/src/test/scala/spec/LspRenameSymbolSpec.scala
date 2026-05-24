@@ -13,6 +13,8 @@ import sigil.tooling.{
 
 import java.nio.file.{Files, Path, StandardOpenOption}
 import scala.concurrent.duration.*
+import sigil.event.Event
+import sigil.tool.ToolContext
 
 /**
  * End-to-end coverage for [[LspRenameSymbolTool]] against a real
@@ -108,7 +110,7 @@ class LspRenameSymbolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       sources <- Task(ScalaSourceProject.listSources(workspace))
       _       <- Task.sequence(sources.map(p => session.didOpen(p.toUri.toString, "scala", Files.readString(p))))
       _       <- pollWorkspaceSymbols(session, indexProbe, minMatches = minIndexMatches, deadlineMs = 5.minutes.toMillis)
-      result  <- tool.invoke(input(workspace), context)
+      result  <- tool.invoke(input(workspace), ToolContext(context, Event.id(), tool.name))
       assert  <- Task(assertions(workspace, result))
     } yield assert
 

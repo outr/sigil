@@ -4,7 +4,7 @@ import fabric.io.JsonParser
 import fabric.rw.*
 import fabric.{Arr, Json, NumInt, Obj, Str}
 import rapid.Task
-import sigil.TurnContext
+import sigil.tool.ToolContext
 import sigil.tool.fs.{FileSystemContext, WorkspacePathResolver}
 import sigil.tool.{Tool, ToolName}
 
@@ -43,7 +43,7 @@ final class LoadFileAsContainerTool(fileSystemContext: FileSystemContext) extend
 
 
   override def executeOutput(input: LoadFileAsContainerInput,
-                             ctx: TurnContext): Task[CreateContainerOutput] =
+                             ctx: ToolContext): Task[CreateContainerOutput] =
     WorkspacePathResolver.resolve(ctx, input.filePath).flatMap { resolvedPath =>
       fileSystemContext.readFile(resolvedPath).flatMap { content =>
         val items = parse(content, input.parser)
