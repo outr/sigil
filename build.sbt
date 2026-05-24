@@ -1,5 +1,5 @@
 ThisBuild / organization := "com.outr"
-ThisBuild / version := "1.1.0-SNAPSHOT"
+ThisBuild / version := "1.1.0-SNAPSHOT1"
 
 ThisBuild / scalaVersion := "3.8.3"
 
@@ -7,9 +7,12 @@ val rapidVersion: String = "2.9.5"
 
 val spiceVersion: String = "1.8.12-SNAPSHOT"
 
-// Pinned ahead of spice's transitive 1.28.0 to pick up the
-// stable-className fix for parameterless enum cases in `derives RW`.
-val fabricVersion: String = "1.28.1"
+// Pinned ahead of spice's transitive 1.28.0 to pick up class-chain
+// polymorphic dispatch (`Definition.simpleClassName`) — Sigil's
+// `ToolOutput` registers parent enums directly, fabric handles
+// variant dispatch via auto-recursion. Drop the override once
+// spice's direct dep bumps past 1.28.0.
+val fabricVersion: String = "1.29.3"
 
 val profigVersion: String = "3.7.1"
 
