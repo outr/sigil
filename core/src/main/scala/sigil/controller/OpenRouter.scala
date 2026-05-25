@@ -36,17 +36,22 @@ object OpenRouter {
       }
 
   /** Fetch the OpenRouter catalog, persist it to `db.models`, and seed
-    * the in-memory [[sigil.cache.ModelRegistry]]. Used by
-    * `Sigil.instance`'s boot-time refresh AND by the background
-    * scheduled refresh task. Apps call this directly to force an
+    * the in-memory [[sigil.cache.ModelRegistry]]. Public post-boot entry —
+    * resolves the DB via `sigil.withDB`, then delegates to the
+    * boot-safe overload below. Apps call this directly to force an
     * out-of-cycle refresh. */
   def refreshModels(sigil: Sigil): Task[Unit] =
-    sigil.withDB { db =>
-      for {
-        models <- loadModels
-        _      <- db.models.set(Models(models, Timestamp()))
-        _      <- sigil.cache.replace(models)
-        _      <- logger.info(s"Refreshed model registry with ${models.length} models from OpenRouter.")
-      } yield ()
-    }
+    sigil.withDB(db => refreshModels(sigil, db.asInstanceOf[_root_.sigil.db.SigilDB]))
+
+  /** Boot-safe variant — takes the already-resolved `db` directly so the
+    * boot path's `loadAndRefreshModels` can call it without re-entering
+    * `sigil.withDB` (which awaits the in-flight `Sigil.instance.singleton`
+    * and deadlocks the boot fiber against itself). Sigil bug #281. */
+  def refreshModels(sigil: Sigil, db: _root_.sigil.db.SigilDB): Task[Unit] =
+    for {
+      models <- loadModels
+      _      <- db.models.set(Models(models, Timestamp()))
+      _      <- sigil.cache.replace(models)
+      _      <- logger.info(s"Refreshed model registry with ${models.length} models from OpenRouter.")
+    } yield ()
 }

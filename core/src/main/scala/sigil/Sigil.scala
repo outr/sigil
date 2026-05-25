@@ -6320,12 +6320,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       _           <- scheduleNextRefresh(db, latest.refreshed)
     } yield ()
 
-  /** One-shot blocking refresh from OpenRouter. Delegates to
-    * [[OpenRouter.refreshModels]] which writes the `db.models` slot
-    * AND seeds the in-memory cache. On failure, see the semantics in
-    * [[loadAndRefreshModels]]'s flow doc. */
+  /** One-shot blocking refresh from OpenRouter. Delegates to the
+    * boot-safe (sigil, db) overload of [[OpenRouter.refreshModels]] so
+    * the boot fiber doesn't re-enter [[withDB]] — that would await the
+    * in-flight `Sigil.instance.singleton` against itself and deadlock
+    * (sigil bug #281). Post-boot callers use the public 1-arg overload
+    * which resolves the db via `withDB` normally. */
   private def blockingRefresh(db: DB, hadPriorCache: Boolean): Task[Unit] =
-    OpenRouter.refreshModels(this).handleError { e =>
+    OpenRouter.refreshModels(this, db).handleError { e =>
       if (hadPriorCache)
         Task { scribe.warn(s"OpenRouter refresh failed; continuing with cached registry: ${e.getMessage}"); () }
       else
@@ -6516,6 +6518,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       }
     }
 
+  /** Resolve the [[DB]] and run `f` against it. Backed by
+    * `Sigil.instance.flatMap` so callers don't have to think about
+    * initialization timing — `withDB` waits if the instance hasn't
+    * fully booted yet.
+    *
+    * **Don't call from inside `Sigil.instance`'s init for-comp.** The
+    * `instance` task is `.singleton`-memoised; `withDB` re-entering
+    * during init awaits the in-flight resolution against itself and
+    * deadlocks silently (sigil bug #281). Boot-path code receives the
+    * `db` as a parameter — pass it through directly. See
+    * [[OpenRouter.refreshModels]]'s `(sigil, db)` overload for the
+    * canonical pattern. */
   def withDB[Return](f: DB => Task[Return]): Task[Return] = instance.flatMap(sigil => f(sigil.db))
 
   // -- active tasks --
