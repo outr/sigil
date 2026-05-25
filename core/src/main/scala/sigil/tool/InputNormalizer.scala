@@ -19,6 +19,13 @@ import fabric.define.{DefType, Definition}
  *     and tools using `input.field.orElse(default)` get a non-empty
  *     `Option`. Rewrite `Str("") -> Null` when the field is `Opt(Str)`.
  *
+ *   - **Sigil #279 — literal `"null"` on Opt(Str).** Same model habit
+ *     extended to the string side: when the schema is `["string","null"]`,
+ *     Haiku (and friends) emit the three-character word `"null"` to mean
+ *     "no value" instead of JSON null. Rewrite `Str("null") → Null`
+ *     when the field is `Opt(Str)`. Required-string fields keep
+ *     `"null"` verbatim.
+ *
  *   - **Sigil #272 — string-encoded scalars.** Small/cheap models
  *     (Haiku 4.5 in particular) frequently encode integer / number /
  *     boolean fields as quoted strings — `themeId: "168594932069"`,
@@ -72,13 +79,23 @@ object InputNormalizer {
 
     case DefType.Opt(inner) =>
       // The wrapper recurses into the inner type so every scalar
-      // coercion below also applies to nullable variants. Bug #58's
-      // empty-string-as-None remains the only Opt-specific rewrite —
-      // emit `Null` when the inner is `Str` and the value is empty;
-      // for other inner types the scalar coercions handle non-empty
-      // string encodings of nullability via `Str("null") -> Null`.
+      // coercion below also applies to nullable variants.
+      //
+      //   - Bug #58: empty-string `""` on Opt(Str) → Null (model encoded
+      //     "no value" as the empty string under grammar-constrained
+      //     generation when the schema was non-nullable string).
+      //   - Bug #279: literal three-character `"null"` on Opt(Str) →
+      //     Null (Haiku-style: the schema is `["string","null"]`, and
+      //     the model interprets "this can be null" as "I should say
+      //     the WORD null" rather than emit JSON null).
+      //
+      // Both gated on `inner.defType == DefType.Str` so required-string
+      // fields (`DefType.Str` without an Opt wrapper) keep their values
+      // verbatim — `"null"` on a required string is a real value the
+      // agent meant to pass.
       json match {
         case Str(s, _) if s.isEmpty && inner.defType == DefType.Str => Null
+        case Str("null", _) if inner.defType == DefType.Str         => Null
         case other                                                  => normalize(other, inner.defType)
       }
 

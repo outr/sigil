@@ -187,4 +187,57 @@ class InputNormalizerSpec extends AnyWordSpec with Matchers {
       typed.active shouldBe false
     }
   }
+
+  // Sigil #279 — Haiku-style "I'll say the WORD null" on Option[String].
+  // The schema is `["string","null"]`; the model interprets that as "I can
+  // say null" rather than emit JSON null. Coerce literal `"null"` → JSON
+  // null on Opt(Str) fields so the typed value becomes `None`. Required-
+  // string fields keep `"null"` verbatim.
+  case class PageInput(id: Long,
+                       title: String,
+                       handle: Option[String] = None,
+                       bodyHtml: Option[String] = None,
+                       templateSuffix: Option[String] = None) extends ToolInput derives RW
+
+  "InputNormalizer (sigil #279)" should {
+
+    "coerce literal \"null\" to None on Option[String] fields" in {
+      val raw = obj(
+        "id"             -> num(138216178021L),
+        "title"          -> str("The Analög Standard"),
+        "handle"         -> str("null"),
+        "bodyHtml"       -> str("null"),
+        "templateSuffix" -> str("analog-standard")
+      )
+      val normalised = InputNormalizer.normalize(raw, summon[RW[PageInput]].definition)
+      val typed = summon[RW[PageInput]].write(normalised)
+      typed.handle         shouldBe None
+      typed.bodyHtml       shouldBe None
+      typed.templateSuffix shouldBe Some("analog-standard")
+    }
+
+    "preserve literal \"null\" on required (non-Optional) String fields" in {
+      // `title` is required — `"null"` is a real value the agent passed,
+      // even if it's an unusual choice. The framework doesn't second-
+      // guess required string content.
+      val raw = obj(
+        "id"    -> num(1L),
+        "title" -> str("null")
+      )
+      val normalised = InputNormalizer.normalize(raw, summon[RW[PageInput]].definition)
+      val typed = summon[RW[PageInput]].write(normalised)
+      typed.title shouldBe "null"
+    }
+
+    "preserve non-\"null\" Option[String] values" in {
+      val raw = obj(
+        "id"     -> num(1L),
+        "title"  -> str("Real Title"),
+        "handle" -> str("real-handle")
+      )
+      val normalised = InputNormalizer.normalize(raw, summon[RW[PageInput]].definition)
+      val typed = summon[RW[PageInput]].write(normalised)
+      typed.handle shouldBe Some("real-handle")
+    }
+  }
 }
