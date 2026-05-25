@@ -120,36 +120,41 @@ case class AnthropicProvider(apiKey: String,
   private def cachingEnabledFor(input: ProviderCall): Boolean =
     promptCaching && Anthropic.supportsPromptCaching(Anthropic.stripProviderPrefix(input.modelId.value))
 
-  /** Sigil #276 — resolve the `max_tokens` wire value from the typed
-    * [[OutputTokenCap]] against the [[sigil.cache.ModelRegistry]] + the
-    * Anthropic known-ceilings seed.
+  /** Resolve the `max_tokens` wire value from the typed
+    * [[OutputTokenCap]] against the registered model's
+    * `topProvider.maxCompletionTokens`. Sigil #276 / #277.
+    *
+    * The registry is the only source — [[Sigil.runAgentTurn]] resolves
+    * the Model record before constructing the [[ProviderCall]] (cache
+    * miss throws [[sigil.provider.UnregisteredModelException]]), so by
+    * the time we're here the record exists. If the registered record's
+    * `maxCompletionTokens` is empty (incomplete catalog entry), throw —
+    * Anthropic's API requires `max_tokens` and a wire reject is more
+    * useful than a silent 4096 default.
     *
     *   - [[OutputTokenCap.ModelMax]] (the default): use the model's
-    *     registered `topProvider.maxCompletionTokens`; if the registry
-    *     doesn't know the model, fall back to
-    *     [[Anthropic.KnownMaxCompletionTokens]]; if that misses too,
-    *     use [[Anthropic.SafeFallbackMaxTokens]].
-    *
+    *     registered `topProvider.maxCompletionTokens`.
     *   - [[OutputTokenCap.Below]]: use the caller's deliberate cap.
-    *     If it's >= the model's resolved max, clamp DOWN to the
-    *     model's max and emit a scribe warning — a stale `Below(64000)`
-    *     against a 32K-output model degrades gracefully rather than
-    *     producing an Anthropic wire reject. */
+    *     If it's >= the registered max, clamp DOWN with a scribe
+    *     warning — a stale `Below(64000)` against a 32K-output model
+    *     degrades gracefully. */
   private def resolveMaxTokens(model: _root_.sigil.db.Model,
                                cap: OutputTokenCap): Int = {
     val strippedModelName = Anthropic.stripProviderPrefix(model._id.value)
-    val registryMax = model.topProvider.maxCompletionTokens.map(_.toInt)
-    val resolvedMax = registryMax
-      .orElse(Anthropic.KnownMaxCompletionTokens.get(strippedModelName))
-      .getOrElse(Anthropic.SafeFallbackMaxTokens)
+    val resolvedMax = model.topProvider.maxCompletionTokens.map(_.toInt).getOrElse {
+      throw new IllegalStateException(
+        s"AnthropicProvider: model ${model._id.value} is registered but its " +
+          "`topProvider.maxCompletionTokens` is empty — Anthropic's API requires `max_tokens`. " +
+          "Re-run `OpenRouter.refreshModels` to repopulate, or supply a complete record via `sigil.cache.merge(...)`."
+      )
+    }
     cap match {
       case OutputTokenCap.ModelMax => resolvedMax
       case OutputTokenCap.Below(n) if n <= resolvedMax => n
       case OutputTokenCap.Below(n) =>
         scribe.warn(
-          s"AnthropicProvider: OutputTokenCap.Below($n) exceeds resolved max ($resolvedMax) for $strippedModelName — " +
-            "clamping to the resolved max. Use OutputTokenCap.ModelMax for 'no opinion, let the model produce its full output' " +
-            "or update Anthropic.KnownMaxCompletionTokens if the registry's value is stale."
+          s"AnthropicProvider: OutputTokenCap.Below($n) exceeds registered max ($resolvedMax) for $strippedModelName — " +
+            "clamping to the registered max. Use OutputTokenCap.ModelMax for 'no opinion, let the model produce its full output'."
         )
         resolvedMax
     }

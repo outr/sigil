@@ -80,16 +80,4 @@ class OutputTokenCapSpec extends AnyWordSpec with Matchers {
     }
   }
 
-  "Anthropic known-ceilings seed (sigil #276)" should {
-
-    "carry the published max_tokens for current Anthropic catalog models" in {
-      import sigil.provider.anthropic.Anthropic
-      // Spot-check the values the bug doc cited. The map is meant to be
-      // kept in sync with Anthropic's public docs; this assertion serves
-      // as the canonical reference for the test fixture.
-      Anthropic.KnownMaxCompletionTokens.get("claude-haiku-4-5-20251001") shouldBe Some(64000)
-      Anthropic.KnownMaxCompletionTokens.get("claude-sonnet-4-6")         shouldBe Some(64000)
-      Anthropic.KnownMaxCompletionTokens.get("claude-opus-4-7")           shouldBe Some(32000)
-    }
-  }
 }
