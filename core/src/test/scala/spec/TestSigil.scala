@@ -328,6 +328,18 @@ object TestSigil extends Sigil {
   def setMaxAgentIterations(n: Int): Unit = maxAgentIterationsRef.set(Some(n))
   def resetMaxAgentIterations(): Unit     = maxAgentIterationsRef.set(None)
 
+  /** Per-test override for the no-tool-call recovery retry budget
+    * (sigil #257 / #273). Default at the framework level is 3 retries
+    * before forced-synthesis; specs asserting on specific call counts
+    * pin the budget here to keep their assertions stable across
+    * framework default bumps. */
+  private val noToolCallRetryLimitRef =
+    new java.util.concurrent.atomic.AtomicReference[Option[Int]](None)
+  override def noToolCallRetryLimit: Int =
+    noToolCallRetryLimitRef.get().getOrElse(super.noToolCallRetryLimit)
+  def setNoToolCallRetryLimit(n: Int): Unit = noToolCallRetryLimitRef.set(Some(n))
+  def resetNoToolCallRetryLimit(): Unit     = noToolCallRetryLimitRef.set(None)
+
   /** Per-test override for the progress-checkpoint cadence (sigil
     * bug #133). Specs exercising the stall-intervention forced-
     * synthesis path lower this to 1-2 iterations so the checkpoint

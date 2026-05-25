@@ -91,8 +91,11 @@ class ConsultToolOutcomeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
           // generationSettings omitted — should default to classifierDefault.
         ).map { _ =>
           val settings = provider.lastSettings.get
-          settings.maxOutputTokens shouldBe defined
-          settings.maxOutputTokens.get should be > 0
+          // Sigil #276 — read the typed cap via `explicitWireMaxTokens`
+          // (which folds both the new `outputTokenCap` and the
+          // deprecated `maxOutputTokens` field via `effectiveCap`).
+          settings.explicitWireMaxTokens shouldBe defined
+          settings.explicitWireMaxTokens.get should be > 0
           settings.reasoningMode shouldBe ReasoningMode.Off
         }
       }
@@ -100,8 +103,8 @@ class ConsultToolOutcomeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
     "GenerationSettings.classifierDefault exposes the same shape" in {
       val s = GenerationSettings.classifierDefault
-      s.maxOutputTokens shouldBe defined
-      s.maxOutputTokens.get should be > 0
+      s.explicitWireMaxTokens shouldBe defined
+      s.explicitWireMaxTokens.get should be > 0
       s.reasoningMode shouldBe ReasoningMode.Off
       Task.pure(succeed)
     }

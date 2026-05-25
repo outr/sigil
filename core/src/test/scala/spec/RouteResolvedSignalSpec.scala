@@ -25,6 +25,16 @@ class RouteResolvedSignalSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
   private val testModelId: Id[Model] = Model.id("test", "routing-signal")
 
+  // Sigil #277 — the strategy escalates to non-default candidate ids;
+  // register them so the runtime resolution at `Sigil.runAgentTurn` finds
+  // a Model record instead of throwing `UnregisteredModelException`. The
+  // TestSigil auto-registration hooks cover the agent's nominal modelId
+  // but not the strategy's other candidates.
+  TestSigil.testModel(testModelId)
+  TestSigil.testModel(Model.id("test", "high"))
+  TestSigil.testModel(Model.id("test", "analysis-low"))
+  TestSigil.testModel(Model.id("test", "analysis-high"))
+
   private final class RespondOnce extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil

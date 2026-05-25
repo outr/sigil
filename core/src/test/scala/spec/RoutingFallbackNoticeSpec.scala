@@ -42,6 +42,15 @@ class RoutingFallbackNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
   private val agentModelId: Id[Model] = Model.id("test", "fallback-agent-default")
 
+  // Sigil #277 — register every candidate id the strategies escalate
+  // to so `Sigil.runAgentTurn`'s resolution doesn't throw. The
+  // TestSigil auto-registration hooks cover the agent's nominal id
+  // but not strategy-escalated candidates.
+  TestSigil.testModel(agentModelId)
+  TestSigil.testModel(Model.id("test", "only-low"))
+  TestSigil.testModel(Model.id("test", "only-veryhigh"))
+  TestSigil.testModel(Model.id("test", "fits-medium"))
+
   private final class RespondOnce extends Provider {
     override def `type`: ProviderType = ProviderType.LlamaCpp
     override def models: List[_root_.sigil.db.Model] = Nil

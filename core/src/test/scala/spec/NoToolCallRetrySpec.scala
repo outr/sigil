@@ -34,8 +34,19 @@ import scala.concurrent.duration.*
  * no-tool-call response stripped the roster, turning one hiccup into
  * a guaranteed non-answer for any turn that needed tools.
  */
-class NoToolCallRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
+class NoToolCallRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
+                          with org.scalatest.BeforeAndAfterAll {
   TestSigil.initFor(getClass.getSimpleName)
+  // Sigil #273 bumped the default from 1 to 3; this spec's call-count
+  // assertions were written for limit=1 and asserting on exact roster
+  // shapes per call index. Pin to the old value so the assertions stay
+  // stable; the budget bump's behaviour is covered by other specs.
+  TestSigil.setNoToolCallRetryLimit(1)
+
+  override protected def afterAll(): Unit = {
+    TestSigil.resetNoToolCallRetryLimit()
+    super.afterAll()
+  }
 
   private val modelId: Id[Model] = Model.id("test", "no-toolcall-retry")
   TestSigil.testModel(modelId)

@@ -82,7 +82,11 @@ class CompressorOutputCapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     override def httpRequestFor(input: ProviderCall): Task[spice.http.HttpRequest] =
       Task.error(new UnsupportedOperationException("CapturingStubProvider"))
     override def call(input: ProviderCall): Stream[ProviderEvent] = {
-      seenMaxOutput.updateAndGet(_ :+ input.generationSettings.maxOutputTokens)
+      // Sigil #276 — read via `explicitWireMaxTokens` which folds both
+      // the new `outputTokenCap` and the deprecated `maxOutputTokens`
+      // shim via `effectiveCap`. The compressor sets the typed
+      // `outputTokenCap = OutputTokenCap.Below(...)` form now.
+      seenMaxOutput.updateAndGet(_ :+ input.generationSettings.explicitWireMaxTokens)
       val toolName = input.tools.headOption.map(_.schema.name.value).getOrElse("")
       toolName match {
         case "extract_memories" =>

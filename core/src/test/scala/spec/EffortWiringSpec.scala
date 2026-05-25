@@ -34,6 +34,25 @@ class EffortWiringSpec extends AnyWordSpec with Matchers {
 
   TestSigil.initFor(getClass.getSimpleName)
 
+  // Sigil #276 — `AnthropicProvider.resolveMaxTokens` clamps a caller-
+  // supplied cap to the registered model's `maxCompletionTokens`. The
+  // synthetic test models register with maxCompletionTokens = 8192,
+  // which would clamp this spec's `Some(20000)`-shaped inputs down to
+  // 8192 and squash the effort=High budget. Register a haiku-shaped
+  // model with a realistic ceiling so the effort math has room.
+  {
+    val haikuId = Model.id("anthropic", "claude-haiku-4-5")
+    val haiku = TestSigil.testModel(haikuId).copy(
+      contextLength = 200_000L,
+      topProvider   = sigil.db.ModelTopProvider(
+        contextLength       = Some(200_000L),
+        maxCompletionTokens = Some(64_000L),
+        isModerated         = false
+      )
+    )
+    TestSigil.cache.merge(List(haiku)).sync()
+  }
+
   private val conversationId = sigil.conversation.Conversation.id("effort-wiring-conv")
   private val view = ConversationView(
     conversationId = conversationId,
