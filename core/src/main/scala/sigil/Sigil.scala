@@ -6173,9 +6173,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       _ <- reconcileStaleActiveEvents(db)
       _ <- if (vectorWired) vectorIndex.ensureCollection(embeddingProvider.dimensions)
            else Task.unit
-      _ <- cache.loadFromDisk
+      _ <- loadAndRefreshModels(db)
       _ <- validateModeSkillSizes()
-      _ <- startModelRefresh()
       _ <- startExpiredMemorySweep()
       _ <- startMaintenanceTasks()
       inst = SigilInstance(
@@ -6287,22 +6286,72 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   }
 
   /**
-   * Kick off the periodic model-registry refresh. First refresh runs
-   * immediately; subsequent ones every [[modelRefreshInterval]].
-   * Failures are logged and swallowed — the registry keeps its last
-   * known state (loaded from disk on init), so a transient OpenRouter
-   * outage doesn't break the app.
+   * Sigil #277 — boot-time model-catalog load + refresh.
+   *
+   * Flow:
+   *   1. Read the persisted `db.models` snapshot, seed the in-memory
+   *      [[sigil.cache.ModelRegistry]] from it.
+   *   2. Decide whether to block on an OpenRouter refresh:
+   *        - never-refreshed (empty list): YES; failure fails boot.
+   *        - stale (age > [[modelRefreshInterval]]): YES; failure
+   *          warns and continues with the cached catalog.
+   *        - fresh: NO; proceed.
+   *   3. Schedule the next refresh at `stamp + modelRefreshInterval`
+   *      (so the next call aligns with the stamp's age, not "now +
+   *      interval"). Subsequent firings every interval.
+   *
+   * Skipped entirely when [[loadOpenRouterModels]] is `false` —
+   * apps with non-OpenRouter catalogs (LlamaCpp-only, tests with
+   * synthetic pre-registered models, custom-catalog deployments)
+   * populate the registry themselves and don't pay for the network
+   * round-trip.
    */
-  private def startModelRefresh(): Task[Unit] = modelRefreshInterval match {
-    case None => Task.unit
-    case Some(interval) =>
-      def safeRefresh: Task[Unit] = OpenRouter.refreshModels(this).handleError { e =>
-        Task { scribe.warn(s"Model refresh failed: ${e.getMessage}; keeping current registry"); () }
-      }
-      def loop: Task[Unit] =
+  private def loadAndRefreshModels(db: DB): Task[Unit] =
+    if (!loadOpenRouterModels) Task.unit
+    else for {
+      stored      <- db.models.get()
+      _           <- if (stored.list.nonEmpty) cache.replace(stored.list) else Task.unit
+      isFresh     = stored.list.nonEmpty &&
+                      (Timestamp().value - stored.refreshed.value) < modelRefreshInterval.toMillis
+      _           <- if (isFresh) Task.unit else blockingRefresh(db, hadPriorCache = stored.list.nonEmpty)
+      // Re-read after the (possibly-just-run) blocking refresh so the
+      // schedule's first sleep aligns with the latest stamp.
+      latest      <- db.models.get()
+      _           <- scheduleNextRefresh(db, latest.refreshed)
+    } yield ()
+
+  /** One-shot blocking refresh from OpenRouter. Delegates to
+    * [[OpenRouter.refreshModels]] which writes the `db.models` slot
+    * AND seeds the in-memory cache. On failure, see the semantics in
+    * [[loadAndRefreshModels]]'s flow doc. */
+  private def blockingRefresh(db: DB, hadPriorCache: Boolean): Task[Unit] =
+    OpenRouter.refreshModels(this).handleError { e =>
+      if (hadPriorCache)
+        Task { scribe.warn(s"OpenRouter refresh failed; continuing with cached registry: ${e.getMessage}"); () }
+      else
+        Task.error(new RuntimeException(
+          s"OpenRouter refresh failed AND no cached catalog exists — Sigil cannot start without a model registry. " +
+            s"Either provide network access to OpenRouter on boot, override `loadOpenRouterModels = false` and register " +
+            s"models manually via `sigil.cache.merge(...)`, or restore a `db.models` snapshot. Cause: ${e.getMessage}",
+          e
+        ))
+    }
+
+  /** Schedule the next refresh at `lastRefreshed + interval`, then
+    * loop every interval after. Floors the initial delay at 1 minute
+    * so a clock skew or a stamp-just-now case doesn't fire instantly. */
+  private def scheduleNextRefresh(db: DB, lastRefreshed: Timestamp): Task[Unit] = Task {
+    val elapsedMs = Timestamp().value - lastRefreshed.value
+    val initialDelayMs = math.max(60_000L, modelRefreshInterval.toMillis - elapsedMs)
+    val intervalMs = modelRefreshInterval.toMillis
+    def loop(delayMs: Long): Task[Unit] =
+      if (isShutdown) Task.unit
+      else rapid.Task.sleep(scala.concurrent.duration.Duration(delayMs, scala.concurrent.duration.MILLISECONDS)).flatMap { _ =>
         if (isShutdown) Task.unit
-        else safeRefresh.flatMap(_ => Task.sleep(interval)).flatMap(_ => loop)
-      Task { loop.startUnit(); () }
+        else blockingRefresh(db, hadPriorCache = true).flatMap(_ => loop(intervalMs))
+      }
+    loop(initialDelayMs).startUnit()
+    ()
   }
 
   /**
@@ -6607,26 +6656,36 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def isShutdown: Boolean = shutdownRequested.get()
 
   /**
-   * Disk fallback location for the model registry. Default: a
-   * `models.json` file alongside the configured `sigil.dbPath`.
-   * Apps can override to put it elsewhere or return `None` to disable
-   * disk persistence entirely.
+   * Sigil #277 — load the OpenRouter model catalog at startup? Default
+   * `true`. The framework's invariant ([[sigil.provider.UnregisteredModelException]])
+   * requires every model used at runtime to be in the in-memory
+   * [[sigil.cache.ModelRegistry]]; OpenRouter is the only complete
+   * programmatic source for the public Anthropic / OpenAI / Gemini
+   * namespace, so loading it at boot is the canonical registration path.
+   *
+   * Apps that don't need the public catalog (LlamaCpp-only setups,
+   * tests with pre-registered synthetic models, custom-catalog
+   * deployments) override to `false` — `Sigil.instance` then skips
+   * the catalog read + refresh + schedule entirely. Those apps
+   * populate the registry themselves via `sigil.cache.merge(...)`,
+   * `LlamaCppProvider`'s on-construction merge, or app-side seeding.
    */
-  def modelCachePath: Option[Path] = {
-    val raw = Profig("sigil.dbPath").asOr[String]("db/sigil")
-    Some(Path.of(raw).resolve("models.json"))
-  }
+  def loadOpenRouterModels: Boolean = true
 
   /**
-   * How often the in-memory model registry is refreshed from
-   * upstream (OpenRouter). Default `None` — apps that don't use
-   * OpenRouter-sourced models (local llama.cpp deployments,
-   * direct-Anthropic / direct-OpenAI configurations, etc.) get no
-   * background HTTP traffic. OpenRouter consumers opt in by
-   * overriding to e.g. `Some(8.hours)` for periodic refresh, or
-   * leave `None` and call `OpenRouter.refreshModels` manually.
+   * Sigil #277 — how stale a `models.refreshed` stamp can be before
+   * `Sigil.instance` blocks on a fresh `OpenRouter.refreshModels` at
+   * boot, and how long the background refresh task sleeps between
+   * runs once started. Default 8 hours.
+   *
+   * Boot semantics: if the persisted `db.models.refreshed` is older
+   * than this AND the list is non-empty, the boot proceeds with the
+   * stale catalog (the refresh runs in the background). If the list
+   * is empty (never refreshed), the boot blocks on the refresh; on
+   * failure with no prior cache, `Sigil.instance` errors — models
+   * are required.
    */
-  def modelRefreshInterval: Option[FiniteDuration] = None
+  def modelRefreshInterval: FiniteDuration = 8.hours
 
   /**
    * How often the framework hard-deletes expired memories
@@ -6647,7 +6706,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    * round-trip). Populated from disk on init and refreshed in the
    * background per [[modelRefreshInterval]].
    */
-  final lazy val cache: ModelRegistry = new ModelRegistry(modelCachePath)
+  final lazy val cache: ModelRegistry = new ModelRegistry
 
   /**
    * Does the registered [[sigil.db.Model]] declare support for the

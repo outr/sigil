@@ -79,6 +79,13 @@ abstract class SigilDB(override val directory: Option[Path],
   val storedInformations: S[StoredInformation, StoredInformation.type] =
     store(StoredInformation).withCache(CacheConfig.lru(200, 30.minutes))()
 
+  /** Persisted snapshot of the framework's known [[Model]] catalog
+    * (sigil #277). Seeded into the in-memory [[sigil.cache.ModelRegistry]]
+    * at `Sigil.instance` boot; refreshed from OpenRouter when the slot
+    * is empty or stale per `Sigil.modelRefreshInterval`. Default is a
+    * never-refreshed empty marker. */
+  val models: lightdb.StoredValue[Models] = stored[Models]("models", Models())
+
   override def upgrades: List[DatabaseUpgrade] = appUpgrades
 
   /**

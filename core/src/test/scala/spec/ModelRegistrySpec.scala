@@ -7,12 +7,12 @@ import rapid.{AsyncTaskSpec, Task}
 import sigil.cache.ModelRegistry
 import sigil.db.{Model, ModelArchitecture, ModelDefaultParameters, ModelLinks, ModelPricing, ModelTopProvider}
 
-import java.nio.file.{Files, Path}
-
 /**
  * Direct coverage for the in-memory model registry. Verifies the
- * synchronous accessors, atomic replace, and the disk-fallback
- * roundtrip used to survive an offline boot.
+ * synchronous accessors plus atomic replace / additive merge.
+ * Catalog persistence lives on `SigilDB.models` (sigil #277) and is
+ * exercised through the full boot path; the in-memory registry itself
+ * is a pure hot-path cache with no disk concern.
  */
 class ModelRegistrySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
 
@@ -112,33 +112,4 @@ class ModelRegistrySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     }
   }
 
-  "ModelRegistry (disk fallback)" should {
-
-    "round-trip through the cache file" in {
-      val tmp = Files.createTempFile("sigil-modelreg-", ".json")
-      Files.deleteIfExists(tmp)
-      val source = new ModelRegistry(Some(tmp))
-      val restored = new ModelRegistry(Some(tmp))
-      val records = List(fakeModel("openai", "gpt-x"), fakeModel("anthropic", "claude-z"))
-      for {
-        _ <- source.replace(records)
-        _ <- restored.loadFromDisk
-      } yield {
-        Files.exists(tmp) shouldBe true
-        restored.all.map(_._id.value).toSet shouldBe records.map(_._id.value).toSet
-        succeed
-      }
-    }
-
-    "no-op on loadFromDisk when the file does not exist" in {
-      val tmp = Path.of("/tmp", s"sigil-modelreg-${rapid.Unique()}.json")
-      val reg = new ModelRegistry(Some(tmp))
-      for {
-        _ <- reg.loadFromDisk
-      } yield {
-        reg.all shouldBe Nil
-        succeed
-      }
-    }
-  }
 }

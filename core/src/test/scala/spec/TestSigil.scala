@@ -48,6 +48,12 @@ object TestSigil extends Sigil {
 
   override def testMode: Boolean = true
 
+  /** Sigil #277 — tests use synthetic pre-registered models; skip the
+    * OpenRouter network round-trip at boot. Specs that genuinely need
+    * the live OpenRouter catalog (none today) would override back to
+    * `true`. */
+  override def loadOpenRouterModels: Boolean = false
+
   lazy val llamaCppHost: URL = sys.env.get("SIGIL_LLAMACPP_HOST").flatMap(URL.get(_).toOption).getOrElse(
     Profig("sigil.llamacpp.host").asOr[URL](url"https://llama.voidcraft.ai")
   )
