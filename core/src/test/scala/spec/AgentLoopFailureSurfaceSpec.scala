@@ -38,6 +38,7 @@ class AgentLoopFailureSurfaceSpec extends AsyncWordSpec with AsyncTaskSpec with 
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "model")
+  TestSigil.testModel(modelId)
 
   /** Provider whose `call` raises before emitting any event. The
     * orchestrator's stream evaluates lazily, so the error fires once

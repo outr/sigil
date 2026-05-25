@@ -59,7 +59,7 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     reasoning: ReasoningMode,
     maxTokens: Int = 400
   ): ProviderCall = ProviderCall(
-    modelId      = modelId,
+    model      = TestSigil.testModel(modelId),
     system       = system,
     messages     = Vector(ProviderMessage.User(Vector(MessageContent.Text(userMessage)))),
     tools        = tools,
@@ -196,7 +196,7 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     "complete a multi-turn conversation (assistant message threaded in history)" in {
       skipUnlessLive()
       val pc = ProviderCall(
-        modelId      = modelId,
+        model      = TestSigil.testModel(modelId),
         system       = "Reply via the `respond` tool.",
         messages     = Vector(
           ProviderMessage.User(Vector(MessageContent.Text("My favorite color is blue."))),

@@ -64,7 +64,7 @@ class ProviderStreamCancelSpec
   private def callFor(convId: Id[Conversation],
                       agent: Option[sigil.participant.ParticipantId]): ProviderCall =
     ProviderCall(
-      modelId            = Model.id("test", "stream-cancel"),
+      model            = TestSigil.testModel(Model.id("test", "stream-cancel")),
       system             = "",
       messages           = Vector.empty,
       tools              = Vector.empty,

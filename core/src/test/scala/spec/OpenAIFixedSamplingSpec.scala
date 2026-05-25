@@ -61,7 +61,7 @@ class OpenAIFixedSamplingSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
     }
 
   private def request(modelId: Id[Model]): OneShotRequest = OneShotRequest(
-    modelId      = modelId,
+    model      = TestSigil.testModel(modelId),
     systemPrompt = "Be terse.",
     userPrompt   = "Hi.",
     generationSettings = GenerationSettings(temperature = Some(0.0), topP = Some(0.5), maxOutputTokens = Some(50))

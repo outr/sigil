@@ -100,7 +100,8 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       chain = List(TestUser),
       conversation = conv,
       turnInput = TurnInput(conversationId = conversationId, frames = frames),
-      currentAgentStateId = Some(testAgentStateId)
+      currentAgentStateId = Some(testAgentStateId),
+      model = TestSigil.testModel(modelId)
     )
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
@@ -147,7 +148,8 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       chain = List(TestUser),
       conversation = conv,
       turnInput = TurnInput(conversationId = conversationId, frames = frames),
-      currentAgentStateId = Some(testAgentStateId)
+      currentAgentStateId = Some(testAgentStateId),
+      model = TestSigil.testModel(modelId)
     )
     for {
       _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
@@ -175,7 +177,8 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       chain = List(TestUser),
       conversation = conversation,
       turnInput = TurnInput(conversationId = conversationId, frames = frames),
-      currentAgentStateId = Some(testAgentStateId)
+      currentAgentStateId = Some(testAgentStateId),
+      model = TestSigil.testModel(modelId)
     )
     makeAgent().process(turnContext, Stream.emits(List[Event](userMessage))).toList
   }
@@ -254,7 +257,8 @@ trait AbstractOrchestratorSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         chain = List(TestUser),
         conversation = conversation,
         turnInput = TurnInput(conversationId = conversationId, frames = frames),
-        currentAgentStateId = Some(testAgentStateId)
+        currentAgentStateId = Some(testAgentStateId),
+        model = TestSigil.testModel(modelId)
       )
 
       val task = for {

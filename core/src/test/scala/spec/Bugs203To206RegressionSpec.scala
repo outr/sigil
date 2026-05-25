@@ -109,27 +109,32 @@ class Bugs203To206RegressionSpec extends AsyncWordSpec with AsyncTaskSpec with M
 
   // ---- #205 ----
 
-  "Bug #205: TurnContext carries routedModelId" should {
+  "Bug #205: TurnContext carries the routed Model" should {
 
-    "TurnContext exposes routedModelId for downstream consumers" in {
-      val ctx = sigil.TurnContext(
-        sigil         = TestSigil,
-        chain         = List(TestUser),
-        conversation  = Conversation(topics = TestTopicStack, _id = freshConvId()),
-        turnInput     = sigil.conversation.TurnInput(sigil.conversation.ConversationView(conversationId = freshConvId())),
-        routedModelId = Some(sigil.db.Model.id("openrouter", "frontier-model"))
-      )
-      ctx.routedModelId.map(_.value) shouldBe Some("openrouter/frontier-model")
-    }
-
-    "default routedModelId is None (back-compat for paths that bypass buildContext)" in {
+    "TurnContext exposes the routed Model record for downstream consumers" in {
+      // Sigil #277 — TurnContext.routedModelId was replaced by the
+      // required `model: Model` field. The boundary resolves the
+      // routed id to a Model record; the modelId accessor reflects it.
+      val routedModelId = sigil.db.Model.id("openrouter", "frontier-model")
       val ctx = sigil.TurnContext(
         sigil        = TestSigil,
         chain        = List(TestUser),
         conversation = Conversation(topics = TestTopicStack, _id = freshConvId()),
-        turnInput    = sigil.conversation.TurnInput(sigil.conversation.ConversationView(conversationId = freshConvId()))
+        turnInput    = sigil.conversation.TurnInput(sigil.conversation.ConversationView(conversationId = freshConvId())),
+        model        = TestSigil.testModel(routedModelId)
       )
-      ctx.routedModelId shouldBe None
+      ctx.modelId.value shouldBe "openrouter/frontier-model"
+    }
+
+    "TurnContext default model is the synthetic test fixture" in {
+      val ctx = sigil.TurnContext(
+        sigil        = TestSigil,
+        chain        = List(TestUser),
+        conversation = Conversation(topics = TestTopicStack, _id = freshConvId()),
+        turnInput    = sigil.conversation.TurnInput(sigil.conversation.ConversationView(conversationId = freshConvId())),
+        model        = TestSigil.defaultTestModel
+      )
+      ctx.modelId shouldBe TestSigil.defaultTestModel._id
     }
   }
 

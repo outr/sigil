@@ -94,7 +94,8 @@ class ExecuteScriptToolErrorRecoverySpec extends AsyncWordSpec with AsyncTaskSpe
         topics = List(TopicEntry(topic._id, topic.label, topic.summary)),
         _id = convId
       ),
-      turnInput = TurnInput(conversationId = convId)
+      turnInput = TurnInput(conversationId = convId),
+      model = TestSigil.defaultTestModel
     )
   }
 

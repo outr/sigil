@@ -37,6 +37,7 @@ class OrchestratorRepeatedQuerySpec extends AsyncWordSpec with AsyncTaskSpec wit
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "repeated-query-spec")
+  TestSigil.testModel(modelId)
 
   /** Provider that scripts a sequence of `find_capability` /
     * `respond` calls. Each call increments an internal counter; the

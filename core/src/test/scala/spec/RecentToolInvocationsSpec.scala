@@ -119,7 +119,7 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
                           convId: Id[Conversation]): ConversationRequest =
     ConversationRequest(
       conversationId         = convId,
-      modelId                = Model.id("test", "recent-tools-model"),
+      model                = TestSigil.testModel(Model.id("test", "recent-tools-model")),
       instructions           = Instructions(),
       turnInput              = TurnInput(
         conversationId         = convId,
@@ -278,7 +278,7 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
     val proj = ParticipantProjection.empty(TestAgent, convId).copy(recentToolInvocations = priorEntries)
     val request = ConversationRequest(
       conversationId     = convId,
-      modelId            = Model.id("test", "cap-model"),
+      model            = TestSigil.testModel(Model.id("test", "cap-model")),
       instructions       = Instructions(),
       turnInput          = TurnInput(
         conversationId         = convId,
@@ -394,7 +394,7 @@ class RecentToolInvocationsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
         cleared <- TestSigil.projectionFor(TestAgent, convId)
         request  = ConversationRequest(
                      conversationId     = convId,
-                     modelId            = Model.id("test", "cross-turn-model"),
+                     model            = TestSigil.testModel(Model.id("test", "cross-turn-model")),
                      instructions       = Instructions(),
                      turnInput          = TurnInput(
                        conversationId         = convId,

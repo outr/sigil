@@ -68,7 +68,7 @@ class ThinkingChunkEmissionSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   private val conv: Conversation = Conversation(topics = TestTopicStack, _id = convId)
   private val request: ConversationRequest = ConversationRequest(
     conversationId     = convId,
-    modelId            = modelId,
+    model            = TestSigil.testModel(modelId),
     instructions       = Instructions(),
     turnInput          = TurnInput(conversationId = convId),
     currentMode        = ConversationMode,

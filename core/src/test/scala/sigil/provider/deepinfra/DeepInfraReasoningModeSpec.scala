@@ -35,7 +35,7 @@ class DeepInfraReasoningModeSpec extends AsyncWordSpec with AsyncTaskSpec with M
   private def bodyOf(mode: ReasoningMode, effort: Option[Effort] = None): rapid.Task[String] = {
     val req = ConversationRequest(
       conversationId     = convId,
-      modelId            = modelId,
+      model            = TestSigil.testModel(modelId),
       instructions       = Instructions(),
       turnInput          = TurnInput(conversationId = convId),
       currentMode        = ConversationMode,
@@ -87,7 +87,7 @@ class DeepInfraReasoningModeSpec extends AsyncWordSpec with AsyncTaskSpec with M
       // body to verify routing.
       val req = ConversationRequest(
         conversationId     = convId,
-        modelId            = modelId,
+        model            = TestSigil.testModel(modelId),
         instructions       = Instructions(),
         turnInput          = TurnInput(conversationId = convId),
         currentMode        = ConversationMode,

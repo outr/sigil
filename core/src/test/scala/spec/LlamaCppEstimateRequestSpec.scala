@@ -34,7 +34,7 @@ class LlamaCppEstimateRequestSpec extends AnyWordSpec with Matchers {
   private val exposed = new ExposedProvider
 
   private val sampleCall = ProviderCall(
-    modelId = Id[Model]("llamacpp/test"),
+    model = TestSigil.testModel(Id[Model]("llamacpp/test")),
     system  = "You are a helpful assistant.",
     messages = Vector(
       ProviderMessage.User("What is 2+2?"),

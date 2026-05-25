@@ -23,6 +23,7 @@ class OpenAIRequestCoverageSpec extends AbstractRequestCoverageSpec {
   override protected def providerInstance: Provider =
     OpenAIProvider(apiKey = "sk-test-placeholder", sigilRef = TestSigil)
   override protected def modelId: Id[Model] = Model.id("openai", "gpt-5.4-nano")
+    TestSigil.testModel(modelId)
 
   /** Bug #61 — OpenAI's Responses API requires reasoning items from
     * prior turns to be replayed in the next request's `input` array;
@@ -36,7 +37,7 @@ class OpenAIRequestCoverageSpec extends AbstractRequestCoverageSpec {
   private def bodyWithModelId(targetModelId: Id[Model]): String = {
     val req: ProviderRequest = ConversationRequest(
       conversationId = conversationId,
-      modelId = targetModelId,
+      model = TestSigil.testModel(targetModelId),
       instructions = Instructions(),
       turnInput = emptyTurnInput,
       currentMode = ConversationMode,

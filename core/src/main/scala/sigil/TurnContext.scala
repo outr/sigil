@@ -49,15 +49,20 @@ import java.util.concurrent.atomic.AtomicReference
  *                            AgentState without a DB lookup. `None` when no
  *                            AgentState is active (e.g., user-typed Message
  *                            being published externally).
- * @param modelId             the id of the [[sigil.db.Model]] driving
- *                            this turn — set by the orchestrator from
- *                            the active [[sigil.provider.ProviderRequest.modelId]]
- *                            so atomic content tools (`respond`,
- *                            `respond_options`, …) can stamp their
- *                            emitted [[sigil.event.Message]]s with
- *                            the originating model. `None` outside a
- *                            provider-driven turn (e.g. settled-effect
- *                            callbacks, app-driven imports). Bug #55.
+ * @param model               the [[sigil.db.Model]] driving this turn —
+ *                            resolved at the runtime boundary
+ *                            ([[sigil.Sigil.runAgentLoop]]) via
+ *                            [[sigil.cache.ModelRegistry]] and threaded
+ *                            through every per-turn carrier (sigil #277).
+ *                            Atomic content tools (`respond`,
+ *                            `respond_options`, …) stamp their emitted
+ *                            [[sigil.event.Message]]s with `model._id`;
+ *                            renderers / cost projection / strategy
+ *                            callbacks read other per-model facts off the
+ *                            record directly. The pre-route classifier
+ *                            stub uses the agent's nominal Model — even
+ *                            paths that haven't picked a routed model yet
+ *                            hold a real Model in hand.
  *
  * Chain is runtime-only — never persisted on Events. Each invocation's caller
  * supplies it fresh.
@@ -66,21 +71,10 @@ case class TurnContext(sigil: Sigil,
                        chain: List[ParticipantId],
                        conversation: Conversation,
                        turnInput: TurnInput,
+                       /** Sigil #277 — required Model record. */
+                       model: Model,
                        currentAgentStateId: Option[Id[Event]] = None,
                        correlationId: String = TurnContext.freshCorrelationId(),
-                       modelId: Option[Id[Model]] = None,
-                       /** Sigil bug #205 — the model id this turn will
-                         * actually route to, resolved up-front by
-                         * `Sigil.buildContext` from the conversation's
-                         * provider strategy + classifier output. The
-                         * curator uses this to budget against the routed
-                         * model's contextLength rather than the agent's
-                         * nominal `agent.modelId`, which is often a
-                         * small-context default that gets escalated to a
-                         * frontier model by routing. `None` for paths
-                         * that bypass `buildContext` (e.g. direct
-                         * `executeAtomic` from unit tests). */
-                       routedModelId: Option[Id[Model]] = None,
                        isGreeting: Boolean = false,
                        /** Sigil bug #125 — when `true`, the framework forces
                          * the provider's `tool_choice` to `respond` for this
@@ -122,6 +116,10 @@ case class TurnContext(sigil: Sigil,
    * "view" shape access it through this accessor.
    */
   def conversationView: _root_.sigil.conversation.ConversationView = turnInput.conversationView
+
+  /** Convenience — `model._id`. Use when only the id is needed (wire
+    * serialization, projection write-back, event stamping). */
+  def modelId: Id[Model] = model._id
 
   /** Snapshot of the per-agent-loop `find_capability` cache. Renderers
     * read this when assembling the "Capabilities you've already

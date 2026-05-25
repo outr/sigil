@@ -39,6 +39,6 @@ case object RespondFailureTool extends RespondFamilyTool {
       content        = Vector(ResponseContent.Text(input.reason)),
       disposition    = MessageDisposition.Failure(recoverable = input.recoverable),
       state          = EventState.Complete,
-      modelId        = context.modelId
+      modelId        = Some(context.modelId)
     )).map(_ => ToolResult.Success(TextToolOutput("")))
 }

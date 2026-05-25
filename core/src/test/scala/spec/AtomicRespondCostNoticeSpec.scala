@@ -76,7 +76,7 @@ class AtomicRespondCostNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with 
   private def buildRequest(convId: Id[Conversation]): ConversationRequest =
     ConversationRequest(
       conversationId     = convId,
-      modelId            = modelId,
+      model            = TestSigil.testModel(modelId),
       instructions       = Instructions(),
       turnInput          = TurnInput(conversationId = convId),
       currentMode        = ConversationMode,

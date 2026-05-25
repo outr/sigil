@@ -38,6 +38,7 @@ class OrchestratorRespondTopicAtomicSpec extends AsyncWordSpec with AsyncTaskSpe
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "atomic-respond-topic")
+  TestSigil.testModel(modelId)
 
   /** Emits a single atomic respond call (no streaming text content
     * before the tool args). Tests the framework's atomic-respond path

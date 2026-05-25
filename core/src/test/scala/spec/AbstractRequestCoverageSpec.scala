@@ -85,7 +85,7 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
                             generationSettings: GenerationSettings = defaultGenerationSettings): ProviderRequest =
     ConversationRequest(
       conversationId = conversationId,
-      modelId = modelId,
+      model = TestSigil.testModel(modelId),
       instructions = Instructions(),
       turnInput = input,
       currentMode = ConversationMode,

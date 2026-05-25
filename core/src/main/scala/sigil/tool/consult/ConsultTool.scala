@@ -63,8 +63,14 @@ case object ConsultTool extends Tool {
 
   override def executeResult(input: ConsultInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.providerFor(input.modelId, context.chain).flatMap { provider =>
+      // Sigil #277 — resolve the requested model id to the registered
+      // record at the boundary; an unregistered id throws here rather
+      // than silently truncating on the wire.
+      val resolvedModel = context.sigil.cache.find(input.modelId).getOrElse(
+        throw new sigil.provider.UnregisteredModelException(input.modelId, context.sigil.cache.all.map(_._id))
+      )
       val request = OneShotRequest(
-        modelId = input.modelId,
+        model = resolvedModel,
         systemPrompt = input.systemPrompt,
         userPrompt = input.userPrompt,
         chain = context.chain
@@ -148,8 +154,12 @@ case object ConsultTool extends Tool {
     // (e.g. test fixtures that didn't wire a provider) silently
     // tear down the surrounding caller's task chain.
     sigil.providerFor(modelId, chain).flatMap { provider =>
+      // Sigil #277 — resolve the requested model id at the boundary.
+      val resolvedModel = sigil.cache.find(modelId).getOrElse(
+        throw new _root_.sigil.provider.UnregisteredModelException(modelId, sigil.cache.all.map(_._id))
+      )
       val request = OneShotRequest(
-        modelId = modelId,
+        model = resolvedModel,
         systemPrompt = systemPrompt,
         userPrompt = userPrompt,
         generationSettings = generationSettings,

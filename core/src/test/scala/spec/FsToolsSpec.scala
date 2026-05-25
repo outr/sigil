@@ -47,7 +47,8 @@ class FsToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       sigil            = TestSigil,
       chain            = List(TestUser),
       conversation    = conv,
-      turnInput        = TurnInput(ConversationView(conversationId = convId))
+      turnInput        = TurnInput(ConversationView(conversationId = convId)),
+      model = TestSigil.defaultTestModel
     )
   }
 

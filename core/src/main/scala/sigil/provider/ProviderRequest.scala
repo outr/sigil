@@ -15,9 +15,17 @@ import sigil.tool.{Tool, ToolInput}
  * before dispatching to the provider's `call` implementation.
  */
 trait ProviderRequest {
-  def modelId: Id[sigil.db.Model]
+  /** Sigil #277 — required Model record, resolved at the runtime
+    * boundary via [[sigil.cache.ModelRegistry]]. Unregistered ids
+    * throw [[UnregisteredModelException]] before reaching this trait. */
+  def model: sigil.db.Model
   def generationSettings: GenerationSettings
   def tools: Vector[Tool]
   def chain: List[ParticipantId]
   def requestId: Id[ProviderRequest]
+
+  /** Convenience accessor — the model's id. Provided so callers that only
+    * need the id (wire serialization, projection write-back) don't have to
+    * destructure `model._id`. */
+  final def modelId: Id[sigil.db.Model] = model._id
 }

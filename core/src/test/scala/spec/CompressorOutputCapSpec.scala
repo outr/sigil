@@ -35,6 +35,7 @@ class CompressorOutputCapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "output-cap-model")
+  TestSigil.testModel(modelId)
 
   TestSigil.cache.replace(List(Model(
     canonicalSlug       = "test/output-cap-model",

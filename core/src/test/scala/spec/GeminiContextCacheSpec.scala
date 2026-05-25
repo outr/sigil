@@ -83,7 +83,7 @@ class GeminiContextCacheSpec extends AnyWordSpec with Matchers with BeforeAndAft
 
   private def callWith(system: String, modelId: Id[Model] = cacheCapableModel): ProviderCall =
     ProviderCall(
-      modelId = modelId,
+      model = TestSigil.testModel(modelId),
       system = system,
       messages = Vector(ProviderMessage.User(Vector(MessageContent.Text("hello")))),
       tools = Vector.empty,

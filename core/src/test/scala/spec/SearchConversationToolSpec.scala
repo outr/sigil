@@ -46,7 +46,8 @@ class SearchConversationToolSpec extends AsyncWordSpec with AsyncTaskSpec with M
       sigil = TestSigil,
       chain = List(TestUser, TestAgent),
       conversation = conv,
-      turnInput = TurnInput(conversationId = viewConvId)
+      turnInput = TurnInput(conversationId = viewConvId),
+      model = TestSigil.defaultTestModel
     )
   }
 

@@ -64,7 +64,8 @@ class ToolLogSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       sigil               = TestSigil,
       chain               = List(TestUser),
       conversation        = conv,
-      turnInput           = TurnInput(conversationId = conv._id)
+      turnInput           = TurnInput(conversationId = conv._id),
+      model = TestSigil.defaultTestModel
     )
 
   private def toolCtx(conv: Conversation, invokeId: Id[Event]): ToolContext =

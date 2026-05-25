@@ -36,7 +36,8 @@ class SchemaTypeNamePlaceholderSpec extends AsyncWordSpec with AsyncTaskSpec wit
       sigil        = TestSigil,
       chain        = List(TestUser),
       conversation = conv,
-      turnInput    = TurnInput(ConversationView(conversationId = convId))
+      turnInput    = TurnInput(ConversationView(conversationId = convId)),
+      model = TestSigil.defaultTestModel
     )
   }
 

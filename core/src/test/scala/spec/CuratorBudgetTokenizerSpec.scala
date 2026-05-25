@@ -29,6 +29,7 @@ class CuratorBudgetTokenizerSpec extends AsyncWordSpec with AsyncTaskSpec with M
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "budget-tok-model")
+  TestSigil.testModel(modelId)
 
   // Curator's budget shed only runs when `modelFor(modelId)` finds a
   // registered Model. Seed a small-context entry so the path is

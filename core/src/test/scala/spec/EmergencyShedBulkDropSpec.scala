@@ -104,7 +104,7 @@ class EmergencyShedBulkDropSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       // 100 tokens — need to drop ~980 messages.
       val msgs = (1 to 1000).map(_ => ProviderMessage.User("xxxxx")).toVector
       val call = ProviderCall(
-        modelId            = testModel._id,
+        model            = TestSigil.testModel(testModel._id),
         system             = "",
         messages           = msgs,
         tools              = Vector.empty,
@@ -132,7 +132,7 @@ class EmergencyShedBulkDropSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
 
     "leave a fitting call alone (no-op short-circuit)" in {
       val call = ProviderCall(
-        modelId            = testModel._id,
+        model            = TestSigil.testModel(testModel._id),
         system             = "",
         messages           = Vector(ProviderMessage.User("xxxxx")),  // 5 tokens
         tools              = Vector.empty,

@@ -89,7 +89,7 @@ class ContextPoisoningGuardsSpec extends AsyncWordSpec with AsyncTaskSpec with M
       val echoTool = new EchoTool(ToolName("echo"))
       val request = ConversationRequest(
         conversationId     = convId,
-        modelId            = modelId,
+        model            = TestSigil.testModel(modelId),
         instructions       = Instructions(),
         turnInput          = TurnInput(conversationId = convId),
         currentMode        = ConversationMode,

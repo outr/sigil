@@ -63,7 +63,8 @@ class GrepDefaultExclusionsSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       sigil                = TestSigil,
       chain                = List(TestUser),
       conversation         = conv,
-      turnInput            = TurnInput(ConversationView(conversationId = convId))
+      turnInput            = TurnInput(ConversationView(conversationId = convId)),
+      model = TestSigil.defaultTestModel
     )
   }
 

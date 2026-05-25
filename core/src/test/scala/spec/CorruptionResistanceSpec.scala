@@ -101,7 +101,7 @@ class CorruptionResistanceSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
                            extraTools: Vector[sigil.tool.Tool]): ConversationRequest =
     ConversationRequest(
       conversationId     = convId,
-      modelId            = modelId,
+      model            = TestSigil.testModel(modelId),
       instructions       = Instructions(),
       turnInput          = TurnInput(conversationId = convId),
       currentMode        = ConversationMode,

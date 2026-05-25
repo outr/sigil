@@ -125,7 +125,7 @@ class MemoryRetrievalEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with 
         val provider = LlamaCppProvider(TestSigil.llamaCppHost, Nil, TestSigil)
         val request = ConversationRequest(
           conversationId = convId,
-          modelId = modelId,
+          model = TestSigil.testModel(modelId),
           instructions = Instructions(),
           turnInput = turnInput,
           currentMode = ConversationMode,

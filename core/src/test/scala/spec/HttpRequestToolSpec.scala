@@ -81,7 +81,8 @@ class HttpRequestToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       topics = List(TopicEntry(TestTopicId, "test", "test")),
       _id    = convId
     ),
-    turnInput        = TurnInput(ConversationView(conversationId = convId))
+    turnInput        = TurnInput(ConversationView(conversationId = convId)),
+    model = TestSigil.defaultTestModel
   )
 
   "HttpRequestTool" should {

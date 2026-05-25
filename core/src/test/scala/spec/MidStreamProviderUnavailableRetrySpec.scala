@@ -68,7 +68,7 @@ class MidStreamProviderUnavailableRetrySpec extends AsyncWordSpec with AsyncTask
   }
 
   private def oneShot: OneShotRequest = OneShotRequest(
-    modelId            = modelId,
+    model            = TestSigil.testModel(modelId),
     systemPrompt       = "test-system",
     userPrompt         = "test-user",
     generationSettings = GenerationSettings()
@@ -142,7 +142,7 @@ class MidStreamProviderUnavailableRetrySpec extends AsyncWordSpec with AsyncTask
       val routing = OpenRouterProviderRouting(ignore = Some(List("baseline-deny")))
       val provider = OpenRouterProvider(apiKey = "test-key", sigilRef = TestSigil, providerRouting = routing)
       val firstAttempt = ProviderCall(
-        modelId            = modelId,
+        model            = TestSigil.testModel(modelId),
         system             = "s",
         messages           = Vector.empty,
         tools              = Vector.empty,

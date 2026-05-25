@@ -100,7 +100,7 @@ class JsonFieldSchemaSpec extends AnyWordSpec with Matchers {
     val provider = OpenAIProvider(apiKey = "sk-test", sigilRef = TestSigil)
     val req: ProviderRequest = ConversationRequest(
       conversationId = sigil.conversation.Conversation.id("strict-flag-test"),
-      modelId = Model.id("openai", "gpt-5.4-nano"),
+      model = TestSigil.testModel(Model.id("openai", "gpt-5.4-nano")),
       instructions = Instructions(),
       turnInput = TurnInput(
         conversationId = sigil.conversation.Conversation.id("strict-flag-test"),
@@ -149,7 +149,7 @@ class JsonFieldSchemaSpec extends AnyWordSpec with Matchers {
       val provider = OpenAIProvider(apiKey = "sk-test", sigilRef = TestSigil)
       val req: ProviderRequest = ConversationRequest(
         conversationId = sigil.conversation.Conversation.id("non-strict-keys"),
-        modelId = Model.id("openai", "gpt-5.4-nano"),
+        model = TestSigil.testModel(Model.id("openai", "gpt-5.4-nano")),
         instructions = Instructions(),
         turnInput = TurnInput(
           conversationId = sigil.conversation.Conversation.id("non-strict-keys"),

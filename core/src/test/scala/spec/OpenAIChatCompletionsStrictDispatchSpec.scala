@@ -56,7 +56,7 @@ class OpenAIChatCompletionsStrictDispatchSpec extends AnyWordSpec with Matchers 
   }
 
   private val call: ProviderCall = ProviderCall(
-    modelId           = Model.id("test", "tools-dispatch-model"),
+    model           = TestSigil.testModel(Model.id("test", "tools-dispatch-model")),
     system            = "test system",
     messages          = Vector(ProviderMessage.User(Vector(sigil.provider.MessageContent.Text("hi")))),
     tools             = Vector(typedTool, JsonyTool),

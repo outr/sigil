@@ -133,7 +133,7 @@ class OpenAIPreviousResponseIdSpec extends AsyncWordSpec with AsyncTaskSpec with
           )
           val req = ConversationRequest(
             conversationId     = convId,
-            modelId            = modelId,
+            model            = TestSigil.testModel(modelId),
             instructions       = Instructions(),
             turnInput          = TurnInput(conversationId = convId, frames = frames),
             currentMode        = ConversationMode,
@@ -174,7 +174,7 @@ class OpenAIPreviousResponseIdSpec extends AsyncWordSpec with AsyncTaskSpec with
           )
           val req = ConversationRequest(
             conversationId     = convId,
-            modelId            = modelId,
+            model            = TestSigil.testModel(modelId),
             instructions       = Instructions(),
             turnInput          = TurnInput(conversationId = convId, frames = frames),
             currentMode        = ConversationMode,

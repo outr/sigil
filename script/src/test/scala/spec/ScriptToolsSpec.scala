@@ -25,7 +25,8 @@ class ScriptToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
     sigil            = ScriptToolsTestSigil,
     chain            = List(TestScriptUser),
     conversation     = Conversation(topics = List(testTopic), _id = convId),
-    turnInput        = TurnInput(conversationId = convId)
+    turnInput        = TurnInput(conversationId = convId),
+    model = TestSigil.defaultTestModel
   )
 
   private def toolCtx: ToolContext =

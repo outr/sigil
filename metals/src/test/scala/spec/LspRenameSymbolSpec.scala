@@ -84,7 +84,8 @@ class LspRenameSymbolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       sigil        = TestMetalsSigil,
       chain        = List(RenameSymbolCallerId(s"caller-${rapid.Unique()}")),
       conversation = conversation,
-      turnInput    = TurnInput(conversationId = convId)
+      turnInput    = TurnInput(conversationId = convId),
+      model = TestSigil.defaultTestModel
     )
   }
 

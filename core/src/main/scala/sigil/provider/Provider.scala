@@ -725,7 +725,7 @@ trait Provider extends Service {
       val gen = tightenMaxTokensForParaphrase(c)
       val messages = nonEmptyMessages(c, agentId)
       val providerCall = ProviderCall(
-        modelId = c.modelId,
+        model = c.model,
         system = renderSystem(c, resolved),
         messages = messages,
         tools = effectiveTools,
@@ -799,7 +799,7 @@ trait Provider extends Service {
       if (s.userContent.nonEmpty) ProviderMessage.User(toMessageContent(s.userContent))
       else ProviderMessage.User(s.userPrompt)
     ProviderCall(
-      modelId = s.modelId,
+      model = s.model,
       system = s.systemPrompt,
       messages = Vector(userMessage),
       tools = s.tools,

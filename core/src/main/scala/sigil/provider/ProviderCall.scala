@@ -33,7 +33,12 @@ import sigil.tool.{Tool, ToolInput}
  * @param toolChoice         how aggressively to force a tool call
  * @param generationSettings sampling + limits passed through unchanged
  */
-case class ProviderCall(modelId: Id[Model],
+case class ProviderCall(/** Sigil #277 — required Model record. Wire
+                          * renderers read both `model._id` (for the wire
+                          * `model` field) and per-model facts
+                          * (`contextLength`, `topProvider.maxCompletionTokens`)
+                          * from this record without a registry round-trip. */
+                        model: Model,
                         system: String,
                         messages: Vector[ProviderMessage],
                         tools: Vector[Tool],
@@ -61,4 +66,9 @@ case class ProviderCall(modelId: Id[Model],
                           * upstream-provider name from the prior failure so
                           * providers with rotation-capable routing (OpenRouter)
                           * exclude the failed upstream from this attempt. */
-                        retryContext: Option[RetryContext] = None)
+                        retryContext: Option[RetryContext] = None) {
+  /** Convenience — `model._id`. Wire serializers reach for this when
+    * they just need the id for the wire `model` field; per-model facts
+    * read directly off [[model]]. */
+  def modelId: lightdb.id.Id[Model] = model._id
+}

@@ -410,7 +410,8 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
           sigil            = TestWorkflowSigil,
           chain            = List(WorkflowTestUser),
           conversation     = parentConv,
-          turnInput        = TurnInput(ConversationView(conversationId = parentConvId))
+          turnInput        = TurnInput(ConversationView(conversationId = parentConvId)),
+          model = TestSigil.defaultTestModel
         )
 
         for {

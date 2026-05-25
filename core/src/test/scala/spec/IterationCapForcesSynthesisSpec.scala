@@ -41,6 +41,7 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
   }
 
   private val modelId: Id[Model] = Model.id("test", "cap-soft-stop")
+  TestSigil.testModel(modelId)
 
   /** Records every call's tool_choice value (for the spec's
     * "forced turn pins respond" assertion) and the running call

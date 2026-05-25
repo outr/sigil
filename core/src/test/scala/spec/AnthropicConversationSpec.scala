@@ -19,6 +19,8 @@ class AnthropicConversationSpec extends AbstractConversationSpec {
   override protected def modelId: Id[Model] =
     Model.id(sys.env.getOrElse("ANTHROPIC_TEST_MODEL", "anthropic/claude-haiku-4-5"))
 
+  TestSigil.testModel(modelId)
+
   override def run(testName: Option[String], args: org.scalatest.Args): org.scalatest.Status =
     AnthropicLiveSupport.runGated(this, testName, args) {
       super.run(testName, args)

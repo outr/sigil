@@ -739,7 +739,7 @@ object Orchestrator {
                 // Bug #55 — atomic content tools stamp `Message.modelId`
                 // from here so per-message metadata shows which model
                 // produced the response.
-                modelId             = Some(request.modelId)
+                model = request.model
               )
               // Thinking-reserved Message id (if a prior `ThinkingDelta`
               // allocated one) — passed to `tool.execute` so atomic content

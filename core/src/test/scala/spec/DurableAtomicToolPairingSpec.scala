@@ -75,7 +75,7 @@ class DurableAtomicToolPairingSpec extends AsyncWordSpec with AsyncTaskSpec with
     val conv   = Conversation(topics = TestTopicStack, _id = convId)
     val request = ConversationRequest(
       conversationId     = convId,
-      modelId            = modelId,
+      model            = TestSigil.testModel(modelId),
       instructions       = Instructions(),
       turnInput          = TurnInput(conversationId = convId),
       currentMode        = ConversationMode,

@@ -56,7 +56,7 @@ trait AbstractProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
     ): ContextFrame)
     val request = ConversationRequest(
       conversationId = conversationId,
-      modelId = modelId,
+      model = TestSigil.testModel(modelId),
       instructions = Instructions(),
       turnInput = TurnInput(conversationId = conversationId, frames = frames),
       currentMode = currentMode,

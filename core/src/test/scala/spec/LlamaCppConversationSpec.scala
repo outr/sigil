@@ -16,6 +16,7 @@ class LlamaCppConversationSpec extends AbstractConversationSpec {
     CachedProviderFixtures.wrap(this, LlamaCppProvider(TestSigil, TestSigil.llamaCppHost))
 
   override protected def modelId: Id[Model] = Model.id("qwen3.5-9b-q4_k_m")
+    TestSigil.testModel(modelId)
 
   // Qwen3's template defaults thinking ON; under a 4000-token budget the
   // chain-of-thought eats the response and tool calls truncate. Off makes

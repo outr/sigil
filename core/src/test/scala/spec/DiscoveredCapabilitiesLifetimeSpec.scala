@@ -43,7 +43,7 @@ class DiscoveredCapabilitiesLifetimeSpec extends AsyncWordSpec with AsyncTaskSpe
   private def requestWith(discovered: Map[String, DiscoveredCapability]): ConversationRequest =
     ConversationRequest(
       conversationId         = Conversation.id("disc-cap-lifetime"),
-      modelId                = modelId,
+      model                = TestSigil.testModel(modelId),
       instructions           = Instructions(),
       turnInput              = TurnInput(conversationId = Conversation.id("disc-cap-lifetime")),
       currentMode            = ConversationMode,
@@ -77,7 +77,8 @@ class DiscoveredCapabilitiesLifetimeSpec extends AsyncWordSpec with AsyncTaskSpe
         sigil        = TestSigil,
         chain        = List(TestUser, TestAgent),
         conversation = conv,
-        turnInput    = TurnInput(conversationId = convId)
+        turnInput    = TurnInput(conversationId = convId),
+        model = TestSigil.defaultTestModel
       )
     }
   }

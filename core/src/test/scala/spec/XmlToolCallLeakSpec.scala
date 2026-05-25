@@ -43,6 +43,7 @@ class XmlToolCallLeakSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "xml-leak-model")
+  TestSigil.testModel(modelId)
 
   "XmlToolCallSanitizer (sigil bug #225 — layer 2 unit)" should {
 

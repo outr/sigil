@@ -22,6 +22,7 @@ class LlamaCppDispatcherSpec extends AbstractDispatcherSpec {
   override protected val provider: Task[Provider] = LlamaCppProvider(TestSigil, TestSigil.llamaCppHost).singleton
 
   override protected def modelId: Id[Model] = Model.id("qwen3.5-9b-q4_k_m")
+  TestSigil.testModel(modelId)
 
   override def run(testName: Option[String], args: Args): Status =
     LiveProbe.requireLiveEnabled(this).getOrElse(super.run(testName, args))

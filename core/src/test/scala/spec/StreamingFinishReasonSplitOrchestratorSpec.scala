@@ -84,7 +84,7 @@ class StreamingFinishReasonSplitOrchestratorSpec extends AsyncWordSpec with Asyn
     val provider = new SplitFinishProvider
     val request = ConversationRequest(
       conversationId     = convId,
-      modelId            = modelId,
+      model            = TestSigil.testModel(modelId),
       instructions       = Instructions(),
       turnInput          = TurnInput(conversationId = convId),
       currentMode        = ConversationMode,

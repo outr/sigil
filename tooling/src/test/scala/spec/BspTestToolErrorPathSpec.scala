@@ -67,7 +67,8 @@ class BspTestToolErrorPathSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       sigil        = sigil,
       chain        = List(TestCallerId("caller-1")),
       conversation = Conversation(topics = List(topic), _id = convId),
-      turnInput    = TurnInput(conversationId = convId)
+      turnInput    = TurnInput(conversationId = convId),
+      model = TestSigil.defaultTestModel
     )
   }
 

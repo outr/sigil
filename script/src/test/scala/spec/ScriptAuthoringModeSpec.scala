@@ -67,7 +67,8 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         topics = List(TopicEntry(topic._id, topic.label, topic.summary)),
         _id = convId
       ),
-      turnInput = TurnInput(conversationId = convId)
+      turnInput = TurnInput(conversationId = convId),
+      model = TestSigil.defaultTestModel
     )
   }
 

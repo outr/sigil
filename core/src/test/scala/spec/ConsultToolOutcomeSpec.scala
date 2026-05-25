@@ -34,6 +34,7 @@ class ConsultToolOutcomeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "consult-outcome-model")
+  TestSigil.testModel(modelId)
 
   case class ProbeInput(answer: String = "") extends ToolInput derives RW
   ToolInput.register(RW.static(ProbeInput()))

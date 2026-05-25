@@ -21,6 +21,7 @@ class LLMRerankerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "reranker-model")
+  TestSigil.testModel(modelId)
 
   TestSigil.cache.replace(List(Model(
     canonicalSlug = "test/reranker-model",

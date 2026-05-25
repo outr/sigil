@@ -46,6 +46,7 @@ class PerTurnExtractorBoundarySpec extends AsyncWordSpec with AsyncTaskSpec with
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "per-turn-extractor-model")
+  TestSigil.testModel(modelId)
 
   /** Counts every extractor call so the spec can prove the fix
     * collapses N per-iteration fires into exactly one. */

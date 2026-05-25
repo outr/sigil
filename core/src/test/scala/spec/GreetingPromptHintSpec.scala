@@ -31,7 +31,7 @@ class GreetingPromptHintSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   private def buildRequest(isGreeting: Boolean): ConversationRequest =
     ConversationRequest(
       conversationId     = Conversation.id("greeting-test"),
-      modelId            = modelId,
+      model            = TestSigil.testModel(modelId),
       instructions       = Instructions(),
       turnInput          = TurnInput(conversationId = Conversation.id("greeting-test")),
       currentMode        = ConversationMode,

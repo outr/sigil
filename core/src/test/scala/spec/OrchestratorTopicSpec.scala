@@ -100,7 +100,7 @@ class OrchestratorTopicSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
     TestSigil.setProvider(Task.pure(stubProvider))
     val request = ConversationRequest(
       conversationId = convId,
-      modelId = modelId,
+      model = TestSigil.testModel(modelId),
       instructions = Instructions(),
       turnInput = TurnInput(conversationId = viewConvId),
       currentMode = ConversationMode,

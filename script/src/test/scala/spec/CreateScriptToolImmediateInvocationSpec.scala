@@ -49,7 +49,8 @@ class CreateScriptToolImmediateInvocationSpec extends AsyncWordSpec with AsyncTa
       sigil = TestScriptSigil,
       chain = List(TestScriptUser, TestScriptAgent),
       conversation = conv.copy(currentMode = currentMode),
-      turnInput = TurnInput(conversationId = convId)
+      turnInput = TurnInput(conversationId = convId),
+      model = TestSigil.defaultTestModel
     )
 
   private def createTool(name: String): Task[Unit] =

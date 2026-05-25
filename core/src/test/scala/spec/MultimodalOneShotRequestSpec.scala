@@ -44,7 +44,7 @@ class MultimodalOneShotRequestSpec extends AnyWordSpec with Matchers {
 
     "carry an image alongside text into the OpenAI Responses payload" in {
       val req = OneShotRequest(
-        modelId      = modelId,
+        model      = TestSigil.testModel(modelId),
         systemPrompt = "You describe images.",
         userPrompt   = "",
         userContent  = Vector(
@@ -65,7 +65,7 @@ class MultimodalOneShotRequestSpec extends AnyWordSpec with Matchers {
 
     "fall back to userPrompt when userContent is empty (text-only legacy path)" in {
       val req = OneShotRequest(
-        modelId      = modelId,
+        model      = TestSigil.testModel(modelId),
         systemPrompt = "Concise.",
         userPrompt   = "What is two plus two?"
       )
@@ -77,7 +77,7 @@ class MultimodalOneShotRequestSpec extends AnyWordSpec with Matchers {
 
     "render structured ResponseContent (Code / Markdown) as text content blocks" in {
       val req = OneShotRequest(
-        modelId      = modelId,
+        model      = TestSigil.testModel(modelId),
         systemPrompt = "Echo my code.",
         userPrompt   = "",
         userContent  = Vector(

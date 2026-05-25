@@ -33,7 +33,13 @@ import sigil.tool.{Tool, ToolInput}
  *                       per invocation; never persisted.
  */
 case class ConversationRequest(conversationId: Id[Conversation],
-                               modelId: Id[Model],
+                               /** Sigil #277 — required Model record, not
+                                 * `Id[Model]`. Resolved from
+                                 * [[sigil.cache.ModelRegistry]] at the runtime
+                                 * boundary (`Sigil.runAgentLoop`); unregistered
+                                 * ids throw [[UnregisteredModelException]]
+                                 * before this carrier is constructed. */
+                               model: Model,
                                instructions: Instructions,
                                turnInput: TurnInput,
                                currentMode: Mode,

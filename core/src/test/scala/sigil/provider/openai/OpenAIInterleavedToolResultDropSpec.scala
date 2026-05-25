@@ -88,7 +88,7 @@ class OpenAIInterleavedToolResultDropSpec extends AsyncWordSpec with AsyncTaskSp
         body <- {
           val req = ConversationRequest(
             conversationId     = convId,
-            modelId            = modelId,
+            model            = TestSigil.testModel(modelId),
             instructions       = Instructions(),
             turnInput          = TurnInput(conversationId = convId, frames = frames),
             currentMode        = ConversationMode,
@@ -167,7 +167,7 @@ class OpenAIInterleavedToolResultDropSpec extends AsyncWordSpec with AsyncTaskSp
         body <- {
           val req = ConversationRequest(
             conversationId     = convId,
-            modelId            = modelId,
+            model            = TestSigil.testModel(modelId),
             instructions       = Instructions(),
             turnInput          = TurnInput(conversationId = convId, frames = frames),
             currentMode        = ConversationMode,

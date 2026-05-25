@@ -23,7 +23,8 @@ class EditAtRangeToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       sigil        = TestSigil,
       chain        = List(TestUser),
       conversation = sigil.conversation.Conversation(topics = TestTopicStack),
-      turnInput    = sigil.conversation.TurnInput(conversationId = sigil.conversation.Conversation.id("editrange"))
+      turnInput    = sigil.conversation.TurnInput(conversationId = sigil.conversation.Conversation.id("editrange")),
+      model = TestSigil.defaultTestModel
     )
 
   private def edit(ctx: sigil.tool.fs.FileSystemContext, in: EditAtRangeInput) =

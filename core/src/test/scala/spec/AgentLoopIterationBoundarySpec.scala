@@ -44,6 +44,7 @@ class AgentLoopIterationBoundarySpec extends AsyncWordSpec with AsyncTaskSpec wi
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "iteration-boundary-model")
+  TestSigil.testModel(modelId)
 
   /** Two-iteration provider: first call emits `change_mode` (a
     * non-terminal tool call that doesn't satisfy `userVisibleSeen`,

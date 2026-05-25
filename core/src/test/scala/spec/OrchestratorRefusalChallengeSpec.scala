@@ -33,6 +33,7 @@ class OrchestratorRefusalChallengeSpec extends AsyncWordSpec with AsyncTaskSpec 
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "refusal-challenge")
+  TestSigil.testModel(modelId)
 
   /** Emits a single atomic `respond` whose content is configurable.
     * Records nothing — the spec inspects SigilDB.events directly. */

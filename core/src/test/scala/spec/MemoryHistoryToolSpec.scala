@@ -31,7 +31,8 @@ class MemoryHistoryToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       sigil = TestSigil,
       chain = List(TestUser, TestAgent),
       conversation = Conversation(topics = TestTopicStack, _id = c),
-      turnInput = TurnInput(conversationId = viewConvId)
+      turnInput = TurnInput(conversationId = viewConvId),
+      model = TestSigil.defaultTestModel
     )
   }
 

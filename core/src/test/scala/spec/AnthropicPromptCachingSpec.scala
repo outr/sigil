@@ -40,7 +40,7 @@ class AnthropicPromptCachingSpec extends AnyWordSpec with Matchers {
   private def requestFor(input: TurnInput): ProviderRequest =
     ConversationRequest(
       conversationId = conversationId,
-      modelId = Model.id("anthropic", "claude-haiku-4-5"),
+      model = TestSigil.testModel(Model.id("anthropic", "claude-haiku-4-5")),
       instructions = Instructions(),
       turnInput = input,
       currentMode = ConversationMode,

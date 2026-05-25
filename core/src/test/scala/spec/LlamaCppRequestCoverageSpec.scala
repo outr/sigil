@@ -18,6 +18,7 @@ class LlamaCppRequestCoverageSpec extends AbstractRequestCoverageSpec {
   override protected def providerInstance: Provider =
     LlamaCppProvider(TestSigil.llamaCppHost, Nil, TestSigil)
   override protected def modelId: Id[Model] = Model.id("test", "model")
+    TestSigil.testModel(modelId)
 
   "LlamaCppProvider wire-specific coverage" should {
     "forward topP from GenerationSettings as top_p on the wire" in {

@@ -48,7 +48,7 @@ class OpenAIImageGenerationSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       )
       val request = ConversationRequest(
         conversationId = convId,
-        modelId = Model.id("openai", "gpt-5.4-nano"),
+        model = TestSigil.testModel(Model.id("openai", "gpt-5.4-nano")),
         instructions = Instructions(),
         turnInput = TurnInput(view),
         currentMode = ConversationMode,

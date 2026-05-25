@@ -83,7 +83,7 @@ class OrchestratorRespondFamilyEmissionSpec extends AsyncWordSpec with AsyncTask
     val viewConvId = convId
     val request = ConversationRequest(
       conversationId     = convId,
-      modelId            = modelId,
+      model            = TestSigil.testModel(modelId),
       instructions       = Instructions(),
       turnInput          = TurnInput(conversationId = viewConvId),
       currentMode        = ConversationMode,

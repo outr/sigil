@@ -49,7 +49,7 @@ case object NoResponseTool extends RespondFamilyTool {
           topicId        = context.conversation.currentTopicId,
           content        = Vector(ResponseContent.Markdown(reason)),
           state          = EventState.Complete,
-          modelId        = context.modelId
+          modelId        = Some(context.modelId)
         )).map(_ => ToolResult.Success(TextToolOutput(reason)))
       case _ =>
         Task.pure(ToolResult.Success(TextToolOutput("")))

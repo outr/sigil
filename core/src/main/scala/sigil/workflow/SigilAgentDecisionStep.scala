@@ -86,6 +86,10 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
     SigilAgentDecisionStep.resolveTools(host, input.toolNames).flatMap { workerTools =>
       val toolsForRequest = (workerTools :+ sigil.tool.util.CompleteTaskTool).toVector
       host.providerFor(modelId, Nil).flatMap { provider =>
+        // Sigil #277 — resolve the worker's model id at the boundary.
+        val resolvedModel = host.cache.find(modelId).getOrElse(
+          throw new sigil.provider.UnregisteredModelException(modelId, host.cache.all.map(_._id))
+        )
         val answersFromParent = SigilAgentDecisionStep.extractParentAnswers(workflow)
         val systemPrompt = SigilAgentDecisionStep.buildSystemPrompt(input)
         val userPrompt   = SigilAgentDecisionStep.buildUserPrompt(input, answersFromParent)
@@ -99,7 +103,7 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
         // covers the worst-case thinking budget plus a multi-paragraph
         // summary.
         val request = OneShotRequest(
-          modelId            = modelId,
+          model              = resolvedModel,
           systemPrompt       = systemPrompt,
           userPrompt         = userPrompt,
           generationSettings = GenerationSettings(outputTokenCap = OutputTokenCap.Below(2000)),

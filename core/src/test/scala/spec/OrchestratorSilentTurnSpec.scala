@@ -39,6 +39,7 @@ class OrchestratorSilentTurnSpec extends AsyncWordSpec with AsyncTaskSpec with M
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "model")
+  TestSigil.testModel(modelId)
 
   /** Provider that's silent on the first call, then emits a respond
     * on the second call (the forced-synthesis iteration). */

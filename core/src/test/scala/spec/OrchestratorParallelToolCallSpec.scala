@@ -76,7 +76,7 @@ class OrchestratorParallelToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
     val viewConvId = convId
     val request = ConversationRequest(
       conversationId     = convId,
-      modelId            = modelId,
+      model            = TestSigil.testModel(modelId),
       instructions       = Instructions(),
       turnInput          = TurnInput(conversationId = viewConvId),
       currentMode        = ConversationMode,

@@ -60,6 +60,7 @@ class ReservedTopicLabelsSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   }
 
   private val modelId: Id[Model] = Model.id("test", "topic-classifier")
+  TestSigil.testModel(modelId)
   private val current = TopicEntry(
     id      = sigil.conversation.Topic.id("topic-current"),
     label   = "Workspace setup",

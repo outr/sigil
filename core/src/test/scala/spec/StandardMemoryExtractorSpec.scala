@@ -24,6 +24,7 @@ class StandardMemoryExtractorSpec extends AsyncWordSpec with AsyncTaskSpec with 
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "extractor-model")
+  TestSigil.testModel(modelId)
 
   TestSigil.cache.replace(List(Model(
     canonicalSlug = "test/extractor-model",

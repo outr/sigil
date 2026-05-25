@@ -135,10 +135,10 @@ case class AnthropicProvider(apiKey: String,
     *     model's max and emit a scribe warning — a stale `Below(64000)`
     *     against a 32K-output model degrades gracefully rather than
     *     producing an Anthropic wire reject. */
-  private def resolveMaxTokens(modelId: lightdb.id.Id[_root_.sigil.db.Model],
-                               strippedModelName: String,
+  private def resolveMaxTokens(model: _root_.sigil.db.Model,
                                cap: OutputTokenCap): Int = {
-    val registryMax = sigil.cache.find(modelId).flatMap(_.topProvider.maxCompletionTokens).map(_.toInt)
+    val strippedModelName = Anthropic.stripProviderPrefix(model._id.value)
+    val registryMax = model.topProvider.maxCompletionTokens.map(_.toInt)
     val resolvedMax = registryMax
       .orElse(Anthropic.KnownMaxCompletionTokens.get(strippedModelName))
       .getOrElse(Anthropic.SafeFallbackMaxTokens)
@@ -157,7 +157,7 @@ case class AnthropicProvider(apiKey: String,
 
   private def buildBody(input: ProviderCall): Json = {
     val modelName = Anthropic.stripProviderPrefix(input.modelId.value)
-    val maxTokens = resolveMaxTokens(input.modelId, modelName, input.generationSettings.effectiveCap)
+    val maxTokens = resolveMaxTokens(input.model, input.generationSettings.effectiveCap)
 
     val caching = cachingEnabledFor(input)
     val messages = renderMessages(input.messages, caching)

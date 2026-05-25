@@ -67,7 +67,7 @@ class OpenAICallIdRoundtripSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   private def turn1Request(convId: Id[Conversation]): ConversationRequest =
     ConversationRequest(
       conversationId     = convId,
-      modelId            = modelId,
+      model            = TestSigil.testModel(modelId),
       instructions       = Instructions(),
       turnInput          = TurnInput(conversationId = convId, frames = Vector(
         sigil.conversation.ContextFrame.Text(

@@ -82,7 +82,8 @@ class ToolResultEnvelopeSpec extends AsyncWordSpec with AsyncTaskSpec with Match
         sigil        = TestSigil,
         chain        = List(TestUser),
         conversation = Conversation(topics = TestTopicStack, participants = Nil, _id = Conversation.id("envelope-spec")),
-        turnInput    = ti
+        turnInput    = ti,
+        model = TestSigil.defaultTestModel
       )
     }
 

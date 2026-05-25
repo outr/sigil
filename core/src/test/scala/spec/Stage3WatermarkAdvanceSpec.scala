@@ -38,6 +38,7 @@ class Stage3WatermarkAdvanceSpec extends AsyncWordSpec with AsyncTaskSpec with M
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "watermark-model")
+  TestSigil.testModel(modelId)
   private val topic = TopicEntry(sigil.conversation.Topic.id("t"), label = "t", summary = "t")
 
   // Tiny model context so the budget gate trips into stage-3 with

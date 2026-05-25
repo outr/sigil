@@ -62,7 +62,7 @@ class RetryAfterReasoningSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   }
 
   private def oneShot: OneShotRequest = OneShotRequest(
-    modelId            = modelId,
+    model            = TestSigil.testModel(modelId),
     systemPrompt       = "test-system",
     userPrompt         = "test-user",
     generationSettings = GenerationSettings()

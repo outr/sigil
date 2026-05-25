@@ -37,7 +37,8 @@ class FrameworkWorkflowCancellationSpec extends AsyncWordSpec with AsyncTaskSpec
       sigil = TestSigil,
       chain = List(TestUser, TestAgent),
       conversation = conv,
-      turnInput = TurnInput(ConversationView(conversationId = convId))
+      turnInput = TurnInput(ConversationView(conversationId = convId)),
+      model = TestSigil.defaultTestModel
     )
   }
 

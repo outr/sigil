@@ -47,7 +47,8 @@ class CancelToolValidationSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       sigil        = TestSigil,
       chain        = List(TestUser, TestAgent),
       conversation = conv,
-      turnInput    = TurnInput(conversationId = conv.id)
+      turnInput    = TurnInput(conversationId = conv.id),
+      model = TestSigil.defaultTestModel
     )
 
   /** Run `cancel` and return the framework result signals the tool's

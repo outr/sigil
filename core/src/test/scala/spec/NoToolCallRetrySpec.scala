@@ -38,6 +38,7 @@ class NoToolCallRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "no-toolcall-retry")
+  TestSigil.testModel(modelId)
 
   /** Records each [[ProviderCall]] so the spec can inspect the roster
     * the framework sent on every turn. */

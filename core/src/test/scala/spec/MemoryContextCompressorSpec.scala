@@ -27,6 +27,7 @@ class MemoryContextCompressorSpec extends AsyncWordSpec with AsyncTaskSpec with 
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "model")
+  TestSigil.testModel(modelId)
 
   // Seed a Model record so curator / downstream code can resolve it.
   TestSigil.cache.replace(List(Model(

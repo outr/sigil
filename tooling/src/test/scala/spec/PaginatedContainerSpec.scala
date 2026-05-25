@@ -60,7 +60,8 @@ class PaginatedContainerSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       sigil               = DispatchTestSigil,
       chain               = List(DispatchTestUser),
       conversation        = conv,
-      turnInput           = TurnInput(ConversationView(conversationId = conv._id))
+      turnInput           = TurnInput(ConversationView(conversationId = conv._id)),
+      model = TestSigil.defaultTestModel
     )
 
   /** Persist a synthetic container by seeding `ToolOutputNode`

@@ -59,7 +59,7 @@ class DigitalOceanKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
     reasoning: ReasoningMode,
     maxTokens: Int = 400
   ): ProviderCall = ProviderCall(
-    modelId      = modelId,
+    model      = TestSigil.testModel(modelId),
     system       = system,
     messages     = Vector(ProviderMessage.User(Vector(MessageContent.Text(userMessage)))),
     tools        = tools,
@@ -216,7 +216,7 @@ class DigitalOceanKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       // a typed tool call against it.
       skipUnlessLive()
       val pc = ProviderCall(
-        modelId      = modelId,
+        model      = TestSigil.testModel(modelId),
         system       = "Reply via the `respond` tool.",
         messages     = Vector(
           ProviderMessage.User(Vector(MessageContent.Text("My favorite color is blue."))),

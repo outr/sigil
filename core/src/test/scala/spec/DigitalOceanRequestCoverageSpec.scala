@@ -9,6 +9,7 @@ class DigitalOceanRequestCoverageSpec extends AbstractRequestCoverageSpec {
   override protected def providerInstance: Provider =
     DigitalOceanProvider(apiKey = "sk-test-placeholder", sigilRef = TestSigil)
   override protected def modelId: Id[Model] = Model.id(DigitalOcean.Provider, "kimi-k2.5")
+    TestSigil.testModel(modelId)
 
   "tear down" should {
     "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)

@@ -49,6 +49,7 @@ class RunawayAttributionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   }
 
   private val modelId: Id[Model] = Model.id("test", "runaway-attribution")
+  TestSigil.testModel(modelId)
 
   /** Records each ProviderCall so the spec can inspect generation
     * settings used per turn. */

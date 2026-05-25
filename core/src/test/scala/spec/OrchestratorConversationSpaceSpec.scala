@@ -93,7 +93,7 @@ class OrchestratorConversationSpaceSpec extends AsyncWordSpec with AsyncTaskSpec
       )
       val request = ConversationRequest(
         conversationId     = convId,
-        modelId            = Model.id("test", "model"),
+        model            = TestSigil.testModel(Model.id("test", "model")),
         instructions       = Instructions(),
         turnInput          = TurnInput(view),
         currentMode        = ConversationMode,

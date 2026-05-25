@@ -47,7 +47,8 @@ class ScriptToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
         topics = List(TopicEntry(topic._id, topic.label, topic.summary)),
         _id = convId
       ),
-      turnInput = TurnInput(conversationId = viewConvId)
+      turnInput = TurnInput(conversationId = viewConvId),
+      model = TestSigil.defaultTestModel
     )
   }
 

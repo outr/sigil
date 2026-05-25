@@ -31,6 +31,7 @@ class AgentInitiatedTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "agent-initiated")
+  TestSigil.testModel(modelId)
 
   /** Capture the `ProviderCall.messages` passed in on the provider's
     * `call` so the spec can assert the wire-bound messages directly. */
@@ -105,7 +106,7 @@ class OneShotRequestGuardSpec extends AnyWordSpec with Matchers {
 
     "construct successfully when userPrompt is non-empty" in {
       val r = OneShotRequest(
-        modelId = Model.id("t", "m"),
+        model = TestSigil.testModel(Model.id("t", "m")),
         systemPrompt = "sys",
         userPrompt = "do the thing"
       )
@@ -114,7 +115,7 @@ class OneShotRequestGuardSpec extends AnyWordSpec with Matchers {
 
     "construct successfully when userContent is non-empty (multimodal)" in {
       val r = OneShotRequest(
-        modelId = Model.id("t", "m"),
+        model = TestSigil.testModel(Model.id("t", "m")),
         systemPrompt = "sys",
         userPrompt = "",
         userContent = Vector(_root_.sigil.tool.model.ResponseContent.Text("the content"))
@@ -125,7 +126,7 @@ class OneShotRequestGuardSpec extends AnyWordSpec with Matchers {
     "reject construction when both userPrompt and userContent are empty" in {
       val ex = intercept[IllegalArgumentException] {
         OneShotRequest(
-          modelId = Model.id("t", "m"),
+          model = TestSigil.testModel(Model.id("t", "m")),
           systemPrompt = "sys",
           userPrompt = "",
           userContent = Vector.empty

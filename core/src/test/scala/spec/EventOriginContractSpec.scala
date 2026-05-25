@@ -330,7 +330,7 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
       )
       val req: ProviderRequest = ConversationRequest(
         conversationId = conversationId,
-        modelId = Model.id("openai", "gpt-4o-mini"),
+        model = TestSigil.testModel(Model.id("openai", "gpt-4o-mini")),
         instructions = Instructions(),
         turnInput = TurnInput(view),
         currentMode = ConversationMode,

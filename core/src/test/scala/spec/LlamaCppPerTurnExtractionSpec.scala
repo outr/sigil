@@ -27,6 +27,7 @@ class LlamaCppPerTurnExtractionSpec extends AsyncWordSpec with AsyncTaskSpec wit
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id(sigil.provider.llamacpp.LlamaCpp.Provider, "qwen3.5-9b-q4_k_m")
+  TestSigil.testModel(modelId)
 
   TestSigil.cache.replace(List(Model(
     canonicalSlug = s"${sigil.provider.llamacpp.LlamaCpp.Provider}/qwen3.5-9b-q4_k_m",

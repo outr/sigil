@@ -62,6 +62,7 @@ class NonTerminalToolLoopSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
   }
 
   private val modelId: Id[Model] = Model.id("test", "non-terminal-loop")
+  TestSigil.testModel(modelId)
 
   /** Provider that emits a `change_mode` call per invocation — a
     * non-terminal tool, so the agent loop must rely on the

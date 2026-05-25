@@ -30,6 +30,7 @@ class DefaultComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with Matche
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "default-complexity-model")
+  TestSigil.testModel(modelId)
 
   private def freshConv(label: String): Task[Conversation] = {
     val conv = Conversation(topics = TestTopicStack, _id = Conversation.id(s"$label-${rapid.Unique()}"))
@@ -41,7 +42,8 @@ class DefaultComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with Matche
       sigil = TestSigil,
       chain = List(TestUser),
       conversation = conv,
-      turnInput = sigil.conversation.TurnInput(conversationId = conv._id, frames = Vector.empty)
+      turnInput = sigil.conversation.TurnInput(conversationId = conv._id, frames = Vector.empty),
+      model = TestSigil.defaultTestModel
     )
 
   private def userMessage(conv: Conversation, content: String = ""): Option[Message] =

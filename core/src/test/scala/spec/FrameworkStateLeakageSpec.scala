@@ -44,7 +44,7 @@ class FrameworkStateLeakageSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   private def buildRequest(convId: Id[Conversation]): ConversationRequest =
     ConversationRequest(
       conversationId     = convId,
-      modelId            = modelId,
+      model            = TestSigil.testModel(modelId),
       instructions       = Instructions(),
       turnInput          = TurnInput(conversationId = convId),
       currentMode        = ConversationMode,

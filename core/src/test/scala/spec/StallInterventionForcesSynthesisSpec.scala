@@ -45,6 +45,7 @@ class StallInterventionForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskS
   }
 
   private val modelId: Id[Model] = Model.id("test", "stall-soft-stop")
+  TestSigil.testModel(modelId)
 
   /** Always emits the same `grep` call (identical input + empty
     * output) so `StallDetector.identicalStreak` fires after a few

@@ -6,8 +6,10 @@ import sigil.conversation.{
   ContextFrame, ContextMemory, ContextSummary, Conversation,
   ParticipantProjection, ToolCallState, TopicEntry, Topic, TurnInput
 }
+import lightdb.time.Timestamp
 import sigil.GlobalSpace
 import sigil.conversation.MemorySource
+import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
 import sigil.diagnostics.{RequestProfile, RequestProfileReport, RequestProfiler}
 import sigil.event.Event
 import sigil.information.InformationSummary
@@ -45,6 +47,37 @@ object ProfilerHarness {
   val TopicId: Id[Topic]       = Id("bench-topic")
 
   val DefaultTopic: TopicEntry = TopicEntry(TopicId, "Bench Topic", "Synthetic conversation for context profiling.")
+
+  /** Sigil #277 — synthetic Model record used by harness fixtures.
+    * Carries OpenAI gpt-4o defaults (context length / pricing) so any
+    * profiler heuristic that reads model facts gets representative
+    * numbers without booting a Sigil instance. */
+  val BenchModel: Model = {
+    val now = Timestamp()
+    Model(
+      canonicalSlug = "openai/gpt-4o",
+      huggingFaceId = "",
+      name = "gpt-4o",
+      description = "Synthetic gpt-4o stand-in for context-profile benches.",
+      contextLength = 128000L,
+      architecture = ModelArchitecture(
+        modality = "text+image->text",
+        inputModalities = List("text", "image"),
+        outputModalities = List("text"),
+        tokenizer = "GPT",
+        instructType = None
+      ),
+      pricing = ModelPricing(prompt = BigDecimal("0.0000025"), completion = BigDecimal("0.00001"), webSearch = None, inputCacheRead = None),
+      topProvider = ModelTopProvider(contextLength = Some(128000L), maxCompletionTokens = Some(16384L), isModerated = false),
+      perRequestLimits = None,
+      supportedParameters = Set("temperature", "max_tokens", "top_p", "tools", "tool_choice"),
+      knowledgeCutoff = None,
+      expirationDate = None,
+      links = ModelLinks(details = ""),
+      created = now,
+      _id = Model.id("openai", "gpt-4o")
+    )
+  }
 
   /** A fully-typed dummy ToolInput used by synthetic tools below. */
   case class DummyInput(value: String = "") extends ToolInput derives RW
@@ -144,7 +177,7 @@ object ProfilerHarness {
     )
     sigil.provider.ConversationRequest(
       conversationId = ConvId,
-      modelId = sigil.db.Model.id("openai/gpt-4o"),
+      model = BenchModel,
       instructions = Instructions(),
       turnInput = turn,
       currentMode = mode,

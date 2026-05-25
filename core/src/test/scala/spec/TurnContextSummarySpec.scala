@@ -83,7 +83,8 @@ class TurnContextSummarySpec extends AsyncWordSpec with AsyncTaskSpec with Match
       sigil               = TestSigil,
       chain               = List(testCaller),
       conversation        = conv,
-      turnInput           = TurnInput(conversationId = convId)
+      turnInput           = TurnInput(conversationId = convId),
+      model = TestSigil.defaultTestModel
     )
 
     for {

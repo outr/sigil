@@ -1,9 +1,11 @@
 package sigil.workflow
 
 import lightdb.id.Id
+import lightdb.time.Timestamp
 import rapid.Task
 import sigil.{Sigil, TurnContext}
 import sigil.conversation.{Conversation, TurnInput}
+import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
 import sigil.participant.ParticipantId
 import strider.Workflow
 
@@ -67,10 +69,51 @@ object SyntheticTurnContext {
               sigil = host,
               chain = chain,
               conversation = conv,
-              turnInput = TurnInput(conversationId = convId)
+              turnInput = TurnInput(conversationId = convId),
+              model = syntheticModel(host)
             )
         }
     }
+  }
+
+  /** Pick a registered Model to stamp onto the synthetic context. The
+    * workflow step is responsible for routing its own provider call so
+    * this Model is informational only — tool bodies that consult it
+    * (cost estimation, context-length heuristics) get a real record;
+    * tool bodies that don't are unaffected. Falls back to a placeholder
+    * record when the registry is empty (boot-time workflow firing). */
+  private def syntheticModel(host: Sigil): Model =
+    host.cache.all.headOption.getOrElse(syntheticPlaceholder)
+
+  /** In-memory placeholder used when the model registry hasn't been
+    * populated yet. Carries conservative defaults — short context,
+    * zero pricing — so any tool that does read model facts off the
+    * synthetic context doesn't get wildly wrong numbers. */
+  private lazy val syntheticPlaceholder: Model = {
+    val now = Timestamp()
+    Model(
+      canonicalSlug       = "sigil/synthetic-workflow",
+      huggingFaceId       = "",
+      name                = "synthetic-workflow",
+      description         = "Placeholder Model for synthetic workflow TurnContexts; not an actual provider target.",
+      contextLength       = 0L,
+      architecture        = ModelArchitecture(
+        modality         = "text->text",
+        inputModalities  = List("text"),
+        outputModalities = List("text"),
+        tokenizer        = "Unknown",
+        instructType     = None
+      ),
+      pricing             = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
+      topProvider         = ModelTopProvider(contextLength = None, maxCompletionTokens = None, isModerated = false),
+      perRequestLimits    = None,
+      supportedParameters = Set.empty,
+      knowledgeCutoff     = None,
+      expirationDate      = None,
+      links               = ModelLinks(details = ""),
+      created             = now,
+      _id                 = Model.id("sigil", "synthetic-workflow")
+    )
   }
 
   /** Fallback when no conversation context exists — synthesize a
@@ -93,7 +136,8 @@ object SyntheticTurnContext {
       sigil = host,
       chain = Nil,
       conversation = conv,
-      turnInput = TurnInput(conversationId = convId)
+      turnInput = TurnInput(conversationId = convId),
+      model = syntheticModel(host)
     )
   }
 }

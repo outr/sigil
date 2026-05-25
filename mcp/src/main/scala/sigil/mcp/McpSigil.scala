@@ -150,8 +150,12 @@ final class ProviderSamplingHandler(host: Sigil,
     val maxTokensOpt = params.get("maxTokens").map(_.asInt)
     val settings     = GenerationSettings(temperature = temperature, maxOutputTokens = maxTokensOpt)
 
+    // Sigil #277 — resolve at the boundary.
+    val resolvedModel = host.cache.find(modelId).getOrElse(
+      throw new sigil.provider.UnregisteredModelException(modelId, host.cache.all.map(_._id))
+    )
     val request = OneShotRequest(
-      modelId            = modelId,
+      model              = resolvedModel,
       systemPrompt       = systemPrompt,
       userPrompt         = userPrompt,
       generationSettings = settings

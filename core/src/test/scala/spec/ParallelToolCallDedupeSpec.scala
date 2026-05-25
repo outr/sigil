@@ -81,7 +81,7 @@ class ParallelToolCallDedupeSpec extends AsyncWordSpec with AsyncTaskSpec with M
   private def buildRequest(convId: Id[Conversation]): ConversationRequest =
     ConversationRequest(
       conversationId     = convId,
-      modelId            = Model.id("test", "dedupe-spec-model"),
+      model            = TestSigil.testModel(Model.id("test", "dedupe-spec-model")),
       instructions       = Instructions(),
       turnInput          = TurnInput(conversationId = convId),
       currentMode        = ConversationMode,

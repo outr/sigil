@@ -40,7 +40,8 @@ class CoreToolsSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       sigil = TestSigil,
       chain = List(TestUser, TestAgent),
       conversation = Conversation(topics = TestTopicStack, _id = convId),
-      turnInput = TurnInput(conversationId = viewConvId)
+      turnInput = TurnInput(conversationId = viewConvId),
+      model = TestSigil.defaultTestModel
     )
   }
 

@@ -151,6 +151,7 @@ case object WebResearchMode extends Mode {
  */
 private final class CapturingProvider extends Provider {
   val modelId: Id[Model] = Model.id("capturing-stub")
+  TestSigil.testModel(modelId)
   val callCount: AtomicInteger = new AtomicInteger(0)
   val capturesByConv: ConcurrentHashMap[Id[Conversation], Set[BuiltInTool]] =
     new ConcurrentHashMap()

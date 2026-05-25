@@ -43,6 +43,7 @@ class CompressHierarchicalProgressSpec extends AsyncWordSpec with AsyncTaskSpec 
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "model")
+  TestSigil.testModel(modelId)
 
   TestSigil.cache.replace(List(Model(
     canonicalSlug       = "test/model",

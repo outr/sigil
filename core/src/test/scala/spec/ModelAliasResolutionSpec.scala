@@ -90,7 +90,8 @@ class ModelAliasResolutionSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       sigil        = TestSigil,
       chain        = List(TestUser, TestAgent),
       conversation = conv,
-      turnInput    = TurnInput(conversationId = conv.id)
+      turnInput    = TurnInput(conversationId = conv.id),
+      model = TestSigil.defaultTestModel
     )
 
   /** Build a [[ToolContext]] for the model-resolution helpers, which

@@ -71,7 +71,7 @@ class CachedProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
                       userPrompt: String = "What is 2+2?",
                       tools: Vector[Tool] = Vector.empty): OneShotRequest =
     OneShotRequest(
-      modelId            = modelId,
+      model            = TestSigil.testModel(modelId),
       systemPrompt       = systemPrompt,
       userPrompt         = userPrompt,
       tools              = tools,
@@ -98,7 +98,7 @@ class CachedProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
 
     "hash identically when two semantic-identical ProviderCalls differ only in per-call ids" in {
       val callA = ProviderCall(
-        modelId = modelId,
+        model = TestSigil.testModel(modelId),
         system = "system",
         messages = Vector(
           sigil.provider.ProviderMessage.User("hi"),

@@ -177,7 +177,8 @@ class PerMessageRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         sigil        = TestSigil,
         chain        = List(TestUser),
         conversation = conv,
-        turnInput    = sigil.conversation.TurnInput(conversationId = convId, frames = Vector.empty, participantProjections = Map.empty)
+        turnInput    = sigil.conversation.TurnInput(conversationId = convId, frames = Vector.empty, participantProjections = Map.empty),
+        model = TestSigil.defaultTestModel
       )
       for {
         first  <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, Some(userMsg), ctx)
@@ -217,7 +218,8 @@ class PerMessageRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         content = Vector(ResponseContent.Text("second turn")), state = EventState.Complete)
       val ctx = TurnContext(
         sigil = TestSigil, chain = List(TestUser), conversation = conv,
-        turnInput = sigil.conversation.TurnInput(conversationId = convId, frames = Vector.empty, participantProjections = Map.empty)
+        turnInput = sigil.conversation.TurnInput(conversationId = convId, frames = Vector.empty, participantProjections = Map.empty),
+        model = TestSigil.defaultTestModel
       )
       for {
         _ <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, Some(firstMsg), ctx)
@@ -246,7 +248,8 @@ class PerMessageRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         content = Vector(ResponseContent.Text("any")), state = EventState.Complete)
       val ctx = TurnContext(
         sigil = TestSigil, chain = List(TestUser), conversation = conv,
-        turnInput = sigil.conversation.TurnInput(conversationId = convId, frames = Vector.empty, participantProjections = Map.empty)
+        turnInput = sigil.conversation.TurnInput(conversationId = convId, frames = Vector.empty, participantProjections = Map.empty),
+        model = TestSigil.defaultTestModel
       )
       for {
         result <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, Some(userMsg), ctx)
@@ -277,7 +280,8 @@ class PerMessageRoutingSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
         content = Vector(ResponseContent.Text("simple")), state = EventState.Complete)
       val ctx = TurnContext(
         sigil = TestSigil, chain = List(TestUser), conversation = conv,
-        turnInput = sigil.conversation.TurnInput(conversationId = convId, frames = Vector.empty, participantProjections = Map.empty)
+        turnInput = sigil.conversation.TurnInput(conversationId = convId, frames = Vector.empty, participantProjections = Map.empty),
+        model = TestSigil.defaultTestModel
       )
       for {
         _    <- TestSigil.classifyForRoute(strategy, ConversationWork, conv, Some(userMsg), ctx)

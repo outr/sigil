@@ -28,11 +28,12 @@ class DigitalOceanMessagesProviderSpec extends AsyncWordSpec with AsyncTaskSpec 
   private val convId = Conversation.id("do-messages-spec")
   private val topic  = TopicEntry(sigil.conversation.Topic.id("t"), label = "t", summary = "t")
   private val modelId: Id[Model] = Model.id("anthropic", "anthropic-claude-opus-4")
+  TestSigil.testModel(modelId)
 
   private def baseRequest(model: Id[Model]): ConversationRequest =
     ConversationRequest(
       conversationId     = convId,
-      modelId            = model,
+      model            = TestSigil.testModel(model),
       instructions       = Instructions(),
       turnInput          = TurnInput(conversationId = convId),
       currentMode        = ConversationMode,

@@ -52,7 +52,8 @@ class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         sigil        = TestSigil,
         chain        = List(TestUser, TestAgent),
         conversation = stored,
-        turnInput    = TurnInput(conversationId = stored._id)
+        turnInput    = TurnInput(conversationId = stored._id),
+        model = TestSigil.defaultTestModel
       )
     }
   }

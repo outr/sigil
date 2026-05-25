@@ -1716,6 +1716,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // depend on the tolerant fallback at every read site. No-op
       // when the candidate's id isn't in the registry.
       val canonicalModelId = cache.canonicalIdFor(modelId)
+      // Sigil #277 — resolve the canonical id to a registered Model
+      // record before constructing the request. Cache miss throws
+      // `UnregisteredModelException` here so the failure surfaces at
+      // the turn boundary instead of silently truncating on the wire.
+      val resolvedModel: Model = cache.find(canonicalModelId).getOrElse(
+        throw new sigil.provider.UnregisteredModelException(canonicalModelId, cache.all.map(_._id))
+      )
       // Sigil bug #199 — forced-synthesis is the framework's
       // last-resort "make the model respond" turn. Tool-call already
       // narrowed to the respond family at the orchestrator boundary;
@@ -1739,7 +1746,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         else genSettings
       val request = ConversationRequest(
         conversationId = context.conversation.id,
-        modelId = canonicalModelId,
+        model = resolvedModel,
         instructions = agent.instructions,
         turnInput = context.turnInput,
         currentMode = context.conversation.currentMode,
@@ -5940,17 +5947,23 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // `agent.modelId` triggers aggressive compression that strips
       // context the routed model would have comfortably accepted.
       routedModelId <- resolveRoutedModelId(agent, conv, chain, claimedId)
+      // Sigil #277 — resolve the routed id to a registered Model record.
+      // Cache miss throws UnregisteredModelException at the boundary
+      // (instead of silently falling through per-fact defaults later).
+      routedModel = cache.find(routedModelId).getOrElse(
+                      throw new sigil.provider.UnregisteredModelException(routedModelId, cache.all.map(_._id))
+                    )
       input         <- curate(conv._id, routedModelId, chain)
     } yield {
       val triggers: Stream[Event] = Stream.emits(triggerEvents)
       val ctx = TurnContext(
-        sigil = this,
-        chain = chain,
-        conversation = conv,
-        turnInput = input,
+        sigil               = this,
+        chain               = chain,
+        conversation        = conv,
+        turnInput           = input,
+        model               = routedModel,
         currentAgentStateId = Some(claimedId),
-        routedModelId = Some(routedModelId),
-        isGreeting = isGreeting,
+        isGreeting          = isGreeting,
         discoveredCapabilitiesRef = discoveredCapabilitiesRef
       )
       (ctx, triggers)
@@ -5974,11 +5987,20 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // context override the strategy's classifier implementation
     // entirely; the default classifiers only read userText + the
     // conversation reachable through the stub.
+    //
+    // Sigil #277 — the stub's `model` is the agent's nominal Model
+    // (resolved at the boundary). The routing might escalate to a
+    // different model after the classifier runs, but the nominal is a
+    // sane placeholder for the pre-route phase.
+    val nominalModel = cache.find(agent.modelId).getOrElse(
+      throw new sigil.provider.UnregisteredModelException(agent.modelId, cache.all.map(_._id))
+    )
     val stubCtx = TurnContext(
       sigil               = this,
       chain               = chain,
       conversation        = conv,
       turnInput           = sigil.conversation.TurnInput(sigil.conversation.ConversationView(conversationId = conv._id)),
+      model               = nominalModel,
       currentAgentStateId = Some(claimedId)
     )
     resolveRouting(agent, conv, stubCtx).map(_.modelId)

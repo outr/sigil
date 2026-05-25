@@ -31,6 +31,7 @@ class OpenAIProviderSpec extends AbstractProviderSpec {
   // same reason. Override via env if a specific model is required.
   override protected def modelId: Id[Model] =
     Model.id(sys.env.getOrElse("OPENAI_TEST_MODEL", "openai/gpt-5.4-mini"))
+  TestSigil.testModel(modelId)
 
   override def run(testName: Option[String], args: org.scalatest.Args): org.scalatest.Status =
     OpenAILiveSupport.runGated(this, testName, args) {

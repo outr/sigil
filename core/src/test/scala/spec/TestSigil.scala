@@ -4,12 +4,13 @@ import fabric.*
 import fabric.rw.*
 import lightdb.id.Id
 import profig.Profig
-import rapid.Task
+import rapid.{Stream, Task}
+import sigil.event.Event
 import sigil.{Sigil, TurnContext}
 import sigil.conversation.{ActiveSkillSlot, Conversation, Topic, TopicEntry, TurnInput}
 import sigil.SpaceId
 import sigil.conversation.compression.extract.{MemoryExtractor, StandardMemoryExtractor}
-import sigil.db.Model
+import sigil.db.{Model, ModelArchitecture, ModelLinks, ModelPricing, ModelTopProvider}
 import sigil.embedding.{EmbeddingProvider, NoOpEmbeddingProvider}
 import sigil.information.{InMemoryInformation, Information}
 import sigil.participant.{AgentParticipantId, Participant, ParticipantId}
@@ -192,8 +193,61 @@ object TestSigil extends Sigil {
 
   // ---- hook overrides delegate to refs ----
 
-  override def providerFor(modelId: Id[Model], chain: List[ParticipantId]): Task[Provider] =
+  override def providerFor(modelId: Id[Model], chain: List[ParticipantId]): Task[Provider] = {
+    // Sigil #277 — auto-register a synthetic Model record for any
+    // modelId a spec resolves through the framework boundary. Specs
+    // declare `private val modelId = Model.id("test", "<spec-shape>")`
+    // and never explicitly call `cache.merge`; this fallback keeps
+    // every per-spec id resolvable without changing each spec.
+    if (cache.find(modelId).isEmpty) testModel(modelId)
     providerRef.get().apply()
+  }
+
+  /** Sigil #277 — auto-register an agent's nominal modelId before the
+    * framework's `runAgentTurn` path resolves it against the registry.
+    * Specs declare per-spec model ids that aren't in `knownTestModels`;
+    * registering at this entry-point keeps every per-spec id resolvable
+    * without making each spec explicitly `cache.merge`. */
+  override def process(participant: Participant,
+                       context: TurnContext,
+                       triggers: Stream[Event]): Stream[Signal] = {
+    registerAgentModelIfMissing(participant)
+    super.process(participant, context, triggers)
+  }
+
+  /** Sigil #277 — auto-register every agent participant's modelId on
+    * conversation creation. Specs that go through
+    * [[sigil.Sigil.newConversation]] get every agent's nominal modelId
+    * resolvable at the per-turn boundary without needing to call
+    * [[testModel]] manually. */
+  override def newConversation(createdBy: ParticipantId,
+                               label: String = sigil.conversation.Topic.DefaultLabel,
+                               summary: String = sigil.conversation.Topic.DefaultSummary,
+                               participants: List[Participant] = Nil,
+                               currentMode: Mode = sigil.provider.ConversationMode,
+                               parentConversationId: Option[Id[sigil.conversation.Conversation]] = None,
+                               conversationId: Id[sigil.conversation.Conversation] = sigil.conversation.Conversation.id())
+                              : Task[sigil.conversation.Conversation] = {
+    participants.foreach(registerAgentModelIfMissing)
+    super.newConversation(createdBy, label, summary, participants, currentMode, parentConversationId, conversationId)
+  }
+
+  /** Sigil #277 — auto-register the joining agent's modelId on
+    * `addParticipant` (late-join path). */
+  override def addParticipant(conversationId: Id[sigil.conversation.Conversation],
+                              participant: Participant): Task[sigil.conversation.Conversation] = {
+    registerAgentModelIfMissing(participant)
+    super.addParticipant(conversationId, participant)
+  }
+
+  private def registerAgentModelIfMissing(p: Participant): Unit = p match {
+    case agent: sigil.participant.AgentParticipant =>
+      if (cache.find(agent.modelId).isEmpty) {
+        testModel(agent.modelId)
+        ()
+      }
+    case _ => ()
+  }
 
   override def getInformation(id: Id[Information]): Task[Option[Information]] =
     informationRef.get().get(id)
@@ -384,6 +438,64 @@ object TestSigil extends Sigil {
     * [[sigil.tool.util.LookupTool]]. */
   def information: InMemoryInformation = informationRef.get()
 
+  /** Sigil #277 — the default synthetic Model record used by specs that
+    * don't care about a specific model id. Tests that DO care call
+    * [[testModel]] with their preferred id. */
+  val defaultTestModel: Model = syntheticTestModel(Model.id("test", "model"))
+
+  /** Sigil #277 — pre-seeded synthetic Model records for the test model
+    * ids that ship with the framework's own specs. Each carries
+    * conservative defaults (32K context, zero pricing) so any
+    * cost / budget heuristic that reads the registered Model record
+    * gets representative numbers without coupling specs to a real
+    * upstream catalog. */
+  val knownTestModels: List[Model] = List(
+    defaultTestModel,
+    syntheticTestModel(Model.id("test", "vision-model"))
+  )
+
+  /** Build (and register) a synthetic Model record on demand. Specs
+    * that need a Model with a specific id (e.g. for a routing case
+    * not pre-seeded in [[knownTestModels]]) call this; the record is
+    * persisted into the model cache so subsequent
+    * `sigil.cache.find(id)` calls at the migration boundary succeed. */
+  def registerTestModel(modelId: Id[Model]): Model = {
+    val model = syntheticTestModel(modelId)
+    cache.merge(List(model)).sync()
+    model
+  }
+
+  /** Convenience alias for `cache.find(id).getOrElse(registerTestModel(id))`. */
+  def testModel(modelId: Id[Model]): Model =
+    cache.find(modelId).getOrElse(registerTestModel(modelId))
+
+  private def syntheticTestModel(id: Id[Model]): Model = {
+    val now = lightdb.time.Timestamp()
+    Model(
+      canonicalSlug       = id.value,
+      huggingFaceId       = "",
+      name                = id.value,
+      description         = s"Synthetic test Model fixture for ${id.value}.",
+      contextLength       = 32768L,
+      architecture        = ModelArchitecture(
+        modality         = "text->text",
+        inputModalities  = List("text"),
+        outputModalities = List("text"),
+        tokenizer        = "GPT",
+        instructType     = None
+      ),
+      pricing             = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
+      topProvider         = ModelTopProvider(contextLength = Some(32768L), maxCompletionTokens = Some(8192L), isModerated = false),
+      perRequestLimits    = None,
+      supportedParameters = Set("temperature", "max_tokens", "top_p", "tools", "tool_choice"),
+      knowledgeCutoff     = None,
+      expirationDate      = None,
+      links               = ModelLinks(details = ""),
+      created             = now,
+      _id                 = id
+    )
+  }
+
   /**
    * Initialize the test Sigil with a DB path scoped to the calling test
    * class. With `testGrouping` (one JVM per suite) plus per-suite paths,
@@ -403,6 +515,11 @@ object TestSigil extends Sigil {
     deleteRecursive(dbPath)
     Profig.merge(obj("sigil" -> obj("dbPath" -> str(dbPath.toString))))
     instance.sync()
+    // Sigil #277 — seed the model registry with the synthetic test
+    // model fixtures every spec relies on. The registry is in-memory
+    // (`cache.merge` is a fast Task), so we re-merge per-suite without
+    // racing with anything else.
+    cache.merge(TestSigil.knownTestModels).sync()
     // Per-suite wire log: always write a jsonl file named after this
     // suite, so that when a test fails the HTTP back-and-forth is
     // already on disk for post-mortem inspection. Override the

@@ -105,7 +105,8 @@ class ProxyToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       sigil = TestSigil,
       chain = List(TestUser),
       conversation = conv,
-      turnInput = sigil.conversation.TurnInput(sigil.conversation.ConversationView(conversationId = convId))
+      turnInput = sigil.conversation.TurnInput(sigil.conversation.ConversationView(conversationId = convId)),
+      model = TestSigil.defaultTestModel
     )
   }
 

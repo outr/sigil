@@ -49,7 +49,8 @@ class DispatchWorkersScopePreviewSpec extends AsyncWordSpec with AsyncTaskSpec w
       sigil               = DispatchTestSigil,
       chain               = List(DispatchTestUser),
       conversation        = conv,
-      turnInput           = TurnInput(ConversationView(conversationId = convId))
+      turnInput           = TurnInput(ConversationView(conversationId = convId)),
+      model = TestSigil.defaultTestModel
     )
   }
 

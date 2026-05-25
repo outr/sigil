@@ -51,7 +51,8 @@ class DispatchWorkersActionSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       sigil               = DispatchTestSigil,
       chain               = List(DispatchTestUser),
       conversation        = conv,
-      turnInput           = TurnInput(ConversationView(conversationId = convId))
+      turnInput           = TurnInput(ConversationView(conversationId = convId)),
+      model = TestSigil.defaultTestModel
     )
   }
 

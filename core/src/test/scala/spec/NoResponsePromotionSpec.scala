@@ -38,7 +38,8 @@ class NoResponsePromotionSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         sigil        = TestSigil,
         chain        = List(TestUser, TestAgent),
         conversation = stored,
-        turnInput    = TurnInput(conversationId = stored._id)
+        turnInput    = TurnInput(conversationId = stored._id),
+        model = TestSigil.defaultTestModel
       )
       NoResponseTool.execute(NoResponseInput(reason = reason), ctx, Event.id())
         .toList

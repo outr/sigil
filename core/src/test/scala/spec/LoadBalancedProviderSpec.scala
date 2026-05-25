@@ -62,7 +62,7 @@ class LoadBalancedProviderSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
   }
 
   private val emptyCall: ProviderCall = ProviderCall(
-    modelId = Model.id("test", "model"),
+    model = TestSigil.testModel(Model.id("test", "model")),
     system = "",
     messages = Vector.empty,
     tools = Vector.empty,

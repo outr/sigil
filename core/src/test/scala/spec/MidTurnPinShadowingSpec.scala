@@ -70,7 +70,8 @@ class MidTurnPinShadowingSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       sigil = TestSigil,
       chain = List(TestUser),
       conversation = conv,
-      turnInput = sigil.conversation.TurnInput(conversationId = conv._id, frames = Vector.empty)
+      turnInput = sigil.conversation.TurnInput(conversationId = conv._id, frames = Vector.empty),
+      model = TestSigil.defaultTestModel
     )
 
   private def userMsgFor(conv: Conversation, text: String): Message = Message(

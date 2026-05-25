@@ -73,7 +73,8 @@ class AutonomousConsentBypassSpec extends AsyncWordSpec with AsyncTaskSpec with 
       sigil        = TestSigil,
       chain        = List(TestUser, TestAgent),
       conversation = conv,
-      turnInput    = TurnInput(conversationId = conv._id)
+      turnInput    = TurnInput(conversationId = conv._id),
+      model = TestSigil.defaultTestModel
     )
 
   private def dispatch(input: BypassInput, ctx: TurnContext): Task[List[Signal]] = {

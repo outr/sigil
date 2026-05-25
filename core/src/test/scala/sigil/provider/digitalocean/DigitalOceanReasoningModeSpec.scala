@@ -42,7 +42,7 @@ class DigitalOceanReasoningModeSpec extends AsyncWordSpec with AsyncTaskSpec wit
   private def bodyOf(modelId: Id[Model], mode: ReasoningMode): rapid.Task[String] = {
     val req = ConversationRequest(
       conversationId     = convId,
-      modelId            = modelId,
+      model            = TestSigil.testModel(modelId),
       instructions       = Instructions(),
       turnInput          = TurnInput(conversationId = convId),
       currentMode        = ConversationMode,

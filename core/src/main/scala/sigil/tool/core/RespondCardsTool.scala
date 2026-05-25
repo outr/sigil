@@ -41,6 +41,6 @@ case object RespondCardsTool extends RespondFamilyTool {
       topicId = context.conversation.currentTopicId,
       content = input.cards.map(c => c: sigil.tool.model.ResponseContent),
       state = EventState.Complete,
-      modelId = context.modelId
+      modelId = Some(context.modelId)
     )).map(_ => ToolResult.Success(TextToolOutput("")))
 }

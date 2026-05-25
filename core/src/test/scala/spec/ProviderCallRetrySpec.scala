@@ -33,6 +33,7 @@ class ProviderCallRetrySpec extends AsyncWordSpec with AsyncTaskSpec with Matche
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "retry-spec")
+  TestSigil.testModel(modelId)
 
   /** Records every call's input and (per attempt) the throwable
     * each attempt was instructed to raise. */

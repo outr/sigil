@@ -39,7 +39,8 @@ class RecordConsentValidationSpec extends AsyncWordSpec with AsyncTaskSpec with 
       sigil        = TestSigil,
       chain        = List(TestUser, TestAgent),
       conversation = conv,
-      turnInput    = TurnInput(conversationId = conv._id)
+      turnInput    = TurnInput(conversationId = conv._id),
+      model = TestSigil.defaultTestModel
     )
 
   "record_consent" should {

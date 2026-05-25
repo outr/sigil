@@ -31,7 +31,8 @@ class MoveMemorySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       conversation = conv,
       turnInput = TurnInput(ConversationView(
         conversationId = convId
-      ))
+      )),
+      model = TestSigil.defaultTestModel
     )
   }
 

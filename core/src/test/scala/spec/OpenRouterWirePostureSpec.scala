@@ -40,7 +40,7 @@ class OpenRouterWirePostureSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   private def requestWith(modelId: Id[Model], forced: Boolean): ProviderRequest =
     ConversationRequest(
       conversationId = conversationId,
-      modelId = modelId,
+      model = TestSigil.testModel(modelId),
       instructions = Instructions(),
       turnInput = TurnInput(view),
       currentMode = ConversationMode,

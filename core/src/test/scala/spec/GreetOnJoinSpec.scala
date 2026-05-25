@@ -222,6 +222,7 @@ class GreetOnJoinSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   * cleanly without an LLM round-trip. */
 private object NoOpStubProvider extends Provider {
   val modelId: Id[Model] = Model.id("noop-stub")
+  TestSigil.testModel(modelId)
 
   val callCount: AtomicInteger = new AtomicInteger(0)
   val lastChain = new java.util.concurrent.atomic.AtomicReference[List[ParticipantId]](Nil)

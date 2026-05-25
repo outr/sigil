@@ -47,7 +47,7 @@ class EffortWiringSpec extends AnyWordSpec with Matchers {
   private def requestWith(provider: Provider, modelId: Id[Model], gen: GenerationSettings): ProviderRequest =
     ConversationRequest(
       conversationId = conversationId,
-      modelId = modelId,
+      model = TestSigil.testModel(modelId),
       instructions = Instructions(),
       turnInput = TurnInput(view),
       currentMode = ConversationMode,

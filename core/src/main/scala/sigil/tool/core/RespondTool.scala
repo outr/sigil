@@ -91,7 +91,7 @@ case object RespondTool extends RespondFamilyTool {
     if (sanitized.leakedSpans.nonEmpty) {
       context.sigil.publish(XmlToolCallLeak(
         conversationId     = context.conversation.id,
-        modelId            = context.modelId,
+        modelId            = Some(context.modelId),
         leakedSpanCount    = sanitized.leakedSpans.size,
         firstLeakedExcerpt = sanitized.leakedSpans.head.take(200)
       )).handleError(_ => rapid.Task.unit).startUnit()
@@ -114,7 +114,7 @@ case object RespondTool extends RespondFamilyTool {
           topicId        = context.conversation.currentTopicId,
           content        = blocks,
           disposition    = disposition,
-          modelId        = context.modelId,
+          modelId        = Some(context.modelId),
           _id            = id
         )
       case None =>
@@ -124,7 +124,7 @@ case object RespondTool extends RespondFamilyTool {
           topicId        = context.conversation.currentTopicId,
           content        = blocks,
           disposition    = disposition,
-          modelId        = context.modelId
+          modelId        = Some(context.modelId)
         )
     }
     // The user-visible reply Message and any TopicChange events are
@@ -137,30 +137,26 @@ case object RespondTool extends RespondFamilyTool {
     // call: llama.cpp grammar-constrained, OpenAI strict-mode,
     // Anthropic tool_use, Google functionCall) produces the same
     // TopicChange shape as the streaming-respond branch.
-    val emitAncillary: Task[Unit] = context.modelId match {
-      case None =>
-        context.emit(message)
-      case Some(modelId) =>
-        val userMessage = context.turnInput.frames.reverseIterator.collectFirst {
-          case t: ContextFrame.Text if t.participantId != context.caller => t.content
-        }.getOrElse("")
-        for {
-          topicEvents <- context.sigil.resolveTopicShift(
-            proposedLabel   = input.topicLabel,
-            proposedSummary = input.topicSummary,
-            caller          = context.caller,
-            conversation    = context.conversation,
-            currentTopic    = context.conversation.currentTopic,
-            previousTopics  = context.conversation.previousTopics,
-            modelId         = modelId,
-            chain           = context.chain,
-            userMessage     = userMessage
-          )
-          _ <- context.sigil.updateConversationKeywords(context.conversation.id, input.keywords)
-          _ <- topicEvents.foldLeft(Task.unit)((acc, e) => acc.flatMap(_ => context.emit(e)))
-          _ <- context.emit(message)
-        } yield ()
-    }
+    val userMessage = context.turnInput.frames.reverseIterator.collectFirst {
+      case t: ContextFrame.Text if t.participantId != context.caller => t.content
+    }.getOrElse("")
+    val emitAncillary: Task[Unit] =
+      for {
+        topicEvents <- context.sigil.resolveTopicShift(
+          proposedLabel   = input.topicLabel,
+          proposedSummary = input.topicSummary,
+          caller          = context.caller,
+          conversation    = context.conversation,
+          currentTopic    = context.conversation.currentTopic,
+          previousTopics  = context.conversation.previousTopics,
+          modelId         = context.modelId,
+          chain           = context.chain,
+          userMessage     = userMessage
+        )
+        _ <- context.sigil.updateConversationKeywords(context.conversation.id, input.keywords)
+        _ <- topicEvents.foldLeft(Task.unit)((acc, e) => acc.flatMap(_ => context.emit(e)))
+        _ <- context.emit(message)
+      } yield ()
     emitAncillary.map(_ => ToolResult.Success(TextToolOutput("")))
   }
 }

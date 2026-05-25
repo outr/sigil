@@ -48,6 +48,7 @@ class PostRespondContextSpec extends AsyncWordSpec with AsyncTaskSpec with Match
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "post-respond-model")
+  TestSigil.testModel(modelId)
 
   /** Provider that records ProviderCalls + scripts two iterations:
     *   - Call 1: emit `respond_field` (terminal — settles the loop).

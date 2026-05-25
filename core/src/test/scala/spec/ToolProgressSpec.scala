@@ -41,7 +41,8 @@ class ToolProgressSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       sigil               = TestSigil,
       chain               = List(TestUser),
       conversation        = conv,
-      turnInput           = TurnInput(conversationId = convId)
+      turnInput           = TurnInput(conversationId = convId),
+      model = TestSigil.defaultTestModel
     )
 
     val recorded = new ConcurrentLinkedQueue[Signal]()

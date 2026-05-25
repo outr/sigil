@@ -47,6 +47,7 @@ class RespondEndsTurnSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "ends-turn-model")
+  TestSigil.testModel(modelId)
 
   /** Provider that scripts:
     *   - call 1: respond(endsTurn = false, content = "Let me check…")

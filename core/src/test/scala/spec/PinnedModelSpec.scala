@@ -78,7 +78,8 @@ class PinnedModelSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       sigil        = TestSigil,
       chain        = List(TestUser, TestAgent),
       conversation = conv,
-      turnInput    = TurnInput(conversationId = conv.id)
+      turnInput    = TurnInput(conversationId = conv.id),
+      model = TestSigil.defaultTestModel
     )
 
   "pin_model" should {

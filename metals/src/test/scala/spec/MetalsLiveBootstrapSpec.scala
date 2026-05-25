@@ -255,7 +255,8 @@ class MetalsLiveBootstrapSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
           sigil        = TestMetalsSigil,
           chain        = List(LspToolCallerId(s"caller-${rapid.Unique()}")),
           conversation = conversation,
-          turnInput    = TurnInput(conversationId = convId)
+          turnInput    = TurnInput(conversationId = convId),
+          model = TestSigil.defaultTestModel
         )
 
         def checkpoint(name: String): Task[Unit] = Task(scribe.info(s"[live-spec/tool] $name"))

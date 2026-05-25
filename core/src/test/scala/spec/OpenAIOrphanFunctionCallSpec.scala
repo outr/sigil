@@ -34,7 +34,7 @@ class OpenAIOrphanFunctionCallSpec extends AsyncWordSpec with AsyncTaskSpec with
   private def renderBody(frames: Vector[ContextFrame]): String = {
     val req = ConversationRequest(
       conversationId     = convId,
-      modelId            = Model.id("openai", "gpt-5.4-nano"),
+      model            = TestSigil.testModel(Model.id("openai", "gpt-5.4-nano")),
       instructions       = Instructions(),
       turnInput          = TurnInput(conversationId = convId, frames = frames),
       currentMode        = ConversationMode,

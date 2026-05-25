@@ -25,6 +25,7 @@ class ComplexityChangeEventSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "complexity-change-model")
+  TestSigil.testModel(modelId)
 
   private def freshConv(label: String, pinned: Option[Complexity] = None): Task[Conversation] = {
     val convId = Conversation.id(s"$label-${rapid.Unique()}")
@@ -41,7 +42,8 @@ class ComplexityChangeEventSpec extends AsyncWordSpec with AsyncTaskSpec with Ma
       sigil        = TestSigil,
       chain        = List(TestUser),
       conversation = conv,
-      turnInput    = sigil.conversation.TurnInput(conversationId = conv._id, frames = Vector.empty)
+      turnInput    = sigil.conversation.TurnInput(conversationId = conv._id, frames = Vector.empty),
+      model = TestSigil.defaultTestModel
     )
 
   "Bug #177 — PinComplexityTool emits ComplexityChange" should {

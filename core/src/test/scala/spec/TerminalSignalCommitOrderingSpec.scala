@@ -126,6 +126,7 @@ class TerminalSignalCommitOrderingSpec extends AsyncWordSpec with AsyncTaskSpec 
   * runs exactly one iteration and terminates cleanly. */
 private object Bug255StubProvider extends Provider {
   val modelId: Id[Model] = Model.id("bug255-stub")
+  TestSigil.testModel(modelId)
 
   override def `type`: ProviderType = ProviderType.LlamaCpp
   override def models: List[Model] = Nil

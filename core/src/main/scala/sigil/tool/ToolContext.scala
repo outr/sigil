@@ -51,7 +51,14 @@ final case class ToolContext(turn: TurnContext,
   def chain: List[ParticipantId]              = turn.chain
   def caller: ParticipantId                   = turn.caller
   def conversation: Conversation              = turn.conversation
-  def modelId: Option[Id[Model]]              = turn.modelId
+  /** Sigil #277 — the Model this dispatch's parent turn is operating
+    * against. Always set (it's required on the underlying TurnContext).
+    * Tools read `model.contextLength`, `model.pricing`, etc. directly
+    * off the record; previously they had to round-trip through the
+    * registry via the old `Option[Id[Model]]`. */
+  def model: Model                            = turn.model
+  /** Convenience — `model._id`. */
+  def modelId: Id[Model]                      = turn.modelId
   def turnInput: _root_.sigil.conversation.TurnInput = turn.turnInput
 
   // ---- tool-only side channel ----

@@ -96,7 +96,8 @@ class CurrentModelToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       sigil        = TestSigil,
       chain        = List(TestUser, TestAgent),
       conversation = conv,
-      turnInput    = TurnInput(conversationId = conv.id)
+      turnInput    = TurnInput(conversationId = conv.id),
+      model = TestSigil.defaultTestModel
     )
 
   /** In-memory conversation skeleton — no DB persistence. Adequate for

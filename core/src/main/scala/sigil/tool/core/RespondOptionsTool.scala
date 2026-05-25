@@ -81,7 +81,7 @@ case object RespondOptionsTool extends RespondFamilyTool {
       topicId = context.conversation.currentTopicId,
       content = Vector(block),
       state = EventState.Complete,
-      modelId = context.modelId
+      modelId = Some(context.modelId)
     )).map(_ => ToolResult.Success(TextToolOutput("")))
   }
 }

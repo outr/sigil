@@ -30,6 +30,7 @@ class CuratorPersistedSummariesSpec extends AsyncWordSpec with AsyncTaskSpec wit
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "summaries-model")
+  TestSigil.testModel(modelId)
   private val topic = TopicEntry(sigil.conversation.Topic.id("t"), label = "t", summary = "t")
 
   private val model: Model = Model(

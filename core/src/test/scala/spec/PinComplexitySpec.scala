@@ -37,6 +37,7 @@ class PinComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "pin-complexity-model")
+  TestSigil.testModel(modelId)
 
   private def freshConv(label: String, pinned: Option[Complexity] = None): Task[Conversation] = {
     val convId = Conversation.id(s"$label-${rapid.Unique()}")
@@ -53,7 +54,8 @@ class PinComplexitySpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
       sigil = TestSigil,
       chain = List(TestUser),
       conversation = conv,
-      turnInput = sigil.conversation.TurnInput(conversationId = conv._id, frames = Vector.empty)
+      turnInput = sigil.conversation.TurnInput(conversationId = conv._id, frames = Vector.empty),
+      model = TestSigil.defaultTestModel
     )
 
   "Conversation.pinnedComplexity" should {

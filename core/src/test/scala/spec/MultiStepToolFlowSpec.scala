@@ -51,6 +51,7 @@ class MultiStepToolFlowSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
   TestSigil.setProvider(CachedProviderFixtures.wrap(this, LlamaCppProvider(TestSigil, TestSigil.llamaCppHost)))
 
   private val modelId: Id[Model] = Model.id("qwen3.5-9b-q4_k_m")
+  TestSigil.testModel(modelId)
 
   "Sigil multi-step tool flow" should {
     "fire a data-returning tool, read its result from context, and respond with the value" in {

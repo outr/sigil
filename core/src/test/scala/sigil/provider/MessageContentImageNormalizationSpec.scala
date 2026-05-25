@@ -34,7 +34,7 @@ class MessageContentImageNormalizationSpec extends AsyncWordSpec with AsyncTaskS
 
   private def callWith(content: MessageContent*): ProviderCall =
     ProviderCall(
-      modelId = Model.id("test", "vision-model"),
+      model = TestSigil.testModel(Model.id("test", "vision-model")),
       system = "",
       messages = Vector(ProviderMessage.User(content.toVector)),
       tools = Vector.empty,

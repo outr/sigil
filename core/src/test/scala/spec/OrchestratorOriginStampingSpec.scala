@@ -83,7 +83,7 @@ class OrchestratorOriginStampingSpec extends AsyncWordSpec with AsyncTaskSpec wi
     val conv = Conversation(topics = TestTopicStack, _id = convId)
     val request = ConversationRequest(
       conversationId     = convId,
-      modelId            = Model.id("test", "model"),
+      model            = TestSigil.testModel(Model.id("test", "model")),
       instructions       = Instructions(),
       turnInput          = TurnInput(ConversationView(conversationId = convId)),
       currentMode        = ConversationMode,
