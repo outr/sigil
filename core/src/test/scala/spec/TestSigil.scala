@@ -54,9 +54,53 @@ object TestSigil extends Sigil {
     * `true`. */
   override def loadOpenRouterModels: Boolean = false
 
-  lazy val llamaCppHost: URL = sys.env.get("SIGIL_LLAMACPP_HOST").flatMap(URL.get(_).toOption).getOrElse(
-    Profig("sigil.llamacpp.host").asOr[URL](url"https://llama.voidcraft.ai")
-  )
+  /** Host the LlamaCpp test specs hit. Resolution order:
+    *   1. `SIGIL_LLAMACPP_HOST` env var IF that host accepts a TCP
+    *      connection within the probe window — lets local-dev runs
+    *      against a developer's own llama.cpp server (the default
+    *      `/etc/environment` setting on the maintainer's machine).
+    *   2. `sigil.llamacpp.host` profig key when set.
+    *   3. The framework's stable public test endpoint at
+    *      `https://llama.voidcraft.ai`.
+    *
+    * The fallback (step 3) keeps `test-all.sh` working on any
+    * developer's machine or CI box, regardless of whether a local
+    * llama.cpp happens to be running — previously the env var pointed
+    * at a stale `localhost:8081` and the LlamaCpp specs failed at
+    * provider construction. */
+  lazy val llamaCppHost: URL = {
+    val configured: Option[URL] = sys.env.get("SIGIL_LLAMACPP_HOST")
+      .flatMap(URL.get(_).toOption)
+      .orElse {
+        val path = Profig("sigil.llamacpp.host")
+        if (path.exists()) scala.util.Try(path.as[URL]).toOption else None
+      }
+    val voidcraft: URL = url"https://llama.voidcraft.ai"
+    configured match {
+      case Some(host) if hostReachable(host) => host
+      case Some(stale) =>
+        scribe.warn(s"TestSigil.llamaCppHost: configured host $stale is unreachable; falling back to $voidcraft")
+        voidcraft
+      case None => voidcraft
+    }
+  }
+
+  /** Open a TCP socket to `url`'s host:port with a 1-second timeout.
+    * Used to fast-skip `SIGIL_LLAMACPP_HOST` overrides that point at a
+    * stale local server so test runs don't wait for okhttp's default
+    * connection timeout × N tests. */
+  private def hostReachable(url: URL): Boolean = {
+    val port = url.port
+    val socket = new java.net.Socket()
+    try {
+      socket.connect(new java.net.InetSocketAddress(url.host, port), 1000)
+      true
+    } catch {
+      case _: Throwable => false
+    } finally {
+      scala.util.Try(socket.close())
+    }
+  }
 
   /** Per-conversation workspace overrides for tests that exercise
     * `workspaceFor`-aware code paths (filesystem tools, Metals

@@ -143,6 +143,10 @@ object TestWorkflowSigil extends Sigil with WorkflowSigil {
 
   override def testMode: Boolean = true
 
+  /** Sigil #277 — tests don't need the OpenRouter catalog; rely on
+    * synthetic / provider-merged models. Matches `TestSigil`. */
+  override def loadOpenRouterModels: Boolean = false
+
   override protected def participantIds: List[RW[? <: ParticipantId]] =
     List(RW.static(WorkflowTestUser))
 

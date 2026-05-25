@@ -87,8 +87,13 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
       val toolsForRequest = (workerTools :+ sigil.tool.util.CompleteTaskTool).toVector
       host.providerFor(modelId, Nil).flatMap { provider =>
         // Sigil #277 — resolve the worker's model id at the boundary.
-        val resolvedModel = host.cache.find(modelId).getOrElse(
-          throw new sigil.provider.UnregisteredModelException(modelId, host.cache.all.map(_._id))
+        // Use `findTolerant` (via `canonicalIdFor`) so a bare id like
+        // `qwen3.5-9b-q4_k_m` resolves against the prefixed entry
+        // `llamacpp/qwen3.5-9b-q4_k_m` that `LlamaCppProvider`'s
+        // `cache.merge` registered.
+        val canonicalId = host.cache.canonicalIdFor(modelId)
+        val resolvedModel = host.cache.find(canonicalId).getOrElse(
+          throw new sigil.provider.UnregisteredModelException(canonicalId, host.cache.all.map(_._id))
         )
         val answersFromParent = SigilAgentDecisionStep.extractParentAnswers(workflow)
         val systemPrompt = SigilAgentDecisionStep.buildSystemPrompt(input)
