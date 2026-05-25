@@ -4799,16 +4799,28 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * loop); higher values give the agent more rope. */
   protected def consecutiveNoProgressLimit: Int = 2
 
-  /** Sigil #257 — how many times the agent loop retries with the FULL
-    * tool roster when a turn returns no tool call before falling back
-    * to the respond-only forced synthesis. A no-tool-call response is
-    * usually a transient hiccup — reasoning models in particular drop
-    * the tool call after their reasoning block — and a plain re-prompt
-    * with the roster intact usually self-corrects. Default 1. Setting
-    * to 0 restores the pre-fix behavior (strip the roster to the
-    * respond family on the first miss, which turns one hiccup into a
-    * guaranteed non-answer); higher values tolerate flakier models. */
-  protected def noToolCallRetryLimit: Int = 1
+  /** Sigil #257 / #273 — how many times the agent loop retries with the
+    * FULL tool roster when a turn emits ZERO `tool_use` blocks (genuine
+    * empty response) before falling back to the respond-only forced
+    * synthesis and ultimately raising [[AgentRunawayException]]. A
+    * no-tool-call response is usually a transient hiccup — reasoning
+    * models in particular drop the tool call after their reasoning
+    * block — and a plain re-prompt with the roster intact usually
+    * self-corrects.
+    *
+    * This counter is incremented ONLY when the model produced no
+    * `tool_use` at all. Parse failures, unknown tool names, and other
+    * "tool called, just failed" outcomes flow through the orchestrator's
+    * Tool-role Failure pairing and re-trigger the loop normally — they
+    * burn iterations against [[maxAgentIterations]] (which protects
+    * cost) but do NOT advance toward the runaway throw (which protects
+    * signal — "the model is ignoring tool_choice").
+    *
+    * Default 3 (sigil #273 bump from 1). Setting to 0 restores the
+    * pre-#257 behavior of stripping the roster on the first miss — one
+    * hiccup becomes a guaranteed non-answer. Higher values tolerate
+    * flakier models. */
+  protected def noToolCallRetryLimit: Int = 3
 
   /** Size of the per-participant `recentToolInvocations` rolling
     * window. Older entries fall off the tail. Drives the prompt's
@@ -5439,9 +5451,16 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         s"hit maxAgentIterations ($maxIter) and the forced-synthesis turn at iteration $iteration " +
           s"also failed to call `respond`. Check LLM behavior or raise the cap."
       case ForcedSynthesisReason.NoToolCall =>
-        s"returned without calling any tool at iteration $iteration of cap $maxIter despite " +
-          s"`tool_choice: required`, and the forced-synthesis recovery turn also failed to call " +
-          s"`respond`. Check LLM behavior — the model isn't following tool_choice: required."
+        // Sigil #273 — the narrowed signal: model emitted zero `tool_use`
+        // blocks for `noToolCallRetryLimit + 1` consecutive iterations
+        // despite `tool_choice: required`, and the forced respond-only
+        // retry also produced no tool call. Parse failures / unknown tool
+        // names land elsewhere (Tool-role Failure pairing → normal retry)
+        // and do not trip this path.
+        s"emitted zero `tool_use` blocks across $iteration consecutive iterations (cap $maxIter) despite " +
+          s"`tool_choice: required`, and the forced respond-only recovery turn also produced no tool call. " +
+          "Model is not following the tool-use protocol — verify provider plumbing, `tool_choice` wiring, " +
+          "or downgrade to a model that honors the contract."
       case ForcedSynthesisReason.StallIntervention =>
         s"stalled at iteration $iteration of cap $maxIter (progress-checkpoint intervention) and " +
           s"the forced-synthesis recovery turn also failed to call `respond`. Check LLM behavior."

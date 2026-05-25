@@ -1195,7 +1195,28 @@ object Orchestrator {
           outcome        = Some(ToolOutcome.Failure(reason, recoverable = true)),
           error          = Some(reason)
         )
-        Stream.emits(orphanSettle ++ orphanMessageSettle ++ preludeSignals :+ errorResult)
+        // Sigil #273 — pair the failure with a Tool-role Message so
+        // `TriggerFilter` (`role == MessageRole.Tool` → re-fire) wakes the
+        // agent loop on the next iteration. Without this, only the settling
+        // ToolDelta lands (and ToolDelta isn't an Event subtype, so the
+        // trigger filter ignores it) — the loop treats the turn as "no tool
+        // call" and burns its recovery budget on a forced-synthesis attempt
+        // that knows nothing about the failure. With the Tool-role Message
+        // the model reads the diagnostic on its next turn, corrects its args
+        // (or chooses a different tool / `respond`s), and the runaway only
+        // fires for its real signal: genuinely zero `tool_use` emitted.
+        val errorMessage: Signal = Message(
+          participantId  = caller,
+          conversationId = convId,
+          topicId        = topicId,
+          role           = MessageRole.Tool,
+          content        = Vector(ResponseContent.Text(reason)),
+          state          = EventState.Complete,
+          disposition    = MessageDisposition.Failure(recoverable = true),
+          visibility     = MessageVisibility.Agents,
+          origin         = Some(originId)
+        )
+        Stream.emits(orphanSettle ++ orphanMessageSettle ++ preludeSignals ++ List(errorResult, errorMessage))
     }
   }
 

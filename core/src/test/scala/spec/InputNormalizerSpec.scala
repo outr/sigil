@@ -107,4 +107,84 @@ class InputNormalizerSpec extends AnyWordSpec with Matchers {
       normalised.asObj.value.get("extraField") shouldBe Some(str("ignored"))
     }
   }
+
+  // Sigil #272 — Haiku-style string-encoded scalars. The schema declares
+  // integer / number / boolean; the model emits "168594932069" / "null" /
+  // "true" as quoted strings. Coerce against the declared shape before
+  // fabric's RW rejects the type mismatch.
+  case class ScalarsInput(themeId: Option[Long]      = None,
+                          score:   Option[Double]    = None,
+                          enabled: Option[Boolean]   = None,
+                          page:    Long              = 0L,
+                          ratio:   Double            = 0.0,
+                          active:  Boolean           = false,
+                          name:    String            = "") extends ToolInput derives RW
+
+  "InputNormalizer (sigil #272)" should {
+
+    "coerce string-encoded `\"null\"` to Null for nullable integer fields" in {
+      val raw = obj("themeId" -> str("null"))
+      val normalised = InputNormalizer.normalize(raw, summon[RW[ScalarsInput]].definition)
+      val typed = summon[RW[ScalarsInput]].write(normalised)
+      typed.themeId shouldBe None
+    }
+
+    "coerce string-encoded integer literals to NumInt for integer fields" in {
+      val raw = obj("themeId" -> str("168594932069"), "page" -> str("42"))
+      val normalised = InputNormalizer.normalize(raw, summon[RW[ScalarsInput]].definition)
+      val typed = summon[RW[ScalarsInput]].write(normalised)
+      typed.themeId shouldBe Some(168594932069L)
+      typed.page shouldBe 42L
+    }
+
+    "coerce string-encoded numeric literals to NumDec for number fields" in {
+      val raw = obj("score" -> str("0.85"), "ratio" -> str("1.5"))
+      val normalised = InputNormalizer.normalize(raw, summon[RW[ScalarsInput]].definition)
+      val typed = summon[RW[ScalarsInput]].write(normalised)
+      typed.score shouldBe Some(0.85)
+      typed.ratio shouldBe 1.5
+    }
+
+    "coerce string-encoded booleans (case-insensitive) for boolean fields" in {
+      val raw = obj("enabled" -> str("TRUE"), "active" -> str("false"))
+      val normalised = InputNormalizer.normalize(raw, summon[RW[ScalarsInput]].definition)
+      val typed = summon[RW[ScalarsInput]].write(normalised)
+      typed.enabled shouldBe Some(true)
+      typed.active shouldBe false
+    }
+
+    "leave string fields alone (don't coerce numeric-looking strings on String fields)" in {
+      val raw = obj("name" -> str("12345"))
+      val normalised = InputNormalizer.normalize(raw, summon[RW[ScalarsInput]].definition)
+      val typed = summon[RW[ScalarsInput]].write(normalised)
+      typed.name shouldBe "12345"
+    }
+
+    "leave non-matching string shapes alone so fabric can report the real error" in {
+      val raw = obj("themeId" -> str("not-a-number"))
+      val normalised = InputNormalizer.normalize(raw, summon[RW[ScalarsInput]].definition)
+      // The bad-shape string survives so fabric's RW produces an actionable
+      // error rather than coercing to a wrong value silently.
+      normalised.asObj.value.get("themeId") shouldBe Some(str("not-a-number"))
+    }
+
+    "preserve already-correctly-typed scalars" in {
+      val raw = obj(
+        "themeId" -> num(7L),
+        "score"   -> num(0.5),
+        "enabled" -> bool(true),
+        "page"    -> num(1L),
+        "ratio"   -> num(2.0),
+        "active"  -> bool(false)
+      )
+      val normalised = InputNormalizer.normalize(raw, summon[RW[ScalarsInput]].definition)
+      val typed = summon[RW[ScalarsInput]].write(normalised)
+      typed.themeId shouldBe Some(7L)
+      typed.score shouldBe Some(0.5)
+      typed.enabled shouldBe Some(true)
+      typed.page shouldBe 1L
+      typed.ratio shouldBe 2.0
+      typed.active shouldBe false
+    }
+  }
 }

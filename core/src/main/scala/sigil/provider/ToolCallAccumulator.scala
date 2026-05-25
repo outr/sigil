@@ -243,10 +243,18 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
                   if (violations.isEmpty) ""
                   else s". Constraint violations: ${violations.mkString("; ")}"
                 } catch { case _: Throwable => "" }
+              // Sigil #272 — include the literal JSON the model sent so it
+              // can diff its mistake against the schema summary instead of
+              // guessing what we received. Truncate hard at 500 chars so a
+              // pathologically-large payload doesn't blow up the agent's
+              // context budget on its way to the next iteration.
+              val rawSnippet = s.buf.toString.take(500)
+              val truncated = if (s.buf.length > 500) " (truncated)" else ""
               Vector(ProviderEvent.Error(
                 s"Failed to parse args for tool ${s.toolName}: " +
                   s"$errorClass: $errorMessage$structuralHint. " +
-                  s"Expected shape: $schemaSummary"
+                  s"Expected shape: $schemaSummary. " +
+                  s"You sent$truncated: $rawSnippet"
               ))
           }
         case None =>

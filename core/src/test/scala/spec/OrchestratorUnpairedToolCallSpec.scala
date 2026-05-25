@@ -140,6 +140,51 @@ class OrchestratorUnpairedToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
     }
   }
 
+  /** Provider that opens a tool call then mid-stream errors out — the
+    * shape parse failures (sigil #272) and pre-flight errors take. */
+  private class ErrorProvider(toolName: String, errorMsg: String) extends Provider {
+    override def `type`: ProviderType = ProviderType.LlamaCpp
+    override def models: List[Model] = Nil
+    override protected def sigil: _root_.sigil.Sigil = TestSigil
+    override def httpRequestFor(input: ProviderCall): Task[HttpRequest] =
+      Task.error(new UnsupportedOperationException("no wire"))
+    override def call(input: ProviderCall): Stream[ProviderEvent] = {
+      val cid = CallId("c1")
+      Stream.emits(List(
+        ProviderEvent.ToolCallStart(cid, toolName),
+        ProviderEvent.Error(errorMsg),
+        ProviderEvent.Done(StopReason.ToolCall)
+      ))
+    }
+  }
+
+  "Orchestrator on a ProviderEvent.Error mid-tool-call (sigil #273)" should {
+
+    "emit a paired Tool-role Failure Message so the agent loop re-triggers" in {
+      // Pre-fix the Error branch settled the orphan invoke with a
+      // ToolDelta but emitted no Tool-role event. `TriggerFilter` re-
+      // fires on `role == MessageRole.Tool`, so the agent loop saw no
+      // new trigger and treated the turn as "no tool call" — burning
+      // its recovery budget on a forced-synthesis attempt that knew
+      // nothing about the failure. The fix pairs the orphan settle
+      // with a Tool-role Failure Message carrying the diagnostic so
+      // the model reads it next turn and self-corrects.
+      runWith(new ErrorProvider("create_page",
+                                "Failed to parse args for tool create_page: bad shape"),
+              tools = Vector.empty, "parsefail").map { signals =>
+        val toolMessages = signals.collect {
+          case m: Message if m.role == MessageRole.Tool => m
+        }
+        toolMessages should have size 1
+        val msg = toolMessages.head
+        msg.disposition shouldBe a [MessageDisposition.Failure]
+        msg.failureReason.getOrElse("") should include ("Provider error")
+        msg.failureReason.getOrElse("") should include ("Failed to parse args")
+        msg.origin shouldBe defined
+      }
+    }
+  }
+
   "tear down" should {
     "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
   }
