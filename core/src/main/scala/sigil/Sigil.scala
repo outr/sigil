@@ -5061,6 +5061,22 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // (set by the suppressed respond's settle delta) would otherwise
     // end the turn before the challenge is ever acted on.
     val frameworkRequestedContinue = new java.util.concurrent.atomic.AtomicBoolean(false)
+    // Sigil #275 — set when the model's response for this iteration
+    // contained AT LEAST ONE non-internal `ToolInvoke`. The narrowed
+    // runaway counter (sigil #273) MUST only count iterations with
+    // genuinely zero `tool_use` blocks emitted; without this flag the
+    // post-drain `newTriggersExist` predicate misclassifies successful
+    // non-terminal tool calls (record_consent, list_theme_files, etc.)
+    // as "no tool call" because their `ToolInvoke` event has the
+    // default Standard role + the agent's own participantId, and
+    // `TriggerFilter` excludes both. The flag is read inside
+    // `shouldIterate` to force `case true =>` for any iteration the
+    // agent actually dispatched a real tool on — the loop then runs
+    // another iteration to read the tool's result. Framework-synthesised
+    // diagnostic invokes (`_provider_error`, `_unknown_tool`,
+    // `_cap_reached`, …) carry `internal = true` and don't count;
+    // they're not signals that the model is following the protocol.
+    val iterationHadToolCall = new java.util.concurrent.atomic.AtomicBoolean(false)
     // Bug #57 — diagnostic logging at iteration boundaries so a
     // future repro of "agent parks at thinking" can be localised
     // by reading the server log for missing exit lines. The cost
@@ -5140,9 +5156,25 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               interruptible
                 .evalTap {
                   case ti: ToolInvoke if Orchestrator.UserVisibleTerminalTools.contains(ti.toolName.value) =>
-                    Task { activeUserVisibleInvokes.put(ti._id, ti.toolName.value); () }
+                    Task {
+                      activeUserVisibleInvokes.put(ti._id, ti.toolName.value)
+                      // Sigil #275 — respond-family invokes count as "model
+                      // emitted a tool_use block". Set the flag here too;
+                      // the terminalToolSettled path takes over for the
+                      // continuation decision but the runaway counter has
+                      // already been told this wasn't an empty response.
+                      if (!ti.internal) iterationHadToolCall.set(true)
+                      ()
+                    }
                   case ti: ToolInvoke if ti.toolName.value == "_refusal_challenge" =>
                     Task { frameworkRequestedContinue.set(true); () }
+                  case ti: ToolInvoke if !ti.internal =>
+                    // Sigil #275 — record that this iteration's response
+                    // contained at least one real tool_use block. Filters
+                    // out framework-synthesised diagnostic invokes
+                    // (`internal = true`) so the flag tracks the model's
+                    // actual behaviour, not the framework's bookkeeping.
+                    Task { iterationHadToolCall.set(true); () }
                   // Silent-turn placeholder emitted by the orchestrator
                   // when Usage arrives with no target. Marked via
                   // `source = "orchestrator-silent-turn"` so the loop
@@ -5228,6 +5260,19 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                 // message from someone else that landed mid-turn) — never
                 // for the turn's own `ToolResults` / reply Message.
                 externalTriggersExist(agent, conv, sinceTimestamp = thisIterationStart)
+              else if (iterationHadToolCall.get())
+                // Sigil #275 — the model dispatched a non-terminal tool
+                // this iteration (record_consent, list_theme_files, …).
+                // Its `ToolInvoke` has the default `Standard` role + the
+                // agent's own participantId, so `TriggerFilter` excludes
+                // it from `newTriggersExist`. But the tool call IS the
+                // continuation signal — the next iteration sees the
+                // tool's result in the conversation context and decides
+                // what to do. `maxAgentIterations` caps runaway tool-
+                // calling spirals; this branch keeps the loop alive long
+                // enough for the cap to bound cost without misclassifying
+                // a productive turn as "no tool call".
+                Task.pure(true)
               else newTriggersExist(agent, conv, sinceTimestamp = thisIterationStart)
             shouldIterate.flatMap {
             case true if iteration < maxAgentIterations =>

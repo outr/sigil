@@ -715,7 +715,10 @@ trait Provider extends Service {
                                         agentId: Option[ParticipantId],
                                         previousResponseId: Option[String],
                                         priorMessageCount: Option[Int]): Task[ProviderCall] = {
-      val effectiveTools = filterToolsForForcedSynthesis(c)
+      // Sigil #274 — the same wire-roster filter the Orchestrator's
+      // `toolsByName` uses, so both ends of the dispatch agree on what's
+      // in scope. See [[ConversationRequest.effectiveTools]].
+      val effectiveTools = c.effectiveTools
       val toolChoice: ToolChoice =
         if (effectiveTools.isEmpty) ToolChoice.None
         else ToolChoice.Required
@@ -738,17 +741,9 @@ trait Provider extends Service {
       emitWireProfile(c, resolved, agentId).map(_ => providerCall)
     }
 
-  /** When the silent-turn recovery has fired, the model MUST pick a
-    * respond-family terminal call this iteration. Filter the tool
-    * roster to that family + `no_response` and let the wire
-    * `tool_choice: required` enforce one is picked. Any non-respond
-    * tools available this turn are stripped — the agent has had a
-    * normal turn already; this is the final-reply iteration. */
-  private def filterToolsForForcedSynthesis(c: ConversationRequest): Vector[Tool] =
-    if (c.forceResponseSynthesis) {
-      val respondFamily = CoreTools.atomicContentToolNames
-      c.tools.filter(t => respondFamily.contains(t.schema.name))
-    } else c.tools
+  // Sigil #274 — `filterToolsForForcedSynthesis` moved to
+  // [[ConversationRequest.effectiveTools]] so the wire path and the
+  // dispatch path share one source of truth for the in-scope roster.
 
   /** Adaptive max_tokens — when the paraphrase detector has flagged a
     * planning-without-acting loop on this turn (signal lives in

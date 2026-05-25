@@ -62,4 +62,24 @@ case class ConversationRequest(conversationId: Id[Conversation],
                                  * turn. */
                                discoveredCapabilities: Map[String, DiscoveredCapability] = Map.empty,
                                requestId: Id[ProviderRequest] = Id())
-  extends ProviderRequest
+  extends ProviderRequest {
+
+  /** Sigil #274 — the wire-advertised tool roster. When
+    * [[forceResponseSynthesis]] is set, the roster is restricted to the
+    * respond family so the model MUST emit one of those terminal calls.
+    * Both the wire path ([[sigil.provider.Provider.translate]]) and the
+    * dispatch path ([[sigil.orchestrator.Orchestrator]]) must agree on
+    * what's in scope — without that, the model could call a tool the
+    * accumulator's parser doesn't know about (emitting `JsonInput`) while
+    * the orchestrator's `toolsByName` finds the real tool and routes
+    * the untyped input to its typed body, throwing `ClassCastException`.
+    *
+    * Apps overriding this method to apply additional filters (per-turn
+    * gating, A/B experiments, …) MUST keep the symmetry — every consumer
+    * downstream of the request must look at the same set. */
+  def effectiveTools: Vector[Tool] =
+    if (forceResponseSynthesis) {
+      val respondFamily = sigil.tool.core.CoreTools.atomicContentToolNames
+      tools.filter(t => respondFamily.contains(t.schema.name))
+    } else tools
+}

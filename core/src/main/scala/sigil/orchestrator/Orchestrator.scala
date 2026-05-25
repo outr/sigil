@@ -96,7 +96,16 @@ object Orchestrator {
     // Keyed by wire-level string so the provider's `activeToolName`
     // lookup stays a plain String comparison (the provider reports
     // tool names via the raw JSON wire).
-    val toolsByName: Map[String, Tool] = request.tools.map(t => t.schema.name.value -> t).toMap
+    // Sigil #274 — derive the dispatch roster from
+    // [[ConversationRequest.effectiveTools]], the SAME source the wire
+    // path uses ([[Provider.translateConversationCore]]). Without this,
+    // forced-synthesis recovery's stripped wire roster + the unfiltered
+    // orchestrator roster drift: the model could call an out-of-roster
+    // tool, the accumulator's parser would emit `JsonInput` (no schema
+    // to validate against), the orchestrator's `toolsByName` would find
+    // the real typed tool, and dispatch would `asInstanceOf` the
+    // JsonInput to the tool's typed `Input` → ClassCastException.
+    val toolsByName: Map[String, Tool] = request.effectiveTools.map(t => t.schema.name.value -> t).toMap
     val state = new State()
     val convId = request.conversationId
 
