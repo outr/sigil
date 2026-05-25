@@ -343,8 +343,8 @@ trait MemoryOps { this: Sigil =>
          |Return the classification.""".stripMargin
     val settings = {
       val base = sigil.provider.GenerationSettings(
-        maxOutputTokens = Some(220),
-        reasoningMode = sigil.provider.ReasoningMode.Off
+        outputTokenCap = sigil.provider.OutputTokenCap.Below(220),
+        reasoningMode  = sigil.provider.ReasoningMode.Off
       )
       if (supportsParameter(modelId, "temperature")) base.copy(temperature = Some(0.0))
       else base

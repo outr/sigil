@@ -6,7 +6,7 @@ import sigil.Sigil
 import sigil.conversation.{ContextFrame, ContextSummary, Conversation}
 import sigil.db.Model
 import sigil.participant.ParticipantId
-import sigil.provider.{GenerationSettings, ReasoningMode, SummarizationWork}
+import sigil.provider.{GenerationSettings, OutputTokenCap, ReasoningMode, SummarizationWork}
 import sigil.tokenize.{HeuristicTokenizer, Tokenizer}
 import sigil.tool.consult.{ConsultTool, SummarizationInput, SummarizationTool}
 
@@ -122,8 +122,8 @@ case class SummaryOnlyCompressor(systemPrompt: String = SummaryOnlyCompressor.De
       userPrompt = userPrompt,
       tool = SummarizationTool,
       generationSettings = GenerationSettings(
-        maxOutputTokens = Some(maxSummaryTokens),
-        reasoningMode = ReasoningMode.Off
+        outputTokenCap = OutputTokenCap.Below(maxSummaryTokens),
+        reasoningMode  = ReasoningMode.Off
       )
     ).flatMap {
       case Some(r) if r.summary.trim.nonEmpty =>

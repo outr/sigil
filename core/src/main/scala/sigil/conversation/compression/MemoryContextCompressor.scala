@@ -7,7 +7,7 @@ import sigil.conversation.{ContextFrame, ContextMemory, ContextSummary, Conversa
 import sigil.SpaceId
 import sigil.db.Model
 import sigil.participant.ParticipantId
-import sigil.provider.{GenerationSettings, ReasoningMode, SummarizationWork}
+import sigil.provider.{GenerationSettings, OutputTokenCap, ReasoningMode, SummarizationWork}
 import sigil.tool.consult.{ConsultTool, ExtractMemoriesInput, ExtractMemoriesTool, SummarizationInput, SummarizationTool}
 
 /**
@@ -199,8 +199,8 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
       userPrompt = userPrompt,
       tool = ExtractMemoriesTool,
       generationSettings = GenerationSettings(
-        maxOutputTokens = Some(maxExtractionTokens),
-        reasoningMode = ReasoningMode.Off
+        outputTokenCap = OutputTokenCap.Below(maxExtractionTokens),
+        reasoningMode  = ReasoningMode.Off
       )
     ).flatMap {
       case Some(result) =>
@@ -243,8 +243,8 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
       userPrompt = userPrompt,
       tool = SummarizationTool,
       generationSettings = GenerationSettings(
-        maxOutputTokens = Some(maxSummaryTokens),
-        reasoningMode = ReasoningMode.Off
+        outputTokenCap = OutputTokenCap.Below(maxSummaryTokens),
+        reasoningMode  = ReasoningMode.Off
       )
     ).flatMap {
       case Some(result) if result.summary.trim.nonEmpty =>

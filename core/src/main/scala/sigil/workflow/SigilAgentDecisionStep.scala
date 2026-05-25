@@ -8,7 +8,7 @@ import rapid.Task
 import sigil.conversation.Conversation
 import sigil.db.Model
 import sigil.event.{Event, Message, MessageRole, MessageVisibility}
-import sigil.provider.{GenerationSettings, OneShotRequest, ProviderEvent, TokenUsage}
+import sigil.provider.{GenerationSettings, OneShotRequest, OutputTokenCap, ProviderEvent, TokenUsage}
 import sigil.signal.EventState
 import sigil.tool.model.ResponseContent
 import sigil.workflow.trigger.AnswerTrigger
@@ -102,7 +102,7 @@ final case class SigilAgentDecisionStep(input: AgentDecisionStepInput,
           modelId            = modelId,
           systemPrompt       = systemPrompt,
           userPrompt         = userPrompt,
-          generationSettings = GenerationSettings(maxOutputTokens = Some(2000)),
+          generationSettings = GenerationSettings(outputTokenCap = OutputTokenCap.Below(2000)),
           tools              = toolsForRequest
         )
         val acc = new java.lang.StringBuilder

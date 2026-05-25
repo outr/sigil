@@ -3,7 +3,7 @@ package sigil.tool.consult
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.provider.{GenerationSettings, ReasoningMode, SummarizationWork, WorkType}
+import sigil.provider.{GenerationSettings, OutputTokenCap, ReasoningMode, SummarizationWork, WorkType}
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 /**
@@ -70,8 +70,8 @@ case object ExtractMemoriesTool extends Tool with FrameworkConsult {
     * reasoning-spill margin thinking-capable models burn before
     * emitting the structured tool call. */
   override def consultSettings: GenerationSettings = GenerationSettings(
-    maxOutputTokens = Some(1500),
-    reasoningMode = ReasoningMode.Off
+    outputTokenCap = OutputTokenCap.Below(1500),
+    reasoningMode  = ReasoningMode.Off
   )
 
   /** Never executed — the framework reads the typed input directly via

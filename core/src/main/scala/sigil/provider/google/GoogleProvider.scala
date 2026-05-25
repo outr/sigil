@@ -176,7 +176,7 @@ case class GoogleProvider(apiKey: String,
     val gen = input.generationSettings
     val genConfig = Vector.newBuilder[(String, Json)]
     gen.temperature.foreach(v => genConfig += ("temperature" -> num(v)))
-    gen.maxOutputTokens.foreach(v => genConfig += ("maxOutputTokens" -> num(v)))
+    gen.explicitWireMaxTokens.foreach(v => genConfig += ("maxOutputTokens" -> num(v)))
     gen.topP.foreach(v => genConfig += ("topP" -> num(v)))
     if (gen.stopSequences.nonEmpty) genConfig += ("stopSequences" -> arr(gen.stopSequences.map(str)*))
     // Gemini 2.5 "thinking": off by default (budget = 0) because thinking

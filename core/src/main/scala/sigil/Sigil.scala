@@ -1727,15 +1727,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // recoverable hiccup into a permanently failed turn.
       val effectiveSettings =
         if (context.forceResponseSynthesis)
-          genSettings.copy(
-            // Cap aggressively even when the caller didn't — forced-
-            // synthesis is supposed to emit ONE respond call, ≤ a
-            // few hundred tokens of content. `orElse` preserves a
-            // tighter caller-supplied cap.
-            maxOutputTokens = genSettings.maxOutputTokens.orElse(Some(2048)),
+          // Cap aggressively even when the caller didn't — forced-
+          // synthesis is supposed to emit ONE respond call, ≤ a few
+          // hundred tokens of content. `tightenedTo` preserves a
+          // tighter caller-supplied cap (sigil #276).
+          genSettings.tightenedTo(2048).copy(
             // Hard override (not orElse) — the narrow tool_choice
             // means there's nothing worth reasoning about anyway.
-            reasoningMode   = ReasoningMode.Off
+            reasoningMode = ReasoningMode.Off
           )
         else genSettings
       val request = ConversationRequest(

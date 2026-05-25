@@ -755,14 +755,8 @@ trait Provider extends Service {
   private def tightenMaxTokensForParaphrase(c: ConversationRequest): GenerationSettings =
     if (c.turnInput.extraContext.exists { case (k, _) =>
           k.value == _root_.sigil.conversation.compression.ParaphraseLoopDetector.ContextKeyValue
-        }) {
-      val cap: Int = Provider.ParaphraseLoopMaxOutputTokensCap
-      val tightened: Option[Int] = c.generationSettings.maxOutputTokens match {
-        case Some(existing) => Some(math.min(existing, cap))
-        case None           => Some(cap)
-      }
-      c.generationSettings.copy(maxOutputTokens = tightened)
-    } else c.generationSettings
+        }) c.generationSettings.tightenedTo(Provider.ParaphraseLoopMaxOutputTokensCap)
+    else c.generationSettings
 
   /** Agent-initiated turns (greeting / scheduled / autonomous /
     * worker-spawn) reach this code path with no user message in the

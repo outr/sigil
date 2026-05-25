@@ -4,7 +4,7 @@ import fabric.define.{DefType, Definition}
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.provider.{ClassificationWork, GenerationSettings, ReasoningMode, WorkType}
+import sigil.provider.{ClassificationWork, GenerationSettings, OutputTokenCap, ReasoningMode, WorkType}
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 /**
@@ -34,8 +34,8 @@ class TopicClassifierTool(priorLabels: List[String]) extends Tool with Framework
   /** Output is a single enum string; 256 tokens covers the structured
     * payload plus a reasoning-spill margin for thinking-capable models. */
   override def consultSettings: GenerationSettings = GenerationSettings(
-    maxOutputTokens = Some(256),
-    reasoningMode = ReasoningMode.Off
+    outputTokenCap = OutputTokenCap.Below(256),
+    reasoningMode  = ReasoningMode.Off
   )
 
   /** Override the schema's input definition with one whose `kind` field

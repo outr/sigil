@@ -380,7 +380,7 @@ object OpenAIChatCompletions {
     }
     val generationFields: Vector[(String, Json)] =
       gen.temperature.toVector.map("temperature" -> num(_)) ++
-        gen.maxOutputTokens.toVector.map("max_tokens" -> num(_)) ++
+        gen.explicitWireMaxTokens.toVector.map("max_tokens" -> num(_)) ++
         gen.topP.toVector.map("top_p" -> num(_)) ++
         (if (gen.stopSequences.nonEmpty) Vector("stop" -> arr(gen.stopSequences.map(str)*)) else Vector.empty)
 

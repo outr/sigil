@@ -34,11 +34,11 @@ object ModelCandidate {
   /** Sensible defaults for a local-llama candidate serving a
     * reasoning-template model (qwen3.5-9b, DeepSeek-R1 family, etc).
     * Reasoning channel is off (the chain-of-thought channel inflates
-    * latency without improving small-task tool selection) and
-    * `maxOutputTokens` is capped at 4096 (generous for normal
-    * replies, hard wall against reasoning runaway). Apps wiring a
-    * local llama.cpp candidate can pass this instead of discovering
-    * the failure mode in production (sigil bug #199).
+    * latency without improving small-task tool selection) and the
+    * output is capped at 4096 via [[OutputTokenCap.Below]] (generous
+    * for normal replies, hard wall against reasoning runaway). Apps
+    * wiring a local llama.cpp candidate can pass this instead of
+    * discovering the failure mode in production (sigil bug #199).
     *
     * {{{
     *   val llamaC = ModelCandidate(
@@ -53,7 +53,7 @@ object ModelCandidate {
     * for apps that want the same conservative shape on every turn,
     * not just the recovery turn. */
   val localReasoningTemplateDefaults: GenerationSettings = GenerationSettings(
-    maxOutputTokens = Some(4096),
-    reasoningMode = ReasoningMode.Off
+    outputTokenCap = OutputTokenCap.Below(4096),
+    reasoningMode  = ReasoningMode.Off
   )
 }

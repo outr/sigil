@@ -120,11 +120,44 @@ case class AnthropicProvider(apiKey: String,
   private def cachingEnabledFor(input: ProviderCall): Boolean =
     promptCaching && Anthropic.supportsPromptCaching(Anthropic.stripProviderPrefix(input.modelId.value))
 
+  /** Sigil #276 — resolve the `max_tokens` wire value from the typed
+    * [[OutputTokenCap]] against the [[sigil.cache.ModelRegistry]] + the
+    * Anthropic known-ceilings seed.
+    *
+    *   - [[OutputTokenCap.ModelMax]] (the default): use the model's
+    *     registered `topProvider.maxCompletionTokens`; if the registry
+    *     doesn't know the model, fall back to
+    *     [[Anthropic.KnownMaxCompletionTokens]]; if that misses too,
+    *     use [[Anthropic.SafeFallbackMaxTokens]].
+    *
+    *   - [[OutputTokenCap.Below]]: use the caller's deliberate cap.
+    *     If it's >= the model's resolved max, clamp DOWN to the
+    *     model's max and emit a scribe warning — a stale `Below(64000)`
+    *     against a 32K-output model degrades gracefully rather than
+    *     producing an Anthropic wire reject. */
+  private def resolveMaxTokens(modelId: lightdb.id.Id[_root_.sigil.db.Model],
+                               strippedModelName: String,
+                               cap: OutputTokenCap): Int = {
+    val registryMax = sigil.cache.find(modelId).flatMap(_.topProvider.maxCompletionTokens).map(_.toInt)
+    val resolvedMax = registryMax
+      .orElse(Anthropic.KnownMaxCompletionTokens.get(strippedModelName))
+      .getOrElse(Anthropic.SafeFallbackMaxTokens)
+    cap match {
+      case OutputTokenCap.ModelMax => resolvedMax
+      case OutputTokenCap.Below(n) if n <= resolvedMax => n
+      case OutputTokenCap.Below(n) =>
+        scribe.warn(
+          s"AnthropicProvider: OutputTokenCap.Below($n) exceeds resolved max ($resolvedMax) for $strippedModelName — " +
+            "clamping to the resolved max. Use OutputTokenCap.ModelMax for 'no opinion, let the model produce its full output' " +
+            "or update Anthropic.KnownMaxCompletionTokens if the registry's value is stale."
+        )
+        resolvedMax
+    }
+  }
+
   private def buildBody(input: ProviderCall): Json = {
     val modelName = Anthropic.stripProviderPrefix(input.modelId.value)
-    // max_tokens is required by Anthropic's API. Fall back to 4096 if
-    // the caller didn't set one.
-    val maxTokens = input.generationSettings.maxOutputTokens.getOrElse(4096)
+    val maxTokens = resolveMaxTokens(input.modelId, modelName, input.generationSettings.effectiveCap)
 
     val caching = cachingEnabledFor(input)
     val messages = renderMessages(input.messages, caching)

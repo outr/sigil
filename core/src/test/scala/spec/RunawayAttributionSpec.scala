@@ -155,7 +155,10 @@ class RunawayAttributionSpec extends AsyncWordSpec with AsyncTaskSpec with Match
           forcedCall should not be None
         }
         val gen = forcedCall.get.generationSettings
-        gen.maxOutputTokens should not be empty
+        // Sigil #276 — read the typed effective cap; the framework's
+        // forced-synthesis tightener now writes through `outputTokenCap`
+        // instead of the deprecated `maxOutputTokens`.
+        gen.effectiveCap should not be sigil.provider.OutputTokenCap.ModelMax
         gen.reasoningMode shouldBe ReasoningMode.Off
       }
     }

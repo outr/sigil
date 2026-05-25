@@ -3,7 +3,7 @@ package sigil.tool.consult
 import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
-import sigil.provider.{ClassificationWork, GenerationSettings, ReasoningMode, WorkType}
+import sigil.provider.{ClassificationWork, GenerationSettings, OutputTokenCap, ReasoningMode, WorkType}
 import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
 
 /**
@@ -60,8 +60,8 @@ case object ClassifyMemoryTool extends Tool with FrameworkConsult {
     * optional one-sentence reason. 256 tokens covers the payload plus
     * the reasoning-spill margin. */
   override def consultSettings: GenerationSettings = GenerationSettings(
-    maxOutputTokens = Some(256),
-    reasoningMode = ReasoningMode.Off
+    outputTokenCap = OutputTokenCap.Below(256),
+    reasoningMode  = ReasoningMode.Off
   )
 
   /** Never executed — the framework reads the typed input directly via

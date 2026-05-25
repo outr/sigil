@@ -304,7 +304,7 @@ case class OpenAIProvider(apiKey: String,
       sigilRef.supportsParameter(input.modelId, param) && !OpenAI.fixedSamplingPrefixes.exists(modelName.startsWith)
     val genFields: Vector[(String, Json)] =
       (if (supports("temperature")) gen.temperature.toVector.map("temperature" -> num(_)) else Vector.empty) ++
-        gen.maxOutputTokens.toVector.map("max_output_tokens" -> num(_)) ++
+        gen.explicitWireMaxTokens.toVector.map("max_output_tokens" -> num(_)) ++
         (if (supports("top_p")) gen.topP.toVector.map("top_p" -> num(_)) else Vector.empty) ++
         (if (gen.stopSequences.nonEmpty) Vector("stop" -> arr(gen.stopSequences.map(str)*)) else Vector.empty)
 

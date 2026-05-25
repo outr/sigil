@@ -159,7 +159,12 @@ object RequestCacheKey {
 
   private def canonicalizeGenerationSettings(settings: GenerationSettings): Json = obj(
     "temperature"     -> settings.temperature.map(num).getOrElse(Null),
-    "maxOutputTokens" -> settings.maxOutputTokens.map(n => num(n)).getOrElse(Null),
+    // Sigil #276 — canonicalize via the typed `effectiveCap` so the
+    // cache key folds the deprecated `maxOutputTokens` and the new
+    // `outputTokenCap` to one shape. `ModelMax` keys as `null` so an
+    // unspecified cap doesn't drift the key away from the pre-#276
+    // `None` shape that already canonicalised to `null`.
+    "maxOutputTokens" -> settings.explicitWireMaxTokens.map(n => num(n)).getOrElse(Null),
     "effort"          -> settings.effort.map(canonicalizeEffort).getOrElse(Null),
     "topP"            -> settings.topP.map(num).getOrElse(Null),
     "stopSequences"   -> arr(settings.stopSequences.toList.map(str)*),
