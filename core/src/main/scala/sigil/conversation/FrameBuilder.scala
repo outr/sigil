@@ -79,10 +79,11 @@ object FrameBuilder {
     * render the typed `output` via the polymorphic `RW[ToolOutput]` and
     * use the result as the function_call_output text; failure outcomes
     * surface the reason; pending outputs (Failure with no output) fall
-    * back to `ti.summary`. Image extraction is not supported off the
-    * typed `ToolOutput` carrier today — image-bearing results pass URLs
-    * through their own output-type fields, which renderers can lift to
-    * `ContextFrame.ToolCall.images` by overriding this hook. */
+    * back to `ti.summary`. Sigil #280: framework-shipped
+    * [[sigil.tool.ImageToolOutput]] surfaces its URL into the
+    * `images` list so providers can render the image in the agent's
+    * next-turn visual context. Apps with custom multi-image output
+    * types override this hook to do the same for their own shapes. */
   private[sigil] def toolInvokePayload(ti: ToolInvoke): (String, List[spice.net.URL]) =
     ti.outcome match {
       case ToolOutcome.Failure(reason, _) =>
@@ -92,6 +93,18 @@ object FrameBuilder {
         ti.output match {
           case ToolOutput.Pending =>
             (if (ti.summary.nonEmpty) ti.summary else "(no result)", Nil)
+          case img: sigil.tool.ImageToolOutput =>
+            // Sigil #280 — lift the image URL into the frame's images
+            // list so the agent's next-turn provider request actually
+            // carries the pixels (via the existing image-rendering
+            // path in each provider). Text falls back to alt → summary
+            // → a generic "(image)" marker so the prose channel always
+            // has SOMETHING for prompt-budget accounting.
+            val text = img.text
+              .orElse(Option(img.alt).filter(_.nonEmpty))
+              .orElse(Option(ti.summary).filter(_.nonEmpty))
+              .getOrElse("(image)")
+            (text, List(img.url))
           case other =>
             val rendered = JsonFormatter.Compact(stripPolyDiscriminator(summon[RW[ToolOutput]].read(other)))
             (rendered, Nil)

@@ -14,9 +14,17 @@ import fabric.rw.*
  * tool settles.
  *
  * Framework-shipped cases:
- *   - [[Pending]]  — the call is in flight (the initial state of
- *                    every `ToolInvoke`).
- *   - [[Progress]] — interim status report from a long-running tool.
+ *   - [[Pending]]            — the call is in flight (the initial
+ *                               state of every `ToolInvoke`).
+ *   - [[Progress]]           — interim status report from a long-
+ *                               running tool.
+ *   - [[TextToolOutput]]     — the shared shape for tools whose
+ *                               result is prose.
+ *   - [[ImageToolOutput]]    — image result (sigil #280) — the
+ *                               framework lifts the URL into the
+ *                               agent's next-turn visual context so
+ *                               the agent can actually see what the
+ *                               tool produced.
  *
  * Apps define their own subtypes as `case class FooOutput(...) extends
  * ToolOutput derives RW` and register the `RW` via
@@ -55,6 +63,7 @@ object ToolOutput extends PolyType[ToolOutput]()(using scala.reflect.ClassTag(cl
     RW.static(Pending),
     summon[RW[Progress]],
     summon[RW[TextToolOutput]],
+    summon[RW[ImageToolOutput]],
 
     // core/
     summon[RW[sigil.tool.core.FindCapabilityOutput]],
