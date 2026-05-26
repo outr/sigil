@@ -217,6 +217,123 @@ class RateLimitGuardSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
       )
       ErrorClassifier.Default.classify(ex) shouldBe ErrorClassification.Fatal
     }
+
+    "typed-dispatch StreamingHttpFailedException by status code" in Task {
+      def make(status: Int): spice.http.client.StreamingHttpFailedException =
+        new spice.http.client.StreamingHttpFailedException(
+          status = status, headers = spice.http.Headers.empty, body = ""
+        )
+      ErrorClassifier.Default.classify(make(429)) shouldBe ErrorClassification.Retry
+      ErrorClassifier.Default.classify(make(503)) shouldBe ErrorClassification.Retry
+      ErrorClassifier.Default.classify(make(401)) shouldBe ErrorClassification.Fatal
+      ErrorClassifier.Default.classify(make(400)) shouldBe ErrorClassification.Fatal
+      ErrorClassifier.Default.classify(make(404)) shouldBe ErrorClassification.Fallthrough
+      ErrorClassifier.Default.classify(make(522)) shouldBe ErrorClassification.Retry
+    }
+  }
+
+  /** Reflective bridge to exercise the framework's private
+    * retry-after extractor against a synthetic exception. */
+  private def runRetryAfter(prov: Provider, t: Throwable): Option[scala.concurrent.duration.FiniteDuration] = {
+    val m = classOf[Provider].getDeclaredMethod("retryAfterFrom", classOf[Throwable])
+    m.setAccessible(true)
+    m.invoke(prov, t).asInstanceOf[Option[scala.concurrent.duration.FiniteDuration]]
+  }
+
+  "Provider.retryAfterFrom (sigil #283)" should {
+
+    "extract delta-seconds from a StreamingHttpFailedException's Retry-After header" in {
+      val modelId = Model.id("test", "ra-delta")
+      val provider = new CountingProvider(baseModel(modelId, 1000L, None))
+      val headers = spice.http.Headers.empty.withHeader("Retry-After", "12")
+      val ex = new spice.http.client.StreamingHttpFailedException(
+        status = 429, headers = headers, body = "rate-limited"
+      )
+      Task {
+        runRetryAfter(provider, ex) shouldBe Some(scala.concurrent.duration.FiniteDuration(12_000L, "millis"))
+      }
+    }
+
+    "extract HTTP-date format from a StreamingHttpFailedException's Retry-After header" in {
+      val modelId = Model.id("test", "ra-date")
+      val provider = new CountingProvider(baseModel(modelId, 1000L, None))
+      val futureInstant = java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC).plusSeconds(30)
+      val httpDate = futureInstant.format(java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME)
+      val headers = spice.http.Headers.empty.withHeader("Retry-After", httpDate)
+      val ex = new spice.http.client.StreamingHttpFailedException(
+        status = 429, headers = headers, body = ""
+      )
+      Task {
+        val delta = runRetryAfter(provider, ex)
+        delta.isDefined shouldBe true
+        delta.get.toSeconds should (be >= 25L and be <= 35L)
+      }
+    }
+
+    "fall back to None when no Retry-After header present" in {
+      val modelId = Model.id("test", "ra-none")
+      val provider = new CountingProvider(baseModel(modelId, 1000L, None))
+      val ex = new spice.http.client.StreamingHttpFailedException(
+        status = 429, headers = spice.http.Headers.empty, body = ""
+      )
+      Task {
+        runRetryAfter(provider, ex) shouldBe None
+      }
+    }
+
+    "extract retryAfterMs from a ProviderStreamException's typed metadata" in {
+      val modelId = Model.id("test", "ra-typed")
+      val provider = new CountingProvider(baseModel(modelId, 1000L, None))
+      val ex = new sigil.provider.ProviderStreamException(
+        providerKey   = "test",
+        code          = 429,
+        typ           = "rate_limit",
+        message_      = "too many",
+        errorMetadata = Some(sigil.provider.ProviderErrorMetadata(retryAfterMs = Some(7500L)))
+      )
+      Task {
+        runRetryAfter(provider, ex) shouldBe Some(scala.concurrent.duration.FiniteDuration(7500L, "millis"))
+      }
+    }
+  }
+
+  "TokenWindowTracker (sigil #283)" should {
+
+    "admit a request when usage + tokens fits under the safety-margin ceiling" in {
+      val tracker = new sigil.provider.TokenWindowTracker(perMinute = 1000L, safetyMargin = 0.85)
+      tracker.admit(500).map { _ =>
+        tracker.usedInWindow shouldBe 500L
+      }
+    }
+
+    "hold a second admit that would push the window over the ceiling, then admit it after the first ages out" in {
+      // 60ms window so the test finishes promptly; same arithmetic
+      // as the production 60s window.
+      val tracker = new sigil.provider.TokenWindowTracker(
+        perMinute = 1000L, safetyMargin = 0.85, windowMs = 60L
+      )
+      // Ceiling = 850. Two 500-token requests can't both fit (sum 1000).
+      val start = System.currentTimeMillis()
+      for {
+        _ <- tracker.admit(500)
+        _ <- tracker.admit(500) // must wait for first to age out
+      } yield {
+        val elapsed = System.currentTimeMillis() - start
+        // Must have waited AT LEAST the window-length for the first
+        // entry to age out before admitting the second.
+        elapsed should be >= 50L
+      }
+    }
+
+    "no-op when the single request itself exceeds the ceiling (pre-flight gate's job)" in {
+      val tracker = new sigil.provider.TokenWindowTracker(perMinute = 1000L, safetyMargin = 0.85)
+      // Ceiling = 850. A 2000-token request is the pre-flight gate's
+      // problem; the tracker shouldn't try to wait forever for the
+      // window to slide to fit something that never fits.
+      tracker.admit(2000).map { _ =>
+        tracker.usedInWindow shouldBe 0L // not recorded
+      }
+    }
   }
 
   "tear down" should {

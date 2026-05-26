@@ -244,12 +244,54 @@ trait Provider extends Service {
         }
       }.map { providerCall =>
         preFlightGate(request, providerCall) match {
-          case Right(safe)  => callWithTransientRetry(safe)
+          case Right(safe) =>
+            // Sigil #283 — rolling-window pacing: when the model
+            // record carries `inputTokensPerMinute`, the framework
+            // tracks recent usage in a 60s sliding window. A new
+            // request that would push the window's running total
+            // past `inputTokensPerMinute × safetyMargin` is held
+            // (sleeps until the oldest entry ages out, then re-
+            // checks) instead of being sent through to provoke a
+            // 429. The pre-flight gate above already rejected the
+            // single-oversized-request case as Fatal; this path
+            // handles the cumulative-fan-out case where two requests
+            // individually fit but combined exceed the per-minute
+            // ceiling.
+            Stream.force(
+              admitToWindow(request.modelId, estimateRequest(safe))
+                .map(_ => callWithTransientRetry(safe))
+            )
           case Left(reason) => Stream.force(Task.error(reason))
         }
       }
     )
   }
+
+  /** Sigil #283 — per-(provider, modelId) [[TokenWindowTracker]]
+    * registry. Lazy: a model with `inputTokensPerMinute = None` never
+    * allocates a tracker. Apps wiring cross-provider tracker sharing
+    * (one upstream account fronted by two Provider instances) override
+    * [[tokenWindowTracker]] to return a shared instance keyed on the
+    * API key rather than the modelId. */
+  private val tokenWindowTrackers: java.util.concurrent.ConcurrentHashMap[lightdb.id.Id[Model], TokenWindowTracker] =
+    new java.util.concurrent.ConcurrentHashMap()
+
+  /** Resolve (or lazily construct) the [[TokenWindowTracker]] for
+    * `modelId`. Returns `None` when the model record has no
+    * `inputTokensPerMinute` — pacing is disabled. */
+  protected def tokenWindowTracker(modelId: lightdb.id.Id[Model]): Option[TokenWindowTracker] =
+    sigil.cache.find(modelId).flatMap(_.inputTokensPerMinute).map { ipm =>
+      tokenWindowTrackers.computeIfAbsent(
+        modelId,
+        _ => new TokenWindowTracker(ipm, sigil.rateLimitSafetyMargin)
+      )
+    }
+
+  private def admitToWindow(modelId: lightdb.id.Id[Model], estimatedTokens: Int): Task[Unit] =
+    tokenWindowTracker(modelId) match {
+      case Some(tracker) => tracker.admit(estimatedTokens)
+      case None          => Task.unit
+    }
 
   /** Sigil bug #211 — framework-level retry on `Retry`-classified
     * transient provider errors. The framework already classifies
@@ -399,18 +441,58 @@ trait Provider extends Service {
   }
 
   /** Sigil #283 — extract the upstream's requested `retry-after`
-    * delta when the failing call carried one. Today the only carrier
-    * is [[ProviderStreamException]]'s `errorMetadata.retryAfterMs`,
-    * which providers populate from the 429 `retry-after` HTTP header
-    * or an equivalent inline payload. Returns `None` when the failure
-    * has no upstream guidance — the retry loop falls back to
-    * `providerRetryDelay`. */
+    * delta when the failing call carried one. Two carriers, in
+    * priority order:
+    *
+    *   1. [[ProviderStreamException]] with `errorMetadata.retryAfterMs`
+    *      populated — providers that detect a mid-stream 429 inline (an
+    *      `error` event on a 200-OK SSE stream) lift the explicit
+    *      `retry-after`-equivalent payload into the typed metadata.
+    *   2. [[spice.http.client.StreamingHttpFailedException]] — when the
+    *      upstream returned a non-2xx HTTP status, spice's streaming
+    *      path now throws a typed exception carrying the response
+    *      headers. The framework extracts `retry-after` directly so
+    *      every provider gets retry-after honoring for free, without
+    *      each provider's `call` having to translate the exception.
+    *
+    * Parses the `retry-after` header per RFC 7231: an integer delta
+    * in seconds or an HTTP-date (absolute timestamp). Returns `None`
+    * when the failure has no upstream guidance — the retry loop falls
+    * back to `providerRetryDelay`. */
   private def retryAfterFrom(t: Throwable): Option[scala.concurrent.duration.FiniteDuration] = t match {
     case e: ProviderStreamException =>
       e.errorMetadata.flatMap(_.retryAfterMs).map { ms =>
         scala.concurrent.duration.FiniteDuration(math.max(0L, ms), "millis")
       }
+    case e: spice.http.client.StreamingHttpFailedException =>
+      parseRetryAfter(e.headers)
     case _ => None
+  }
+
+  /** Parse a `Retry-After` HTTP header (RFC 7231 §7.1.3) into a
+    * [[FiniteDuration]]. Accepts both formats: `Retry-After: 120`
+    * (delta-seconds) and `Retry-After: Wed, 21 Oct 2026 07:28:00 GMT`
+    * (HTTP-date — clamped to non-negative). Returns `None` when the
+    * header is absent or unparseable. Sigil #283. */
+  private def parseRetryAfter(headers: spice.http.Headers): Option[scala.concurrent.duration.FiniteDuration] = {
+    val raw = headers.map.get("Retry-After").flatMap(_.headOption).map(_.trim).filter(_.nonEmpty)
+    raw.flatMap { value =>
+      scala.util.Try(value.toLong).toOption match {
+        case Some(deltaSeconds) =>
+          Some(scala.concurrent.duration.FiniteDuration(math.max(0L, deltaSeconds * 1000L), "millis"))
+        case None =>
+          // HTTP-date format — RFC 1123 / 850 / asctime. java.time
+          // handles RFC 1123 directly; the other two are rarely seen
+          // in modern responses but we attempt RFC 1123 only here.
+          scala.util.Try {
+            val instant = java.time.ZonedDateTime
+              .parse(value, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME)
+              .toInstant
+            val deltaMs = instant.toEpochMilli - System.currentTimeMillis()
+            scala.concurrent.duration.FiniteDuration(math.max(0L, deltaMs), "millis")
+          }.toOption
+      }
+    }
   }
 
   /** Pre-flight budget validation. Two layered checks against the

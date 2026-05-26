@@ -105,6 +105,21 @@ object ErrorClassifier {
         case _: RequestExceedsRateLimitException =>
           return ErrorClassification.Fatal
 
+        // Sigil #283 — typed dispatch on spice's streaming-path HTTP
+        // failure: classify by status code rather than substring-matching
+        // the message. 429 / 5xx surfaces stay Retry; 4xx auth / bad-
+        // request stays Fatal; 404 falls through to the next candidate
+        // (route-elsewhere is typically what apps want for an absent
+        // model id).
+        case e: spice.http.client.StreamingHttpFailedException =>
+          return e.status match {
+            case 429 | 502 | 503 | 504       => ErrorClassification.Retry
+            case 401 | 403 | 400             => ErrorClassification.Fatal
+            case 404                         => ErrorClassification.Fallthrough
+            case s if s >= 500 && s <= 599   => ErrorClassification.Retry
+            case _                           => ErrorClassification.Fallthrough
+          }
+
         // Run-out — agent loop exhausted iterations. Fatal so the user
         // sees the cap rather than infinite candidate cycling.
         case _: AgentRunawayException =>
