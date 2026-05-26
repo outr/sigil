@@ -74,7 +74,14 @@ case object FindCapabilityTool extends Tool {
           case m if m.capabilityType == sigil.tool.discovery.CapabilityType.Tool => sigil.tool.ToolName(m.name)
         }
         context.turn.recordDiscovery(request.keywords, toolNames)
-        ToolResult.Success(FindCapabilityOutput(query = request.keywords, matches = matches))
+        // Sigil bug #283 — augment with task-shape hints so the agent
+        // sees the framework's recommendation alongside the raw ranking.
+        val hints = sigil.tool.discovery.TaskShapeHints.synthesize(request.keywords, matches)
+        ToolResult.Success(FindCapabilityOutput(
+          query          = request.keywords,
+          matches        = matches,
+          taskShapeHints = hints
+        ))
       }
     }
 
