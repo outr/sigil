@@ -5361,7 +5361,16 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                     // intervention.message persists inside the batched
                     // transaction; terminate() runs as the post-commit
                     // continuation.
-                    publish(intervention.message).map(_ => terminate(skipFallback = true))
+                    //
+                    // Sigil bug #284 — stamp `source` so consumers can
+                    // render this distinctly from a real agent reply
+                    // (different chrome / attribution). The participant
+                    // stays `agent.id` so the conversation participant
+                    // graph stays consistent; `source` carries the
+                    // framework-vs-agent distinguishing signal. Same
+                    // convention as `orchestrator-silent-turn`.
+                    val tagged = intervention.message.copy(source = Some("orchestrator-intervention"))
+                    publish(tagged).map(_ => terminate(skipFallback = true))
                   case Some(intervention) =>
                     // Bug #133 — stall / no-progress streak. The
                     // intervention text is a directive to the agent
@@ -5924,7 +5933,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               content        = Vector(ResponseContent.Text(body)),
               disposition    = sigil.event.MessageDisposition.Failure(recoverable = true),
               state          = EventState.Complete,
-              role           = MessageRole.Standard
+              role           = MessageRole.Standard,
+              // Sigil bug #284 — stamp `source` so consumers render the
+              // framework-synthesised fallback distinctly from a real
+              // agent reply.
+              source         = Some("orchestrator-fallback-respond")
             )).map(_ => ())
         }
       }
