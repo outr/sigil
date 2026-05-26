@@ -41,6 +41,19 @@ import lightdb.time.Timestamp
  *                            heuristic. OpenRouter's `/v1/models` payload does not expose this today,
  *                            so most rows will carry `None`; apps can override per-model in their
  *                            registry to lock in known values.
+ * @param inputTokensPerMinute
+ *                            Per-model per-minute input-token ceiling published by the upstream
+ *                            provider (Anthropic's `anthropic-ratelimit-input-tokens-limit`,
+ *                            OpenAI's `x-ratelimit-limit-tokens`, etc.). When set, the framework's
+ *                            pre-flight rate-limit guard refuses to send a single request whose
+ *                            estimated input tokens exceed
+ *                            `inputTokensPerMinute * Sigil.rateLimitSafetyMargin` (default 0.85),
+ *                            shedding sheddable context first and otherwise throwing
+ *                            [[sigil.provider.RequestExceedsRateLimitException]] — flat-fails
+ *                            instead of entering the 429 retry loop on a request that provably
+ *                            can't succeed against the per-minute budget. `None` (default)
+ *                            disables the guard for that model. Providers populate from response
+ *                            headers when available; apps wire known values per-model otherwise.
  * @param _id                 Fully-qualified model identifier (e.g. `anthropic/claude-opus-4.7`).
  */
 case class Model(canonicalSlug: String,
@@ -61,6 +74,7 @@ case class Model(canonicalSlug: String,
                  created: Timestamp,
                  modified: Timestamp = Timestamp(),
                  supportedReasoningEffortLevels: Option[Set[String]] = None,
+                 inputTokensPerMinute: Option[Long] = None,
                  _id: Id[Model])
   extends RecordDocument[Model] {
   lazy val (provider: String, model: String) = {

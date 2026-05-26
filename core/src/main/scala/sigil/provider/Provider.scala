@@ -328,12 +328,19 @@ trait Provider extends Service {
           val meaningful = captured.exists(isMeaningfulProviderEvent)
           if (!meaningful && remaining > 0 && cls == ErrorClassification.Retry) {
             val nextCtx = nextRetryContext(t)
+            // Sigil #283 — honor the upstream's `retry-after` (lifted
+            // by the provider into ProviderErrorMetadata.retryAfterMs)
+            // in preference to the static providerRetryDelay. A 429
+            // that says "wait 8 seconds" should wait 8 seconds, not
+            // 500ms and burn three more retries against the same
+            // throttle.
+            val honoredDelay = retryAfterFrom(t).getOrElse(providerRetryDelay)
             scribe.warn(
               s"Sigil bug #211 — retrying transient provider error " +
-                s"(${t.getClass.getSimpleName}: ${Option(t.getMessage).getOrElse("")}); " +
-                s"$remaining retries remaining"
+                s"(${t.getClass.getSimpleName}: ${Option(t.getMessage).getOrElse("")}) " +
+                s"after ${honoredDelay.toMillis}ms; $remaining retries remaining"
             )
-            Task.sleep(providerRetryDelay).flatMap(_ => attempt(remaining - 1, Some(nextCtx)))
+            Task.sleep(honoredDelay).flatMap(_ => attempt(remaining - 1, Some(nextCtx)))
           } else {
             // Either we have partial events (can't retry — would
             // duplicate the work), or the error isn't classified as
@@ -391,25 +398,66 @@ trait Provider extends Service {
     case _ => RetryContext()
   }
 
-  /** Pre-flight budget validation. Estimates the rendered request via
-    * the provider's [[tokenizer]] and compares against the model's
-    * `contextLength`. If over, applies emergency shedding (tool-
-    * roster trim → last-resort frame drop) until the request fits OR
-    * raises [[RequestOverBudgetException]] when nothing more can be
-    * safely cut (critical memories are inviolable).
+  /** Sigil #283 — extract the upstream's requested `retry-after`
+    * delta when the failing call carried one. Today the only carrier
+    * is [[ProviderStreamException]]'s `errorMetadata.retryAfterMs`,
+    * which providers populate from the 429 `retry-after` HTTP header
+    * or an equivalent inline payload. Returns `None` when the failure
+    * has no upstream guidance — the retry loop falls back to
+    * `providerRetryDelay`. */
+  private def retryAfterFrom(t: Throwable): Option[scala.concurrent.duration.FiniteDuration] = t match {
+    case e: ProviderStreamException =>
+      e.errorMetadata.flatMap(_.retryAfterMs).map { ms =>
+        scala.concurrent.duration.FiniteDuration(math.max(0L, ms), "millis")
+      }
+    case _ => None
+  }
+
+  /** Pre-flight budget validation. Two layered checks against the
+    * model record:
     *
-    * Returns `Right(call)` when the request fits (possibly after
-    * shedding), `Left(exception)` when it can't be made to fit. */
+    *   1. **Context-length** (`Model.contextLength`) — the static
+    *      window the model accepts on a single request. Failure mode
+    *      raised as [[RequestOverBudgetException]].
+    *   2. **Per-minute input rate** (`Model.inputTokensPerMinute`,
+    *      sigil #283) — the provider's published per-minute token
+    *      ceiling. A single request larger than
+    *      `rate * Sigil.rateLimitSafetyMargin` (default 0.85) can't
+    *      succeed against the per-minute budget by itself, so
+    *      retrying after a 429 is wasted work. Failure mode raised
+    *      as [[RequestExceedsRateLimitException]].
+    *
+    * Both checks apply emergency shedding (tool-roster trim →
+    * last-resort frame drop) before failing; the tighter of the two
+    * effective limits drives the shed target. Critical memories live
+    * in the system prompt and are never shed by this path.
+    *
+    * Returns `Right(call)` when the request fits both checks
+    * (possibly after shedding), `Left(exception)` when it can't. */
   private def preFlightGate(request: ProviderRequest, providerCall: ProviderCall): Either[Throwable, ProviderCall] = {
-    val limit = sigil.cache.find(request.modelId).map(_.contextLength.toInt).getOrElse(Int.MaxValue)
-    if (limit == Int.MaxValue) Right(providerCall) // no model record — can't validate; trust the curator
+    val modelRecord = sigil.cache.find(request.modelId)
+    val contextLimit = modelRecord.map(_.contextLength.toInt).getOrElse(Int.MaxValue)
+    val ratePerMinute = modelRecord.flatMap(_.inputTokensPerMinute)
+    val rateLimit = ratePerMinute match {
+      case Some(rpm) => math.max(1, (rpm * sigil.rateLimitSafetyMargin).toInt)
+      case None      => Int.MaxValue
+    }
+    val effectiveLimit = math.min(contextLimit, rateLimit)
+    if (effectiveLimit == Int.MaxValue) Right(providerCall) // no model record AND no rate ceiling — can't validate
     else {
       val initial = estimateRequest(providerCall)
-      if (initial <= limit) Right(providerCall)
+      if (initial <= effectiveLimit) Right(providerCall)
       else {
-        val shed = emergencyShed(providerCall, limit, tokenizer, estimateRequest)
-        if (estimateRequest(shed) <= limit) Right(shed)
-        else Left(new RequestOverBudgetException(estimateRequest(shed), limit, request.modelId))
+        val shed = emergencyShed(providerCall, effectiveLimit, tokenizer, estimateRequest)
+        val shedEstimate = estimateRequest(shed)
+        if (shedEstimate <= effectiveLimit) Right(shed)
+        else if (shedEstimate > contextLimit) Left(new RequestOverBudgetException(shedEstimate, contextLimit, request.modelId))
+        else Left(new RequestExceedsRateLimitException(
+          estimatedTokens      = shedEstimate,
+          inputTokensPerMinute = ratePerMinute.getOrElse(0L),
+          safetyMargin         = sigil.rateLimitSafetyMargin,
+          modelId              = request.modelId
+        ))
       }
     }
   }

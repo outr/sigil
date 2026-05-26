@@ -96,6 +96,15 @@ object ErrorClassifier {
         case _: RequestOverBudgetException =>
           return ErrorClassification.Fatal
 
+        // Sigil #283 — request exceeds the model's per-minute input-token
+        // rate by itself. Retrying against the same ceiling can't succeed
+        // (each attempt eats into the same per-minute budget). Fatal so
+        // the framework's transient-retry loop doesn't burn the minute's
+        // budget on guaranteed-failing attempts and the consumer surfaces
+        // a meaningful error to the user.
+        case _: RequestExceedsRateLimitException =>
+          return ErrorClassification.Fatal
+
         // Run-out — agent loop exhausted iterations. Fatal so the user
         // sees the cap rather than infinite candidate cycling.
         case _: AgentRunawayException =>

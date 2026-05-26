@@ -300,6 +300,27 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * compile. */
   final def coreContextShareLimit: Double = pinnedShareLimit
 
+  /**
+   * Sigil #283 — multiplier applied to a model's
+   * [[sigil.db.Model.inputTokensPerMinute]] when computing the
+   * per-request input-token ceiling the pre-flight rate-limit guard
+   * enforces. A request whose estimated input-token count exceeds
+   * `model.inputTokensPerMinute * rateLimitSafetyMargin` is shed by
+   * the provider's emergency shed; if it still doesn't fit, the
+   * framework throws
+   * [[sigil.provider.RequestExceedsRateLimitException]] and skips the
+   * 429 retry loop (retrying a request larger than the per-minute
+   * budget can't succeed against the same ceiling).
+   *
+   * Default `0.85` — leaves 15% of the per-minute budget for
+   * concurrent calls landing within the same window. Apps with a
+   * single-tenant key and slow user cadence can loosen toward `1.0`;
+   * apps with bursty concurrent agent fan-out tighten toward `0.5`.
+   * Models with `inputTokensPerMinute = None` skip the guard entirely
+   * regardless of this value.
+   */
+  def rateLimitSafetyMargin: Double = 0.85
+
   // -- tool catalog --
 
   /**

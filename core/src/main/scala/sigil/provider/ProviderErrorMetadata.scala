@@ -22,6 +22,15 @@ package sigil.provider
  * [[OpenRouterProvider]] retry path appends this to its
  * `provider.ignore` request field so the next attempt avoids the sick
  * upstream entirely.
+ *
+ * `retryAfterMs` carries the upstream's requested cool-off delay in
+ * milliseconds, lifted from a 429's `retry-after` header (per RFC 7231
+ * — either delta-seconds or HTTP-date) or an inline structured payload
+ * (Anthropic's `error.retry_after_ms`, etc.). The framework's
+ * transient-retry loop honors this delta on `Retry`-classified errors
+ * in preference to the static `providerRetryDelay`, so the next attempt
+ * doesn't fire while the upstream is still throttling. Sigil #283.
  */
 case class ProviderErrorMetadata(errorType: Option[String] = None,
-                                 upstreamProvider: Option[String] = None)
+                                 upstreamProvider: Option[String] = None,
+                                 retryAfterMs: Option[Long] = None)
