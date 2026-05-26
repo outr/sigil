@@ -21,6 +21,7 @@ enum TaskDisplayStatus derives RW {
   case WaitingForAnswer    // suspended on a worker AnswerTrigger
   case WaitingForApproval  // gated on a SigilApproval step
   case Waiting             // generic wait (TimeTrigger, WebhookTrigger, ...)
+  case Paused              // Strider lifecycle Paused — manually held until resumed
   case Success
   case Failure
   case Cancelled

@@ -183,7 +183,10 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
         modelId = Model.id("test", "model"),
         toolNames = CoreTools.coreToolNames,
         instructions = Instructions(),
-        generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0))
+        generationSettings = GenerationSettings(
+          outputTokenCap = sigil.provider.OutputTokenCap.Below(200),
+          temperature = Some(0.0)
+        )
       )
       val restored = rw.write(rw.read(original))
       restored shouldBe a[DefaultAgentParticipant]
@@ -191,7 +194,7 @@ class SigilWiringSpec extends AnyWordSpec with Matchers {
       r.id shouldBe TestAgent
       r.modelId shouldBe Model.id("test", "model")
       r.toolNames shouldBe CoreTools.coreToolNames
-      r.generationSettings.maxOutputTokens shouldBe Some(200)
+      r.generationSettings.outputTokenCap shouldBe sigil.provider.OutputTokenCap.Below(200)
     }
 
     "round-trip a Conversation carrying a DefaultAgentParticipant" in {

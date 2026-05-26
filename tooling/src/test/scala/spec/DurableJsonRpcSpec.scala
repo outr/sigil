@@ -101,6 +101,8 @@ class DurableJsonRpcSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
           e.getMessage    should include ("no response")
         case Left(other) =>
           fail(s"expected JsonRpcTransportException, got: $other")
+        case unexpected: String =>
+          fail(s"expected JsonRpcTransportException, got success: $unexpected")
       }
     }
 

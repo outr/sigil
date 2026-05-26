@@ -1,6 +1,7 @@
 package sigil.provider
 
 import fabric.rw.*
+import scala.annotation.nowarn
 
 final case class GenerationSettings(temperature: Option[Double] = None,
                                     /** Sigil #276 — the typed form of "how many tokens
@@ -40,7 +41,7 @@ final case class GenerationSettings(temperature: Option[Double] = None,
     * pre-#276 calls keep their behaviour during the deprecation window.
     * Internal consumers (providers, paraphrase-loop tightening) read
     * this method instead of either field directly. */
-  def effectiveCap: OutputTokenCap = maxOutputTokens match {
+  def effectiveCap: OutputTokenCap = (maxOutputTokens: @nowarn("cat=deprecation")) match {
     case Some(n)                                        => OutputTokenCap.Below(n)
     case None                                           => outputTokenCap
   }

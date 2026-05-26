@@ -73,5 +73,6 @@ object ConversationTask {
         case Some(_: AnswerTriggerImpl) => TaskDisplayStatus.WaitingForAnswer
         case _                          => TaskDisplayStatus.Waiting
       }
+    case WorkflowStatus.Paused    => TaskDisplayStatus.Paused
   }
 }

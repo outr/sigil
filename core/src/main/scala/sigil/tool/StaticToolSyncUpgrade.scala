@@ -47,7 +47,7 @@ class StaticToolSyncUpgrade(staticTools: List[Tool]) extends DatabaseUpgrade {
       // obsolete polytype discriminator can't abort the read.
       val prune = tx.jsonStream.toList.flatMap { rows =>
         val toDelete: List[Id[Tool]] = rows.flatMap { json =>
-          scala.util.Try(json.as[Tool](toolRW)) match {
+          scala.util.Try(json.as[Tool](using toolRW)) match {
             case scala.util.Success(t) if t.createdBy.isEmpty && !targetNames.contains(t.name.value) =>
               Some(t._id)
             case scala.util.Success(_) =>
