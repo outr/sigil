@@ -2,56 +2,76 @@ package sigil.tooling.dispatch
 
 import fabric.rw.*
 import lightdb.id.Id
+import sigil.conversation.Conversation
+import sigil.provider.Complexity
+import sigil.role.Role
 import sigil.tool.ToolInput
 import sigil.tool.output.ToolOutputNode
 
 /**
- * Input for [[DispatchWorkersTool]]. The two-phase confirm pattern
- * stays — `confirmed = false` (the default) returns a scope preview,
- * `confirmed = true` runs the action over every group.
+ * Input for the refactored [[DispatchWorkersTool]] (sigil #288).
  *
- * Items always arrive through a paginated container — every tool
- * whose output is naturally a list (`grep`, `lsp_find_references`,
- * etc.) already produces one; tools that take a list of values the
- * agent assembled by reasoning compose `create_container(items)` and
- * pass the returned `itemsId`.
+ * `dispatch_workers` is now "fan out N `delegate_task` calls, one
+ * per item in a paginated container." Each spawned worker is a
+ * full `SigilAgentDecisionStep` worker with `delegate_task`'s
+ * contract — async return, `ask_parent` supported, observable on
+ * the wire, tool whitelist, mediator pattern via the parent.
  *
- *   - `itemsId`    — id of the container holding the worker items.
- *     Produced by any paginated tool (grep, LSP, …) or one of the
- *     `create_container` / `load_file_as_container` / `filter_container`
- *     producer tools.
- *   - `action`     — the adhoc Scala script run once per group. Bound
- *     in scope: `items: List[fabric.Json]` (the group's payloads —
- *     length `groupSize`, except possibly smaller for the final
- *     group) and `context: sigil.TurnContext`. Same evaluator and
- *     surface as `execute_script`. The script's trailing expression
- *     is the per-group worker result. The dispatcher compiles `action`
- *     once before spawning any worker: a compile failure returns a
- *     [[DispatchWorkersOutput.CompileFailure]] and runs nothing; a
- *     successful compile is shared across every worker.
- *   - `groupSize`  — items bound into one worker invocation. Default
- *     `1` — one item per worker. Higher values batch items so the
- *     script handles batching internally. Cost preview reports
- *     `ceil(itemCount / groupSize)` worker invocations.
- *   - `itemsAt`    — optional level to read from. Default `None`
- *     reads top-level (level 0). Pass `Some(1)` to dispatch over the
- *     child nodes of a tree-shaped container.
- *   - `itemsLimit` — optional hard cap on items consumed before
- *     dispatch. Useful for "dispatch over the first N matches"
- *     without modifying the source container.
- *   - `confirmed`  — two-phase guard. Default `false` returns
- *     [[DispatchWorkersOutput.ScopePreview]] without running any
- *     worker; `true` runs the action and returns
- *     [[DispatchWorkersOutput.DispatchResult]].
- *   - `maxParallel` — concurrency cap (default 5).
- *   - `maxItems`   — hard cost cap (default 10000) — refuses to
- *     dispatch more items than this.
+ * The old `action: String` script and `confirmed: Boolean`
+ * two-call protocol are gone. Per-item judgment now lives inside
+ * each worker (which can read its item, reason about it, call its
+ * tools, and emit a final summary). The pre-flight "preview before
+ * commit" surface is replaced by the worker itself making decisions
+ * per item.
+ *
+ *   - `itemsId` — id of a container holding the worker items. Same
+ *     producers as before (any paginated tool's `callId`,
+ *     `create_container`, `load_file_as_container`, `filter_container`).
+ *   - `workerPrompt` — the per-worker user prompt. The framework
+ *     prepends the per-item payload before the prompt, so the
+ *     worker sees both. Plain text — write as you'd write any
+ *     `delegate_task` brief.
+ *   - `goal` — one-sentence intent for the whole dispatch
+ *     ("refactor each file to use the new API"). Surfaced separately
+ *     for forensics; available to the worker as additional context.
+ *   - `role` — the worker's identity (description, optional skill,
+ *     [[sigil.provider.WorkType]]). Reused across every spawned
+ *     worker; per-item variance lives in the item payload + the
+ *     prompt template, not in the role.
+ *   - `complexity` — optional routing hint passed through to each
+ *     worker's model resolution (see [[sigil.Sigil.routedModelFor]]).
+ *   - `modelId` — optional explicit model id; when set, every
+ *     worker uses this model. When unset, the framework resolves
+ *     per the strategy + `complexity` hint.
+ *   - `toolNames` — the worker's tool roster. Empty inherits the
+ *     spawning agent's effective roster (same default as
+ *     `delegate_task`); explicit list restricts.
+ *   - `maxIterations` — caps each worker's agent loop.
+ *   - `itemsAt` — tree level to dispatch over (default 0 =
+ *     top-level).
+ *   - `itemsLimit` — cap on the count consumed (default 50;
+ *     protection against accidentally dispatching against a 10K-item
+ *     container).
+ *   - `maxParallel` — concurrency cap (default 5). At most N workers
+ *     are running concurrently; as one settles, the next from the
+ *     queue starts. Lazy creation — worker conversations are only
+ *     created when capacity frees.
+ *   - `conversationId` — when set, reads `itemsId` from the
+ *     specified conversation (typically a worker conversation's
+ *     paginated output). Gated by
+ *     [[sigil.Sigil.canReadConversation]]. When unset, defaults to
+ *     the caller's current conversation.
  */
 case class DispatchWorkersInput(itemsId: Id[ToolOutputNode],
-                                action: String,
-                                groupSize: Int = 1,
-                                confirmed: Boolean = false,
+                                workerPrompt: String,
+                                role: Role,
+                                goal: Option[String] = None,
+                                complexity: Option[Complexity] = None,
+                                modelId: Option[String] = None,
+                                toolNames: List[String] = Nil,
+                                maxIterations: Option[Int] = None,
                                 itemsAt: Option[Int] = None,
-                                itemsLimit: Option[Int] = None,
+                                itemsLimit: Int = 50,
                                 maxParallel: Int = 5,
-                                maxItems: Int = 10000) extends ToolInput derives RW
+                                conversationId: Option[Id[Conversation]] = None)
+  extends ToolInput derives RW

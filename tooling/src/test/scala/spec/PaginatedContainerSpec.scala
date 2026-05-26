@@ -94,34 +94,14 @@ class PaginatedContainerSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
   // --------------- the five cases ---------------
 
-  "create_container + dispatch_workers round-trip" should {
-    "produce one worker outcome per item when dispatch_workers consumes a 3-item container with confirmed=true" in {
-      DispatchTestSigil.reset()
-      val ctx = turnContextFor(newConversation("dispatch"))
-      val items: List[Json] = List(
-        Obj("name" -> Str("a")),
-        Obj("name" -> Str("b")),
-        Obj("name" -> Str("c"))
-      )
-      CreateContainerTool.invoke(CreateContainerInput(items), ToolContext(ctx, Event.id(), CreateContainerTool.name)).flatMap { container =>
-        container.itemCount shouldBe 3
-        val tool = new DispatchWorkersTool(scriptExecutor = Some(new sigil.script.ScalaScriptExecutor()))
-        val input = DispatchWorkersInput(
-          itemsId   = container.itemsId,
-          action    = "items.head(\"name\")",
-          confirmed = true
-        )
-        tool.invoke(input, ToolContext(ctx, Event.id(), tool.name)).map {
-          case d: DispatchWorkersOutput.DispatchResult =>
-            d.totalItems shouldBe 3
-            d.successCount shouldBe 3
-            d.perItem.size shouldBe 3
-            all(d.perItem.map(_.result.isRight)) shouldBe true
-          case other => fail(s"expected DispatchResult, got $other")
-        }
-      }
-    }
-  }
+  // Sigil #288 — the prior "create_container + dispatch_workers
+  // round-trip" test exercised the action-script flow that the
+  // refactor removed. Container roundtrip is still covered below
+  // via filter_container; the new dispatch_workers fanout flow has
+  // its own coverage in DispatchWorkersSpec (which validates the
+  // synchronous handle + the WorkflowSigil-required refusal). The
+  // full end-to-end async settle flow against a live workflow
+  // runtime is covered by downstream integration tests.
 
   "filter_container" should {
     "narrow a source container into a new derived container without mutating the source" in {

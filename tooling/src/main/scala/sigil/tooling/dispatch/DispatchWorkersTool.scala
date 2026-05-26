@@ -1,45 +1,62 @@
 package sigil.tooling.dispatch
 
 import fabric.Json
+import fabric.io.JsonFormatter
 import fabric.rw.*
-import rapid.Task
+import lightdb.id.Id as LId
+import rapid.{Stream, Task}
+import sigil.Sigil
+import sigil.conversation.Conversation
+import sigil.event.Event
+import sigil.participant.ParticipantId
+import sigil.signal.Signal
 import sigil.tool.ToolContext
-import sigil.script.{CompiledScript, ScriptBinding, ScriptExecutor}
-import sigil.tool.output.ToolOutputNode
-import sigil.tool.{Tool, ToolExample, ToolName}
+import sigil.tool.{Tool, ToolExample, ToolName, ToolResult}
 import sigil.tooling.container.ContainerSupport
+import sigil.workflow.event.TaskExecuted
+import sigil.workflow.{AgentDecisionStepInput, WorkflowSigil, WorkflowStepInputCompiler}
+import sigil.workflow.SigilWorkflowModel.stepRW
+import strider.WorkflowParent
+
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Generic parallel per-item action over a container of items.
+ * Generic parallel per-item dispatch. Sigil #288 — replaces the
+ * prior compiled-Scala-action shape with "fan out N
+ * [[sigil.tool.util.DelegateTaskTool delegate_task]] calls, one
+ * per item in a paginated container."
  *
- * The agent supplies one adhoc Scala `action` script. The dispatcher
- * compiles it ONCE, then runs the compiled artifact in parallel — one
- * worker per group of `groupSize` items. The script's per-group
- * binding is `items: List[fabric.Json]` (the group's payloads) plus
- * `context: sigil.tool.ToolContext`; its trailing expression is the
- * per-group worker result.
+ * Each item spawns one worker (a [[sigil.workflow.SigilAgentDecisionStep]])
+ * whose brief is the `workerPrompt` template prepended with the
+ * item payload. Per-item judgment now lives inside each worker,
+ * which can reason about its item, call tools (per the inherited
+ * roster), ask the parent via `ask_parent`, and emit a final
+ * `Complete:` summary.
  *
- * Items come from a container: any tool whose output is paginated
- * (grep, LSP, …) materialises rows in `db.toolOutputs` keyed by a
- * `callId`. Pass that callId — or the `itemsId` returned by
- * `create_container` / `load_file_as_container` / `filter_container`
- * — as `itemsId`. The dispatcher reads top-level rows by default (or
- * `itemsAt`'s nominated level) and caps at `itemsLimit` if set.
+ * Async lifecycle:
+ *   1. Tool returns immediately with [[DispatchWorkersOutput]] —
+ *      the dispatch handle (`dispatchId`, `total`, `workersStarted`).
+ *      A [[DispatchStarted]] event lands in the parent conversation.
+ *   2. The first `min(total, maxParallel)` workers spawn; the rest
+ *      queue.
+ *   3. As workers settle (their [[TaskExecuted]] events arrive),
+ *      a per-dispatch background coordinator advances the queue —
+ *      maintaining at most `maxParallel` workers in flight at any
+ *      moment.
+ *   4. When every worker has settled, a [[DispatchCompleted]] event
+ *      fires into the parent conversation with the aggregated
+ *      per-worker [[WorkerSummary]]s. The parent agent's trigger
+ *      filter wakes the loop; the next iteration reads the result
+ *      and decides what to do next.
  *
- * Two-phase confirm: `confirmed = false` (default) returns a
- * [[DispatchWorkersOutput.ScopePreview]] after a successful compile —
- * no worker runs; `confirmed = true` runs the action over every group
- * and returns [[DispatchWorkersOutput.DispatchResult]]. A pre-flight
- * compile failure short-circuits both phases with
- * [[DispatchWorkersOutput.CompileFailure]].
- *
- * The `action` script runs against the host's `ScriptExecutor` — the
- * injected one when supplied, otherwise the host Sigil's (when it
- * mixes in `ScriptSigil`). When no executor is available the tool
- * surfaces a structured abort.
+ * Requires the host Sigil to mix in [[WorkflowSigil]] (each worker
+ * is a strider workflow run). MVP coordinator is in-process — a
+ * process restart mid-dispatch loses the in-flight aggregation
+ * (the underlying worker workflows continue, but no
+ * `DispatchCompleted` fires for the partial set). Durable
+ * coordinator state is a follow-on.
  */
-final class DispatchWorkersTool(scriptExecutor: Option[ScriptExecutor] = None) extends Tool
-  with sigil.tool.DestructiveExternalTool {
+final class DispatchWorkersTool extends Tool {
   type Input  = DispatchWorkersInput
   type Output = DispatchWorkersOutput
   val inputRW  = summon[RW[DispatchWorkersInput]]
@@ -47,236 +64,340 @@ final class DispatchWorkersTool(scriptExecutor: Option[ScriptExecutor] = None) e
 
   val name = ToolName("dispatch_workers")
   val description =
-    """Run an adhoc Scala `action` script over a container of items in parallel. The dispatcher
-      |compiles the action once, then runs it as N parallel workers. Composable with grep / LSP /
-      |any tool whose output is a paginated list, plus inline / file / filter containers via the
-      |producer tools.
+    """Fan out N worker agents over a container of items — one worker per item, all sharing
+      |the same role + worker prompt. Each worker reads its item, reasons about it, calls its
+      |tools, and emits a final summary.
       |
-      |Two-phase confirm. First call with `confirmed = false` (the default): the action is
-      |compiled and a ScopePreview is returned without dispatching any worker. If the action does
-      |not compile, a CompileFailure with typed line / column / message errors is returned and no
-      |worker runs. Read the preview's `confirmCall` directive; re-invoke with `confirmed = true`
-      |to run.
+      |Returns immediately with a dispatch handle. The aggregated per-worker results land later
+      |via a DispatchCompleted event in this conversation that triggers your next iteration — you
+      |don't need to poll or wait. The first iteration after the dispatch settles sees the full
+      |aggregated outcome (per-worker status + summary + worker conversation id for drill-down).
       |
-      |The `action` script is Scala 3, same evaluator and surface as `execute_script`. Per worker
-      |it has `items: List[Json]` (the group's item payloads — one element with the default
-      |groupSize=1) and `context: ToolContext` in scope. The script's trailing expression is the
-      |per-group worker result. Runtime errors in one worker are isolated — other workers still
-      |run.
+      |Required:
+      |  - `itemsId`      — container id (from any paginated tool's first-page result, or from
+      |                     a container-producing tool such as the ones in your roster)
+      |  - `workerPrompt` — per-worker user prompt; the item payload is prepended automatically
+      |  - `role`         — the worker's identity + workType
       |
-      |Items come from any container. Producers:
-      |  - Any paginated tool (grep, lsp_find_references, lsp_workspace_symbols, ...) — pass its
-      |    `callId` as `itemsId`.
-      |  - `create_container([items])` — assemble a container from an inline list.
-      |  - `load_file_as_container(path, parser)` — read a file into a container.
-      |  - `filter_container(sourceId, predicate)` — narrow an existing container.
+      |Optional:
+      |  - `goal`           — one-sentence intent for the dispatch, for forensics
+      |  - `complexity`     — routing hint passed to each worker's model resolution
+      |  - `modelId`        — explicit model override per worker
+      |  - `toolNames`      — worker roster (empty inherits yours)
+      |  - `maxIterations`  — per-worker cap
+      |  - `itemsAt`        — container tree level to read from
+      |  - `itemsLimit`     — hard cap on items consumed
+      |  - `maxParallel`    — concurrency cap (default 5; at most N workers run at once)
+      |  - `conversationId` — when reading items from another conversation (e.g. a worker's
+      |                       output), gated by the cross-conversation read predicate
       |
-      |Required: `itemsId` (container reference), `action` (the per-group script). `groupSize`
-      |(default 1) batches items into one worker invocation — the action handles batching
-      |internally. `itemsAt` (default 0) picks the tree level to dispatch over. `itemsLimit` caps
-      |the count consumed without modifying the source. `maxParallel` (default 5) caps concurrent
-      |worker invocations; `maxItems` (default 10000) caps the total item count to avoid runaway
-      |work.""".stripMargin
+      |Use for: refactor work across many files, per-item classification, summarization, multi-
+      |target investigation. Don't use for deterministic transforms — those compose better via
+      |parallel tool calls (emit N tool calls in one turn) or a script tool.""".stripMargin
+
   override val keywords = Set(
-    "dispatch", "workers", "parallel", "per-item", "per item",
-    "refactor", "rewrite", "modify", "multi-file", "across files", "worker",
-    "per-match", "regex", "code change", "edit", "transform",
+    "dispatch", "workers", "parallel", "fanout", "fan out", "per-item", "per item",
+    "refactor", "rewrite", "modify", "multi-file", "across files",
     "find", "replace", "find and replace", "search and replace",
-    "search and edit", "find and edit", "bulk edit", "bulk replace",
-    "rewrite across files", "remove", "delete pattern", "substitute",
-    "search", "match", "classify", "annotate", "extract", "batch",
-    "loop", "map", "fan out", "action", "script"
-  )
-  override val examples = List(
-    ToolExample(
-      "Preview dispatching an action over a grep result (confirmed=false)",
-      DispatchWorkersInput(
-        itemsId = lightdb.id.Id[ToolOutputNode]("example-grep-call-id"),
-        action  = "items.head"
-      )
-    ),
-    ToolExample(
-      "Uppercase a field of each item (confirmed=true)",
-      DispatchWorkersInput(
-        itemsId   = lightdb.id.Id[ToolOutputNode]("example-list-container-id"),
-        action    = "fabric.Str(items.head(\"name\").asString.toUpperCase)",
-        confirmed = true
-      )
-    )
+    "bulk", "batch", "loop", "map", "delegate", "subagent"
   )
 
+  override val examples: List[ToolExample] = Nil
 
-  override def executeOutput(input: DispatchWorkersInput,
-                             ctx: ToolContext): Task[DispatchWorkersOutput] = {
-    if (input.groupSize < 1) {
-      return Task.pure(DispatchWorkersOutput.DispatchResult(
-        sessionId    = rapid.Unique(),
-        totalItems   = 0,
-        successCount = 0,
-        failureCount = 0,
-        perItem      = Nil,
-        abortReason  = Some(s"dispatch_workers: groupSize must be >= 1 (got ${input.groupSize}).")
-      ))
+  override def executeResult(input: DispatchWorkersInput,
+                             ctx: ToolContext): Task[ToolResult[DispatchWorkersOutput]] =
+    ctx.sigil match {
+      case ws: WorkflowSigil => kickoff(ws, input, ctx)
+      case _ =>
+        Task.pure(ToolResult.failure(
+          "dispatch_workers requires the host Sigil to mix in WorkflowSigil; the workflow runtime is not active."
+        ))
     }
-    val executor: Option[ScriptExecutor] = scriptExecutor.orElse(DispatchWorkersTool.scriptExecutorOf(ctx.sigil))
-    executor match {
-      case None =>
-        Task.pure(DispatchWorkersOutput.DispatchResult(
-          sessionId    = rapid.Unique(),
-          totalItems   = 0,
-          successCount = 0,
-          failureCount = 0,
-          perItem      = Nil,
-          abortReason  = Some(
-            "dispatch_workers: no ScriptExecutor available — the host Sigil must mix in ScriptSigil " +
-              "(or an executor must be injected) to compile and run the action script."
+
+  private def kickoff(ws: WorkflowSigil & Sigil,
+                      input: DispatchWorkersInput,
+                      ctx: ToolContext): Task[ToolResult[DispatchWorkersOutput]] = {
+    val targetConvId  = input.conversationId.getOrElse(ctx.conversation.id)
+    val currentConvId = ctx.conversation.id
+    ws.canReadConversation(currentConvId, targetConvId).flatMap {
+      case Left(reason) =>
+        Task.pure(ToolResult.failure(
+          message = s"dispatch_workers: cannot read items from conversation `${targetConvId.value}` — $reason",
+          hint = Some(
+            "Cross-conversation item reads are allowed only against the caller's own conversation, " +
+              "its parent, or one of its workers."
           )
         ))
-      case Some(exec) =>
-        ContainerSupport.resolveItems(ctx, input.itemsId, input.itemsAt, input.itemsLimit).flatMap { items =>
-          dispatch(input, ctx, exec, items)
+      case Right(_) =>
+        ContainerSupport.resolveItems(
+          ctx = ctx,
+          itemsId = input.itemsId,
+          itemsAt = input.itemsAt,
+          itemsLimit = Some(input.itemsLimit)
+        ).flatMap { items =>
+          if (items.isEmpty) {
+            val dispatchId = rapid.Unique()
+            Task.pure(ToolResult.Success(DispatchWorkersOutput(
+              dispatchId     = dispatchId,
+              total          = 0,
+              workersStarted = 0,
+              abortReason    = Some(
+                s"dispatch_workers: container `${input.itemsId.value}` resolved to 0 items at level " +
+                  s"${input.itemsAt.getOrElse(0)} (limit ${input.itemsLimit}). Verify the container has " +
+                  "items at the requested level."
+              )
+            )))
+          } else startDispatch(ws, input, ctx, items)
         }
     }
   }
 
-  // ---- core flow ----
+  private def startDispatch(ws: WorkflowSigil & Sigil,
+                            input: DispatchWorkersInput,
+                            ctx: ToolContext,
+                            items: List[Json]): Task[ToolResult[DispatchWorkersOutput]] = {
+    val dispatchId    = rapid.Unique()
+    val total         = items.size
+    val cap           = math.max(1, input.maxParallel)
+    val initial       = math.min(total, cap)
+    val parentConvId  = ctx.conversation.id
+    val parentTopicId = ctx.conversation.currentTopicId
 
-  private def dispatch(input: DispatchWorkersInput,
-                       ctx: ToolContext,
-                       exec: ScriptExecutor,
-                       items: List[Json]): Task[DispatchWorkersOutput] = {
-    val totalItems = items.size
-    val capExceeded = totalItems > input.maxItems
-    // Compile `action` once — before any worker, before the scope
-    // preview. A compile failure short-circuits both phases.
-    exec.compile(input.action, DispatchWorkersTool.ActionBindings).flatMap {
-      case Left(errors) =>
-        Task.pure(DispatchWorkersOutput.CompileFailure(errors))
-      case Right(compiled) =>
-        if (!input.confirmed) {
-          val abortReason: Option[String] =
-            if (capExceeded)
-              Some(s"found $totalItems items; refusing to dispatch more than maxItems=${input.maxItems}. " +
-                "Narrow the item source (e.g. filter_container) or raise the cap, then re-preview.")
-            else None
-          Task.pure(DispatchWorkersOutput.ScopePreview(
-            sessionId     = rapid.Unique(),
-            totalItems    = totalItems,
-            workerCount   = workerCount(totalItems, input.groupSize),
-            actionPreview = DispatchWorkersTool.preview(input.action),
-            compileOk     = true,
-            perItemSample = items.take(DispatchWorkersTool.PreviewSampleSize),
-            confirmCall   = renderConfirmCall(workerCount(totalItems, input.groupSize)),
-            abortReason   = abortReason
-          ))
-        } else if (items.isEmpty) {
-          Task.pure(DispatchWorkersOutput.DispatchResult(
-            sessionId    = rapid.Unique(),
-            totalItems   = 0,
-            successCount = 0,
-            failureCount = 0,
-            perItem      = Nil,
-            abortReason  = Some(
-              "dispatch_workers received an empty items list with confirmed=true. " +
-                "There's nothing to dispatch. Verify the itemsId resolves to a container with items — " +
-                "create_container, load_file_as_container, filter_container, or any paginated tool's callId."
-            )
-          ))
-        } else if (capExceeded) {
-          Task.pure(DispatchWorkersOutput.DispatchResult(
-            sessionId    = rapid.Unique(),
-            totalItems   = totalItems,
-            successCount = 0,
-            failureCount = 0,
-            perItem      = Nil,
-            abortReason  = Some(s"found $totalItems items; refusing to dispatch more than maxItems=${input.maxItems}.")
-          ))
-        } else {
-          runWorkers(input, ctx, compiled, items)
-        }
-    }
+    val state = new DispatchState(
+      dispatchId    = dispatchId,
+      parentConvId  = parentConvId,
+      parentTopicId = parentTopicId,
+      parentCaller  = ctx.caller,
+      items         = items,
+      maxParallel   = cap,
+      input         = input,
+      ws            = ws
+    )
+    DispatchWorkersTool.coordinator.register(state)
+
+    for {
+      _ <- ws.publish(DispatchStarted(
+        participantId   = ctx.caller,
+        conversationId  = parentConvId,
+        topicId         = parentTopicId,
+        dispatchId      = dispatchId,
+        total           = total,
+        workersStarted  = initial,
+        maxParallel     = cap
+      ))
+      _ <- Task.sequence((0 until initial).toList.map(idx => state.spawnAt(idx)))
+      _ = state.startCoordinator()
+    } yield ToolResult.Success(DispatchWorkersOutput(
+      dispatchId     = dispatchId,
+      total          = total,
+      workersStarted = initial
+    ))
   }
-
-  private def runWorkers(input: DispatchWorkersInput,
-                         ctx: ToolContext,
-                         compiled: CompiledScript,
-                         items: List[Json]): Task[DispatchWorkersOutput] = {
-    val groups: List[List[Json]] = items.grouped(input.groupSize).toList
-    val perGroup: List[Task[WorkerOutcome]] = groups.zipWithIndex.map { case (group, index) =>
-      val bindings: Map[String, Any] = Map(
-        "items"   -> group,
-        "context" -> ctx
-      )
-      compiled.invoke(bindings)
-        .map(result => WorkerOutcome(index, result))
-        .handleError { t =>
-          val msg = Option(t.getMessage).getOrElse(t.getClass.getSimpleName)
-          Task.pure(WorkerOutcome(index, Left(msg)))
-        }
-    }
-    Task.parSequenceBounded(perGroup, parallelism = math.max(1, input.maxParallel)).map { outcomes =>
-      val successCount = outcomes.count(_.result.isRight)
-      val failureCount = outcomes.size - successCount
-      DispatchWorkersOutput.DispatchResult(
-        sessionId    = rapid.Unique(),
-        totalItems   = items.size,
-        successCount = successCount,
-        failureCount = failureCount,
-        perItem      = outcomes
-      )
-    }
-  }
-
-  // ---- helpers ----
-
-  private def workerCount(totalItems: Int, groupSize: Int): Int =
-    if (totalItems <= 0) 0
-    else math.ceil(totalItems.toDouble / math.max(1, groupSize)).toInt
-
-  private def renderConfirmCall(workers: Int): String =
-    s"call dispatch_workers again with the same arguments and confirmed=true to dispatch $workers " +
-      "workers running the compiled action script"
 }
 
 object DispatchWorkersTool {
 
-  /** Hard cap on `perItemSample` in [[DispatchWorkersOutput.ScopePreview]].
-    * Keeps the preview body comfortably under the framework's inline-
-    * truncation threshold even for 1000+ item containers. */
-  val PreviewSampleSize: Int = 10
+  /** Process-wide coordinator registry. Each active dispatch
+    * registers its [[DispatchState]] here; the coordinator's
+    * background fiber drains TaskExecuted signals and looks up the
+    * matching state by `workerConversationId`. */
+  private[dispatch] val coordinator: DispatchRegistry = new DispatchRegistry
 
-  /** Character cap on `actionPreview` in
-    * [[DispatchWorkersOutput.ScopePreview]]. */
-  val ActionPreviewLength: Int = 200
+  private val PreviewLength: Int = 80
+  private[dispatch] def previewOf(item: Json): String = {
+    val rendered = JsonFormatter.Compact(item)
+    if (rendered.length <= PreviewLength) rendered
+    else rendered.take(PreviewLength - 3) + "..."
+  }
 
-  /** The per-worker binding surface the `action` script compiles
-    * against — the group's item payloads and the turn context. */
-  val ActionBindings: List[ScriptBinding] = List(
-    ScriptBinding("items", "List[fabric.Json]"),
-    ScriptBinding("context", "sigil.tool.ToolContext")
-  )
+  /** Compose the worker's brief: optional dispatch goal first,
+    * then per-item payload, then the agent's `workerPrompt`
+    * template. The payload sits between goal and prompt so the
+    * worker reads them as a coherent block. */
+  private[dispatch] def composeBrief(input: DispatchWorkersInput, item: Json): String = {
+    val payloadBlock = s"Item:\n${JsonFormatter.Default(item)}"
+    val goalBlock    = input.goal.filter(_.nonEmpty).map(g => s"Dispatch goal: $g\n\n").getOrElse("")
+    s"$goalBlock$payloadBlock\n\n${input.workerPrompt}"
+  }
+}
 
-  /** First [[ActionPreviewLength]] characters of `action`, for the
-    * scope preview's sanity-check field. */
-  private[dispatch] def preview(action: String): String =
-    if (action.length <= ActionPreviewLength) action
-    else action.take(ActionPreviewLength)
+/** In-process registry of active dispatches keyed by
+  * `workerConversationId` so the coordinator can route incoming
+  * TaskExecuted events to the right [[DispatchState]] in O(1). */
+private[dispatch] final class DispatchRegistry {
+  private val byWorker: ConcurrentHashMap[LId[Conversation], DispatchState] = new ConcurrentHashMap()
 
-  /** Reflective discovery of an `Option[ScriptExecutor]` on the host
-    * Sigil. Apps mixing in `ScriptSigil` expose `scriptExecutor:
-    * ScriptExecutor`; we use reflection because `tooling/` cannot
-    * statically depend on `script/`'s opt-in mixin (that would force
-    * every tooling user to pull in scala3-repl). When the host
-    * doesn't have the method, returns `None` and the dispatcher
-    * surfaces a structured abort. */
-  private[dispatch] def scriptExecutorOf(host: AnyRef): Option[ScriptExecutor] = {
-    val cls = host.getClass
-    val method = scala.util.Try(cls.getMethod("scriptExecutor")).toOption
-    method.flatMap { m =>
-      scala.util.Try(m.invoke(host)) match {
-        case scala.util.Success(value: ScriptExecutor) => Some(value)
-        case _                                         => None
+  def register(state: DispatchState): Unit = state.attach(this)
+
+  def link(workerId: LId[Conversation], state: DispatchState): Unit = byWorker.put(workerId, state)
+  def unlink(workerId: LId[Conversation]): Unit = byWorker.remove(workerId)
+  def find(workerId: LId[Conversation]): Option[DispatchState] = Option(byWorker.get(workerId))
+}
+
+/** Per-dispatch coordinator state. Tracks per-item assignment
+  * (workerConvId → itemIndex), inflight count, and accumulated
+  * results. As each TaskExecuted arrives, the coordinator records
+  * the per-worker summary, advances the queue, and once every
+  * item has settled emits [[DispatchCompleted]] into the parent
+  * conversation. */
+private[dispatch] final class DispatchState(val dispatchId: String,
+                                            val parentConvId: LId[Conversation],
+                                            val parentTopicId: LId[sigil.conversation.Topic],
+                                            val parentCaller: ParticipantId,
+                                            val items: List[Json],
+                                            val maxParallel: Int,
+                                            val input: DispatchWorkersInput,
+                                            val ws: WorkflowSigil & Sigil) {
+
+  private val total = items.size
+  private var nextItemToSpawn: Int = 0
+  private val workerToIndex = scala.collection.mutable.Map.empty[LId[Conversation], Int]
+  private val results       = scala.collection.mutable.LinkedHashMap.empty[Int, WorkerSummary]
+  private var registry: DispatchRegistry = null
+
+  def attach(r: DispatchRegistry): Unit = synchronized {
+    registry = r
+  }
+
+  /** Spawn the worker for `itemIndex` and register the
+    * (workerConvId → itemIndex) mapping. Caller sequences the
+    * initial batch via Task chaining; coordinator launches
+    * follow-on spawns one at a time as workers settle. */
+  def spawnAt(itemIndex: Int): Task[Unit] = {
+    val item        = items(itemIndex)
+    val brief       = DispatchWorkersTool.composeBrief(input, item)
+    val workerLabel = s"DispatchWorker[$dispatchId:$itemIndex] (${input.role.name})"
+
+    val resolvedModelTask: Task[String] = input.modelId match {
+      case Some(explicit) => Task.pure(explicit)
+      case None =>
+        ws.routedModelFor(
+          workType   = input.role.workType,
+          chain      = List(parentCaller),
+          fallback   = ws.cache.all.headOption.map(_._id).getOrElse(
+            lightdb.id.Id[sigil.db.Model]("dispatch-no-default-model")
+          ),
+          complexity = input.complexity
+        ).map(_.value)
+    }
+
+    for {
+      resolvedModel <- resolvedModelTask
+      effectiveToolNames <- inheritParentRosterTask
+      _ = synchronized { nextItemToSpawn = math.max(nextItemToSpawn, itemIndex + 1) }
+      workerConv <- ws.newConversation(
+        createdBy            = parentCaller,
+        label                = workerLabel,
+        summary              = input.goal.getOrElse(input.workerPrompt).take(80),
+        participants         = Nil,
+        parentConversationId = Some(parentConvId)
+      )
+      _ = synchronized {
+        workerToIndex(workerConv._id) = itemIndex
+        if (registry != null) registry.link(workerConv._id, this)
       }
+      stepInput = AgentDecisionStepInput(
+        id            = "decision-0",
+        name          = Some(s"DispatchWorker:$itemIndex"),
+        role          = input.role,
+        brief         = brief,
+        modelId       = resolvedModel,
+        maxIterations = input.maxIterations.getOrElse(50),
+        toolNames     = effectiveToolNames
+      )
+      compiled = WorkflowStepInputCompiler.compile(List(stepInput))(using summon[fabric.rw.RW[strider.step.Step]])
+      sourceId = LId[WorkflowParent](s"dispatch-$dispatchId-item-$itemIndex-${rapid.Unique()}")
+      _ <- ws.workflowManager.schedule(
+        name           = workerLabel,
+        steps          = compiled.steps,
+        sourceId       = sourceId,
+        conversationId = Some(workerConv._id.value)
+      )
+    } yield ()
+  }
+
+  /** Background fiber: drains [[TaskExecuted]] events filtered to
+    * this dispatch's workers, records per-worker results, advances
+    * the spawn queue, and emits [[DispatchCompleted]] when every
+    * item has settled. */
+  def startCoordinator(): Unit = {
+    ws.signals
+      .collect { case te: TaskExecuted => te }
+      .evalMap(handleSettle)
+      .takeWhile(_ => !isComplete)
+      .drain
+      .startUnit()
+  }
+
+  private def isComplete: Boolean = synchronized { results.size >= total }
+
+  private def handleSettle(te: TaskExecuted): Task[Unit] = {
+    te.workerConversationId match {
+      case None => Task.unit
+      case Some(workerConv) =>
+        val (matchedIndexOpt, allDone, nextSpawn): (Option[Int], Boolean, Option[Int]) = synchronized {
+          workerToIndex.remove(workerConv) match {
+            case None => (None, false, None)
+            case Some(idx) =>
+              val status = if (te.exhausted) "Failure" else "Success"
+              val item = items(idx)
+              results(idx) = WorkerSummary(
+                itemIndex            = idx,
+                itemPreview          = DispatchWorkersTool.previewOf(item),
+                workerConversationId = workerConv.value,
+                status               = status,
+                summary              = Option(te.summary).filter(_.nonEmpty),
+                iterations           = te.iterations,
+                exhausted            = te.exhausted
+              )
+              if (registry != null) registry.unlink(workerConv)
+              val toSpawn =
+                if (nextItemToSpawn < total) Some(nextItemToSpawn)
+                else None
+              (Some(idx), results.size >= total, toSpawn)
+          }
+        }
+        if (matchedIndexOpt.isEmpty) Task.unit
+        else {
+          val spawnNext: Task[Unit] = nextSpawn match {
+            case Some(idx) => spawnAt(idx).handleError(e => Task(scribe.warn(s"dispatch $dispatchId: spawn idx=$idx failed: ${e.getMessage}")))
+            case None      => Task.unit
+          }
+          val finalize: Task[Unit] = if (allDone) emitCompleted() else Task.unit
+          spawnNext.flatMap(_ => finalize)
+        }
     }
   }
+
+  private def emitCompleted(): Task[Unit] = {
+    val workers = synchronized(results.values.toList.sortBy(_.itemIndex))
+    val succeeded = workers.count(_.status == "Success")
+    val failed    = workers.size - succeeded
+    ws.publish(DispatchCompleted(
+      participantId  = parentCaller,
+      conversationId = parentConvId,
+      topicId        = parentTopicId,
+      dispatchId     = dispatchId,
+      total          = total,
+      succeeded      = succeeded,
+      failed         = failed,
+      workers        = workers
+    )).map(_ => ())
+  }
+
+  /** Inherit the spawning agent's effective roster — same logic as
+    * [[sigil.tool.util.DelegateTaskTool]]'s inheritParentRoster.
+    * Loads the parent conversation, finds the calling agent in its
+    * participants list, asks the framework for its effective roster
+    * for the conversation's current mode. */
+  private def inheritParentRosterTask: Task[List[String]] =
+    if (input.toolNames.nonEmpty) Task.pure(input.toolNames)
+    else ws.withDB(_.conversations.transaction(_.get(parentConvId))).map {
+      case None       => Nil
+      case Some(conv) =>
+        conv.participants.collectFirst {
+          case agent: sigil.participant.AgentParticipant if agent.id == parentCaller => agent
+        }.map(agent => ws.effectiveToolNames(agent, conv.currentMode, Nil).map(_.value))
+         .getOrElse(Nil)
+    }
 }

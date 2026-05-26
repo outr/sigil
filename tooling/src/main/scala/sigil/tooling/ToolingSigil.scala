@@ -1,14 +1,16 @@
 package sigil.tooling
 
+import fabric.rw.RW
 import rapid.Task
 import sigil.Sigil
 import sigil.db.SigilDB
+import sigil.event.Event
 import sigil.tool.Tool
 import sigil.tool.fs.{FileSystemContext, LocalFileSystemContext}
 import sigil.tooling.container.{
   CreateContainerTool, FilterContainerTool, LoadFileAsContainerTool, PinContainerTool, UnpinContainerTool
 }
-import sigil.tooling.dispatch.DispatchWorkersTool
+import sigil.tooling.dispatch.{DispatchCompleted, DispatchStarted, DispatchWorkersTool}
 
 import scala.concurrent.duration.*
 
@@ -149,6 +151,14 @@ trait ToolingSigil extends Sigil {
     sweepLoop().startUnit()
     ()
   }
+
+  /** Auto-register the dispatch lifecycle Events so fabric's
+    * polymorphic `Signal` round-trips them on the wire. Apps that
+    * override `eventRegistrations` should chain through `super`. */
+  override protected def eventRegistrations: List[RW[? <: Event]] =
+    summon[RW[DispatchStarted]] ::
+      summon[RW[DispatchCompleted]] ::
+      super.eventRegistrations
 
   startToolingIdleSweep().sync()
 }
