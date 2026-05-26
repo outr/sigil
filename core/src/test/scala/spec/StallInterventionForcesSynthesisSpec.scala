@@ -110,7 +110,7 @@ class StallInterventionForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskS
           case _ =>
             List(
               ProviderEvent.ToolCallStart(callId, ChangeModeTool.schema.name.value),
-              ProviderEvent.ToolCallComplete(callId, ChangeModeInput(mode = "conversation")),
+              ProviderEvent.ToolCallComplete(callId, ChangeModeInput(mode = "coding")),
               ProviderEvent.Done(StopReason.ToolCall)
             )
         }

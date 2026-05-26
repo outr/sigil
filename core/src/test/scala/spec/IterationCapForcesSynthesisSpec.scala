@@ -96,7 +96,7 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
         } else {
           List(
             ProviderEvent.ToolCallStart(callId, ChangeModeTool.schema.name.value),
-            ProviderEvent.ToolCallComplete(callId, ChangeModeInput(mode = "conversation")),
+            ProviderEvent.ToolCallComplete(callId, ChangeModeInput(mode = "coding")),
             ProviderEvent.Done(StopReason.ToolCall)
           )
         }
@@ -119,7 +119,7 @@ class IterationCapForcesSynthesisSpec extends AsyncWordSpec with AsyncTaskSpec w
       val callId = CallId(s"stubborn-$n")
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callId, ChangeModeTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(callId, ChangeModeInput(mode = "conversation")),
+        ProviderEvent.ToolCallComplete(callId, ChangeModeInput(mode = "coding")),
         ProviderEvent.Done(StopReason.ToolCall)
       ))
     }

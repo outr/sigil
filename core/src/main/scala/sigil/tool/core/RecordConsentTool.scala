@@ -88,6 +88,25 @@ case object RecordConsentTool extends Tool {
               "aren't in the registry.")
         ))
 
+      case Some(tool) if !tool.requiresUserConsent =>
+        // Sigil bug #285 — refuse to persist an approval for a tool
+        // that doesn't require consent. The agent was confusing
+        // `respond_options.options[].value` strings with tool names
+        // (e.g. recorded consent for `just_do_it`, a free-form
+        // option value), and the framework happily persisted bogus
+        // approvals. Distinguishing this from the unknown-tool case
+        // tells the agent the tool exists but the consent record is
+        // pointless — `find_capability` would have shown
+        // `requiresUserConsent` on the discovered match.
+        Task.pure(ToolResult.failure(
+          message = s"record_consent: tool '${input.toolName}' does not require user consent.",
+          hint = Some(
+            "Only tools with `requiresUserConsent = true` need an approval record before " +
+              "dispatch. If you mistook a `respond_options.value` string for a tool name, " +
+              "consume the user's selection yourself by deciding which actual tool to call " +
+              "next; you don't need to record consent for the option value.")
+        ))
+
       case Some(_) =>
         // ToolApproval is the durable, ancillary effect of this tool —
         // emit it via `ctx.emit`. The tool's own result is the

@@ -15,13 +15,45 @@ import sigil.tool.core.RecordConsentTool
 import sigil.tool.model.{RecordConsentInput, ResponseContent}
 
 /**
- * Coverage for sigil bug #160 (Problem A) — `record_consent` validates
- * the supplied `toolName` against the live registry. Fabricated names
- * (`start_coding`, etc.) no longer persist a useless `ToolApproval`
- * row that pollutes the audit log and never matches a real tool.
+ * Coverage for sigil bug #160 (Problem A) + bug #285 —
+ * `record_consent` validates the supplied `toolName` against the
+ * live registry AND refuses tools that don't declare
+ * `requiresUserConsent = true`. Fabricated names (`start_coding`,
+ * `just_do_it`, etc.) and consent-free tool names (`read_file`)
+ * both refuse before persisting; only real consent-gated tools
+ * land a [[ToolApproval]] row.
  */
 class RecordConsentValidationSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
+
+  /** Stub consent-gated tool — the happy-path target for the
+    * "known + consent-gated" assertion below. */
+  private object ConsentGatedStub extends sigil.tool.Tool {
+    type Input  = RecordConsentInput
+    type Output = TextToolOutput
+    val inputRW                                       = summon[RW[RecordConsentInput]]
+    val outputRW                                      = summon[RW[TextToolOutput]]
+    val name                                          = sigil.tool.ToolName("load_claude_state")
+    val description                                   = "Stub consent-gated tool — for RecordConsentValidationSpec."
+    override def requiresUserConsent: Boolean         = true
+    override def executeResult(input: RecordConsentInput, ctx: sigil.tool.ToolContext) =
+      Task.pure(sigil.tool.ToolResult.success(TextToolOutput("")))
+  }
+
+  /** Stub tool that exists but doesn't require consent — the
+    * "REFUSE consent-free" assertion below targets this. */
+  private object ConsentFreeStub extends sigil.tool.Tool {
+    type Input  = RecordConsentInput
+    type Output = TextToolOutput
+    val inputRW                                       = summon[RW[RecordConsentInput]]
+    val outputRW                                      = summon[RW[TextToolOutput]]
+    val name                                          = sigil.tool.ToolName("read_file")
+    val description                                   = "Stub tool that doesn't need consent."
+    override def executeResult(input: RecordConsentInput, ctx: sigil.tool.ToolContext) =
+      Task.pure(sigil.tool.ToolResult.success(TextToolOutput("")))
+  }
+
+  TestSigil.setToolFinder(sigil.tool.InMemoryToolFinder(List(ConsentGatedStub, ConsentFreeStub)))
 
   private def freshConv(suffix: String): Task[Conversation] = {
     val convId = Conversation.id(s"consent-validate-$suffix-${rapid.Unique()}")
@@ -70,7 +102,7 @@ class RecordConsentValidationSpec extends AsyncWordSpec with AsyncTaskSpec with 
       }
     }
 
-    "ALLOW a ToolApproval to persist for a known tool name" in {
+    "ALLOW a ToolApproval to persist for a known consent-gated tool" in {
       for {
         conv <- freshConv("known")
         ctx   = turnContextFor(conv)
@@ -81,7 +113,7 @@ class RecordConsentValidationSpec extends AsyncWordSpec with AsyncTaskSpec with 
         invokeId = sigil.event.Event.id()
         evs  <- Orchestrator.dispatchAtomic(
                   RecordConsentTool,
-                  RecordConsentInput(toolName = RecordConsentTool.schema.name.value,
+                  RecordConsentInput(toolName = ConsentGatedStub.name.value,
                                      approved = true,
                                      reason   = Some("self-test")),
                   ctx,
@@ -91,7 +123,7 @@ class RecordConsentValidationSpec extends AsyncWordSpec with AsyncTaskSpec with 
         approvalsForConv <- TestSigil.withDB(_.events.transaction(_.list)).map { all =>
                               all.collect { case ta: ToolApproval => ta }
                                  .filter(ta => ta.conversationId == conv._id &&
-                                               ta.toolName == RecordConsentTool.schema.name)
+                                               ta.toolName == ConsentGatedStub.name)
                             }
       } yield {
         approvalsForConv.size shouldBe 1
@@ -101,6 +133,32 @@ class RecordConsentValidationSpec extends AsyncWordSpec with AsyncTaskSpec with 
             d.output.collect { case TextToolOutput(t) => t }
         }.flatten
         confirmations.exists(_.contains("approved")) shouldBe true
+      }
+    }
+
+    "REFUSE to persist a ToolApproval for a tool that doesn't require consent (#285)" in {
+      for {
+        conv <- freshConv("no-consent-needed")
+        ctx   = turnContextFor(conv)
+        evs  <- RecordConsentTool.execute(
+                  RecordConsentInput(toolName = ConsentFreeStub.name.value,
+                                     approved = true,
+                                     reason   = Some("habit; not actually consent-gated")),
+                  ctx, Event.id()
+                ).toList
+        persistedApprovals <- TestSigil.withDB(_.events.transaction(_.list)).map { all =>
+                                all.collect { case ta: ToolApproval => ta }
+                                   .filter(_.toolName == ConsentFreeStub.name)
+                              }
+      } yield {
+        val failures = evs.collect {
+          case d: ToolDelta =>
+            d.outcome.collect { case ToolOutcome.Failure(reason, _) => reason }.toVector
+        }.flatten
+        failures should not be empty
+        failures.head should include(ConsentFreeStub.name.value)
+        failures.head.toLowerCase should include("does not require user consent")
+        persistedApprovals shouldBe empty
       }
     }
   }

@@ -11,6 +11,7 @@ import sigil.signal.ToolDelta
 import sigil.tool.{TextToolOutput, ToolName}
 import sigil.tool.core.RecordConsentTool
 import sigil.tool.model.RecordConsentInput
+import fabric.rw.RW
 
 /**
  * Coverage for sigil bug #84 — `record_consent` previously emitted
@@ -32,12 +33,24 @@ import sigil.tool.model.RecordConsentInput
 class RecordConsentPairingSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
 
-  // Sigil bug #160 — `record_consent` validates `toolName` against
-  // the live registry. Use a real, framework-shipped tool name so
-  // the pair-emission assertions exercise the happy path rather
-  // than the validation refusal path. `RespondTool` is always
-  // registered by `CoreTools.all`.
-  private val testToolName: String = sigil.tool.core.RespondTool.schema.name.value
+  // Sigil bugs #160 + #285 — `record_consent` validates `toolName`
+  // against the live registry AND refuses tools that don't set
+  // `requiresUserConsent = true`. Install a stub finder whose only
+  // tool is a consent-gated stub so the pair-emission assertions
+  // exercise the happy path rather than the validation refusal path.
+  private object ConsentGatedStub extends sigil.tool.Tool {
+    type Input  = RecordConsentInput
+    type Output = TextToolOutput
+    val inputRW                                       = summon[RW[RecordConsentInput]]
+    val outputRW                                      = summon[RW[TextToolOutput]]
+    val name                                          = ToolName("consent_gated_stub")
+    val description                                   = "Stub tool that requires consent — for RecordConsentPairingSpec."
+    override def requiresUserConsent: Boolean         = true
+    override def executeResult(input: RecordConsentInput, ctx: sigil.tool.ToolContext) =
+      Task.pure(sigil.tool.ToolResult.success(TextToolOutput("")))
+  }
+  private val testToolName: String = ConsentGatedStub.name.value
+  TestSigil.setToolFinder(sigil.tool.InMemoryToolFinder(List(ConsentGatedStub)))
 
   private def turnContextFor(): Task[TurnContext] = {
     val convId = Conversation.id(s"consent-pair-${rapid.Unique()}")

@@ -67,7 +67,7 @@ class AgentLoopIterationBoundarySpec extends AsyncWordSpec with AsyncTaskSpec wi
           // iteration via TriggerFilter on ModeChange).
           List(
             ProviderEvent.ToolCallStart(callId, "change_mode"),
-            ProviderEvent.ToolCallComplete(callId, ChangeModeInput(mode = "conversation")),
+            ProviderEvent.ToolCallComplete(callId, ChangeModeInput(mode = "coding")),
             ProviderEvent.Done(StopReason.ToolCall)
           )
         else

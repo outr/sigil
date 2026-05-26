@@ -69,6 +69,22 @@ case object ChangeModeTool extends Tool {
 
   override def executeResult(input: ChangeModeInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.modeByName(input.mode) match {
+      case Some(mode) if mode.name == context.conversation.currentMode.name =>
+        // Sigil bug #286 — refuse same-mode re-entry. Field evidence
+        // (Sage 2026-05-26) showed an agent calling change_mode with
+        // the current mode 5× in a single turn under the (incorrect)
+        // belief that re-entering would unblock a stuck loop. The
+        // didactic phrasing names the no-op AND tells the agent the
+        // blocker is elsewhere so its next iteration doesn't repeat.
+        scribe.warn(s"change_mode same-mode no-op rejected: ${input.mode}")
+        Task.pure(ToolResult.failure(
+          message = s"`change_mode` rejected: conversation is already in `${mode.name}` mode.",
+          hint = Some(
+            "Re-entering the current mode won't change anything — the next iteration's prompt " +
+              "will be identical to this one. If the agent loop appears stuck, the gap is in " +
+              "your next tool choice, not the mode."
+          )
+        ))
       case Some(mode) =>
         context.emit(ModeChange(
           mode = mode,
@@ -80,9 +96,10 @@ case object ChangeModeTool extends Tool {
         )).map(_ => ToolResult.Success(TextToolOutput(s"Switched to mode '${mode.name}'.")))
       case None =>
         scribe.warn(s"change_mode called with unknown mode name: ${input.mode}")
+        val available = context.sigil.availableModes.map(_.name).mkString(", ")
         Task.pure(ToolResult.failure(
-          message = s"Unknown mode '${input.mode}'.",
-          hint = Some("Use the stable name of one of the modes listed in the tool description.")
+          message = s"`change_mode` rejected: no mode named `${input.mode}` registered.",
+          hint = Some(s"Available modes: $available.")
         ))
     }
 

@@ -186,7 +186,7 @@ class AtomicRespondCostNoticeSpec extends AsyncWordSpec with AsyncTaskSpec with 
           ProviderEvent.ToolCallStart(CallId("change-mode-1"), "change_mode"),
           ProviderEvent.ToolCallComplete(
             CallId("change-mode-1"),
-            ChangeModeInput(mode = "conversation")
+            ChangeModeInput(mode = "coding")
           ),
           ProviderEvent.Done(StopReason.ToolCall),
           ProviderEvent.Usage(TokenUsage(promptTokens = 2000, completionTokens = 25, totalTokens = 2025))

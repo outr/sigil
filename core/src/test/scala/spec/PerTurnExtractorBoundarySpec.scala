@@ -83,7 +83,7 @@ class PerTurnExtractorBoundarySpec extends AsyncWordSpec with AsyncTaskSpec with
         if (n == 1)
           List(
             ProviderEvent.ToolCallStart(callId, "change_mode"),
-            ProviderEvent.ToolCallComplete(callId, ChangeModeInput(mode = "conversation")),
+            ProviderEvent.ToolCallComplete(callId, ChangeModeInput(mode = "coding")),
             ProviderEvent.Done(StopReason.ToolCall)
           )
         else
