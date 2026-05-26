@@ -1587,7 +1587,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   private def runAgentTurn(agent: AgentParticipant,
                            context: TurnContext): Stream[Signal] = {
     val effectiveChain = context.chain.filterNot(_ == agent.id) :+ agent.id
-    val suggested      = context.turnInput.projectionFor(agent.id).suggestedTools
+    // Sigil #226 + #281 — surface this turn's discovered capabilities
+    // (find_capability matches recorded into the per-loop cache via
+    // `TurnContext.recordDiscovery`) on the next iteration's tool
+    // roster. The system-prompt "Capabilities you've already discovered"
+    // section gives the model the names; this folds them into
+    // `effectiveToolNames` so the wire roster actually carries them.
+    // Without this fold, find_capability returns matches, the model
+    // sees them in the prompt section, but the wire `tools` array
+    // doesn't include them — the model can't call what isn't there.
+    val discoveredToolNames: List[sigil.tool.ToolName] =
+      context.discoveredCapabilities.values.toList.flatMap(_.matches)
+    val suggested = (context.turnInput.projectionFor(agent.id).suggestedTools ++ discoveredToolNames).distinct
 
     val resolved: Task[(Provider, Vector[Tool], Id[Model], GenerationSettings, List[sigil.role.Role])] =
       for {
@@ -1759,7 +1770,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         roles = rolesResolved,
         isGreeting = context.isGreeting,
         forceResponseSynthesis = context.forceResponseSynthesis,
-        discoveredCapabilities = context.discoveredCapabilities
+        discoveredCapabilities = context.discoveredCapabilities,
+        // Sigil #281 follow-up — thread the LIVE per-agent-loop cache
+        // ref through to the orchestrator's tool dispatch. Without
+        // this, `FindCapabilityTool.recordDiscovery` writes to a fresh
+        // ref on the orchestrator's TurnContext that the next iteration
+        // never sees; the discovered tool ends up invisible to the
+        // wire roster.
+        discoveredCapabilitiesRef = context.discoveredCapabilitiesRef
       )
 
       val typingEmitted = new java.util.concurrent.atomic.AtomicBoolean(false)

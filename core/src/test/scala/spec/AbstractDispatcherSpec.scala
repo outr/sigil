@@ -8,7 +8,7 @@ import sigil.conversation.Conversation
 import sigil.db.Model
 import sigil.event.{AgentState, Event, Message, ModeChange, Stop, ToolInvoke}
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant}
-import sigil.provider.{GenerationSettings, Instructions, Mode, ConversationMode, Provider}
+import sigil.provider.{GenerationSettings, Instructions, Mode, ConversationMode, Provider, ReasoningMode}
 import sigil.signal.{AgentActivity, AgentStateDelta, Delta, EventState, MessageDelta, Signal, ToolDelta}
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tool.core.{ChangeModeTool, CoreTools}
@@ -58,7 +58,11 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       modelId = modelId,
       toolNames = toolNames,
       instructions = Instructions(),
-      generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0))
+      generationSettings = GenerationSettings(
+        maxOutputTokens = Some(200),
+        temperature = Some(0.0),
+        reasoningMode = ReasoningMode.Off
+      )
     )
 
   /** Poll-based wait for the agent to reach Idle (terminal AgentStateDelta).
@@ -106,7 +110,11 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
           modelId = modelId,
           toolNames = tools,
           instructions = Instructions(),
-          generationSettings = GenerationSettings(maxOutputTokens = Some(300), temperature = Some(0.0))
+          generationSettings = GenerationSettings(
+            maxOutputTokens = Some(300),
+            temperature = Some(0.0),
+            reasoningMode = ReasoningMode.Off
+          )
         )
       ))
     ))).unit

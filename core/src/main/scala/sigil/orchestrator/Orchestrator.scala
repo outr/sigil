@@ -739,7 +739,12 @@ object Orchestrator {
                 // Bug #55 — atomic content tools stamp `Message.modelId`
                 // from here so per-message metadata shows which model
                 // produced the response.
-                model = request.model
+                model = request.model,
+                // Sigil #281 follow-up — share the agent loop's
+                // discovery cache so FindCapabilityTool's
+                // `recordDiscovery` lands where the next iteration's
+                // `runAgentTurn` can read it.
+                discoveredCapabilitiesRef = request.discoveredCapabilitiesRef
               )
               // Thinking-reserved Message id (if a prior `ThinkingDelta`
               // allocated one) — passed to `tool.execute` so atomic content

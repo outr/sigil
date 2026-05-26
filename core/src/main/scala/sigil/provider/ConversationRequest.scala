@@ -67,6 +67,29 @@ case class ConversationRequest(conversationId: Id[Conversation],
                                  * accumulated so far. Empty on a fresh user
                                  * turn. */
                                discoveredCapabilities: Map[String, DiscoveredCapability] = Map.empty,
+                               /** Sigil bug #281 follow-up — the LIVE atomic
+                                 * reference behind [[discoveredCapabilities]],
+                                 * threaded through from the agent loop's
+                                 * `TurnContext.discoveredCapabilitiesRef`.
+                                 * Tools running under the orchestrator
+                                 * (`FindCapabilityTool` in particular) write
+                                 * to this ref via
+                                 * [[sigil.TurnContext.recordDiscovery]] so the
+                                 * NEXT iteration's `runAgentTurn` sees the
+                                 * discovered tools both in the system prompt
+                                 * section AND in the wire-roster.
+                                 *
+                                 * Without this shared ref, the orchestrator's
+                                 * fresh `TurnContext` would carry its own
+                                 * empty ref — writes from tool dispatch never
+                                 * reached the agent loop's view, so
+                                 * `find_capability` → next-turn invoke was
+                                 * broken: matches were rendered in the prompt
+                                 * once (from the snapshot) but the discovered
+                                 * tool wasn't in the wire `tools` array, and
+                                 * the model couldn't call what wasn't there. */
+                               discoveredCapabilitiesRef: java.util.concurrent.atomic.AtomicReference[Map[String, DiscoveredCapability]] =
+                                 new java.util.concurrent.atomic.AtomicReference(Map.empty[String, DiscoveredCapability]),
                                requestId: Id[ProviderRequest] = Id())
   extends ProviderRequest {
 

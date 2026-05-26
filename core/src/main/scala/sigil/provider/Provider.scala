@@ -1107,8 +1107,10 @@ trait Provider extends Service {
         }
       }
       sb.append(
-        "If your current task needs one of these tools, invoke it directly. " +
-          "Do NOT re-search via `find_capability` for tools you've already discovered this turn.\n"
+        "DIRECTIVE: These tools are NOW in your roster — call them directly to complete the task. " +
+          "Re-calling `find_capability` for the same query, or falling back to `respond` without first " +
+          "calling the discovered action tool the user requested, is a protocol violation. If the user's " +
+          "request maps to one of these tools, invoke it on THIS iteration.\n"
       )
     }
 
