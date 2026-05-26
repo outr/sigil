@@ -148,15 +148,20 @@ case class GoogleProvider(apiKey: String,
 
   /** Build the request body. When `cached` is set, the system
     * instruction and tool schemas are omitted from the inline body and
-    * the `cachedContent` field references the resource instead;
-    * `toolConfig` always stays inline because it is request-specific. */
+    * the `cachedContent` field references the resource instead.
+    *
+    * Gemini disallows mixing `cachedContent` with `system_instruction`,
+    * `tools`, OR `tool_config` on a single request — the cached
+    * resource owns all three. We honour the per-call `toolConfig`
+    * (forced tool_choice etc.) over caching: when tools are present,
+    * `cached` is silently ignored and the prefix is sent inline. The
+    * cache resource still exists for reuse on future tool-less calls. */
   private def buildBody(input: ProviderCall, cached: Option[GeminiCachedPrefix]): Json = {
     val toolsArr = renderToolsArr(input)
 
-    // When a cached-content resource covers the prefix, the system
-    // instruction and tool schemas live in that resource — omit them
-    // here. Otherwise render them inline as before.
-    val prefixFields: Vector[(String, Json)] = cached match {
+    val effectiveCached = if (toolsArr.isEmpty) cached else None
+
+    val prefixFields: Vector[(String, Json)] = effectiveCached match {
       case Some(prefix) =>
         Vector("cachedContent" -> str(prefix.resourceName))
       case None =>
@@ -168,8 +173,9 @@ case class GoogleProvider(apiKey: String,
 
     val contents = renderContents(input.messages)
 
-    // `toolConfig` is request-specific and stays inline regardless of
-    // caching — but only when the call actually advertises tools.
+    // `toolConfig` is request-specific and stays inline (only valid
+    // when not paired with `cachedContent`, which is guaranteed by the
+    // `effectiveCached` fallback above).
     val toolConfig: Vector[(String, Json)] =
       if (toolsArr.isEmpty) Vector.empty else toolConfigField(input)
 
