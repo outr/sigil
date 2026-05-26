@@ -47,7 +47,7 @@ class ToolResultImageRenderingSpec extends AsyncWordSpec with AsyncTaskSpec with
         participantId  = TestAgent,
         conversationId = Conversation.id("conv-1"),
         topicId        = Topic.id("topic-1"),
-        state          = EventState.Complete
+        state          = EventState.Active
       )
       val toolMessage = Message(
         participantId  = TestAgent,
@@ -61,7 +61,19 @@ class ToolResultImageRenderingSpec extends AsyncWordSpec with AsyncTaskSpec with
         origin         = Some(invoke._id),
         state          = EventState.Complete
       )
-      val frames = FrameBuilder.appendFor(FrameBuilder.appendFor(Vector.empty, invoke), toolMessage)
+      // FrameBuilder.appendFor skips Active events, so seed the starter
+      // vector with a ToolCall(Active) frame the Tool-role Message can
+      // fold into. Mirrors the Vector-projection's actual shape at the
+      // moment the result lands.
+      val starter = Vector[ContextFrame](ContextFrame.ToolCall(
+        toolName = invoke.toolName,
+        argsJson = "{}",
+        callId = invoke._id,
+        participantId = invoke.participantId,
+        sourceEventId = invoke._id,
+        state = ToolCallState.Active
+      ))
+      val frames = FrameBuilder.appendFor(starter, toolMessage)
       frames should have size 1
       val tc = frames.head.asInstanceOf[ContextFrame.ToolCall]
       tc.state match {

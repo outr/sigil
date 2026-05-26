@@ -5,7 +5,8 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.{ContextFrame, Conversation, ToolCallState}
-import sigil.event.{Event, Message, MessageDisposition, MessageRole, ToolInvoke}
+import sigil.event.{Event, Message, MessageDisposition, MessageRole, ToolInvoke, ToolOutcome}
+import sigil.tool.ToolOutput
 import sigil.signal.EventState
 import sigil.tool.ToolName
 import sigil.tool.model.ResponseContent
@@ -49,27 +50,37 @@ class ToolInputParseFailurePairingSpec extends AsyncWordSpec with AsyncTaskSpec 
         _id          = convId
       )
 
-      // Mirrors what the orchestrator emits when arg-parse fails — a
-      // Tool-role `Message` carrying the failure text, paired by
-      // `origin` to the originating ToolInvoke (same shape
-      // `settleOrphanToolInvoke.pairedFailure` uses).
+      // Mirrors the production parse-failure flow: the orchestrator
+      // emits a settling ToolDelta carrying outcome = Failure(reason)
+      // which folds onto the originating ToolInvoke. By the time the
+      // invoke is persisted in Complete state, its `outcome` and
+      // `summary` already carry the failure text — FrameBuilder's
+      // `toolInvokePayload` then inlines that text directly onto the
+      // ToolCall frame. A follow-up Tool-role Message paired by
+      // `origin` re-triggers the agent loop but does not need to
+      // mutate the already-complete frame.
       val failureReason = "Tool `create_page` did not produce a result"
 
       for {
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
-        // 1. Publish the originating ToolInvoke (Complete state but
-        //    with no paired result yet). The framework inlines a
-        //    `ContextFrame.ToolCall(Active)` onto its row at settle.
+        // 1. Publish a settled ToolInvoke carrying the failure outcome
+        //    + summary inline — what the orchestrator's settling delta
+        //    folds onto the durable invoke row in production.
         _ <- TestSigil.publish(ToolInvoke(
                toolName       = ToolName("create_page"),
                participantId  = TestAgent,
                conversationId = convId,
                topicId        = TestTopicEntry.id,
                _id            = invokeId,
-               state          = EventState.Complete
+               state          = EventState.Complete,
+               output         = ToolOutput.Pending,
+               outcome        = ToolOutcome.Failure(failureReason, recoverable = true),
+               summary        = failureReason
              ))
-        // 2. Publish the paired failure Message. Pair-update should
-        //    find the matching ToolInvoke and transition its frame.
+        // 2. Publish the paired Tool-role failure Message so
+        //    TriggerFilter re-fires the agent loop (production also
+        //    emits this). The frame transition is already complete
+        //    from the invoke's inlined outcome above.
         _ <- TestSigil.publish(Message(
                participantId  = TestAgent,
                conversationId = convId,

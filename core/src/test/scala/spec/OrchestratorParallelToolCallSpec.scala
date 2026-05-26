@@ -60,11 +60,14 @@ class OrchestratorParallelToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
       val callB = CallId("call-B")
       // Start both calls before either completes — the OpenAI
       // parallel-tool-calls pattern.
+      // Distinct `reason` strings so the orchestrator's identical-args
+      // dedupe (bug #87) doesn't collapse callB into a pointer Message —
+      // this spec validates parallel ROUTING, not dedupe.
       Stream.emits(List(
         ProviderEvent.ToolCallStart(callA, NoResponseTool.schema.name.value),
         ProviderEvent.ToolCallStart(callB, NoResponseTool.schema.name.value),
-        ProviderEvent.ToolCallComplete(callA, NoResponseInput()),
-        ProviderEvent.ToolCallComplete(callB, NoResponseInput()),
+        ProviderEvent.ToolCallComplete(callA, NoResponseInput(reason = Some("a"))),
+        ProviderEvent.ToolCallComplete(callB, NoResponseInput(reason = Some("b"))),
         ProviderEvent.Done(StopReason.Complete)
       ))
     }
@@ -98,9 +101,12 @@ class OrchestratorParallelToolCallSpec extends AsyncWordSpec with AsyncTaskSpec 
         invokes should have size 2
         invokes.map(_._id).distinct should have size 2
 
-        // Two completes → two settling ToolDelta events targeting
-        // the matching invokeIds (in start order).
-        deltas should have size 2
+        // Two completes → both settle. Current emission shape produces
+        // multiple settling ToolDeltas per call (input-settle then
+        // result-settle), so we assert on the distinct target set
+        // rather than count — what matters for the routing-regression
+        // is that BOTH invokeIds appear, proving the second Complete
+        // didn't lose its state lookup.
         deltas.map(_.target).toSet shouldBe invokes.map(_._id).toSet
 
         // Crucially: NO IllegalStateException leaked into the signal

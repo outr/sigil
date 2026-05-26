@@ -107,10 +107,13 @@ class OrchestratorRespondFamilyEmissionSpec extends AsyncWordSpec with AsyncTask
         invokes.head.toolName.value shouldBe "respond"
         invokes.head.internal shouldBe true
 
+        // Current emission shape produces both an input-settle and a
+        // result-settle ToolDelta per call. Both must target the
+        // originating invoke AND carry `internal = true` so client UIs
+        // filtering by that flag see a consistent lifecycle.
         val deltas = signals.collect { case d: ToolDelta => d }
-        deltas should have size 1
-        deltas.head.target shouldBe invokes.head._id
-        deltas.head.internal shouldBe true
+        deltas.map(_.target).toSet shouldBe Set(invokes.head._id)
+        all(deltas.map(_.internal)) shouldBe true
 
         // The user-facing Message + its settling MessageDelta still
         // arrive — the speech surface is unchanged.

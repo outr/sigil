@@ -34,13 +34,29 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
 
   private val conversationId = Conversation.id("origin-contract-conv")
 
-  private def completeInvoke(name: String): ToolInvoke =
+  // `appendFor` early-returns for non-Complete events, so an Active
+  // ToolInvoke alone produces no frame. The pair-folding tests below
+  // exercise [[FrameBuilder.appendFor]]'s "fold a Tool-role result
+  // into the matching ToolCall(Active)" branch — they construct the
+  // ToolCall(Active) frame directly via [[activeFrameFor]] rather
+  // than relying on appendFor to materialise it.
+  private def activeInvoke(name: String): ToolInvoke =
     ToolInvoke(
       toolName = ToolName(name),
       participantId = TestAgent,
       conversationId = conversationId,
       topicId = TestTopicId,
-      state = EventState.Complete
+      state = EventState.Active
+    )
+
+  private def activeFrameFor(invoke: ToolInvoke): ContextFrame.ToolCall =
+    ContextFrame.ToolCall(
+      toolName = invoke.toolName,
+      argsJson = "{}",
+      callId = invoke._id,
+      participantId = invoke.participantId,
+      sourceEventId = invoke._id,
+      state = ToolCallState.Active
     )
 
   private def toolMessage(text: String, origin: Option[Id[Event]]): Message =
@@ -63,7 +79,7 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
       // boundary every Tool event must cross. A missing origin is
       // a programmer error and surfaces as a clear exception, not
       // as a degraded "additional tool output" frame.
-      val invoke = completeInvoke("guarded")
+      val invoke = activeInvoke("guarded")
       val orphan = toolMessage("oops, no origin", origin = None)
       val ex = intercept[IllegalStateException] {
         FrameBuilder.appendFor(FrameBuilder.appendFor(Vector.empty, invoke), orphan)
@@ -76,9 +92,9 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
       // Sigil #261 — Tool-role events no longer produce their own
       // frame; FrameBuilder.appendFor updates the matching ToolCall
       // to state = Complete(content, images).
-      val invoke = completeInvoke("paired")
+      val invoke = activeInvoke("paired")
       val reply = toolMessage("the result", origin = Some(invoke._id))
-      val frames = FrameBuilder.appendFor(FrameBuilder.appendFor(Vector.empty, invoke), reply)
+      val frames = FrameBuilder.appendFor(Vector[ContextFrame](activeFrameFor(invoke)), reply)
       frames should have size 1
       val tc = frames.head.asInstanceOf[ContextFrame.ToolCall]
       tc.callId shouldBe invoke._id
@@ -99,12 +115,12 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
       // and become synthetic Text frames. The wire-level merging that
       // used to happen across N ToolResult frames is now a non-issue
       // because there is at most one result per call.
-      val invoke = completeInvoke("multi_emit")
+      val invoke = activeInvoke("multi_emit")
       val ack          = toolMessage("step 1: ack",          origin = Some(invoke._id))
       val suggestion   = toolMessage("step 2: schema",       origin = Some(invoke._id))
       val followup     = toolMessage("step 3: invocation",   origin = Some(invoke._id))
       val frames = List(ack, suggestion, followup).foldLeft(
-        FrameBuilder.appendFor(Vector.empty, invoke)
+        Vector[ContextFrame](activeFrameFor(invoke))
       )(FrameBuilder.appendFor)
 
       // 1 Complete ToolCall + 2 orphan Text fallbacks.
@@ -123,11 +139,12 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
       // groups don't blur. Each pairs to its own ToolInvoke and the
       // parent ToolCall frame transitions to Complete with that
       // event's content.
-      val invokeA = completeInvoke("tool_a")
-      val invokeB = completeInvoke("tool_b")
+      val invokeA = activeInvoke("tool_a")
+      val invokeB = activeInvoke("tool_b")
       val resultA = toolMessage("A's result", origin = Some(invokeA._id))
       val resultB = toolMessage("B's result", origin = Some(invokeB._id))
-      val frames = List(invokeA, resultA, invokeB, resultB).foldLeft(Vector.empty[ContextFrame])(FrameBuilder.appendFor)
+      val seed = Vector[ContextFrame](activeFrameFor(invokeA), activeFrameFor(invokeB))
+      val frames = List(resultA, resultB).foldLeft(seed)(FrameBuilder.appendFor)
       val byCallId = frames.collect { case tc: ContextFrame.ToolCall => tc.callId -> tc }.toMap
       byCallId(invokeA._id).state shouldBe ToolCallState.Complete("A's result")
       byCallId(invokeB._id).state shouldBe ToolCallState.Complete("B's result")
@@ -142,7 +159,7 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
       // ToolCall — temporal proximity was load-bearing. With explicit
       // origin, position no longer matters: an event with origin
       // pointing to a ToolCall buried 20 frames back still folds.
-      val invoke = completeInvoke("ancient_call")
+      val invoke = activeInvoke("ancient_call")
       // Stuff 20 unrelated frames between the invoke and its result.
       val filler: Vector[ContextFrame] = (1 to 20).toVector.map { i =>
         ContextFrame.Text(
@@ -151,7 +168,7 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
           sourceEventId = Id[Event](s"filler-$i")
         )
       }
-      val starter = FrameBuilder.appendFor(Vector.empty, invoke) ++ filler
+      val starter = Vector[ContextFrame](activeFrameFor(invoke)) ++ filler
       val lateResult = toolMessage("answer to ancient call", origin = Some(invoke._id))
       val frames = FrameBuilder.appendFor(starter, lateResult)
       val tc = frames.collectFirst { case t: ContextFrame.ToolCall if t.callId == invoke._id => t }.get
@@ -162,12 +179,13 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
       // Pre-fix the scanner found the most-recent unresolved call
       // and would have paired with the wrong one. With origin, the
       // explicit pointer wins regardless of what's been resolved.
-      val invokeA = completeInvoke("first_call")
-      val invokeB = completeInvoke("second_unresolved")
+      val invokeA = activeInvoke("first_call")
+      val invokeB = activeInvoke("second_unresolved")
       // resultA folds into invokeA, NOT into invokeB even though
       // invokeB is more recent.
       val resultA = toolMessage("first call's result", origin = Some(invokeA._id))
-      val frames = List(invokeA, invokeB, resultA).foldLeft(Vector.empty[ContextFrame])(FrameBuilder.appendFor)
+      val seed = Vector[ContextFrame](activeFrameFor(invokeA), activeFrameFor(invokeB))
+      val frames = FrameBuilder.appendFor(seed, resultA)
       val byCallId = frames.collect { case tc: ContextFrame.ToolCall => tc.callId -> tc }.toMap
       byCallId(invokeA._id).state shouldBe ToolCallState.Complete("first call's result")
       byCallId(invokeB._id).state shouldBe ToolCallState.Active
@@ -182,7 +200,7 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
       // hops from a leaf event back to its conversational root. A
       // single hop from a tool's emitted Message reaches the
       // ToolInvoke that called it.
-      val invoke = completeInvoke("traced_call")
+      val invoke = activeInvoke("traced_call")
       val reply = toolMessage("traced reply", origin = Some(invoke._id))
       reply.origin shouldBe Some(invoke._id)
     }
@@ -200,7 +218,7 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
         state = EventState.Complete
         // origin = None — user's first message is a conversational root.
       )
-      val invoke = completeInvoke("traced_chain").copy(origin = Some(userMsg._id))
+      val invoke = activeInvoke("traced_chain").copy(origin = Some(userMsg._id))
       val reply  = toolMessage("done", origin = Some(invoke._id))
 
       val byId: Map[Id[Event], Event] = Map(userMsg._id -> userMsg, invoke._id -> invoke, reply._id -> reply)
@@ -230,7 +248,7 @@ class EventOriginContractSpec extends AnyWordSpec with Matchers {
     }
 
     "round-trip on ToolInvoke" in {
-      val ti = completeInvoke("noop")
+      val ti = activeInvoke("noop")
       val parent: Id[Event] = Id("synthetic-parent")
       ti.withOrigin(Some(parent)).origin shouldBe Some(parent)
     }

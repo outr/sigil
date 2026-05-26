@@ -108,26 +108,27 @@ class OrchestratorMultiToolPerTurnSpec extends AsyncWordSpec with AsyncTaskSpec 
           ThrowingTool.name.value
         )
 
-        // Two settled ToolDeltas — one per call. Critically the SECOND
-        // one (which targets the throwing tool) must land despite the
-        // tool's execute throwing.
+        // Both calls must produce settling ToolDeltas. Current emission
+        // shape may produce >1 settling delta per call (input-settle +
+        // result-settle), so the regression we're guarding — that the
+        // SECOND call's tool throwing doesn't suppress its settling
+        // chip — is expressed as a distinct-target assertion.
         val deltas = signals.collect { case d: ToolDelta if d.state.contains(EventState.Complete) => d }
-        deltas should have size 2
-        val targets = deltas.map(_.target).toSet
-        targets shouldBe invokes.map(_._id).toSet
+        deltas.map(_.target).toSet shouldBe invokes.map(_._id).toSet
 
-        // The errored resolution surfaces as a recoverable Tool-role
-        // Failure Message (carrying the exception's message) rather
-        // than tearing down the whole stream.
-        val toolMessages = signals.collect {
-          case m: Message if m.role == sigil.event.MessageRole.Tool => m
+        // The errored resolution surfaces on the settling ToolDelta as
+        // a recoverable Failure outcome carrying the exception's
+        // message — the framework no longer emits a separate Tool-role
+        // Failure Message; the outcome on the delta is the single
+        // result-bearing surface.
+        val throwingInvokeId = invokes.find(_.toolName == ThrowingTool.name).get._id
+        val throwingDelta = deltas.find(d => d.target == throwingInvokeId && d.outcome.isDefined).get
+        throwingDelta.outcome.get match {
+          case sigil.event.ToolOutcome.Failure(reason, recoverable) =>
+            reason should include ("synthetic atomic-tool failure")
+            recoverable shouldBe true
+          case other => fail(s"expected Failure outcome on throwing tool's delta, got $other")
         }
-        toolMessages.exists { m =>
-          m.isFailure && m.content.exists {
-            case sigil.tool.model.ResponseContent.Text(t) => t.contains("synthetic atomic-tool failure")
-            case _                                        => false
-          }
-        } shouldBe true
       }
     }
   }

@@ -541,7 +541,8 @@ object Orchestrator {
               conversationId = convId,
               state          = Some(EventState.Complete),
               output         = Some(_root_.sigil.tool.TextToolOutput("")),
-              outcome        = Some(ToolOutcome.Success)
+              outcome        = Some(ToolOutcome.Success),
+              internal       = isInternal
             )
             (Some(active.toolName), input) match {
               case (Some("respond"), r: RespondInput) =>
@@ -1648,13 +1649,21 @@ object Orchestrator {
     * carries `state = Some(Complete)` and targets the originating
     * invoke). Extracted so both fast (no-precondition) and slow
     * (precondition-gated) executeAtomic paths share one
-    * implementation. */
+    * implementation.
+    *
+    * Bug #56 follow-up — when the tool is in [[UserVisibleTerminalTools]]
+    * (the respond family + `no_response`), stamp `internal = true` on
+    * any [[ToolDelta]] in the output stream so the result-settle delta
+    * matches the input-settle delta the orchestrator already emitted
+    * with that flag set. Clients filtering chips by `internal` see a
+    * consistent lifecycle. */
   private def runExecute(tool: Tool,
                          input: ToolInput,
                          context: TurnContext,
                          originatingInvokeId: Id[Event],
                          currentMessageId: Option[Id[Event]],
-                         invokedName: ToolName): Stream[Signal] =
+                         invokedName: ToolName): Stream[Signal] = {
+    val toolIsInternal = Orchestrator.UserVisibleTerminalTools.contains(invokedName.value)
     tool.execute(input, context, originatingInvokeId, invokedName, currentMessageId).flatMap {
       case ev: Event =>
         val stamped = if (ev.origin.isDefined) ev else ev.withOrigin(Some(originatingInvokeId))
@@ -1662,8 +1671,11 @@ object Orchestrator {
           stamped,
           StateDelta(target = stamped._id, conversationId = stamped.conversationId, state = EventState.Complete)
         ))
+      case td: ToolDelta if toolIsInternal && !td.internal =>
+        Stream.emit(td.copy(internal = true))
       case other => Stream.emit(other)
     }
+  }
 
   /** Run every [[Tool.preconditions]] check. If any returns
     * [[ToolPreconditionResult.Unsatisfied]], yield a Role.Tool
