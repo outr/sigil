@@ -909,6 +909,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * cost ceilings for apps that don't want auto-escalation. */
   def escalateOnCapHit: Boolean = false
 
+  /** Sigil bug #287 — when `true` (default), the orchestrator's
+    * duplicate-call cap ([[maxIdenticalToolCallsInWindow]]) bumps the
+    * conversation's complexity tier one step on each cap trip, so the
+    * next iteration routes to a more capable model that can read the
+    * Failure and pick a different next move. Detection alone isn't
+    * enough on small models — the same model that produced the
+    * duplicate keeps producing it; escalation is what breaks the
+    * loop. Apps that pin a single tier and don't want auto-bump set
+    * to `false`; the cap still fires (Failure Message + refusal) but
+    * stays at the current tier. */
+  def escalateOnDuplicateCallCap: Boolean = true
+
   /** Classify the user's latest message for this conversation,
     * caching the result for the lifetime of that user turn. Returns
     * `(WorkType, Complexity)` — the routing key the framework

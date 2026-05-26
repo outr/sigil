@@ -646,12 +646,35 @@ object Orchestrator {
                   val attemptedCount = priorIdentical + 1
                   val preview = _root_.sigil.tool.ToolInputCanonicalizer.argsPreview(input)
                   val previewText = if (preview.nonEmpty) s" `$preview`" else ""
+                  // Sigil bug #287 — detection alone doesn't help when the
+                  // same small/weak model that produced the duplicate
+                  // keeps producing it. Bump the per-turn complexity
+                  // tier so the next iteration routes to a more capable
+                  // model that can actually reason its way out. The
+                  // escalation is one-shot per call site: keeps
+                  // climbing each time the cap fires, clamps at the
+                  // top tier. Synchronous so the Failure body can
+                  // mention the new tier in its didactic text. Apps
+                  // that don't want the auto-bump set
+                  // `escalateOnDuplicateCallCap = false`.
+                  val (newTier, escalated) =
+                    if (sigil.escalateOnDuplicateCallCap)
+                      sigil.requestEscalation(convId, reason = s"duplicate-call cap on `$toolName`").sync()
+                    else (_root_.sigil.provider.Complexity.Medium, false)
+                  val escalationText =
+                    if (escalated)
+                      s" Next iteration will run on the ${newTier.toString} tier — re-read this " +
+                        "Failure and pick a different next move."
+                    else if (sigil.escalateOnDuplicateCallCap)
+                      " Already on the top tier — if you can't make progress, call `respond_options` " +
+                        "asking the user for direction."
+                    else ""
                   val body =
                     s"Refused to dispatch `$toolName` -- you have already called this tool with " +
                       s"these exact args $priorIdentical times in the recent window (this would " +
                       s"be call #$attemptedCount).$previewText The result will not change. Try a " +
                       "different approach: narrow the pattern, paginate via `next_page`, switch " +
-                      "to a different tool, or ask the user for clarification."
+                      "to a different tool, or ask the user for clarification." + escalationText
                   val capMsg = Message(
                     participantId  = caller,
                     conversationId = convId,
