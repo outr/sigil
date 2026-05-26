@@ -1,0 +1,8 @@
+{"requestHash":"b86d84ea9e7c87a30029f03af361af29ef0e76ee9d74691466ac6bf9d9afaa7e","recordedAt":1779589175793}
+{"callId":"c2b5c6e11","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"callId":"c2b5c6e11","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"c2b5c6e11","text":"Blue","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c2b5c6e11","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"c2b5c6e11","input":{"topicLabel":"Favorite Color","topicSummary":"User asked for confirmation of their favorite color.","content":"Blue.","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":["favorite color","confirmation"],"type":"RespondInput"},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4709,"completionTokens":61,"totalTokens":4770,"isEstimated":false,"cacheReadTokens":3,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

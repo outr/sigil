@@ -1,0 +1,5 @@
+{"requestHash":"0382bdc597c00eb8275362fdcabb0cdb9b3bc8ee491c6c39943bf90bab35e4ff","recordedAt":1779589148165}
+{"callId":"84e5f8275","toolName":"change_mode","type":"ProviderEvent.ToolCallStart"}
+{"callId":"84e5f8275","input":{"mode":"coding","reason":"The user wants to write a Scala function, which falls under coding tasks.","type":"ChangeModeInput"},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4559,"completionTokens":31,"totalTokens":4590,"isEstimated":false,"cacheReadTokens":4550,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

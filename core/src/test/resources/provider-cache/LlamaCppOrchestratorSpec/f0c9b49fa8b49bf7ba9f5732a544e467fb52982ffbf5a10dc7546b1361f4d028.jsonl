@@ -1,0 +1,30 @@
+{"requestHash":"f0c9b49fa8b49bf7ba9f5732a544e467fb52982ffbf5a10dc7546b1361f4d028","recordedAt":1779589209831}
+{"callId":"5409bdfa0","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"callId":"5409bdfa0","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"5409bdfa0","text":"Type","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","text":"Script","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","text":" gener","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","text":"ics","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","text":" are","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","text":" a","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","text":" way","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","text":" to","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","text":" create","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","text":" reusable","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","text":" components","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","text":" that","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","text":" can","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","text":" work","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","text":" with","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","text":" a","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","text":" variety","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","text":" of","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","text":" types","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","text":" while","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","text":" providing","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","text":" type","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","text":" safety","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"5409bdfa0","input":{"topicLabel":"TypeScript Generics","topicSummary":"Explaining TypeScript generics in a concise manner.","content":"TypeScript generics are a way to create reusable components that can work with a variety of types while providing type safety.","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":["TypeScript","generics","programming"],"type":"RespondInput"},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4853,"completionTokens":90,"totalTokens":4943,"isEstimated":false,"cacheReadTokens":3,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

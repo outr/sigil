@@ -1,0 +1,35 @@
+{"requestHash":"5d118571bd7f078965b11c2e377dde83c2c1d7ed54da487011bd40eaf3e98b90","recordedAt":1779750652812}
+{"text":"The","type":"ProviderEvent.ThinkingDelta"}
+{"text":" parent","type":"ProviderEvent.ThinkingDelta"}
+{"text":" has","type":"ProviderEvent.ThinkingDelta"}
+{"text":" answered","type":"ProviderEvent.ThinkingDelta"}
+{"text":" \"","type":"ProviderEvent.ThinkingDelta"}
+{"text":"blue","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\".","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Now","type":"ProviderEvent.ThinkingDelta"}
+{"text":" I","type":"ProviderEvent.ThinkingDelta"}
+{"text":" need","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" complete","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" task","type":"ProviderEvent.ThinkingDelta"}
+{"text":" with","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":17,"totalTokens":17,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" one","type":"ProviderEvent.ThinkingDelta"}
+{"text":"-","type":"ProviderEvent.ThinkingDelta"}
+{"text":"paragraph","type":"ProviderEvent.ThinkingDelta"}
+{"text":" confirmation","type":"ProviderEvent.ThinkingDelta"}
+{"text":" that","type":"ProviderEvent.ThinkingDelta"}
+{"text":" names","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" chosen","type":"ProviderEvent.ThinkingDelta"}
+{"text":" color","type":"ProviderEvent.ThinkingDelta"}
+{"text":" (","type":"ProviderEvent.ThinkingDelta"}
+{"text":"blue","type":"ProviderEvent.ThinkingDelta"}
+{"text":").","type":"ProviderEvent.ThinkingDelta"}
+{"callId":"b2e610185","toolName":"complete_task","type":"ProviderEvent.ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":33,"totalTokens":33,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"b2e610185","input":{"summary":"Selected blue as the requested color for the user, confirming the decision with a single paragraph as instructed.","type":"CompleteTaskInput"},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4677,"completionTokens":77,"totalTokens":4754,"isEstimated":false,"cacheReadTokens":4162,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

@@ -1,0 +1,5 @@
+{"requestHash":"24e4b653439d60d0ea8bdc2a5fb6264677063039971a0b032dd8fdfff380822a","recordedAt":1779589179990}
+{"callId":"afe98f226","toolName":"find_capability","type":"ProviderEvent.ToolCallStart"}
+{"callId":"afe98f226","input":{"keywords":"scala project setup coding session","type":"FindCapabilityInput"},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4755,"completionTokens":17,"totalTokens":4772,"isEstimated":false,"cacheReadTokens":124,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

@@ -1,0 +1,5 @@
+{"requestHash":"b6f470affeb9da47d1f0fa8e64b7e7fa49a7d21999cb852fa4b3d4362d3cf3a9","recordedAt":1779589145793}
+{"callId":"be24d0c0a","toolName":"respond_options","type":"ProviderEvent.ToolCallStart"}
+{"callId":"be24d0c0a","input":{"prompt":"Which backend language would you like to use for your new web service?","options":[{"label":"Python","value":"python","description":null,"exclusive":false},{"label":"Node.js","value":"nodejs","description":null,"exclusive":false},{"label":"Go","value":"go","description":null,"exclusive":false}],"allowMultiple":false,"type":"RespondOptionsInput"},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4578,"completionTokens":90,"totalTokens":4668,"isEstimated":false,"cacheReadTokens":4550,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

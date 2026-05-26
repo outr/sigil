@@ -1,0 +1,5 @@
+{"requestHash":"463abd661572deb8b09af51ac3dfc711d4427aa55748deec7fa3a5197e028c17","recordedAt":1779589181437}
+{"callId":"b98b22585","toolName":"find_capability","type":"ProviderEvent.ToolCallStart"}
+{"callId":"b98b22585","input":{"keywords":"scala coding environment setup workspace","type":"FindCapabilityInput"},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":6095,"completionTokens":17,"totalTokens":6112,"isEstimated":false,"cacheReadTokens":2040,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

@@ -1,0 +1,71 @@
+{"requestHash":"ed5a8675c1a1cc6fcd07bf5313f73351d24e23a80da32a0bd7335f5423f5ecb0","recordedAt":1779589204389}
+{"callId":"92c45ac76","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"callId":"92c45ac76","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"92c45ac76","text":"The","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" Roman","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" Empire","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" traces","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" its","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" origins","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" to","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" the","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" city","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" of","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" Rome","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" which","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" was","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" traditionally","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" founded","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" in","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" 7","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":"5","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":"3","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" BCE","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" by","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" the","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" legendary","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" figures","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" Rom","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":"ulus","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" and","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" Rem","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":"us","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" The","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" Roman","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" Kingdom","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" evolved","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" into","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" the","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" Roman","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" Republic","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" in","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" 5","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":"0","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":"9","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" BCE","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" marking","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" the","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" beginning","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" of","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" Rome","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":"'s","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" expansion","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" and","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" eventual","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" transformation","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" into","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" an","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" empire","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" under","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" Augustus","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" in","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" 2","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":"7","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":" BCE","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"92c45ac76","input":{"topicLabel":"History of the Roman Empire","topicSummary":"Providing a brief overview of the founding of the Roman Empire.","content":"The Roman Empire traces its origins to the city of Rome, which was traditionally founded in 753 BCE by the legendary figures Romulus and Remus. The Roman Kingdom evolved into the Roman Republic in 509 BCE, marking the beginning of Rome's expansion and eventual transformation into an empire under Augustus in 27 BCE.","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":["history","Roman Empire","overview"],"type":"RespondInput"},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4852,"completionTokens":135,"totalTokens":4987,"isEstimated":false,"cacheReadTokens":195,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

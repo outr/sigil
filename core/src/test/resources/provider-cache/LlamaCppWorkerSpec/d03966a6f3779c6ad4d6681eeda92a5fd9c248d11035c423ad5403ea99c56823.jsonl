@@ -1,0 +1,48 @@
+{"requestHash":"d03966a6f3779c6ad4d6681eeda92a5fd9c248d11035c423ad5403ea99c56823","recordedAt":1779746584753}
+{"text":"The","type":"ProviderEvent.ThinkingDelta"}
+{"text":" user","type":"ProviderEvent.ThinkingDelta"}
+{"text":" has","type":"ProviderEvent.ThinkingDelta"}
+{"text":" chosen","type":"ProviderEvent.ThinkingDelta"}
+{"text":" blue","type":"ProviderEvent.ThinkingDelta"}
+{"text":" as","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" color","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Now","type":"ProviderEvent.ThinkingDelta"}
+{"text":" I","type":"ProviderEvent.ThinkingDelta"}
+{"text":" need","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" complete","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" task","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":17,"totalTokens":17,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" by","type":"ProviderEvent.ThinkingDelta"}
+{"text":" confirming","type":"ProviderEvent.ThinkingDelta"}
+{"text":" this","type":"ProviderEvent.ThinkingDelta"}
+{"text":" choice","type":"ProviderEvent.ThinkingDelta"}
+{"text":" in","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" single","type":"ProviderEvent.ThinkingDelta"}
+{"text":" line","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\nI","type":"ProviderEvent.ThinkingDelta"}
+{"text":" should","type":"ProviderEvent.ThinkingDelta"}
+{"text":" emit","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" completion","type":"ProviderEvent.ThinkingDelta"}
+{"text":" message","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":37,"totalTokens":37,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" that","type":"ProviderEvent.ThinkingDelta"}
+{"text":" confirms","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" chosen","type":"ProviderEvent.ThinkingDelta"}
+{"text":" color","type":"ProviderEvent.ThinkingDelta"}
+{"text":" (","type":"ProviderEvent.ThinkingDelta"}
+{"text":"blue","type":"ProviderEvent.ThinkingDelta"}
+{"text":").","type":"ProviderEvent.ThinkingDelta"}
+{"callId":"cb7a6656e","toolName":"complete_task","type":"ProviderEvent.ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":47,"totalTokens":47,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"cb7a6656e","input":{"summary":"The parent agent has selected blue as the color preference. I have confirmed this choice and will proceed with blue for the user's project.","type":"CompleteTaskInput"},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4679,"completionTokens":96,"totalTokens":4775,"isEstimated":false,"cacheReadTokens":4162,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

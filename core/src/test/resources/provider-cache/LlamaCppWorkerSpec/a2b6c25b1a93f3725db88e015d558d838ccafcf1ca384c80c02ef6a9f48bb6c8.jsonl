@@ -1,0 +1,71 @@
+{"requestHash":"a2b6c25b1a93f3725db88e015d558d838ccafcf1ca384c80c02ef6a9f48bb6c8","recordedAt":1779589114201}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" The","type":"ProviderEvent.TextDelta"}
+{"text":" child","type":"ProviderEvent.TextDelta"}
+{"text":" worker","type":"ProviderEvent.TextDelta"}
+{"text":" (","type":"ProviderEvent.TextDelta"}
+{"text":"role","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" \"","type":"ProviderEvent.TextDelta"}
+{"text":"child","type":"ProviderEvent.TextDelta"}
+{"text":"-work","type":"ProviderEvent.TextDelta"}
+{"text":"er","type":"ProviderEvent.TextDelta"}
+{"text":"\")","type":"ProviderEvent.TextDelta"}
+{"text":" was","type":"ProviderEvent.TextDelta"}
+{"text":" successfully","type":"ProviderEvent.TextDelta"}
+{"text":" spawned","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":18,"totalTokens":18,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" with","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" directive","type":"ProviderEvent.TextDelta"}
+{"text":" to","type":"ProviderEvent.TextDelta"}
+{"text":" emit","type":"ProviderEvent.TextDelta"}
+{"text":" \"","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" child","type":"ProviderEvent.TextDelta"}
+{"text":"-d","type":"ProviderEvent.TextDelta"}
+{"text":"one","type":"ProviderEvent.TextDelta"}
+{"text":"\"","type":"ProviderEvent.TextDelta"}
+{"text":" and","type":"ProviderEvent.TextDelta"}
+{"text":" has","type":"ProviderEvent.TextDelta"}
+{"text":" finished","type":"ProviderEvent.TextDelta"}
+{"text":" its","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":36,"totalTokens":36,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" task","type":"ProviderEvent.TextDelta"}
+{"text":" as","type":"ProviderEvent.TextDelta"}
+{"text":" expected","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":" This","type":"ProviderEvent.TextDelta"}
+{"text":" confirms","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" delegation","type":"ProviderEvent.TextDelta"}
+{"text":" mechanism","type":"ProviderEvent.TextDelta"}
+{"text":" is","type":"ProviderEvent.TextDelta"}
+{"text":" working","type":"ProviderEvent.TextDelta"}
+{"text":" correctly","type":"ProviderEvent.TextDelta"}
+{"text":" for","type":"ProviderEvent.TextDelta"}
+{"text":" immediate","type":"ProviderEvent.TextDelta"}
+{"text":",","type":"ProviderEvent.TextDelta"}
+{"text":" simple","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":61,"totalTokens":61,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" tasks","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":" If","type":"ProviderEvent.TextDelta"}
+{"text":" further","type":"ProviderEvent.TextDelta"}
+{"text":" action","type":"ProviderEvent.TextDelta"}
+{"text":" is","type":"ProviderEvent.TextDelta"}
+{"text":" needed","type":"ProviderEvent.TextDelta"}
+{"text":",","type":"ProviderEvent.TextDelta"}
+{"text":" I","type":"ProviderEvent.TextDelta"}
+{"text":" will","type":"ProviderEvent.TextDelta"}
+{"text":" proceed","type":"ProviderEvent.TextDelta"}
+{"text":" accordingly","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":" ","type":"ProviderEvent.TextDelta"}
+{"callId":"eab0da548","toolName":"complete_task","type":"ProviderEvent.ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":77,"totalTokens":77,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"eab0da548","input":{"summary":"Spawned and confirmed the operation of a child worker (role: 'child-worker') by delegating the task 'Reply with Complete: child-done.' The child worker completed its task immediately, validating the delegation process for trivial or verification tasks.","type":"CompleteTaskInput"},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":1389,"completionTokens":122,"totalTokens":1511,"isEstimated":false,"cacheReadTokens":13,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

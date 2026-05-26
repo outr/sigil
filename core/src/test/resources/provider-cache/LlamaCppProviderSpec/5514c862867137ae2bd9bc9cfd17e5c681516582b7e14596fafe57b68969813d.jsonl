@@ -1,0 +1,7 @@
+{"requestHash":"5514c862867137ae2bd9bc9cfd17e5c681516582b7e14596fafe57b68969813d","recordedAt":1779589148936}
+{"callId":"a6b4fdb07","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"callId":"a6b4fdb07","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"a6b4fdb07","text":"4","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"a6b4fdb07","input":{"topicLabel":"Basic Math Calculation","topicSummary":"Calculating a simple arithmetic expression.","content":"4","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":["math","calculation"],"type":"RespondInput"},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4564,"completionTokens":60,"totalTokens":4624,"isEstimated":false,"cacheReadTokens":4550,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}
