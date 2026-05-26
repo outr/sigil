@@ -43,6 +43,22 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
 
   private val modelId: Id[Model] = Model.id("cloudflare", "@cf/moonshotai/kimi-k2.5")
 
+  // Sigil-test convention: live-API specs override `run` and route
+  // through their provider's `runGated` so a missing SIGIL_LIVE
+  // opt-in (or missing credentials / drained quota) skips the
+  // whole suite cleanly without any per-test gate. Mirrors the
+  // GoogleProviderSpec / AnthropicProviderSpec / OpenRouter*Spec
+  // shape so every live suite uses the same wiring.
+  override def run(testName: Option[String], args: org.scalatest.Args): org.scalatest.Status =
+    CloudflareLiveSupport.runGated(this, testName, args) {
+      super.run(testName, args)
+    }
+
+  // Per-test belt-and-suspenders: in case the suite-level probe
+  // succeeded (metadata calls don't consume neurons; quota walls
+  // only show up on real model invocations), the in-flight
+  // RuntimeException-shaped quota error is still translated into
+  // a per-test cancel by `runScenario` below.
   private def skipUnlessLive(): Unit =
     if (apiTokenOpt.isEmpty || accountIdOpt.isEmpty)
       cancel(
@@ -72,8 +88,26 @@ class CloudflareKimiLiveSpec extends AsyncWordSpec with AsyncTaskSpec with Match
     )
   )
 
-  private def runScenario(pc: ProviderCall) =
-    provider.call(pc).toList
+  /** Substring the Cloudflare Workers AI API surfaces on its free-tier
+    * quota wall (HTTP 429). When the daily neuron allocation is gone,
+    * every request fails identically — there's no point asserting
+    * "the provider behaves correctly under no provider." Tests that
+    * catch this on the wire `cancel(...)` rather than fail. */
+  private val NeuronsExhaustedMarker: String = "used up your daily free allocation"
+
+  /** Run `provider.call(pc).toList`, but translate "neurons
+    * exhausted" responses (HTTP 429 from Cloudflare's free-tier
+    * quota wall) into a cancelled test rather than letting the
+    * exception bubble as a failure. Matches the live-spec
+    * convention of self-skipping when the external service is
+    * unavailable. */
+  private def runScenario(pc: ProviderCall): Task[List[ProviderEvent]] =
+    provider.call(pc).toList.handleError { t =>
+      val msg = Option(t.getMessage).getOrElse("")
+      if (msg.contains(NeuronsExhaustedMarker))
+        Task(cancel(s"Cloudflare daily free-tier neuron quota exhausted — skipping live spec. ($msg)"))
+      else Task.error(t)
+    }
 
   /** Reliability multiplier — every scenario runs this many times and
     * must pass each attempt. Catches intermittent degeneration that a

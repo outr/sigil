@@ -22,7 +22,13 @@ import spice.http.client.HttpClient
  *      per-test failures.
  */
 object LiveProbe {
-  private val skipCodes: Set[Int] = Set(401, 402, 403)
+  // 401 unauthorized, 402 payment required, 403 forbidden — all
+  // mean "key won't authenticate". 429 added so an account that
+  // has hit a hard quota wall (e.g. Cloudflare Workers AI's
+  // free-tier daily neuron cap, OpenAI usage cap) cancels the
+  // suite rather than failing every test — same shape as a
+  // revoked key from the perspective of the test runner.
+  private val skipCodes: Set[Int] = Set(401, 402, 403, 429)
 
   def liveEnabled: Boolean = sys.env.get("SIGIL_LIVE").exists(v => v == "1" || v.equalsIgnoreCase("true"))
 
