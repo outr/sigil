@@ -1175,7 +1175,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                      chain: List[ParticipantId],
                      fallback: Id[Model],
                      estimatedInputTokens: Option[Long] = None,
-                     reservedOutputTokens: Long = 1024L): Task[Id[Model]] = {
+                     reservedOutputTokens: Long = 1024L,
+                     // Sigil #289 — optional complexity hint. When set,
+                     // candidates whose `supportedComplexity` doesn't
+                     // include this tier are filtered out before the
+                     // first-fit pick. When None (the default), no
+                     // complexity filtering applies (preserves prior
+                     // behaviour for every existing caller). The
+                     // primary motivator is `delegate_task` letting
+                     // the spawning agent express "give the worker a
+                     // High-tier model" without having to enumerate a
+                     // specific modelId.
+                     complexity: Option[sigil.provider.Complexity] = None): Task[Id[Model]] = {
     val convId: Id[Conversation] = sigil.conversation.Conversation.id("__no_conv__")
     val required = estimatedInputTokens.map(_ + reservedOutputTokens)
 
@@ -1193,6 +1204,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         }
     }
 
+    def matchesComplexity(candidate: sigil.provider.ModelCandidate): Boolean =
+      complexity.forall(c => candidate.supportedComplexity.contains(c))
+
     accessibleSpaces(chain, convId).flatMap { spaces =>
       val ordered = spaces.toList
       def loop(remaining: List[SpaceId]): Task[Option[Id[Model]]] = remaining match {
@@ -1201,7 +1215,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           resolveProviderStrategy(space).flatMap {
             case None => loop(rest)
             case Some(strategy) =>
-              strategy.availableCandidates(workType).find(fits).map(_.modelId) match {
+              strategy.availableCandidates(workType)
+                .filter(matchesComplexity)
+                .find(fits).map(_.modelId) match {
                 case Some(modelId) => Task.pure(Some(modelId))
                 case None          => loop(rest)
               }
@@ -3129,6 +3145,46 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       case Some(p) => p
       case None    => ParticipantProjection.empty(participantId, conversationId)
     }
+
+  /** Sigil #289 — predicate for cross-conversation reads. The
+    * conversation-query tools (`search_conversation`, `next_page`,
+    * `query_tool_output`) call this before dispatching a read against
+    * a `conversationId` that differs from the caller's current
+    * conversation. Allowed when:
+    *   - target == current (same conversation; trivially allowed)
+    *   - target == current.parentConversationId (worker reading its
+    *     parent)
+    *   - target.parentConversationId == current.id (parent reading
+    *     one of its workers)
+    *
+    * Anything else returns `Left(reason)` and the tool surfaces a
+    * Failure with the reason text. The predicate is intentionally
+    * narrow — it doesn't traverse the whole tree (no grandparents /
+    * sibling-conversations). Apps that need wider cross-conversation
+    * access override this hook. */
+  def canReadConversation(currentConversationId: Id[Conversation],
+                          targetConversationId: Id[Conversation]): Task[Either[String, Unit]] =
+    if (currentConversationId == targetConversationId) Task.pure(Right(()))
+    else withDB(_.conversations.transaction { tx =>
+      for {
+        current <- tx.get(currentConversationId)
+        target  <- tx.get(targetConversationId)
+      } yield (current, target) match {
+        case (None, _) =>
+          Left(s"current conversation `${currentConversationId.value}` not found")
+        case (_, None) =>
+          Left(s"target conversation `${targetConversationId.value}` not found")
+        case (Some(c), Some(t)) =>
+          val isParentOfTarget = t.parentConversationId.contains(c._id)
+          val isChildOfTarget  = c.parentConversationId.contains(t._id)
+          if (isParentOfTarget || isChildOfTarget) Right(())
+          else Left(
+            s"target conversation `${targetConversationId.value}` is not the current " +
+              s"conversation, its parent, or one of its workers — cross-conversation " +
+              "reads are limited to parent/worker relationships."
+          )
+      }
+    })
 
   /** Most-recent [[sigil.event.ToolApproval]] for `(toolName,
     * conversationId)`, or `None` when the agent hasn't recorded a

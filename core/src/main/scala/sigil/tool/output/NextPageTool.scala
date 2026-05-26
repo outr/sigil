@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.event.Event
-import sigil.tool.{Tool, ToolName}
+import sigil.tool.{Tool, ToolName, ToolResult}
 
 /**
  * Universal navigation tool for paginated output produced by any
@@ -17,8 +17,10 @@ import sigil.tool.{Tool, ToolName}
  * `callId` field on a [[JsonPagedResult]]) to walk top-level
  * siblings.
  *
- * Scoped to the current conversation — rows from other
- * conversations are not reachable. */
+ * Sigil #289 — accepts an optional `conversationId` to read from a
+ * related conversation (parent or worker). When unset, defaults to
+ * the caller's current conversation. Cross-conversation reads are
+ * gated by [[sigil.Sigil.canReadConversation]]. */
 case object NextPageTool extends Tool {
   type Input  = NextPageInput
   type Output = JsonPagedResult
@@ -42,43 +44,56 @@ case object NextPageTool extends Tool {
 
   private val maxPageSize = 500
 
-  override def executeOutput(input: NextPageInput, ctx: ToolContext): Task[JsonPagedResult] = {
+  override def executeResult(input: NextPageInput,
+                             ctx: ToolContext): Task[ToolResult[JsonPagedResult]] = {
     val pageSize = math.max(1, math.min(input.pageSize, maxPageSize))
-    val convId   = ctx.conversation.id
-    ctx.sigil.withDB(_.toolOutputs.transaction(
-      _.query.filter(_.conversationKey === convId.value).toList
-    )).flatMap { all =>
-      // Find any row matching the referenceId in this conversation;
-      // its callId is what we filter by.
-      val anyRow = all.find(n => n._id.value == input.referenceId || n.referenceId == input.referenceId || n.callId.value == input.referenceId)
-      anyRow match {
-        case None =>
-          Task.pure(JsonPagedResult(
-            items       = Nil,
-            hasMore     = false,
-            page        = input.page,
-            pageSize    = pageSize,
-            referenceId = input.referenceId,
-            callId      = sigil.event.Event.id(),
-            totalCount  = Some(0)
-          ))
-        case Some(row) =>
-          // `referenceId` may be either a node id (children-of-X) OR
-          // a callId (top-level rows of that call). We resolve to
-          // the row's actual referenceKey at query time.
-          val readRef =
-            if (row.callId.value == input.referenceId) input.referenceId
-            else if (row._id.value == input.referenceId) row._id.value
-            else input.referenceId
-          PaginatedTool.readPage(
-            host           = ctx.sigil,
-            conversationId = convId,
-            callId         = row.callId,
-            referenceId    = readRef,
-            page           = input.page,
-            pageSize       = pageSize
+    val targetConvId = input.conversationId.getOrElse(ctx.conversation.id)
+    val currentConvId = ctx.conversation.id
+    ctx.sigil.canReadConversation(currentConvId, targetConvId).flatMap {
+      case Left(reason) =>
+        Task.pure(ToolResult.failure(
+          message = s"next_page: cannot read conversation `${targetConvId.value}` — $reason",
+          hint = Some(
+            "Cross-conversation reads are allowed only against the caller's own conversation, " +
+              "its parent, or one of its workers."
           )
-      }
+        ))
+      case Right(_) =>
+        ctx.sigil.withDB(_.toolOutputs.transaction(
+          _.query.filter(_.conversationKey === targetConvId.value).toList
+        )).flatMap { all =>
+          // Find any row matching the referenceId in this conversation;
+          // its callId is what we filter by.
+          val anyRow = all.find(n => n._id.value == input.referenceId || n.referenceId == input.referenceId || n.callId.value == input.referenceId)
+          anyRow match {
+            case None =>
+              Task.pure(ToolResult.Success(JsonPagedResult(
+                items       = Nil,
+                hasMore     = false,
+                page        = input.page,
+                pageSize    = pageSize,
+                referenceId = input.referenceId,
+                callId      = sigil.event.Event.id(),
+                totalCount  = Some(0)
+              )))
+            case Some(row) =>
+              // `referenceId` may be either a node id (children-of-X) OR
+              // a callId (top-level rows of that call). We resolve to
+              // the row's actual referenceKey at query time.
+              val readRef =
+                if (row.callId.value == input.referenceId) input.referenceId
+                else if (row._id.value == input.referenceId) row._id.value
+                else input.referenceId
+              PaginatedTool.readPage(
+                host           = ctx.sigil,
+                conversationId = targetConvId,
+                callId         = row.callId,
+                referenceId    = readRef,
+                page           = input.page,
+                pageSize       = pageSize
+              ).map(ToolResult.Success(_))
+          }
+        }
     }
   }
 }

@@ -57,7 +57,8 @@ case object DelegateTaskTool extends Tool {
           workType = sigil.provider.AnalysisWork
         ),
         brief = "Find recent papers on retrieval-augmented generation in 2026.",
-        modelId = "anthropic/claude-sonnet-4-6"
+        goal = Some("identify candidate sources for a literature review"),
+        modelId = Some("anthropic/claude-sonnet-4-6")
       )
     )
   )
@@ -78,21 +79,48 @@ case object DelegateTaskTool extends Tool {
     val workerLabel  = s"Worker: ${input.role.name}"
     val parentConvId = ctx.conversation.id
 
+    // Sigil #289 — resolve the worker's model:
+    //   1. If `input.modelId` is set, use that exact model (most explicit).
+    //   2. Else route via `Sigil.routedModelFor` with `role.workType`
+    //      + optional `complexity` filter, falling back to the
+    //      spawning agent's modelId.
+    val resolvedModelTask: Task[String] = input.modelId match {
+      case Some(explicit) => Task.pure(explicit)
+      case None =>
+        ws.routedModelFor(
+          workType   = input.role.workType,
+          chain      = ctx.chain,
+          fallback   = ctx.modelId,
+          complexity = input.complexity
+        ).map(_.value)
+    }
+
+    // Sigil #289 — when `toolNames` is empty, inherit the spawning
+    // agent's effective roster. Lets agents say "delegate this with
+    // my own capabilities" without re-enumerating tool names.
+    val effectiveToolNames: List[String] =
+      if (input.toolNames.nonEmpty) input.toolNames
+      else inheritParentRoster(ws, ctx)
+
+    val maxIter = input.maxIterations.getOrElse(50)
+
     for {
+      resolvedModel <- resolvedModelTask
       workerConv <- ws.newConversation(
         createdBy             = ctx.caller,
         label                 = workerLabel,
-        summary               = input.brief.take(80),
+        summary               = input.goal.getOrElse(input.brief).take(80),
         participants          = Nil,
         parentConversationId  = Some(parentConvId)
       )
       stepInput = AgentDecisionStepInput(
-        id        = "decision-0",
-        name      = Some(s"Worker decision (${input.role.name})"),
-        role      = input.role,
-        brief     = input.brief,
-        modelId   = input.modelId,
-        toolNames = input.toolNames
+        id            = "decision-0",
+        name          = Some(s"Worker decision (${input.role.name})"),
+        role          = input.role,
+        brief         = composeBrief(input),
+        modelId       = resolvedModel,
+        maxIterations = maxIter,
+        toolNames     = effectiveToolNames
       )
       compiled = WorkflowStepInputCompiler.compile(List(stepInput))(using summon[fabric.rw.RW[strider.step.Step]])
       // Synthetic ad-hoc parent id — for inline runs there's no
@@ -119,4 +147,32 @@ case object DelegateTaskTool extends Tool {
       role         = input.role.name
     ))
   }
+
+  /** Resolve the spawning agent's effective roster — the union of
+    * the agent's `tools` policy and the active mode's `tools` policy
+    * via `Sigil.effectiveToolNames`. When the agent's participant
+    * record can't be located on the conversation (unusual but
+    * possible for chain-only callers), fall back to an empty roster
+    * — the worker becomes a pure-reasoning agent which is the
+    * safer no-tool default. */
+  private def inheritParentRoster(host: _root_.sigil.Sigil,
+                                  ctx: ToolContext): List[String] = {
+    val agentOpt = ctx.conversation.participants.collectFirst {
+      case agent: _root_.sigil.participant.AgentParticipant if agent.id == ctx.caller => agent
+    }
+    agentOpt match {
+      case Some(agent) =>
+        host.effectiveToolNames(agent, ctx.conversation.currentMode, Nil).map(_.value)
+      case None => Nil
+    }
+  }
+
+  /** Prepend the goal to the worker's brief when set — the worker
+    * sees both the high-level intent and the detailed directive.
+    * Goal-less briefs pass through unchanged. */
+  private def composeBrief(input: DelegateTaskInput): String =
+    input.goal match {
+      case Some(g) if g.nonEmpty => s"Goal: $g\n\n${input.brief}"
+      case _                     => input.brief
+    }
 }

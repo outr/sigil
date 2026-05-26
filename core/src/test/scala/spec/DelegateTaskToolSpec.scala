@@ -48,7 +48,7 @@ class DelegateTaskToolSpec extends AsyncWordSpec with AsyncTaskSpec with Matcher
       workType = AnalysisWork
     ),
     brief = "Find recent papers on RAG",
-    modelId = "anthropic/claude-sonnet-4-6"
+    modelId = Some("anthropic/claude-sonnet-4-6")
   )
 
   private def failureText(signals: List[Signal]): String =

@@ -1,6 +1,8 @@
 package sigil.tool.output
 
 import fabric.rw.*
+import lightdb.id.Id
+import sigil.conversation.Conversation
 import sigil.tool.ToolInput
 
 /**
@@ -14,7 +16,13 @@ import sigil.tool.ToolInput
  *     `[0, pageSize)`, page 1 reads `[pageSize, 2*pageSize)`, etc.
  *   - `pageSize` — defaults to 50. Cap is 500 (the framework
  *     truncates higher values silently).
+ *   - `conversationId` — sigil #289 — target a specific
+ *     conversation for the read. When unset (default), the caller's
+ *     current conversation is used. Cross-conversation reads are
+ *     gated by [[sigil.Sigil.canReadConversation]] — typically
+ *     allowed for the caller's parent or worker conversations.
  */
 case class NextPageInput(referenceId: String,
                          page: Int = 0,
-                         pageSize: Int = 50) extends ToolInput derives RW
+                         pageSize: Int = 50,
+                         conversationId: Option[Id[Conversation]] = None) extends ToolInput derives RW

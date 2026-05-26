@@ -417,7 +417,7 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
         for {
           _ <- TestWorkflowSigil.withDB(_.conversations.transaction(_.upsert(parentConv)))
           signals <- DelegateTaskTool.execute(
-            DelegateTaskInput(role = role, brief = brief, modelId = modelId.value),
+            DelegateTaskInput(role = role, brief = brief, modelId = Some(modelId.value)),
             ctx, Event.id()
           ).toList
           // The tool's typed result settles its ToolInvoke via a

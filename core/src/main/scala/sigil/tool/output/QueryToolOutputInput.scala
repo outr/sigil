@@ -1,6 +1,8 @@
 package sigil.tool.output
 
 import fabric.rw.*
+import lightdb.id.Id
+import sigil.conversation.Conversation
 import sigil.tool.ToolInput
 
 /**
@@ -19,9 +21,15 @@ import sigil.tool.ToolInput
  *     only; `None` returns rows at any level.
  *   - `page` / `pageSize` — pagination over the filtered set.
  *     Defaults: page 0, pageSize 50. Max pageSize 500.
+ *   - `conversationId` — sigil #289 — target a specific
+ *     conversation for the read. When unset (default), the caller's
+ *     current conversation is used. Cross-conversation reads are
+ *     gated by [[sigil.Sigil.canReadConversation]] — typically
+ *     allowed for the caller's parent or worker conversations.
  */
 case class QueryToolOutputInput(callId: String,
                                 containsText: Option[String] = None,
                                 level: Option[Int] = None,
                                 page: Int = 0,
-                                pageSize: Int = 50) extends ToolInput derives RW
+                                pageSize: Int = 50,
+                                conversationId: Option[Id[Conversation]] = None) extends ToolInput derives RW
