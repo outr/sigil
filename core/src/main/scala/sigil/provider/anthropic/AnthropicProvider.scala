@@ -73,6 +73,15 @@ case class AnthropicProvider(apiKey: String,
         raw         <- httpRequestFor(input)
         intercepted <- sigilRef.wireInterceptor.before(raw)
         handle      <- HttpClient.modify(_ => intercepted).noFailOnHttpStatus.timeout(tokenIdleTimeout).streamLinesHandle()
+        // Sigil #284 — sniff Anthropic's per-minute input-token ceiling
+        // off the response headers and persist into the model record
+        // so #283's pre-flight guard fires on the next call. Async
+        // best-effort (fire-and-forget); response stream consumption
+        // begins immediately regardless of whether the header sniff
+        // completes first. On Netty (async header arrival) the
+        // sniff completes asynchronously; on OkHttp / JVM-HTTP (sync)
+        // it's effectively instant.
+        _           <- sniffRateLimitHeaders(input.modelId, handle.responseHeaders).start
       } yield {
         // okhttp's per-read timeout already catches network stalls
         // (no bytes for the duration); slow-but-working streams keep
@@ -88,6 +97,38 @@ case class AnthropicProvider(apiKey: String,
       }
     )
   }
+
+  /** Sigil #284 — read `anthropic-ratelimit-input-tokens-limit` from
+    * the upstream's response headers and, when it differs from the
+    * currently cached value, merge an updated [[Model]] record into
+    * [[sigil.cache.ModelRegistry]] carrying the fresh
+    * `inputTokensPerMinute`. The first successful call after boot
+    * populates the field; subsequent calls find #283's pre-flight
+    * rate-limit guard active and gate accordingly. Plan-tier upgrades
+    * picked up on the next response automatically.
+    *
+    * Best-effort and silent: a missing / malformed header just leaves
+    * the record alone (the cache.merge is a no-op). Errors handled
+    * locally — never propagated, since this runs as a fire-and-forget
+    * fiber alongside the streaming response. */
+  def sniffRateLimitHeaders(modelId: lightdb.id.Id[_root_.sigil.db.Model],
+                                              headersTask: Task[spice.http.Headers]): Task[Unit] =
+    headersTask.flatMap { headers =>
+      val rawLimit = headers.map.get(Anthropic.RateLimitInputTokensHeader)
+        .flatMap(_.headOption).map(_.trim).filter(_.nonEmpty)
+      rawLimit.flatMap(s => scala.util.Try(s.toLong).toOption) match {
+        case Some(limit) =>
+          val current = sigilRef.cache.find(modelId)
+          val needsUpdate = current.exists(_.inputTokensPerMinute.forall(_ != limit))
+          if (needsUpdate) {
+            val updated = current.get.copy(inputTokensPerMinute = Some(limit))
+            sigilRef.cache.merge(List(updated))
+          } else Task.unit
+        case None => Task.unit
+      }
+    }.handleError(t => Task {
+      scribe.warn(s"AnthropicProvider: rate-limit header sniff failed for ${modelId.value}: ${t.getMessage}")
+    })
 
   override def httpRequestFor(input: ProviderCall): Task[HttpRequest] = Task {
     val bodyStr = JsonFormatter.Compact(buildBody(input))

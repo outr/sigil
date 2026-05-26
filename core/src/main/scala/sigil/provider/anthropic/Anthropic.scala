@@ -15,6 +15,14 @@ object Anthropic {
     * caching is engaged. */
   val ExtendedCacheTtlBeta: String = "extended-cache-ttl-2025-04-11"
 
+  /** Sigil #284 — response header carrying the per-minute input-token
+    * ceiling Anthropic enforces for the calling account / model pair.
+    * Present on every 200 response and on 429 rate-limit replies.
+    * Sniffed by [[AnthropicProvider]] to auto-populate
+    * `Model.inputTokensPerMinute`, which engages #283's pre-flight
+    * rate-limit guard on subsequent calls. */
+  val RateLimitInputTokensHeader: String = "anthropic-ratelimit-input-tokens-limit"
+
   def stripProviderPrefix(sigilModelId: String): String = {
     val prefix = s"$Provider/"
     if (sigilModelId.startsWith(prefix)) sigilModelId.drop(prefix.length) else sigilModelId
