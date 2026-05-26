@@ -5001,15 +5001,30 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // loop (Stop, max-iterations, cap-hit, checkpoint intervention,
     // post-stream error). The extractor itself runs on a fiber
     // so the release path isn't blocked by its LLM round-trip.
-    def terminate(): Task[Unit] = {
+    def terminate(skipFallback: Boolean = false): Task[Unit] = {
       if (turnExtractorFired.compareAndSet(false, true)) {
         firePostTurnExtraction(agent, convId, claimed.timestamp).startUnit()
       }
+      // Sigil bug #282 — defensive guarantee: never release the agent's
+      // claim without something user-visible reaching the conversation.
+      // The normal terminal paths set `userVisibleSeen` (respond family
+      // settles, orchestrator silent-turn placeholder, …); the
+      // handleError + Stop paths bypass the fallback explicitly because
+      // they publish their own user-visible content (Failure Message,
+      // user-initiated stop). Any other path that reaches here without
+      // a user-visible reply gets a synthetic fallback Message composed
+      // from the most recent ProgressCheckpoint's status so the UI
+      // doesn't spin indefinitely on a silent turn end.
+      val fallback: Task[Unit] =
+        if (skipFallback || userVisibleSeen.get()) Task.unit
+        else synthesizeFallbackRespond(agent, convId)
       // Sigil bug #169 — clear the suggestedTools overlay at loop release
       // so leftover suggestions don't bleed into the next user's turn.
       // Per-iteration decay was removed in the same bug fix; persistence
       // is loop-scoped and cleared exactly here.
-      clearSuggestedTools(convId, agent.id).flatMap(_ => releaseClaim(claimed))
+      fallback
+        .flatMap(_ => clearSuggestedTools(convId, agent.id))
+        .flatMap(_ => releaseClaim(claimed))
     }
     // Snapshot the start of THIS iteration. The next iteration uses this as
     // its own `sinceTimestamp`, so events emitted during this iteration
@@ -5124,7 +5139,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // circuit if so (graceful = "don't start another iteration"; force
     // = "same, plus the in-flight stream below won't run"). Either way,
     // release and exit.
-    if (stopFlag.exists(_.requested)) Task(terminate())
+    if (stopFlag.exists(_.requested)) Task(terminate(skipFallback = true))
     else
     // Reload the conversation each iteration — materialized projections
     // (currentMode, modified, etc.) update as Events flow through `publish`,
@@ -5252,7 +5267,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           // else — a Stop that fired mid-stream means exit now, don't
           // continue looping even if there are new triggers.
           if (stopFlag.exists(_.requested))
-            Task(terminate())
+            Task(terminate(skipFallback = true))
           else if (forceResponseSynthesis) {
             // Sigil bug #125 — the cap-hit soft-stop ran. With
             // `tool_choice: respond` the model SHOULD have called
@@ -5346,7 +5361,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                     // intervention.message persists inside the batched
                     // transaction; terminate() runs as the post-commit
                     // continuation.
-                    publish(intervention.message).map(_ => terminate())
+                    publish(intervention.message).map(_ => terminate(skipFallback = true))
                   case Some(intervention) =>
                     // Bug #133 — stall / no-progress streak. The
                     // intervention text is a directive to the agent
@@ -5489,7 +5504,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // the terminal release + re-raise run as the post-commit
       // continuation so the Idle/Complete signal never races the commit.
       publishOnce.map(_ =>
-        terminate().handleError(_ => Task.unit).flatMap(_ => Task.error(t)))
+        terminate(skipFallback = true).handleError(_ => Task.unit).flatMap(_ => Task.error(t)))
     }
     // Hold one `events` transaction open across this iteration's
     // work — every `publish` → `apply` and every event read routed
@@ -5877,6 +5892,48 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * Best-effort: degenerate states (conversation gone, no topics) skip
     * publication rather than fabricate a topic id; the caller's
     * `releaseClaim` still flips the agent state to Idle/Complete. */
+  /** Sigil bug #282 — publish a synthetic user-visible Message when
+    * the agent loop terminates without any respond having fired.
+    * Composes its body from the most recent [[sigil.event.ProgressCheckpoint]]
+    * the agent persisted this turn (if any) so the user sees the
+    * agent's own stated status / stuck-on reason instead of a blank
+    * spinner. Falls back to a generic placeholder when no checkpoint
+    * exists for this turn.
+    *
+    * Idempotent in spirit — callers should only invoke when
+    * `userVisibleSeen` is false; the helper itself does NOT re-check
+    * to keep the contract surfaced at the call site. */
+  private final def synthesizeFallbackRespond(agent: AgentParticipant,
+                                              convId: Id[Conversation]): Task[Unit] =
+    latestCheckpointStatus(agent.id, convId).flatMap { checkpoint =>
+      val body = checkpoint match {
+        case Some(status) =>
+          s"I wasn't able to complete the request before the turn ended. Status: $status"
+        case None =>
+          "The agent's turn ended without producing a reply. Please re-prompt or clarify the request."
+      }
+      withDB(_.conversations.transaction(_.get(convId))).flatMap {
+        case None       => Task.unit
+        case Some(conv) => conv.topics.headOption match {
+          case None        => Task.unit
+          case Some(topic) =>
+            publish(Message(
+              participantId  = agent.id,
+              conversationId = convId,
+              topicId        = topic.id,
+              content        = Vector(ResponseContent.Text(body)),
+              disposition    = sigil.event.MessageDisposition.Failure(recoverable = true),
+              state          = EventState.Complete,
+              role           = MessageRole.Standard
+            )).map(_ => ())
+        }
+      }
+    }.handleError { e =>
+      Task(scribe.warn(
+        s"synthesizeFallbackRespond failed for ${agent.id.value}/${convId.value}: ${e.getMessage}"
+      ))
+    }
+
   private final def publishFailureMessage(agent: AgentParticipant,
                                           convId: Id[Conversation],
                                           t: Throwable): Task[Unit] =
@@ -5889,20 +5946,50 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             .map(m => s"${t.getClass.getSimpleName}: $m")
             .getOrElse(t.getClass.getSimpleName)
           val ec = sigil.event.ErrorContext.classify(t)
-          publish(Message(
-            participantId  = agent.id,
-            conversationId = convId,
-            topicId        = topic.id,
-            content        = Vector(sigil.tool.model.ResponseContent.Text(reason)),
-            disposition    = sigil.event.MessageDisposition.Failure(
-              recoverable  = false,
-              errorContext = Some(ec)
-            ),
-            state          = EventState.Complete,
-            role           = MessageRole.Standard
-          )).map(_ => ())
+          // Sigil bug #282 — enrich the user-facing failure body with
+          // the agent's most recent self-reported status (from a
+          // ProgressCheckpoint event) when available. The agent
+          // typically knows what it was working on / stuck on; surfacing
+          // that text alongside the exception class makes the failure
+          // bubble actionable instead of just technical.
+          latestCheckpointStatus(agent.id, convId).flatMap { checkpoint =>
+            val body = checkpoint match {
+              case Some(status) => s"$reason\n\nLast reported status: $status"
+              case None         => reason
+            }
+            publish(Message(
+              participantId  = agent.id,
+              conversationId = convId,
+              topicId        = topic.id,
+              content        = Vector(sigil.tool.model.ResponseContent.Text(body)),
+              disposition    = sigil.event.MessageDisposition.Failure(
+                recoverable  = false,
+                errorContext = Some(ec)
+              ),
+              state          = EventState.Complete,
+              role           = MessageRole.Standard
+            )).map(_ => ())
+          }
       }
     }
+
+  /** Sigil bug #282 — return the agent's most recent
+    * [[sigil.event.ProgressCheckpoint]] status text for this
+    * conversation, formatted with stuck-on + remaining-steps when
+    * present. Best-effort — failures fall through to None rather than
+    * aborting the failure-publish path. */
+  private final def latestCheckpointStatus(agentId: ParticipantId,
+                                           convId: Id[Conversation]): Task[Option[String]] =
+    withDB(_.eventsTransaction(convId)(_.list)).map { events =>
+      events.collect {
+        case cp: sigil.event.ProgressCheckpoint if cp.participantId == agentId => cp
+      }.maxByOption(_.timestamp.value).map { cp =>
+        val statusLine = if (cp.currentStatus.nonEmpty) cp.currentStatus else "(no status text)"
+        val stuckLine  = cp.stuckOn.filter(_.nonEmpty).map(s => s"\n\nStuck on: $s").getOrElse("")
+        val nextLine   = if (cp.remainingSteps.nonEmpty) s"\n\nRemaining: ${cp.remainingSteps}" else ""
+        s"$statusLine$stuckLine$nextLine"
+      }
+    }.handleError(_ => Task.pure(None))
 
   /** Clear the `suggestedTools` overlay at loop release. Sigil bug
     * #169 — the overlay persists across iterations within a single
