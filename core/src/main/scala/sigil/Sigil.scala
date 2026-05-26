@@ -321,6 +321,65 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    */
   def rateLimitSafetyMargin: Double = 0.85
 
+  /**
+   * Sigil #285 — intra-turn compactor consulted between iterations
+   * of [[runAgentLoop]]. When the compactor's [[IntraTurnCompactor.shouldCompact]]
+   * fires AND [[IntraTurnCompactor.selectFoldable]] returns a non-
+   * empty list, the framework runs [[MemoryContextCompressor.compressCovering]]
+   * on the selected frames and persists a [[ContextSummary]] tagged
+   * with their event ids. The curator filters those events out of
+   * subsequent turns' frames so the agent sees the summary text in
+   * their place.
+   *
+   * Default [[StandardIntraTurnCompactor]] — fires on size pressure
+   * (estimated tokens >= [[compressionTriggerTokens]]) OR after a
+   * standard-role `respond` Message. Apps with app-specific
+   * sub-task-closed signals (terminal tools that mark a unit of
+   * work done) supply a custom [[StandardIntraTurnCompactor]] with
+   * `terminalTools` populated, or implement [[IntraTurnCompactor]]
+   * directly. */
+  def intraTurnCompactor: _root_.sigil.conversation.compression.IntraTurnCompactor =
+    _root_.sigil.conversation.compression.StandardIntraTurnCompactor()
+
+  /** Sigil #285 — compressor invoked by the framework when the
+    * [[intraTurnCompactor]] decides to fold this iteration's eligible
+    * events. Default is a fresh [[MemoryContextCompressor]] with the
+    * standard prompts and extract-disabled (the mid-loop call skips
+    * memory extraction to keep the iteration boundary fast — apps
+    * that want extraction at this boundary supply a compressor with
+    * `extractFacts = true` or wire their own
+    * [[sigil.conversation.compression.IntraTurnCompactor]] that
+    * pre-runs extraction.
+    *
+    * Distinct from any compressor wired into the standard curator
+    * — the curator's compressor runs at user-turn boundaries; this
+    * one runs at iteration boundaries within a single user turn. */
+  def intraTurnCompressor: _root_.sigil.conversation.compression.MemoryContextCompressor =
+    _root_.sigil.conversation.compression.MemoryContextCompressor(extractFacts = false)
+
+  /** Sigil #285 — per-iteration cost threshold above which the
+    * intra-turn compactor considers folding worthwhile. Default =
+    * `0.6 × min(contextLength, inputTokensPerMinute × safetyMargin)`,
+    * leaving 40% headroom for the un-shed sections (system prompt,
+    * tool roster, the kept-recent events).
+    *
+    * Models with no `inputTokensPerMinute` configured fall through
+    * to `0.6 × contextLength`. Models with no registry record at
+    * all return `Long.MaxValue` (no threshold — only natural-boundary
+    * triggers will fire). Apps override for stricter / looser
+    * folding cadence. */
+  def compressionTriggerTokens(modelId: Id[Model]): Long = {
+    val model = cache.find(modelId)
+    val ctxBound = model.map(_.contextLength).getOrElse(Long.MaxValue)
+    val rateBound = model.flatMap(_.inputTokensPerMinute) match {
+      case Some(ipm) => (ipm * rateLimitSafetyMargin).toLong
+      case None      => Long.MaxValue
+    }
+    val effective = math.min(ctxBound, rateBound)
+    if (effective == Long.MaxValue) Long.MaxValue
+    else math.max(1L, (effective * 0.6).toLong)
+  }
+
   // -- tool catalog --
 
   /**
@@ -5482,11 +5541,20 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                       .flatMap(_ => publish(taggedDirective))
                       .map(_ => recurseForced(ForcedSynthesisReason.StallIntervention))
                   case None =>
-                    Task.pure(runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart,
-                      userVisibleSeen = userVisibleSeen,
-                      turnExtractorFired = turnExtractorFired,
-                      failurePublished = failurePublished,
-                      discoveredCapabilitiesRef = discoveredCapabilitiesRef))
+                    // Sigil #285 — consult the intra-turn compactor
+                    // before the next iteration. When budget pressure
+                    // or a natural boundary fires, the framework folds
+                    // older this-turn events into a ContextSummary so
+                    // the next iteration's wire prompt is smaller. The
+                    // helper is a no-op when no compaction is needed.
+                    Task.pure(
+                      maybeIntraTurnCompact(agent, convId, claimed)
+                        .flatMap(_ => runAgentLoop(agent, convId, claimed, nextIteration, thisIterationStart,
+                          userVisibleSeen = userVisibleSeen,
+                          turnExtractorFired = turnExtractorFired,
+                          failurePublished = failurePublished,
+                          discoveredCapabilitiesRef = discoveredCapabilitiesRef))
+                    )
                 }
               }
             case true if !forceResponseSynthesis =>
@@ -5726,6 +5794,76 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * cases into one path and unconditionally terminated the loop;
     * the agent never got to act on stall directives. */
   private final case class CheckpointIntervention(message: Message, askingUser: Boolean)
+
+  /** Sigil #285 — consult [[intraTurnCompactor]] at an iteration
+    * boundary and, if it fires, run [[intraTurnCompressor.compressCovering]]
+    * to fold this turn's eligible events into a [[ContextSummary]]
+    * tagged with their event ids. The next iteration's curator picks
+    * the summary up and filters those events out of the wire prompt,
+    * shrinking the per-iteration cost without touching the durable
+    * event log.
+    *
+    * Best-effort: a failure inside the compactor or compressor is
+    * logged at WARN and swallowed — the agent loop continues with
+    * the un-folded history (degraded but functional). The compactor
+    * predicate is cheap; the compress call only fires when the
+    * predicate returns true AND there's foldable content. */
+  private final def maybeIntraTurnCompact(agent: AgentParticipant,
+                                          convId: Id[Conversation],
+                                          claimed: AgentState): Task[Unit] = Task.defer {
+    val compactor = intraTurnCompactor
+    eventsFor(convId, minTimestamp = Some(claimed.timestamp)).flatMap { page =>
+      // Sort oldest-first so selectFoldable's "drop the oldest" logic
+      // matches the conversation's natural order. eventsFor returns
+      // newest-first.
+      val turnEvents = page.events.toVector.reverse
+      if (turnEvents.isEmpty) Task.unit
+      else {
+        val estimated = turnEvents.iterator
+          .map(e => sigil.tokenize.HeuristicTokenizer.count(eventTextForHeuristic(e)))
+          .sum
+          .toLong
+        val threshold = compressionTriggerTokens(agent.modelId)
+        if (!compactor.shouldCompact(turnEvents, estimated, threshold)) Task.unit
+        else {
+          val coverIds = compactor.selectFoldable(turnEvents).toSet
+          if (coverIds.isEmpty) Task.unit
+          else framesFor(convId).flatMap { allFrames =>
+            val coveredFrames = allFrames.filter(f => coverIds.contains(f.sourceEventId))
+            if (coveredFrames.isEmpty) Task.unit
+            else intraTurnCompressor
+              .compressCovering(
+                sigil           = this,
+                callerModelId   = agent.modelId,
+                chain           = List(agent.id),
+                frames          = coveredFrames,
+                conversationId  = convId,
+                coversEventIds  = coverIds.toList
+              )
+              .map(_ => ())
+              .handleError(t => Task {
+                scribe.warn(s"Sigil #285 — intra-turn compaction failed for ${agent.id.value}/${convId.value}: ${t.getMessage}")
+              })
+          }
+        }
+      }
+    }
+  }
+
+  /** Heuristic text rendering for an Event purely for the
+    * intra-turn-compactor's size estimation. Doesn't need to match
+    * any provider's exact wire shape — only stable enough that a
+    * vector of these is a fair proxy for cumulative cost. */
+  private def eventTextForHeuristic(e: Event): String = e match {
+    case m: Message =>
+      m.content.iterator.map {
+        case t: sigil.tool.model.ResponseContent.Text => t.text
+        case other => other.toString
+      }.mkString(" ")
+    case ti: ToolInvoke =>
+      s"${ti.toolName.value} ${ti.input.fold("")(_.toString)}"
+    case other => other.toString
+  }
 
   private final def runProgressCheckpoint(agent: AgentParticipant,
                                           convId: Id[Conversation],

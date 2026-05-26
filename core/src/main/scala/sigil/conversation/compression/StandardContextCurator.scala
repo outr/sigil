@@ -129,8 +129,23 @@ case class StandardContextCurator(sigil: Sigil,
         .toSet
       for {
         _             <- control.step("Loading frames")
+        // Load persisted summaries first so the per-turn frame
+        // filter can skip events that an intra-turn summary
+        // (sigil #285) already subsumes. Without this ordering the
+        // frame slice would carry both the originals AND the
+        // summary text on every subsequent turn.
+        allSummaries  <- if (loadPersistedSummaries) sigil.summariesFor(conversationId)
+                         else Task.pure(List.empty[ContextSummary])
+        // Build the elision set across every summary's coversEventIds.
+        // Empty (the common case) means no per-event filtering kicks
+        // in and frames flow through as before.
+        elidedEvents: Set[Id[_root_.sigil.event.Event]] =
+          allSummaries.iterator.flatMap(_.coversEventIds).toSet
         rawFrames     <- sigil.framesFor(conversationId)
-        visibleFrames = rawFrames.filter(f => sigil.visibilityAllows(f.visibility, chain.lastOption.orNull))
+        visibleFrames = rawFrames.filter(f =>
+          sigil.visibilityAllows(f.visibility, chain.lastOption.orNull) &&
+            !elidedEvents.contains(f.sourceEventId)
+        )
         // Cap the per-turn frame budget. Bulk-imported conversations
         // (50K+ events) flow through curate every turn; without a
         // bound the framework re-runs block extraction + budget
@@ -156,9 +171,9 @@ case class StandardContextCurator(sigil: Sigil,
         // generated explicitly via `MemoryContextCompressor.compressHierarchical`.
         // Older history is represented this way without re-occupying
         // the raw-frame stream every turn.
-        persistedSummaries <-
-          if (loadPersistedSummaries) sigil.summariesFor(conversationId).map(_.map(_._id).toVector)
-          else Task.pure(Vector.empty)
+        persistedSummaries =
+          if (loadPersistedSummaries) allSummaries.map(_._id).toVector
+          else Vector.empty
         projections   <- loadProjections(conversationId, chain)
         tentative     = injectParaphraseObservation(
           TurnInput(

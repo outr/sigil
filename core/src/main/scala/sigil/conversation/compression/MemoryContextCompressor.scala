@@ -230,7 +230,8 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
                         modelId: Id[Model],
                         chain: List[ParticipantId],
                         transcript: String,
-                        conversationId: Id[Conversation]): Task[Option[ContextSummary]] = {
+                        conversationId: Id[Conversation],
+                        coversEventIds: List[Id[_root_.sigil.event.Event]] = Nil): Task[Option[ContextSummary]] = {
     val userPrompt =
       s"""Summarize the following conversation excerpt. Output via the `summarize_conversation` tool.
          |
@@ -251,7 +252,8 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
         val record = ContextSummary(
           text = result.summary.trim,
           conversationId = conversationId,
-          tokenEstimate = math.max(1, result.tokenEstimate)
+          tokenEstimate = math.max(1, result.tokenEstimate),
+          coversEventIds = coversEventIds
         )
         sigil.persistSummary(record).map(Some(_))
       case _ => Task.pure(None)
@@ -261,6 +263,44 @@ case class MemoryContextCompressor(extractionSystemPrompt: String = MemoryContex
         None
       }
     }
+  }
+
+  /** Sigil #285 — compress a specific list of frames and persist the
+    * resulting summary tagged with the source events' ids. The
+    * curator filters those events from subsequent turns' frames so
+    * the agent sees the summary in their place — mid-turn elision
+    * without modifying the durable event log.
+    *
+    * Differs from [[compress]] only in (a) the inputs are a fixed
+    * pre-selected vector rather than a stream walked from the full
+    * conversation, (b) the produced [[ContextSummary]] carries
+    * `coversEventIds`, and (c) the extract-memories pass is skipped
+    * — intra-turn folding is about budget pressure mid-loop, not
+    * durable-fact mining, and adding an LLM call slows the
+    * iteration boundary unnecessarily.
+    *
+    * @param coversEventIds the durable [[sigil.event.Event]] ids that
+    *                       the summary's text subsumes. Empty list
+    *                       skips the summarization (no-op). */
+  def compressCovering(sigil: Sigil,
+                       callerModelId: Id[Model],
+                       chain: List[ParticipantId],
+                       frames: Vector[ContextFrame],
+                       conversationId: Id[Conversation],
+                       coversEventIds: List[Id[_root_.sigil.event.Event]]): Task[Option[ContextSummary]] = {
+    if (frames.isEmpty || coversEventIds.isEmpty) Task.pure(None)
+    else for {
+      ctx               <- loadContext(sigil, conversationId)
+      transcript         = renderTranscript(frames, ctx._1, ctx._2)
+      summarizationModel <- sigil.routedModelFor(
+                              SummarizationWork,
+                              chain,
+                              fallback = callerModelId,
+                              estimatedInputTokens = Some(tokenizer.count(transcript).toLong),
+                              reservedOutputTokens = reservedOutputTokens
+                            ).handleError(_ => Task.pure(callerModelId))
+      summary           <- summarize(sigil, summarizationModel, chain, transcript, conversationId, coversEventIds)
+    } yield summary
   }
 
   private def loadContext(sigil: Sigil, conversationId: Id[Conversation]) =
