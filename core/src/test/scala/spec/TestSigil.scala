@@ -241,6 +241,13 @@ object TestSigil extends Sigil {
   val reservedTopicLabelsOverride =
     new AtomicReference[Option[Set[String]]](None)
 
+  /** Sigil #286 — per-spec override of `narrowRosterByRecentUse`.
+    * `None` (default) uses the framework default (`false`); `Some(b)`
+    * forces the flag. Used by IntraTurnNarrowingSpec to exercise both
+    * sides without mutating shared TestSigil state across tests. */
+  val narrowRosterByRecentUseOverride =
+    new AtomicReference[Option[Boolean]](None)
+
   // ---- hook overrides delegate to refs ----
 
   override def providerFor(modelId: Id[Model], chain: List[ParticipantId]): Task[Provider] = {
@@ -354,6 +361,9 @@ object TestSigil extends Sigil {
 
   override def reservedTopicLabels: Set[String] =
     reservedTopicLabelsOverride.get().getOrElse(super.reservedTopicLabels)
+
+  override def narrowRosterByRecentUse: Boolean =
+    narrowRosterByRecentUseOverride.get().getOrElse(super.narrowRosterByRecentUse)
 
   // ---- setters (per-test overrides) ----
 

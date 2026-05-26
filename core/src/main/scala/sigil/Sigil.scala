@@ -357,6 +357,34 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def intraTurnCompressor: _root_.sigil.conversation.compression.MemoryContextCompressor =
     _root_.sigil.conversation.compression.MemoryContextCompressor(extractFacts = false)
 
+  /**
+   * Sigil #286 — when `true`, the framework narrows the per-iteration
+   * tool roster to (recently-used tools from the rolling window
+   * [[recentToolInvocationsLimit]] ∪ framework essentials ∪
+   * `find_capability` ∪ suggested ∪ [[ToolPolicy.Active]] overlays)
+   * instead of shipping every tool the agent's [[ToolPolicy]] declares.
+   * Reduces the fixed per-request cost of tool-schema bytes from
+   * "scales with total app tool count" to "scales with what the agent
+   * is currently doing."
+   *
+   * Safety gate: narrowing only kicks in when `find_capability` is
+   * in the effective roster. Without that recovery path, an agent
+   * that needs a tool not in the narrowed roster has no way to
+   * recover; the framework refuses to narrow in that configuration.
+   *
+   * First-iteration safety: when the projection's
+   * `recentToolInvocations` is empty (start of conversation, fresh
+   * agent, just cleared), narrowing skips and the full baseline ships
+   * — the agent gets a wide view to start, then narrowing kicks in
+   * once usage data accumulates.
+   *
+   * Default `false` (opt-in). Apps with > 20 tools and
+   * `find_capability` in their policy turn this on to cut typical
+   * per-request schema bytes ~60-80%; apps with small tool rosters
+   * (< 10) or apps that don't surface `find_capability` leave it off.
+   */
+  def narrowRosterByRecentUse: Boolean = false
+
   /** Sigil #285 — per-iteration cost threshold above which the
     * intra-turn compactor considers folding worthwhile. Default =
     * `0.6 × min(contextLength, inputTokensPerMinute × safetyMargin)`,
@@ -1478,7 +1506,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def effectiveToolNames(agent: AgentParticipant,
                          mode: Mode,
                          suggested: List[sigil.tool.ToolName],
-                         overlays: List[ToolPolicy] = Nil): List[sigil.tool.ToolName] = {
+                         overlays: List[ToolPolicy] = Nil,
+                         /** Sigil #286 — recently-used tool names lifted
+                           * from the participant projection's
+                           * `recentToolInvocations`. The caller in
+                           * [[defaultProcess]] passes the actual set;
+                           * non-conversation callers (e.g. `DelegateTaskTool`'s
+                           * up-front roster build) leave it empty (no
+                           * narrowing). */
+                         recentlyUsedTools: Set[sigil.tool.ToolName] = Set.empty): List[sigil.tool.ToolName] = {
     import sigil.tool.core.{
       ChangeModeTool, FindCapabilityTool, NoResponseTool, RespondTool,
       RespondFailureTool, RespondFieldTool, RespondOptionsTool
@@ -1530,7 +1566,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     val state = overlays.foldLeft(apply(apply(initial, agent.tools), mode.tools))(apply)
     val essentials     = if (state.pureDiscovery) pureDiscoveryEssentials else fullEssentials
     val findCapability = if (state.includesFindCapability) List(FindCapabilityTool.schema.name) else Nil
-    val baseline       = if (state.includesBaseline) agent.toolNames else Nil
+    val baselineFull   = if (state.includesBaseline) agent.toolNames else Nil
+    // Sigil #286 — narrow the baseline roster to recently-used tools
+    // when the framework's narrowing knob is on AND find_capability is
+    // in the effective roster (recovery path: an agent that needs a
+    // narrowed-out tool calls find_capability and the next turn picks
+    // it up via `suggested`). First-iteration safety: empty
+    // recentlyUsedTools skips narrowing so the agent sees the full
+    // baseline on a fresh conversation.
+    val baseline =
+      if (narrowRosterByRecentUse && state.includesFindCapability && recentlyUsedTools.nonEmpty)
+        baselineFull.filter(recentlyUsedTools.contains)
+      else baselineFull
     val merged         = (essentials ++ findCapability ++ baseline ++ state.extras ++ suggested).distinct
     val deduped =
       if (state.pureDiscovery) {
@@ -1797,8 +1844,14 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // the LSP/BSP/metals tools are present in subsequent turns
         // without a `find_capability` round-trip.
         overlays    <- conversationToolOverlays(context.conversation.id)
+        // Sigil #286 — pull recently-used tool names from the
+        // projection's rolling window. When `narrowRosterByRecentUse`
+        // is on, `effectiveToolNames` narrows the baseline roster to
+        // this set (intersected); when off, the set is unused.
+        recentlyUsed = context.turnInput.projectionFor(agent.id).recentToolInvocations
+          .iterator.map(_.toolName).toSet
         effectiveNames = effectiveToolNames(
-          agent, context.conversation.currentMode, suggested, overlays.map(_.policy)
+          agent, context.conversation.currentMode, suggested, overlays.map(_.policy), recentlyUsed
         ).distinct
         // Per-candidate `settings` overlays the agent's
         // generationSettings. The framework keeps the agent's settings
