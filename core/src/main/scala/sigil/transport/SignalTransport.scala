@@ -114,6 +114,10 @@ final class SignalTransport(sigil: Sigil) {
    * `Some(cs)` with a non-empty set narrows to the `conversationId`
    * index via an `in` clause; an empty set matches nothing; `None`
    * spans every conversation.
+   *
+   * Sigil #289 — the `cs` passed in is the EXPANDED set (callers
+   * resolve descendants via [[expandWithWorkerDescendants]] before
+   * calling this).
    */
   private def conversationScopeFilter(convFilter: ConversationFilter): Option[Event.type => lightdb.filter.Filter[Event]] = {
     import lightdb.filter.*
@@ -123,6 +127,35 @@ final class SignalTransport(sigil: Sigil) {
       case None                   => None
     }
   }
+
+  /** Sigil #289 — expand a conversation-filter set by recursively
+    * adding any conversation whose `parentConversationId` resolves
+    * to an id already in the set. Apps subscribed to a parent
+    * conversation transitively see its workers (and their workers)
+    * without enumerating worker ids manually.
+    *
+    * Returns `None` when the input is `None` (unfiltered). Returns
+    * an expanded `Some(set)` otherwise. Uses the indexed
+    * `parentConversationId` field for cheap lookups; bounded by the
+    * actual descendant tree depth (typically 1–2 levels). */
+  private def expandWithWorkerDescendants(convFilter: ConversationFilter): Task[ConversationFilter] =
+    convFilter match {
+      case None     => Task.pure(None)
+      case Some(cs) =>
+        import lightdb.filter.*
+        def step(seen: Set[Id[Conversation]],
+                 frontier: Set[Id[Conversation]]): Task[Set[Id[Conversation]]] =
+          if (frontier.isEmpty) Task.pure(seen)
+          else sigil.withDB(_.conversations.transaction(_.query
+            .filter(_ => Conversation.parentConversationId.in(frontier.toSeq.map(id => Option(id))))
+            .toList
+          )).flatMap { children =>
+            val childIds = children.map(_._id).toSet
+            val nextFrontier = childIds.diff(seen)
+            step(seen ++ childIds, nextFrontier)
+          }
+        step(cs, cs).map(expanded => Some(expanded))
+    }
 
   /**
    * The single conversation id of `convFilter`, when it scopes to
@@ -143,7 +176,14 @@ final class SignalTransport(sigil: Sigil) {
 
   private def loadReplay(viewer: ParticipantId,
                          resume: ResumeRequest,
-                         convFilter: ConversationFilter): Task[Stream[Signal]] = {
+                         rawConvFilter: ConversationFilter): Task[Stream[Signal]] =
+    expandWithWorkerDescendants(rawConvFilter).flatMap { convFilter =>
+      doLoadReplay(viewer, resume, convFilter)
+    }
+
+  private def doLoadReplay(viewer: ParticipantId,
+                           resume: ResumeRequest,
+                           convFilter: ConversationFilter): Task[Stream[Signal]] = {
     val scopeFilter = conversationScopeFilter(convFilter)
     resume match {
       case ResumeRequest.None =>

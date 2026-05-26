@@ -273,6 +273,86 @@ class SignalTransportSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
     }
   }
 
+  "SignalTransport conversation-filter expansion (sigil #289)" should {
+
+    "include worker conversation events in the parent's replay window" in {
+      val parentId = freshConv("parent")
+      val workerId = freshConv("worker")
+      val parent   = Conversation(_id = parentId, topics = TestTopicStack)
+      val worker   = Conversation(_id = workerId, topics = TestTopicStack,
+                                  parentConversationId = Some(parentId))
+      for {
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(parent)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(worker)))
+        _ <- TestSigil.publish(msg(parentId, 1000L, "parent-event"))
+        _ <- TestSigil.publish(msg(workerId, 1100L, "worker-event"))
+        // Subscribe filtered to the PARENT only. Without the
+        // descendant-expansion fix the worker's event would be
+        // dropped; with the fix it transitively appears.
+        signals <- transport.replay(TestUser, ResumeRequest.After(0L),
+                                    conversations = Some(Set(parentId))).toList
+      } yield {
+        val texts = signals.collect {
+          case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString
+        }
+        texts should contain ("parent-event")
+        texts should contain ("worker-event")
+      }
+    }
+
+    "transitively include grandchild worker events when workers spawn sub-workers" in {
+      val grandparentId = freshConv("grandparent")
+      val parentId      = freshConv("subparent")
+      val childId       = freshConv("subchild")
+      val grandparent = Conversation(_id = grandparentId, topics = TestTopicStack)
+      val parent      = Conversation(_id = parentId, topics = TestTopicStack,
+                                     parentConversationId = Some(grandparentId))
+      val child       = Conversation(_id = childId, topics = TestTopicStack,
+                                     parentConversationId = Some(parentId))
+      for {
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(grandparent)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(parent)))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(child)))
+        _ <- TestSigil.publish(msg(grandparentId, 1000L, "gp-event"))
+        _ <- TestSigil.publish(msg(parentId,      1100L, "p-event"))
+        _ <- TestSigil.publish(msg(childId,       1200L, "c-event"))
+        // Subscribe to the grandparent only.
+        signals <- transport.replay(TestUser, ResumeRequest.After(0L),
+                                    conversations = Some(Set(grandparentId))).toList
+      } yield {
+        val texts = signals.collect {
+          case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString
+        }
+        texts should contain ("gp-event")
+        texts should contain ("p-event")
+        texts should contain ("c-event")
+      }
+    }
+
+    "still scope replay to the explicit set when no worker hierarchy exists" in {
+      val convA = freshConv("a")
+      val convB = freshConv("b")
+      for {
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(
+               Conversation(_id = convA, topics = TestTopicStack))))
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(
+               Conversation(_id = convB, topics = TestTopicStack))))
+        _ <- TestSigil.publish(msg(convA, 1000L, "a-event"))
+        _ <- TestSigil.publish(msg(convB, 1100L, "b-event"))
+        // Subscribed to A only — B is not a worker of A, so its
+        // events should NOT appear (no false transitive expansion).
+        signals <- transport.replay(TestUser, ResumeRequest.After(0L),
+                                    conversations = Some(Set(convA))).toList
+      } yield {
+        val texts = signals.collect {
+          case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString
+        }
+        texts should contain ("a-event")
+        texts should not contain "b-event"
+      }
+    }
+  }
+
   "tear down" should {
     "dispose TestSigil" in TestSigil.shutdown.map(_ => succeed)
   }

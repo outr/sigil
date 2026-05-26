@@ -148,4 +148,13 @@ object Conversation extends RecordDocumentModel[Conversation] with JsonConversio
   /** Index on `created` so the orphan-staging sweep can age-out
     * abandoned imports without a full table scan. */
   val createdAt: I[Long] = field.index("createdAt", _.created.value)
+
+  /** Sigil #289 — index on `parentConversationId` so the
+    * [[sigil.transport.SignalTransport]] can resolve "all
+    * conversations whose parent is in this set" cheaply when
+    * expanding per-conversation subscriptions to include worker
+    * sub-conversations. Apps that subscribe to a parent
+    * conversation transitively receive its workers' signals
+    * without explicit per-worker subscriptions. */
+  val parentConversationId: I[Option[Id[Conversation]]] = field.index(_.parentConversationId)
 }
