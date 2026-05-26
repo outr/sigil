@@ -38,6 +38,11 @@ class AgentBenchHarnessSpec extends AsyncWordSpec with AsyncTaskSpec with Matche
   TestSigil.initFor(getClass.getSimpleName)
 
   private val modelId: Id[Model] = Model.id("test", "fake")
+  // The harness persists conversations directly (not via
+  // `TestSigil.newConversation`), so the auto-register hook in
+  // [[TestSigil.newConversation]] doesn't fire. Register the synthetic
+  // model up front so `buildContext`'s model-registry lookup hits.
+  TestSigil.testModel(modelId)
 
   /** Provider that returns a deterministic event sequence per turn,
     * indexed by call count. The agent loop drives one provider call

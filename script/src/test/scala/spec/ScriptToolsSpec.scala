@@ -125,6 +125,11 @@ object ScriptToolsTestSigil
     List(RW.static(TestScriptUser))
   override val findTools: sigil.tool.ToolFinder = InMemoryToolFinder(List(EchoTool))
   override def staticTools: List[sigil.tool.Tool] = Nil
+  // Tools exposed via `findTools` but absent from `staticTools` don't
+  // ride the auto-output-registration path — register EchoOutput
+  // explicitly so the polymorphic ToolOutput round-trip resolves it.
+  override def toolOutputRegistrations: List[RW[? <: sigil.tool.ToolOutput]] =
+    List(summon[RW[EchoOutput]])
   override def curate(conversationId: lightdb.id.Id[Conversation],
                       modelId: lightdb.id.Id[sigil.db.Model],
                       chain: List[sigil.participant.ParticipantId]): Task[TurnInput] = Task.pure(TurnInput(conversationId = conversationId))

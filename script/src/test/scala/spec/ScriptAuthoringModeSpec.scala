@@ -140,21 +140,22 @@ class ScriptAuthoringModeSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
     "emit no ModeChange (and warn) when the requested mode is unknown" in {
       // change_mode with an unknown mode name returns a logical
-      // failure — a Tool-role Failure Message — and crucially emits
-      // NO ModeChange event, so the conversation's mode is unchanged.
+      // failure — surfaced via the settling ToolDelta's outcome — and
+      // crucially emits NO ModeChange event, so the conversation's
+      // mode is unchanged.
       val context = ctx("change-mode-unknown")
       ChangeModeTool.execute(
         ChangeModeInput(mode = "no-such-mode"),
         context, Event.id()
-      ).toList.map { events =>
-        events.collect { case mc: ModeChange => mc } shouldBe empty
-        // The failure surfaces as a Tool-role Message with a
-        // recoverable Failure disposition.
-        val failures = events.collect {
-          case m: Message if m.role == sigil.event.MessageRole.Tool => m
+      ).toList.map { signals =>
+        signals.collect { case mc: ModeChange => mc } shouldBe empty
+        val failureOutcomes = signals.collect {
+          case d: sigil.signal.ToolDelta => d.outcome
+        }.flatten.collect {
+          case f: sigil.event.ToolOutcome.Failure => f
         }
-        failures should have size 1
-        failures.head.disposition shouldBe a[sigil.event.MessageDisposition.Failure]
+        failureOutcomes should have size 1
+        failureOutcomes.head.reason should include("no-such-mode")
       }
     }
   }
