@@ -53,6 +53,25 @@ import spice.http.durable.DurableSession
  */
 object SessionBridge {
 
+  /** Sigil bug #282 — spice's `DurableSocketServer.onSession` fires on
+    * BOTH fresh connects AND resume re-attachments (`onSession @=
+    * existing` in the resume handler). Without a guard here, every
+    * resume re-registers another `protocol.onEvent` listener on the
+    * SAME protocol instance, so N reconnects make every subsequent
+    * inbound Message publish N times — each browser sees every event
+    * duplicated, EventLogger writes duplicate rows, the agent fires
+    * N times for one user turn.
+    *
+    * We track which protocol instances have already been wired (by
+    * object identity — same protocol survives resume; a brand-new
+    * protocol is a genuinely fresh session that needs wiring).
+    * Identity-keyed because clientId can repeat across the
+    * spice-session-reap → fresh-protocol path, and equals-based
+    * tracking would mistakenly skip the new wiring. */
+  private val wiredProtocols: java.util.Set[AnyRef] = java.util.Collections.synchronizedSet(
+    java.util.Collections.newSetFromMap(new java.util.IdentityHashMap[AnyRef, java.lang.Boolean]())
+  )
+
   /** Default ephemeral handler: try to deserialize the payload as a
     * [[Notice]] (the framework's wire vocabulary for client→server
     * pulses). If it parses, dispatch to [[Sigil.handleNotice]]; if it
@@ -119,6 +138,14 @@ object SessionBridge {
     val sink         = new DurableSocketSink[Id[Conversation], Info](session)
     val ephemeralFn  = onEphemeral.getOrElse(noticeOrWarn(sigil, viewer))
 
+    // Sigil bug #282 — guard inbound listener registration against
+    // resume re-attachment. `protocol.eq` is the identity key — same
+    // protocol survives resume (spice re-binds the new WS listener
+    // onto the existing DurableSocket); a brand-new protocol is a
+    // genuinely fresh session that needs wiring.
+    val protocolKey: AnyRef = session.protocol
+    val firstAttachForThisProtocol: Boolean = wiredProtocols.add(protocolKey)
+
     val attached: Task[Unit] = sigil.signalTransport.attach(
       viewer = viewer,
       sink = sink,
@@ -128,31 +155,36 @@ object SessionBridge {
       onSessionStart(convId)
     }.flatMap { _ =>
       Task {
-        // Inbound: client-pushed Signals → sigil.publish. The
-        // durable channel's onEvent receives Signal (the channel is
-        // typed over the full sum), and `Sigil.publish` accepts the
-        // full Signal sum and dispatches per subtype internally.
-        session.protocol.onEvent.attach { case (seq, signal) =>
-          sigil
-            .publish(signal)
-            .handleError(t => Task {
-              scribe.warn(
-                s"SessionBridge: publish failed for inbound signal seq=$seq on ${convId}: ${t.getMessage}", t
-              )
-            })
-            .start()
-          ()
+        if (firstAttachForThisProtocol) {
+          // Inbound: client-pushed Signals → sigil.publish. The
+          // durable channel's onEvent receives Signal (the channel is
+          // typed over the full sum), and `Sigil.publish` accepts the
+          // full Signal sum and dispatches per subtype internally.
+          session.protocol.onEvent.attach { case (seq, signal) =>
+            sigil
+              .publish(signal)
+              .handleError(t => Task {
+                scribe.warn(
+                  s"SessionBridge: publish failed for inbound signal seq=$seq on ${convId}: ${t.getMessage}", t
+                )
+              })
+              .start()
+            ()
+          }
+          // Ephemeral: by default, deserialize as Notice and dispatch to
+          // sigil.handleNotice. Apps can override with their own handler.
+          session.protocol.onEphemeral.attach { json =>
+            ephemeralFn(json)
+              .handleError(t => Task {
+                scribe.warn(s"SessionBridge: onEphemeral handler failed: ${t.getMessage}", t)
+              })
+              .start()
+            ()
+          }
         }
-        // Ephemeral: by default, deserialize as Notice and dispatch to
-        // sigil.handleNotice. Apps can override with their own handler.
-        session.protocol.onEphemeral.attach { json =>
-          ephemeralFn(json)
-            .handleError(t => Task {
-              scribe.warn(s"SessionBridge: onEphemeral handler failed: ${t.getMessage}", t)
-            })
-            .start()
-          ()
-        }
+        // else: resume re-attachment — listeners already on the
+        // existing protocol; spice's per-protocol re-binding handles
+        // the new WS listener for outbound delivery.
       }
     }
 
