@@ -6703,6 +6703,13 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         directory = directory,
         storeManager = collectionStore,
         appUpgrades = List(
+          // Sigil #294 — rescue boot for pre-#265 databases by
+          // nulling `Message.contextFrame` rows that still carry
+          // the retired `ToolResult` discriminator. Runs first so
+          // the static-tool / static-skill upgrades (which stream
+          // their own poly-typed records) can't trip the same
+          // dead-discriminator path on a downstream collection.
+          new sigil.upgrade.ContextFrameToolResultMigrationUpgrade,
           new sigil.tool.StaticToolSyncUpgrade(staticTools),
           new sigil.skill.StaticSkillSyncUpgrade(staticSkills)
         )
