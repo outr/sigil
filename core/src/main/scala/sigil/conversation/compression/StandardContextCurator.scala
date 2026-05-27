@@ -164,8 +164,15 @@ case class StandardContextCurator(sigil: Sigil,
         // keeps small-conversation noise low.
         progressCb    = (i: Int, n: Int) => control.step(s"Extracting blocks ($i / $n)")
         blockResult   <- blockExtractor.extract(sigil, optimizedFrames, progressCb)
+        // Sigil #288 — rewrite ContextFrame.ToolCall.argsJson to
+        // truncate fields the tool opts into externalization. The
+        // durable event log is untouched; only the per-turn prompt
+        // shrinks. The agent recovers original payloads via
+        // `search_conversation` if needed.
+        externalizedFrames <- externalizeToolUseFields(sigil, blockResult.frames)
+        externalizedBlock   = blockResult.copy(frames = externalizedFrames)
         _             <- control.step("Retrieving memories")
-        memoryResult  <- memoryRetriever.retrieve(sigil, conversationId, blockResult.frames, chain)
+        memoryResult  <- memoryRetriever.retrieve(sigil, conversationId, externalizedBlock.frames, chain)
         // Pull persisted summaries — compression-time records from
         // earlier turns + any narrative summaries an app's UX
         // generated explicitly via `MemoryContextCompressor.compressHierarchical`.
@@ -178,12 +185,12 @@ case class StandardContextCurator(sigil: Sigil,
         tentative     = injectParaphraseObservation(
           TurnInput(
             conversationId = conversationId,
-            frames = blockResult.frames,
+            frames = externalizedBlock.frames,
             participantProjections = projections,
             criticalMemories = memoryResult.criticalMemories,
             memories = memoryResult.memories,
             summaries = persistedSummaries,
-            information = blockResult.information
+            information = externalizedBlock.information
           ),
           chain
         )
@@ -191,7 +198,7 @@ case class StandardContextCurator(sigil: Sigil,
         _             <- control.step("Resolving token budget")
         shed          <- modelOpt match {
           case Some(model) =>
-            budgetResolve(model, tentative, modelId, chain, memoryResult, blockResult.information)
+            budgetResolve(model, tentative, modelId, chain, memoryResult, externalizedBlock.information)
           case None =>
             Task.pure(tentative)
         }
@@ -201,6 +208,44 @@ case class StandardContextCurator(sigil: Sigil,
         }
       } yield result
     }
+
+  /** Sigil #288 — rewrite ContextFrame.ToolCall.argsJson values for
+    * tool-opted-in fields that exceed [[Sigil.inlineToolUseContentThreshold]].
+    * Resolves each distinct toolName via [[Sigil.findTools]] once per
+    * curate call; per-frame walk just applies the cached opt-in set.
+    *
+    * Only `ToolCallState.Complete` frames externalize — `Active` frames
+    * are mid-turn debug projections where the agent might still be
+    * processing the in-flight tool_use; we don't truncate those. */
+  private def externalizeToolUseFields(sigil: Sigil,
+                                        frames: Vector[ContextFrame]): Task[Vector[ContextFrame]] = {
+    val threshold = sigil.inlineToolUseContentThreshold
+    if (threshold == Long.MaxValue) return Task.pure(frames)
+    val candidates: Vector[ContextFrame.ToolCall] = frames.collect {
+      case tc: ContextFrame.ToolCall if tc.state.isInstanceOf[ToolCallState.Complete] => tc
+    }
+    if (candidates.isEmpty) return Task.pure(frames)
+    val toolNames = candidates.iterator.map(_.toolName).toSet
+    Task.sequence(toolNames.toList.map(n => sigil.findTools.byName(n).map(opt => n -> opt))).flatMap { resolutions =>
+      val externalizableByName: Map[_root_.sigil.tool.ToolName, Set[String]] = resolutions.collect {
+        case (n, Some(tool)) if tool.externalizableInputFields.nonEmpty =>
+          n -> tool.externalizableInputFields
+      }.toMap
+      if (externalizableByName.isEmpty) Task.pure(frames)
+      else Task {
+        frames.map {
+          case tc: ContextFrame.ToolCall if tc.state.isInstanceOf[ToolCallState.Complete] =>
+            externalizableByName.get(tc.toolName) match {
+              case Some(fields) =>
+                val rewritten = StandardContextCurator.rewriteOversizedFields(tc.argsJson, fields, threshold)
+                if (rewritten eq tc.argsJson) tc else tc.copy(argsJson = rewritten)
+              case None => tc
+            }
+          case other => other
+        }
+      }
+    }
+  }
 
   /** Snapshot every chain participant's projection from the
     * persistent collection. Empty when none recorded yet. */
@@ -501,4 +546,45 @@ case class StandardContextCurator(sigil: Sigil,
             }
         }
     }
+}
+
+object StandardContextCurator {
+
+  /** Sigil #288 — replace oversized top-level string fields in a
+    * tool-call args JSON with a short placeholder. The placeholder
+    * keeps the wire type intact (string → string) and conveys the
+    * original size + truncation marker so the model can recognise
+    * that the framework elided it. Same-string identity is preserved
+    * when no rewrite fires so callers can `eq`-check for "nothing
+    * changed."
+    *
+    * Only top-level string-valued fields with names in `fields` are
+    * candidates. Object / array / numeric fields pass through
+    * untouched even if their byte size exceeds the threshold — this
+    * pass is targeted at the "agent shipped a large prose / file body
+    * as a tool arg" pattern, not general-purpose JSON walking. */
+  def rewriteOversizedFields(argsJson: String, fields: Set[String], threshold: Long): String = {
+    import fabric.{Json, Obj, obj, str}
+    import fabric.io.{JsonFormatter, JsonParser}
+    if (fields.isEmpty || argsJson.length <= threshold) return argsJson
+    val parsed = scala.util.Try(JsonParser(argsJson)).toOption.collect { case o: Obj => o }
+    parsed match {
+      case None => argsJson
+      case Some(o) =>
+        val original = o.value
+        var changed = false
+        val rewritten = original.map { case (k, v) =>
+          if (fields.contains(k)) v match {
+            case s: fabric.Str if s.value.length.toLong > threshold =>
+              changed = true
+              val size = s.value.length
+              k -> str(s"[externalized — $size chars elided; original in event log, " +
+                       "recoverable via search_conversation]")
+            case _ => k -> v
+          }
+          else k -> v
+        }
+        if (!changed) argsJson else JsonFormatter.Compact(obj(rewritten.toSeq*))
+    }
+  }
 }

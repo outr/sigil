@@ -2117,6 +2117,26 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def inlineContentThreshold: Long = 8L * 1024L
 
   /**
+   * Sigil #288 — mirror of [[inlineContentThreshold]] for the
+   * assistant-side `tool_use` payloads. When the agent calls a tool
+   * whose `externalizableInputFields` includes a field whose value
+   * exceeds this threshold, the curator replaces the value with a
+   * short placeholder in subsequent turns' wire prompts. The durable
+   * event log keeps the full input; the agent recovers the original
+   * via `search_conversation` if needed.
+   *
+   * Default mirrors [[inlineContentThreshold]] so apps tuning one
+   * gauge tune both. Set to `Long.MaxValue` to disable tool_use
+   * externalization while keeping tool_result externalization active.
+   *
+   * The current iteration's tool_use stays inline regardless — the
+   * agent's about to read its own emission on the next turn boundary
+   * and needs the full payload. Externalization only applies to
+   * tool_use frames from PRIOR iterations.
+   */
+  def inlineToolUseContentThreshold: Long = inlineContentThreshold
+
+  /**
    * Resolve the [[SpaceId]] under which an externalized content
    * block lands. Default [[GlobalSpace]] — apps that scope storage
    * per-conversation / per-tenant override (e.g.

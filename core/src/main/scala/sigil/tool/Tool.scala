@@ -398,6 +398,22 @@ trait Tool extends RecordDocument[Tool] {
     * frequently lead into a per-result loop opt in. */
   def suggestedNextTools: List[ToolName] = Nil
 
+  /** Sigil #288 — names of top-level input fields whose string values
+    * are eligible for externalization at wire-render time. When a
+    * tool emits a `tool_use` whose value for one of these fields
+    * exceeds [[sigil.Sigil.inlineToolUseContentThreshold]], the
+    * framework replaces the value with a short placeholder in
+    * subsequent turns' wire prompts. The durable event log keeps the
+    * full input; the agent recovers via `search_conversation` if
+    * needed.
+    *
+    * Default empty — tools opt in per-field. The typical pattern:
+    * `write_theme_file` declares `Set("content")` so a 28 KB
+    * Liquid blob doesn't re-ship on every iteration after the write
+    * lands. `respond.content` deliberately stays inline — the prose
+    * IS the conversation history. */
+  def externalizableInputFields: Set[String] = Set.empty
+
   /** The description the LLM sees on the wire, given runtime context.
     * Default returns [[descriptionFor]] with a destructive prefix
     * baked in when [[destructive]] is `true` — so the LLM reads
