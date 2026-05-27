@@ -143,9 +143,36 @@ class RosterNarrowingSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
       roster should contain (ToolName("app_tool_3"))
     }
 
-    "ToolPolicy.Active extras survive narrowing" in Task {
+    "ToolPolicy.Active extras narrow alongside baseline (sigil #287)" in Task {
       reset()
       TestSigil.narrowRosterByRecentUseOverride.set(Some(true))
+      // `app_tool_3` is in baseline AND recently used → kept.
+      // `metals_find_symbol` is an Active() extra but NOT recently
+      // used → filtered. The narrowing knob applies uniformly to
+      // app-declared tools regardless of which surface declared
+      // them (consumers that register everything via `Active(...)`
+      // get the same benefit as consumers that use
+      // `agent.toolNames`).
+      val recent = Set(ToolName("app_tool_3"), ToolName("metals_find_usages"))
+      val overlay = ToolPolicy.Active(List(
+        ToolName("metals_find_symbol"),  // not in recent → drop
+        ToolName("metals_find_usages")   // in recent → keep
+      ))
+      val roster = TestSigil.effectiveToolNames(
+        agent = StandardAgent,
+        mode = ConversationMode,
+        suggested = Nil,
+        overlays = List(overlay),
+        recentlyUsedTools = recent
+      )
+      roster should contain (ToolName("app_tool_3"))
+      roster should contain (ToolName("metals_find_usages"))
+      roster should not contain ToolName("metals_find_symbol")
+      roster should not contain ToolName("app_tool_1")
+    }
+
+    "Active extras preserved when narrowing OFF (no behaviour change for default consumers)" in Task {
+      reset()  // narrowing off
       val recent = Set(ToolName("app_tool_3"))
       val overlay = ToolPolicy.Active(List(ToolName("metals_find_symbol")))
       val roster = TestSigil.effectiveToolNames(
@@ -156,8 +183,8 @@ class RosterNarrowingSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         recentlyUsedTools = recent
       )
       roster should contain (ToolName("metals_find_symbol"))
+      roster should contain (ToolName("app_tool_1"))
       roster should contain (ToolName("app_tool_3"))
-      roster should not contain ToolName("app_tool_1")
     }
   }
 

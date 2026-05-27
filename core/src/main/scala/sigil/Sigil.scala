@@ -1567,18 +1567,28 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     val essentials     = if (state.pureDiscovery) pureDiscoveryEssentials else fullEssentials
     val findCapability = if (state.includesFindCapability) List(FindCapabilityTool.schema.name) else Nil
     val baselineFull   = if (state.includesBaseline) agent.toolNames else Nil
-    // Sigil #286 — narrow the baseline roster to recently-used tools
-    // when the framework's narrowing knob is on AND find_capability is
-    // in the effective roster (recovery path: an agent that needs a
-    // narrowed-out tool calls find_capability and the next turn picks
-    // it up via `suggested`). First-iteration safety: empty
-    // recentlyUsedTools skips narrowing so the agent sees the full
-    // baseline on a fresh conversation.
-    val baseline =
+    // Sigil #286 — narrow the app-declared roster to recently-used
+    // tools when the framework's narrowing knob is on AND
+    // find_capability is in the effective roster (recovery path: an
+    // agent that needs a narrowed-out tool calls find_capability and
+    // the next turn picks it up via `suggested`). First-iteration
+    // safety: empty recentlyUsedTools skips narrowing so the agent
+    // sees the full roster on a fresh conversation.
+    //
+    // Sigil #287 — narrow BOTH `baseline` (from `agent.toolNames`)
+    // AND `state.extras` (from `ToolPolicy.Active(names)` /
+    // `ToolPolicy.Exclusive(names)` overlays). Consumers that
+    // register their full catalog via `Active(...)` or `Exclusive(...)`
+    // — rather than `agent.toolNames` — were getting no narrowing
+    // because the prior implementation only touched baseline. Both
+    // surfaces are app-level "make these tools available"
+    // declarations; both should narrow uniformly.
+    val (baseline, extras) =
       if (narrowRosterByRecentUse && state.includesFindCapability && recentlyUsedTools.nonEmpty)
-        baselineFull.filter(recentlyUsedTools.contains)
-      else baselineFull
-    val merged         = (essentials ++ findCapability ++ baseline ++ state.extras ++ suggested).distinct
+        (baselineFull.filter(recentlyUsedTools.contains),
+         state.extras.filter(recentlyUsedTools.contains))
+      else (baselineFull, state.extras)
+    val merged         = (essentials ++ findCapability ++ baseline ++ extras ++ suggested).distinct
     val deduped =
       if (state.pureDiscovery) {
         // Strip the entire respond family + no_response so the agent
