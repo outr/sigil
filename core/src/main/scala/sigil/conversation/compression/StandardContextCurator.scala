@@ -170,7 +170,13 @@ case class StandardContextCurator(sigil: Sigil,
         // shrinks. The agent recovers original payloads via
         // `search_conversation` if needed.
         externalizedFrames <- externalizeToolUseFields(sigil, blockResult.frames)
-        externalizedBlock   = blockResult.copy(frames = externalizedFrames)
+        // Sigil #289 — keep only the most-recent N image-bearing
+        // ToolCall frames; stub older ones so megabytes of stale
+        // previews don't accumulate in the wire prompt.
+        deImagedFrames      = StandardContextCurator.supersedeOlderImages(
+                                externalizedFrames, sigil.keepRecentImages
+                              )
+        externalizedBlock   = blockResult.copy(frames = deImagedFrames)
         _             <- control.step("Retrieving memories")
         memoryResult  <- memoryRetriever.retrieve(sigil, conversationId, externalizedBlock.frames, chain)
         // Pull persisted summaries — compression-time records from
@@ -585,6 +591,50 @@ object StandardContextCurator {
           else k -> v
         }
         if (!changed) argsJson else JsonFormatter.Compact(obj(rewritten.toSeq*))
+    }
+  }
+
+  /** Sigil #289 — keep only the most-recent `keepRecent`
+    * image-bearing [[sigil.conversation.ContextFrame.ToolCall]]
+    * frames; replace older frames' `state` with empty `images` plus
+    * a short text stub explaining the suppression. The durable
+    * event log is untouched (frames are derived from settled events
+    * each turn); subsequent curates see the same elision until the
+    * underlying events fall out of `maxFramesPerTurn`.
+    *
+    * `keepRecent = Int.MaxValue` disables supersession entirely
+    * (every image-bearing frame keeps its `images`). `keepRecent =
+    * 0` is the most aggressive — even the latest image stubs out;
+    * apps wire this for low-multimodal-budget scenarios where the
+    * agent should never re-see prior images.
+    *
+    * Only `ToolCallState.Complete` frames with a non-empty `images`
+    * list are candidates; `Active` frames and Complete frames with
+    * empty `images` pass through untouched. */
+  def supersedeOlderImages(frames: Vector[_root_.sigil.conversation.ContextFrame],
+                            keepRecent: Int): Vector[_root_.sigil.conversation.ContextFrame] = {
+    if (keepRecent == Int.MaxValue) return frames
+    val keep = math.max(0, keepRecent)
+    // Index the image-bearing frame positions.
+    val imageIndices = frames.iterator.zipWithIndex.collect {
+      case (tc: _root_.sigil.conversation.ContextFrame.ToolCall, idx) =>
+        tc.state match {
+          case _root_.sigil.conversation.ToolCallState.Complete(_, images) if images.nonEmpty => Some(idx)
+          case _ => None
+        }
+    }.flatten.toVector
+    if (imageIndices.size <= keep) return frames
+    val supersededSet = imageIndices.dropRight(keep).toSet
+    frames.zipWithIndex.map {
+      case (tc: _root_.sigil.conversation.ContextFrame.ToolCall, idx) if supersededSet.contains(idx) =>
+        tc.state match {
+          case _root_.sigil.conversation.ToolCallState.Complete(_, _) =>
+            val stub = s"[image suppressed for context budget — produced by ${tc.toolName.value}; " +
+              "recoverable via search_conversation against the conversation event log]"
+            tc.copy(state = _root_.sigil.conversation.ToolCallState.Complete(content = stub, images = Nil))
+          case _ => tc
+        }
+      case (other, _) => other
     }
   }
 }
