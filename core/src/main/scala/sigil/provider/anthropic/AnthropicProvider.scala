@@ -530,8 +530,34 @@ case class AnthropicProvider(apiKey: String,
     }
   }
 
-  private def parseUsage(json: Json): TokenUsage =
-    TokenUsage.fromJson(json, "input_tokens", "output_tokens", cacheKeys = CacheKeys.Anthropic)
+  /** Sigil #290 — Anthropic's three input-token fields are
+    * **additive billing buckets**, not subsets of one total:
+    *
+    *   - `input_tokens`               — fresh prompt tokens
+    *   - `cache_creation_input_tokens` — tokens written into the
+    *     prompt cache on this call (billed at a small premium)
+    *   - `cache_read_input_tokens`    — tokens served from a cache
+    *     hit (billed at a steep discount)
+    *
+    * Per the framework contract on [[TokenUsage]] ("cache fields are
+    * subsets of `promptTokens`"), `promptTokens` here is the SUM of
+    * all three so cost math against the standard prompt rate
+    * accounts for every billed input token. The cache fields stay
+    * populated so the cost formula can apply per-cache rates over
+    * the same totals.
+    *
+    * Pre-fix, this method read `input_tokens` as the total and
+    * silently dropped the cache buckets — for a long agent loop
+    * with a 50K-token cached prefix, ~99% of input billing
+    * vanished. */
+  private def parseUsage(json: Json): TokenUsage = {
+    val base = TokenUsage.fromJson(json, "input_tokens", "output_tokens", cacheKeys = CacheKeys.Anthropic)
+    val totalPrompt = base.promptTokens + base.cacheCreationTokens + base.cacheReadTokens
+    base.copy(
+      promptTokens = totalPrompt,
+      totalTokens  = totalPrompt + base.completionTokens
+    )
+  }
 
   final private[anthropic] class StreamState(val acc: ToolCallAccumulator) {
     var indexToCallId: Map[Int, CallId] = Map.empty

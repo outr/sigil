@@ -2846,7 +2846,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     val totalCost: BigDecimal = complete.iterator.collect {
       case m: Message =>
         m.modelId.flatMap(cache.find).map { model =>
-          model.pricing.prompt * m.usage.promptTokens + model.pricing.completion * m.usage.completionTokens
+          Sigil.costFor(model.pricing, m.usage)
         }.getOrElse(BigDecimal(0))
     }.foldLeft(BigDecimal(0))(_ + _)
 
@@ -4122,10 +4122,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // bare-id event silently misses and the conversation's running
     // total stays at zero.
     val deltaOpt: Option[BigDecimal] = modelId.flatMap { mid =>
-      cache.findTolerant(mid).map { model =>
-        val pricing = model.pricing
-        pricing.prompt * usage.promptTokens + pricing.completion * usage.completionTokens
-      }
+      cache.findTolerant(mid).map(model => Sigil.costFor(model.pricing, usage))
     }.filter(_ > 0)
     deltaOpt match {
       case None => Task.unit
@@ -7220,6 +7217,40 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
 }
 
 object Sigil {
+
+  /** Sigil #290 — USD cost of a settled provider call from its
+    * [[TokenUsage]] and the model's [[sigil.db.ModelPricing]].
+    *
+    * `usage.promptTokens` is the SUM of every billed input token —
+    * fresh + cache writes + cache reads — per the [[TokenUsage]]
+    * "cache fields are subsets" contract. This method breaks the
+    * sum apart and applies each rate independently:
+    *
+    *   - fresh  =  promptTokens − cacheReadTokens − cacheCreationTokens
+    *   - reads  ×  inputCacheRead  (fallback `prompt × 0.10` — Anthropic's
+    *                                documented cache-hit discount)
+    *   - writes ×  inputCacheWrite (fallback `prompt × 1.25` — Anthropic's
+    *                                documented cache-creation premium)
+    *   - completion × output tokens
+    *
+    * Providers without prompt caching (LlamaCpp etc.) report both
+    * cache fields as `0` so the fallback multipliers never apply
+    * and the math collapses to the prior fresh-only formula.
+    *
+    * Pre-fix (Sigil #290), the cost site used
+    * `prompt × promptTokens + completion × completionTokens` only,
+    * which silently dropped the cache buckets on Anthropic — a
+    * 50K-token cached prefix would shave ~99% of the input billing
+    * off the surfaced number. */
+  def costFor(pricing: sigil.db.ModelPricing, usage: sigil.provider.TokenUsage): BigDecimal = {
+    val freshPrompt = math.max(0, usage.promptTokens - usage.cacheReadTokens - usage.cacheCreationTokens)
+    val cacheReadRate  = pricing.inputCacheRead.getOrElse(pricing.prompt * BigDecimal("0.10"))
+    val cacheWriteRate = pricing.inputCacheWrite.getOrElse(pricing.prompt * BigDecimal("1.25"))
+    pricing.prompt     * BigDecimal(freshPrompt) +
+      cacheReadRate    * BigDecimal(usage.cacheReadTokens) +
+      cacheWriteRate   * BigDecimal(usage.cacheCreationTokens) +
+      pricing.completion * BigDecimal(usage.completionTokens)
+  }
 
   /** Sigil bug #202 — given a settled [[sigil.event.ToolInvoke.output]]
     * payload rendered to JSON, return the universal pagination
