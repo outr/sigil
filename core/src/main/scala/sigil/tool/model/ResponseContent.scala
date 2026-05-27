@@ -54,8 +54,34 @@ enum ResponseContent derives RW {
    * image can't be rendered). Emitted by providers with native image
    * generation (OpenAI GPT-5.4, Gemini) and by app-side tools that
    * produce images.
+   *
+   * Apps with inline bytes that AREN'T already at a public URL
+   * should use [[ImageBytes]] instead — spice's [[URL]] parser
+   * mangles `data:` URIs (parses them as `https://` with `data:image`
+   * as host), and `Image(URL.parse("data:..."))` round-trips through
+   * `toString` as garbage. Sigil #296.
    */
   case Image(url: URL, altText: Option[String] = None)
+
+  /**
+   * Inline image bytes — for transient, in-memory images that aren't
+   * (and shouldn't be) persisted as [[sigil.storage.StoredFile]] or
+   * hosted at a fetchable URL. PDF page renders, screen captures,
+   * tool-produced diagnostic images, anything generated mid-turn
+   * that the agent's next call needs to see.
+   *
+   * Parallels the wire-layer [[sigil.provider.MessageContent.ImageBytes]] —
+   * `Provider.toMessageContent` maps this case directly to the wire
+   * type, which every multimodal provider already handles (OpenAI
+   * Responses' `image_url: data:...;base64,...`, Anthropic's
+   * `{type: "base64", media_type: ..., data: ...}`, Gemini's
+   * `inlineData`). Sigil #296.
+   *
+   * @param mediaType the image MIME (`image/jpeg`, `image/png`, `image/webp`, …).
+   * @param base64    the image bytes, already base64-encoded (no `data:` prefix).
+   * @param altText   optional alt text the model may surface for accessibility.
+   */
+  case ImageBytes(mediaType: String, base64: String, altText: Option[String] = None)
 
   /**
    * Citation / source reference.

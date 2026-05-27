@@ -34,6 +34,7 @@ object MarkdownRenderer extends ContentRenderer[String] {
     case ResponseContent.ItemList(items, false) => items.map(i => s"- $i").mkString("\n")
     case ResponseContent.Link(url, label)       => s"[$label]($url)"
     case ResponseContent.Image(url, alt)        => s"![${alt.getOrElse("")}]($url)"
+    case ResponseContent.ImageBytes(mt, b64, alt) => s"![${alt.getOrElse("")}](data:$mt;base64,$b64)"
     case ResponseContent.Citation(src, exc, u) =>
       val excerpt = exc.fold("")(e => s": $e")
       val link = u.fold(src)(u => s"[$src]($u)")

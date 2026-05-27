@@ -950,11 +950,18 @@ trait Provider extends Service {
     * support. */
   private def toMessageContent(content: Vector[ResponseContent]): Vector[MessageContent] =
     content.map {
-      case ResponseContent.Text(t)             => MessageContent.Text(t)
-      case ResponseContent.Image(url, alt)     => MessageContent.Image(url, alt)
-      case ResponseContent.Markdown(t)         => MessageContent.Text(t)
-      case ResponseContent.Code(c, lang)       => MessageContent.Text(s"```${lang.getOrElse("")}\n$c\n```")
-      case other                                => MessageContent.Text(MarkdownRenderer.renderBlock(other))
+      case ResponseContent.Text(t)                 => MessageContent.Text(t)
+      case ResponseContent.Image(url, alt)         => MessageContent.Image(url, alt)
+      // Sigil #296 — inline bytes path. Apps that have transient
+      // image data (PDF page renders, screen captures) avoid both
+      // spice's URL.parse mangling of `data:` URIs AND the
+      // StoredFile-persistence detour by handing in
+      // ImageBytes directly; the wire layer's MessageContent.ImageBytes
+      // is already supported by every multimodal provider.
+      case ResponseContent.ImageBytes(mt, b64, alt) => MessageContent.ImageBytes(mt, b64, alt)
+      case ResponseContent.Markdown(t)             => MessageContent.Text(t)
+      case ResponseContent.Code(c, lang)           => MessageContent.Text(s"```${lang.getOrElse("")}\n$c\n```")
+      case other                                    => MessageContent.Text(MarkdownRenderer.renderBlock(other))
     }
 
   /** Materialize internally-stored images for the wire. A

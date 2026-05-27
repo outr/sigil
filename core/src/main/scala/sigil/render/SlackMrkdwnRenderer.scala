@@ -34,6 +34,12 @@ object SlackMrkdwnRenderer extends ContentRenderer[String] {
     case ResponseContent.ItemList(items, false) => items.map(i => s"• $i").mkString("\n")
     case ResponseContent.Link(url, label)       => s"<$url|$label>"
     case ResponseContent.Image(url, alt)        => s"<$url|${alt.getOrElse("image")}>"
+    case ResponseContent.ImageBytes(mt, _, alt) =>
+      // Slack mrkdwn can't link to inline bytes (no `data:` link
+      // support); surface alt text or a size-shaped placeholder so
+      // the message still conveys "an image went past."
+      val label = alt.getOrElse(s"image ($mt)")
+      s"[$label]"
     case ResponseContent.Citation(src, exc, u) =>
       val link = u.fold(src)(u => s"<$u|$src>")
       exc.fold(s"_${link}_")(e => s"_${link}: ${e}_")

@@ -39,6 +39,12 @@ object HtmlRenderer extends ContentRenderer[String] {
       s"""<a href="${escape(url.toString)}">${escape(label)}</a>"""
     case ResponseContent.Image(url, alt) =>
       s"""<img src="${escape(url.toString)}" alt="${escape(alt.getOrElse(""))}"/>"""
+    case ResponseContent.ImageBytes(mt, b64, alt) =>
+      // Browsers handle `data:` URLs as <img src> natively, so the
+      // bytes-bearing case renders identically to the URL case from
+      // the markup perspective — just inline-base64 instead of an
+      // HTTP fetch.
+      s"""<img src="data:$mt;base64,$b64" alt="${escape(alt.getOrElse(""))}"/>"""
     case ResponseContent.Citation(src, exc, u) =>
       val link = u.fold(escape(src))(u => s"""<a href="${escape(u.toString)}">${escape(src)}</a>""")
       val excerpt = exc.fold("")(e => s": ${escape(e)}")

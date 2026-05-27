@@ -30,6 +30,7 @@ object PlainTextRenderer extends ContentRenderer[String] {
     case ResponseContent.ItemList(items, false) => items.map(i => s"- $i").mkString("\n")
     case ResponseContent.Link(url, label)       => s"$label ($url)"
     case ResponseContent.Image(url, alt)        => alt.fold(url.toString)(a => s"$a ($url)")
+    case ResponseContent.ImageBytes(mt, _, alt) => alt.getOrElse(s"[image $mt]")
     case ResponseContent.Citation(src, exc, u) =>
       val tail = exc.fold("")(e => s": $e")
       val source = u.fold(src)(u => s"$src ($u)")
