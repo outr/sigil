@@ -120,17 +120,5 @@ case object ListMemoriesTool extends Tool {
     byQuery.sortBy(m => (!m.pinned, -m.lastAccessedAt.value, m._id.value))
   }
 
-  private def toEntry(m: ContextMemory): MemoryListEntry = {
-    val rendered = if (m.summary.trim.nonEmpty) m.summary else m.fact
-    MemoryListEntry(
-      key           = m.key.getOrElse(m._id.value),
-      label         = m.label,
-      summary       = m.summary,
-      tokens        = HeuristicTokenizer.count(rendered),
-      spaceId       = m.spaceId.value,
-      pinned        = m.pinned,
-      confidence    = m.confidence,
-      justification = m.justification
-    )
-  }
+  private def toEntry(m: ContextMemory): MemoryListEntry = MemoryListEntry.from(m)
 }

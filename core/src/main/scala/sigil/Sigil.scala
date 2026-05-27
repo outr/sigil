@@ -3055,6 +3055,40 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               publishTo(fromViewer, sigil.signal.ConversationSearchSnapshot(query, hits))
             }
 
+      // -- memory list vocabulary (sigil #292) --
+      // Viewer-scoped (createdBy = fromViewer). Apps wanting wider
+      // visibility override `handleNotice` to run their own query.
+      case r: sigil.signal.RequestMemoryList =>
+        withDB(_.memories.transaction(_.query.toList)).flatMap { all =>
+          val q = r.query.map(_.toLowerCase).filter(_.nonEmpty)
+          val filtered = all
+            .filter(_.createdBy.exists(_.value == fromViewer.value))
+            .filter(m => r.memoryType.forall(_ == m.memoryType))
+            .filter(m => r.pinned.forall(_ == m.pinned))
+            .filter(m => !r.hasLocation || m.location.isDefined)
+            .filter(m => q.forall(needle =>
+              m.fact.toLowerCase.contains(needle) ||
+                m.label.toLowerCase.contains(needle) ||
+                m.summary.toLowerCase.contains(needle)))
+            .take(math.max(0, r.limit))
+            .map(sigil.tool.model.MemoryListEntry.from)
+          publishTo(fromViewer, sigil.signal.MemoryListSnapshot(filtered))
+        }
+
+      // -- model catalog vocabulary (sigil #293) --
+      // Global (no per-viewer scoping); apps wanting per-tenant
+      // restrictions override.
+      case r: sigil.signal.RequestModelCatalog =>
+        val filtered = cache.all
+          .filter(m => r.provider.forall(_.equalsIgnoreCase(m.provider)))
+          .filter(m => r.modality.forall(md =>
+            m.architecture.modality.equalsIgnoreCase(md) ||
+              m.architecture.inputModalities.exists(_.equalsIgnoreCase(md))))
+          .filter(m => r.query.map(_.toLowerCase).filter(_.nonEmpty).forall(needle =>
+            m.name.toLowerCase.contains(needle) ||
+              m._id.value.toLowerCase.contains(needle)))
+        publishTo(fromViewer, sigil.signal.ModelCatalogSnapshot(filtered))
+
       // -- viewer-state + stored-file vocabularies --
       // Handled by the ViewerStateOps mixin. The Notice subtypes there
       // are disjoint from the framework-level ones above, so dispatch
@@ -3636,8 +3670,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   /** Update a participant's [[ParticipantProjection]] in the projections
     * collection. Creates a fresh empty projection (with the deterministic
     * derived id) if none exists. Use from curators, tools, or any app
-    * code that needs to mutate per-participant projection state. */
-  def updateProjection(conversationId: Id[Conversation], participantId: ParticipantId)
+    * code that needs to mutate per-participant projection state.
+    *
+    * Sigil #291 — when `broadcast = true` (default), publishes a
+    * [[sigil.signal.ParticipantProjectionUpdated]] Notice after the
+    * write commits so multi-client UIs subscribed to this conversation
+    * see the change without polling. Framework-internal cache writes
+    * that no UI cares about (e.g. cached `previous_response_id`) pass
+    * `broadcast = false`. App writes through the convenience methods
+    * ([[setParticipantContext]], [[activateSkill]], etc.) broadcast
+    * by default — the polling workaround that motivated this signal. */
+  def updateProjection(conversationId: Id[Conversation], participantId: ParticipantId,
+                       broadcast: Boolean = true)
                       (f: ParticipantProjection => ParticipantProjection): Task[Unit] =
     withDB(_.participantProjections.transaction(_.modify(ParticipantProjection.idFor(participantId, conversationId)) {
       case Some(proj) =>
@@ -3645,7 +3689,11 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       case None =>
         Task.pure(Some(f(ParticipantProjection.empty(participantId, conversationId))
           .copy(modified = Timestamp(Nowish()))))
-    })).unit
+    })).flatMap {
+      case Some(updated) if broadcast =>
+        publish(sigil.signal.ParticipantProjectionUpdated(conversationId, participantId, updated))
+      case _ => Task.unit
+    }
 
   /** Convenience: set (or replace) a skill slot for a participant. Discovery
     * and User sources are driven through here by tools that want to activate
@@ -3695,7 +3743,9 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                                participantId: ParticipantId,
                                responseId: String,
                                messageCount: Int): Task[Unit] =
-    updateProjection(conversationId, participantId)(
+    // Sigil #291 — framework-internal provider-cache write; no UI
+    // surface mirrors this state, so suppress the broadcast.
+    updateProjection(conversationId, participantId, broadcast = false)(
       proj => proj.copy(
         latestProviderResponseId = Some(responseId),
         latestProviderResponseMessageCount = Some(messageCount)
@@ -3708,7 +3758,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * back to the full-transcript request shape. */
   def clearProviderResponseState(conversationId: Id[Conversation],
                                  participantId: ParticipantId): Task[Unit] =
-    updateProjection(conversationId, participantId)(
+    // Sigil #291 — framework-internal cache invalidation; suppress broadcast.
+    updateProjection(conversationId, participantId, broadcast = false)(
       proj => proj.copy(
         latestProviderResponseId = None,
         latestProviderResponseMessageCount = None
