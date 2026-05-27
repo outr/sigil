@@ -80,6 +80,16 @@ object CoreSignals {
     summon[RW[ParticipantAdded]],
     summon[RW[ParticipantRemoved]],
     summon[RW[ParticipantUpdated]],
+    // Sigil #297 — these five framework Notices landed in
+    // #291 / #292 / #293 without being registered here. Wire
+    // serialization fails on the runtime poly write when these
+    // are published, breaking live broadcast for the rest of
+    // the broadcast batch.
+    summon[RW[ParticipantProjectionUpdated]],
+    summon[RW[RequestMemoryList]],
+    summon[RW[MemoryListSnapshot]],
+    summon[RW[RequestModelCatalog]],
+    summon[RW[ModelCatalogSnapshot]],
     summon[RW[WireRequestProfile]],
     summon[RW[PinnedMemoryBudgetWarning]],
     summon[RW[ConversationCostUpdated]],
