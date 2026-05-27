@@ -3038,6 +3038,23 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
           publishTo(fromViewer, sigil.signal.ToolListSnapshot(summaries))
         }
 
+      // -- conversation search vocabulary (bug #291) --
+      // Symmetric to RequestConversationList for the search axis.
+      // Reuses the same `searchConversationEvents` primitive that the
+      // agent's `search_conversation` tool calls, so UI hits and agent
+      // hits land identically. `conversationId` is required (no UI-side
+      // "default conversation" concept in the framework — the panel
+      // already knows which conversation it's filtering).
+
+      case sigil.signal.RequestConversationSearch(query, convIdOpt, topicId, limit) =>
+        convIdOpt match
+          case None =>
+            publishTo(fromViewer, sigil.signal.ConversationSearchSnapshot(query, Nil))
+          case Some(convId) =>
+            searchConversationEvents(convId, query, topicId, limit).map(_.map(searchHit)).flatMap { hits =>
+              publishTo(fromViewer, sigil.signal.ConversationSearchSnapshot(query, hits))
+            }
+
       // -- viewer-state + stored-file vocabularies --
       // Handled by the ViewerStateOps mixin. The Notice subtypes there
       // are disjoint from the framework-level ones above, so dispatch
@@ -4040,6 +4057,28 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     case m: Message => m.content.collect { case ResponseContent.Text(t) => t }.mkString("\n")
     case tc: TopicChange => s"${tc.newLabel}"
     case other => other.toString
+  }
+
+  /** Adapt a single [[Event]] into the [[sigil.tool.model.SearchConversationHit]]
+    * shape both the agent tool and the [[sigil.signal.ConversationSearchSnapshot]]
+    * notice emit. Apps with custom event subtypes can override to contribute
+    * richer snippets — but matching the existing format keeps UI and tool
+    * results renderable from the same view code. */
+  protected def searchHit(e: Event): sigil.tool.model.SearchConversationHit = {
+    val snippet = e match {
+      case m: Message =>
+        m.content.collect { case ResponseContent.Text(t) => t }.mkString(" ").take(280)
+      case tc: TopicChange => s"[topic change] ${tc.newLabel}"
+      case other           => other.getClass.getSimpleName
+    }
+    sigil.tool.model.SearchConversationHit(
+      eventId       = e._id.value,
+      timestamp     = e.timestamp.value,
+      participantId = e.participantId.value,
+      topicId       = e.topicId.value,
+      eventType     = e.getClass.getSimpleName,
+      snippet       = snippet
+    )
   }
 
   /** Maintain materialized projections on the [[Conversation]] record:

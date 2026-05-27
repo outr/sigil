@@ -75,6 +75,8 @@ object CoreSignals {
     summon[RW[ViewerStateDelta]],
     summon[RW[RequestToolList]],
     summon[RW[ToolListSnapshot]],
+    summon[RW[RequestConversationSearch]],
+    summon[RW[ConversationSearchSnapshot]],
     summon[RW[ParticipantAdded]],
     summon[RW[ParticipantRemoved]],
     summon[RW[ParticipantUpdated]],
