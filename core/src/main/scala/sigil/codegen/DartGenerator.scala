@@ -1,10 +1,10 @@
 package sigil.codegen
 
-import fabric.define.Definition
+import fabric.define.{DefType, Definition}
 import fabric.rw.*
 import sigil.Sigil
 import sigil.provider.Mode
-import sigil.signal.Signal
+import sigil.signal.{CoreSignals, Signal}
 import spice.openapi.generator.dart.{DurableSocketDartConfig, DurableSocketDartGenerator}
 
 import java.nio.file.{Path, Paths}
@@ -77,11 +77,41 @@ final case class DartGenerator(sigil: Sigil,
 
     sigil.polymorphicRegistrations.sync()
 
+    // Sigil #294 — sanity-check that the Signal poly was populated as
+    // expected before snapshotting its definition. Mismatches usually
+    // mean (a) a stale jar in the consumer's ivy cache predates one
+    // of the signals declared in CoreSignals, (b) the consumer's
+    // Sigil subclass shadowed `signalRegistrations` without calling
+    // `super.signalRegistrations`, or (c) a build classpath that
+    // resolves a different `CoreSignals` than the one this generator
+    // compiled against. Warn (not fail) — apps can legitimately add
+    // / remove signals via overrides; the diagnostic just flags
+    // unexpected shrinkage at the point it bites consumers.
+    val signalDef = summon[RW[Signal]].definition
+    val registeredKeys: Set[String] = signalDef.defType match {
+      case p: DefType.Poly => p.values.keySet.toSet
+      case _               => Set.empty
+    }
+    val coreKeys: Set[String] =
+      CoreSignals.all.iterator.flatMap(_.definition.className).map(simpleNameOf).toSet
+    val missingFromRegistered = coreKeys.diff(registeredKeys)
+    if (missingFromRegistered.nonEmpty) {
+      val tag = serviceName.toLowerCase
+      System.err.println(
+        s"[$tag:codegen] WARNING: CoreSignals declares ${coreKeys.size} subtypes but the Signal " +
+          s"poly only has ${registeredKeys.size} registered. Missing: " +
+          s"${missingFromRegistered.toList.sorted.mkString(", ")}. " +
+          "Generated Dart will not include files for these. Most common cause: a stale Sigil jar " +
+          "in the consumer's ivy cache predates these signals — run `sbt publishLocal` against the " +
+          "Sigil source tree, or refresh the consumer's classpath."
+      )
+    }
+
     val config = DurableSocketDartConfig(
       serviceName = serviceName,
       storedEventMode = storedEventMode,
       infoFields = infoFields,
-      wireType = "Signal" -> summon[RW[Signal]].definition,
+      wireType = "Signal" -> signalDef,
       clientEventDefs = Nil,
       defTypes = defTypes,
       durableSubtypes = sigil.eventSubtypeNames,
@@ -100,5 +130,15 @@ final case class DartGenerator(sigil: Sigil,
     val tag = serviceName.toLowerCase
     files.foreach(sf => println(s"[$tag:codegen] ${sf.path}/${sf.fileName}"))
     println(s"[$tag:codegen] wrote ${files.size} file(s) under $outputPath")
+  }
+
+  /** Extract the simple class name from a fabric-shaped className. Matches
+    * Fabric's `Definition.simpleClassName` for top-level classes (chain
+    * empty → leaf segment); for inner classes (e.g. `Outer.Inner`) returns
+    * the leaf. Used by the Signal poly registration cross-check above. */
+  private def simpleNameOf(cn: String): String = {
+    val cleaned = cn.replace("$", ".")
+    val parts = cleaned.split('.').toList.filter(_.nonEmpty)
+    parts.lastOption.getOrElse(cn)
   }
 }
