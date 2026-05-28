@@ -7,7 +7,7 @@ import sigil.conversation.{ContextMemory, Conversation, MemorySource, MemoryStat
 import sigil.SpaceId
 import sigil.db.Model
 import sigil.participant.ParticipantId
-import sigil.provider.Mode
+import sigil.provider.{Mode, OutputTokenCap}
 import sigil.tool.consult.{ConsultTool, ExtractMemoriesInput, ExtractMemoriesTool}
 
 /**
@@ -36,7 +36,22 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
                                    spaceIdFor: Id[Conversation] => Task[Option[SpaceId]],
                                    defaultStatus: MemoryStatus = MemoryStatus.Approved,
                                    defaultType: MemoryType = MemoryType.Fact,
-                                   systemPrompt: String = StandardMemoryExtractor.DefaultSystemPrompt)
+                                   systemPrompt: String = StandardMemoryExtractor.DefaultSystemPrompt,
+                                   /** Hard cap on the `extract_memories` consult's
+                                     * generation. Sized so a rich user paste
+                                     * (multi-KB structured artefact, an
+                                     * assistant response listing 20+ facts)
+                                     * can flush the full tool_use input
+                                     * before the model hits the ceiling. The
+                                     * prior 1500-token default truncated the
+                                     * structured emission mid-buffer on large
+                                     * inputs and produced a tool_use with
+                                     * empty input — zero memories recorded,
+                                     * silently. 8192 covers the worst-case
+                                     * shape while staying well under the
+                                     * 64K output ceiling of every current
+                                     * frontier model. */
+                                   maxExtractionTokens: Int = StandardMemoryExtractor.DefaultMaxExtractionTokens)
   extends MemoryExtractor {
 
   override def extract(sigil: Sigil,
@@ -56,21 +71,15 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
              |USER: $userMessage
              |
              |AGENT: $agentResponse""".stripMargin
-        // `maxOutputTokens = 1500` — extractor returns a list of
-        // structured memories (typically 1-5 entries). On reasoning
-        // models (Qwen3.6, DeepSeek-R1, o-series) the response burns
-        // tokens on internal thinking before emitting the structured
-        // tool call; the provider's default (often 512-1024) cut the
-        // call off before the keys / tags filled in, producing
-        // skeletal records with `key = None` across the board. 1500
-        // covers the worst-case thinking budget while staying well
-        // under any model's context window.
         sigil.routedModelFor(ExtractMemoriesTool.consultWorkType, chain, modelId).flatMap { routedModelId =>
-          // Cap + reasoning-off come from ExtractMemoriesTool's canonical
-          // consultSettings; temperature is stamped per routed model for
+          // Reasoning-off + tool name come from `ExtractMemoriesTool`'s
+          // canonical consultSettings; the cap is stamped per-extractor
+          // from [[maxExtractionTokens]] so apps can tune it without
+          // forking the tool. Temperature is stamped per routed model for
           // deterministic extraction.
           val extractorSettings = {
             val base = ConsultTool.settingsFor(ExtractMemoriesTool)
+              .copy(outputTokenCap = OutputTokenCap.Below(maxExtractionTokens), maxOutputTokens = None)
             if (sigil.supportsParameter(routedModelId, "temperature")) base.copy(temperature = Some(0.0))
             else base
           }
@@ -134,6 +143,13 @@ case class StandardMemoryExtractor(filter: HighSignalFilter = DefaultHighSignalF
 }
 
 object StandardMemoryExtractor {
+  /** Default ceiling on the `extract_memories` consult's output. Sized
+    * so a rich excerpt (KB-scale paste, enumerative agent reply) can
+    * flush its full structured `tool_use` payload. The 1500-token
+    * prior default truncated the wire-buffered tool input on large
+    * inputs, producing an empty `tool_use` and zero recorded memories. */
+  val DefaultMaxExtractionTokens: Int = 8192
+
   /**
    * Default system prompt for per-turn extraction. Tuned for Sigil's
    * surface (keys, tags, content).

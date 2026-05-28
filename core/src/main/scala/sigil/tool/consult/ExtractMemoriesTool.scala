@@ -65,12 +65,17 @@ case object ExtractMemoriesTool extends Tool with FrameworkConsult {
     * summarization tier. */
   override def consultWorkType: WorkType = SummarizationWork
 
-  /** Output is a small list of structured facts (typically 1-5
-    * entries). 1500 tokens covers the worst-case list plus the
-    * reasoning-spill margin thinking-capable models burn before
-    * emitting the structured tool call. */
+  /** Output is a list of structured facts. The cap must accommodate
+    * rich excerpts (KB-scale pastes, agent replies enumerating many
+    * facts) — the model buffers the full structured `tool_use` input
+    * on the wire before any `partial_json` delta streams, so a tight
+    * cap cuts the buffered payload mid-emission and produces an empty
+    * tool_use with zero recorded memories. 8192 covers the worst-case
+    * shape while staying well under any current frontier model's
+    * 64K output ceiling. Per-call site tuning lives on the caller
+    * (e.g. [[sigil.conversation.compression.extract.StandardMemoryExtractor.maxExtractionTokens]]). */
   override def consultSettings: GenerationSettings = GenerationSettings(
-    outputTokenCap = OutputTokenCap.Below(1500),
+    outputTokenCap = OutputTokenCap.Below(8192),
     reasoningMode  = ReasoningMode.Off
   )
 
