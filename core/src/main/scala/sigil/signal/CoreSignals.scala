@@ -90,6 +90,8 @@ object CoreSignals {
     summon[RW[MemoryListSnapshot]],
     summon[RW[RequestModelCatalog]],
     summon[RW[ModelCatalogSnapshot]],
+    summon[RW[RequestConversationClear]],
+    summon[RW[RequestConversationDelete]],
     summon[RW[WireRequestProfile]],
     summon[RW[PinnedMemoryBudgetWarning]],
     summon[RW[ConversationCostUpdated]],

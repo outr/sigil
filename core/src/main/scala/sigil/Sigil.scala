@@ -3095,6 +3095,18 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               m._id.value.toLowerCase.contains(needle)))
         publishTo(fromViewer, sigil.signal.ModelCatalogSnapshot(filtered))
 
+      // -- conversation lifecycle (sigil #300) --
+      // Client-initiated clear/delete. The framework runs the action
+      // (which broadcasts the corresponding outbound ConversationCleared
+      // / ConversationDeleted Notice to every viewer) on behalf of the
+      // requesting viewer. Symmetric to every other Request* Notice
+      // above — the inbound shape is the verb, the broadcast shape is
+      // the confirmation.
+      case sigil.signal.RequestConversationClear(convId) =>
+        clearConversation(convId, fromViewer)
+      case sigil.signal.RequestConversationDelete(convId) =>
+        deleteConversation(convId)
+
       // -- viewer-state + stored-file vocabularies --
       // Handled by the ViewerStateOps mixin. The Notice subtypes there
       // are disjoint from the framework-level ones above, so dispatch
