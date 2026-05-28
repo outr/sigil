@@ -62,7 +62,7 @@ object RequestCacheKey {
   def canonical(call: ProviderCall): RequestCacheKey = {
     val payload = obj(
       "model"              -> str(stripProviderPrefix(call.modelId.value)),
-      "system"             -> str(call.system),
+      "system"             -> str(call.systemCombined),
       "messages"           -> arr(call.messages.toList.map(canonicalizeMessage)*),
       "tools"              -> arr(call.tools.sortBy(_.name.value).toList.map(canonicalizeTool)*),
       "builtInTools"       -> arr(call.builtInTools.toList.map(_.toString).sorted.map(str)*),

@@ -109,7 +109,12 @@ class PromptToolsConsistencySpec extends AsyncWordSpec with AsyncTaskSpec with M
       memories         = Vector.empty,
       summaries        = Vector.empty
     )
-    m.invoke(provider, request, resolved).asInstanceOf[String]
+    // Sigil #302 — renderSystem now returns RenderedSystem(stable,
+    // volatile); join them for the existing assertions that don't
+    // distinguish the two segments.
+    val rendered = m.invoke(provider, request, resolved)
+    val combined = rendered.getClass.getMethod("combined").invoke(rendered).asInstanceOf[String]
+    combined
   }
 
   "system prompt filtering (sigil #299)" should {

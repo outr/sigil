@@ -131,7 +131,7 @@ object OpenAIChatCompletions {
       * unchanged. Use this for provider-specific reshaping —
       * llama.cpp's mid-array system folding + placeholder-user
       * injection, DigitalOcean's kimi `/think` directive. */
-    preprocess: ProviderCall => Preprocessed = call => Preprocessed(call.system, call.messages),
+    preprocess: ProviderCall => Preprocessed = call => Preprocessed(call.systemCombined, call.messages),
 
     /** Normalise tool-call ids received from the wire before they
       * become [[CallId]]s. Default identity. llama.cpp uses this to

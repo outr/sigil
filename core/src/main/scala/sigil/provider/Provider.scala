@@ -656,7 +656,11 @@ trait Provider extends Service {
     * `n_ctx` configs don't, and override accordingly. */
   protected def estimateRequest(call: ProviderCall): Int = {
     val tok = tokenizer
+    // Sigil #302 — count both stable and volatile system segments;
+    // they both ship on the wire (Anthropic in two segments, other
+    // providers concatenated).
     tok.count(call.system) +
+      tok.count(call.systemVolatile) +
       call.messages.iterator.map(estimateMessage(_, tok)).sum +
       estimateRoster(call.tools, tok)
   }
@@ -976,9 +980,11 @@ trait Provider extends Service {
             proj.recentToolInvocations.iterator.map(_.toolName).toSet
         case None => Set.empty
       }
+      val renderedSystem = renderSystem(c, resolved)
       val providerCall = ProviderCall(
         model = c.model,
-        system = renderSystem(c, resolved),
+        system = renderedSystem.stable,
+        systemVolatile = renderedSystem.volatile,
         messages = messages,
         tools = effectiveTools,
         builtInTools = c.builtInTools,
@@ -1190,8 +1196,21 @@ trait Provider extends Service {
     * tools, repeated-call diagnostics, discovered capabilities,
     * per-turn budget warnings, the greeting hint) shift every turn —
     * placing them last keeps the cacheable prefix stable. */
+  /** Sigil #302 — split system prompt return shape. Anthropic uses the
+    * two segments as distinct cache-control breakpoints (stable gets
+    * cached; volatile lands as a second segment without a marker so
+    * its per-turn churn doesn't invalidate the cached prefix). Other
+    * providers concat via [[RenderedSystem.combined]]. */
+  protected case class RenderedSystem(stable: String, volatile: String) {
+    /** Single-string form used by providers that don't split. */
+    def combined: String =
+      if (volatile.isEmpty) stable
+      else if (stable.isEmpty) volatile
+      else stable + volatile
+  }
+
   private def renderSystem(c: ConversationRequest,
-                           resolved: ResolvedReferences): String = {
+                           resolved: ResolvedReferences): RenderedSystem = {
     val turn = c.turnInput
     val chain = c.chain
     val sb = new StringBuilder
@@ -1288,6 +1307,13 @@ trait Provider extends Service {
     }
 
     // ---- volatile tail (per-turn, excluded from the cacheable prefix) ----
+    //
+    // Sigil #302 — accumulate this section into its own builder so the
+    // Anthropic provider can emit it as a separate cache-control-free
+    // system segment. Other providers concatenate via
+    // `RenderedSystem.combined`.
+    val stable = sb.toString
+    sb.setLength(0)
 
     if (resolved.memories.nonEmpty) {
       sb.append("\n== Memories ==\n")
@@ -1426,7 +1452,7 @@ trait Provider extends Service {
       sb.append("on this turn; the user expects a greeting, not silence or discovery.\n")
     }
 
-    sb.toString
+    RenderedSystem(stable = stable, volatile = sb.toString)
   }
 
   /** What to render for a memory in the system prompt's `Critical

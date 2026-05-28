@@ -233,15 +233,34 @@ case class AnthropicProvider(apiKey: String,
     // block can carry `cache_control`; the plain-string form has no
     // slot for the field. Both encodings are wire-equivalent for the
     // model.
-    val systemField: Vector[(String, Json)] =
-      if (input.system.isEmpty) Vector.empty
-      else if (caching)
-        Vector("system" -> arr(obj(
-          "type" -> str("text"),
-          "text" -> str(input.system),
-          "cache_control" -> AnthropicProvider.cacheControl(extendedTtl = true)
-        )))
-      else Vector("system" -> str(input.system))
+    val systemField: Vector[(String, Json)] = {
+      // Sigil #302 — emit the volatile tail as a separate system
+      // segment WITHOUT cache_control so its per-turn churn
+      // (recently used, repeated calls, suggestions, discovered
+      // capabilities, conversation context, greeting hint) doesn't
+      // invalidate the cached stable prefix. When caching is off,
+      // collapse to a single string so the wire shape is unchanged.
+      val stable = input.system
+      val volatile = input.systemVolatile
+      if (stable.isEmpty && volatile.isEmpty) Vector.empty
+      else if (!caching) Vector("system" -> str(input.systemCombined))
+      else {
+        val stableSeg: Vector[Json] =
+          if (stable.isEmpty) Vector.empty
+          else Vector(obj(
+            "type" -> str("text"),
+            "text" -> str(stable),
+            "cache_control" -> AnthropicProvider.cacheControl(extendedTtl = true)
+          ))
+        val volatileSeg: Vector[Json] =
+          if (volatile.isEmpty) Vector.empty
+          else Vector(obj(
+            "type" -> str("text"),
+            "text" -> str(volatile)
+          ))
+        Vector("system" -> arr((stableSeg ++ volatileSeg)*))
+      }
+    }
 
     // Anthropic rejects `tool_choice: any|tool` when thinking is on.
     // Downgrade `Required → Auto` silently so the caller can enable

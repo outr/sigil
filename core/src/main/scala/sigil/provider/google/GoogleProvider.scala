@@ -122,9 +122,11 @@ case class GoogleProvider(apiKey: String,
   /** Render the system-instruction object for the request body — the
     * stable head of the prefix. Empty when the call carries no system
     * prompt. */
-  private def systemInstructionObj(input: ProviderCall): Vector[(String, Json)] =
-    if (input.system.isEmpty) Vector.empty
-    else Vector("systemInstruction" -> obj("parts" -> arr(obj("text" -> str(input.system)))))
+  private def systemInstructionObj(input: ProviderCall): Vector[(String, Json)] = {
+    val combined = input.systemCombined
+    if (combined.isEmpty) Vector.empty
+    else Vector("systemInstruction" -> obj("parts" -> arr(obj("text" -> str(combined)))))
+  }
 
   /** Render the `tools` array — custom function declarations grouped
     * into one `functionDeclarations` entry, plus a top-level entry per
@@ -246,7 +248,7 @@ case class GoogleProvider(apiKey: String,
       else {
         // The prefix payload is exactly what would be sent inline —
         // hash it for the cache key and estimate its token cost.
-        val systemText = if (input.system.isEmpty) "" else input.system
+        val systemText = input.systemCombined
         val toolsBlock = if (toolsArr.isEmpty) "" else JsonFormatter.Compact(arr(toolsArr*))
         val estimatedTokens = tokenizer.count(systemText) + tokenizer.count(toolsBlock)
         if (estimatedTokens < contextCacheMinTokens) Task.pure(None)

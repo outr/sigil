@@ -142,7 +142,7 @@ case class LlamaCppProvider(url: URL,
       case _: ProviderMessage.System => true
       case _ => false
     }
-    val combinedSystem = (call.system +: leadingSystem.collect {
+    val combinedSystem = (call.systemCombined +: leadingSystem.collect {
       case ProviderMessage.System(c) => c
     }).filter(_.nonEmpty).mkString("\n\n")
     val folded = foldMidArraySystems(nonLeading)

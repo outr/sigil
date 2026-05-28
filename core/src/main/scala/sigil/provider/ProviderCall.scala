@@ -78,9 +78,31 @@ case class ProviderCall(/** Sigil #277 — required Model record. Wire
                           * drove the change_mode loop in the field. Empty when the
                           * caller doesn't construct via `runAgentTurn` (e.g.
                           * `OneShotRequest` consumers). */
-                        preservedToolNames: Set[sigil.tool.ToolName] = Set.empty) {
+                        preservedToolNames: Set[sigil.tool.ToolName] = Set.empty,
+                        /** Sigil #302 — per-turn volatile system content
+                          * (Recently used tools / Repeated tool calls /
+                          * Suggested tools / Capabilities discovered /
+                          * Conversation context / Participant context /
+                          * Memories / Greeting hint). Providers that
+                          * support segmented system prompts with
+                          * cache-control breakpoints (Anthropic) emit
+                          * this as a separate segment WITHOUT
+                          * cache_control so its per-turn churn doesn't
+                          * invalidate the cached stable prefix on
+                          * [[system]]. Providers without that
+                          * facility concatenate via
+                          * `system + systemVolatile`. Empty when no
+                          * volatile content was rendered. */
+                        systemVolatile: String = "") {
   /** Convenience — `model._id`. Wire serializers reach for this when
     * they just need the id for the wire `model` field; per-model facts
     * read directly off [[model]]. */
   def modelId: lightdb.id.Id[Model] = model._id
+
+  /** Sigil #302 — single-string form (stable + volatile) for providers
+    * that don't split the system prompt into segments. */
+  def systemCombined: String =
+    if (systemVolatile.isEmpty) system
+    else if (system.isEmpty) systemVolatile
+    else system + systemVolatile
 }

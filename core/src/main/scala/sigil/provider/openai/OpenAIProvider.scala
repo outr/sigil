@@ -181,7 +181,8 @@ case class OpenAIProvider(apiKey: String,
     * message's text — the model takes a single string. Multi-turn
     * conversation history is not meaningful for image-only models. */
   private def extractImagePrompt(input: ProviderCall): String = {
-    val systemPart = if (input.system.isEmpty) "" else input.system + "\n\n"
+    val combined = input.systemCombined
+    val systemPart = if (combined.isEmpty) "" else combined + "\n\n"
     val userText = input.messages.reverseIterator.collectFirst {
       case ProviderMessage.User(content) =>
         content.collect { case MessageContent.Text(t) => t }.mkString(" ")
@@ -236,9 +237,11 @@ case class OpenAIProvider(apiKey: String,
       "input" -> arr(inputItems*),
       "stream" -> bool(true)
     ) ++ effectivePreviousResponseId.toVector.map("previous_response_id" -> str(_))
-    val instructionsField: Vector[(String, Json)] =
-      if (input.system.isEmpty) Vector.empty
-      else Vector("instructions" -> str(input.system))
+    val instructionsField: Vector[(String, Json)] = {
+      val combined = input.systemCombined
+      if (combined.isEmpty) Vector.empty
+      else Vector("instructions" -> str(combined))
+    }
     val toolFields: Vector[(String, Json)] = input.toolChoice match {
       case ToolChoice.None if toolsArr.isEmpty => Vector.empty
       case ToolChoice.None =>
