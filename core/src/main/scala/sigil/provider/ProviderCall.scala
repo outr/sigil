@@ -66,7 +66,19 @@ case class ProviderCall(/** Sigil #277 — required Model record. Wire
                           * upstream-provider name from the prior failure so
                           * providers with rotation-capable routing (OpenRouter)
                           * exclude the failed upstream from this attempt. */
-                        retryContext: Option[RetryContext] = None) {
+                        retryContext: Option[RetryContext] = None,
+                        /** Sigil #305 — names the framework wants to keep on the wire
+                          * even if the request crosses the model's context budget and
+                          * `Provider.emergencyShed` fires. Populated at request-build
+                          * time from `projection.suggestedTools`, the projection's
+                          * recently-used tools, and `agent.toolNames` baseline — i.e.,
+                          * the tools the prompt's own sections advertise to the model.
+                          * Without this, the shed could strip the wire roster below
+                          * what the prompt advertises, producing the divergence that
+                          * drove the change_mode loop in the field. Empty when the
+                          * caller doesn't construct via `runAgentTurn` (e.g.
+                          * `OneShotRequest` consumers). */
+                        preservedToolNames: Set[sigil.tool.ToolName] = Set.empty) {
   /** Convenience — `model._id`. Wire serializers reach for this when
     * they just need the id for the wire `model` field; per-model facts
     * read directly off [[model]]. */

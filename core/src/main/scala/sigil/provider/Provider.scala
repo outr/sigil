@@ -755,14 +755,26 @@ trait Provider extends Service {
                             estimateOf: ProviderCall => Int): ProviderCall = {
     var current = initial
 
-    // Stage 4 — drop tool roster down to framework essentials only.
-    // Critical for cases where a large tool catalog is the bulk of
-    // overhead; baseline tools (respond / find_capability / stop /
-    // change_mode) are retained so the agent can still function.
+    // Stage 4 — drop tool roster down to (framework essentials +
+    // tools the prompt actively advertises). Critical for cases where
+    // a large tool catalog is the bulk of overhead; baseline tools
+    // (respond / find_capability / stop / change_mode) are always
+    // retained so the agent can still function.
+    //
+    // Sigil #305 — `preservedToolNames` adds the tools the prompt's
+    // own sections (Suggested tools, Recently used) advertise to the
+    // model. Without it, the shed could leave the wire carrying
+    // ONLY the 9-name essentials set while the prompt still promised
+    // the agent's discovered roster — the divergence that drove the
+    // change_mode-loop failure mode in the field. Keeping the
+    // advertised names means the agent can act on what the prompt
+    // tells it is available; truly unused catalog bulk still drops.
     val essentials = Set("respond", "find_capability", "stop", "change_mode", "no_response",
       "respond_options", "respond_field", "respond_failure", "activate_skill")
-    if (estimateOf(current) > limit && current.tools.size > essentials.size) {
-      val trimmed = current.tools.filter(t => essentials.contains(t.schema.name.value))
+    val keep: _root_.sigil.tool.ToolName => Boolean = n =>
+      essentials.contains(n.value) || initial.preservedToolNames.contains(n)
+    if (estimateOf(current) > limit && current.tools.exists(t => !keep(t.schema.name))) {
+      val trimmed = current.tools.filter(t => keep(t.schema.name))
       current = current.copy(tools = trimmed)
     }
 
@@ -947,6 +959,17 @@ trait Provider extends Service {
         else ToolChoice.Required
       val gen = tightenMaxTokensForParaphrase(c)
       val messages = nonEmptyMessages(c, agentId)
+      // Sigil #305 — preserved-tool set: the tools the prompt's own
+      // sections advertise to the model. emergencyShed honors this set
+      // so the wire roster never drops below what the prompt promises,
+      // closing the divergence behind the field's change_mode loop.
+      val preserved: Set[_root_.sigil.tool.ToolName] = agentId match {
+        case Some(pid) =>
+          val proj = c.turnInput.projectionFor(pid)
+          proj.suggestedTools.toSet ++
+            proj.recentToolInvocations.iterator.map(_.toolName).toSet
+        case None => Set.empty
+      }
       val providerCall = ProviderCall(
         model = c.model,
         system = renderSystem(c, resolved),
@@ -959,7 +982,8 @@ trait Provider extends Service {
         conversationId = Some(c.conversationId),
         agentId = agentId,
         previousResponseId = previousResponseId,
-        priorMessageCount = priorMessageCount
+        priorMessageCount = priorMessageCount,
+        preservedToolNames = preserved
       )
       emitWireProfile(c, resolved, agentId).map(_ => providerCall)
     }
