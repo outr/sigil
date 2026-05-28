@@ -1608,9 +1608,15 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     // of being captured by the always-applicable `respond` family. Response
     // tools render last so they're available for chat without dominating
     // when an action tool is the right call.
+    //
+    // Sigil #302 — `find_capability` is slot 0, not `change_mode`. Discovery
+    // is the framework's CORE ideology and every other tool (change_mode
+    // included) is reachable through it; channeling stress-confused agents
+    // into change_mode's first slot was driving redundant-call loops when
+    // the action tools the agent actually needed had fallen out of scope.
     val priority: Map[sigil.tool.ToolName, Int] = (Map(
-      ChangeModeTool.schema.name        -> 0,
-      FindCapabilityTool.schema.name    -> 1,
+      FindCapabilityTool.schema.name    -> 0,
+      ChangeModeTool.schema.name        -> 1,
       ActivateSkillTool.schema.name     -> 2,
       sigil.tool.core.CancelTool.schema.name -> 100,
       // Within the response tail, `respond_options` precedes `respond` so first-tool
