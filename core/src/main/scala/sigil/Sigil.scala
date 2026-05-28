@@ -322,6 +322,29 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
   def rateLimitSafetyMargin: Double = 0.85
 
   /**
+   * Sigil #301 — multiplier applied to a model's
+   * [[sigil.db.Model.contextLength]] when computing the per-request
+   * input-token ceiling the pre-flight context-window guard enforces.
+   *
+   * Mirrors [[rateLimitSafetyMargin]] for the context-window axis.
+   * Absorbs the [[sigil.provider.Provider.estimateRequest]] estimator's
+   * documented ~7-15% gap between piecewise-summed estimate and
+   * wire-rendered payload, so requests that estimate just under
+   * `Model.contextLength` but render just over don't reach the
+   * provider's HTTP 400 path. The provider's emergency shed runs
+   * against this tightened limit; if shedding still can't fit,
+   * [[sigil.provider.RequestOverBudgetException]] fires.
+   *
+   * Default `0.92` — leaves 8% of the model's window for the
+   * estimator gap (rounded conservatively from the documented 7%
+   * lower bound). Providers that override `estimateRequest` with an
+   * exact backend tokenizer (LlamaCpp, etc.) can loosen toward `1.0`;
+   * estimator-only paths should stay at the default or tighten
+   * further.
+   */
+  def contextLengthSafetyMargin: Double = 0.92
+
+  /**
    * Sigil #285 — intra-turn compactor consulted between iterations
    * of [[runAgentLoop]]. When the compactor's [[IntraTurnCompactor.shouldCompact]]
    * fires AND [[IntraTurnCompactor.selectFoldable]] returns a non-

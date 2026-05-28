@@ -611,7 +611,13 @@ trait Provider extends Service {
     * (possibly after shedding), `Left(exception)` when it can't. */
   private def preFlightGate(request: ProviderRequest, providerCall: ProviderCall): Either[Throwable, ProviderCall] = {
     val modelRecord = sigil.cache.find(request.modelId)
-    val contextLimit = modelRecord.map(_.contextLength.toInt).getOrElse(Int.MaxValue)
+    // Sigil #301 — tighten by `contextLengthSafetyMargin` so the
+    // estimator's documented ~7-15% piecewise-vs-wire gap doesn't
+    // squeeze requests past the provider's HTTP 400 path. Mirrors the
+    // rate-side `rateLimitSafetyMargin` knob below.
+    val contextLimit = modelRecord
+      .map(m => math.max(1, (m.contextLength.toDouble * sigil.contextLengthSafetyMargin).toInt))
+      .getOrElse(Int.MaxValue)
     val ratePerMinute = modelRecord.flatMap(_.inputTokensPerMinute)
     val rateLimit = ratePerMinute match {
       case Some(rpm) => math.max(1, (rpm * sigil.rateLimitSafetyMargin).toInt)
