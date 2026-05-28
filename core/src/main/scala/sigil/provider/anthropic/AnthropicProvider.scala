@@ -66,6 +66,19 @@ case class AnthropicProvider(apiKey: String,
     * extra (already-cheap) shedding stages. */
   override def tokenizer: Tokenizer = JtokkitTokenizer.OpenAIChatGpt
 
+  // ---- batch (sigil #299) ----
+
+  /** Sigil #299 — Anthropic Message Batches API supports ~50% cost
+    * reduction on Sonnet / Haiku / Opus with a 24-hour SLA, accepting
+    * up to 100K requests inline per batch (no separate file upload
+    * required, unlike OpenAI). */
+  override def batchSupported: Boolean = true
+
+  override def batch(requests: Stream[OneShotRequest]): Stream[OneShotResponse] =
+    requests
+      .chunk(AnthropicBatch.MaxRequestsPerBatch)
+      .flatMap(chunk => AnthropicBatch.submitChunk(chunk.toList, apiKey, baseUrl, authMode))
+
   override def call(input: ProviderCall): Stream[ProviderEvent] = {
     val state = new StreamState(new ToolCallAccumulator(input.tools, providerKey = "anthropic"))
     Stream.force(
