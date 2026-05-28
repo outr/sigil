@@ -1977,7 +1977,8 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // ref on the orchestrator's TurnContext that the next iteration
         // never sees; the discovered tool ends up invisible to the
         // wire roster.
-        discoveredCapabilitiesRef = context.discoveredCapabilitiesRef
+        discoveredCapabilitiesRef = context.discoveredCapabilitiesRef,
+        turnStartedAt = context.turnStartedAt
       )
 
       val typingEmitted = new java.util.concurrent.atomic.AtomicBoolean(false)
@@ -5256,16 +5257,16 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
     * page size. Apps override to tune the prompt budget. */
   def discoveredCapabilitiesPromptCap: Int = 25
 
-  /** Sigil #264 — clear the per-agent dedupe cache at the start of a
-    * new turn. The cache exists to stop an agent from looping on a
-    * stable-output tool within ONE run of `runAgentLoop`; persisting
-    * across turns blocks legitimate retries after the user has fixed
-    * an external precondition (permissions, rate limit, etc.).
-    * `runAgent` is the per-turn entry point — every external trigger
-    * (user message, other-agent emission, etc.) lands here once via
-    * `tryFire`, so clearing here scopes the dedupe to "since the
-    * last external event," which is the soundest "result might
-    * differ" window the framework can reason about. */
+  /** Wipe the agent's [[sigil.conversation.ParticipantProjection.recentToolInvocations]]
+    * rolling window for a conversation. Sigil #304 — the framework no
+    * longer auto-clears this at the start of every `runAgent`; the
+    * orchestrator's duplicate-call cap now scopes its count via
+    * [[sigil.provider.ConversationRequest.turnStartedAt]], so the
+    * window can persist across turns to feed
+    * [[narrowRosterByRecentUse]] without inflating the dedupe count
+    * for legitimate cross-turn retries. Apps that want an explicit
+    * "reset agent state" UX action still call this directly; typical
+    * conversation flow does not need to. */
   def clearDedupeForTurn(convId: Id[Conversation],
                          agentId: ParticipantId): Task[Unit] =
     updateProjection(convId, agentId)(_.copy(recentToolInvocations = Nil))
@@ -5274,7 +5275,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                              conv: Conversation,
                              claimed: AgentState,
                              greeting: Boolean = false): Task[Unit] =
-    clearDedupeForTurn(conv._id, agent.id).flatMap(_ => runAgentLoop(
+    runAgentLoop(
       agent,
       conv._id,
       claimed,
@@ -5309,7 +5310,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       // empty cache, preventing prompt pollution from prior turns'
       // discoveries.
       discoveredCapabilitiesRef = new AtomicReference(Map.empty)
-    ))
+    )
 
   /**
    * `sinceTimestamp` advances per iteration — each loop hands the next one
@@ -5544,7 +5545,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         // suggestion-emitting tool result replaces the list.
         {
           scribe.info(s"runAgentLoop[${agent.id.value}/${convId.value}] iter=$iteration buildContext start")
-          buildContext(agent, conv, sinceTimestamp = sinceTimestamp, claimedId = claimed._id, isGreeting = greeting && iteration == 1, discoveredCapabilitiesRef = discoveredCapabilitiesRef).flatMap {
+          buildContext(agent, conv, sinceTimestamp = sinceTimestamp, claimedId = claimed._id, claimedTimestamp = claimed.timestamp, isGreeting = greeting && iteration == 1, discoveredCapabilitiesRef = discoveredCapabilitiesRef).flatMap {
             case (rawCtx, triggers) =>
               // Sigil bug #125 — propagate the cap-hit soft-stop flag
               // through the TurnContext so runAgentTurn → ConversationRequest →
@@ -6492,6 +6493,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                                  conv: Conversation,
                                  sinceTimestamp: Timestamp,
                                  claimedId: Id[Event],
+                                 claimedTimestamp: Timestamp,
                                  isGreeting: Boolean = false,
                                  discoveredCapabilitiesRef: AtomicReference[Map[String, sigil.conversation.DiscoveredCapability]] =
                                    new AtomicReference(Map.empty)): Task[(TurnContext, Stream[Event])] =
@@ -6530,6 +6532,7 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         turnInput           = input,
         model               = routedModel,
         currentAgentStateId = Some(claimedId),
+        turnStartedAt       = Some(claimedTimestamp),
         isGreeting          = isGreeting,
         discoveredCapabilitiesRef = discoveredCapabilitiesRef
       )

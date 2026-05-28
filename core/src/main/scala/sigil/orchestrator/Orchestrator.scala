@@ -655,10 +655,22 @@ object Orchestrator {
               val identicalLimit = sigil.maxIdenticalToolCallsInWindow
               if (identicalLimit > 0) {
                 val canonicalHash = _root_.sigil.tool.ToolInputCanonicalizer.argsHash(input)
+                // Sigil #304 — scope the duplicate-call cap to invocations
+                // made during THIS turn. The projection's rolling window
+                // now persists across turns (to feed
+                // `narrowRosterByRecentUse`), so unfiltered counts would
+                // refuse legitimate cross-turn retries after the user
+                // fixed an external precondition. `turnStartedAt` is set
+                // by the agent-loop path; the fallback (`Long.MinValue`)
+                // counts every recent invocation for one-shot / synthetic
+                // requests that have no owning turn.
+                val turnStartMs = request.turnStartedAt.map(_.value).getOrElse(Long.MinValue)
                 val priorIdentical = request.turnInput
                   .projectionFor(caller)
                   .recentToolInvocations
-                  .count(inv => inv.toolName.value == toolName && inv.argsHash == canonicalHash)
+                  .count(inv => inv.toolName.value == toolName
+                             && inv.argsHash == canonicalHash
+                             && inv.invokedAt.value >= turnStartMs)
                 if (priorIdentical >= identicalLimit - 1) {
                   val attemptedCount = priorIdentical + 1
                   val preview = _root_.sigil.tool.ToolInputCanonicalizer.argsPreview(input)

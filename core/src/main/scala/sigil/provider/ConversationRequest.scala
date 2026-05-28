@@ -1,6 +1,7 @@
 package sigil.provider
 
 import lightdb.id.Id
+import lightdb.time.Timestamp
 import sigil.conversation.{Conversation, DiscoveredCapability, TopicEntry, TurnInput}
 import sigil.db.Model
 import sigil.participant.ParticipantId
@@ -90,6 +91,15 @@ case class ConversationRequest(conversationId: Id[Conversation],
                                  * the model couldn't call what wasn't there. */
                                discoveredCapabilitiesRef: java.util.concurrent.atomic.AtomicReference[Map[String, DiscoveredCapability]] =
                                  new java.util.concurrent.atomic.AtomicReference(Map.empty[String, DiscoveredCapability]),
+                               /** Sigil #304 — turn-start wall-clock threaded through
+                                 * from [[sigil.TurnContext.turnStartedAt]] for the
+                                 * orchestrator's duplicate-call cap to scope its
+                                 * count to "invocations made during THIS turn"
+                                 * rather than the projection's full rolling window.
+                                 * `None` for one-shot / synthetic requests with no
+                                 * owning agent loop; the cap then counts every
+                                 * recent invocation, preserving prior behaviour. */
+                               turnStartedAt: Option[Timestamp] = None,
                                requestId: Id[ProviderRequest] = Id())
   extends ProviderRequest {
 

@@ -74,6 +74,17 @@ case class TurnContext(sigil: Sigil,
                        /** Sigil #277 — required Model record. */
                        model: Model,
                        currentAgentStateId: Option[Id[Event]] = None,
+                       /** Sigil #304 — wall-clock at which the active agent
+                         * loop claimed this turn (i.e. the AgentState lock's
+                         * timestamp). Threaded into
+                         * [[sigil.provider.ConversationRequest.turnStartedAt]]
+                         * so the orchestrator's duplicate-call cap counts
+                         * only invocations made during THIS turn — the
+                         * projection's rolling window persists across
+                         * turns to feed [[sigil.Sigil.narrowRosterByRecentUse]]
+                         * without inflating dedupe counts. `None` when no
+                         * agent loop drives the turn. */
+                       turnStartedAt: Option[Timestamp] = None,
                        correlationId: String = TurnContext.freshCorrelationId(),
                        isGreeting: Boolean = false,
                        /** Sigil bug #125 — when `true`, the framework forces
