@@ -105,6 +105,15 @@ object FrameBuilder {
               .orElse(Option(ti.summary).filter(_.nonEmpty))
               .getOrElse("(image)")
             (text, List(img.url))
+          case txt: sigil.tool.TextToolOutput =>
+            // Sigil #305 — the inner `text` IS the result the model
+            // reads; the JSON-envelope rendering through `RW[ToolOutput]`
+            // (`{"text":"…"}`) is a fabric-derived artifact that wastes
+            // tokens on the wire and adds a small structural-reasoning
+            // load per result. Unwrap to the inner string directly so
+            // text-only tools ship as plain content across every
+            // provider.
+            (txt.text, Nil)
           case other =>
             val rendered = JsonFormatter.Compact(stripPolyDiscriminator(summon[RW[ToolOutput]].read(other)))
             (rendered, Nil)
