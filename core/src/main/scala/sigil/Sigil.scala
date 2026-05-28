@@ -5365,13 +5365,16 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
       val fallback: Task[Unit] =
         if (skipFallback || userVisibleSeen.get()) Task.unit
         else synthesizeFallbackRespond(agent, convId)
-      // Sigil bug #169 — clear the suggestedTools overlay at loop release
-      // so leftover suggestions don't bleed into the next user's turn.
-      // Per-iteration decay was removed in the same bug fix; persistence
-      // is loop-scoped and cleared exactly here.
-      fallback
-        .flatMap(_ => clearSuggestedTools(convId, agent.id))
-        .flatMap(_ => releaseClaim(claimed))
+      // Sigil #301 — projection.suggestedTools is NOT cleared at turn
+      // end. Discoveries from `find_capability` persist across turn
+      // boundaries (replaced only by the next find_capability call) so
+      // a multi-turn task that branches through a respond_options
+      // clarification still has its discovered action-tool roster on
+      // the follow-up turn. Conversation-boundary isolation is
+      // preserved by projections being per-conversation. Replaces the
+      // bug #169 per-turn clear that drove the change_mode-loop
+      // failure mode (Sage wire log 2026-05-28 10:33:53 → 10:34:04).
+      fallback.flatMap(_ => releaseClaim(claimed))
     }
     // Snapshot the start of THIS iteration. The next iteration uses this as
     // its own `sinceTimestamp`, so events emitted during this iteration
@@ -6429,21 +6432,6 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         s"$statusLine$stuckLine$nextLine"
       }
     }.handleError(_ => Task.pure(None))
-
-  /** Clear the `suggestedTools` overlay at loop release. Sigil bug
-    * #169 — the overlay persists across iterations within a single
-    * user turn (so prerequisite-call flows and multi-invocation
-    * progression flows keep their discovered tools in scope) but is
-    * cleared here when the loop terminates so suggestions don't bleed
-    * into the next user's turn. Single chokepoint covers every release
-    * path. */
-  private final def clearSuggestedTools(conversationId: Id[Conversation],
-                                         agentId: ParticipantId): Task[Unit] =
-    projectionFor(agentId, conversationId).flatMap { proj =>
-      if (proj.suggestedTools.nonEmpty)
-        updateProjection(conversationId, agentId)(_.copy(suggestedTools = Nil))
-      else Task.unit
-    }
 
   private final def releaseClaim(claimed: AgentState): Task[Unit] = {
     // Always-run cleanup — the flag must never leak even if the

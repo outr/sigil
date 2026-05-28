@@ -5,8 +5,13 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.TurnContext
-import sigil.conversation.{Conversation, DiscoveredCapability, ParticipantProjection, TurnInput}
+import sigil.conversation.{Conversation, ConversationView, DiscoveredCapability, ParticipantProjection, TopicEntry, TurnInput}
+import sigil.event.{CapabilityResults, Event}
+import sigil.signal.EventState
+import sigil.tool.ToolContext
 import sigil.tool.ToolName
+import sigil.tool.core.{FindCapabilityInput, FindCapabilityTool}
+import sigil.tool.discovery.{CapabilityMatch, CapabilityStatus, CapabilityType}
 
 import java.util.concurrent.atomic.AtomicReference
 
@@ -121,6 +126,133 @@ class FindCapabilityPersistenceSpec extends AsyncWordSpec with AsyncTaskSpec wit
       // Both discovered names present in the merged roster.
       roster should contain (ToolName("dispatch_workers"))
       roster should contain (ToolName("grep"))
+    }
+  }
+
+  // ---- sigil #301 — across-turn persistence via ParticipantProjection ----
+
+  /**
+   * #301 supersedes #300's per-turn lifetime by routing find_capability
+   * matches into [[ParticipantProjection.suggestedTools]]. Discoveries
+   * survive turn boundaries; the next find_capability call REPLACES
+   * them; conversation-boundary isolation is preserved.
+   *
+   * The per-loop TurnContext cache above remains — it drives the
+   * "Capabilities you've already discovered (this turn)" prompt section
+   * within one loop. The projection-overlay surface tested below is
+   * what carries discoveries across turns.
+   */
+
+  private def conv(id: String): Conversation = Conversation(
+    topics = List(TopicEntry(TestTopicId, "test", "test")),
+    _id    = Conversation.id(id)
+  )
+
+  private def turnContextFor(c: Conversation): TurnContext = TurnContext(
+    sigil        = TestSigil,
+    chain        = List(TestUser, TestAgent),
+    conversation = c,
+    turnInput    = TurnInput(ConversationView(conversationId = c._id)),
+    model        = TestSigil.defaultTestModel
+  )
+
+  private def capabilityResults(convId: Id[Conversation],
+                                names: List[String],
+                                query: String): CapabilityResults =
+    CapabilityResults(
+      matches = names.map(n =>
+        CapabilityMatch(
+          name           = n,
+          description    = s"stub: $n",
+          capabilityType = CapabilityType.Tool,
+          score          = 1.0,
+          status         = CapabilityStatus.Ready
+        )
+      ),
+      participantId  = TestAgent,
+      conversationId = convId,
+      topicId        = TestTopicId,
+      query          = query,
+      state          = EventState.Complete,
+      // Tool-role events must point at a parent ToolInvoke. In real
+      // dispatch the framework stamps this from `ctx.invokeId`; the
+      // tests stamp a synthetic id so validateEventInvariants accepts
+      // the synthetic event for projection-handler exercise.
+      origin         = Some(Event.id())
+    )
+
+  "FindCapabilityTool (sigil #301)" should {
+
+    "emit a CapabilityResults event so the projection handler can route it" in {
+      val c = conv(s"fc-emit-${rapid.Unique()}")
+      val tc = ToolContext(turnContextFor(c), Event.id(), FindCapabilityTool.name)
+      FindCapabilityTool.executeResult(
+        FindCapabilityInput(keywords = "slack message channel"),
+        tc
+      ).map { _ =>
+        val capabilityEvents = tc.emittedEvents.collect { case cr: CapabilityResults => cr }
+        capabilityEvents should have size 1
+        val emitted = capabilityEvents.head
+        emitted.participantId shouldBe TestAgent
+        emitted.conversationId shouldBe c._id
+        emitted.query shouldBe "slack message channel"
+        emitted.matches should not be empty
+      }
+    }
+  }
+
+  "ParticipantProjection.suggestedTools (sigil #301)" should {
+
+    "carry find_capability matches after a CapabilityResults event is published — survives turn boundary" in {
+      val c = conv(s"fc-persist-${rapid.Unique()}")
+      val convId = c._id
+      val cr = capabilityResults(convId, List("dispatch_workers", "grep"), query = "find grep files")
+      for {
+        _    <- TestSigil.publish(cr)
+        proj <- TestSigil.projectionFor(TestAgent, convId)
+      } yield {
+        // With the per-turn clearSuggestedTools call removed, the
+        // projection retains the discoveries across turn boundaries —
+        // the next find_capability is the only thing that replaces.
+        proj.suggestedTools.map(_.value) should contain allOf ("dispatch_workers", "grep")
+      }
+    }
+
+    "REPLACE the prior matches when a new find_capability fires (not accumulate)" in {
+      val c = conv(s"fc-replace-${rapid.Unique()}")
+      val convId = c._id
+      val first  = capabilityResults(convId, List("dispatch_workers", "grep"), query = "find grep files")
+      val second = capabilityResults(convId, List("bsp_test", "bsp_compile"), query = "test compile build")
+      for {
+        _           <- TestSigil.publish(first)
+        afterFirst  <- TestSigil.projectionFor(TestAgent, convId)
+        _           <- TestSigil.publish(second)
+        afterSecond <- TestSigil.projectionFor(TestAgent, convId)
+      } yield {
+        afterFirst.suggestedTools.map(_.value) should contain allOf ("dispatch_workers", "grep")
+        // Replace, not union — keeps the size bounded naturally (one
+        // search's worth) and matches the user's mental model of
+        // "tools I just discovered."
+        afterSecond.suggestedTools.map(_.value) should contain allOf ("bsp_test", "bsp_compile")
+        afterSecond.suggestedTools.map(_.value) should contain noneOf ("dispatch_workers", "grep")
+      }
+    }
+
+    "scope discoveries per-conversation — a new conversation's projection starts empty" in {
+      val cA = conv(s"fc-isolate-A-${rapid.Unique()}")
+      val cB = conv(s"fc-isolate-B-${rapid.Unique()}")
+      val cr = capabilityResults(cA._id, List("dispatch_workers", "grep"), query = "find grep files")
+      for {
+        _   <- TestSigil.publish(cr)
+        inA <- TestSigil.projectionFor(TestAgent, cA._id)
+        inB <- TestSigil.projectionFor(TestAgent, cB._id)
+      } yield {
+        inA.suggestedTools.map(_.value) should contain allOf ("dispatch_workers", "grep")
+        // Same participant, different conversation — preserves #226's
+        // "no cross-conversation pollution" invariant while restoring
+        // within-conversation persistence.
+        inB.suggestedTools shouldBe empty
+      }
     }
   }
 

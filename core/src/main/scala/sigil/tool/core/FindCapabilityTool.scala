@@ -2,6 +2,8 @@ package sigil.tool.core
 
 import fabric.rw.*
 import rapid.Task
+import sigil.event.CapabilityResults
+import sigil.signal.EventState
 import sigil.tool.ToolContext
 import sigil.tool.{DiscoveryRequest, Tool, ToolExample, ToolName, ToolResult}
 
@@ -65,23 +67,40 @@ case object FindCapabilityTool extends Tool {
         callerSpaces = spaces,
         conversationId = Some(context.conversation.id)
       )
-      context.sigil.findCapabilities(request).map { matches =>
-        // Sigil bug #226 — record matches against the per-agent-loop
-        // cache on the TurnContext. Replaces the prior projection
-        // write path so the cache dies with the loop instead of
-        // leaking into the next turn's system prompt.
+      context.sigil.findCapabilities(request).flatMap { matches =>
         val toolNames = matches.collect {
           case m if m.capabilityType == sigil.tool.discovery.CapabilityType.Tool => sigil.tool.ToolName(m.name)
         }
+        // Two-layer persistence (sigil #301):
+        //   - Per-loop TurnContext cache drives the "Capabilities
+        //     you've already discovered (this turn)" prompt section
+        //     so subsequent iterations within ONE loop don't repeat
+        //     the same query.
+        //   - CapabilityResults event routes through Sigil.publish
+        //     into projection.suggestedTools, surviving turn
+        //     boundaries until the next find_capability call REPLACES
+        //     the overlay. This is what gives a multi-turn task (user
+        //     asks → agent searches → respond_options clarify → user
+        //     answers → agent acts) access to the discovered roster
+        //     on every turn, not just the discovery turn.
         context.turn.recordDiscovery(request.keywords, toolNames)
-        // Sigil bug #283 — augment with task-shape hints so the agent
-        // sees the framework's recommendation alongside the raw ranking.
-        val hints = sigil.tool.discovery.TaskShapeHints.synthesize(request.keywords, matches)
-        ToolResult.Success(FindCapabilityOutput(
-          query          = request.keywords,
+        val cr = CapabilityResults(
           matches        = matches,
-          taskShapeHints = hints
-        ))
+          participantId  = context.caller,
+          conversationId = context.conversation.id,
+          topicId        = context.conversation.currentTopicId,
+          query          = request.keywords,
+          state          = EventState.Complete,
+          origin         = Some(context.invokeId)
+        )
+        val hints = sigil.tool.discovery.TaskShapeHints.synthesize(request.keywords, matches)
+        context.emit(cr).map { _ =>
+          ToolResult.Success(FindCapabilityOutput(
+            query          = request.keywords,
+            matches        = matches,
+            taskShapeHints = hints
+          ))
+        }
       }
     }
 
