@@ -88,14 +88,38 @@ case object RespondTool extends RespondFamilyTool {
     // is still mid-loop.
     if (input.endsTurn) context.turn.clearDiscoveredCapabilities()
     val sanitized = XmlToolCallSanitizer.sanitize(input.content)
-    if (sanitized.leakedSpans.nonEmpty) {
-      context.sigil.publish(XmlToolCallLeak(
-        conversationId     = context.conversation.id,
-        modelId            = Some(context.modelId),
-        leakedSpanCount    = sanitized.leakedSpans.size,
-        firstLeakedExcerpt = sanitized.leakedSpans.head.take(200)
-      )).handleError(_ => rapid.Task.unit).startUnit()
-    }
+    val xmlLeakIntervention: rapid.Task[Unit] =
+      if (sanitized.leakedSpans.nonEmpty) {
+        val firstExcerpt = sanitized.leakedSpans.head.take(200)
+        // 1. Operator-side diagnostic Notice (existing #225 behaviour).
+        val notice = context.sigil.publish(XmlToolCallLeak(
+          conversationId     = context.conversation.id,
+          modelId            = Some(context.modelId),
+          leakedSpanCount    = sanitized.leakedSpans.size,
+          firstLeakedExcerpt = firstExcerpt
+        )).handleError(_ => rapid.Task.unit)
+        // 2. Sigil #304 — agent-side intervention. The sanitizer
+        // silently swallowed the model's intended tool call; without
+        // closing the loop the turn ends and the work doesn't
+        // progress. Emit a SyntheticDiagnostic pair (internal invoke +
+        // Tool-role/Agents-only directive Message) so the next
+        // iteration sees what went wrong and can retry with proper
+        // JSON.
+        val pair = sigil.orchestrator.SyntheticDiagnostic(
+          name        = XmlToolCallSanitizer.SyntheticInvokeName,
+          caller      = context.caller,
+          convId      = context.conversation.id,
+          topicId     = context.conversation.currentTopicId,
+          reason      = XmlToolCallSanitizer.interventionDirective(firstExcerpt)
+        )
+        val emit = pair.foldLeft(rapid.Task.unit) { (acc, signal) =>
+          acc.flatMap(_ => signal match {
+            case ev: sigil.event.Event => context.emit(ev)
+            case _                     => rapid.Task.unit
+          })
+        }
+        notice.flatMap(_ => emit)
+      } else rapid.Task.unit
     val blocks = MarkdownContentParser.parse(sanitized.content)
     val disposition = input.disposition match {
       case ResponseDisposition.Success => MessageDisposition.Success
@@ -156,6 +180,7 @@ case object RespondTool extends RespondFamilyTool {
         _ <- context.sigil.updateConversationKeywords(context.conversation.id, input.keywords)
         _ <- topicEvents.foldLeft(Task.unit)((acc, e) => acc.flatMap(_ => context.emit(e)))
         _ <- context.emit(message)
+        _ <- xmlLeakIntervention
       } yield ()
     emitAncillary.map(_ => ToolResult.Success(TextToolOutput("")))
   }

@@ -547,14 +547,31 @@ object Orchestrator {
             (Some(active.toolName), input) match {
               case (Some("respond"), r: RespondInput) =>
                 val sanitized = XmlToolCallSanitizer.sanitize(r.content)
-                if (sanitized.leakedSpans.nonEmpty) {
-                  sigil.publish(XmlToolCallLeak(
-                    conversationId     = convId,
-                    modelId            = Some(request.modelId),
-                    leakedSpanCount    = sanitized.leakedSpans.size,
-                    firstLeakedExcerpt = sanitized.leakedSpans.head.take(200)
-                  )).handleError(_ => rapid.Task.unit).startUnit()
-                }
+                // Sigil #304 — when sanitization fires, publish the
+                // existing diagnostic Notice AND synthesise an
+                // agent-side intervention pair so the next iteration
+                // sees what went wrong and can retry with proper JSON.
+                // The intervention's signals ride the same Stream the
+                // settled respond uses so ordering is preserved
+                // (sanitized Message lands first, the agent-side
+                // diagnostic right after).
+                val interventionSignals: List[Signal] =
+                  if (sanitized.leakedSpans.nonEmpty) {
+                    val firstExcerpt = sanitized.leakedSpans.head.take(200)
+                    sigil.publish(XmlToolCallLeak(
+                      conversationId     = convId,
+                      modelId            = Some(request.modelId),
+                      leakedSpanCount    = sanitized.leakedSpans.size,
+                      firstLeakedExcerpt = firstExcerpt
+                    )).handleError(_ => rapid.Task.unit).startUnit()
+                    SyntheticDiagnostic(
+                      name    = XmlToolCallSanitizer.SyntheticInvokeName,
+                      caller  = caller,
+                      convId  = convId,
+                      topicId = conversation.currentTopicId,
+                      reason  = XmlToolCallSanitizer.interventionDirective(firstExcerpt)
+                    )
+                  } else Nil
                 val parsed = MarkdownContentParser.parse(sanitized.content)
                 val settle = MessageDelta(
                   target = msgId,
@@ -594,7 +611,7 @@ object Orchestrator {
                         StateDelta(target = tc._id, conversationId = tc.conversationId, state = EventState.Complete)
                       )
                     }
-                    Stream.emits(prelude ::: closeBlock ::: toolDeltaPrefix ::: List[Signal](settle, streamingSettleDelta))
+                    Stream.emits(prelude ::: closeBlock ::: toolDeltaPrefix ::: List[Signal](settle, streamingSettleDelta) ::: interventionSignals)
                   }
                 )
               case _ =>

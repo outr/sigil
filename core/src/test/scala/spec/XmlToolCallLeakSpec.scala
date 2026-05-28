@@ -6,7 +6,7 @@ import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Stream, Task}
 import sigil.conversation.Conversation
 import sigil.db.Model
-import sigil.event.Message
+import sigil.event.{Message, MessageRole, MessageVisibility, ToolInvoke}
 import sigil.participant.{AgentParticipant, DefaultAgentParticipant}
 import sigil.provider.{
   CallId, GenerationSettings, Instructions, Provider, ProviderCall,
@@ -145,13 +145,23 @@ class XmlToolCallLeakSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         _ <- Task { running = false; () }
       } yield {
         val signals = recorded.asScala.toList
-        val agentMessages = signals.collect { case m: Message if m.participantId == TestAgent => m }
-        agentMessages should not be empty
-        val agentText = agentMessages.flatMap(_.content).collect {
+        // Sigil #304 — filter to user-facing agent messages (the
+        // intervention Message is Tool-role + Agents visibility and
+        // legitimately embeds the leaked `<tool_call>` excerpt as a
+        // directive the agent has to read; that's not a sanitization
+        // breach. The user-visible reply is what the sanitizer
+        // promises to clean.).
+        val userFacingAgentMessages = signals.collect {
+          case m: Message
+            if m.participantId == TestAgent
+            && m.role == MessageRole.Standard
+            && m.visibility == MessageVisibility.All => m
+        }
+        userFacingAgentMessages should not be empty
+        val agentText = userFacingAgentMessages.flatMap(_.content).collect {
           case ResponseContent.Text(t)     => t
           case ResponseContent.Markdown(m) => m
         }.mkString
-        // Sanitization replaced the XML span with the placeholder.
         agentText should include(XmlToolCallSanitizer.Placeholder)
         agentText should not include "<tool_call>"
         // The diagnostic notice fired with the model id + first excerpt.
@@ -161,6 +171,66 @@ class XmlToolCallLeakSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers
         leaks.head.modelId shouldBe Some(modelId)
         leaks.head.leakedSpanCount should be >= 1
         leaks.head.firstLeakedExcerpt should startWith("<tool_call>")
+      }
+    }
+
+    "synthesize an agent-side intervention (sigil #304) so the agent can retry with proper JSON" in {
+      TestSigil.setProvider(Task.pure(new RespondingWithLeakProvider))
+      val recorded = new ConcurrentLinkedQueue[Signal]()
+      @volatile var running = true
+      TestSigil.signals
+        .takeWhile(_ => running)
+        .evalMap(s => Task { recorded.add(s); () })
+        .drain
+        .startUnit()
+      Thread.sleep(100)
+      val convId = Conversation.id(s"xml-leak-intervention-${rapid.Unique()}")
+      val agent  = makeAgent()
+      val conv   = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      for {
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        _ <- TestSigil.publish(Message(
+               participantId  = TestUser,
+               conversationId = convId,
+               topicId        = TestTopicEntry.id,
+               content        = Vector(ResponseContent.Text("test")),
+               state          = sigil.signal.EventState.Complete
+             ))
+        _ <- Task.sleep(2.seconds)
+        _ <- Task { running = false; () }
+      } yield {
+        val signals = recorded.asScala.toList
+        // 1. Synthetic _xml_tool_call_leak ToolInvoke (internal, marks
+        //    the intervention so the conversation's frame trail stays
+        //    well-formed and detectors can walk it).
+        val syntheticInvokes = signals.collect {
+          case ti: ToolInvoke if ti.toolName.value == "_xml_tool_call_leak" => ti
+        }
+        syntheticInvokes should not be empty
+        syntheticInvokes.head.internal shouldBe true
+        // 2. Paired Tool-role Message carrying the directive — visible
+        //    to agents only (the user already sees the sanitized
+        //    placeholder reply; another framework-y message would
+        //    clutter their UX).
+        val agentDirectives = signals.collect {
+          case m: Message
+            if m.role == MessageRole.Tool
+            && m.visibility == MessageVisibility.Agents
+            && m.origin.contains(syntheticInvokes.head._id) => m
+        }
+        agentDirectives should not be empty
+        val directiveText = agentDirectives.flatMap(_.content).collect {
+          case ResponseContent.Text(t)     => t
+          case ResponseContent.Markdown(m) => m
+        }.mkString
+        // Names the violation in vocabulary the model can reason about.
+        directiveText.toLowerCase should include ("xml")
+        // Tells the agent what the right wire shape is.
+        directiveText should include ("tool_calls")
+        // Quotes the agent's own attempted intent back at it so it can
+        // recover the desired action (the excerpt name is in the
+        // RespondingWithLeakProvider's content).
+        directiveText should include ("find_capability")
       }
     }
   }
