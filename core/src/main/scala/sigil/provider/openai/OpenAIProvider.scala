@@ -94,6 +94,20 @@ case class OpenAIProvider(apiKey: String,
     * conservative anyway. */
   override def tokenizer: Tokenizer = JtokkitTokenizer.OpenAIChatGpt
 
+  // ---- batch (sigil #299) ----
+
+  /** Sigil #299 — OpenAI Batch API is available for `/v1/chat/completions`
+    * (the JSONL `url` field) at ~50% cost discount with a 24-hour
+    * SLA. Streaming-side OpenAI calls (this provider's primary path)
+    * still go through `/v1/responses`; batch-only paths take the
+    * chat-completions surface for the upload's JSONL lines. */
+  override def batchSupported: Boolean = true
+
+  override def batch(requests: Stream[OneShotRequest]): Stream[OneShotResponse] =
+    requests
+      .chunk(OpenAIBatch.MaxRequestsPerBatch)
+      .flatMap(chunk => OpenAIBatch.submitChunk(chunk.toList, apiKey, baseUrl))
+
   override def call(input: ProviderCall): Stream[ProviderEvent] = {
     val state = new StreamState(new ToolCallAccumulator(input.tools, providerKey = "openai"))
     // `priorMessageCount` for the NEXT turn is recorded as the PMs we'd
