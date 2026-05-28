@@ -75,6 +75,19 @@ case class GoogleProvider(apiKey: String,
     * the lifetime of this provider instance. */
   private val contextCache: GeminiContextCache = new GeminiContextCache
 
+  // ---- batch (sigil #299) ----
+
+  /** Sigil #299 — Gemini Batch API supports ~50% cost reduction on
+    * the stable 2.x families (Pro, Flash, Flash-Lite) with a 24-hour
+    * SLA. Requests inline as `inlinedRequests`; outputs read back
+    * from the terminal batch resource's `inlinedResponses`. */
+  override def batchSupported: Boolean = true
+
+  override def batch(requests: Stream[OneShotRequest]): Stream[OneShotResponse] =
+    requests
+      .chunk(GoogleBatch.MaxRequestsPerBatch)
+      .flatMap(chunk => GoogleBatch.submitChunk(chunk.toList, apiKey, baseUrl))
+
   override def call(input: ProviderCall): Stream[ProviderEvent] = {
     val state = new StreamState(new ToolCallAccumulator(input.tools, providerKey = Google.Provider))
     Stream.force(
