@@ -1220,7 +1220,25 @@ trait Provider extends Service {
       scribe.info(s"Duplicate tool calls detected: $summary")
     }
 
-    val suggestedTools = chain.flatMap(id => turn.projectionFor(id).suggestedTools).distinct
+    // Sigil #299 — the prompt's "Suggested tools" / "Capabilities
+    // you've already discovered" sections can only honestly name
+    // tools the wire ACTUALLY offers in `c.tools`. Pre-fix the
+    // sections were rendered from raw projection / TurnContext
+    // sources, which drifted from the merged wire roster: the
+    // narrowing path (#286/#287), or `findTools.byName` returning
+    // None on a discovered name, both produced rosters smaller than
+    // what the prompt advertised. The model read "X is in your
+    // roster" but the wire didn't carry X's schema, so the only
+    // legal output became `respond` — driving the byte-identical-
+    // respond loop the bug pattern names. Filtering both sections
+    // by `wireToolNames` makes the prompt's claim accurate by
+    // construction.
+    val wireToolNames: Set[_root_.sigil.tool.ToolName] = c.tools.map(_.schema.name).toSet
+
+    val suggestedTools = chain
+      .flatMap(id => turn.projectionFor(id).suggestedTools)
+      .distinct
+      .filter(wireToolNames.contains)
     if (suggestedTools.nonEmpty) {
       sb.append("\n== Suggested tools ==\n")
       suggestedTools.foreach(t => sb.append(s"- $t\n"))
@@ -1231,17 +1249,19 @@ trait Provider extends Service {
     // [[sigil.TurnContext]] (Bug #226) — empty on a fresh user turn,
     // populated as the agent issues find_capability calls during the
     // iteration loop, discarded when the loop ends. Cap keeps the
-    // prompt bounded inside one loop.
+    // prompt bounded inside one loop. Per-match filter (#299) keeps
+    // only names actually present in the wire roster — so the
+    // "DIRECTIVE" sentence below isn't a lie when narrowing has
+    // dropped a discovered tool from the offered set.
     val discovered = c.discoveredCapabilities.toList
       .sortBy(-_._2.lastSeen.value)
       .take(sigil.discoveredCapabilitiesPromptCap)
+      .map { case (query, dc) => (query, dc.matches.filter(wireToolNames.contains)) }
+      .filter { case (_, matches) => matches.nonEmpty }
     if (discovered.nonEmpty) {
       sb.append("\n== Capabilities you've already discovered (this turn) ==\n")
-      discovered.foreach { case (query, dc) =>
-        val matches = dc.matches.map(_.value)
-        if (matches.nonEmpty) {
-          sb.append(s"- `find_capability($query)` → ${matches.mkString(", ")}\n")
-        }
+      discovered.foreach { case (query, matches) =>
+        sb.append(s"- `find_capability($query)` → ${matches.map(_.value).mkString(", ")}\n")
       }
       sb.append(
         "DIRECTIVE: These tools are NOW in your roster — call them directly to complete the task. " +
