@@ -1300,8 +1300,10 @@ trait Provider extends Service {
         val previewText = if (preview.nonEmpty) s" `$preview`" else ""
         sb.append(
           s"- `${toolName.value}` called ${occurrences.size}x with identical args " +
-            s"(most recent $ago):$previewText. Identical inputs yield identical results -- " +
-            "the previous outputs are already in your context.\n"
+            s"(most recent $ago):$previewText. Identical inputs yield identical results " +
+            "UNLESS your tool roster has changed since (compare your current offered tools against what you remember). " +
+            "If a tool you used before isn't in your offer now, re-call `find_capability` even with the same keywords; " +
+            "the framework's cache state may have changed.\n"
         )
         s"${toolName.value}=${occurrences.size}x"
       }.mkString(", ")
