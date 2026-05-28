@@ -293,6 +293,99 @@ trait Provider extends Service {
       case None          => Task.unit
     }
 
+  // ---- batch (sigil #299) ----
+
+  /** Sigil #299 — whether this provider has a native bulk surface
+    * worth routing batchable workloads through. `true` means
+    * [[batch]] is overridden to use the upstream's
+    * batch endpoint (OpenAI Batch / Anthropic Message Batches /
+    * Gemini Batch — typically a ~50% cost discount with a 24-hour
+    * SLA, effectively unlimited per-batch rate). `false` means
+    * `batch` falls through to per-request `apply` calls — same
+    * wall-clock as N parallel syncs, no discount.
+    *
+    * Consumers running offline bulk pipelines (RAG corpus rebuilds,
+    * bulk classification, periodic re-summarization) read this to
+    * decide whether the workload is worth chunking through `batch`
+    * at all; interactive paths ignore it and call `apply` directly.
+    *
+    * Default `false` — opt-in per provider so the trait stays honest
+    * about what's actually batchable on the wire. */
+  def batchSupported: Boolean = false
+
+  /** Sigil #299 — bulk-submit a stream of [[OneShotRequest]]s against
+    * the provider's native batch API. Responses stream back as each
+    * underlying batch completes (out-of-order across batches;
+    * in-order within a single batch's result file).
+    *
+    * Providers with a wire-level batch surface (OpenAI Batch,
+    * Anthropic Message Batches, Gemini Batch) override to get the
+    * ~50% cost reduction + higher throughput + async SLA. The
+    * default sequential-fallback runs each request through `apply`
+    * and collects the events into a [[OneShotResponse]] — correct
+    * everywhere, optimal nowhere a native batch exists. Apps that
+    * want to decide based on capability check [[batchSupported]]
+    * before routing; calling `batch` on a non-batching provider is
+    * not an error, just no discount.
+    *
+    * The input is a Stream so consumers can produce millions of
+    * requests without holding them all in memory; the output is a
+    * Stream so responses begin flowing as soon as the first
+    * underlying batch completes. Native overrides chunk the input
+    * internally per provider's per-batch size limit (OpenAI: 50K
+    * requests / 200MB file).
+    *
+    * Failure semantics: per-request errors surface as `OneShotResponse`
+    * with `error` populated (the rest of the stream keeps flowing).
+    * Whole-batch upstream failures (network blip, batch-endpoint
+    * 5xx) propagate as a stream error after best-effort cleanup of
+    * the failed chunk's responses. */
+  def batch(requests: Stream[OneShotRequest]): Stream[OneShotResponse] =
+    requests.evalMap(applyOneShot)
+
+  /** Sigil #299 — single-request shape used by the default `batch`
+    * fallback. Drains [[apply]]'s event stream into a
+    * [[OneShotResponse]] by accumulating text deltas, usage, and
+    * any stream-level error. Native-batch overrides bypass this
+    * helper entirely — they go straight from JSONL line → typed
+    * response without the streaming detour. */
+  protected def applyOneShot(request: OneShotRequest): Task[OneShotResponse] = {
+    val text = new StringBuilder
+    val usageRef = new java.util.concurrent.atomic.AtomicReference[Option[TokenUsage]](None)
+    val errorRef = new java.util.concurrent.atomic.AtomicReference[Option[OneShotResponse.Error]](None)
+    apply(request).evalMap { ev =>
+      Task {
+        ev match {
+          case ProviderEvent.TextDelta(t)              => val _ = text.append(t)
+          case ProviderEvent.ContentBlockDelta(_, t)   => val _ = text.append(t)
+          case ProviderEvent.Usage(u)                  => usageRef.set(Some(u))
+          case ProviderEvent.Error(msg)                =>
+            errorRef.set(Some(OneShotResponse.Error(message = msg)))
+          case _                                       => ()
+        }
+        ()
+      }
+    }.drain.map { _ =>
+      val content: Vector[_root_.sigil.tool.model.ResponseContent] =
+        if (text.isEmpty) Vector.empty
+        else Vector(_root_.sigil.tool.model.ResponseContent.Text(text.toString))
+      OneShotResponse(
+        requestId = request.requestId,
+        content   = content,
+        usage     = usageRef.get(),
+        error     = errorRef.get()
+      )
+    }.handleError { t =>
+      Task.pure(OneShotResponse(
+        requestId = request.requestId,
+        error     = Some(OneShotResponse.Error(
+          message     = Option(t.getMessage).getOrElse(t.getClass.getSimpleName),
+          recoverable = false
+        ))
+      ))
+    }
+  }
+
   /** Sigil bug #211 — framework-level retry on `Retry`-classified
     * transient provider errors. The framework already classifies
     * network timeouts / 502 / 503 / rate-limits as `Retry`
