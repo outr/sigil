@@ -74,15 +74,27 @@ import scala.language.implicitConversions
  * @param sigil          the Sigil instance whose [[Sigil.eventLog]]
  *                       backs durable replay and whose
  *                       [[Sigil.signalsFor]] backs outbound delivery
- * @param viewer         the [[ParticipantId]] whose `signalsFor`
- *                       filter + viewer transforms apply to outbound
- *                       delivery on every accepted session
+ * @param viewer         the default [[ParticipantId]] whose
+ *                       `signalsFor` filter + viewer transforms apply
+ *                       to outbound delivery on every accepted session.
+ *                       Used when `resolveViewer` is `None`, OR when
+ *                       the resolver fails. Apps wanting per-session
+ *                       resolution at handshake supply `resolveViewer`
+ *                       (sigil #298).
  * @param port           HTTP listener port. Pass `0` for an ephemeral
  *                       port; read [[serverPort]] after [[start]] to
  *                       learn what was assigned.
  * @param host           HTTP listener host; default `127.0.0.1`
  * @param resolveChannel maps `(clientId, info)` to the
  *                       [[Conversation]] id this session subscribes to
+ * @param resolveViewer  sigil #298 — optional per-session viewer
+ *                       resolver. Called once per session at handshake
+ *                       with `(clientId, info)`. Apps that establish
+ *                       identity from the auth token on the `Info`
+ *                       payload return `user/<userId>`; sessions
+ *                       without auth fall back to the static `viewer`.
+ *                       `None` (default) keeps the legacy behavior of
+ *                       binding every session to `viewer` directly.
  * @param onSessionStart per-session hook fired after the
  *                       [[SessionBridge]] attaches; typical use is
  *                       lazy-creating the conversation row via
@@ -96,6 +108,7 @@ final class WsServer[Info: RW](sigil: Sigil,
                                port: Int,
                                host: String = "127.0.0.1",
                                resolveChannel: (String, Info) => Task[Id[Conversation]],
+                               resolveViewer: Option[(String, Info) => Task[ParticipantId]] = None,
                                onSessionStart: Id[Conversation] => Task[Unit] = (_: Id[Conversation]) => Task.unit,
                                config: DurableSocketConfig = DurableSocketConfig(
                                  ackBatchDelay = 50.millis,
@@ -121,12 +134,33 @@ final class WsServer[Info: RW](sigil: Sigil,
     s.config.clearListeners().addListeners(HttpServerListener(host = host, port = listenerPort))
     s.handler(List(path"/ws" / durableServer))
     durableServer.onSession.attach { session =>
-      SessionBridge.attach(
-        sigil = sigil,
-        session = session,
-        viewer = viewer,
-        onSessionStart = onSessionStart
-      ).start()
+      // Sigil #298 — per-session viewer resolution. When the app
+      // supplied `resolveViewer`, call it with the session's
+      // `(clientId, info)`; otherwise fall back to the static
+      // `viewer` (legacy single-identity behavior). A resolver
+      // failure also falls back so a transient lookup error doesn't
+      // sever the session entirely — the app can still rebind via
+      // the returned handle once it's resolved identity downstream.
+      val resolveTask: Task[ParticipantId] = resolveViewer match {
+        case None      => Task.pure(viewer)
+        case Some(fn)  => fn(session.clientId, session.info).handleError { t =>
+          Task {
+            scribe.warn(
+              s"WsServer: resolveViewer failed for clientId=${session.clientId}; " +
+                s"falling back to default viewer=${viewer.value}: ${t.getMessage}", t
+            )
+            viewer
+          }
+        }
+      }
+      resolveTask.flatMap { resolved =>
+        SessionBridge.attach(
+          sigil = sigil,
+          session = session,
+          viewer = resolved,
+          onSessionStart = onSessionStart
+        )
+      }.start()
       ()
     }
     s
