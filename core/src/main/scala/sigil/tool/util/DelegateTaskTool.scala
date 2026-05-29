@@ -3,9 +3,10 @@ package sigil.tool.util
 import fabric.rw.*
 import lightdb.id.Id as LId
 import rapid.Task
+import sigil.db.Model
 import sigil.tool.ToolContext
 import sigil.tool.model.DelegateTaskInput
-import sigil.tool.{Tool, ToolExample, ToolName, ToolOutput, ToolResult}
+import sigil.tool.{RefusalPayload, Tool, ToolExample, ToolName, ToolOutput, ToolResult}
 import sigil.workflow.{AgentDecisionStepInput, WorkflowSigil, WorkflowStepInputCompiler}
 import sigil.workflow.SigilWorkflowModel.stepRW
 import strider.WorkflowParent
@@ -57,8 +58,11 @@ case object DelegateTaskTool extends Tool {
           workType = sigil.provider.AnalysisWork
         ),
         brief = "Find recent papers on retrieval-augmented generation in 2026.",
-        goal = Some("identify candidate sources for a literature review"),
-        modelId = Some("anthropic/claude-sonnet-4-6")
+        goal = Some("identify candidate sources for a literature review")
+        // `modelId` omitted — recommended default. The framework picks a
+        // model via `ProviderStrategy` based on `role.workType` and
+        // `complexity` (when set). Supply `modelId` only when a specific
+        // registered model is required.
       )
     )
   )
@@ -76,11 +80,61 @@ case object DelegateTaskTool extends Tool {
   private def spawnWorker(ws: WorkflowSigil & sigil.Sigil,
                           input: DelegateTaskInput,
                           ctx: ToolContext): Task[ToolResult[DelegateTaskOutput]] = {
+    // Validate `input.modelId` at the tool boundary. An id that isn't
+    // in the host's ModelRegistry would fail several layers deep in
+    // `SigilAgentDecisionStep`'s model lookup, after the worker
+    // conversation + workflow run have already been created — leaving
+    // an orphan run and no actionable signal back to the parent agent.
+    // Refuse here with the schema + valid-id sampling so the agent
+    // retries on the next iteration (typically by omitting `modelId`
+    // and letting routed selection pick a candidate).
+    input.modelId match {
+      case Some(explicit) if !ctx.sigil.cache.findTolerant(LId[Model](explicit.toLowerCase)).isDefined =>
+        Task.pure(unknownModelRefusal(explicit, ctx))
+      case _ =>
+        spawnWorkerValidated(ws, input, ctx)
+    }
+  }
+
+  /** Build the actionable refusal returned when `input.modelId` is set
+    * to an id the host doesn't know about. Surfaces a sampling of valid
+    * ids alongside the recommendation to omit `modelId` and use routed
+    * selection. Delegates to [[RefusalPayload.schemaMismatch]] so the
+    * schema + worked example are pinned alongside the rule.
+    *
+    * Visible for testing; tools that take a `modelId` field with the
+    * same validation shape (future `dispatch_workers`, custom
+    * "summarize-with-X" tools, etc.) call this directly so the refusal
+    * format stays consistent. */
+  private[util] def unknownModelRefusal(supplied: String, ctx: ToolContext): ToolResult.Failure = {
+    val registered = ctx.sigil.cache.all
+    val sample = registered.iterator.map(_._id.value).toList.sorted.take(20)
+    val sampleBlock =
+      if (sample.isEmpty) "<no models registered>"
+      else if (registered.size <= sample.size) sample.mkString(", ")
+      else sample.mkString(", ") + s" (+${registered.size - sample.size} more)"
+    val hint =
+      s"`modelId` is optional. Recommended default: omit it and the framework's `ProviderStrategy` " +
+        s"picks a candidate based on your `role.workType` and `complexity` (when set). " +
+        s"To pin a specific model, supply a `modelId` known to the host's ModelRegistry — sample: $sampleBlock."
+    RefusalPayload.schemaMismatch(
+      tool = DelegateTaskTool,
+      rule =
+        s"`delegate_task` rejected: `modelId = \"$supplied\"` is not in the host's ModelRegistry. " +
+          "The framework can't route the worker to an unknown model.",
+      hint = Some(hint)
+    )
+  }
+
+  private def spawnWorkerValidated(ws: WorkflowSigil & sigil.Sigil,
+                                   input: DelegateTaskInput,
+                                   ctx: ToolContext): Task[ToolResult[DelegateTaskOutput]] = {
     val workerLabel  = s"Worker: ${input.role.name}"
     val parentConvId = ctx.conversation.id
 
-    // Sigil #289 — resolve the worker's model:
-    //   1. If `input.modelId` is set, use that exact model (most explicit).
+    // Resolve the worker's model:
+    //   1. If `input.modelId` is set (and now known to be in the
+    //      registry — validated above), use that exact model.
     //   2. Else route via `Sigil.routedModelFor` with `role.workType`
     //      + optional `complexity` filter, falling back to the
     //      spawning agent's modelId.
