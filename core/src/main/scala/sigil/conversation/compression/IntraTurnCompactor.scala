@@ -2,6 +2,7 @@ package sigil.conversation.compression
 
 import lightdb.id.Id
 import sigil.event.{Event, Message, MessageRole, ToolInvoke}
+import sigil.participant.AgentParticipantId
 import sigil.tool.ToolName
 
 /**
@@ -83,9 +84,18 @@ trait IntraTurnCompactor {
  * override [[selectFoldable]].
  *
  * NEVER folded by construction:
+ *   - User-authored Standard-role [[Message]] events (sigil #307 — a
+ *     long agent loop's claim can span multiple user turns; if the
+ *     user posts a new task while the loop is still draining the
+ *     previous one, the framework's "events since the claim" slice
+ *     covers the new task. Folding it away leaves the model with no
+ *     goal — the failure mode the bug reported was a fresh `respond`
+ *     with `topicLabel = "Greeting"` because the model literally saw
+ *     `(begin conversation)` followed by unmotivated tool exchanges).
  *   - The original user message of this turn (excluded by the
  *     framework's "events since user turn began" slice — it's the
- *     turn's predecessor, not in `turnEvents`).
+ *     turn's predecessor, not in `turnEvents` — covers the
+ *     single-turn case).
  *   - The latest `keepRecent` events in the turn (controlled here).
  */
 case class StandardIntraTurnCompactor(terminalTools: Set[ToolName] = Set.empty,
@@ -103,6 +113,28 @@ case class StandardIntraTurnCompactor(terminalTools: Set[ToolName] = Set.empty,
 
   override def selectFoldable(turnEvents: Vector[Event]): List[Id[Event]] = {
     if (turnEvents.size <= keepRecent) Nil
-    else turnEvents.dropRight(keepRecent).iterator.map(_._id).toList
+    else turnEvents
+      .dropRight(keepRecent)
+      .iterator
+      .filterNot(StandardIntraTurnCompactor.isUserAuthoredStandardMessage)
+      .map(_._id)
+      .toList
+  }
+}
+
+object StandardIntraTurnCompactor {
+  /** Sigil #307 — the load-bearing predicate. A user-authored
+    * Standard-role Message is the task the agent is working on; if
+    * the framework folds it away the model has no goal in scope and
+    * emits a fresh greeting (field evidence in the bug report). The
+    * marker we key off is [[AgentParticipantId]] — Standard-role
+    * Messages from anyone who isn't an agent (a user, an external
+    * integration acting on a user's behalf) are protected. Agent-
+    * authored Standard messages, tool calls, and tool results
+    * remain foldable. */
+  def isUserAuthoredStandardMessage(event: Event): Boolean = event match {
+    case m: Message =>
+      m.role == MessageRole.Standard && !m.participantId.isInstanceOf[AgentParticipantId]
+    case _ => false
   }
 }

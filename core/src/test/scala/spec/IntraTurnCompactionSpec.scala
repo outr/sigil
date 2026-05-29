@@ -88,7 +88,10 @@ class IntraTurnCompactionSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
     "selectFoldable keeps the most-recent keepRecent events out of the fold list" in Task {
       val compactor = StandardIntraTurnCompactor(keepRecent = 3)
-      val events = (1 to 10).map(i => msg(s"e-$i")).toVector
+      // Tool invokes are foldable; user-authored Standard Messages
+      // are not (sigil #307), so the keepRecent semantics get tested
+      // cleanly with a tool-only fixture.
+      val events: Vector[Event] = (1 to 10).map(i => toolInvoke(s"read-$i")).toVector
       val folded = compactor.selectFoldable(events)
       folded.size shouldBe 7
       folded shouldBe events.take(7).map(_._id).toList
@@ -99,7 +102,7 @@ class IntraTurnCompactionSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
 
     "selectFoldable returns Nil when events <= keepRecent" in Task {
       val compactor = StandardIntraTurnCompactor(keepRecent = 4)
-      compactor.selectFoldable((1 to 3).map(i => msg(s"e-$i")).toVector) shouldBe Nil
+      compactor.selectFoldable((1 to 3).map(i => toolInvoke(s"read-$i")).toVector) shouldBe Nil
     }
   }
 
@@ -134,6 +137,63 @@ class IntraTurnCompactionSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         ids should not contain e2._id
         turn.summaries should contain (summary._id)
       }
+    }
+  }
+
+  "StandardIntraTurnCompactor (sigil #307)" should {
+
+    "NEVER fold a user-authored Standard-role Message even when the slice covers it" in Task {
+      // The "claim survives across user turns" path. User posts a task
+      // mid-loop; the compactor's slice (events since the agent's
+      // claim) now contains BOTH old tool exchanges AND the new user
+      // task. Before the fix selectFoldable folded everything except
+      // the last keepRecent, including the user task message — the
+      // model saw only `(begin conversation)` + recent tool exchanges
+      // and emitted a fresh greeting. The invariant the fix enforces:
+      // user-authored Standard-role Messages are never compacted.
+      val compactor = StandardIntraTurnCompactor(keepRecent = 3)
+      val turnEvents: Vector[Event] = Vector(
+        toolInvoke("read-1"),
+        toolInvoke("read-2"),
+        toolInvoke("read-3"),
+        msg("I'd like you to find and remove all bug references"),   // user task
+        toolInvoke("read-4"),
+        toolInvoke("read-5"),
+        toolInvoke("read-6"),
+        toolInvoke("read-7"),
+        toolInvoke("read-8"),
+        toolInvoke("read-9")
+      )
+      val folded = compactor.selectFoldable(turnEvents).toSet
+      val userTaskId = turnEvents(3)._id
+      folded should not contain userTaskId
+      // The other turn-events DO get folded (everything not in
+      // keepRecent's tail and not a user-authored Standard Message).
+      folded should contain (turnEvents(0)._id)
+      folded should contain (turnEvents(1)._id)
+      folded should contain (turnEvents(2)._id)
+    }
+
+    "fold agent-authored Standard-role Messages normally (only user-authored is protected)" in Task {
+      // The protection is "Standard-role from a NON-agent participant"
+      // — the agent's own responses are still foldable.
+      val agentMsg = Message(
+        participantId  = TestAgent,
+        conversationId = convId,
+        topicId        = TestTopicId,
+        role           = MessageRole.Standard,
+        content        = Vector(ResponseContent.Text("here is my reply")),
+        state          = EventState.Complete
+      )
+      val compactor = StandardIntraTurnCompactor(keepRecent = 2)
+      val turnEvents: Vector[Event] = Vector(
+        toolInvoke("read-1"),
+        agentMsg,
+        toolInvoke("read-2"),
+        toolInvoke("read-3")
+      )
+      val folded = compactor.selectFoldable(turnEvents).toSet
+      folded should contain (agentMsg._id)
     }
   }
 
