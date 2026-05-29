@@ -46,7 +46,14 @@ import scala.jdk.CollectionConverters.*
  *   5. BrokenHistoryException path: the renderFrames invariant throws
  *      a typed exception when the durable log carries an Active
  *      ToolCall frame; the classifier resolves to the same default
- *      strategy and the heal repairs the log.
+ *      strategy and the heal repairs the log. Covers the real on-disk
+ *      orphan shape (`EventState.Complete` + frame `ToolCallState.Active`
+ *      + `wireCallId != callId`) the detector flags — Sigil #314.
+ *   6. No-op heal guard: a strategy that matches the error but resolves
+ *      zero corrections against non-empty evidence is treated as a
+ *      FAILED heal (Failed notice + HealingExhausted), never a
+ *      masquerading `ConversationHealed`, and the original error
+ *      surfaces through the standard failure path — Sigil #314.
  */
 class ConversationSelfHealSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers {
   TestSigil.initFor(getClass.getSimpleName)
@@ -456,7 +463,7 @@ class ConversationSelfHealSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       }
     }
 
-    "BrokenHistoryException: renderFrames throws typed exception → heal fires" in {
+    "BrokenHistoryException: renderFrames throws → heal settles the real on-disk orphan shape → retry succeeds (Sigil #314)" in {
       TestSigil.reset()
       scribeRecord.clear()
       TestSigil.setHealingMode(HealingMode.Recover)
@@ -465,10 +472,15 @@ class ConversationSelfHealSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
       val agent   = makeAgent(BrokenHistoryAgent)
       val conv    = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
 
-      // Build the bricked log directly — a Complete ToolInvoke event
-      // whose inlined contextFrame is an Active ToolCall. framesFor
-      // surfaces it; the provider's translate calls renderFrames
-      // which throws BrokenHistoryException.
+      // The EXACT on-disk corruption shape #314 documents: a
+      // ToolInvoke that completed its EVENT lifecycle
+      // (`EventState.Complete`) without ever recording a result, so
+      // its inlined `ContextFrame.ToolCall` is still `Active` and its
+      // `wireCallId` (what the provider remembers) differs from the
+      // framework `callId`. `renderFrames` walks the frame's
+      // ToolCallState and throws `BrokenHistoryException`. The heal
+      // must settle THIS shape — the prior `EventState.Active`
+      // predicate matched zero such rows, so the heal was a no-op.
       val invokeId = Event.id()
       val orphanFrame = ContextFrame.ToolCall(
         toolName      = ToolName("read_file"),
@@ -490,8 +502,10 @@ class ConversationSelfHealSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         contextFrame   = Some(orphanFrame)
       )
 
-      // Once the heal settles the orphan, the retry runs through a
-      // provider that emits a successful respond.
+      // After the heal folds a synthetic result onto the orphan, the
+      // inlined frame transitions to Complete, renderFrames no longer
+      // throws, and the retry runs cleanly through a provider that
+      // emits a successful respond.
       val provider = new HealThenSucceedProvider(wireCallId)
       TestSigil.setProvider(Task.pure(provider))
 
@@ -501,16 +515,6 @@ class ConversationSelfHealSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         _ <- Task.sleep(150.millis)
         _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
         _ <- TestSigil.withDB(_.events.transaction(_.upsert(orphanInvoke)))
-        // The provider used here STILL throws on call #1 — but the
-        // renderFrames path fires first, so we observe the typed
-        // BrokenHistoryException path. The seeded ToolInvoke is
-        // already Complete; the heal sees no Active invoke matching
-        // the wire id and emits no corrections (it's working with
-        // the renderFrames-evidence). For the retry to succeed we
-        // need framesFor to NOT see the orphan after the heal —
-        // which won't happen automatically since the contextFrame's
-        // state is what we seeded. So this test asserts on the
-        // detection side: typed CorruptionEvidence flowed through.
         _ <- TestSigil.publish(Message(
           participantId  = TestUser,
           conversationId = convId,
@@ -518,10 +522,16 @@ class ConversationSelfHealSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
           content        = Vector(ResponseContent.Text("hello broken history")),
           state          = EventState.Complete
         ))
-        _ <- waitFor(System.currentTimeMillis() + 15_000L)(
+        // Wait for BOTH the heal to land AND the retry's success
+        // Message — proving the heal actually repaired the log
+        // rather than no-op-ing and exhausting.
+        _ <- waitFor(System.currentTimeMillis() + 20_000L)(
           recorded.iterator().asScala.exists {
-            case d: ConversationCorruptionDetected =>
-              d.detectorSource == "renderFrames-invariant"
+            case _: ConversationHealed => true
+            case _ => false
+          } && recorded.iterator().asScala.exists {
+            case m: Message if m.participantId == agent.id && !m.isFailure
+                            && m.state == EventState.Complete => true
             case _ => false
           }
         )
@@ -531,21 +541,107 @@ class ConversationSelfHealSpec extends AsyncWordSpec with AsyncTaskSpec with Mat
         running.set(false)
         val snap = rec.iterator().asScala.toList
 
+        // (a) Detection fired through the renderFrames invariant with
+        // typed evidence naming the orphan invoke + wire id.
         val detected = snap.collect {
           case d: ConversationCorruptionDetected if d.detectorSource == "renderFrames-invariant" => d
         }
         detected should not be empty
-        // Typed evidence: MissingToolResult naming the orphan invoke + wire id.
-        val evidence = detected.head.detectedCorruption
-        evidence.collect { case m: CorruptionEvidence.MissingToolResult => m } should not be empty
-        evidence.collect { case m: CorruptionEvidence.MissingToolResult => m }
-          .map(_.callId) should contain (wireCallId)
+        val evidence = detected.head.detectedCorruption.collect {
+          case m: CorruptionEvidence.MissingToolResult => m
+        }
+        evidence should not be empty
+        evidence.map(_.callId) should contain (wireCallId)
+        // #314 — `invokeId` is the durable row id, not the wire id.
+        evidence.map(_.invokeId) should contain (invokeId)
 
-        // HealingActivityNotice fires with Healed (the strategy
-        // matched and ran — even if it had no Active invoke to
-        // settle, it returned a HealResult).
-        val notices = snap.collect { case n: HealingActivityNotice => n }
-        notices should not be empty
+        // (b) The heal actually settled the orphan — ConversationHealed
+        // carries a non-empty correction naming the invoke row.
+        val healed = snap.collect { case h: ConversationHealed => h }
+        healed should not be empty
+        healed.head.corrections should not be empty
+        healed.head.corrections.map(_.synthesisedEventId) should contain (invokeId)
+
+        // (c) The durable invoke flipped to Complete AND its inlined
+        // frame is no longer Active — renderFrames would now pass.
+        val persisted = TestSigil.withDB(_.events.transaction(_.get(invokeId))).sync()
+          .collect { case t: ToolInvoke => t }
+          .getOrElse(fail(s"orphan invoke $invokeId missing after heal"))
+        persisted.state shouldBe EventState.Complete
+        persisted.contextFrame.collect {
+          case tc: ContextFrame.ToolCall => tc.state
+        } should not contain ToolCallState.Active
+
+        // (d) Healed notice + the retry's success Message landed.
+        snap.collect { case n: HealingActivityNotice => n }
+          .exists(_.outcome == HealingOutcome.Healed) shouldBe true
+        snap.collect {
+          case m: Message if m.participantId == agent.id && !m.isFailure => m
+        } should not be empty
+        provider.attemptCount.get() should be >= 2
+      }
+    }
+
+    "No-op heal guard: a strategy that matches but settles nothing → Failed (not Healed), failure surfaces (Sigil #314)" in {
+      TestSigil.reset()
+      scribeRecord.clear()
+      TestSigil.setHealingMode(HealingMode.Recover)
+      // The provider cites a wire callId, but the conversation has NO
+      // orphan invoke at all — so the strategy matches the error yet
+      // resolves zero targets. The framework must NOT publish
+      // ConversationHealed; it marks the turn Failed and surfaces the
+      // original error through the standard failure path.
+      val wireCallId = s"call_${rapid.Unique()}"
+      val convId  = Conversation.id(s"selfheal-noop-${rapid.Unique()}")
+      val agent   = makeAgent(NoOpHealAgent)
+      val conv    = Conversation(topics = TestTopicStack, participants = List(agent), _id = convId)
+      val provider = new OrphanCallErrorProvider(wireCallId)
+      TestSigil.setProvider(Task.pure(provider))
+
+      val (recorded, running) = startRecorder()
+
+      val pipeline = for {
+        _ <- Task.sleep(150.millis)
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(conv)))
+        // NB: deliberately no seedOrphanInvoke — nothing to settle.
+        _ <- TestSigil.publish(Message(
+          participantId  = TestUser,
+          conversationId = convId,
+          topicId        = TestTopicEntry.id,
+          content        = Vector(ResponseContent.Text("hello no-op")),
+          state          = EventState.Complete
+        ))
+        _ <- waitFor(System.currentTimeMillis() + 20_000L)(
+          recorded.iterator().asScala.exists {
+            case n: HealingActivityNotice => n.outcome == HealingOutcome.Failed
+            case _ => false
+          }
+        )
+      } yield recorded
+
+      pipeline.map { rec =>
+        running.set(false)
+        val snap = rec.iterator().asScala.toList
+
+        // Detection still fired.
+        snap.collect { case d: ConversationCorruptionDetected => d } should not be empty
+
+        // The no-op heal did NOT masquerade as a heal — no
+        // ConversationHealed.
+        snap.collect { case _: ConversationHealed => () } shouldBe empty
+
+        // It published a terminal HealingExhausted + a Failed notice.
+        snap.collect { case e: HealingExhausted => e } should not be empty
+        snap.collect { case n: HealingActivityNotice => n }
+          .exists(_.outcome == HealingOutcome.Failed) shouldBe true
+
+        // The original error surfaced to the user as a Failure Message
+        // rather than a silent stall.
+        val failures = snap.collect {
+          case m: Message if m.participantId == agent.id && m.isFailure => m
+        }
+        failures should not be empty
+        failures.flatMap(_.failureReason).mkString(" | ") should include ("No tool output found for function call")
       }
     }
   }
@@ -568,4 +664,7 @@ case object ForensicAgent extends sigil.participant.AgentParticipantId {
 }
 case object BrokenHistoryAgent extends sigil.participant.AgentParticipantId {
   override val value: String = "broken-history-agent"
+}
+case object NoOpHealAgent extends sigil.participant.AgentParticipantId {
+  override val value: String = "noop-heal-agent"
 }

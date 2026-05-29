@@ -4,9 +4,9 @@ import lightdb.id.Id
 import rapid.Task
 import sigil.Sigil
 import sigil.conversation.{Conversation, ContextFrame, ToolCallState}
-import sigil.event.{Event, MessageRole, ToolInvoke, ToolOutcome}
+import sigil.event.{Event, ToolInvoke, ToolOutcome}
 import sigil.signal.{EventState, ToolDelta}
-import sigil.tool.TextToolOutput
+import sigil.tool.{TextToolOutput, ToolOutput}
 
 import scala.util.matching.Regex
 
@@ -88,39 +88,69 @@ object MissingToolResultStrategy extends HealingStrategy {
                      convId: Id[Conversation],
                      host: Sigil): Task[HealResult] =
     host.withDB(_.eventsTransaction(convId)(_.list)).flatMap { events =>
-      // Index the conversation's ToolInvoke events by callId (wire-
-      // level) and by _id (framework-level) so we can resolve either
-      // shape of evidence to the underlying durable row.
+      // Sigil #314 — an orphan is a `ToolInvoke` whose paired result
+      // never landed: its inlined `ContextFrame.ToolCall` is still
+      // `Active`, or (defensively, for legacy rows that carry no
+      // inlined frame) its `outcome` / `output` are still `Pending`.
+      // This is the SAME notion of "orphan" the detector keys off —
+      // `renderFrames` walks the frame's `ToolCallState`, NOT the
+      // event's `EventState` — so heal and detector agree on what's
+      // broken. The prior `EventState.Active` predicate matched ZERO
+      // real orphans: a bricked invoke completes its EVENT lifecycle
+      // (`EventState.Complete`) without ever recording a result, so
+      // it is Complete at the event level but Active at the frame
+      // level.
+      def isOrphan(inv: ToolInvoke): Boolean = {
+        val frameActive = inv.contextFrame.collect {
+          case tc: ContextFrame.ToolCall => tc.state
+        }.contains(ToolCallState.Active)
+        val noResult = inv.outcome == ToolOutcome.Pending && inv.output == ToolOutput.Pending
+        frameActive || noResult
+      }
       val orphanInvokes: List[ToolInvoke] = events.iterator
         .collect { case t: ToolInvoke => t }
         .filter(_.conversationId == convId)
-        .filter(_.state == EventState.Active)
+        .filter(isOrphan)
         .toList
 
-      // Pull the wire-callIds from the typed corruption evidence; an
-      // empty list (or a `"*"` marker from a vendor-specific phrasing
-      // we couldn't parse) means "settle every Active invoke we find".
-      val requestedCallIds: Set[String] = corruption.collect {
-        case m: CorruptionEvidence.MissingToolResult => m.callId
-      }.toSet
-      val wildcardMatch = requestedCallIds.isEmpty || requestedCallIds.contains("*")
+      // Sigil #314 — the evidence rows name an orphan by TWO id forms:
+      // `invokeId` (the durable `ToolInvoke` event id) and `callId`
+      // (the wire `call_<hash>` the provider remembers). Those live
+      // in different keyspaces from each other AND from what the
+      // persisted invoke carries (`_id`, `callId`, the inlined
+      // frame's `callId` / `wireCallId`). Match an orphan if ANY
+      // identifier it is known by appears in the union of requested
+      // ids, so a keyspace mismatch on any single field can't
+      // silently drop a real orphan. An empty requested set (or an
+      // explicit `"*"` from a vendor phrasing we couldn't parse a
+      // concrete id out of) means "settle every orphan we find".
+      val requestedIds: Set[String] = corruption.collect {
+        case m: CorruptionEvidence.MissingToolResult => List(m.invokeId.value, m.callId)
+      }.flatten.filter(_.nonEmpty).toSet
+      val wildcardMatch = requestedIds.isEmpty || requestedIds.contains("*")
+
+      def identifiersOf(inv: ToolInvoke): Set[String] = {
+        val frameIds = inv.contextFrame.collect {
+          case tc: ContextFrame.ToolCall => Set(tc.callId.value) ++ tc.wireCallId.toSet
+        }.getOrElse(Set.empty)
+        Set(inv._id.value) ++ inv.callId.toSet ++ frameIds
+      }
 
       val targets: List[ToolInvoke] =
         if (wildcardMatch) orphanInvokes
-        else orphanInvokes.filter { inv =>
-          val wireMatch = inv.callId.exists(requestedCallIds.contains)
-          val invokeMatch = requestedCallIds.contains(inv._id.value)
-          wireMatch || invokeMatch
-        }
+        else orphanInvokes.filter(inv => identifiersOf(inv).exists(requestedIds.contains))
 
       if (targets.isEmpty) {
         // Nothing to settle — the corruption evidence didn't resolve
-        // to any persisted Active invoke. Either the heal already
+        // to any persisted orphan invoke. Either the heal already
         // ran (idempotent return) or the upstream's complaint
-        // doesn't match what we have.
+        // doesn't match what we have. A non-empty `remainingIssues`
+        // here signals a no-op heal to the framework, which treats it
+        // as a FAILED heal rather than publishing a misleading
+        // `ConversationHealed` with zero corrections (Sigil #314).
         Task.pure(HealResult(corrections = Nil, remainingIssues =
           if (corruption.isEmpty) Nil
-          else List(s"No Active ToolInvoke matched ${corruption.size} corruption row(s) for conversation ${convId.value}")
+          else List(s"No orphan ToolInvoke matched ${corruption.size} corruption row(s) for conversation ${convId.value}")
         ))
       } else {
         val marker = "[orphan tool call — no recorded result; settled by framework-heal]"

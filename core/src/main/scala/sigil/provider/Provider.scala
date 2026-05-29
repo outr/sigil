@@ -1598,7 +1598,12 @@ trait Provider extends Service {
               // so the post-walk invariant check surfaces it loudly.
               pendingToolCallIds.add(wireId)
               pendingOrphans.update(wireId, _root_.sigil.heal.CorruptionEvidence.MissingToolResult(
-                invokeId = tc.callId,
+                // `sourceEventId` is definitionally the durable
+                // `ToolInvoke` row id (Sigil #314) — use it for
+                // `invokeId` so the heal's id-based resolution lands
+                // on the real row regardless of how `callId` was
+                // historically populated.
+                invokeId = tc.sourceEventId,
                 callId   = wireId,
                 toolName = tc.toolName.value
               ))

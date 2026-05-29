@@ -6692,36 +6692,41 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
             }.handleError(_ => Task.unit)
             publishDetected.flatMap(_ => notify).map(_ => None)
           case sigil.heal.HealingMode.Recover =>
+            // Publish a terminal `HealingExhausted` event for this
+            // turn. Shared by the retry-also-failed path and the
+            // no-op-heal path (Sigil #314) — both are terminal "the
+            // heal couldn't recover this turn" outcomes that must
+            // fall through to the standard failure path.
+            val publishExhausted: Task[Unit] = withDB(_.conversations.transaction(_.get(convId))).flatMap {
+              case None       => Task.unit
+              case Some(conv) =>
+                conv.topics.headOption match {
+                  case None        => Task.unit
+                  case Some(topic) =>
+                    publish(sigil.event.HealingExhausted(
+                      conversationId = convId,
+                      topicId        = topic.id,
+                      correlationId  = correlation,
+                      strategyName   = strategy.name,
+                      retryError     = errorEvidence,
+                      participantId  = agent.id
+                    )).map(_ => ())
+                }
+            }.handleError(_ => Task.unit)
+            def notifyOutcome(outcome: sigil.heal.HealingOutcome): Task[Unit] = Task {
+              hub.emit(sigil.signal.HealingActivityNotice(
+                conversationId     = convId,
+                strategyName       = strategy.name,
+                detectedCorruption = evidence,
+                outcome            = outcome
+              ))
+              ()
+            }.handleError(_ => Task.unit)
             if (!healedThisTurn.compareAndSet(false, true)) {
               // We already healed this turn AND the retry failed.
               // Publish HealingExhausted + Exhausted notice and fall
               // through. NO second heal.
-              val publishExhausted: Task[Unit] = withDB(_.conversations.transaction(_.get(convId))).flatMap {
-                case None       => Task.unit
-                case Some(conv) =>
-                  conv.topics.headOption match {
-                    case None        => Task.unit
-                    case Some(topic) =>
-                      publish(sigil.event.HealingExhausted(
-                        conversationId = convId,
-                        topicId        = topic.id,
-                        correlationId  = correlation,
-                        strategyName   = strategy.name,
-                        retryError     = errorEvidence,
-                        participantId  = agent.id
-                      )).map(_ => ())
-                  }
-              }.handleError(_ => Task.unit)
-              val notify: Task[Unit] = Task {
-                hub.emit(sigil.signal.HealingActivityNotice(
-                  conversationId     = convId,
-                  strategyName       = strategy.name,
-                  detectedCorruption = evidence,
-                  outcome            = sigil.heal.HealingOutcome.Exhausted
-                ))
-                ()
-              }.handleError(_ => Task.unit)
-              publishExhausted.flatMap(_ => notify).map(_ => None)
+              publishExhausted.flatMap(_ => notifyOutcome(sigil.heal.HealingOutcome.Exhausted)).map(_ => None)
             } else {
               // First heal this turn — publish Detected, run strategy,
               // publish Healed + Healed notice, return retry task.
@@ -6734,16 +6739,6 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
                     remainingIssues = List(s"strategy.apply threw ${e.getClass.getSimpleName}: ${Option(e.getMessage).getOrElse("")}")
                   ))
                 }
-              val emitNotice: sigil.heal.HealResult => Task[Unit] = result => Task {
-                val _ = result
-                hub.emit(sigil.signal.HealingActivityNotice(
-                  conversationId     = convId,
-                  strategyName       = strategy.name,
-                  detectedCorruption = evidence,
-                  outcome            = sigil.heal.HealingOutcome.Healed
-                ))
-                ()
-              }.handleError(_ => Task.unit)
               val publishHealed: sigil.heal.HealResult => Task[Unit] = result =>
                 withDB(_.conversations.transaction(_.get(convId))).flatMap {
                   case None       => Task.unit
@@ -6783,9 +6778,34 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
               val pipeline: Task[Option[Task[Unit]]] = for {
                 _      <- publishDetected
                 result <- runStrategy
-                _      <- publishHealed(result)
-                _      <- emitNotice(result)
-              } yield Some(retryTask)
+                out    <- if (evidence.nonEmpty && result.corrections.isEmpty) {
+                            // Sigil #314 — no-op heal: the strategy
+                            // matched and ran but settled NOTHING
+                            // against non-empty corruption evidence.
+                            // Retrying would replay the identical
+                            // broken frames and exhaust on the second
+                            // pass — a heal masquerading as a fix.
+                            // Don't publish `ConversationHealed`;
+                            // mark the turn terminally exhausted, fire
+                            // a `Failed` notice, give back the turn's
+                            // allowance, and fall through to the
+                            // standard failure path so the user sees a
+                            // Failure bubble instead of a silent stall.
+                            scribe.error(
+                              s"heal[${strategy.name}] resolved ZERO corrections against ${evidence.size} " +
+                                s"corruption row(s) for ${agent.id.value}/${convId.value} — treating as a failed " +
+                                s"heal (no retry). remainingIssues=[${result.remainingIssues.mkString("; ")}]"
+                            )
+                            healedThisTurn.set(false)
+                            publishExhausted
+                              .flatMap(_ => notifyOutcome(sigil.heal.HealingOutcome.Failed))
+                              .map(_ => Option.empty[Task[Unit]])
+                          } else {
+                            publishHealed(result)
+                              .flatMap(_ => notifyOutcome(sigil.heal.HealingOutcome.Healed))
+                              .map(_ => Some(retryTask))
+                          }
+              } yield out
               pipeline
             }
         }
