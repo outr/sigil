@@ -1,7 +1,7 @@
 package sigil.tool
 
-import fabric.*
-import fabric.define.{DefType, Definition}
+import fabric.Json
+import fabric.define.Definition
 import fabric.io.{JsonFormatter, JsonParser}
 
 /**
@@ -26,65 +26,32 @@ import fabric.io.{JsonFormatter, JsonParser}
  * closest match from the offered roster by edit distance and folds in
  * that tool's schema + example so the agent's next iteration can call the
  * intended tool directly.
+ *
+ * Schema and example are read from `tool.wireSurface` — one source for
+ * both the wire shape the LLM sees and the example the refusal body
+ * shows the agent.
  */
 object RefusalPayload {
 
   /** Render the tool's input schema as pretty JSON for inline display. */
   def schemaJson(tool: Tool): String =
-    JsonFormatter.Default(DefinitionToSchema(tool.inputDefinition))
+    JsonFormatter.Default(tool.wireSurface.schema)
 
   /** Render a worked example invocation as JSON. Prefers an authored
     * example from [[Tool.examples]]; falls back to a synthesised
-    * placeholder example derived from the schema's required fields. */
-  def exampleJson(tool: Tool): String = {
-    val payload = tool.examples.headOption match {
-      case Some(ToolExample(_, input)) =>
-        // Tool.inputRW reads typed Input back to Json; the cast is safe
-        // because the example was authored against the tool's Input.
-        try tool.inputRW.read(input.asInstanceOf[tool.Input])
-        catch { case _: Throwable => synthesizeExample(tool.inputDefinition) }
-      case None =>
-        synthesizeExample(tool.inputDefinition)
-    }
-    JsonFormatter.Default(payload)
-  }
+    * placeholder example. */
+  def exampleJson(tool: Tool): String =
+    JsonFormatter.Default(tool.wireSurface.example)
 
   /** Build a synthetic example payload from a [[Definition]]. Picks one
     * placeholder value per primitive type, descends through objects,
     * arrays, and the first branch of polymorphic types. Strictly
     * best-effort: when the definition is `Json` or otherwise opaque, emits
-    * a stub object the agent can fill in. */
-  def synthesizeExample(definition: Definition): Json = synthesizeForType(definition.defType)
-
-  private def synthesizeForType(t: DefType): Json = t match {
-    case DefType.Str         => str("<string>")
-    case DefType.Int         => num(0)
-    case DefType.Dec         => num(0.0)
-    case DefType.Bool        => bool(true)
-    case DefType.Null        => Null
-    case DefType.Json        => obj()
-    case DefType.Arr(item)   => arr(synthesizeForType(item.defType))
-    case DefType.Opt(inner)  => synthesizeForType(inner.defType)
-    case DefType.Obj(fields) =>
-      Obj(fields.iterator.flatMap { case (k, d) =>
-        // Skip purely-optional fields in the synthesised example — the
-        // schema documents them; the example shows the minimal shape.
-        if (d.isOpt) None else Some(k -> synthesizeForType(d.defType))
-      }.toMap)
-    case DefType.Poly(values, _) =>
-      values.headOption match {
-        case Some((discValue, branchDef)) =>
-          val branchObj = synthesizeForType(branchDef.defType) match {
-            case Obj(map) => map
-            case other    => Map("value" -> other)
-          }
-          // `DefinitionToSchema.Discriminator` is the wire key the
-          // schema converter uses for polymorphic discrimination; the
-          // synthesised example follows the same convention.
-          Obj(branchObj.updated(DefinitionToSchema.Discriminator, str(discValue)))
-        case None => obj()
-      }
-  }
+    * a stub object the agent can fill in.
+    *
+    * Preserved for callers that have a `Definition` but no `Tool`. */
+  def synthesizeExample(definition: Definition): Json =
+    WireSurface.synthesizeExample(definition)
 
   /** Build a refusal failure that carries the schema + example alongside
     * the rule. `hint` is an optional extra line rendered between the rule
@@ -122,10 +89,6 @@ object RefusalPayload {
         "\n\nCall `find_capability` to discover the catalog, or call `respond` to tell the user what " +
           "you tried and what's missing."
     }
-    // Optional carrier tool — used by `record_consent`'s unknown-toolName
-    // branch to surface ITS OWN schema alongside the closest-match match,
-    // so the model sees both "here's how to call record_consent" and
-    // "here's the tool you may have meant".
     val carrierBlock = carrier match {
       case Some(t) =>
         s"\n\nSchema for `${t.name.value}` (the tool you called):\n${schemaJson(t)}\n\n" +
@@ -181,9 +144,7 @@ object RefusalPayload {
 
   /** Enrich an existing free-form rule (e.g. the
     * [[sigil.provider.ToolCallAccumulator]]'s validator-error string) by
-    * appending the tool's schema + example. Used by the orchestrator's
-    * `_provider_error` path so the agent reads the rejection alongside
-    * the shape it should have produced. */
+    * appending the tool's schema + example. */
   def enrichRule(tool: Tool, rule: String, sentArgs: Option[String] = None): String =
     buildBody(rule, tool, hint = None) + sentArgs.map(a => s"\n\nYou sent:\n$a").getOrElse("")
 

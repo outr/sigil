@@ -4,7 +4,7 @@ import fabric.rw.*
 import fabric.io.JsonParser
 import sigil.tool.core.RespondTool
 import sigil.tool.model.JsonStringFieldExtractor
-import sigil.tool.{InputNormalizer, RefusalPayload, Tool, ToolInput, ToolInputValidator}
+import sigil.tool.{DecodeError, RefusalPayload, Tool, ToolInput, WireSurface}
 
 import scala.collection.mutable
 
@@ -138,73 +138,48 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
     val completes = calls.values.toVector.flatMap { s =>
       toolsByName.get(s.toolName) match {
         case Some(tool) =>
-          try {
-            // Sigil #260 — a tool call that streamed no argument JSON
-            // leaves the buffer empty. A zero-parameter tool has
-            // nothing to emit, and Anthropic sends the `tool_use` with
-            // no `input_json_delta` events at all (OpenAI sends the
-            // literal `"{}"`, which is why it escaped this). An empty
-            // buffer parsed by `JsonParser` yields `Json.Null`, which
-            // cannot decode into the typed input — a no-args call has
-            // empty-OBJECT arguments, not null. Normalise it to `{}`.
-            // A tool that genuinely needed args still fails downstream
-            // at `inputRW.write` with an actionable "missing field"
-            // diagnostic rather than the opaque "Unsupported token:
-            // null".
-            val argsText = s.buf.toString
-            val rawJson  =
-              if (argsText.trim.isEmpty) fabric.Obj.empty
-              else JsonParser(argsText)
-            // Bug #58 — coerce `""` → `Null` for `Option[String]`
-            // fields before fabric's RW materialises the typed
-            // input. Without this, models that emit `""` as their
-            // schema-valid encoding of "no value" produce
-            // `Some("")` on the Scala side, defeating the natural
-            // `input.field.orElse(default)` idiom tool authors
-            // write against. Required string fields pass through
-            // unchanged — the coercion only applies to fields
-            // whose Definition is `Opt(Str)`.
-            val json = InputNormalizer.normalize(rawJson, tool.inputRW.definition)
-            val violations = ToolInputValidator.validate(json, tool.inputRW.definition)
-            if (violations.nonEmpty) {
-              // Every violation in ONE payload (the validator already
-              // collected them all) plus the tool's schema + worked
-              // example, so the agent sees everything it needs to
-              // retry correctly on the next iteration without burning
-              // round-trips discovering one mismatch at a time.
-              val rule = s"Args for tool ${s.toolName} violated schema constraints: ${violations.mkString("; ")}"
-              val sentArgs = Some(RefusalPayload.renderSentArgs(s.buf.toString))
+          // Sigil #260 — a tool call that streamed no argument JSON
+          // leaves the buffer empty. A zero-parameter tool has
+          // nothing to emit, and Anthropic sends the `tool_use` with
+          // no `input_json_delta` events at all (OpenAI sends the
+          // literal `"{}"`, which is why it escaped this). An empty
+          // buffer parsed by `JsonParser` yields `Json.Null`, which
+          // cannot decode into the typed input — a no-args call has
+          // empty-OBJECT arguments, not null. Normalise it to `{}`.
+          val argsText = s.buf.toString
+          val rawJsonOpt: Either[Throwable, fabric.Json] =
+            if (argsText.trim.isEmpty) Right(fabric.Obj.empty)
+            else
+              try Right(JsonParser(argsText))
+              catch { case t: Throwable => Left(t) }
+
+          rawJsonOpt match {
+            case Left(parseErr) =>
+              // JsonParser failed. Surface a typed diagnostic via the
+              // same enriched-rule path the violation flow uses.
+              val errorClass = parseErr.getClass.getSimpleName
+              val errorMessage = Option(parseErr.getMessage).filter(_.nonEmpty).getOrElse("(no message)")
+              val schemaSummary = ToolCallAccumulator.summarizeSchema(tool.inputRW.definition)
+              val rawSnippet = argsText.take(500)
+              val truncated = if (s.buf.length > 500) " (truncated)" else ""
+              val rule = s"Failed to parse args for tool ${s.toolName}: " +
+                s"$errorClass: $errorMessage. " +
+                s"Expected shape: $schemaSummary."
+              val sentArgs = Some(s"$rawSnippet$truncated")
               Vector(ProviderEvent.Error(RefusalPayload.enrichRule(tool, rule, sentArgs)))
-            } else {
-              val input: ToolInput = tool.inputRW.write(json)
-              Vector(ProviderEvent.ToolCallComplete(s.callId, input))
-            }
-          } catch {
-            case t: Throwable =>
-              // Sigil bug #171 — detect the "model emitted a JSON
-              // array when the schema requires an object" degenerate-
-              // args signature (the Kimi-K2.5 / DeepInfra failure
-              // mode where strict mode is silently ignored and the
-              // model emits N copies of a respond-shaped object as an
-              // array). Throw `ProviderStreamException` so the next
-              // attempt routes through `ProviderStrategy.errorClassifier`
-              // — symmetric with `emptyBudgetBurnThrows` for
-              // DigitalOcean's degenerate-output mode (bug #161).
-              //
-              // The detection is best-effort: re-parse the buffer; if
-              // the root is an Arr and the schema's root is an Obj,
-              // raise. Anything else falls through to the generic
-              // diagnostic below.
-              val degenerate: Boolean = try {
-                val reparsed = JsonParser(s.buf.toString)
-                val rootIsArr = reparsed.isArr
-                val schemaWantsObj = tool.inputRW.definition.defType match {
-                  case _: fabric.define.DefType.Obj => true
-                  case _                             => false
-                }
-                rootIsArr && schemaWantsObj
-              } catch { case _: Throwable => false }
-              if (degenerate) {
+
+            case Right(rawJson) =>
+              // Sigil bug #171 — detect "model emitted a JSON array when
+              // the schema requires an object" before invoking decode.
+              // Throw `ProviderStreamException` so the next attempt routes
+              // through `ProviderStrategy.errorClassifier`, symmetric with
+              // `emptyBudgetBurnThrows` for DigitalOcean's degenerate
+              // output mode (bug #161).
+              val schemaWantsObj = tool.inputRW.definition.defType match {
+                case _: fabric.define.DefType.Obj => true
+                case _                             => false
+              }
+              if (rawJson.isArr && schemaWantsObj) {
                 throw new ProviderStreamException(
                   providerKey = providerKey,
                   code = 200,
@@ -217,53 +192,42 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
                     "to a different candidate via ProviderStrategy."
                 )
               }
-              // Bug #72 — fabric's `RW.write` can throw with a JVM-
-              // internal anonymous-class name as `getMessage` (e.g.
-              // `sigil/script/UpdateScriptToolInput$$anon$3`) rather
-              // than a structured "field X expected Y" diagnostic.
-              // Pre-fix that opaque message was passed verbatim to
-              // the agent, which then had nothing actionable to do.
-              //
-              // Post-fix produces a three-part diagnostic:
-              //   1. exception class + message — categorizes the
-              //      failure even when the message itself is JVM-
-              //      internal.
-              //   2. schema shape summary — `required: [name, count]`
-              //      / `optional: [description]` so the agent can
-              //      compare its emitted JSON against the actual
-              //      expected shape. Especially useful for "agent
-              //      forgot a required field" (the most common
-              //      cause), which [[ToolInputValidator]] doesn't
-              //      catch by design (line 39: "missing-required is
-              //      the parser's job").
-              //   3. constraint-violation hint — when the validator
-              //      DOES find pattern/length/numeric issues that
-              //      fired alongside the fabric throw.
-              val errorClass = t.getClass.getSimpleName
-              val errorMessage = Option(t.getMessage).filter(_.nonEmpty).getOrElse("(no message)")
-              // Expected-shape summary names required + optional fields
-              // by type, so the agent can compare its emitted JSON
-              // against the actual expected shape. Especially useful
-              // for "agent forgot a required field" cases the validator
-              // doesn't catch by design (missing-required is the
-              // parser's job).
-              val schemaSummary = ToolCallAccumulator.summarizeSchema(tool.inputRW.definition)
-              val structuralHint =
-                try {
-                  val violations = ToolInputValidator.validate(JsonParser(s.buf.toString), tool.inputRW.definition)
-                  if (violations.isEmpty) ""
-                  else s". Constraint violations: ${violations.mkString("; ")}"
-                } catch { case _: Throwable => "" }
-              // Truncate the sent buffer at 500 chars so a pathologically-
-              // large payload doesn't blow up the agent's context budget
-              // on its way to the next iteration.
-              val rawSnippet = s.buf.toString.take(500)
-              val truncated = if (s.buf.length > 500) " (truncated)" else ""
-              val rule = s"Failed to parse args for tool ${s.toolName}: " +
-                s"$errorClass: $errorMessage$structuralHint. " +
-                s"Expected shape: $schemaSummary."
-              val sentArgs = Some(s"$rawSnippet$truncated")
-              Vector(ProviderEvent.Error(RefusalPayload.enrichRule(tool, rule, sentArgs)))
+
+              // Sigil #277 phase — decode through the consolidated
+              // `WireSurface[Input]`. The surface runs normalize →
+              // validate → materialise in one pass, collects every
+              // violation, and the resulting `DecodeError.render`
+              // string is what the agent reads in the enriched
+              // refusal body. The validator's multi-field surfacing
+              // (one round-trip, every failed field shown) is what
+              // closes the historical "agent fumbles one field per
+              // turn" loop.
+              tool.wireSurface.decode(rawJson) match {
+                case Right(input: ToolInput @unchecked) =>
+                  Vector(ProviderEvent.ToolCallComplete(s.callId, input))
+                case Left(error: DecodeError) =>
+                  // When the validator pre-pass found no field-scoped
+                  // constraint violations and the failure is purely a
+                  // materialise-throw (type-shape mismatch, missing
+                  // required field — those don't fire on the constraints
+                  // walker), keep the historical "Failed to parse args"
+                  // phrasing the agent loop recognises. Mixed cases
+                  // (any field-scoped constraint violation present)
+                  // route through the "violated schema constraints"
+                  // path the multi-violation refusal expects.
+                  val rawSnippet = argsText.take(500)
+                  val truncated = if (argsText.length > 500) " (truncated)" else ""
+                  val pureMaterialise = error.violations.forall(_.path.isEmpty)
+                  val rule =
+                    if (pureMaterialise)
+                      s"Failed to parse args for tool ${s.toolName}: ${error.render}."
+                    else
+                      s"Args for tool ${s.toolName} violated schema constraints: ${error.render}"
+                  val sentArgs =
+                    if (pureMaterialise) Some(s"$rawSnippet$truncated")
+                    else Some(RefusalPayload.renderSentArgs(argsText))
+                  Vector(ProviderEvent.Error(RefusalPayload.enrichRule(tool, rule, sentArgs)))
+              }
           }
         case None =>
           // Sigil #271 — don't short-circuit with a ProviderEvent.Error.

@@ -462,6 +462,16 @@ trait Tool extends RecordDocument[Tool] {
     examples = examples,
     output = outputDefinition
   )
+
+  /** Consolidated wire-surface derivation — single source for the schema
+    * the LLM sees, the example payload refusals show, the pre-decode
+    * coercion normalisation pass, and the end-to-end decode.
+    *
+    * Default builds the surface from [[inputDefinition]], [[inputRW]],
+    * and [[examples]]; tools with custom derivation needs (an inputDefinition
+    * that's dynamic per call, for instance) override to plug in a
+    * specialised one. */
+  lazy val wireSurface: WireSurface[Input] = WireSurface.fromTool(this)
 }
 
 object Tool extends PolyType[Tool]()(using scala.reflect.ClassTag(classOf[Tool])) with RecordDocumentModel[Tool] with JsonConversion[Tool] {
