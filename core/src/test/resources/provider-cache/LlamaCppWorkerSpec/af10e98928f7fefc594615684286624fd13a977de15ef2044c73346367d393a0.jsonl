@@ -1,0 +1,90 @@
+{"requestHash":"af10e98928f7fefc594615684286624fd13a977de15ef2044c73346367d393a0","recordedAt":1780095805019}
+{"text":"The","type":"ProviderEvent.ThinkingDelta"}
+{"text":" user","type":"ProviderEvent.ThinkingDelta"}
+{"text":" wants","type":"ProviderEvent.ThinkingDelta"}
+{"text":" me","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" spawn","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" child","type":"ProviderEvent.ThinkingDelta"}
+{"text":" worker","type":"ProviderEvent.ThinkingDelta"}
+{"text":" that","type":"ProviderEvent.ThinkingDelta"}
+{"text":" finishes","type":"ProviderEvent.ThinkingDelta"}
+{"text":" immediately","type":"ProviderEvent.ThinkingDelta"}
+{"text":",","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":17,"totalTokens":17,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" and","type":"ProviderEvent.ThinkingDelta"}
+{"text":" then","type":"ProviderEvent.ThinkingDelta"}
+{"text":" complete","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" task","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Based","type":"ProviderEvent.ThinkingDelta"}
+{"text":" on","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" tool","type":"ProviderEvent.ThinkingDelta"}
+{"text":" results","type":"ProviderEvent.ThinkingDelta"}
+{"text":",","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":30,"totalTokens":30,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" child","type":"ProviderEvent.ThinkingDelta"}
+{"text":" worker","type":"ProviderEvent.ThinkingDelta"}
+{"text":" has","type":"ProviderEvent.ThinkingDelta"}
+{"text":" been","type":"ProviderEvent.ThinkingDelta"}
+{"text":" spawned","type":"ProviderEvent.ThinkingDelta"}
+{"text":" successfully","type":"ProviderEvent.ThinkingDelta"}
+{"text":" with","type":"ProviderEvent.ThinkingDelta"}
+{"text":" taskId","type":"ProviderEvent.ThinkingDelta"}
+{"text":" \"","type":"ProviderEvent.ThinkingDelta"}
+{"text":"ux","type":"ProviderEvent.ThinkingDelta"}
+{"text":"iu","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":47,"totalTokens":47,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"K","type":"ProviderEvent.ThinkingDelta"}
+{"text":"9","type":"ProviderEvent.ThinkingDelta"}
+{"text":"Hay","type":"ProviderEvent.ThinkingDelta"}
+{"text":"d","type":"ProviderEvent.ThinkingDelta"}
+{"text":"hi","type":"ProviderEvent.ThinkingDelta"}
+{"text":"5","type":"ProviderEvent.ThinkingDelta"}
+{"text":"4","type":"ProviderEvent.ThinkingDelta"}
+{"text":"l","type":"ProviderEvent.ThinkingDelta"}
+{"text":"E","type":"ProviderEvent.ThinkingDelta"}
+{"text":"2","type":"ProviderEvent.ThinkingDelta"}
+{"text":"4","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":50,"totalTokens":50,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"3","type":"ProviderEvent.ThinkingDelta"}
+{"text":"yo","type":"ProviderEvent.ThinkingDelta"}
+{"text":"Gia","type":"ProviderEvent.ThinkingDelta"}
+{"text":"N","type":"ProviderEvent.ThinkingDelta"}
+{"text":"ld","type":"ProviderEvent.ThinkingDelta"}
+{"text":"om","type":"ProviderEvent.ThinkingDelta"}
+{"text":"QQ","type":"ProviderEvent.ThinkingDelta"}
+{"text":"E","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\".","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\nNow","type":"ProviderEvent.ThinkingDelta"}
+{"text":" I","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":56,"totalTokens":56,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" need","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" emit","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" confirmation","type":"ProviderEvent.ThinkingDelta"}
+{"text":" that","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":65,"totalTokens":65,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" child","type":"ProviderEvent.ThinkingDelta"}
+{"text":" was","type":"ProviderEvent.ThinkingDelta"}
+{"text":" spawned","type":"ProviderEvent.ThinkingDelta"}
+{"text":",","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":70,"totalTokens":70,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" and","type":"ProviderEvent.ThinkingDelta"}
+{"text":" then","type":"ProviderEvent.ThinkingDelta"}
+{"text":" complete","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" task","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"callId":"04b65f036","toolName":"complete_task","type":"ProviderEvent.ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":77,"totalTokens":77,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"04b65f036","input":{"summary":"Spawned child-worker successfully with taskId uxiuK9Haydhi54lE243yoGiaNldomQQE as requested, child completed immediately, task finished.","type":"CompleteTaskInput"},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":1434,"completionTokens":144,"totalTokens":1578,"isEstimated":false,"cacheReadTokens":920,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

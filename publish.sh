@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 
-set -e
-
-sbt clean
-sbt compile
-sbt test
+set -euo pipefail
+./test-all.sh || { echo "tests failed — aborting publish" >&2; exit 1; }
 sbt publish

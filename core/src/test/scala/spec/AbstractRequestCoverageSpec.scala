@@ -82,7 +82,8 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
     GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0))
 
   protected def baseRequest(input: TurnInput,
-                            generationSettings: GenerationSettings = defaultGenerationSettings): ProviderRequest =
+                            generationSettings: GenerationSettings = defaultGenerationSettings,
+                            extraTools: Vector[sigil.tool.Tool] = Vector.empty): ProviderRequest =
     ConversationRequest(
       conversationId = conversationId,
       model = TestSigil.testModel(modelId),
@@ -91,13 +92,16 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
       currentMode = ConversationMode,
       currentTopic = TestTopicEntry,
       generationSettings = generationSettings,
-      tools = CoreTools.all,
+      // extraTools lets a test offer a tool whose presence the prompt
+      // sections are filtered against (#299).
+      tools = CoreTools.all ++ extraTools,
       chain = List(TestUser, TestAgent)
     )
 
   protected def bodyOf(input: TurnInput,
-                       generationSettings: GenerationSettings = defaultGenerationSettings): String =
-    providerInstance.requestConverter(baseRequest(input, generationSettings)).sync().content match {
+                       generationSettings: GenerationSettings = defaultGenerationSettings,
+                       extraTools: Vector[sigil.tool.Tool] = Vector.empty): String =
+    providerInstance.requestConverter(baseRequest(input, generationSettings, extraTools)).sync().content match {
       case Some(c: spice.http.content.StringContent) => c.value
       case _ => ""
     }
@@ -242,9 +246,13 @@ trait AbstractRequestCoverageSpec extends AnyWordSpec with Matchers {
 
     "include per-participant suggestedTools (from projections) in the wire body" in {
       val proj = sigil.conversation.ParticipantProjection.empty(TestAgent, conversationId)
-        .copy(suggestedTools = List(ToolName("SUGGESTED_TOOL_42")))
+        .copy(suggestedTools = List(GetMagicNumberTool.name))
       val turn = emptyTurnInput.copy(participantProjections = Map(TestAgent -> proj))
-      bodyOf(turn) should include("SUGGESTED_TOOL_42")
+      val body = bodyOf(turn, extraTools = Vector(GetMagicNumberTool))
+      // The header renders only when a suggestion survives the #299
+      // wire-roster filter — proves the section, not just roster presence.
+      body should include("== Suggested tools ==")
+      body should include(GetMagicNumberTool.name.value)
     }
 
     "include conversation-wide extraContext (from turn input) in the wire body" in {

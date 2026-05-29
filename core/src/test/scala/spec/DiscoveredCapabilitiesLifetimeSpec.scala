@@ -17,6 +17,7 @@ import sigil.provider.llamacpp.LlamaCppProvider
 import sigil.signal.EventState
 import sigil.tool.ToolName
 import sigil.tool.core.{CoreTools, FindCapabilityTool, RespondTool}
+import sigil.tool.util.{LookupTool, SleepTool}
 import sigil.tool.discovery.{CapabilityMatch, CapabilityStatus, CapabilityType}
 import sigil.tool.model.{RespondInput, ResponseDisposition}
 import sigil.event.Event
@@ -36,10 +37,9 @@ class DiscoveredCapabilitiesLifetimeSpec extends AsyncWordSpec with AsyncTaskSpe
 
   private val modelId: Id[Model] = Model.id("test", "lifetime-model")
 
-  /** Build a `ConversationRequest` for renderer coverage that pins
-    * `discoveredCapabilities` to a known map. The renderer emits the
-    * "Capabilities you've already discovered" section from this
-    * field. */
+  /** The roster includes `sleep`/`lookup` because the renderer filters
+    * the discovered-capabilities section to tools actually offered this
+    * turn (#299), and both are registered in [[TestSigil]]. */
   private def requestWith(discovered: Map[String, DiscoveredCapability]): ConversationRequest =
     ConversationRequest(
       conversationId         = Conversation.id("disc-cap-lifetime"),
@@ -50,7 +50,7 @@ class DiscoveredCapabilitiesLifetimeSpec extends AsyncWordSpec with AsyncTaskSpe
       currentTopic           = TestTopicEntry,
       previousTopics         = Nil,
       generationSettings     = GenerationSettings(maxOutputTokens = Some(50), temperature = Some(0.0)),
-      tools                  = CoreTools.all,
+      tools                  = CoreTools.all ++ Vector(SleepTool, LookupTool),
       chain                  = List(TestUser, TestAgent),
       discoveredCapabilities = discovered
     )
@@ -89,16 +89,14 @@ class DiscoveredCapabilitiesLifetimeSpec extends AsyncWordSpec with AsyncTaskSpe
       val convId = Conversation.id(s"disc-cap-populated-${rapid.Unique()}")
       for {
         ctx <- buildCtx(convId)
-        _ = ctx.recordDiscovery("view file source contents read", List(ToolName("read_file"), ToolName("grep")))
-        // Same loop, subsequent iteration — the request builder reads
-        // the cache snapshot via `TurnContext.discoveredCapabilities`.
+        _ = ctx.recordDiscovery("sleep wait delay timer", List(ToolName("sleep"), ToolName("lookup")))
         req = requestWith(ctx.discoveredCapabilities)
         body <- renderSystem(req)
       } yield {
-        ctx.discoveredCapabilities.keySet should contain("view file source contents read")
+        ctx.discoveredCapabilities.keySet should contain("sleep wait delay timer")
         body should include("Capabilities you've already discovered")
-        body should include("read_file")
-        body should include("grep")
+        body should include("sleep")
+        body should include("lookup")
       }
     }
 

@@ -1,0 +1,15 @@
+{"requestHash":"e05df5d06232935908d6ee3428af3a7302d114e219e61ef819f368fbf61b6f20","recordedAt":1780085110089}
+{"callId":"19907faa3","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"callId":"19907faa3","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"19907faa3","text":"Not","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"19907faa3","text":"ed","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"19907faa3","text":",","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"19907faa3","text":" blue","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"19907faa3","text":" is","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"19907faa3","text":" your","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"19907faa3","text":" favorite","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"19907faa3","text":" color","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"19907faa3","text":".","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"19907faa3","input":{"topicLabel":"Color preference","topicSummary":"User stated their favorite color is blue.","content":"Noted, blue is your favorite color.","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":["color","blue","preference"],"type":"RespondInput"},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4848,"completionTokens":115,"totalTokens":4963,"isEstimated":false,"cacheReadTokens":4823,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

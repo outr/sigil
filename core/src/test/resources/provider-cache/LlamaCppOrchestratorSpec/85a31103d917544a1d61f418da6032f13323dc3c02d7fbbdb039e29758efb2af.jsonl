@@ -1,0 +1,130 @@
+{"requestHash":"85a31103d917544a1d61f418da6032f13323dc3c02d7fbbdb039e29758efb2af","recordedAt":1780085083408}
+{"text":"The","type":"ProviderEvent.ThinkingDelta"}
+{"text":" user","type":"ProviderEvent.ThinkingDelta"}
+{"text":" wants","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" start","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" multi","type":"ProviderEvent.ThinkingDelta"}
+{"text":"-step","type":"ProviderEvent.ThinkingDelta"}
+{"text":" coding","type":"ProviderEvent.ThinkingDelta"}
+{"text":" session","type":"ProviderEvent.ThinkingDelta"}
+{"text":" on","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Scala","type":"ProviderEvent.ThinkingDelta"}
+{"text":" project","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":" They","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":19,"totalTokens":19,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"'re","type":"ProviderEvent.ThinkingDelta"}
+{"text":" asking","type":"ProviderEvent.ThinkingDelta"}
+{"text":" me","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" switch","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" right","type":"ProviderEvent.ThinkingDelta"}
+{"text":" mode","type":"ProviderEvent.ThinkingDelta"}
+{"text":" for","type":"ProviderEvent.ThinkingDelta"}
+{"text":" coding","type":"ProviderEvent.ThinkingDelta"}
+{"text":" work","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n\n","type":"ProviderEvent.ThinkingDelta"}
+{"text":"Looking","type":"ProviderEvent.ThinkingDelta"}
+{"text":" at","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":36,"totalTokens":36,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" available","type":"ProviderEvent.ThinkingDelta"}
+{"text":" modes","type":"ProviderEvent.ThinkingDelta"}
+{"text":" from","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" change","type":"ProviderEvent.ThinkingDelta"}
+{"text":"_mode","type":"ProviderEvent.ThinkingDelta"}
+{"text":" description","type":"ProviderEvent.ThinkingDelta"}
+{"text":":","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n","type":"ProviderEvent.ThinkingDelta"}
+{"text":"-","type":"ProviderEvent.ThinkingDelta"}
+{"text":" coding","type":"ProviderEvent.ThinkingDelta"}
+{"text":" \u2014","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Test","type":"ProviderEvent.ThinkingDelta"}
+{"text":" coding","type":"ProviderEvent.ThinkingDelta"}
+{"text":" mode","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":57,"totalTokens":57,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" \u2014","type":"ProviderEvent.ThinkingDelta"}
+{"text":" code","type":"ProviderEvent.ThinkingDelta"}
+{"text":" generation","type":"ProviderEvent.ThinkingDelta"}
+{"text":",","type":"ProviderEvent.ThinkingDelta"}
+{"text":" editing","type":"ProviderEvent.ThinkingDelta"}
+{"text":",","type":"ProviderEvent.ThinkingDelta"}
+{"text":" review","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n","type":"ProviderEvent.ThinkingDelta"}
+{"text":"-","type":"ProviderEvent.ThinkingDelta"}
+{"text":" skilled","type":"ProviderEvent.ThinkingDelta"}
+{"text":" \u2014","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Test","type":"ProviderEvent.ThinkingDelta"}
+{"text":" mode","type":"ProviderEvent.ThinkingDelta"}
+{"text":" carrying","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":74,"totalTokens":74,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" skill","type":"ProviderEvent.ThinkingDelta"}
+{"text":" slot","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n","type":"ProviderEvent.ThinkingDelta"}
+{"text":"-","type":"ProviderEvent.ThinkingDelta"}
+{"text":" web","type":"ProviderEvent.ThinkingDelta"}
+{"text":"-re","type":"ProviderEvent.ThinkingDelta"}
+{"text":"search","type":"ProviderEvent.ThinkingDelta"}
+{"text":" \u2014","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Mode","type":"ProviderEvent.ThinkingDelta"}
+{"text":" for","type":"ProviderEvent.ThinkingDelta"}
+{"text":" web","type":"ProviderEvent.ThinkingDelta"}
+{"text":" research","type":"ProviderEvent.ThinkingDelta"}
+{"text":" scenarios","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":90,"totalTokens":90,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"-","type":"ProviderEvent.ThinkingDelta"}
+{"text":" alpha","type":"ProviderEvent.ThinkingDelta"}
+{"text":" \u2014","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Test","type":"ProviderEvent.ThinkingDelta"}
+{"text":" mode","type":"ProviderEvent.ThinkingDelta"}
+{"text":" for","type":"ProviderEvent.ThinkingDelta"}
+{"text":" serialization","type":"ProviderEvent.ThinkingDelta"}
+{"text":" coverage","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n\n","type":"ProviderEvent.ThinkingDelta"}
+{"text":"Since","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" user","type":"ProviderEvent.ThinkingDelta"}
+{"text":" wants","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" do","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":108,"totalTokens":108,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" coding","type":"ProviderEvent.ThinkingDelta"}
+{"text":" work","type":"ProviderEvent.ThinkingDelta"}
+{"text":" (","type":"ProviderEvent.ThinkingDelta"}
+{"text":"iter","type":"ProviderEvent.ThinkingDelta"}
+{"text":"ating","type":"ProviderEvent.ThinkingDelta"}
+{"text":" on","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" Scala","type":"ProviderEvent.ThinkingDelta"}
+{"text":" library","type":"ProviderEvent.ThinkingDelta"}
+{"text":"),","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" \"","type":"ProviderEvent.ThinkingDelta"}
+{"text":"coding","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\"","type":"ProviderEvent.ThinkingDelta"}
+{"text":" mode","type":"ProviderEvent.ThinkingDelta"}
+{"text":" is","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":125,"totalTokens":125,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" right","type":"ProviderEvent.ThinkingDelta"}
+{"text":" fit","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n","type":"ProviderEvent.ThinkingDelta"}
+{"callId":"a130eabf2","toolName":"change_mode","type":"ProviderEvent.ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":129,"totalTokens":129,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"a130eabf2","input":{"mode":"coding","reason":"User wants to iterate on a Scala library over multiple turns \u2014 coding mode is the right fit for code generation, editing, and review.","type":"ChangeModeInput"},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":5121,"completionTokens":184,"totalTokens":5305,"isEstimated":false,"cacheReadTokens":5069,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

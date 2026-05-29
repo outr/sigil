@@ -1,0 +1,7 @@
+{"requestHash":"805f4004701ffc7ecebfe38f73a5019a01b448d6a1d92a62027d4d7802ed72c5","recordedAt":1780085124868}
+{"callId":"070d4f0cb","toolName":"respond","type":"ProviderEvent.ToolCallStart"}
+{"callId":"070d4f0cb","blockType":"Markdown","arg":null,"type":"ProviderEvent.ContentBlockStart"}
+{"callId":"070d4f0cb","text":"one","type":"ProviderEvent.ContentBlockDelta"}
+{"callId":"070d4f0cb","input":{"topicLabel":"Simple word reply","topicSummary":"User asked for a single word response.","content":"one","disposition":"ResponseDisposition.Success","endsTurn":true,"keywords":["simple","word","reply"],"type":"RespondInput"},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":4843,"completionTokens":107,"totalTokens":4950,"isEstimated":false,"cacheReadTokens":4823,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

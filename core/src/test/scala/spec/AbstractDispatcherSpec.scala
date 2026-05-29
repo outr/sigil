@@ -8,7 +8,7 @@ import sigil.conversation.Conversation
 import sigil.db.Model
 import sigil.event.{AgentState, Event, Message, ModeChange, Stop, ToolInvoke}
 import sigil.participant.{AgentParticipant, AgentParticipantId, DefaultAgentParticipant}
-import sigil.provider.{GenerationSettings, Instructions, Mode, ConversationMode, Provider, ReasoningMode}
+import sigil.provider.{GenerationSettings, Instructions, Mode, ConversationMode, Provider, ReasoningMode, ToolPolicy}
 import sigil.signal.{AgentActivity, AgentStateDelta, Delta, EventState, MessageDelta, Signal, ToolDelta}
 import sigil.tool.{Tool, ToolInput, ToolName}
 import sigil.tool.core.{ChangeModeTool, CoreTools}
@@ -384,24 +384,36 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       }
     }
 
-    "decay suggestedTools when the agent doesn't use them within one turn" in {
-      // Seed the view with a suggestion manually — simulates the state right
-      // after a ToolResults update, without having to coax an LLM through the
-      // full discovery flow. Then publish a trivial user message and assert
-      // that after the agent's turn, the suggestion is gone.
+    "preserve suggestedTools across a turn that doesn't re-discover (#301)" in {
+      // #301 — suggestedTools are NOT cleared at turn end; a discovered
+      // roster persists across turns and is replaced only by the next
+      // find_capability. The agent runs with ToolPolicy.None so no
+      // find_capability is offered, leaving the seeded suggestion intact
+      // after a plain respond turn.
       val recorder = setUp()
-      val conversationId = Conversation.id("dispatcher-suggested-decay")
+      val conversationId = Conversation.id("dispatcher-suggested-persist")
+      val agent = DefaultAgentParticipant(
+        id = TestAgent,
+        modelId = modelId,
+        toolNames = CoreTools.coreToolNames,
+        tools = ToolPolicy.None,
+        instructions = Instructions(),
+        generationSettings = GenerationSettings(
+          maxOutputTokens = Some(200), temperature = Some(0.0), reasoningMode = ReasoningMode.Off
+        )
+      )
       val userMessage = Message(
         participantId = TestUser,
         conversationId = conversationId,
         topicId = TestTopicId,
-        content = Vector(ResponseContent.Text("Just respond with 'hi' — no other tools needed.")),
+        content = Vector(ResponseContent.Text("Just respond with 'hi'.")),
         state = EventState.Complete
       )
 
       val task = for {
-        _ <- upsertConversationWithAgent(conversationId, CoreTools.coreToolNames)
-        // Seed a stale suggestion that the agent should ignore.
+        _ <- TestSigil.withDB(_.conversations.transaction(_.upsert(
+          Conversation(topics = TestTopicStack, _id = conversationId, participants = List(agent))
+        )))
         _ <- TestSigil.updateProjection(conversationId, TestAgent)(
           _.copy(suggestedTools = List(ToolName("sleep")))
         )
@@ -412,11 +424,8 @@ trait AbstractDispatcherSpec extends AsyncWordSpec with AsyncTaskSpec with Match
       } yield (before, after)
 
       task.map { case (before, after) =>
-        // Sanity: suggestion was actually present before the turn ran.
         before.suggestedTools shouldBe List(ToolName("sleep"))
-        // After an agent turn that didn't trigger a new find_capability,
-        // the stale suggestion is cleared.
-        after.suggestedTools shouldBe empty
+        after.suggestedTools should contain(ToolName("sleep"))
       }
     }
 

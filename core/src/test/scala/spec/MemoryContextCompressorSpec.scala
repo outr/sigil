@@ -35,7 +35,9 @@ class MemoryContextCompressorSpec extends AsyncWordSpec with AsyncTaskSpec with 
     huggingFaceId = "",
     name = "Test Model",
     description = "",
-    contextLength = 1000L,
+    // Must exceed the extraction request's system prompt + schema, or
+    // the provider's pre-flight budget gate rejects it before the stub.
+    contextLength = 32000L,
     architecture = ModelArchitecture(
       modality = "text->text",
       inputModalities = List("text"),
@@ -44,7 +46,7 @@ class MemoryContextCompressorSpec extends AsyncWordSpec with AsyncTaskSpec with 
       instructType = None
     ),
     pricing = ModelPricing(prompt = BigDecimal(0), completion = BigDecimal(0), webSearch = None, inputCacheRead = None),
-    topProvider = ModelTopProvider(contextLength = Some(1000L), maxCompletionTokens = None, isModerated = false),
+    topProvider = ModelTopProvider(contextLength = Some(32000L), maxCompletionTokens = None, isModerated = false),
     perRequestLimits = None,
     supportedParameters = Set.empty,
     knowledgeCutoff = None,

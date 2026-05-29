@@ -47,7 +47,7 @@ class LlamaCppWorkerSpec extends AsyncWordSpec with AsyncTaskSpec with Matchers 
   override implicit protected val testTimeout: FiniteDuration = 5.minutes
 
   private val convId = Conversation.id("worker-llamacpp-conv")
-  private val modelId = Model.id("qwen3.5-9b-q4_k_m")
+  private val modelId = LiveLlamaModel.resolve(TestWorkflowSigil, TestSigil.llamaCppHost)
 
   /** Schedule + wait for terminal status, then return the settled run. */
   private def runWorker(role: Role, brief: String): Task[Workflow] = {

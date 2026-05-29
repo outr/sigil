@@ -1,0 +1,2123 @@
+{"requestHash":"29c5b3017f8ca29734076cc9b22582eb46cff1a704057bf79f00a73510cc2dcd","recordedAt":1780088557638}
+{"text":"The","type":"ProviderEvent.ThinkingDelta"}
+{"text":" user","type":"ProviderEvent.ThinkingDelta"}
+{"text":" wants","type":"ProviderEvent.ThinkingDelta"}
+{"text":" me","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" reply","type":"ProviderEvent.ThinkingDelta"}
+{"text":" with","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" specific","type":"ProviderEvent.ThinkingDelta"}
+{"text":" string","type":"ProviderEvent.ThinkingDelta"}
+{"text":" and","type":"ProviderEvent.ThinkingDelta"}
+{"text":" nothing","type":"ProviderEvent.ThinkingDelta"}
+{"text":" else","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n","type":"ProviderEvent.ThinkingDelta"}
+{"text":"There","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":18,"totalTokens":18,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" is","type":"ProviderEvent.ThinkingDelta"}
+{"text":" no","type":"ProviderEvent.ThinkingDelta"}
+{"text":" complex","type":"ProviderEvent.ThinkingDelta"}
+{"text":" task","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" perform","type":"ProviderEvent.ThinkingDelta"}
+{"text":" here","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n","type":"ProviderEvent.ThinkingDelta"}
+{"text":"The","type":"ProviderEvent.ThinkingDelta"}
+{"text":" user","type":"ProviderEvent.ThinkingDelta"}
+{"text":" instructed","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" reply","type":"ProviderEvent.ThinkingDelta"}
+{"text":" with","type":"ProviderEvent.ThinkingDelta"}
+{"text":" `","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":36,"totalTokens":36,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"Complete","type":"ProviderEvent.ThinkingDelta"}
+{"text":":","type":"ProviderEvent.ThinkingDelta"}
+{"text":" settled","type":"ProviderEvent.ThinkingDelta"}
+{"text":"-v","type":"ProviderEvent.ThinkingDelta"}
+{"text":"ia","type":"ProviderEvent.ThinkingDelta"}
+{"text":"-worker","type":"ProviderEvent.ThinkingDelta"}
+{"text":"`","type":"ProviderEvent.ThinkingDelta"}
+{"text":" and","type":"ProviderEvent.ThinkingDelta"}
+{"text":" nothing","type":"ProviderEvent.ThinkingDelta"}
+{"text":" else","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n","type":"ProviderEvent.ThinkingDelta"}
+{"text":"I","type":"ProviderEvent.ThinkingDelta"}
+{"text":" will","type":"ProviderEvent.ThinkingDelta"}
+{"text":" follow","type":"ProviderEvent.ThinkingDelta"}
+{"text":" this","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":52,"totalTokens":52,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" instruction","type":"ProviderEvent.ThinkingDelta"}
+{"text":" exactly","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n","type":"ProviderEvent.ThinkingDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":70,"totalTokens":70,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":" I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" followed","type":"ProviderEvent.TextDelta"}
+{"text":" your","type":"ProviderEvent.TextDelta"}
+{"text":" instruction","type":"ProviderEvent.TextDelta"}
+{"text":" to","type":"ProviderEvent.TextDelta"}
+{"text":" reply","type":"ProviderEvent.TextDelta"}
+{"text":" with","type":"ProviderEvent.TextDelta"}
+{"text":" `","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":90,"totalTokens":90,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"`","type":"ProviderEvent.TextDelta"}
+{"text":" and","type":"ProviderEvent.TextDelta"}
+{"text":" nothing","type":"ProviderEvent.TextDelta"}
+{"text":" else","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":" If","type":"ProviderEvent.TextDelta"}
+{"text":" you","type":"ProviderEvent.TextDelta"}
+{"text":" need","type":"ProviderEvent.TextDelta"}
+{"text":" further","type":"ProviderEvent.TextDelta"}
+{"text":" assistance","type":"ProviderEvent.TextDelta"}
+{"text":",","type":"ProviderEvent.TextDelta"}
+{"text":" feel","type":"ProviderEvent.TextDelta"}
+{"text":" free","type":"ProviderEvent.TextDelta"}
+{"text":" to","type":"ProviderEvent.TextDelta"}
+{"text":" ask","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":109,"totalTokens":109,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":" Have","type":"ProviderEvent.TextDelta"}
+{"text":" a","type":"ProviderEvent.TextDelta"}
+{"text":" great","type":"ProviderEvent.TextDelta"}
+{"text":" day","type":"ProviderEvent.TextDelta"}
+{"text":"!","type":"ProviderEvent.TextDelta"}
+{"text":" \uD83C\uDF1F","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Wait","type":"ProviderEvent.TextDelta"}
+{"text":",","type":"ProviderEvent.TextDelta"}
+{"text":" let","type":"ProviderEvent.TextDelta"}
+{"text":" me","type":"ProviderEvent.TextDelta"}
+{"text":" double","type":"ProviderEvent.TextDelta"}
+{"text":"-check","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":121,"totalTokens":121,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" instructions","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" \"","type":"ProviderEvent.TextDelta"}
+{"text":"Reply","type":"ProviderEvent.TextDelta"}
+{"text":" with","type":"ProviderEvent.TextDelta"}
+{"text":" `","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"`","type":"ProviderEvent.TextDelta"}
+{"text":" and","type":"ProviderEvent.TextDelta"}
+{"text":" nothing","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":139,"totalTokens":139,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" else","type":"ProviderEvent.TextDelta"}
+{"text":".\"","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" should","type":"ProviderEvent.TextDelta"}
+{"text":" just","type":"ProviderEvent.TextDelta"}
+{"text":" output","type":"ProviderEvent.TextDelta"}
+{"text":" that","type":"ProviderEvent.TextDelta"}
+{"text":" exact","type":"ProviderEvent.TextDelta"}
+{"text":" string","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":" No","type":"ProviderEvent.TextDelta"}
+{"text":" extra","type":"ProviderEvent.TextDelta"}
+{"text":" words","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":156,"totalTokens":156,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"The","type":"ProviderEvent.TextDelta"}
+{"text":" user","type":"ProviderEvent.TextDelta"}
+{"text":"'s","type":"ProviderEvent.TextDelta"}
+{"text":" request","type":"ProviderEvent.TextDelta"}
+{"text":" is","type":"ProviderEvent.TextDelta"}
+{"text":" clear","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" \"","type":"ProviderEvent.TextDelta"}
+{"text":"Reply","type":"ProviderEvent.TextDelta"}
+{"text":" with","type":"ProviderEvent.TextDelta"}
+{"text":" `","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":171,"totalTokens":171,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"`","type":"ProviderEvent.TextDelta"}
+{"text":" and","type":"ProviderEvent.TextDelta"}
+{"text":" nothing","type":"ProviderEvent.TextDelta"}
+{"text":" else","type":"ProviderEvent.TextDelta"}
+{"text":".\"","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"So","type":"ProviderEvent.TextDelta"}
+{"text":",","type":"ProviderEvent.TextDelta"}
+{"text":" I","type":"ProviderEvent.TextDelta"}
+{"text":" will","type":"ProviderEvent.TextDelta"}
+{"text":" output","type":"ProviderEvent.TextDelta"}
+{"text":" only","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":"\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":187,"totalTokens":187,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"This","type":"ProviderEvent.TextDelta"}
+{"text":" matches","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" tool","type":"ProviderEvent.TextDelta"}
+{"text":"'s","type":"ProviderEvent.TextDelta"}
+{"text":" `","type":"ProviderEvent.TextDelta"}
+{"text":"complete","type":"ProviderEvent.TextDelta"}
+{"text":"_task","type":"ProviderEvent.TextDelta"}
+{"text":"`","type":"ProviderEvent.TextDelta"}
+{"text":" format","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":204,"totalTokens":204,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" if","type":"ProviderEvent.TextDelta"}
+{"text":" I","type":"ProviderEvent.TextDelta"}
+{"text":" were","type":"ProviderEvent.TextDelta"}
+{"text":" using","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" tool","type":"ProviderEvent.TextDelta"}
+{"text":",","type":"ProviderEvent.TextDelta"}
+{"text":" but","type":"ProviderEvent.TextDelta"}
+{"text":" here","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" user","type":"ProviderEvent.TextDelta"}
+{"text":" is","type":"ProviderEvent.TextDelta"}
+{"text":" asking","type":"ProviderEvent.TextDelta"}
+{"text":" for","type":"ProviderEvent.TextDelta"}
+{"text":" a","type":"ProviderEvent.TextDelta"}
+{"text":" specific","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":221,"totalTokens":221,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" text","type":"ProviderEvent.TextDelta"}
+{"text":" response","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":" The","type":"ProviderEvent.TextDelta"}
+{"text":" system","type":"ProviderEvent.TextDelta"}
+{"text":" prompt","type":"ProviderEvent.TextDelta"}
+{"text":" also","type":"ProviderEvent.TextDelta"}
+{"text":" mentions","type":"ProviderEvent.TextDelta"}
+{"text":" that","type":"ProviderEvent.TextDelta"}
+{"text":" I","type":"ProviderEvent.TextDelta"}
+{"text":" can","type":"ProviderEvent.TextDelta"}
+{"text":" use","type":"ProviderEvent.TextDelta"}
+{"text":" `","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" ","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":239,"totalTokens":239,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"<summary","type":"ProviderEvent.TextDelta"}
+{"text":">`","type":"ProviderEvent.TextDelta"}
+{"text":" as","type":"ProviderEvent.TextDelta"}
+{"text":" a","type":"ProviderEvent.TextDelta"}
+{"text":" fallback","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":" So","type":"ProviderEvent.TextDelta"}
+{"text":" I","type":"ProviderEvent.TextDelta"}
+{"text":" will","type":"ProviderEvent.TextDelta"}
+{"text":" just","type":"ProviderEvent.TextDelta"}
+{"text":" output","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" text","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Final","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":255,"totalTokens":255,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" check","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" The","type":"ProviderEvent.TextDelta"}
+{"text":" user","type":"ProviderEvent.TextDelta"}
+{"text":" wants","type":"ProviderEvent.TextDelta"}
+{"text":" me","type":"ProviderEvent.TextDelta"}
+{"text":" to","type":"ProviderEvent.TextDelta"}
+{"text":" say","type":"ProviderEvent.TextDelta"}
+{"text":" exactly","type":"ProviderEvent.TextDelta"}
+{"text":" \"","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":273,"totalTokens":273,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"\".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" will","type":"ProviderEvent.TextDelta"}
+{"text":" output","type":"ProviderEvent.TextDelta"}
+{"text":" that","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n","type":"ProviderEvent.TextDelta"}
+{"text":"<\/think>","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":288,"totalTokens":288,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" executed","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" task","type":"ProviderEvent.TextDelta"}
+{"text":" as","type":"ProviderEvent.TextDelta"}
+{"text":" requested","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":306,"totalTokens":306,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" Please","type":"ProviderEvent.TextDelta"}
+{"text":" let","type":"ProviderEvent.TextDelta"}
+{"text":" me","type":"ProviderEvent.TextDelta"}
+{"text":" know","type":"ProviderEvent.TextDelta"}
+{"text":" if","type":"ProviderEvent.TextDelta"}
+{"text":" there","type":"ProviderEvent.TextDelta"}
+{"text":" is","type":"ProviderEvent.TextDelta"}
+{"text":" anything","type":"ProviderEvent.TextDelta"}
+{"text":" else","type":"ProviderEvent.TextDelta"}
+{"text":" I","type":"ProviderEvent.TextDelta"}
+{"text":" can","type":"ProviderEvent.TextDelta"}
+{"text":" help","type":"ProviderEvent.TextDelta"}
+{"text":" you","type":"ProviderEvent.TextDelta"}
+{"text":" with","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":323,"totalTokens":323,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":" I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":338,"totalTokens":338,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" completed","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" work","type":"ProviderEvent.TextDelta"}
+{"text":" by","type":"ProviderEvent.TextDelta"}
+{"text":" following","type":"ProviderEvent.TextDelta"}
+{"text":" your","type":"ProviderEvent.TextDelta"}
+{"text":" specific","type":"ProviderEvent.TextDelta"}
+{"text":" instruction","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":" If","type":"ProviderEvent.TextDelta"}
+{"text":" you","type":"ProviderEvent.TextDelta"}
+{"text":" require","type":"ProviderEvent.TextDelta"}
+{"text":" further","type":"ProviderEvent.TextDelta"}
+{"text":" assistance","type":"ProviderEvent.TextDelta"}
+{"text":",","type":"ProviderEvent.TextDelta"}
+{"text":" please","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":364,"totalTokens":364,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" do","type":"ProviderEvent.TextDelta"}
+{"text":" not","type":"ProviderEvent.TextDelta"}
+{"text":" hesitate","type":"ProviderEvent.TextDelta"}
+{"text":" to","type":"ProviderEvent.TextDelta"}
+{"text":" ask","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":379,"totalTokens":379,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":" I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" executed","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" requested","type":"ProviderEvent.TextDelta"}
+{"text":" action","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":" Feel","type":"ProviderEvent.TextDelta"}
+{"text":" free","type":"ProviderEvent.TextDelta"}
+{"text":" to","type":"ProviderEvent.TextDelta"}
+{"text":" reach","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":398,"totalTokens":398,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" out","type":"ProviderEvent.TextDelta"}
+{"text":" if","type":"ProviderEvent.TextDelta"}
+{"text":" you","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" more","type":"ProviderEvent.TextDelta"}
+{"text":" tasks","type":"ProviderEvent.TextDelta"}
+{"text":" for","type":"ProviderEvent.TextDelta"}
+{"text":" me","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":413,"totalTokens":413,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" am","type":"ProviderEvent.TextDelta"}
+{"text":" following","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" instruction","type":"ProviderEvent.TextDelta"}
+{"text":" to","type":"ProviderEvent.TextDelta"}
+{"text":" provide","type":"ProviderEvent.TextDelta"}
+{"text":" only","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":433,"totalTokens":433,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" specified","type":"ProviderEvent.TextDelta"}
+{"text":" string","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":450,"totalTokens":450,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" fulfilled","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" request","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":468,"totalTokens":468,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" am","type":"ProviderEvent.TextDelta"}
+{"text":" stopping","type":"ProviderEvent.TextDelta"}
+{"text":" here","type":"ProviderEvent.TextDelta"}
+{"text":" to","type":"ProviderEvent.TextDelta"}
+{"text":" comply","type":"ProviderEvent.TextDelta"}
+{"text":" with","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":484,"totalTokens":484,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" \"","type":"ProviderEvent.TextDelta"}
+{"text":"nothing","type":"ProviderEvent.TextDelta"}
+{"text":" else","type":"ProviderEvent.TextDelta"}
+{"text":"\"","type":"ProviderEvent.TextDelta"}
+{"text":" constraint","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":500,"totalTokens":500,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":" I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" completed","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":518,"totalTokens":518,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" requested","type":"ProviderEvent.TextDelta"}
+{"text":" action","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" provided","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":536,"totalTokens":536,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" response","type":"ProviderEvent.TextDelta"}
+{"text":" as","type":"ProviderEvent.TextDelta"}
+{"text":" requested","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":554,"totalTokens":554,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" followed","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" instruction","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":572,"totalTokens":572,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":588,"totalTokens":588,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" provided","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" exact","type":"ProviderEvent.TextDelta"}
+{"text":" string","type":"ProviderEvent.TextDelta"}
+{"text":" requested","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":607,"totalTokens":607,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":623,"totalTokens":623,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" am","type":"ProviderEvent.TextDelta"}
+{"text":" stopping","type":"ProviderEvent.TextDelta"}
+{"text":" now","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":639,"totalTokens":639,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":653,"totalTokens":653,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" completed","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" task","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":669,"totalTokens":669,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" provided","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" response","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":689,"totalTokens":689,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":703,"totalTokens":703,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" stopped","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":720,"totalTokens":720,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":736,"totalTokens":736,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" fulfilled","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" request","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":752,"totalTokens":752,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" am","type":"ProviderEvent.TextDelta"}
+{"text":" done","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":768,"totalTokens":768,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":783,"totalTokens":783,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" provided","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" string","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":800,"totalTokens":800,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":816,"totalTokens":816,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" stopped","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":831,"totalTokens":831,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" completed","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":849,"totalTokens":849,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" work","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":865,"totalTokens":865,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" followed","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" instruction","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":882,"totalTokens":882,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":898,"totalTokens":898,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" provided","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" response","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":916,"totalTokens":916,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":932,"totalTokens":932,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" am","type":"ProviderEvent.TextDelta"}
+{"text":" stopping","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":946,"totalTokens":946,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" completed","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" task","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":964,"totalTokens":964,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":979,"totalTokens":979,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" provided","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" exact","type":"ProviderEvent.TextDelta"}
+{"text":" string","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":997,"totalTokens":997,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1014,"totalTokens":1014,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" am","type":"ProviderEvent.TextDelta"}
+{"text":" done","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1027,"totalTokens":1027,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1043,"totalTokens":1043,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" fulfilled","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" request","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1060,"totalTokens":1060,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" stopped","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1077,"totalTokens":1077,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1093,"totalTokens":1093,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" provided","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" response","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1109,"totalTokens":1109,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1126,"totalTokens":1126,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" am","type":"ProviderEvent.TextDelta"}
+{"text":" stopping","type":"ProviderEvent.TextDelta"}
+{"text":" now","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1140,"totalTokens":1140,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" completed","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" work","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1158,"totalTokens":1158,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1173,"totalTokens":1173,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" followed","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" instruction","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1191,"totalTokens":1191,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1208,"totalTokens":1208,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" provided","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" string","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1225,"totalTokens":1225,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1240,"totalTokens":1240,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" am","type":"ProviderEvent.TextDelta"}
+{"text":" done","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1256,"totalTokens":1256,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" completed","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" task","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1271,"totalTokens":1271,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1287,"totalTokens":1287,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" provided","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" response","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1305,"totalTokens":1305,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1321,"totalTokens":1321,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" am","type":"ProviderEvent.TextDelta"}
+{"text":" stopping","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1335,"totalTokens":1335,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" fulfilled","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" request","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1354,"totalTokens":1354,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1369,"totalTokens":1369,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" stopped","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1385,"totalTokens":1385,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1402,"totalTokens":1402,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" provided","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" exact","type":"ProviderEvent.TextDelta"}
+{"text":" string","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1418,"totalTokens":1418,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" am","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1433,"totalTokens":1433,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" done","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1449,"totalTokens":1449,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" completed","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" work","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1466,"totalTokens":1466,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1482,"totalTokens":1482,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" followed","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" instruction","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1499,"totalTokens":1499,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1515,"totalTokens":1515,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" provided","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" response","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1532,"totalTokens":1532,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" am","type":"ProviderEvent.TextDelta"}
+{"text":" stopping","type":"ProviderEvent.TextDelta"}
+{"text":" now","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1549,"totalTokens":1549,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1564,"totalTokens":1564,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" completed","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" task","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1580,"totalTokens":1580,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1597,"totalTokens":1597,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" provided","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" string","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1614,"totalTokens":1614,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1629,"totalTokens":1629,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" am","type":"ProviderEvent.TextDelta"}
+{"text":" done","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1645,"totalTokens":1645,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" fulfilled","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" request","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1661,"totalTokens":1661,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1677,"totalTokens":1677,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" stopped","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1693,"totalTokens":1693,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1708,"totalTokens":1708,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" provided","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" response","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1725,"totalTokens":1725,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" am","type":"ProviderEvent.TextDelta"}
+{"text":" stopping","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1741,"totalTokens":1741,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1757,"totalTokens":1757,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" completed","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" work","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1774,"totalTokens":1774,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1791,"totalTokens":1791,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" followed","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" instruction","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1807,"totalTokens":1807,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" provided","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1825,"totalTokens":1825,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" exact","type":"ProviderEvent.TextDelta"}
+{"text":" string","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1841,"totalTokens":1841,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" am","type":"ProviderEvent.TextDelta"}
+{"text":" done","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1856,"totalTokens":1856,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1873,"totalTokens":1873,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" completed","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" task","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1888,"totalTokens":1888,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1904,"totalTokens":1904,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" provided","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" response","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1921,"totalTokens":1921,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" am","type":"ProviderEvent.TextDelta"}
+{"text":" stopping","type":"ProviderEvent.TextDelta"}
+{"text":" now","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1938,"totalTokens":1938,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1953,"totalTokens":1953,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" fulfilled","type":"ProviderEvent.TextDelta"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" request","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1970,"totalTokens":1970,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":1987,"totalTokens":1987,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" stopped","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2001,"totalTokens":2001,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" have","type":"ProviderEvent.TextDelta"}
+{"text":" provided","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2019,"totalTokens":2019,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" the","type":"ProviderEvent.TextDelta"}
+{"text":" string","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2036,"totalTokens":2036,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"I","type":"ProviderEvent.TextDelta"}
+{"text":" am","type":"ProviderEvent.TextDelta"}
+{"text":" done","type":"ProviderEvent.TextDelta"}
+{"text":".","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":2049,"totalTokens":2049,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" settled","type":"ProviderEvent.TextDelta"}
+{"text":"-v","type":"ProviderEvent.TextDelta"}
+{"text":"ia","type":"ProviderEvent.TextDelta"}
+{"text":"-worker","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"(","type":"ProviderEvent.TextDelta"}
+{"text":"End","type":"ProviderEvent.TextDelta"}
+{"text":" of","type":"ProviderEvent.TextDelta"}
+{"text":" thought","type":"ProviderEvent.TextDelta"}
+{"text":" process","type":"ProviderEvent.TextDelta"}
+{"text":")","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":714,"completionTokens":2000,"totalTokens":2714,"isEstimated":false,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.MaxTokens","type":"ProviderEvent.Done"}

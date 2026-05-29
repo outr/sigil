@@ -1,0 +1,100 @@
+{"requestHash":"55bc13c0af4408fb12a976cf35d1f0e4f590691a4766c36c7f2387bb4a5f8e0d","recordedAt":1780088601569}
+{"text":"The","type":"ProviderEvent.ThinkingDelta"}
+{"text":" user","type":"ProviderEvent.ThinkingDelta"}
+{"text":" wants","type":"ProviderEvent.ThinkingDelta"}
+{"text":" me","type":"ProviderEvent.ThinkingDelta"}
+{"text":" to","type":"ProviderEvent.ThinkingDelta"}
+{"text":" pick","type":"ProviderEvent.ThinkingDelta"}
+{"text":" a","type":"ProviderEvent.ThinkingDelta"}
+{"text":" color","type":"ProviderEvent.ThinkingDelta"}
+{"text":",","type":"ProviderEvent.ThinkingDelta"}
+{"text":" but","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" instructions","type":"ProviderEvent.ThinkingDelta"}
+{"text":" explicitly","type":"ProviderEvent.ThinkingDelta"}
+{"text":" state","type":"ProviderEvent.ThinkingDelta"}
+{"text":" that","type":"ProviderEvent.ThinkingDelta"}
+{"text":" I","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":19,"totalTokens":19,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" must","type":"ProviderEvent.ThinkingDelta"}
+{"text":" ask","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" parent","type":"ProviderEvent.ThinkingDelta"}
+{"text":" before","type":"ProviderEvent.ThinkingDelta"}
+{"text":" answering","type":"ProviderEvent.ThinkingDelta"}
+{"text":" regarding","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" color","type":"ProviderEvent.ThinkingDelta"}
+{"text":" preference","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":" I","type":"ProviderEvent.ThinkingDelta"}
+{"text":" am","type":"ProviderEvent.ThinkingDelta"}
+{"text":" on","type":"ProviderEvent.ThinkingDelta"}
+{"text":" iteration","type":"ProviderEvent.ThinkingDelta"}
+{"text":" ","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":41,"totalTokens":41,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":"1","type":"ProviderEvent.ThinkingDelta"}
+{"text":",","type":"ProviderEvent.ThinkingDelta"}
+{"text":" so","type":"ProviderEvent.ThinkingDelta"}
+{"text":" I","type":"ProviderEvent.ThinkingDelta"}
+{"text":" must","type":"ProviderEvent.ThinkingDelta"}
+{"text":" follow","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" first","type":"ProviderEvent.ThinkingDelta"}
+{"text":" instruction","type":"ProviderEvent.ThinkingDelta"}
+{"text":":","type":"ProviderEvent.ThinkingDelta"}
+{"text":" emit","type":"ProviderEvent.ThinkingDelta"}
+{"text":" exactly","type":"ProviderEvent.ThinkingDelta"}
+{"text":" one","type":"ProviderEvent.ThinkingDelta"}
+{"text":" line","type":"ProviderEvent.ThinkingDelta"}
+{"text":" asking","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":60,"totalTokens":60,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" parent","type":"ProviderEvent.ThinkingDelta"}
+{"text":" for","type":"ProviderEvent.ThinkingDelta"}
+{"text":" the","type":"ProviderEvent.ThinkingDelta"}
+{"text":" color","type":"ProviderEvent.ThinkingDelta"}
+{"text":" preference","type":"ProviderEvent.ThinkingDelta"}
+{"text":".","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n\n","type":"ProviderEvent.ThinkingDelta"}
+{"text":"I","type":"ProviderEvent.ThinkingDelta"}
+{"text":" will","type":"ProviderEvent.ThinkingDelta"}
+{"text":" emit","type":"ProviderEvent.ThinkingDelta"}
+{"text":":","type":"ProviderEvent.ThinkingDelta"}
+{"text":" `","type":"ProviderEvent.ThinkingDelta"}
+{"text":"Ask","type":"ProviderEvent.ThinkingDelta"}
+{"text":"Parent","type":"ProviderEvent.ThinkingDelta"}
+{"text":":","type":"ProviderEvent.ThinkingDelta"}
+{"text":" What","type":"ProviderEvent.ThinkingDelta"}
+{"usage":{"promptTokens":0,"completionTokens":76,"totalTokens":76,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" color","type":"ProviderEvent.ThinkingDelta"}
+{"text":" should","type":"ProviderEvent.ThinkingDelta"}
+{"text":" I","type":"ProviderEvent.ThinkingDelta"}
+{"text":" use","type":"ProviderEvent.ThinkingDelta"}
+{"text":",","type":"ProviderEvent.ThinkingDelta"}
+{"text":" red","type":"ProviderEvent.ThinkingDelta"}
+{"text":" or","type":"ProviderEvent.ThinkingDelta"}
+{"text":" blue","type":"ProviderEvent.ThinkingDelta"}
+{"text":"?","type":"ProviderEvent.ThinkingDelta"}
+{"text":"`","type":"ProviderEvent.ThinkingDelta"}
+{"text":"\n","type":"ProviderEvent.ThinkingDelta"}
+{"text":"Ask","type":"ProviderEvent.TextDelta"}
+{"text":"Parent","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" What","type":"ProviderEvent.TextDelta"}
+{"text":" color","type":"ProviderEvent.TextDelta"}
+{"usage":{"promptTokens":0,"completionTokens":90,"totalTokens":90,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"text":" should","type":"ProviderEvent.TextDelta"}
+{"text":" I","type":"ProviderEvent.TextDelta"}
+{"text":" use","type":"ProviderEvent.TextDelta"}
+{"text":",","type":"ProviderEvent.TextDelta"}
+{"text":" red","type":"ProviderEvent.TextDelta"}
+{"text":" or","type":"ProviderEvent.TextDelta"}
+{"text":" blue","type":"ProviderEvent.TextDelta"}
+{"text":"?","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"callId":"a77089a8e","toolName":"complete_task","type":"ProviderEvent.ToolCallStart"}
+{"usage":{"promptTokens":0,"completionTokens":97,"totalTokens":97,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"callId":"a77089a8e","input":{"summary":"No task completed yet; awaiting parent decision on color preference.","type":"CompleteTaskInput"},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":787,"completionTokens":129,"totalTokens":916,"isEstimated":false,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

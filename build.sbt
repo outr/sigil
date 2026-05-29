@@ -1,11 +1,11 @@
 ThisBuild / organization := "com.outr"
-ThisBuild / version := "1.1.0-SNAPSHOT13"
+ThisBuild / version := "1.1.0"
 
 ThisBuild / scalaVersion := "3.8.3"
 
 val rapidVersion: String = "2.9.6"
 
-val spiceVersion: String = "1.8.14-SNAPSHOT"
+val spiceVersion: String = "1.8.15"
 
 val profigVersion: String = "3.7.1"
 
@@ -50,13 +50,6 @@ ThisBuild / scalacOptions ++= Seq(
 )
 ThisBuild / javaOptions ++= Seq("-Xmx16G", "-Xss4m", "-XX:MaxMetaspaceSize=2g")
 
-// Tests run with one forked JVM per spec (see `testGrouping` in each
-// subproject) and each spec writes to its own RocksDB directory
-// (`db/test/<SimpleClassName>` via `TestSigil.initFor`). The per-suite
-// fork already isolates `PolyType` registrations and the RocksDB lock,
-// so we run forks in parallel — capped at 4 concurrent JVMs so memory
-// pressure stays sane and live-LLM specs (LlamaCpp*Spec) don't pile
-// onto the shared upstream server faster than it can serve them.
 Global / concurrentRestrictions := Seq(
   Tags.limit(Tags.ForkedTestGroup, 4),
   Tags.limit(Tags.Test, 4)
@@ -64,30 +57,11 @@ Global / concurrentRestrictions := Seq(
 
 ThisBuild / evictionErrorLevel := Level.Info
 
-// sbt 1.12.x's `lintUnused` check flags `Compile / doc / fork` +
-// `Compile / doc / javaOptions` as "unused" because they don't
-// participate in any auto-running task — they're consumed only
-// when `publishLocal` triggers `doc`. The keys ARE used; sbt's
-// lint just can't trace the dependency. Silence the noise without
-// disabling the lint globally.
 Global / excludeLintKeys ++= Set(
   Compile / doc / fork,
   Compile / doc / javaOptions
 )
 
-// Scaladoc 3's `[[ ]]` link resolver doesn't follow imports the way
-// older scaladoc did — it warns on every short-name link to a type
-// that's imported but not fully qualified. Sigil has hundreds of such
-// links across signals, events, transports, etc.; fully qualifying
-// them all is a heavy edit with no real benefit (the rendered HTML
-// links still break, the warning is the only artifact). Pass scaladoc's
-// `-no-link-warnings` flag to silence them so `publishLocal` and
-// `Compile/doc` produce clean output. Real code warnings still surface.
-//
-// Scala 3 scaladoc forks its own JVM that doesn't inherit
-// `ThisBuild / javaOptions`. `publishLocal` triggers `doc` per
-// aggregated module — give the fork a real heap so a large module
-// (`core`, `browser`) doesn't OOM mid-doc with the default 1g.
 val docNoLinkWarnings: Seq[Setting[?]] = Seq(
   Compile / doc / scalacOptions += "-no-link-warnings",
   Compile / doc / fork := true,
@@ -111,19 +85,12 @@ lazy val core = (project in file("core"))
       "com.outr" %% "scribe-file" % scribeVersion,
       "com.outr" %% "spice-api" % spiceVersion,
       "com.outr" %% "spice-client-netty" % spiceVersion,
-      "com.outr" %% "spice-server" % spiceVersion,
+      "com.outr" %% "spice-server-undertow" % spiceVersion,
       "com.outr" %% "spice-openapi" % spiceVersion,
       "com.outr" %% "lightdb-all" % lightdbVersion,
-      // Strider — typed embedded workflow engine. Was a separate
-      // sub-project (`sigil-workflow`); folded into core because
-      // worker delegation is built on top of workflow runs and
-      // we want it available without a mixin.
       "com.outr" %% "strider" % striderVersion,
       "org.commonmark" % "commonmark" % commonmarkVersion,
       "software.amazon.awssdk" % "s3" % awsS3Version exclude ("software.amazon.awssdk", "netty-nio-client"),
-      // Pure-Java port of OpenAI's tiktoken — used by `sigil.tokenize.JtokkitTokenizer`
-      // for accurate token counts when validating that wire requests fit the model's
-      // context window. Decent approximation for non-OpenAI providers too.
       "com.knuddels" % "jtokkit" % jtokkitVersion,
       "org.scalatest" %% "scalatest" % scalatestVersion % Test,
       "com.outr" %% "rapid-test" % rapidVersion % Test,
@@ -132,13 +99,6 @@ lazy val core = (project in file("core"))
     fork := true,
     Test / parallelExecution := true,
     Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF"),
-    // One forked JVM per test suite — gives each spec a clean process so
-    // init-once state (singletons, PolyType registrations, RocksDB locks) is
-    // exercised fresh on every run. Forks run concurrently (capped at the
-    // global `Tags.ForkedTestGroup` limit); each spec uses its own RocksDB
-    // path under `db/test/<SimpleClassName>` so there's no lock contention.
-    // ForkOptions().withEnvVars(sys.env) forwards the parent shell's env
-    // vars so SIGIL_LLAMACPP_HOST etc. reach the forked JVM.
     Test / testGrouping := (Test / definedTests).value.map { test =>
       Tests.Group(
         name = test.name,

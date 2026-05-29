@@ -1,0 +1,14 @@
+{"requestHash":"46c2524f4b2467e8957dc4df77d399e91f37bdf2fbdced50fcda9c3f2a8b18d0","recordedAt":1780088560324}
+{"text":"Complete","type":"ProviderEvent.TextDelta"}
+{"text":":","type":"ProviderEvent.TextDelta"}
+{"text":" delegated","type":"ProviderEvent.TextDelta"}
+{"text":"-and","type":"ProviderEvent.TextDelta"}
+{"text":"-set","type":"ProviderEvent.TextDelta"}
+{"text":"t","type":"ProviderEvent.TextDelta"}
+{"text":"led","type":"ProviderEvent.TextDelta"}
+{"text":"\n\n","type":"ProviderEvent.TextDelta"}
+{"callId":"a49208de4","toolName":"classify_topic_shift","type":"ProviderEvent.ToolCallStart"}
+{"callId":"a49208de4","input":{"kind":"NoChange","type":"TopicClassifierInput"},"type":"ProviderEvent.ToolCallComplete"}
+{"usage":{"promptTokens":0,"completionTokens":8,"totalTokens":8,"isEstimated":true,"cacheReadTokens":0,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"usage":{"promptTokens":569,"completionTokens":37,"totalTokens":606,"isEstimated":false,"cacheReadTokens":480,"cacheCreationTokens":0},"type":"ProviderEvent.Usage"}
+{"stopReason":"StopReason.ToolCall","type":"ProviderEvent.Done"}

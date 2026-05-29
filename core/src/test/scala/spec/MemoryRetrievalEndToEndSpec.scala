@@ -131,7 +131,10 @@ class MemoryRetrievalEndToEndSpec extends AsyncWordSpec with AsyncTaskSpec with 
           currentMode = ConversationMode,
           currentTopic = TestTopicEntry,
           generationSettings = GenerationSettings(maxOutputTokens = Some(200), temperature = Some(0.0)),
-          tools = CoreTools.all,
+          // No find_capability: the discovery-first prompt otherwise
+          // steers the model to search instead of answering from the
+          // surfaced memory, which is the behavior under test here.
+          tools = CoreTools.all.filterNot(_.name.value == "find_capability"),
           chain = List(TestUser, TestAgent)
         )
 
