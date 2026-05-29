@@ -82,6 +82,36 @@ case class CloudflareProvider(apiToken: String,
 }
 
 object CloudflareProvider {
+  /** Construct a [[CloudflareProvider]] and seed its Workers AI model
+    * catalog into [[sigil.cache.ModelRegistry]] from Cloudflare's
+    * `/client/v4/accounts/<accountId>/ai/models/search` endpoint.
+    * Mirrors [[sigil.provider.llamacpp.LlamaCppProvider.apply]]'s
+    * contract — the registry is the source of truth for the
+    * pre-flight budget gate, routed model selection, and the
+    * post-#311 boundary check on tool inputs that accept a
+    * `modelId`. Any Workers AI model the provider can serve must
+    * land in the cache before a turn runs against it; this factory
+    * is the documented path. */
+  def apply(sigil: Sigil,
+            apiToken: String,
+            accountId: String): Task[CloudflareProvider] =
+    apply(sigil, apiToken, accountId, url"https://api.cloudflare.com", 120.seconds)
+
+  def apply(sigil: Sigil,
+            apiToken: String,
+            accountId: String,
+            baseUrl: URL,
+            tokenIdleTimeout: FiniteDuration): Task[CloudflareProvider] =
+    Cloudflare.refreshModels(sigil, accountId, apiToken, baseUrl).map { _ =>
+      CloudflareProvider(apiToken, accountId, sigil, baseUrl, tokenIdleTimeout)
+    }
+
+  /** Backwards-compat no-auto-load construction. Use when an app
+    * wires its own [[Model]] records via `cache.merge` (e.g. a
+    * pinned single-model deployment that doesn't need the full
+    * catalog walk, an offline test fixture, an app that already
+    * fetched the catalog elsewhere). New code should prefer
+    * [[apply]] which auto-loads. */
   def create(sigil: Sigil,
              apiToken: String,
              accountId: String,
