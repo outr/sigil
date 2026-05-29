@@ -112,7 +112,17 @@ case class TurnContext(sigil: Sigil,
                          * from a prior task surfaced on every subsequent
                          * turn. */
                        discoveredCapabilitiesRef: AtomicReference[Map[String, DiscoveredCapability]] =
-                         new AtomicReference(Map.empty[String, DiscoveredCapability])) {
+                         new AtomicReference(Map.empty[String, DiscoveredCapability]),
+                       /** Snapshot of the offered tool roster for the turn the
+                         * orchestrator is currently driving. Populated at dispatch
+                         * by [[sigil.orchestrator.Orchestrator]] from
+                         * [[sigil.provider.ConversationRequest.tools]]; empty for
+                         * code paths that don't go through a roster (workflow
+                         * single-tool dispatch, unit-test fixtures). Tools that
+                         * build refusal payloads — `UnknownTool`, `record_consent`,
+                         * the validator-error path — read this to suggest the
+                         * closest-name match from what was actually offered. */
+                       offeredTools: Vector[_root_.sigil.tool.Tool] = Vector.empty) {
 
   /**
    * The participant currently acting — `chain.last`.

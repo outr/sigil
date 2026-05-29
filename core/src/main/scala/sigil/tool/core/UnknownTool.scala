@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.event.{Message, MessageDisposition, MessageRole, MessageVisibility}
 import sigil.signal.EventState
-import sigil.tool.{JsonInput, TextToolOutput, ToolContext, ToolName, ToolResult}
+import sigil.tool.{JsonInput, RefusalPayload, TextToolOutput, ToolContext, ToolName, ToolResult}
 import sigil.tool.model.ResponseContent
 
 /**
@@ -39,20 +39,23 @@ case object UnknownTool extends sigil.tool.Tool {
 
   override def executeResult(input: JsonInput, context: ToolContext): Task[ToolResult[TextToolOutput]] = {
     val invokedName = context.toolName.value
-    val message =
-      s"Unknown tool '$invokedName'. The framework didn't dispatch this call because the name isn't " +
-        "in this turn's available tool roster. Call `find_capability` to discover the catalog, or call " +
-        "`respond` to tell the user what you tried and what's missing."
+    // The refusal carries the closest-name match from the offered roster
+    // plus that match's schema + example so the agent can retry against
+    // a real tool on its next iteration without re-running discovery.
+    val failure = RefusalPayload.unknownTool(
+      invokedName = invokedName,
+      offered     = context.turn.offeredTools
+    )
     context.emit(Message(
       participantId  = context.caller,
       conversationId = context.conversation.id,
       topicId        = context.conversation.currentTopicId,
       role           = MessageRole.Tool,
-      content        = Vector(ResponseContent.Text(message)),
+      content        = Vector(ResponseContent.Text(failure.message)),
       state          = EventState.Complete,
       disposition    = MessageDisposition.Failure(recoverable = true),
       visibility     = MessageVisibility.Agents,
       origin         = Some(context.invokeId)
-    )).map(_ => ToolResult.failure(message))
+    )).map(_ => failure)
   }
 }

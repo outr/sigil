@@ -4,7 +4,7 @@ import fabric.rw.*
 import fabric.io.JsonParser
 import sigil.tool.core.RespondTool
 import sigil.tool.model.JsonStringFieldExtractor
-import sigil.tool.{InputNormalizer, Tool, ToolInput, ToolInputValidator}
+import sigil.tool.{InputNormalizer, RefusalPayload, Tool, ToolInput, ToolInputValidator}
 
 import scala.collection.mutable
 
@@ -167,9 +167,14 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
             val json = InputNormalizer.normalize(rawJson, tool.inputRW.definition)
             val violations = ToolInputValidator.validate(json, tool.inputRW.definition)
             if (violations.nonEmpty) {
-              Vector(ProviderEvent.Error(
-                s"Args for tool ${s.toolName} violated schema constraints: ${violations.mkString("; ")}"
-              ))
+              // Every violation in ONE payload (the validator already
+              // collected them all) plus the tool's schema + worked
+              // example, so the agent sees everything it needs to
+              // retry correctly on the next iteration without burning
+              // round-trips discovering one mismatch at a time.
+              val rule = s"Args for tool ${s.toolName} violated schema constraints: ${violations.mkString("; ")}"
+              val sentArgs = Some(RefusalPayload.renderSentArgs(s.buf.toString))
+              Vector(ProviderEvent.Error(RefusalPayload.enrichRule(tool, rule, sentArgs)))
             } else {
               val input: ToolInput = tool.inputRW.write(json)
               Vector(ProviderEvent.ToolCallComplete(s.callId, input))
@@ -236,6 +241,12 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
               //      fired alongside the fabric throw.
               val errorClass = t.getClass.getSimpleName
               val errorMessage = Option(t.getMessage).filter(_.nonEmpty).getOrElse("(no message)")
+              // Expected-shape summary names required + optional fields
+              // by type, so the agent can compare its emitted JSON
+              // against the actual expected shape. Especially useful
+              // for "agent forgot a required field" cases the validator
+              // doesn't catch by design (missing-required is the
+              // parser's job).
               val schemaSummary = ToolCallAccumulator.summarizeSchema(tool.inputRW.definition)
               val structuralHint =
                 try {
@@ -243,19 +254,16 @@ final class ToolCallAccumulator(tools: Vector[Tool] = Vector.empty,
                   if (violations.isEmpty) ""
                   else s". Constraint violations: ${violations.mkString("; ")}"
                 } catch { case _: Throwable => "" }
-              // Sigil #272 — include the literal JSON the model sent so it
-              // can diff its mistake against the schema summary instead of
-              // guessing what we received. Truncate hard at 500 chars so a
-              // pathologically-large payload doesn't blow up the agent's
-              // context budget on its way to the next iteration.
+              // Truncate the sent buffer at 500 chars so a pathologically-
+              // large payload doesn't blow up the agent's context budget
+              // on its way to the next iteration.
               val rawSnippet = s.buf.toString.take(500)
               val truncated = if (s.buf.length > 500) " (truncated)" else ""
-              Vector(ProviderEvent.Error(
-                s"Failed to parse args for tool ${s.toolName}: " +
-                  s"$errorClass: $errorMessage$structuralHint. " +
-                  s"Expected shape: $schemaSummary. " +
-                  s"You sent$truncated: $rawSnippet"
-              ))
+              val rule = s"Failed to parse args for tool ${s.toolName}: " +
+                s"$errorClass: $errorMessage$structuralHint. " +
+                s"Expected shape: $schemaSummary."
+              val sentArgs = Some(s"$rawSnippet$truncated")
+              Vector(ProviderEvent.Error(RefusalPayload.enrichRule(tool, rule, sentArgs)))
           }
         case None =>
           // Sigil #271 — don't short-circuit with a ProviderEvent.Error.

@@ -797,7 +797,12 @@ object Orchestrator {
                 // discovery cache so FindCapabilityTool's
                 // `recordDiscovery` lands where the next iteration's
                 // `runAgentTurn` can read it.
-                discoveredCapabilitiesRef = request.discoveredCapabilitiesRef
+                discoveredCapabilitiesRef = request.discoveredCapabilitiesRef,
+                // Surface the offered roster to tools that build refusal
+                // payloads — UnknownTool's closest-name suggestion reads
+                // from this; record_consent's unknown-toolName branch
+                // surfaces the closest match from the same view.
+                offeredTools = request.tools
               )
               // Thinking-reserved Message id (if a prior `ThinkingDelta`
               // allocated one) — passed to `tool.execute` so atomic content

@@ -4,7 +4,7 @@ import fabric.rw.*
 import rapid.Task
 import sigil.tool.ToolContext
 import sigil.event.ToolApproval
-import sigil.tool.{TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
+import sigil.tool.{RefusalPayload, TextToolOutput, Tool, ToolExample, ToolName, ToolResult}
 import sigil.tool.model.RecordConsentInput
 
 /**
@@ -70,41 +70,44 @@ case object RecordConsentTool extends Tool {
     val targetName = ToolName(input.toolName)
     ctx.sigil.findTools.byName(targetName).flatMap {
       case None =>
-        // Bug #160 — refuse to persist `ToolApproval` for a
-        // toolName that isn't in the registry. Agents that
-        // fabricate names (the wire-log case: a non-existent
-        // `start_coding` invented to clear a gate that didn't
-        // need clearing) used to land a useless `ToolApproval`
-        // row that polluted the audit log AND silently failed
-        // the gate forever (the row matches the fabricated
-        // name, not any real tool). Resolve a logical Failure
-        // instead so the agent reads "unknown tool" + the hint
-        // to call `find_capability` first.
-        Task.pure(ToolResult.failure(
-          message = s"record_consent: unknown tool '${input.toolName}'.",
-          hint = Some(
-            "Call `find_capability` to discover the correct tool name before recording consent. " +
-              "Don't fabricate names — the framework refuses to persist approvals for tools that " +
-              "aren't in the registry.")
+        // Refuse to persist `ToolApproval` for a toolName that isn't in
+        // the registry. Agents that fabricate names (the wire-log case:
+        // a non-existent `start_coding` invented to clear a gate that
+        // didn't need clearing) used to land a useless `ToolApproval`
+        // row that polluted the audit log AND silently failed the gate
+        // forever (the row matches the fabricated name, not any real
+        // tool). The refusal surfaces both `record_consent`'s schema +
+        // example (so the agent retries this call correctly) AND the
+        // closest match by name from the broader registry (so it can
+        // call the intended tool on a future iteration). The
+        // offered turn roster is consulted first; the framework's full
+        // static catalog is the fallback because record_consent's name
+        // lookup runs across every registered tool, not just the
+        // turn's offered subset.
+        val candidates = (ctx.turn.offeredTools.iterator ++ ctx.sigil.staticTools.iterator).toList.distinct
+        Task.pure(RefusalPayload.unknownTool(
+          invokedName = input.toolName,
+          offered     = candidates,
+          carrier     = Some(RecordConsentTool)
         ))
 
       case Some(tool) if !tool.requiresUserConsent =>
-        // Sigil bug #285 — refuse to persist an approval for a tool
-        // that doesn't require consent. The agent was confusing
-        // `respond_options.options[].value` strings with tool names
-        // (e.g. recorded consent for `just_do_it`, a free-form
-        // option value), and the framework happily persisted bogus
-        // approvals. Distinguishing this from the unknown-tool case
+        // Refuse to persist an approval for a tool that doesn't require
+        // consent. The agent was confusing `respond_options.options[].value`
+        // strings with tool names (e.g. recorded consent for `just_do_it`,
+        // a free-form option value), and the framework happily persisted
+        // bogus approvals. Distinguishing this from the unknown-tool case
         // tells the agent the tool exists but the consent record is
-        // pointless — `find_capability` would have shown
-        // `requiresUserConsent` on the discovered match.
-        Task.pure(ToolResult.failure(
-          message = s"record_consent: tool '${input.toolName}' does not require user consent.",
+        // pointless.
+        Task.pure(RefusalPayload.schemaMismatch(
+          tool = RecordConsentTool,
+          rule = s"record_consent: tool '${input.toolName}' does not require user consent.",
           hint = Some(
             "Only tools with `requiresUserConsent = true` need an approval record before " +
               "dispatch. If you mistook a `respond_options.value` string for a tool name, " +
               "consume the user's selection yourself by deciding which actual tool to call " +
-              "next; you don't need to record consent for the option value.")
+              "next; you don't need to record consent for the option value."
+          )
         ))
 
       case Some(_) =>

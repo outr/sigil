@@ -6,7 +6,7 @@ import sigil.Sigil
 import sigil.tool.ToolContext
 import sigil.event.{ModeChange, MessageRole}
 import sigil.provider.Mode
-import sigil.tool.{TextToolOutput, Tool, ToolName, ToolResult}
+import sigil.tool.{RefusalPayload, TextToolOutput, Tool, ToolName, ToolResult}
 import sigil.tool.model.ChangeModeInput
 
 /**
@@ -61,6 +61,13 @@ case object ChangeModeTool extends Tool {
     "operating", "posture", "kit", "toolset", "tools"
   )
 
+  override val examples: List[sigil.tool.ToolExample] = List(
+    sigil.tool.ToolExample(
+      "switch to coding mode for a code-edit task",
+      ChangeModeInput(mode = "coding", reason = Some("user wants a function written"))
+    )
+  )
+
   // ModeChange Events update Conversation.currentMode and the system
   // prompt's "Current mode" line. The verbose settled tool-call
   // frame is redundant after the mode is in effect — mark ephemeral
@@ -70,15 +77,15 @@ case object ChangeModeTool extends Tool {
   override def executeResult(input: ChangeModeInput, context: ToolContext): Task[ToolResult[TextToolOutput]] =
     context.sigil.modeByName(input.mode) match {
       case Some(mode) if mode.name == context.conversation.currentMode.name =>
-        // Sigil bug #286 — refuse same-mode re-entry. Field evidence
-        // (Sage 2026-05-26) showed an agent calling change_mode with
-        // the current mode 5× in a single turn under the (incorrect)
-        // belief that re-entering would unblock a stuck loop. The
-        // didactic phrasing names the no-op AND tells the agent the
-        // blocker is elsewhere so its next iteration doesn't repeat.
+        // Refuse same-mode re-entry. The didactic phrasing names the
+        // no-op AND tells the agent the blocker is elsewhere so its
+        // next iteration doesn't repeat; the schema + example block is
+        // appended so an agent that fumbled the call once doesn't have
+        // to re-discover the shape on its retry.
         scribe.warn(s"change_mode same-mode no-op rejected: ${input.mode}")
-        Task.pure(ToolResult.failure(
-          message = s"`change_mode` rejected: conversation is already in `${mode.name}` mode.",
+        Task.pure(RefusalPayload.schemaMismatch(
+          tool = ChangeModeTool,
+          rule = s"`change_mode` rejected: conversation is already in `${mode.name}` mode.",
           hint = Some(
             "Re-entering the current mode won't change anything — the next iteration's prompt " +
               "will be identical to this one. If the agent loop appears stuck, the gap is in " +
@@ -97,8 +104,9 @@ case object ChangeModeTool extends Tool {
       case None =>
         scribe.warn(s"change_mode called with unknown mode name: ${input.mode}")
         val available = context.sigil.availableModes.map(_.name).mkString(", ")
-        Task.pure(ToolResult.failure(
-          message = s"`change_mode` rejected: no mode named `${input.mode}` registered.",
+        Task.pure(RefusalPayload.schemaMismatch(
+          tool = ChangeModeTool,
+          rule = s"`change_mode` rejected: no mode named `${input.mode}` registered.",
           hint = Some(s"Available modes: $available.")
         ))
     }
