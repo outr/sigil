@@ -215,7 +215,13 @@ case class AnthropicProvider(apiKey: String,
   }
 
   private def buildBody(input: ProviderCall): Json = {
-    val modelName = Anthropic.stripProviderPrefix(input.modelId.value)
+    // Sigil #308 — OpenRouter publishes Anthropic catalog ids with
+    // dotted version segments (`anthropic/claude-haiku-4.5`); Anthropic's
+    // API rejects the dotted form with `not_found_error` and points at
+    // the hyphenated id in its error hint. Translate dots to hyphens so
+    // the same `sigil.cache` record drives both OpenRouter routing AND
+    // direct-Anthropic dispatch. No-op for already-hyphenated ids.
+    val modelName = Anthropic.stripProviderPrefix(input.modelId.value).replace('.', '-')
     val maxTokens = resolveMaxTokens(input.model, input.generationSettings.effectiveCap)
 
     val caching = cachingEnabledFor(input)
