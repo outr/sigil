@@ -2,17 +2,15 @@ package sigil.conversation.compression
 
 import lightdb.id.Id
 import sigil.event.{Event, Message, MessageRole, ToolInvoke}
-import sigil.participant.AgentParticipantId
 import sigil.tool.ToolName
 
 /**
- * Sigil #285 — decides whether (and what) to fold at intra-turn
- * boundaries within a single agent loop. A long agent loop (32+
- * tool-call iterations against one user prompt) accumulates the full
- * history on every iteration's prompt; compression at user-turn
- * boundaries only doesn't help, because the wire-cost is paid by
- * iteration 32 against the content of iterations 1-31 within the
- * same turn.
+ * Decides whether (and what) to fold at intra-turn boundaries within
+ * a single agent loop. A long agent loop (32+ tool-call iterations
+ * against one user prompt) accumulates the full history on every
+ * iteration's prompt; compression at user-turn boundaries only doesn't
+ * help, because the wire-cost is paid by iteration 32 against the
+ * content of iterations 1-31 within the same turn.
  *
  * The framework consults this trait between iterations in
  * [[sigil.Sigil.runAgentLoop]]:
@@ -53,11 +51,15 @@ trait IntraTurnCompactor {
     *                  [[sigil.Sigil.compressionTriggerTokens]] */
   def shouldCompact(turnEvents: Vector[Event], estimatedTokens: Long, threshold: Long): Boolean
 
-  /** Pick a foldable prefix of `turnEvents` — the framework will
+  /** Pick a foldable subset of `turnEvents` — the framework will
     * summarize their frames into one [[ContextSummary]] that subsumes
     * the same ground in the next iteration's prompt. Return an empty
-    * list to skip compaction even when [[shouldCompact]] fired. */
-  def selectFoldable(turnEvents: Vector[Event]): List[Id[Event]]
+    * list to skip compaction even when [[shouldCompact]] fired.
+    *
+    * Implementations should consult their [[CompactionInvariant]] set
+    * against `ctx` and drop only events not in the union of protected
+    * ids — never fold across an invariant. */
+  def selectFoldable(turnEvents: Vector[Event], ctx: TurnEventsContext): List[Id[Event]]
 }
 
 /**
@@ -77,32 +79,21 @@ trait IntraTurnCompactor {
  *     `create_page`, `commit` — anything whose success marks a
  *     sub-task closed.
  *
- * Selection rule: fold every event except the last `keepRecent`
- * (default 4 — typically the last respond/tool-call/tool-result
- * triplet plus the boundary event the trigger fired on). Apps with
- * stricter "never fold this kind of event" rules subclass and
- * override [[selectFoldable]].
- *
- * NEVER folded by construction:
- *   - User-authored Standard-role [[Message]] events (sigil #307 — a
- *     long agent loop's claim can span multiple user turns; if the
- *     user posts a new task while the loop is still draining the
- *     previous one, the framework's "events since the claim" slice
- *     covers the new task. Folding it away leaves the model with no
- *     goal — the failure mode the bug reported was a fresh `respond`
- *     with `topicLabel = "Greeting"` because the model literally saw
- *     `(begin conversation)` followed by unmotivated tool exchanges).
- *   - The original user message of this turn (excluded by the
- *     framework's "events since user turn began" slice — it's the
- *     turn's predecessor, not in `turnEvents` — covers the
- *     single-turn case).
- *   - The latest `keepRecent` events in the turn (controlled here).
+ * Selection rule: filter the slice by the union of every
+ * [[CompactionInvariant]] in [[invariants]] (plus a built-in
+ * [[CompactionInvariant.RecentTail]] sized at [[recentTailN]]).
+ * Everything outside the protected union is foldable.
  */
 case class StandardIntraTurnCompactor(terminalTools: Set[ToolName] = Set.empty,
-                                       keepRecent: Int = 4) extends IntraTurnCompactor {
+                                       recentTailN: Int = 4,
+                                       invariants: List[CompactionInvariant] = CompactionInvariant.standard)
+    extends IntraTurnCompactor {
+
+  private val tailInvariant = CompactionInvariant.RecentTail(recentTailN)
+  private val effectiveInvariants = invariants :+ tailInvariant
 
   override def shouldCompact(turnEvents: Vector[Event], estimatedTokens: Long, threshold: Long): Boolean = {
-    if (turnEvents.size <= keepRecent) false
+    if (turnEvents.size <= recentTailN) false
     else if (estimatedTokens >= threshold) true
     else turnEvents.lastOption match {
       case Some(m: Message) if m.role == MessageRole.Standard && m.content.nonEmpty => true
@@ -111,30 +102,15 @@ case class StandardIntraTurnCompactor(terminalTools: Set[ToolName] = Set.empty,
     }
   }
 
-  override def selectFoldable(turnEvents: Vector[Event]): List[Id[Event]] = {
-    if (turnEvents.size <= keepRecent) Nil
-    else turnEvents
-      .dropRight(keepRecent)
-      .iterator
-      .filterNot(StandardIntraTurnCompactor.isUserAuthoredStandardMessage)
-      .map(_._id)
-      .toList
-  }
-}
-
-object StandardIntraTurnCompactor {
-  /** Sigil #307 — the load-bearing predicate. A user-authored
-    * Standard-role Message is the task the agent is working on; if
-    * the framework folds it away the model has no goal in scope and
-    * emits a fresh greeting (field evidence in the bug report). The
-    * marker we key off is [[AgentParticipantId]] — Standard-role
-    * Messages from anyone who isn't an agent (a user, an external
-    * integration acting on a user's behalf) are protected. Agent-
-    * authored Standard messages, tool calls, and tool results
-    * remain foldable. */
-  def isUserAuthoredStandardMessage(event: Event): Boolean = event match {
-    case m: Message =>
-      m.role == MessageRole.Standard && !m.participantId.isInstanceOf[AgentParticipantId]
-    case _ => false
+  override def selectFoldable(turnEvents: Vector[Event], ctx: TurnEventsContext): List[Id[Event]] = {
+    if (turnEvents.size <= recentTailN) Nil
+    else {
+      val protectedIds: Set[Id[Event]] =
+        effectiveInvariants.iterator.flatMap(_.applicableIds(turnEvents, ctx)).toSet
+      turnEvents.iterator
+        .filterNot(e => protectedIds.contains(e._id))
+        .map(_._id)
+        .toList
+    }
   }
 }

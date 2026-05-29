@@ -362,7 +362,26 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
    * `terminalTools` populated, or implement [[IntraTurnCompactor]]
    * directly. */
   def intraTurnCompactor: _root_.sigil.conversation.compression.IntraTurnCompactor =
-    _root_.sigil.conversation.compression.StandardIntraTurnCompactor()
+    _root_.sigil.conversation.compression.StandardIntraTurnCompactor(
+      invariants = compactionInvariants
+    )
+
+  /**
+   * Typed predicates that identify events whose ids MUST survive a
+   * compaction or shed pass. Consumed by [[intraTurnCompactor]] and the
+   * curator's frame-shed stage; the union of every returned id set is
+   * the protected ground truth and shedders operate on the complement.
+   *
+   * Default set covers the framework's structural protections:
+   *   - [[sigil.conversation.compression.CompactionInvariant.CurrentUserTaskMessage]]
+   *   - [[sigil.conversation.compression.CompactionInvariant.CurrentAgentClaimAnchor]]
+   *   - [[sigil.conversation.compression.CompactionInvariant.PairedToolResult]]
+   *
+   * Apps override to add app-specific protections (e.g. "never fold
+   * the most-recent `respond_card` while the thread render is live")
+   * or to drop a default for a custom shedder shape. */
+  def compactionInvariants: List[_root_.sigil.conversation.compression.CompactionInvariant] =
+    _root_.sigil.conversation.compression.CompactionInvariant.standard
 
   /** Sigil #285 — compressor invoked by the framework when the
     * [[intraTurnCompactor]] decides to fold this iteration's eligible
@@ -6064,7 +6083,12 @@ trait Sigil extends ProviderConfigStore with MemoryOps with ViewerStateOps {
         val threshold = compressionTriggerTokens(agent.modelId)
         if (!compactor.shouldCompact(turnEvents, estimated, threshold)) Task.unit
         else {
-          val coverIds = compactor.selectFoldable(turnEvents).toSet
+          val ctx = _root_.sigil.conversation.compression.TurnEventsContext(
+            conversationId = convId,
+            claimedAt      = Some(claimed.timestamp),
+            agentId        = Some(agent.id)
+          )
+          val coverIds = compactor.selectFoldable(turnEvents, ctx).toSet
           if (coverIds.isEmpty) Task.unit
           else framesFor(convId).flatMap { allFrames =>
             val coveredFrames = allFrames.filter(f => coverIds.contains(f.sourceEventId))

@@ -6,7 +6,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AsyncWordSpec
 import rapid.{AsyncTaskSpec, Task}
 import sigil.conversation.{Conversation, ContextSummary, Topic, TopicEntry}
-import sigil.conversation.compression.{StandardIntraTurnCompactor, StandardContextCurator}
+import sigil.conversation.compression.{StandardIntraTurnCompactor, StandardContextCurator, TurnEventsContext}
 import sigil.event.{Event, Message, MessageRole, ToolInvoke}
 import sigil.signal.EventState
 import sigil.tool.ToolName
@@ -80,19 +80,20 @@ class IntraTurnCompactionSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       compactor.shouldCompact(events, estimatedTokens = 50L, threshold = 5000L) shouldBe false
     }
 
-    "NOT fire when events <= keepRecent (nothing to fold safely)" in Task {
-      val compactor = StandardIntraTurnCompactor(keepRecent = 4)
+    "NOT fire when events <= recentTailN (nothing to fold safely)" in Task {
+      val compactor = StandardIntraTurnCompactor(recentTailN = 4)
       val events = (1 to 4).map(i => msg(s"e-$i")).toVector
       compactor.shouldCompact(events, estimatedTokens = 100_000L, threshold = 1L) shouldBe false
     }
 
-    "selectFoldable keeps the most-recent keepRecent events out of the fold list" in Task {
-      val compactor = StandardIntraTurnCompactor(keepRecent = 3)
+    "selectFoldable keeps the most-recent recentTailN events out of the fold list" in Task {
+      val compactor = StandardIntraTurnCompactor(recentTailN = 3)
       // Tool invokes are foldable; user-authored Standard Messages
-      // are not (sigil #307), so the keepRecent semantics get tested
+      // are not (sigil #307), so the tail semantics get tested
       // cleanly with a tool-only fixture.
       val events: Vector[Event] = (1 to 10).map(i => toolInvoke(s"read-$i")).toVector
-      val folded = compactor.selectFoldable(events)
+      val ctx = TurnEventsContext(conversationId = convId)
+      val folded = compactor.selectFoldable(events, ctx)
       folded.size shouldBe 7
       folded shouldBe events.take(7).map(_._id).toList
       // Last 3 NOT in the fold list.
@@ -100,9 +101,10 @@ class IntraTurnCompactionSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       events.takeRight(3).forall(e => !foldSet.contains(e._id)) shouldBe true
     }
 
-    "selectFoldable returns Nil when events <= keepRecent" in Task {
-      val compactor = StandardIntraTurnCompactor(keepRecent = 4)
-      compactor.selectFoldable((1 to 3).map(i => toolInvoke(s"read-$i")).toVector) shouldBe Nil
+    "selectFoldable returns Nil when events <= recentTailN" in Task {
+      val compactor = StandardIntraTurnCompactor(recentTailN = 4)
+      val ctx = TurnEventsContext(conversationId = convId)
+      compactor.selectFoldable((1 to 3).map(i => toolInvoke(s"read-$i")).toVector, ctx) shouldBe Nil
     }
   }
 
@@ -151,25 +153,34 @@ class IntraTurnCompactionSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
       // model saw only `(begin conversation)` + recent tool exchanges
       // and emitted a fresh greeting. The invariant the fix enforces:
       // user-authored Standard-role Messages are never compacted.
-      val compactor = StandardIntraTurnCompactor(keepRecent = 3)
-      val turnEvents: Vector[Event] = Vector(
-        toolInvoke("read-1"),
-        toolInvoke("read-2"),
-        toolInvoke("read-3"),
-        msg("I'd like you to find and remove all bug references"),   // user task
-        toolInvoke("read-4"),
-        toolInvoke("read-5"),
-        toolInvoke("read-6"),
-        toolInvoke("read-7"),
-        toolInvoke("read-8"),
-        toolInvoke("read-9")
+      val compactor = StandardIntraTurnCompactor(recentTailN = 3)
+      // Distinct increasing timestamps so the claim anchor and the
+      // user-task invariant pick out their intended events.
+      def t(name: String, ts: Long): ToolInvoke = ToolInvoke(
+        toolName = ToolName(name), participantId = TestAgent, conversationId = convId,
+        topicId = TestTopicId, state = EventState.Complete, timestamp = Timestamp(ts)
       )
-      val folded = compactor.selectFoldable(turnEvents).toSet
+      def u(text: String, ts: Long): Message = Message(
+        participantId = TestUser, conversationId = convId, topicId = TestTopicId,
+        role = MessageRole.Standard, content = Vector(ResponseContent.Text(text)),
+        state = EventState.Complete, timestamp = Timestamp(ts)
+      )
+      val turnEvents: Vector[Event] = Vector(
+        t("read-1", 10), t("read-2", 20), t("read-3", 30),
+        u("I'd like you to find and remove all bug references", 40),   // user task
+        t("read-4", 50), t("read-5", 60), t("read-6", 70),
+        t("read-7", 80), t("read-8", 90), t("read-9", 100)
+      )
+      // Claim was established before the slice — the agent had been
+      // running. The claim anchor lands on `read-1`, the first event
+      // in the slice. The user task gets protected by
+      // CurrentUserTaskMessage, not by the anchor.
+      val ctx = TurnEventsContext(conversationId = convId, claimedAt = Some(Timestamp(5L)))
+      val folded = compactor.selectFoldable(turnEvents, ctx).toSet
       val userTaskId = turnEvents(3)._id
       folded should not contain userTaskId
-      // The other turn-events DO get folded (everything not in
-      // keepRecent's tail and not a user-authored Standard Message).
-      folded should contain (turnEvents(0)._id)
+      // The middle reads (turnEvents 1, 2 — past the anchor and
+      // before the user task) fold normally.
       folded should contain (turnEvents(1)._id)
       folded should contain (turnEvents(2)._id)
     }
@@ -185,14 +196,15 @@ class IntraTurnCompactionSpec extends AsyncWordSpec with AsyncTaskSpec with Matc
         content        = Vector(ResponseContent.Text("here is my reply")),
         state          = EventState.Complete
       )
-      val compactor = StandardIntraTurnCompactor(keepRecent = 2)
+      val compactor = StandardIntraTurnCompactor(recentTailN = 2)
       val turnEvents: Vector[Event] = Vector(
         toolInvoke("read-1"),
         agentMsg,
         toolInvoke("read-2"),
         toolInvoke("read-3")
       )
-      val folded = compactor.selectFoldable(turnEvents).toSet
+      val ctx = TurnEventsContext(conversationId = convId)
+      val folded = compactor.selectFoldable(turnEvents, ctx).toSet
       folded should contain (agentMsg._id)
     }
   }

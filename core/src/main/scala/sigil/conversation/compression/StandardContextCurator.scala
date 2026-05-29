@@ -309,18 +309,24 @@ case class StandardContextCurator(sigil: Sigil,
               val afterStage2b = afterStage2.copy(summaries = Vector.empty)
               if (tokensOf(afterStage2b, frames, Vector.empty) <= cap) Task.pure(afterStage2b)
               else {
-                // Stage 3 — iterative frame compression (bug #23 + #26).
-                shedFramesIteratively(
-                  kept = frames,
-                  droppedSoFar = Vector.empty,
-                  summaryCarry = None,
-                  cap = cap,
-                  modelId = modelId,
-                  chain = chain,
-                  conversationId = tentative.conversationId,
-                  tokensOfKept = (kept, summaryOpt) =>
-                    tokensOf(afterStage2b, kept, summaryOpt.toVector)
-                ).flatMap { case (newerKept, summaryOpt) =>
+                // Stage 3 — iterative frame compression. Resolve the
+                // invariant-protected `sourceEventId`s once so the
+                // iterative split doesn't cleave a paired tool
+                // exchange or fold a structurally load-bearing event.
+                resolveProtectedEventIds(tentative.conversationId, frames).flatMap { protectedIds =>
+                  shedFramesIteratively(
+                    kept = frames,
+                    droppedSoFar = Vector.empty,
+                    summaryCarry = None,
+                    cap = cap,
+                    modelId = modelId,
+                    chain = chain,
+                    conversationId = tentative.conversationId,
+                    protectedSourceEventIds = protectedIds,
+                    tokensOfKept = (kept, summaryOpt) =>
+                      tokensOf(afterStage2b, kept, summaryOpt.toVector)
+                  )
+                }.flatMap { case (newerKept, summaryOpt) =>
                   summaryOpt match {
                     case Some(summary) =>
                       // Bug #147 — advance the conversation's
@@ -375,7 +381,13 @@ case class StandardContextCurator(sigil: Sigil,
     * inside the new bug-#26 architecture). Each pass either fits, hits
     * `keepMinimum`, or falls through on a compressor refusal. When the
     * input exceeds `cap × 3`, jump straight to the floor for a single
-    * aggressive collapse instead of rounds of halving. */
+    * aggressive collapse instead of rounds of halving.
+    *
+    * `protectedSourceEventIds` is the union of every
+    * [[CompactionInvariant]] applicable to the slice's events. The
+    * split point is adjusted forward (older direction) so no
+    * protected event lands in the `older` half; protects paired tool
+    * exchanges and structurally load-bearing events from being folded. */
   private def shedFramesIteratively(kept: Vector[ContextFrame],
                                     droppedSoFar: Vector[ContextFrame],
                                     summaryCarry: Option[ContextSummary],
@@ -383,6 +395,7 @@ case class StandardContextCurator(sigil: Sigil,
                                     modelId: Id[Model],
                                     chain: List[ParticipantId],
                                     conversationId: Id[Conversation],
+                                    protectedSourceEventIds: Set[Id[_root_.sigil.event.Event]],
                                     tokensOfKept: (Vector[ContextFrame], Option[ContextSummary]) => Int)
       : Task[(Vector[ContextFrame], Option[ContextSummary])] = {
     val current = tokensOfKept(kept, summaryCarry)
@@ -392,30 +405,71 @@ case class StandardContextCurator(sigil: Sigil,
       val keep =
         if (aggressive) keepMinimum
         else math.max(keepMinimum, kept.size / 2)
-      val (older, newer) = kept.splitAt(kept.size - keep)
-      val toSummarize = droppedSoFar ++ older
-      // Fire compression-time extraction over the shed slice on a
-      // background fiber. Captures durable facts before the slice
-      // is collapsed into a lossy summary; failures don't block.
-      compressionExtractor.extractFromFrames(sigil, conversationId, modelId, chain, older)
-        .handleError { e =>
-          Task(scribe.warn(s"compressionExtractor failed for $conversationId: ${e.getMessage}")).map(_ => Nil)
-        }.startUnit()
-      compressor.compress(sigil, modelId, chain, rapid.Stream.emits(toSummarize), conversationId).flatMap {
-        case Some(summary) =>
-          shedFramesIteratively(
-            kept = newer,
-            droppedSoFar = toSummarize,
-            summaryCarry = Some(summary),
-            cap = cap,
-            modelId = modelId,
-            chain = chain,
-            conversationId = conversationId,
-            tokensOfKept = tokensOfKept
-          )
-        case None =>
-          Task.pure((kept, summaryCarry))
+      val initialSplit = kept.size - keep
+      val safeSplit = adjustSplitForInvariants(kept, initialSplit, protectedSourceEventIds)
+      if (safeSplit <= 0) Task.pure((kept, summaryCarry))
+      else {
+        val (older, newer) = kept.splitAt(safeSplit)
+        val toSummarize = droppedSoFar ++ older
+        // Fire compression-time extraction over the shed slice on a
+        // background fiber. Captures durable facts before the slice
+        // is collapsed into a lossy summary; failures don't block.
+        compressionExtractor.extractFromFrames(sigil, conversationId, modelId, chain, older)
+          .handleError { e =>
+            Task(scribe.warn(s"compressionExtractor failed for $conversationId: ${e.getMessage}")).map(_ => Nil)
+          }.startUnit()
+        compressor.compress(sigil, modelId, chain, rapid.Stream.emits(toSummarize), conversationId).flatMap {
+          case Some(summary) =>
+            shedFramesIteratively(
+              kept = newer,
+              droppedSoFar = toSummarize,
+              summaryCarry = Some(summary),
+              cap = cap,
+              modelId = modelId,
+              chain = chain,
+              conversationId = conversationId,
+              protectedSourceEventIds = protectedSourceEventIds,
+              tokensOfKept = tokensOfKept
+            )
+          case None =>
+            Task.pure((kept, summaryCarry))
+        }
       }
+    }
+  }
+
+  /** Walk the split point earlier until no protected frame lands in
+    * the `older` half. Returns 0 when every preceding frame is
+    * protected (the shed becomes a no-op for this iteration). */
+  private def adjustSplitForInvariants(frames: Vector[ContextFrame],
+                                       initialSplit: Int,
+                                       protectedIds: Set[Id[_root_.sigil.event.Event]]): Int = {
+    if (protectedIds.isEmpty) initialSplit
+    else {
+      var s = initialSplit
+      while (s > 0 && protectedIds.contains(frames(s - 1).sourceEventId)) s -= 1
+      s
+    }
+  }
+
+  /** Load the events backing `frames`, run every
+    * [[CompactionInvariant]] in [[sigil.Sigil.compactionInvariants]]
+    * against the result, and return the union of protected
+    * `sourceEventId`s. Best-effort: a DB hiccup or a missing event
+    * row degrades to an empty set so the shed still makes progress. */
+  private def resolveProtectedEventIds(conversationId: Id[Conversation],
+                                        frames: Vector[ContextFrame]): Task[Set[Id[_root_.sigil.event.Event]]] = {
+    val invariants = sigil.compactionInvariants
+    if (invariants.isEmpty || frames.isEmpty) Task.pure(Set.empty)
+    else {
+      val ids = frames.map(_.sourceEventId).distinct
+      sigil.withDB(_.eventsTransaction(conversationId) { tx =>
+        Task.sequence(ids.toList.map(tx.get)).map(_.flatten.toVector)
+      }).map { events =>
+        val sorted = events.sortBy(_.timestamp.value)
+        val ctx = TurnEventsContext(conversationId = conversationId)
+        invariants.iterator.flatMap(_.applicableIds(sorted, ctx)).toSet
+      }.handleError(_ => Task.pure(Set.empty))
     }
   }
 
